@@ -1,0 +1,1 @@
+UPDATE lead_import_jobs SET status = 'erro', finished_at = now() WHERE id = '72987f90-e2a0-48da-8bdf-743993f3034d' AND status = 'processando';

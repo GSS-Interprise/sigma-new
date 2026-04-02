@@ -1,0 +1,1 @@
+ALTER TABLE public.licitacoes ADD COLUMN IF NOT EXISTS cnpj_orgao text;

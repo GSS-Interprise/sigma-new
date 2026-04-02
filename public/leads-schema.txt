@@ -1,0 +1,65 @@
+TABELA: public.leads (Prontuário Médico - Dialog de Leads)
+=========================================================
+
+DADOS PESSOAIS
+--------------
+id                    | uuid       | NOT NULL | DEFAULT gen_random_uuid()
+nome                  | text       | NOT NULL |
+cpf                   | text       | YES      |
+crm                   | text       | YES      |
+rqe                   | text       | YES      |
+data_nascimento       | date       | YES      |
+data_formatura        | date       | YES      |
+phone_e164            | text       | NOT NULL |
+telefones_adicionais  | text[]     | YES      | DEFAULT '{}'
+email                 | text       | YES      |
+especialidades        | text[]     | YES      | DEFAULT '{}'
+especialidade         | text       | YES      |
+unidades_vinculadas   | uuid[]     | YES      | DEFAULT '{}'
+status_medico         | text       | YES      | DEFAULT 'Ativo'
+status_contrato       | text       | YES      | DEFAULT 'Ativo'
+uf                    | text       | YES      |
+cidade                | text       | YES      |
+rg                    | text       | YES      |
+nacionalidade         | text       | YES      |
+naturalidade          | text       | YES      |
+estado_civil          | text       | YES      |
+endereco              | text       | YES      |
+cep                   | text       | YES      |
+cnpj                  | text       | YES      |
+
+DADOS BANCÁRIOS
+----------------
+banco                 | text       | YES      |
+agencia               | text       | YES      |
+conta_corrente        | text       | YES      |
+chave_pix             | text       | YES      |
+
+DADOS CONTRATUAIS
+-----------------
+modalidade_contrato       | text       | YES      |
+data_inicio_contrato      | date       | YES      |
+valor_contrato            | numeric    | YES      |
+especificacoes_contrato   | text       | YES      |
+local_prestacao_servico   | text       | YES      |
+
+RASTREIO / META
+---------------
+status                | text           | NOT NULL | DEFAULT 'Novo'
+origem                | text           | YES      |
+tags                  | text[]         | YES      |
+observacoes           | text           | YES      |
+arquivo_id            | text           | YES      |
+licitacao_origem_id   | uuid           | YES      |
+contrato_origem_id    | uuid           | YES      |
+servico_origem_id     | uuid           | YES      |
+canal_conversao       | text           | YES      |
+chave_unica           | text           | YES      |
+data_conversao        | timestamptz    | YES      |
+convertido_por        | uuid           | YES      |
+migrado_de_medico_id  | uuid           | YES      |
+migrado_de_medico_em  | timestamptz    | YES      |
+created_at            | timestamptz    | YES      | DEFAULT now()
+updated_at            | timestamptz    | YES      | DEFAULT now()
+
+TOTAL: 48 colunas

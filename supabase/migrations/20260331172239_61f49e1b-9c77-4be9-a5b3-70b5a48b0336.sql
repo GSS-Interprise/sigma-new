@@ -1,0 +1,1 @@
+ALTER TABLE public.ages_leads ADD COLUMN IF NOT EXISTS cnpj text;

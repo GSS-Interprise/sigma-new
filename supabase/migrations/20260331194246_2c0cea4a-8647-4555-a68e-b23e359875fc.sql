@@ -1,0 +1,1 @@
+DELETE FROM public.escalas_integradas WHERE sistema_origem = 'DR_ESCALA' AND local_id_externo IS NULL AND setor_id_externo IS NULL;
