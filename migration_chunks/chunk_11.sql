@@ -1,51 +1,3 @@
-
--- 8. Índices para SELECT DISTINCT
-CREATE INDEX IF NOT EXISTS idx_leads_status ON public.leads (status) WHERE status IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_leads_origem ON public.leads (origem) WHERE origem IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_leads_uf ON public.leads (uf) WHERE uf IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_leads_cidade ON public.leads (cidade) WHERE cidade IS NOT NULL;
-
-
--- === 20260223190713_567fd19f-51ca-4059-b8e0-02bd0a0c9f58.sql ===
-CREATE OR REPLACE FUNCTION public.get_leads_especialidade_counts()
-RETURNS TABLE(especialidade_id uuid, count bigint)
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = 'public'
-AS $$
-  SELECT especialidade_id, count(*) as count
-  FROM public.leads
-  WHERE especialidade_id IS NOT NULL
-  GROUP BY especialidade_id;
-$$;
-
--- === 20260223190910_46928d6b-9994-49ba-823d-fa17d2a1d9d9.sql ===
-CREATE OR REPLACE FUNCTION public.get_leads_filter_counts()
-RETURNS jsonb
-LANGUAGE plpgsql
-STABLE
-SECURITY DEFINER
-SET search_path = 'public'
-AS $$
-DECLARE
-  result jsonb;
-BEGIN
-  SELECT jsonb_build_object(
-    'status', (SELECT jsonb_object_agg(status, cnt) FROM (SELECT status, count(*) as cnt FROM leads WHERE status IS NOT NULL AND status != '' GROUP BY status) s),
-    'origem', (SELECT jsonb_object_agg(origem, cnt) FROM (SELECT origem, count(*) as cnt FROM leads WHERE origem IS NOT NULL AND origem != '' GROUP BY origem) o),
-    'uf', (SELECT jsonb_object_agg(uf, cnt) FROM (SELECT uf, count(*) as cnt FROM leads WHERE uf IS NOT NULL AND uf != '' GROUP BY uf) u),
-    'cidade', (SELECT jsonb_object_agg(cidade, cnt) FROM (SELECT cidade, count(*) as cnt FROM leads WHERE cidade IS NOT NULL AND cidade != '' GROUP BY cidade) c),
-    'especialidade', (SELECT jsonb_object_agg(especialidade_id::text, cnt) FROM (SELECT especialidade_id, count(*) as cnt FROM leads WHERE especialidade_id IS NOT NULL GROUP BY especialidade_id) e)
-  ) INTO result;
-  
-  RETURN result;
-END;
-$$;
-
--- === 20260226124700_2e35531b-b32f-4aed-a136-5cd306028fd1.sql ===
--- Adicionar gestor_financeiro e outros roles às policies de contrato_anexos
-DROP POLICY IF EXISTS "Authorized users can view contrato_anexos" ON public.contrato_anexos;
 DROP POLICY IF EXISTS "Authorized users can view contrato_anexos" ON public.contrato_anexos;
 CREATE POLICY "Authorized users can view contrato_anexos"
 ON public.contrato_anexos FOR SELECT
@@ -827,15 +779,15 @@ DELETE FROM public.escalas_integradas WHERE sistema_origem = 'DR_ESCALA' AND loc
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Create enum types
-    CREATE TYPE public.tipo_contrato AS ENUM ('licitacao', 'privado');
-    CREATE TYPE public.status_contrato AS ENUM ('ativo', 'inativo', 'suspenso');
-    CREATE TYPE public.status_demanda AS ENUM ('aberta', 'em_atendimento', 'concluida', 'cancelada');
-    CREATE TYPE public.status_proposta AS ENUM ('pendente', 'aceita', 'recusada');
-    CREATE TYPE public.status_documentacao AS ENUM ('pendente', 'em_analise', 'aprovada', 'reprovada');
-    CREATE TYPE public.status_assinatura AS ENUM ('pendente', 'assinado', 'cancelado');
-    CREATE TYPE public.status_execucao AS ENUM ('pendente', 'executada', 'cancelada');
-    CREATE TYPE public.status_pagamento AS ENUM ('pendente', 'pago', 'atrasado', 'cancelado');
-    CREATE TYPE public.app_role AS ENUM ('admin', 'gestor_demanda', 'recrutador', 'coordenador_escalas', 'financeiro', 'medico');
+DO $tyblk$ BEGIN CREATE TYPE public.tipo_contrato AS ENUM ('licitacao', 'privado'); EXCEPTION WHEN duplicate_object THEN NULL; END $tyblk$;
+DO $tyblk$ BEGIN CREATE TYPE public.status_contrato AS ENUM ('ativo', 'inativo', 'suspenso'); EXCEPTION WHEN duplicate_object THEN NULL; END $tyblk$;
+DO $tyblk$ BEGIN CREATE TYPE public.status_demanda AS ENUM ('aberta', 'em_atendimento', 'concluida', 'cancelada'); EXCEPTION WHEN duplicate_object THEN NULL; END $tyblk$;
+DO $tyblk$ BEGIN CREATE TYPE public.status_proposta AS ENUM ('pendente', 'aceita', 'recusada'); EXCEPTION WHEN duplicate_object THEN NULL; END $tyblk$;
+DO $tyblk$ BEGIN CREATE TYPE public.status_documentacao AS ENUM ('pendente', 'em_analise', 'aprovada', 'reprovada'); EXCEPTION WHEN duplicate_object THEN NULL; END $tyblk$;
+DO $tyblk$ BEGIN CREATE TYPE public.status_assinatura AS ENUM ('pendente', 'assinado', 'cancelado'); EXCEPTION WHEN duplicate_object THEN NULL; END $tyblk$;
+DO $tyblk$ BEGIN CREATE TYPE public.status_execucao AS ENUM ('pendente', 'executada', 'cancelada'); EXCEPTION WHEN duplicate_object THEN NULL; END $tyblk$;
+DO $tyblk$ BEGIN CREATE TYPE public.status_pagamento AS ENUM ('pendente', 'pago', 'atrasado', 'cancelado'); EXCEPTION WHEN duplicate_object THEN NULL; END $tyblk$;
+DO $tyblk$ BEGIN CREATE TYPE public.app_role AS ENUM ('admin', 'gestor_demanda', 'recrutador', 'coordenador_escalas', 'financeiro', 'medico'); EXCEPTION WHEN duplicate_object THEN NULL; END $tyblk$;
 
 CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -1185,7 +1137,6 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
-DROP TRIGGER IF EXISTS "on_auth_user_created" ON auth;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW
@@ -1251,3 +1202,50 @@ DROP POLICY IF EXISTS "Authorized users can manage blacklist" ON public.blacklis
 CREATE POLICY "Authorized users can manage blacklist"
 ON public.blacklist FOR ALL
 USING (is_admin(auth.uid()) OR has_role(auth.uid(), 'recrutador') OR has_role(auth.uid(), 'gestor_demanda'));
+
+ALTER TABLE public.clientes ADD COLUMN IF NOT EXISTS email_financeiro TEXT;
+ALTER TABLE public.clientes ADD COLUMN IF NOT EXISTS telefone_financeiro TEXT;
+ALTER TABLE public.clientes ADD COLUMN IF NOT EXISTS nome_unidade TEXT;
+ALTER TABLE public.clientes ADD COLUMN IF NOT EXISTS estado TEXT;
+
+CREATE TABLE IF NOT EXISTS public.contrato_renovacoes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  contrato_id UUID NOT NULL,
+  data_vigencia DATE NOT NULL,
+  percentual_reajuste NUMERIC(5, 2),
+  valor NUMERIC(10, 2) NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.contrato_anexos (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  contrato_id UUID NOT NULL,
+  arquivo_nome TEXT NOT NULL,
+  arquivo_url TEXT NOT NULL,
+  usuario_id UUID REFERENCES auth.users(id),
+  usuario_nome TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+ALTER TABLE public.contrato_renovacoes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.contrato_anexos ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Authorized users can manage contrato_renovacoes" ON public.contrato_renovacoes;
+DROP POLICY IF EXISTS "Authorized users can manage contrato_renovacoes" ON public.contrato_renovacoes;
+CREATE POLICY "Authorized users can manage contrato_renovacoes"
+ON public.contrato_renovacoes FOR ALL
+USING (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_demanda'))
+WITH CHECK (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_demanda'));
+
+DROP POLICY IF EXISTS "Authorized users can view contrato_anexos" ON public.contrato_anexos;
+DROP POLICY IF EXISTS "Authorized users can view contrato_anexos" ON public.contrato_anexos;
+CREATE POLICY "Authorized users can view contrato_anexos"
+ON public.contrato_anexos FOR SELECT
+USING (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_demanda'));
+
+DROP POLICY IF EXISTS "Authorized users can insert contrato_anexos" ON public.contrato_anexos;
+DROP POLICY IF EXISTS "Authorized users can insert contrato_anexos" ON public.contrato_anexos;
+CREATE POLICY "Authorized users can insert contrato_anexos"
+ON public.contrato_anexos FOR INSERT
+WITH CHECK (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_demanda'));

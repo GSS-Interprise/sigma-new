@@ -1,16 +1,4 @@
 
--- Tabela: radiologia_ecg
-CREATE TABLE IF NOT EXISTS public.radiologia_ecg (
-  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  cliente_id UUID NOT NULL REFERENCES public.clientes(id) ON DELETE CASCADE,
-  medico_id UUID NOT NULL REFERENCES public.medicos(id) ON DELETE CASCADE,
-  paciente TEXT NOT NULL,
-  data_hora_liberacao TIMESTAMP WITH TIME ZONE NOT NULL,
-  anexos TEXT[],
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
-
 -- Tabela: medico_indisponibilidades
 CREATE TABLE IF NOT EXISTS public.medico_indisponibilidades (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -132,7 +120,8 @@ USING (
 
 -- === 20251024135139_a24af66c-e9bc-4224-a590-50c617d752b2.sql ===
 -- Adicionar novo role para radiologia (será usado em migration posterior)
-DO $atvblk$ BEGIN ALTER TYPE app_role ADD VALUE IF NOT EXISTS 'gestor_radiologia'; EXCEPTION WHEN duplicate_object THEN NULL; END $atvblk$;
+DO $atwrap$ BEGIN ALTER TYPE app_role ADD VALUE IF NOT EXISTS 'gestor_radiologia'; EXCEPTION WHEN duplicate_object THEN NULL; END $atwrap$;
+
 
 -- === 20251024135829_f1f33f5a-45f7-456f-b215-e477fe7e5fad.sql ===
 -- Atualizar RLS policies das tabelas de radiologia para incluir gestor_radiologia
@@ -220,7 +209,7 @@ USING (auth.uid() = id OR is_admin(auth.uid()))
 WITH CHECK (auth.uid() = id OR is_admin(auth.uid()));
 
 -- Ensure foreign key from profiles.setor_id -> setores.id for nested select and data integrity
--- NESTED_REMOVED: DO $$
+DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.table_constraints 
@@ -258,10 +247,14 @@ DROP POLICY IF EXISTS "Admins and recrutadores can manage medicos" ON public.med
 
 -- === 20251024145636_84e12f95-1588-4121-b4d8-09e61cb97683.sql ===
 -- Criar enums para suporte
-    CREATE TYPE public.destino_suporte AS ENUM ('interno', 'externo');
-    CREATE TYPE public.tipo_suporte AS ENUM ('software', 'hardware');
-    CREATE TYPE public.status_ticket AS ENUM ('pendente', 'em_analise', 'concluido');
-    CREATE TYPE public.fornecedor_externo AS ENUM ('dr_escala', 'infra_ti');
+DO $typwrap$ BEGIN CREATE TYPE public.destino_suporte AS ENUM ('interno', 'externo'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+
+DO $typwrap$ BEGIN CREATE TYPE public.tipo_suporte AS ENUM ('software', 'hardware'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+
+DO $typwrap$ BEGIN CREATE TYPE public.status_ticket AS ENUM ('pendente', 'em_analise', 'concluido'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+
+DO $typwrap$ BEGIN CREATE TYPE public.fornecedor_externo AS ENUM ('dr_escala', 'infra_ti'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+
 
 -- Criar tabela de tickets de suporte
 CREATE TABLE IF NOT EXISTS public.suporte_tickets (
@@ -619,9 +612,12 @@ EXECUTE FUNCTION update_radiologia_pendencias_comentarios_updated_at();
 
 -- === 20251024172505_9438fe21-7ec5-4a7d-a8f3-f215586a85e0.sql ===
 -- Atualizar enum de status_ticket para incluir novos status
-    ALTER TYPE status_ticket ADD VALUE IF NOT EXISTS 'aberto';
-    ALTER TYPE status_ticket ADD VALUE IF NOT EXISTS 'aguardando_usuario';
-    ALTER TYPE status_ticket ADD VALUE IF NOT EXISTS 'em_validacao';
+DO $atwrap$ BEGIN ALTER TYPE status_ticket ADD VALUE IF NOT EXISTS 'aberto'; EXCEPTION WHEN duplicate_object THEN NULL; END $atwrap$;
+
+DO $atwrap$ BEGIN ALTER TYPE status_ticket ADD VALUE IF NOT EXISTS 'aguardando_usuario'; EXCEPTION WHEN duplicate_object THEN NULL; END $atwrap$;
+
+DO $atwrap$ BEGIN ALTER TYPE status_ticket ADD VALUE IF NOT EXISTS 'em_validacao'; EXCEPTION WHEN duplicate_object THEN NULL; END $atwrap$;
+
 
 -- Adicionar campo setor_responsavel à tabela suporte_tickets
 ALTER TABLE public.suporte_tickets
@@ -653,7 +649,8 @@ USING (
 
 -- === 20251024191515_e2d95c6a-cb48-43be-9e61-51f0f08f7b3e.sql ===
 -- Adiciona "equipamento_hospitalar" ao enum categoria_patrimonio
-    ALTER TYPE categoria_patrimonio ADD VALUE IF NOT EXISTS 'equipamento_hospitalar';
+DO $atwrap$ BEGIN ALTER TYPE categoria_patrimonio ADD VALUE IF NOT EXISTS 'equipamento_hospitalar'; EXCEPTION WHEN duplicate_object THEN NULL; END $atwrap$;
+
 
 -- === 20251029172833_53213961-c276-4e27-8942-3800d4db331b.sql ===
 -- Create unidades table
@@ -668,12 +665,12 @@ CREATE TABLE IF NOT EXISTS public.unidades (
 );
 
 -- Create tipo_contratacao enum
--- NESTED_REMOVED: DO $typblk$ BEGIN CREATE TYPE tipo_contratacao AS ENUM (
+DO $typwrap$ BEGIN DO $typwrap$ BEGIN CREATE TYPE tipo_contratacao AS ENUM (
   'credenciamento',
   'licitacao',
   'dispensa',
   'direta_privada'
-); EXCEPTION WHEN duplicate_object THEN NULL; END $typblk$;
+); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$; EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
 
 -- Add unidade_id and tipo_contratacao to contratos table
 ALTER TABLE public.contratos 
@@ -836,7 +833,8 @@ CREATE INDEX IF NOT EXISTS idx_licitacoes_atividades_created_at ON public.licita
 -- e mesclar as tabelas em uma única estrutura
 
 -- Criar tipo enum para nível de urgência
-    CREATE TYPE nivel_urgencia_radiologia AS ENUM ('pronto_socorro', 'internados', 'oncologicos');
+DO $typwrap$ BEGIN CREATE TYPE nivel_urgencia_radiologia AS ENUM ('pronto_socorro', 'internados', 'oncologicos'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+
 
 -- Adicionar campo nivel_urgencia à tabela radiologia_pendencias
 ALTER TABLE radiologia_pendencias 
@@ -856,7 +854,7 @@ COMMENT ON COLUMN radiologia_pendencias.tipo_registro IS 'Tipo do registro: pend
 COMMENT ON COLUMN radiologia_pendencias.exame IS 'Nome do exame (quando tipo_registro = exame_atraso)';
 
 -- === 20251030182410_d5796de9-a13a-4ec8-97e1-ecbe594434aa.sql ===
--- CREATE TABLE IF NOT EXISTS for dynamic Kanban status configuration
+-- Create table for dynamic Kanban status configuration
 CREATE TABLE IF NOT EXISTS public.kanban_status_config (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   modulo text NOT NULL,
@@ -870,7 +868,7 @@ CREATE TABLE IF NOT EXISTS public.kanban_status_config (
   UNIQUE(modulo, status_id)
 );
 
--- CREATE INDEX IF NOT EXISTSes for better performance
+-- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_kanban_status_modulo ON public.kanban_status_config(modulo);
 CREATE INDEX IF NOT EXISTS idx_kanban_status_ordem ON public.kanban_status_config(modulo, ordem);
 
@@ -1016,7 +1014,8 @@ ON CONFLICT (status_vinculado) DO NOTHING;
 
 -- === 20251031145556_a085c3ca-0bb3-4f02-9cc9-d8efaff64731.sql ===
 -- Add missing status value to status_licitacao ENUM
-    ALTER TYPE status_licitacao ADD VALUE IF NOT EXISTS 'capitacao_de_credenciamento';
+DO $atwrap$ BEGIN ALTER TYPE status_licitacao ADD VALUE IF NOT EXISTS 'capitacao_de_credenciamento'; EXCEPTION WHEN duplicate_object THEN NULL; END $atwrap$;
+
 
 -- === 20251031162910_3f76362e-5bac-401a-b98c-66e9d582e3da.sql ===
 -- Criar tabela para anotações de prontuário dos médicos
@@ -1130,7 +1129,7 @@ USING (
 );
 
 -- Tipos de documento
--- NESTED_REMOVED: DO $typblk$ BEGIN CREATE TYPE tipo_documento_medico AS ENUM (
+DO $typwrap$ BEGIN DO $typwrap$ BEGIN CREATE TYPE tipo_documento_medico AS ENUM (
   'diploma',
   'certificado',
   'rg',
@@ -1142,7 +1141,7 @@ USING (
   'certidao',
   'carta_recomendacao',
   'outro'
-); EXCEPTION WHEN duplicate_object THEN NULL; END $typblk$;
+); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$; EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
 
 -- Tabela de documentos dos médicos
 CREATE TABLE IF NOT EXISTS public.medico_documentos (
@@ -1189,4 +1188,26 @@ USING (
   is_admin(auth.uid()) OR 
   has_role(auth.uid(), 'gestor_captacao'::app_role) OR 
   has_role(auth.uid(), 'gestor_contratos'::app_role)
+);
+
+DROP POLICY IF EXISTS "Usuários autorizados podem deletar documentos" ON public.medico_documentos;
+CREATE POLICY "Usuários autorizados podem deletar documentos"
+ON public.medico_documentos FOR DELETE
+TO authenticated
+USING (
+  is_admin(auth.uid()) OR 
+  has_role(auth.uid(), 'gestor_captacao'::app_role) OR 
+  has_role(auth.uid(), 'gestor_contratos'::app_role)
+);
+
+-- Tabela de logs de auditoria de documentos
+CREATE TABLE IF NOT EXISTS public.medico_documentos_log (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  documento_id UUID REFERENCES public.medico_documentos(id) ON DELETE CASCADE,
+  medico_id UUID NOT NULL REFERENCES public.medicos(id) ON DELETE CASCADE,
+  usuario_id UUID REFERENCES auth.users(id),
+  usuario_nome TEXT NOT NULL,
+  acao TEXT NOT NULL, -- 'upload', 'download', 'update', 'delete', 'view'
+  detalhes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

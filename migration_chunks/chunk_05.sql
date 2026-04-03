@@ -1,34 +1,4 @@
 
--- === 20251204175332_628f6b3a-ec10-4d63-a3ff-06615578a8ee.sql ===
--- Remove MIME type restrictions from editais-pdfs bucket to allow all file types including ZIP
-UPDATE storage.buckets 
-SET allowed_mime_types = NULL 
-WHERE id = 'editais-pdfs';
-
--- === 20251204184049_01db28cc-294f-4a53-aaf4-6ece7b843dd0.sql ===
--- Delete all objects from editais-pdfs bucket
-DELETE FROM storage.objects WHERE bucket_id = 'editais-pdfs';
-
--- === 20251205112240_51466887-1374-49c8-849d-06b4dcb0fca5.sql ===
--- Marketing Conteúdos (Posts de Redes Sociais)
-CREATE TABLE IF NOT EXISTS public.marketing_conteudos (
-  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  campanha_id UUID REFERENCES public.campanhas(id) ON DELETE SET NULL,
-  conta_perfil TEXT NOT NULL,
-  tipo TEXT NOT NULL CHECK (tipo IN ('post', 'reels', 'story', 'video', 'carousel')),
-  objetivo TEXT,
-  legenda TEXT,
-  materiais TEXT[] DEFAULT '{}',
-  checklist JSONB DEFAULT '[]',
-  comentarios_internos JSONB DEFAULT '[]',
-  status TEXT NOT NULL DEFAULT 'a_fazer' CHECK (status IN ('a_fazer', 'em_producao', 'em_revisao', 'aprovado', 'agendado', 'publicado')),
-  data_publicacao TIMESTAMP WITH TIME ZONE,
-  metricas JSONB DEFAULT '{}',
-  responsavel_id UUID,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
-
 -- Marketing Eventos
 CREATE TABLE IF NOT EXISTS public.marketing_eventos (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -173,7 +143,7 @@ CREATE POLICY "Usuários autorizados podem gerenciar marketing_planejamentos" ON
 FOR ALL USING (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_marketing'::app_role) OR has_role(auth.uid(), 'diretoria'::app_role));
 
 -- === 20251205171318_265f48fd-f3be-45f6-96be-530017d90275.sql ===
--- CREATE TABLE IF NOT EXISTS for médicos kanban cards
+-- Create table for médicos kanban cards
 CREATE TABLE IF NOT EXISTS public.medico_kanban_cards (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
   nome TEXT NOT NULL,
@@ -258,7 +228,7 @@ FOR EACH ROW
 EXECUTE FUNCTION public.update_updated_at_column();
 
 -- === 20251208134704_63698c56-e85b-4cc1-9b20-66144d6d346f.sql ===
--- CREATE TABLE IF NOT EXISTS for medico kanban card attachments
+-- Create table for medico kanban card attachments
 CREATE TABLE IF NOT EXISTS public.medico_kanban_card_anexos (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
   card_id UUID NOT NULL REFERENCES public.medico_kanban_cards(id) ON DELETE CASCADE,
@@ -318,7 +288,7 @@ TO authenticated
 USING (bucket_id = 'medico-kanban-anexos');
 
 -- === 20251208164117_bf18f048-7131-48cf-8e0f-a2ae33156340.sql ===
--- CREATE TABLE IF NOT EXISTS for captação-specific user permissions
+-- Create table for captação-specific user permissions
 CREATE TABLE IF NOT EXISTS public.captacao_permissoes_usuario (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -453,7 +423,7 @@ EXECUTE FUNCTION public.update_updated_at_column();
 
 -- 1) Criar ENUM para tipos de evento no histórico do lead
 DO $$ BEGIN
--- NESTED_REMOVED:   DO $typblk$ BEGIN CREATE TYPE tipo_evento_lead AS ENUM (
+  DO $typwrap$ BEGIN CREATE TYPE tipo_evento_lead AS ENUM (
     'disparo_email',
     'disparo_zap', 
     'proposta_enviada',
@@ -466,7 +436,7 @@ DO $$ BEGIN
     'documentacao_solicitada',
     'documentacao_recebida',
     'outro'
-  ); EXCEPTION WHEN duplicate_object THEN NULL; END $typblk$;
+  ); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
 EXCEPTION
   WHEN duplicate_object THEN null;
 END $$;
@@ -484,7 +454,7 @@ ADD COLUMN IF NOT EXISTS data_conversao timestamp with time zone,
 ADD COLUMN IF NOT EXISTS convertido_por uuid;
 
 -- 4) Garantir FK de proposta para lead (se tabela proposta existir)
--- NESTED_REMOVED: DO $$ 
+DO $$ 
 BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'proposta' AND table_schema = 'public') THEN
     -- Adicionar lead_id se não existir
@@ -597,13 +567,20 @@ WITH CHECK (auth.uid() IS NOT NULL);
 
 -- === 20251208175022_360e975c-e2f9-44a8-978c-bd74840685ed.sql ===
 -- Add new event types to track all lead status changes
-    ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'status_alterado';
-    ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'enviado_acompanhamento';
-    ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'lead_criado';
-    ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'lead_editado';
-    ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'lead_qualificado';
-    ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'em_resposta';
-    ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'lead_descartado';
+DO $atwrap$ BEGIN ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'status_alterado'; EXCEPTION WHEN duplicate_object THEN NULL; END $atwrap$;
+
+DO $atwrap$ BEGIN ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'enviado_acompanhamento'; EXCEPTION WHEN duplicate_object THEN NULL; END $atwrap$;
+
+DO $atwrap$ BEGIN ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'lead_criado'; EXCEPTION WHEN duplicate_object THEN NULL; END $atwrap$;
+
+DO $atwrap$ BEGIN ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'lead_editado'; EXCEPTION WHEN duplicate_object THEN NULL; END $atwrap$;
+
+DO $atwrap$ BEGIN ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'lead_qualificado'; EXCEPTION WHEN duplicate_object THEN NULL; END $atwrap$;
+
+DO $atwrap$ BEGIN ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'em_resposta'; EXCEPTION WHEN duplicate_object THEN NULL; END $atwrap$;
+
+DO $atwrap$ BEGIN ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'lead_descartado'; EXCEPTION WHEN duplicate_object THEN NULL; END $atwrap$;
+
 
 -- === 20251208175403_b141e099-1377-4664-8536-4823a3f030a1.sql ===
 -- Allow all authenticated users to insert lead history entries
@@ -680,7 +657,7 @@ CREATE TRIGGER validate_lead_status_trigger
 ALTER TABLE public.leads REPLICA IDENTITY FULL;
 
 -- Adicionar leads ao supabase_realtime se não existir
--- NESTED_REMOVED: DO $$
+DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_publication_tables 
@@ -693,7 +670,7 @@ END $$;
 -- Habilitar realtime para kanban_status_config
 ALTER TABLE public.kanban_status_config REPLICA IDENTITY FULL;
 
--- NESTED_REMOVED: DO $$
+DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_publication_tables 
@@ -730,7 +707,7 @@ ALTER TABLE public.leads
 ADD COLUMN IF NOT EXISTS telefones_adicionais text[] DEFAULT '{}';
 
 -- === 20251209112428_ad581878-7b28-46ff-8428-8a59305e99c9.sql ===
--- CREATE TABLE IF NOT EXISTS for lead attachments
+-- Create table for lead attachments
 CREATE TABLE IF NOT EXISTS public.lead_anexos (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
   lead_id UUID NOT NULL REFERENCES public.leads(id) ON DELETE CASCADE,
@@ -1187,6 +1164,41 @@ CREATE TABLE IF NOT EXISTS public.ages_profissionais (
   status TEXT NOT NULL DEFAULT 'pendente_documentacao',
   observacoes TEXT,
   lead_origem_id UUID,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+);
+
+-- AGES Profissionais Documentos
+CREATE TABLE IF NOT EXISTS public.ages_profissionais_documentos (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  profissional_id UUID NOT NULL REFERENCES public.ages_profissionais(id) ON DELETE CASCADE,
+  tipo_documento TEXT NOT NULL,
+  arquivo_nome TEXT NOT NULL,
+  arquivo_url TEXT NOT NULL,
+  data_emissao DATE,
+  data_validade DATE,
+  observacoes TEXT,
+  uploaded_by UUID,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+);
+
+-- AGES Contratos (independente dos contratos gerais)
+CREATE TABLE IF NOT EXISTS public.ages_contratos (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  codigo_contrato TEXT,
+  profissional_id UUID REFERENCES public.ages_profissionais(id),
+  cliente_id UUID REFERENCES public.clientes(id),
+  unidade_id UUID REFERENCES public.unidades(id),
+  tipo_contrato TEXT,
+  objeto_contrato TEXT,
+  data_inicio DATE NOT NULL,
+  data_fim DATE,
+  valor_mensal NUMERIC,
+  valor_hora NUMERIC,
+  carga_horaria_mensal INTEGER,
+  documento_url TEXT,
+  status TEXT NOT NULL DEFAULT 'em_negociacao',
+  observacoes TEXT,
   created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
   updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
 );

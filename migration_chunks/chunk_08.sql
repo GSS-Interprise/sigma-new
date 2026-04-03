@@ -1,38 +1,3 @@
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SET search_path = public;
-
-DROP TRIGGER IF EXISTS "update_ages_contrato_itens_updated_at" ON public.ages_contrato_itens;
-CREATE TRIGGER update_ages_contrato_itens_updated_at
-BEFORE UPDATE ON public.ages_contrato_itens
-FOR EACH ROW
-EXECUTE FUNCTION public.update_ages_contrato_related_updated_at();
-
-DROP TRIGGER IF EXISTS "update_ages_contrato_renovacoes_updated_at" ON public.ages_contrato_renovacoes;
-CREATE TRIGGER update_ages_contrato_renovacoes_updated_at
-BEFORE UPDATE ON public.ages_contrato_renovacoes
-FOR EACH ROW
-EXECUTE FUNCTION public.update_ages_contrato_related_updated_at();
-
-DROP TRIGGER IF EXISTS "update_ages_contrato_aditivos_updated_at" ON public.ages_contrato_aditivos;
-CREATE TRIGGER update_ages_contrato_aditivos_updated_at
-BEFORE UPDATE ON public.ages_contrato_aditivos
-FOR EACH ROW
-EXECUTE FUNCTION public.update_ages_contrato_related_updated_at();
-
-
--- === 20260105115408_0cfaa47a-0dd9-4809-aff1-f009fbb87b9d.sql ===
--- Adicionar campos faltantes na tabela ages_contratos
-ALTER TABLE public.ages_contratos
-ADD COLUMN IF NOT EXISTS condicao_pagamento TEXT,
-ADD COLUMN IF NOT EXISTS valor_estimado TEXT,
-ADD COLUMN IF NOT EXISTS dias_antecedencia_aviso INTEGER DEFAULT 60;
-
--- === 20260105144855_cd5b1afe-8b7e-4f0b-afa2-9e862d77182f.sql ===
--- Drop existing restrictive SELECT policies and recreate with diretoria access
-
--- 1. contratos-documentos - Add diretoria to SELECT
-DROP POLICY IF EXISTS "Authorized users can view contract documents" ON storage.objects;
 DROP POLICY IF EXISTS "Authorized users can view contract documents" ON storage.objects;
 CREATE POLICY "Authorized users can view contract documents" ON storage.objects 
 FOR SELECT USING (
@@ -339,7 +304,7 @@ ALTER TABLE public.ages_contratos
 ADD COLUMN IF NOT EXISTS tipo_servico TEXT[];
 
 -- === 20260107121351_c19e825d-08ad-4303-98dc-0ab667311c5c.sql ===
--- CREATE TABLE IF NOT EXISTS for lead etiquetas configuration (similar to licitacoes_etiquetas_config)
+-- Create table for lead etiquetas configuration (similar to licitacoes_etiquetas_config)
 CREATE TABLE IF NOT EXISTS public.leads_etiquetas_config (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   nome TEXT NOT NULL UNIQUE,
@@ -663,7 +628,8 @@ CREATE POLICY "Captadores com permissao zap podem atualizar contatos"
 
 -- === 20260113161600_6f65fda1-3f96-4ef8-b609-3fee0f4bccd9.sql ===
 -- Adicionar novo tipo de evento para reprocessamento de médico no Kanban
-DO $atvblk$ BEGIN ALTER TYPE public.tipo_evento_lead ADD VALUE IF NOT EXISTS 'reprocessado_kanban'; EXCEPTION WHEN duplicate_object THEN NULL; END $atvblk$;
+DO $atwrap$ BEGIN ALTER TYPE public.tipo_evento_lead ADD VALUE IF NOT EXISTS 'reprocessado_kanban'; EXCEPTION WHEN duplicate_object THEN NULL; END $atwrap$;
+
 
 -- === 20260113162126_194501a7-56bf-4077-9caa-1460842f19a6.sql ===
 -- Atualizar política de visualização de médicos para incluir gestor_financeiro
@@ -710,22 +676,22 @@ ALTER TABLE public.ages_producao ALTER COLUMN cliente_id DROP NOT NULL;
 
 -- === 20260116115825_47058580-d88a-44d4-9021-287aa9ec1311.sql ===
 -- Criar enum para níveis de urgência
--- NESTED_REMOVED: DO $typblk$ BEGIN CREATE TYPE public.nivel_urgencia_suporte AS ENUM (
+DO $typwrap$ BEGIN DO $typwrap$ BEGIN CREATE TYPE public.nivel_urgencia_suporte AS ENUM (
   'critica',
   'alta',
   'media',
   'baixa'
-); EXCEPTION WHEN duplicate_object THEN NULL; END $typblk$;
+); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$; EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
 
 -- Criar enum para tipos de impacto
--- NESTED_REMOVED: DO $typblk$ BEGIN CREATE TYPE public.tipo_impacto_suporte AS ENUM (
+DO $typwrap$ BEGIN DO $typwrap$ BEGIN CREATE TYPE public.tipo_impacto_suporte AS ENUM (
   'sistema',
   'infraestrutura',
   'acesso_permissao',
   'integracao',
   'duvida_operacional',
   'melhoria'
-); EXCEPTION WHEN duplicate_object THEN NULL; END $typblk$;
+); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$; EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
 
 -- Adicionar novos campos na tabela suporte_tickets
 ALTER TABLE public.suporte_tickets
@@ -790,21 +756,21 @@ EXECUTE FUNCTION public.set_ticket_sla();
 
 -- === 20260116123425_ec38c08c-3d56-41f8-a304-2a3c3597c491.sql ===
 -- 1. Criar enums para classificação e motivo de perda
--- NESTED_REMOVED: DO $typblk$ BEGIN CREATE TYPE classificacao_gss_licitacao AS ENUM (
+DO $typwrap$ BEGIN DO $typwrap$ BEGIN CREATE TYPE classificacao_gss_licitacao AS ENUM (
   'primeiro_lugar',
   'segundo_lugar',
   'desclassificada',
   'nao_habilitada'
-); EXCEPTION WHEN duplicate_object THEN NULL; END $typblk$;
+); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$; EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
 
--- NESTED_REMOVED: DO $typblk$ BEGIN CREATE TYPE motivo_perda_licitacao AS ENUM (
+DO $typwrap$ BEGIN DO $typwrap$ BEGIN CREATE TYPE motivo_perda_licitacao AS ENUM (
   'preco',
   'documentacao',
   'prazo',
   'habilitacao_tecnica',
   'estrategia',
   'outros'
-); EXCEPTION WHEN duplicate_object THEN NULL; END $typblk$;
+); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$; EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
 
 -- 2. Criar tabela de empresas concorrentes
 CREATE TABLE IF NOT EXISTS public.empresas_concorrentes (
@@ -1199,3 +1165,35 @@ CREATE TRIGGER update_licitacao_item_concorrentes_updated_at
   BEFORE UPDATE ON public.licitacao_item_concorrentes
   FOR EACH ROW
   EXECUTE FUNCTION public.update_updated_at_column();
+
+-- 5. RLS
+ALTER TABLE public.licitacao_itens ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.licitacao_item_concorrentes ENABLE ROW LEVEL SECURITY;
+
+-- Políticas para licitacao_itens
+DROP POLICY IF EXISTS "Usuarios autenticados podem ver itens de licitacao" ON public.licitacao_itens;
+CREATE POLICY "Usuarios autenticados podem ver itens de licitacao"
+  ON public.licitacao_itens FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Usuarios autenticados podem inserir itens de licitacao" ON public.licitacao_itens;
+CREATE POLICY "Usuarios autenticados podem inserir itens de licitacao"
+  ON public.licitacao_itens FOR INSERT TO authenticated WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Usuarios autenticados podem atualizar itens de licitacao" ON public.licitacao_itens;
+CREATE POLICY "Usuarios autenticados podem atualizar itens de licitacao"
+  ON public.licitacao_itens FOR UPDATE TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Usuarios autenticados podem deletar itens de licitacao" ON public.licitacao_itens;
+CREATE POLICY "Usuarios autenticados podem deletar itens de licitacao"
+  ON public.licitacao_itens FOR DELETE TO authenticated USING (true);
+
+-- Políticas para licitacao_item_concorrentes
+DROP POLICY IF EXISTS "Usuarios autenticados podem ver concorrentes de item" ON public.licitacao_item_concorrentes;
+CREATE POLICY "Usuarios autenticados podem ver concorrentes de item"
+  ON public.licitacao_item_concorrentes FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Usuarios autenticados podem inserir concorrentes de item" ON public.licitacao_item_concorrentes;
+CREATE POLICY "Usuarios autenticados podem inserir concorrentes de item"
+  ON public.licitacao_item_concorrentes FOR INSERT TO authenticated WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Usuarios autenticados podem atualizar concorrentes de item" ON public.licitacao_item_concorrentes;

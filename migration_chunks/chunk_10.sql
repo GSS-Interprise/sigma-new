@@ -1,54 +1,4 @@
 
--- === 20260128131334_e40ace5e-e40b-408b-ad80-7fa0d9dc2a95.sql ===
--- Adiciona coluna para capturar o canal de conversão do lead para médico
--- Isso permite BI sobre como os leads foram efetivamente captados/convertidos
-
-ALTER TABLE public.leads 
-ADD COLUMN IF NOT EXISTS canal_conversao TEXT;
-
--- Adiciona comentário para documentação
-COMMENT ON COLUMN public.leads.canal_conversao IS 'Canal pelo qual o lead foi efetivamente convertido (WHATSAPP, EMAIL, INDICACAO, TRAFEGO-PAGO, LISTA-CAPTADORA)';
-
--- === 20260128141314_8b4aea86-de9a-40cb-859a-ef43218da116.sql ===
--- Expandir leitura (SELECT) de contratos para usuários de captação via permissões
--- Mantém políticas existentes e adiciona uma nova política mais abrangente.
-
-DROP POLICY IF EXISTS "Captacao pode visualizar contratos" ON public.contratos;
-CREATE POLICY "Captacao pode visualizar contratos"
-ON public.contratos
-FOR SELECT
-TO authenticated
-USING (
-  is_admin(auth.uid())
-  OR has_role(auth.uid(), 'gestor_contratos'::app_role)
-  OR has_role(auth.uid(), 'gestor_captacao'::app_role)
-  OR has_role(auth.uid(), 'lideres'::app_role)
-  OR has_role(auth.uid(), 'coordenador_escalas'::app_role)
-  OR has_role(auth.uid(), 'gestor_financeiro'::app_role)
-  OR has_role(auth.uid(), 'diretoria'::app_role)
-  OR is_captacao_leader(auth.uid())
-  OR has_captacao_permission(auth.uid(), 'contratos_servicos')
-);
-
--- Expandir leitura (SELECT) de unidades para usuários de captação via permissões
-DROP POLICY IF EXISTS "Captacao pode visualizar unidades" ON public.unidades;
-CREATE POLICY "Captacao pode visualizar unidades"
-ON public.unidades
-FOR SELECT
-TO authenticated
-USING (
-  is_admin(auth.uid())
-  OR has_role(auth.uid(), 'gestor_contratos'::app_role)
-  OR has_role(auth.uid(), 'gestor_captacao'::app_role)
-  OR has_role(auth.uid(), 'gestor_radiologia'::app_role)
-  OR has_role(auth.uid(), 'gestor_financeiro'::app_role)
-  OR has_role(auth.uid(), 'lideres'::app_role)
-  OR has_role(auth.uid(), 'diretoria'::app_role)
-  OR has_role(auth.uid(), 'coordenador_escalas'::app_role)
-  OR is_captacao_leader(auth.uid())
-  OR has_captacao_permission(auth.uid(), 'contratos_servicos')
-);
-
 
 -- === 20260129195103_7c9082ff-2002-4334-b974-75fc54b0bfd1.sql ===
 -- ============================================
@@ -1333,3 +1283,51 @@ DROP TRIGGER IF EXISTS "validate_lead_status_trigger" ON public.leads;
 CREATE TRIGGER validate_lead_status_trigger
   BEFORE INSERT OR UPDATE ON public.leads
   FOR EACH ROW EXECUTE FUNCTION public.validate_lead_status();
+
+-- 8. Índices para SELECT DISTINCT
+CREATE INDEX IF NOT EXISTS idx_leads_status ON public.leads (status) WHERE status IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_leads_origem ON public.leads (origem) WHERE origem IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_leads_uf ON public.leads (uf) WHERE uf IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_leads_cidade ON public.leads (cidade) WHERE cidade IS NOT NULL;
+
+
+-- === 20260223190713_567fd19f-51ca-4059-b8e0-02bd0a0c9f58.sql ===
+CREATE OR REPLACE FUNCTION public.get_leads_especialidade_counts()
+RETURNS TABLE(especialidade_id uuid, count bigint)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = 'public'
+AS $$
+  SELECT especialidade_id, count(*) as count
+  FROM public.leads
+  WHERE especialidade_id IS NOT NULL
+  GROUP BY especialidade_id;
+$$;
+
+-- === 20260223190910_46928d6b-9994-49ba-823d-fa17d2a1d9d9.sql ===
+CREATE OR REPLACE FUNCTION public.get_leads_filter_counts()
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = 'public'
+AS $$
+DECLARE
+  result jsonb;
+BEGIN
+  SELECT jsonb_build_object(
+    'status', (SELECT jsonb_object_agg(status, cnt) FROM (SELECT status, count(*) as cnt FROM leads WHERE status IS NOT NULL AND status != '' GROUP BY status) s),
+    'origem', (SELECT jsonb_object_agg(origem, cnt) FROM (SELECT origem, count(*) as cnt FROM leads WHERE origem IS NOT NULL AND origem != '' GROUP BY origem) o),
+    'uf', (SELECT jsonb_object_agg(uf, cnt) FROM (SELECT uf, count(*) as cnt FROM leads WHERE uf IS NOT NULL AND uf != '' GROUP BY uf) u),
+    'cidade', (SELECT jsonb_object_agg(cidade, cnt) FROM (SELECT cidade, count(*) as cnt FROM leads WHERE cidade IS NOT NULL AND cidade != '' GROUP BY cidade) c),
+    'especialidade', (SELECT jsonb_object_agg(especialidade_id::text, cnt) FROM (SELECT especialidade_id, count(*) as cnt FROM leads WHERE especialidade_id IS NOT NULL GROUP BY especialidade_id) e)
+  ) INTO result;
+  
+  RETURN result;
+END;
+$$;
+
+-- === 20260226124700_2e35531b-b32f-4aed-a136-5cd306028fd1.sql ===
+-- Adicionar gestor_financeiro e outros roles às policies de contrato_anexos
+DROP POLICY IF EXISTS "Authorized users can view contrato_anexos" ON public.contrato_anexos;

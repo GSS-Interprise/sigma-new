@@ -1,23 +1,3 @@
-
--- Adicionar campo para URL externa na tabela medico_documentos
-ALTER TABLE medico_documentos ADD COLUMN IF NOT EXISTS url_externa TEXT;
-
--- Adicionar índice para melhorar performance de consultas
-CREATE INDEX IF NOT EXISTS idx_medico_documentos_url_externa ON medico_documentos(url_externa) WHERE url_externa IS NOT NULL;
-
--- === 20251114170446_de815008-3144-4f2b-82bf-9ba9186edd41.sql ===
--- Fix search_path for functions that don't have it set
--- This addresses the Supabase linter warning about mutable search paths
-
--- Fix calculate_data_termino function
-CREATE OR REPLACE FUNCTION public.calculate_data_termino()
-RETURNS trigger
-LANGUAGE plpgsql
-SET search_path = public
-AS $function$
-BEGIN
-  IF NEW.data_inicio IS NOT NULL AND NEW.prazo_meses IS NOT NULL THEN
-    NEW.data_termino := (NEW.data_inicio + (NEW.prazo_meses || ' months')::INTERVAL - INTERVAL '1 day')::DATE;
   END IF;
   RETURN NEW;
 END;
@@ -477,7 +457,8 @@ ADD COLUMN email_erro text;
 
 -- === 20251121165234_587425d6-2b91-4ddb-82fe-c14f4832e01f.sql ===
 -- Adicionar 'lideres' ao enum app_role
-DO $atvblk$ BEGIN ALTER TYPE app_role ADD VALUE IF NOT EXISTS 'lideres'; EXCEPTION WHEN duplicate_object THEN NULL; END $atvblk$;
+DO $atwrap$ BEGIN ALTER TYPE app_role ADD VALUE IF NOT EXISTS 'lideres'; EXCEPTION WHEN duplicate_object THEN NULL; END $atwrap$;
+
 
 -- === 20251121165258_ee0e283d-ce22-4dea-9106-6d4ecfd4c087.sql ===
 -- Função para verificar se usuário é líder de um setor específico
@@ -1023,7 +1004,8 @@ COMMENT ON COLUMN public.suporte_tickets.resolvido_por_nome IS 'Nome do usuário
 
 -- === 20251127175823_bd6dca51-b1a8-41c4-94a9-f616803e9b76.sql ===
 -- Add new value to tipo_documento_medico enum
-    ALTER TYPE public.tipo_documento_medico ADD VALUE IF NOT EXISTS 'contrato_aditivo';
+DO $atwrap$ BEGIN ALTER TYPE public.tipo_documento_medico ADD VALUE IF NOT EXISTS 'contrato_aditivo'; EXCEPTION WHEN duplicate_object THEN NULL; END $atwrap$;
+
 
 -- === 20251127195420_c4493478-6d82-4754-94f1-f5c9c9a4b654.sql ===
 -- Add new columns to campanhas table for enhanced functionality
@@ -1105,7 +1087,7 @@ FOR ALL USING (
     has_role(auth.uid(), 'gestor_marketing'::app_role)
 );
 
--- CREATE INDEX IF NOT EXISTSes for better performance
+-- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_campanhas_envios_campanha ON public.campanhas_envios(campanha_id);
 CREATE INDEX IF NOT EXISTS idx_campanhas_envios_status ON public.campanhas_envios(status);
 CREATE INDEX IF NOT EXISTS idx_campanhas_status ON public.campanhas(status);
@@ -1128,7 +1110,7 @@ ADD COLUMN IF NOT EXISTS behavior_config jsonb DEFAULT '{"rejectCall": false, "i
 ADD COLUMN IF NOT EXISTS proxy_config jsonb,
 ADD COLUMN IF NOT EXISTS updated_at timestamp with time zone DEFAULT now();
 
--- CREATE INDEX IF NOT EXISTS for instance_id
+-- Create index for instance_id
 CREATE INDEX IF NOT EXISTS idx_chips_instance_id ON public.chips(instance_id);
 
 -- Update updated_at trigger
@@ -1231,7 +1213,7 @@ CREATE TABLE IF NOT EXISTS public.proposta (
   atualizado_em TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
 );
 
--- CREATE INDEX IF NOT EXISTSes for better performance
+-- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_contrato_capitacao_contrato_id ON public.contrato_capitacao(contrato_id);
 CREATE INDEX IF NOT EXISTS idx_servico_contrato_capitacao_id ON public.servico(contrato_capitacao_id);
 CREATE INDEX IF NOT EXISTS idx_proposta_servico_id ON public.proposta(servico_id);
@@ -1344,3 +1326,33 @@ USING (true);
 
 -- Index for faster lookups
 CREATE INDEX IF NOT EXISTS idx_licitacoes_anexos_licitacao_id ON public.licitacoes_anexos(licitacao_id);
+
+-- === 20251204175332_628f6b3a-ec10-4d63-a3ff-06615578a8ee.sql ===
+-- Remove MIME type restrictions from editais-pdfs bucket to allow all file types including ZIP
+UPDATE storage.buckets 
+SET allowed_mime_types = NULL 
+WHERE id = 'editais-pdfs';
+
+-- === 20251204184049_01db28cc-294f-4a53-aaf4-6ece7b843dd0.sql ===
+-- Delete all objects from editais-pdfs bucket
+DELETE FROM storage.objects WHERE bucket_id = 'editais-pdfs';
+
+-- === 20251205112240_51466887-1374-49c8-849d-06b4dcb0fca5.sql ===
+-- Marketing Conteúdos (Posts de Redes Sociais)
+CREATE TABLE IF NOT EXISTS public.marketing_conteudos (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  campanha_id UUID REFERENCES public.campanhas(id) ON DELETE SET NULL,
+  conta_perfil TEXT NOT NULL,
+  tipo TEXT NOT NULL CHECK (tipo IN ('post', 'reels', 'story', 'video', 'carousel')),
+  objetivo TEXT,
+  legenda TEXT,
+  materiais TEXT[] DEFAULT '{}',
+  checklist JSONB DEFAULT '[]',
+  comentarios_internos JSONB DEFAULT '[]',
+  status TEXT NOT NULL DEFAULT 'a_fazer' CHECK (status IN ('a_fazer', 'em_producao', 'em_revisao', 'aprovado', 'agendado', 'publicado')),
+  data_publicacao TIMESTAMP WITH TIME ZONE,
+  metricas JSONB DEFAULT '{}',
+  responsavel_id UUID,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);

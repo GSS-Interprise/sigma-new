@@ -1,26 +1,4 @@
 
-DROP POLICY IF EXISTS "Usuários autorizados podem deletar documentos" ON public.medico_documentos;
-CREATE POLICY "Usuários autorizados podem deletar documentos"
-ON public.medico_documentos FOR DELETE
-TO authenticated
-USING (
-  is_admin(auth.uid()) OR 
-  has_role(auth.uid(), 'gestor_captacao'::app_role) OR 
-  has_role(auth.uid(), 'gestor_contratos'::app_role)
-);
-
--- Tabela de logs de auditoria de documentos
-CREATE TABLE IF NOT EXISTS public.medico_documentos_log (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  documento_id UUID REFERENCES public.medico_documentos(id) ON DELETE CASCADE,
-  medico_id UUID NOT NULL REFERENCES public.medicos(id) ON DELETE CASCADE,
-  usuario_id UUID REFERENCES auth.users(id),
-  usuario_nome TEXT NOT NULL,
-  acao TEXT NOT NULL, -- 'upload', 'download', 'update', 'delete', 'view'
-  detalhes TEXT,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
 -- Habilitar RLS
 ALTER TABLE public.medico_documentos_log ENABLE ROW LEVEL SECURITY;
 
@@ -472,14 +450,14 @@ ADD CONSTRAINT conversas_id_conversa_unique UNIQUE (id_conversa);
 
 -- === 20251107182140_f10acd8d-4f2a-4b70-874d-ab5a32040101.sql ===
 -- Criar enum para motivos de ausência
-DO $typblk$ BEGIN CREATE TYPE public.motivo_ausencia AS ENUM (
+DO $typwrap$ BEGIN DO $typwrap$ BEGIN CREATE TYPE public.motivo_ausencia AS ENUM (
   'ferias',
   'atestado_medico',
   'congresso',
   'viagem',
   'folga',
   'outro'
-); EXCEPTION WHEN duplicate_object THEN NULL; END $typblk$;
+); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$; EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
 
 -- Tabela de ausências de médicos
 CREATE TABLE IF NOT EXISTS public.medico_ausencias (
@@ -654,10 +632,12 @@ ADD COLUMN updated_at TIMESTAMP WITH TIME ZONE DEFAULT now();
 
 -- === 20251112154853_472e1157-0ffe-4a1f-9bb2-5ed3d799867b.sql ===
 -- Adicionar novo status "aguardando_confirmacao" ao enum status_ticket
-    ALTER TYPE status_ticket ADD VALUE IF NOT EXISTS 'aguardando_confirmacao';
+DO $atwrap$ BEGIN ALTER TYPE status_ticket ADD VALUE IF NOT EXISTS 'aguardando_confirmacao'; EXCEPTION WHEN duplicate_object THEN NULL; END $atwrap$;
+
 
 -- Adicionar novo status "resolvido" ao enum status_ticket  
-    ALTER TYPE status_ticket ADD VALUE IF NOT EXISTS 'resolvido';
+DO $atwrap$ BEGIN ALTER TYPE status_ticket ADD VALUE IF NOT EXISTS 'resolvido'; EXCEPTION WHEN duplicate_object THEN NULL; END $atwrap$;
+
 
 -- === 20251113115645_82903b74-6c9f-476e-85c2-64aedbae5591.sql ===
 -- Adicionar coluna email na tabela leads
@@ -810,23 +790,28 @@ COMMENT ON COLUMN public.email_respostas.status_lead IS 'Status do lead: novo, e
 
 -- === 20251113173835_59a44538-2ef1-4f04-a8cf-761b424856ee.sql ===
 -- Adicionar gestor_marketing ao enum app_role
-    ALTER TYPE app_role ADD VALUE IF NOT EXISTS 'gestor_marketing';
+DO $atwrap$ BEGIN ALTER TYPE app_role ADD VALUE IF NOT EXISTS 'gestor_marketing'; EXCEPTION WHEN duplicate_object THEN NULL; END $atwrap$;
+
 
 -- === 20251113174802_491b4487-8ccb-46ac-82bc-30ceec0b9c9f.sql ===
 -- Criar enum para status de campanha
-    CREATE TYPE status_campanha AS ENUM ('planejada', 'ativa', 'pausada', 'finalizada');
+DO $typwrap$ BEGIN CREATE TYPE status_campanha AS ENUM ('planejada', 'ativa', 'pausada', 'finalizada'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+
 
 -- Criar enum para canais de campanha
-    CREATE TYPE canal_campanha AS ENUM ('whatsapp', 'email', 'instagram', 'linkedin', 'anuncios', 'eventos');
+DO $typwrap$ BEGIN CREATE TYPE canal_campanha AS ENUM ('whatsapp', 'email', 'instagram', 'linkedin', 'anuncios', 'eventos'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+
 
 -- Criar enum para tipo de conteúdo
-    CREATE TYPE tipo_conteudo AS ENUM ('video', 'card', 'reels', 'artigo', 'newsletter');
+DO $typwrap$ BEGIN CREATE TYPE tipo_conteudo AS ENUM ('video', 'card', 'reels', 'artigo', 'newsletter'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+
 
 -- Criar enum para status de conteúdo
-    CREATE TYPE status_conteudo AS ENUM ('rascunho', 'pronto', 'publicado');
+DO $typwrap$ BEGIN CREATE TYPE status_conteudo AS ENUM ('rascunho', 'pronto', 'publicado'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+
 
 -- Criar enum para etapas do funil
--- NESTED_REMOVED: DO $typblk$ BEGIN CREATE TYPE etapa_funil_marketing AS ENUM (
+DO $typwrap$ BEGIN DO $typwrap$ BEGIN CREATE TYPE etapa_funil_marketing AS ENUM (
   'lead_gerado',
   'contato_inicial',
   'envio_informacoes',
@@ -834,10 +819,11 @@ COMMENT ON COLUMN public.email_respostas.status_lead IS 'Status do lead: novo, e
   'encaminhado_captacao',
   'processo_contratacao',
   'plantao_agendado'
-); EXCEPTION WHEN duplicate_object THEN NULL; END $typblk$;
+); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$; EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
 
 -- Criar enum para categoria de material
-    CREATE TYPE categoria_material AS ENUM ('pdf', 'apresentacao', 'modelo_mensagem', 'logo', 'template', 'politica_interna');
+DO $typwrap$ BEGIN CREATE TYPE categoria_material AS ENUM ('pdf', 'apresentacao', 'modelo_mensagem', 'logo', 'template', 'politica_interna'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+
 
 -- Tabela de Campanhas
 CREATE TABLE IF NOT EXISTS public.campanhas (
@@ -1259,7 +1245,8 @@ ALTER TABLE radiologia_pendencias
 
 -- === 20251114144354_55d502ef-a122-4257-8372-366e50a49d97.sql ===
 -- Adicionar o role 'externos' ao enum app_role
-    ALTER TYPE public.app_role ADD VALUE IF NOT EXISTS 'externos';
+DO $atwrap$ BEGIN ALTER TYPE public.app_role ADD VALUE IF NOT EXISTS 'externos'; EXCEPTION WHEN duplicate_object THEN NULL; END $atwrap$;
+
 
 -- === 20251114144432_250ee486-17af-4787-b73e-a7c83190dae3.sql ===
 -- Adicionar permissões para o perfil externos
@@ -1271,4 +1258,25 @@ ON CONFLICT DO NOTHING;
 
 -- === 20251114165332_9d3db261-63b8-4a38-b1e4-6f2947717a62.sql ===
 -- Adicionar novo tipo de documento "Link Externo"
-    ALTER TYPE tipo_documento_medico ADD VALUE IF NOT EXISTS 'link_externo';
+DO $atwrap$ BEGIN ALTER TYPE tipo_documento_medico ADD VALUE IF NOT EXISTS 'link_externo'; EXCEPTION WHEN duplicate_object THEN NULL; END $atwrap$;
+
+
+-- Adicionar campo para URL externa na tabela medico_documentos
+ALTER TABLE medico_documentos ADD COLUMN IF NOT EXISTS url_externa TEXT;
+
+-- Adicionar índice para melhorar performance de consultas
+CREATE INDEX IF NOT EXISTS idx_medico_documentos_url_externa ON medico_documentos(url_externa) WHERE url_externa IS NOT NULL;
+
+-- === 20251114170446_de815008-3144-4f2b-82bf-9ba9186edd41.sql ===
+-- Fix search_path for functions that don't have it set
+-- This addresses the Supabase linter warning about mutable search paths
+
+-- Fix calculate_data_termino function
+CREATE OR REPLACE FUNCTION public.calculate_data_termino()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public
+AS $function$
+BEGIN
+  IF NEW.data_inicio IS NOT NULL AND NEW.prazo_meses IS NOT NULL THEN
+    NEW.data_termino := (NEW.data_inicio + (NEW.prazo_meses || ' months')::INTERVAL - INTERVAL '1 day')::DATE;

@@ -1,35 +1,3 @@
-
--- 5. RLS
-ALTER TABLE public.licitacao_itens ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.licitacao_item_concorrentes ENABLE ROW LEVEL SECURITY;
-
--- Políticas para licitacao_itens
-DROP POLICY IF EXISTS "Usuarios autenticados podem ver itens de licitacao" ON public.licitacao_itens;
-CREATE POLICY "Usuarios autenticados podem ver itens de licitacao"
-  ON public.licitacao_itens FOR SELECT TO authenticated USING (true);
-
-DROP POLICY IF EXISTS "Usuarios autenticados podem inserir itens de licitacao" ON public.licitacao_itens;
-CREATE POLICY "Usuarios autenticados podem inserir itens de licitacao"
-  ON public.licitacao_itens FOR INSERT TO authenticated WITH CHECK (true);
-
-DROP POLICY IF EXISTS "Usuarios autenticados podem atualizar itens de licitacao" ON public.licitacao_itens;
-CREATE POLICY "Usuarios autenticados podem atualizar itens de licitacao"
-  ON public.licitacao_itens FOR UPDATE TO authenticated USING (true);
-
-DROP POLICY IF EXISTS "Usuarios autenticados podem deletar itens de licitacao" ON public.licitacao_itens;
-CREATE POLICY "Usuarios autenticados podem deletar itens de licitacao"
-  ON public.licitacao_itens FOR DELETE TO authenticated USING (true);
-
--- Políticas para licitacao_item_concorrentes
-DROP POLICY IF EXISTS "Usuarios autenticados podem ver concorrentes de item" ON public.licitacao_item_concorrentes;
-CREATE POLICY "Usuarios autenticados podem ver concorrentes de item"
-  ON public.licitacao_item_concorrentes FOR SELECT TO authenticated USING (true);
-
-DROP POLICY IF EXISTS "Usuarios autenticados podem inserir concorrentes de item" ON public.licitacao_item_concorrentes;
-CREATE POLICY "Usuarios autenticados podem inserir concorrentes de item"
-  ON public.licitacao_item_concorrentes FOR INSERT TO authenticated WITH CHECK (true);
-
-DROP POLICY IF EXISTS "Usuarios autenticados podem atualizar concorrentes de item" ON public.licitacao_item_concorrentes;
 CREATE POLICY "Usuarios autenticados podem atualizar concorrentes de item"
   ON public.licitacao_item_concorrentes FOR UPDATE TO authenticated USING (true);
 
@@ -49,7 +17,8 @@ COMMENT ON COLUMN public.licitacao_item_concorrentes.is_vencedor IS 'Flag para i
 
 -- === 20260116183901_2e05c08b-0bf7-4ee2-a575-8697676051d6.sql ===
 -- 1. Criar ENUM para tipo de disparo
-DO $typblk$ BEGIN CREATE TYPE tipo_disparo_enum AS ENUM ('zap', 'email', 'outros'); EXCEPTION WHEN duplicate_object THEN NULL; END $typblk$;
+DO $typwrap$ BEGIN CREATE TYPE tipo_disparo_enum AS ENUM ('zap', 'email', 'outros'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+
 
 -- 2. Adicionar coluna tipo_disparo na tabela proposta
 ALTER TABLE public.proposta 
@@ -708,7 +677,7 @@ VALUES ('Template Padrão', 'Layout padrão com recursos na coluna A e dias nas 
 
 -- === 20260123115414_8190efdd-399f-4205-b8ce-f9597a937bdb.sql ===
 -- Add missing enum value used by Kanban column "Conferência"
--- NESTED_REMOVED: DO $$
+DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1
@@ -840,7 +809,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_licitacoes_notificacoes_prazo_unique
 ON public.licitacoes_notificacoes_prazo(atividade_id, tipo_notificacao);
 
 -- Habilitar realtime para atividades (se ainda não estiver)
--- NESTED_REMOVED: DO $$
+DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_publication_tables 
@@ -853,7 +822,7 @@ END $$;
 
 -- === 20260123170048_e2f05bd5-9b89-44a7-b926-b1efb83588d6.sql ===
 -- Add new status 'suspenso_revogado' to the status_licitacao enum
--- NESTED_REMOVED: DO $$
+DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1
@@ -1205,6 +1174,56 @@ WITH CHECK (
   is_admin(auth.uid()) 
   OR has_role(auth.uid(), 'gestor_captacao') 
   OR has_role(auth.uid(), 'gestor_contratos')
+  OR is_captacao_leader(auth.uid())
+  OR has_captacao_permission(auth.uid(), 'contratos_servicos')
+);
+
+-- === 20260128131334_e40ace5e-e40b-408b-ad80-7fa0d9dc2a95.sql ===
+-- Adiciona coluna para capturar o canal de conversão do lead para médico
+-- Isso permite BI sobre como os leads foram efetivamente captados/convertidos
+
+ALTER TABLE public.leads 
+ADD COLUMN IF NOT EXISTS canal_conversao TEXT;
+
+-- Adiciona comentário para documentação
+COMMENT ON COLUMN public.leads.canal_conversao IS 'Canal pelo qual o lead foi efetivamente convertido (WHATSAPP, EMAIL, INDICACAO, TRAFEGO-PAGO, LISTA-CAPTADORA)';
+
+-- === 20260128141314_8b4aea86-de9a-40cb-859a-ef43218da116.sql ===
+-- Expandir leitura (SELECT) de contratos para usuários de captação via permissões
+-- Mantém políticas existentes e adiciona uma nova política mais abrangente.
+
+DROP POLICY IF EXISTS "Captacao pode visualizar contratos" ON public.contratos;
+CREATE POLICY "Captacao pode visualizar contratos"
+ON public.contratos
+FOR SELECT
+TO authenticated
+USING (
+  is_admin(auth.uid())
+  OR has_role(auth.uid(), 'gestor_contratos'::app_role)
+  OR has_role(auth.uid(), 'gestor_captacao'::app_role)
+  OR has_role(auth.uid(), 'lideres'::app_role)
+  OR has_role(auth.uid(), 'coordenador_escalas'::app_role)
+  OR has_role(auth.uid(), 'gestor_financeiro'::app_role)
+  OR has_role(auth.uid(), 'diretoria'::app_role)
+  OR is_captacao_leader(auth.uid())
+  OR has_captacao_permission(auth.uid(), 'contratos_servicos')
+);
+
+-- Expandir leitura (SELECT) de unidades para usuários de captação via permissões
+DROP POLICY IF EXISTS "Captacao pode visualizar unidades" ON public.unidades;
+CREATE POLICY "Captacao pode visualizar unidades"
+ON public.unidades
+FOR SELECT
+TO authenticated
+USING (
+  is_admin(auth.uid())
+  OR has_role(auth.uid(), 'gestor_contratos'::app_role)
+  OR has_role(auth.uid(), 'gestor_captacao'::app_role)
+  OR has_role(auth.uid(), 'gestor_radiologia'::app_role)
+  OR has_role(auth.uid(), 'gestor_financeiro'::app_role)
+  OR has_role(auth.uid(), 'lideres'::app_role)
+  OR has_role(auth.uid(), 'diretoria'::app_role)
+  OR has_role(auth.uid(), 'coordenador_escalas'::app_role)
   OR is_captacao_leader(auth.uid())
   OR has_captacao_permission(auth.uid(), 'contratos_servicos')
 );

@@ -1,27 +1,3 @@
-
--- === 20251223143019_815a9e5d-3e97-4b59-bdf7-31e5a277c2fc.sql ===
--- Etapa 1: Adicionar novos campos para suportar layout V2
--- Mantendo retrocompatibilidade total com layout V1
-
--- Novos campos para o layout V2
-ALTER TABLE public.radiologia_pendencias 
-ADD COLUMN IF NOT EXISTS cod_acesso TEXT,
-ADD COLUMN IF NOT EXISTS sla TEXT,
-ADD COLUMN IF NOT EXISTS sla_horas INTEGER,
-ADD COLUMN IF NOT EXISTS medico_atribuido_id UUID REFERENCES public.medicos(id),
-ADD COLUMN IF NOT EXISTS medico_atribuido_nome TEXT,
-ADD COLUMN IF NOT EXISTS medico_finalizador_id UUID REFERENCES public.medicos(id),
-ADD COLUMN IF NOT EXISTS data_final TIMESTAMP WITH TIME ZONE,
-ADD COLUMN IF NOT EXISTS layout_versao TEXT DEFAULT 'v1';
-
--- Índice para cod_acesso (campo chave do novo layout)
-CREATE INDEX IF NOT EXISTS idx_radiologia_pendencias_cod_acesso 
-ON public.radiologia_pendencias(cod_acesso);
-
--- Comentários de documentação
-COMMENT ON COLUMN radiologia_pendencias.sla IS 'Tipo SLA do layout V2: Atendimento Ambulatorial (48h), Internado (4h), Pronto Socorro (2h), Alta (2h)';
-COMMENT ON COLUMN radiologia_pendencias.sla_horas IS 'Horas do SLA calculadas automaticamente';
-COMMENT ON COLUMN radiologia_pendencias.medico_atribuido_id IS 'Médico atribuído (do campo atribuido do layout V2)';
 COMMENT ON COLUMN radiologia_pendencias.medico_atribuido_nome IS 'Nome do médico atribuído (fallback quando ID não encontrado)';
 COMMENT ON COLUMN radiologia_pendencias.layout_versao IS 'Versão do layout usado na importação: v1 (antigo) ou v2 (novo)';
 COMMENT ON COLUMN radiologia_pendencias.nivel_urgencia IS 'DEPRECATED: Use sla + sla_horas para novos registros';
@@ -166,7 +142,8 @@ USING (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_radiologia') OR has_
 
 -- === 20251229180131_396f5335-e758-41ab-8996-3351ec6ccbf8.sql ===
 -- Primeiro: Adicionar o novo role ao enum
-DO $atvblk$ BEGIN ALTER TYPE public.app_role ADD VALUE IF NOT EXISTS 'gestor_ages'; EXCEPTION WHEN duplicate_object THEN NULL; END $atvblk$;
+DO $atwrap$ BEGIN ALTER TYPE public.app_role ADD VALUE IF NOT EXISTS 'gestor_ages'; EXCEPTION WHEN duplicate_object THEN NULL; END $atwrap$;
+
 
 -- === 20251229180210_440681d8-7cdb-4a29-8605-06dc99048ee8.sql ===
 -- 1. Atualizar política da tabela ages_profissionais para incluir gestor_ages
@@ -810,7 +787,7 @@ SET public = true
 WHERE id = 'ages-documentos';
 
 -- Criar política de upload se não existir
--- NESTED_REMOVED: DO $$
+DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_policies 
@@ -826,7 +803,7 @@ CREATE POLICY "Permitir upload ages-documentos"
 END $$;
 
 -- Criar política de leitura pública se não existir
--- NESTED_REMOVED: DO $$
+DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_policies 
@@ -842,7 +819,7 @@ CREATE POLICY "Permitir leitura ages-documentos"
 END $$;
 
 -- Criar política de delete se não existir
--- NESTED_REMOVED: DO $$
+DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_policies 
@@ -1039,3 +1016,38 @@ CREATE OR REPLACE FUNCTION public.update_ages_contrato_related_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
   NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SET search_path = public;
+
+DROP TRIGGER IF EXISTS "update_ages_contrato_itens_updated_at" ON public.ages_contrato_itens;
+CREATE TRIGGER update_ages_contrato_itens_updated_at
+BEFORE UPDATE ON public.ages_contrato_itens
+FOR EACH ROW
+EXECUTE FUNCTION public.update_ages_contrato_related_updated_at();
+
+DROP TRIGGER IF EXISTS "update_ages_contrato_renovacoes_updated_at" ON public.ages_contrato_renovacoes;
+CREATE TRIGGER update_ages_contrato_renovacoes_updated_at
+BEFORE UPDATE ON public.ages_contrato_renovacoes
+FOR EACH ROW
+EXECUTE FUNCTION public.update_ages_contrato_related_updated_at();
+
+DROP TRIGGER IF EXISTS "update_ages_contrato_aditivos_updated_at" ON public.ages_contrato_aditivos;
+CREATE TRIGGER update_ages_contrato_aditivos_updated_at
+BEFORE UPDATE ON public.ages_contrato_aditivos
+FOR EACH ROW
+EXECUTE FUNCTION public.update_ages_contrato_related_updated_at();
+
+
+-- === 20260105115408_0cfaa47a-0dd9-4809-aff1-f009fbb87b9d.sql ===
+-- Adicionar campos faltantes na tabela ages_contratos
+ALTER TABLE public.ages_contratos
+ADD COLUMN IF NOT EXISTS condicao_pagamento TEXT,
+ADD COLUMN IF NOT EXISTS valor_estimado TEXT,
+ADD COLUMN IF NOT EXISTS dias_antecedencia_aviso INTEGER DEFAULT 60;
+
+-- === 20260105144855_cd5b1afe-8b7e-4f0b-afa2-9e862d77182f.sql ===
+-- Drop existing restrictive SELECT policies and recreate with diretoria access
+
+-- 1. contratos-documentos - Add diretoria to SELECT
+DROP POLICY IF EXISTS "Authorized users can view contract documents" ON storage.objects;

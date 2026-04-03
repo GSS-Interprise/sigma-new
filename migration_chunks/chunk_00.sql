@@ -3,15 +3,24 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Create enum types
-DO $typblk$ BEGIN CREATE TYPE public.tipo_contrato AS ENUM ('licitacao', 'privado'); EXCEPTION WHEN duplicate_object THEN NULL; END $typblk$;
-    CREATE TYPE public.status_contrato AS ENUM ('ativo', 'inativo', 'suspenso');
-    CREATE TYPE public.status_demanda AS ENUM ('aberta', 'em_atendimento', 'concluida', 'cancelada');
-    CREATE TYPE public.status_proposta AS ENUM ('pendente', 'aceita', 'recusada');
-    CREATE TYPE public.status_documentacao AS ENUM ('pendente', 'em_analise', 'aprovada', 'reprovada');
-    CREATE TYPE public.status_assinatura AS ENUM ('pendente', 'assinado', 'cancelado');
-    CREATE TYPE public.status_execucao AS ENUM ('pendente', 'executada', 'cancelada');
-    CREATE TYPE public.status_pagamento AS ENUM ('pendente', 'pago', 'atrasado', 'cancelado');
-    CREATE TYPE public.app_role AS ENUM ('admin', 'gestor_demanda', 'recrutador', 'coordenador_escalas', 'financeiro', 'medico');
+DO $typwrap$ BEGIN CREATE TYPE public.tipo_contrato AS ENUM ('licitacao', 'privado'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+
+DO $typwrap$ BEGIN CREATE TYPE public.status_contrato AS ENUM ('ativo', 'inativo', 'suspenso'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+
+DO $typwrap$ BEGIN CREATE TYPE public.status_demanda AS ENUM ('aberta', 'em_atendimento', 'concluida', 'cancelada'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+
+DO $typwrap$ BEGIN CREATE TYPE public.status_proposta AS ENUM ('pendente', 'aceita', 'recusada'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+
+DO $typwrap$ BEGIN CREATE TYPE public.status_documentacao AS ENUM ('pendente', 'em_analise', 'aprovada', 'reprovada'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+
+DO $typwrap$ BEGIN CREATE TYPE public.status_assinatura AS ENUM ('pendente', 'assinado', 'cancelado'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+
+DO $typwrap$ BEGIN CREATE TYPE public.status_execucao AS ENUM ('pendente', 'executada', 'cancelada'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+
+DO $typwrap$ BEGIN CREATE TYPE public.status_pagamento AS ENUM ('pendente', 'pago', 'atrasado', 'cancelado'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+
+DO $typwrap$ BEGIN CREATE TYPE public.app_role AS ENUM ('admin', 'gestor_demanda', 'recrutador', 'coordenador_escalas', 'financeiro', 'medico'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+
 
 -- Create profiles table
 CREATE TABLE IF NOT EXISTS public.profiles (
@@ -430,7 +439,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
-DROP TRIGGER IF EXISTS "on_auth_user_created" ON auth;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
@@ -472,19 +480,24 @@ USING (true);
 
 -- === 20251003160017_3b089b59-1103-44cd-a9be-c78bdd201144.sql ===
 -- Criar enum para status de cliente
-    CREATE TYPE status_cliente AS ENUM ('Ativo', 'Inativo', 'Suspenso', 'Cancelado');
+DO $typwrap$ BEGIN CREATE TYPE status_cliente AS ENUM ('Ativo', 'Inativo', 'Suspenso', 'Cancelado'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+
 
 -- Criar enum para especialidade de cliente
-    CREATE TYPE especialidade_cliente AS ENUM ('Hospital', 'Clínica', 'UBS', 'Outros');
+DO $typwrap$ BEGIN CREATE TYPE especialidade_cliente AS ENUM ('Hospital', 'Clínica', 'UBS', 'Outros'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+
 
 -- Criar enum para status de médico
-    CREATE TYPE status_medico AS ENUM ('Ativo', 'Inativo', 'Suspenso');
+DO $typwrap$ BEGIN CREATE TYPE status_medico AS ENUM ('Ativo', 'Inativo', 'Suspenso'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+
 
 -- Criar enum para tipo de demanda do relacionamento médico
-    CREATE TYPE tipo_relacionamento AS ENUM ('Reclamação', 'Feedback Positivo', 'Alinhamento Escalas', 'Ação Comemorativa');
+DO $typwrap$ BEGIN CREATE TYPE tipo_relacionamento AS ENUM ('Reclamação', 'Feedback Positivo', 'Alinhamento Escalas', 'Ação Comemorativa'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+
 
 -- Criar enum para status de assinatura de contrato
-    CREATE TYPE status_assinatura_contrato AS ENUM ('Sim', 'Pendente');
+DO $typwrap$ BEGIN CREATE TYPE status_assinatura_contrato AS ENUM ('Sim', 'Pendente'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+
 
 -- Atualizar tabela de clientes
 ALTER TABLE public.clientes 
@@ -894,7 +907,8 @@ CHECK (status IN ('aberta', 'em_analise', 'concluida'));
 
 -- === 20251003193846_4ec7f27c-5a2c-4295-9ad7-911c57bf6e52.sql ===
 -- Create enum for user status
-    CREATE TYPE user_status AS ENUM ('ativo', 'inativo', 'suspenso');
+DO $typwrap$ BEGIN CREATE TYPE user_status AS ENUM ('ativo', 'inativo', 'suspenso'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+
 
 -- Add status column to profiles table
 ALTER TABLE public.profiles 
@@ -1237,8 +1251,10 @@ ALTER TABLE public.contratos
   ADD COLUMN IF NOT EXISTS tipo_servico TEXT[];
 
 -- Alterar o enum de status_assinatura_contrato
-    ALTER TYPE status_assinatura_contrato ADD VALUE IF NOT EXISTS 'Em Análise';
-    ALTER TYPE status_assinatura_contrato ADD VALUE IF NOT EXISTS 'Aguardando Retorno';
+DO $atwrap$ BEGIN ALTER TYPE status_assinatura_contrato ADD VALUE IF NOT EXISTS 'Em Análise'; EXCEPTION WHEN duplicate_object THEN NULL; END $atwrap$;
+
+DO $atwrap$ BEGIN ALTER TYPE status_assinatura_contrato ADD VALUE IF NOT EXISTS 'Aguardando Retorno'; EXCEPTION WHEN duplicate_object THEN NULL; END $atwrap$;
+
 
 -- Criar tabela para itens do contrato
 CREATE TABLE IF NOT EXISTS public.contrato_itens (

@@ -73,14 +73,14 @@ ADD COLUMN estado TEXT;
 
 -- === 20251010194608_d235d6ac-c147-48bc-acc5-98ea88c902d3.sql ===
 -- 1. Criar novo enum
-DO $typblk$ BEGIN CREATE TYPE public.app_role_new AS ENUM (
+DO $typwrap$ BEGIN DO $typwrap$ BEGIN CREATE TYPE public.app_role_new AS ENUM (
   'admin',
   'gestor_contratos',
   'gestor_captacao',
   'coordenador_escalas',
   'gestor_financeiro',
   'diretoria'
-); EXCEPTION WHEN duplicate_object THEN NULL; END $typblk$;
+); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$; EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
 
 -- 2. Adicionar colunas temporárias
 ALTER TABLE public.user_roles ADD COLUMN role_new app_role_new;
@@ -582,7 +582,7 @@ CREATE TABLE IF NOT EXISTS public.whatsapp_rate_limit (
 -- Enable RLS
 ALTER TABLE public.whatsapp_rate_limit ENABLE ROW LEVEL SECURITY;
 
--- CREATE INDEX IF NOT EXISTS for efficient rate limit queries
+-- Create index for efficient rate limit queries
 CREATE INDEX IF NOT EXISTS idx_whatsapp_rate_limit_user_time 
 ON public.whatsapp_rate_limit(user_id, created_at DESC);
 
@@ -615,7 +615,7 @@ $$;
 
 -- === 20251016142827_22d0fade-a372-4b5e-bf85-f762147b7457.sql ===
 -- Criar enum para status de licitações
--- NESTED_REMOVED: DO $typblk$ BEGIN CREATE TYPE status_licitacao AS ENUM (
+DO $typwrap$ BEGIN DO $typwrap$ BEGIN CREATE TYPE status_licitacao AS ENUM (
   'captacao_edital',
   'edital_analise',
   'deliberacao',
@@ -629,10 +629,10 @@ $$;
   'arrematados',
   'descarte_edital',
   'nao_ganhamos'
-); EXCEPTION WHEN duplicate_object THEN NULL; END $typblk$;
+); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$; EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
 
 -- Criar enum para status de disparos
--- NESTED_REMOVED: DO $typblk$ BEGIN CREATE TYPE status_disparo AS ENUM (
+DO $typwrap$ BEGIN DO $typwrap$ BEGIN CREATE TYPE status_disparo AS ENUM (
   'nova_oportunidade',
   'disparo',
   'analise_proposta',
@@ -641,16 +641,16 @@ $$;
   'proposta_aceita',
   'proposta_arquivada',
   'relacionamento_medico'
-); EXCEPTION WHEN duplicate_object THEN NULL; END $typblk$;
+); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$; EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
 
 -- Criar enum para status de relacionamento médico
--- NESTED_REMOVED: DO $typblk$ BEGIN CREATE TYPE status_relacionamento AS ENUM (
+DO $typwrap$ BEGIN DO $typwrap$ BEGIN CREATE TYPE status_relacionamento AS ENUM (
   'inicio_identificacao',
   'captacao_documentacao',
   'pendencia_documentacao',
   'documentacao_finalizada',
   'criacao_escalas'
-); EXCEPTION WHEN duplicate_object THEN NULL; END $typblk$;
+); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$; EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
 
 -- Tabela de licitações
 CREATE TABLE IF NOT EXISTS licitacoes (
@@ -996,9 +996,12 @@ $$;
 
 -- === 20251017192550_f5821b20-923c-4e25-a1b8-96b1bbe08874.sql ===
 -- Create enums for patrimonio
-    CREATE TYPE categoria_patrimonio AS ENUM ('equipamento', 'mobiliario', 'veiculo', 'informatica', 'outros');
-    CREATE TYPE estado_conservacao AS ENUM ('novo', 'usado', 'danificado', 'inservivel');
-    CREATE TYPE status_patrimonio AS ENUM ('ativo', 'transferido', 'baixado');
+DO $typwrap$ BEGIN CREATE TYPE categoria_patrimonio AS ENUM ('equipamento', 'mobiliario', 'veiculo', 'informatica', 'outros'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+
+DO $typwrap$ BEGIN CREATE TYPE estado_conservacao AS ENUM ('novo', 'usado', 'danificado', 'inservivel'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+
+DO $typwrap$ BEGIN CREATE TYPE status_patrimonio AS ENUM ('ativo', 'transferido', 'baixado'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+
 
 -- Create patrimonio table
 CREATE TABLE IF NOT EXISTS public.patrimonio (
@@ -1043,7 +1046,7 @@ WITH CHECK (
   has_role(auth.uid(), 'gestor_captacao'::app_role)
 );
 
--- CREATE OR REPLACE FUNCTION to auto-generate codigo_bem
+-- Create function to auto-generate codigo_bem
 CREATE OR REPLACE FUNCTION generate_codigo_bem()
 RETURNS TRIGGER AS $$
 DECLARE
@@ -1179,10 +1182,14 @@ EXECUTE FUNCTION public.update_updated_at_column();
 
 -- === 20251023195534_dc69ddf2-f426-482e-86a6-17b3e5153eb4.sql ===
 -- Enums para Radiologia
-    CREATE TYPE segmento_radiologia AS ENUM ('RX', 'TC', 'US', 'RM', 'MM');
-    CREATE TYPE motivo_ajuste_laudo AS ENUM ('Erro de digitação', 'Informação clínica incompleta', 'Padrão fora do protocolo', 'Solicitado pelo cliente', 'Outro');
-    CREATE TYPE status_ajuste_laudo AS ENUM ('Pendente', 'Em Ajuste', 'Ajustado');
-    CREATE TYPE motivo_indisponibilidade AS ENUM ('Viagem', 'Férias', 'Motivos pessoais', 'Problemas de saúde');
+DO $typwrap$ BEGIN CREATE TYPE segmento_radiologia AS ENUM ('RX', 'TC', 'US', 'RM', 'MM'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+
+DO $typwrap$ BEGIN CREATE TYPE motivo_ajuste_laudo AS ENUM ('Erro de digitação', 'Informação clínica incompleta', 'Padrão fora do protocolo', 'Solicitado pelo cliente', 'Outro'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+
+DO $typwrap$ BEGIN CREATE TYPE status_ajuste_laudo AS ENUM ('Pendente', 'Em Ajuste', 'Ajustado'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+
+DO $typwrap$ BEGIN CREATE TYPE motivo_indisponibilidade AS ENUM ('Viagem', 'Férias', 'Motivos pessoais', 'Problemas de saúde'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+
 
 -- Tabela: radiologia_agendas
 CREATE TABLE IF NOT EXISTS public.radiologia_agendas (
@@ -1249,6 +1256,18 @@ CREATE TABLE IF NOT EXISTS public.radiologia_exames_atraso (
   medico_id UUID NOT NULL REFERENCES public.medicos(id) ON DELETE CASCADE,
   data_hora_execucao TIMESTAMP WITH TIME ZONE NOT NULL,
   observacao TEXT,
+  anexos TEXT[],
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- Tabela: radiologia_ecg
+CREATE TABLE IF NOT EXISTS public.radiologia_ecg (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  cliente_id UUID NOT NULL REFERENCES public.clientes(id) ON DELETE CASCADE,
+  medico_id UUID NOT NULL REFERENCES public.medicos(id) ON DELETE CASCADE,
+  paciente TEXT NOT NULL,
+  data_hora_liberacao TIMESTAMP WITH TIME ZONE NOT NULL,
   anexos TEXT[],
   created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()

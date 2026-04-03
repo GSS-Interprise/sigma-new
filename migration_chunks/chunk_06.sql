@@ -1,39 +1,4 @@
 
--- AGES Profissionais Documentos
-CREATE TABLE IF NOT EXISTS public.ages_profissionais_documentos (
-  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  profissional_id UUID NOT NULL REFERENCES public.ages_profissionais(id) ON DELETE CASCADE,
-  tipo_documento TEXT NOT NULL,
-  arquivo_nome TEXT NOT NULL,
-  arquivo_url TEXT NOT NULL,
-  data_emissao DATE,
-  data_validade DATE,
-  observacoes TEXT,
-  uploaded_by UUID,
-  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
-);
-
--- AGES Contratos (independente dos contratos gerais)
-CREATE TABLE IF NOT EXISTS public.ages_contratos (
-  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  codigo_contrato TEXT,
-  profissional_id UUID REFERENCES public.ages_profissionais(id),
-  cliente_id UUID REFERENCES public.clientes(id),
-  unidade_id UUID REFERENCES public.unidades(id),
-  tipo_contrato TEXT,
-  objeto_contrato TEXT,
-  data_inicio DATE NOT NULL,
-  data_fim DATE,
-  valor_mensal NUMERIC,
-  valor_hora NUMERIC,
-  carga_horaria_mensal INTEGER,
-  documento_url TEXT,
-  status TEXT NOT NULL DEFAULT 'em_negociacao',
-  observacoes TEXT,
-  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
-);
-
 -- AGES Produção (controle mensal)
 CREATE TABLE IF NOT EXISTS public.ages_producao (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -371,10 +336,12 @@ COMMENT ON COLUMN public.licitacoes.check_conversao_3 IS 'Checkbox 3: Responsáv
 
 -- === 20251212191621_ab8efb82-ea9c-4075-a770-fd49b4904054.sql ===
 -- Criar enum para tipos de origem do card
-DO $typblk$ BEGIN CREATE TYPE origem_tipo_board AS ENUM ('manual', 'licitacao_arrematada'); EXCEPTION WHEN duplicate_object THEN NULL; END $typblk$;
+DO $typwrap$ BEGIN CREATE TYPE origem_tipo_board AS ENUM ('manual', 'licitacao_arrematada'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+
 
 -- Criar enum para status do kanban de captação
-    CREATE TYPE status_captacao_board AS ENUM ('prospectar', 'analisando', 'em_andamento', 'completo', 'descarte');
+DO $typwrap$ BEGIN CREATE TYPE status_captacao_board AS ENUM ('prospectar', 'analisando', 'em_andamento', 'completo', 'descarte'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+
 
 -- Criar tabela do Kanban de Captação
 CREATE TABLE IF NOT EXISTS public.captacao_contratos_board (
@@ -823,7 +790,7 @@ ALTER TABLE public.contratos ADD CONSTRAINT contratos_status_contrato_check
 ALTER TABLE public.comunicacao_mensagens 
 ADD COLUMN reply_to_id uuid REFERENCES public.comunicacao_mensagens(id) ON DELETE SET NULL;
 
--- CREATE INDEX IF NOT EXISTS for faster reply lookups
+-- Create index for faster reply lookups
 CREATE INDEX IF NOT EXISTS idx_comunicacao_mensagens_reply_to ON public.comunicacao_mensagens(reply_to_id);
 
 -- === 20251217125015_7c267d74-589c-4d5e-b04b-8d440fda7936.sql ===
@@ -1018,7 +985,7 @@ BEFORE UPDATE ON public.proposta_itens
 FOR EACH ROW
 EXECUTE FUNCTION public.update_updated_at_column();
 
--- 7. CREATE INDEX IF NOT EXISTSes for performance
+-- 7. Create indexes for performance
 CREATE INDEX IF NOT EXISTS idx_proposta_contrato_id ON public.proposta(contrato_id);
 CREATE INDEX IF NOT EXISTS idx_proposta_unidade_id ON public.proposta(unidade_id);
 CREATE INDEX IF NOT EXISTS idx_proposta_itens_proposta_id ON public.proposta_itens(proposta_id);
@@ -1149,4 +1116,29 @@ INSERT INTO public.licitacoes_etiquetas_config (nome, cor_id) VALUES
 
 -- === 20251222195011_dd01ac85-fbb8-49cc-9d00-7dd07ef10663.sql ===
 -- Adicionar novo valor ao enum tipo_evento_lead
-    ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'desconvertido_para_lead';
+DO $atwrap$ BEGIN ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'desconvertido_para_lead'; EXCEPTION WHEN duplicate_object THEN NULL; END $atwrap$;
+
+
+-- === 20251223143019_815a9e5d-3e97-4b59-bdf7-31e5a277c2fc.sql ===
+-- Etapa 1: Adicionar novos campos para suportar layout V2
+-- Mantendo retrocompatibilidade total com layout V1
+
+-- Novos campos para o layout V2
+ALTER TABLE public.radiologia_pendencias 
+ADD COLUMN IF NOT EXISTS cod_acesso TEXT,
+ADD COLUMN IF NOT EXISTS sla TEXT,
+ADD COLUMN IF NOT EXISTS sla_horas INTEGER,
+ADD COLUMN IF NOT EXISTS medico_atribuido_id UUID REFERENCES public.medicos(id),
+ADD COLUMN IF NOT EXISTS medico_atribuido_nome TEXT,
+ADD COLUMN IF NOT EXISTS medico_finalizador_id UUID REFERENCES public.medicos(id),
+ADD COLUMN IF NOT EXISTS data_final TIMESTAMP WITH TIME ZONE,
+ADD COLUMN IF NOT EXISTS layout_versao TEXT DEFAULT 'v1';
+
+-- Índice para cod_acesso (campo chave do novo layout)
+CREATE INDEX IF NOT EXISTS idx_radiologia_pendencias_cod_acesso 
+ON public.radiologia_pendencias(cod_acesso);
+
+-- Comentários de documentação
+COMMENT ON COLUMN radiologia_pendencias.sla IS 'Tipo SLA do layout V2: Atendimento Ambulatorial (48h), Internado (4h), Pronto Socorro (2h), Alta (2h)';
+COMMENT ON COLUMN radiologia_pendencias.sla_horas IS 'Horas do SLA calculadas automaticamente';
+COMMENT ON COLUMN radiologia_pendencias.medico_atribuido_id IS 'Médico atribuído (do campo atribuido do layout V2)';
