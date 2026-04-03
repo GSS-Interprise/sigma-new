@@ -56,7 +56,7 @@ const TABLES = [
   "user_roles", "whatsapp_rate_limit", "worklist_tarefas",
 ];
 
-const BATCH_SIZE = 500;
+const BATCH_SIZE = 50;
 
 function parseCSV(text: string): Record<string, string>[] {
   const lines = text.split(/\r?\n/).filter(l => l.trim());
