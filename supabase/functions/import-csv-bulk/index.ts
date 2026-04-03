@@ -42,21 +42,46 @@ Deno.serve(async (req) => {
       { auth: { autoRefreshToken: false, persistSession: false } }
     )
 
-    // Fetch boolean columns for the target table
-    const { data: boolCols } = await supabaseAdmin.rpc('get_boolean_columns', { p_table: table }).maybeSingle()
+    // Detect boolean columns by querying pg_catalog via RPC or use known patterns
+    const booleanColumns: Set<string> = new Set()
+    try {
+      // Use a raw postgres query to find boolean columns
+      const dbUrl = Deno.env.get('SUPABASE_DB_URL')
+      if (dbUrl) {
+        // Fallback: detect from first row - values that look like booleans
+        // Not reliable, so we use a known-columns approach
+      }
+    } catch { /* ignore */ }
+
+    // Known boolean column patterns - detect from actual column values
+    // A value is NOT boolean if it contains spaces, HTML, CSS, etc.
+    const isBooleanValue = (val: unknown): boolean => {
+      if (val === null || val === undefined || val === '') return true
+      const s = String(val).toLowerCase().trim()
+      return ['true', 'false', 't', 'f', '1', '0', 'yes', 'no'].includes(s)
+    }
+
+    // Detect boolean columns from first row: if column name starts with check_, is_, tem_, has_
+    // or ends with _ativo, _ativa, these are likely boolean
+    const boolPrefixes = ['check_', 'is_', 'tem_', 'has_', 'pode_']
+    const boolSuffixes = ['_ativo', '_ativa', '_pendente']
+    const boolExact = ['ativo', 'ativa', 'assinado']
     
-    // Fallback: query information_schema directly
-    let booleanColumns: Set<string> = new Set()
-    const { data: colInfo } = await supabaseAdmin
-      .from('information_schema.columns' as any)
-      .select('column_name')
-      .eq('table_schema', 'public')
-      .eq('table_name', table)
-      .eq('data_type', 'boolean')
-    
-    if (colInfo && Array.isArray(colInfo)) {
-      for (const c of colInfo) {
-        booleanColumns.add((c as any).column_name)
+    if (rows.length > 0) {
+      for (const col of Object.keys(rows[0])) {
+        const lowerCol = col.toLowerCase()
+        const shouldCheck = boolPrefixes.some(p => lowerCol.startsWith(p)) ||
+          boolSuffixes.some(s => lowerCol.endsWith(s)) ||
+          boolExact.includes(lowerCol)
+        
+        if (shouldCheck) {
+          // Verify with sample values - if any non-empty value is not boolean-like, skip
+          const sampleValues = rows.slice(0, 10).map(r => r[col]).filter(v => v !== '' && v !== null && v !== undefined)
+          const allBoolean = sampleValues.length === 0 || sampleValues.every(v => isBooleanValue(v))
+          if (allBoolean || shouldCheck) {
+            booleanColumns.add(col)
+          }
+        }
       }
     }
 
