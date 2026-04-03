@@ -832,7 +832,7 @@ $$ LANGUAGE plpgsql;
 
 -- Trigger para automação Licitações → Disparos
 DROP TRIGGER IF EXISTS licitacao_to_disparo_automation ON licitacoes;
-DROP TRIGGER IF EXISTS "licitacao_to_disparo_automation" ON AFTER;
+-- (removed invalid DROP TRIGGER)
 CREATE TRIGGER licitacao_to_disparo_automation
   AFTER INSERT OR UPDATE OF status
   ON licitacoes
