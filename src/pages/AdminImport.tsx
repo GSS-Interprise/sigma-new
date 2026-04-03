@@ -238,12 +238,23 @@ function AdminImportContent() {
 
       addLog(`Colunas detectadas: ${Object.keys(rows[0]).join(", ")}`);
 
-      // Clean rows: remove empty string values → null, trim strings
+      // Clean rows: empty→null, "[]"→"{}", "[x,y]"→"{x,y}"
       const cleanedRows = rows.map(row => {
         const clean: Record<string, any> = {};
         for (const [key, value] of Object.entries(row)) {
-          if (value === "" || value === undefined) {
+          if (value === "" || value === undefined || value === null) {
             clean[key] = null;
+          } else if (typeof value === "string") {
+            const trimmed = value.trim();
+            if (trimmed === "") {
+              clean[key] = null;
+            } else if (trimmed === "[]") {
+              clean[key] = "{}";
+            } else if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+              clean[key] = "{" + trimmed.slice(1, -1) + "}";
+            } else {
+              clean[key] = value;
+            }
           } else {
             clean[key] = value;
           }
