@@ -1,81 +1,3 @@
-CREATE POLICY "Usuários autorizados podem atualizar documentos"
-ON storage.objects FOR UPDATE
-TO authenticated
-USING (
-  bucket_id = 'medicos-documentos' AND
-  (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_captacao'::app_role) OR has_role(auth.uid(), 'gestor_contratos'::app_role))
-);
-
-DROP POLICY IF EXISTS "Usuários autorizados podem deletar documentos" ON storage.objects;
-CREATE POLICY "Usuários autorizados podem deletar documentos"
-ON storage.objects FOR DELETE
-TO authenticated
-USING (
-  bucket_id = 'medicos-documentos' AND
-  (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_captacao'::app_role) OR has_role(auth.uid(), 'gestor_contratos'::app_role))
-);
-
--- Tipos de documento
-DO $$ BEGIN CREATE TYPE tipo_documento_medico AS ENUM (
-  'diploma',
-  'certificado',
-  'rg',
-  'cpf',
-  'crm',
-  'rqe',
-  'titulo_especialista',
-  'comprovante_residencia',
-  'certidao',
-  'carta_recomendacao',
-  'outro'
-); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-
--- Tabela de documentos dos médicos
-CREATE TABLE IF NOT EXISTS public.medico_documentos (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  medico_id UUID NOT NULL REFERENCES public.medicos(id) ON DELETE CASCADE,
-  arquivo_path TEXT NOT NULL,
-  arquivo_nome TEXT NOT NULL,
-  tipo_documento tipo_documento_medico NOT NULL,
-  emissor TEXT,
-  data_emissao DATE,
-  data_validade DATE,
-  observacoes TEXT,
-  texto_extraido TEXT,
-  uploaded_by UUID REFERENCES auth.users(id),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
--- Habilitar RLS
-ALTER TABLE public.medico_documentos ENABLE ROW LEVEL SECURITY;
-
--- Políticas de RLS para documentos
-DROP POLICY IF EXISTS "Usuários autenticados podem ver documentos" ON public.medico_documentos;
-CREATE POLICY "Usuários autenticados podem ver documentos"
-ON public.medico_documentos FOR SELECT
-TO authenticated
-USING (true);
-
-DROP POLICY IF EXISTS "Usuários autorizados podem inserir documentos" ON public.medico_documentos;
-CREATE POLICY "Usuários autorizados podem inserir documentos"
-ON public.medico_documentos FOR INSERT
-TO authenticated
-WITH CHECK (
-  is_admin(auth.uid()) OR 
-  has_role(auth.uid(), 'gestor_captacao'::app_role) OR 
-  has_role(auth.uid(), 'gestor_contratos'::app_role)
-);
-
-DROP POLICY IF EXISTS "Usuários autorizados podem atualizar documentos" ON public.medico_documentos;
-CREATE POLICY "Usuários autorizados podem atualizar documentos"
-ON public.medico_documentos FOR UPDATE
-TO authenticated
-USING (
-  is_admin(auth.uid()) OR 
-  has_role(auth.uid(), 'gestor_captacao'::app_role) OR 
-  has_role(auth.uid(), 'gestor_contratos'::app_role)
-);
 
 DROP POLICY IF EXISTS "Usuários autorizados podem deletar documentos" ON public.medico_documentos;
 CREATE POLICY "Usuários autorizados podem deletar documentos"
@@ -116,13 +38,13 @@ TO authenticated
 WITH CHECK (auth.uid() = usuario_id);
 
 -- Adicionar coluna para resumo IA no médico
-DO $$ BEGIN ALTER TABLE public.medicos
+ALTER TABLE public.medicos
 ADD COLUMN IF NOT EXISTS resumo_ia TEXT,
 ADD COLUMN IF NOT EXISTS resumo_ia_gerado_em TIMESTAMPTZ,
 ADD COLUMN IF NOT EXISTS resumo_ia_gerado_por UUID REFERENCES auth.users(id),
 ADD COLUMN IF NOT EXISTS resumo_ia_aprovado BOOLEAN DEFAULT false,
 ADD COLUMN IF NOT EXISTS resumo_ia_aprovado_por UUID REFERENCES auth.users(id),
-ADD COLUMN IF NOT EXISTS resumo_ia_aprovado_em TIMESTAMPTZ; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ADD COLUMN IF NOT EXISTS resumo_ia_aprovado_em TIMESTAMPTZ;
 
 -- Trigger para atualizar updated_at
 DROP TRIGGER IF EXISTS "update_medico_documentos_updated_at" ON public.medico_documentos;
@@ -545,19 +467,19 @@ CREATE TRIGGER update_conversas_updated_at
 
 -- === 20251106193841_6d7b857d-f0ea-4fc1-bbb9-aada1f0ba044.sql ===
 -- Adicionar constraint UNIQUE para evitar conversas duplicadas
-DO $$ BEGIN ALTER TABLE public.conversas
-ADD CONSTRAINT conversas_id_conversa_unique UNIQUE (id_conversa); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+ALTER TABLE public.conversas
+ADD CONSTRAINT conversas_id_conversa_unique UNIQUE (id_conversa);
 
 -- === 20251107182140_f10acd8d-4f2a-4b70-874d-ab5a32040101.sql ===
 -- Criar enum para motivos de ausência
-DO $$ BEGIN CREATE TYPE public.motivo_ausencia AS ENUM (
+DO $typblk$ BEGIN CREATE TYPE public.motivo_ausencia AS ENUM (
   'ferias',
   'atestado_medico',
   'congresso',
   'viagem',
   'folga',
   'outro'
-); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+); EXCEPTION WHEN duplicate_object THEN NULL; END $typblk$;
 
 -- Tabela de ausências de médicos
 CREATE TABLE IF NOT EXISTS public.medico_ausencias (
@@ -657,11 +579,11 @@ USING (
 );
 
 -- Adicionar campos à tabela radiologia_agendas
-DO $$ BEGIN ALTER TABLE public.radiologia_agendas 
+ALTER TABLE public.radiologia_agendas 
 ADD COLUMN exame_servico TEXT,
 ADD COLUMN data_inicio DATE,
 ADD COLUMN data_fim DATE,
-ADD COLUMN total_horas_dia NUMERIC(5, 2); EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ADD COLUMN total_horas_dia NUMERIC(5, 2);
 
 -- Atualizar registros existentes
 UPDATE public.radiologia_agendas 
@@ -727,20 +649,20 @@ EXECUTE FUNCTION public.update_updated_at_column();
 
 -- === 20251107190708_d8a63174-6bc9-4611-af3a-2625d33f6185.sql ===
 -- Add updated_at column to effect_sync_logs table
-DO $$ BEGIN ALTER TABLE public.effect_sync_logs 
-ADD COLUMN updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(); EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE public.effect_sync_logs 
+ADD COLUMN updated_at TIMESTAMP WITH TIME ZONE DEFAULT now();
 
 -- === 20251112154853_472e1157-0ffe-4a1f-9bb2-5ed3d799867b.sql ===
 -- Adicionar novo status "aguardando_confirmacao" ao enum status_ticket
-DO $$ BEGIN ALTER TYPE status_ticket ADD VALUE IF NOT EXISTS 'aguardando_confirmacao'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    ALTER TYPE status_ticket ADD VALUE IF NOT EXISTS 'aguardando_confirmacao';
 
 -- Adicionar novo status "resolvido" ao enum status_ticket  
-DO $$ BEGIN ALTER TYPE status_ticket ADD VALUE IF NOT EXISTS 'resolvido'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    ALTER TYPE status_ticket ADD VALUE IF NOT EXISTS 'resolvido';
 
 -- === 20251113115645_82903b74-6c9f-476e-85c2-64aedbae5591.sql ===
 -- Adicionar coluna email na tabela leads
-DO $$ BEGIN ALTER TABLE public.leads 
-ADD COLUMN email text; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE public.leads 
+ADD COLUMN email text;
 
 -- Adicionar índice para melhor performance
 CREATE INDEX IF NOT EXISTS idx_leads_email ON public.leads(email);
@@ -803,25 +725,25 @@ CREATE TRIGGER update_disparos_anotacoes_updated_at
 
 -- === 20251113133215_b19568e5-4d2d-4d53-a112-034b0189458e.sql ===
 -- Adicionar campo tipo_disparo nas tabelas de disparos
-DO $$ BEGIN ALTER TABLE disparos_programados 
-ADD COLUMN IF NOT EXISTS tipo_disparo TEXT DEFAULT 'whatsapp' CHECK (tipo_disparo IN ('whatsapp', 'email')); EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE disparos_programados 
+ADD COLUMN IF NOT EXISTS tipo_disparo TEXT DEFAULT 'whatsapp' CHECK (tipo_disparo IN ('whatsapp', 'email'));
 
-DO $$ BEGIN ALTER TABLE disparos_log 
-ADD COLUMN IF NOT EXISTS tipo_disparo TEXT DEFAULT 'whatsapp' CHECK (tipo_disparo IN ('whatsapp', 'email')); EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE disparos_log 
+ADD COLUMN IF NOT EXISTS tipo_disparo TEXT DEFAULT 'whatsapp' CHECK (tipo_disparo IN ('whatsapp', 'email'));
 
 -- Adicionar campos específicos para email
-DO $$ BEGIN ALTER TABLE disparos_programados
+ALTER TABLE disparos_programados
 ADD COLUMN IF NOT EXISTS assunto_email TEXT,
-ADD COLUMN IF NOT EXISTS corpo_email TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ADD COLUMN IF NOT EXISTS corpo_email TEXT;
 
-DO $$ BEGIN ALTER TABLE disparos_log
+ALTER TABLE disparos_log
 ADD COLUMN IF NOT EXISTS assunto_email TEXT,
-ADD COLUMN IF NOT EXISTS corpo_email TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ADD COLUMN IF NOT EXISTS corpo_email TEXT;
 
 -- === 20251113134201_5066a449-5e56-4a13-bda5-4b1f39c07ac7.sql ===
 -- Adicionar coluna email na tabela leads
-DO $$ BEGIN ALTER TABLE leads 
-ADD COLUMN IF NOT EXISTS email TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE leads 
+ADD COLUMN IF NOT EXISTS email TEXT;
 
 -- === 20251113144809_afebeb35-1c0e-4df7-9044-bad78b9e365b.sql ===
 
@@ -888,23 +810,23 @@ COMMENT ON COLUMN public.email_respostas.status_lead IS 'Status do lead: novo, e
 
 -- === 20251113173835_59a44538-2ef1-4f04-a8cf-761b424856ee.sql ===
 -- Adicionar gestor_marketing ao enum app_role
-DO $$ BEGIN ALTER TYPE app_role ADD VALUE IF NOT EXISTS 'gestor_marketing'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    ALTER TYPE app_role ADD VALUE IF NOT EXISTS 'gestor_marketing';
 
 -- === 20251113174802_491b4487-8ccb-46ac-82bc-30ceec0b9c9f.sql ===
 -- Criar enum para status de campanha
-DO $$ BEGIN CREATE TYPE status_campanha AS ENUM ('planejada', 'ativa', 'pausada', 'finalizada'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    CREATE TYPE status_campanha AS ENUM ('planejada', 'ativa', 'pausada', 'finalizada');
 
 -- Criar enum para canais de campanha
-DO $$ BEGIN CREATE TYPE canal_campanha AS ENUM ('whatsapp', 'email', 'instagram', 'linkedin', 'anuncios', 'eventos'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    CREATE TYPE canal_campanha AS ENUM ('whatsapp', 'email', 'instagram', 'linkedin', 'anuncios', 'eventos');
 
 -- Criar enum para tipo de conteúdo
-DO $$ BEGIN CREATE TYPE tipo_conteudo AS ENUM ('video', 'card', 'reels', 'artigo', 'newsletter'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    CREATE TYPE tipo_conteudo AS ENUM ('video', 'card', 'reels', 'artigo', 'newsletter');
 
 -- Criar enum para status de conteúdo
-DO $$ BEGIN CREATE TYPE status_conteudo AS ENUM ('rascunho', 'pronto', 'publicado'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    CREATE TYPE status_conteudo AS ENUM ('rascunho', 'pronto', 'publicado');
 
 -- Criar enum para etapas do funil
-DO $$ BEGIN CREATE TYPE etapa_funil_marketing AS ENUM (
+-- NESTED_REMOVED: DO $typblk$ BEGIN CREATE TYPE etapa_funil_marketing AS ENUM (
   'lead_gerado',
   'contato_inicial',
   'envio_informacoes',
@@ -912,10 +834,10 @@ DO $$ BEGIN CREATE TYPE etapa_funil_marketing AS ENUM (
   'encaminhado_captacao',
   'processo_contratacao',
   'plantao_agendado'
-); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+); EXCEPTION WHEN duplicate_object THEN NULL; END $typblk$;
 
 -- Criar enum para categoria de material
-DO $$ BEGIN CREATE TYPE categoria_material AS ENUM ('pdf', 'apresentacao', 'modelo_mensagem', 'logo', 'template', 'politica_interna'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    CREATE TYPE categoria_material AS ENUM ('pdf', 'apresentacao', 'modelo_mensagem', 'logo', 'template', 'politica_interna');
 
 -- Tabela de Campanhas
 CREATE TABLE IF NOT EXISTS public.campanhas (
@@ -1258,7 +1180,7 @@ CREATE TRIGGER update_automacoes_config_updated_at
 
 -- === 20251113180126_b2337471-cca5-46a4-b4ef-c93e152d9f7c.sql ===
 -- Adicionar novos campos à tabela radiologia_pendencias para suportar importação Excel
-DO $$ BEGIN ALTER TABLE public.radiologia_pendencias 
+ALTER TABLE public.radiologia_pendencias 
 ADD COLUMN IF NOT EXISTS data_exame DATE,
 ADD COLUMN IF NOT EXISTS hora_exame TIME,
 ADD COLUMN IF NOT EXISTS nome_paciente TEXT,
@@ -1277,4 +1199,76 @@ ADD COLUMN IF NOT EXISTS nota TEXT,
 ADD COLUMN IF NOT EXISTS tempo_decorrido TEXT,
 ADD COLUMN IF NOT EXISTS arquivo_importacao TEXT,
 ADD COLUMN IF NOT EXISTS data_importacao TIMESTAMP WITH TIME ZONE,
-ADD COLUMN IF NOT EXISTS importado_por UUID REFERENCES auth.users(id); EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ADD COLUMN IF NOT EXISTS importado_por UUID REFERENCES auth.users(id);
+
+-- Criar índice no campo acesso para busca rápida
+CREATE INDEX IF NOT EXISTS idx_radiologia_pendencias_acesso ON public.radiologia_pendencias(acesso);
+
+-- Criar tabela para histórico de importações
+CREATE TABLE IF NOT EXISTS public.radiologia_importacoes (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  arquivo_nome TEXT NOT NULL,
+  total_linhas INTEGER NOT NULL,
+  linhas_inseridas INTEGER NOT NULL,
+  linhas_atualizadas INTEGER NOT NULL,
+  linhas_erro INTEGER NOT NULL,
+  erros JSONB,
+  importado_por UUID REFERENCES auth.users(id),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Habilitar RLS na tabela de importações
+ALTER TABLE public.radiologia_importacoes ENABLE ROW LEVEL SECURITY;
+
+-- Política RLS para importações
+DROP POLICY IF EXISTS "Usuários autorizados podem ver importações" ON public.radiologia_importacoes;
+CREATE POLICY "Usuários autorizados podem ver importações"
+  ON public.radiologia_importacoes
+  FOR SELECT
+  USING (
+    is_admin(auth.uid()) OR 
+    has_role(auth.uid(), 'gestor_radiologia'::app_role) OR
+    has_role(auth.uid(), 'gestor_contratos'::app_role)
+  );
+
+DROP POLICY IF EXISTS "Usuários autorizados podem criar importações" ON public.radiologia_importacoes;
+CREATE POLICY "Usuários autorizados podem criar importações"
+  ON public.radiologia_importacoes
+  FOR INSERT
+  WITH CHECK (
+    is_admin(auth.uid()) OR 
+    has_role(auth.uid(), 'gestor_radiologia'::app_role) OR
+    has_role(auth.uid(), 'gestor_contratos'::app_role)
+  );
+
+-- Trigger para updated_at
+DROP TRIGGER IF EXISTS "update_radiologia_importacoes_updated_at" ON public.radiologia_importacoes;
+CREATE TRIGGER update_radiologia_importacoes_updated_at
+  BEFORE UPDATE ON public.radiologia_importacoes
+  FOR EACH ROW
+  EXECUTE FUNCTION public.update_updated_at_column();
+
+-- === 20251113190918_868c92b1-0a14-4c6d-985a-941059f29690.sql ===
+-- Tornar campos opcionais para permitir importação de dados individuais de exames
+ALTER TABLE radiologia_pendencias 
+  ALTER COLUMN cliente_id DROP NOT NULL,
+  ALTER COLUMN medico_id DROP NOT NULL,
+  ALTER COLUMN segmento DROP NOT NULL,
+  ALTER COLUMN data_referencia DROP NOT NULL,
+  ALTER COLUMN quantidade_pendente DROP NOT NULL;
+
+-- === 20251114144354_55d502ef-a122-4257-8372-366e50a49d97.sql ===
+-- Adicionar o role 'externos' ao enum app_role
+    ALTER TYPE public.app_role ADD VALUE IF NOT EXISTS 'externos';
+
+-- === 20251114144432_250ee486-17af-4787-b73e-a7c83190dae3.sql ===
+-- Adicionar permissões para o perfil externos
+INSERT INTO public.permissoes (modulo, acao, perfil, ativo)
+VALUES 
+  ('suporte', 'visualizar', 'externos', true),
+  ('suporte', 'criar', 'externos', true)
+ON CONFLICT DO NOTHING;
+
+-- === 20251114165332_9d3db261-63b8-4a38-b1e4-6f2947717a62.sql ===
+-- Adicionar novo tipo de documento "Link Externo"
+    ALTER TYPE tipo_documento_medico ADD VALUE IF NOT EXISTS 'link_externo';

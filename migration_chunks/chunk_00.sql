@@ -3,15 +3,15 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Create enum types
-DO $$ BEGIN CREATE TYPE public.tipo_contrato AS ENUM ('licitacao', 'privado'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE TYPE public.status_contrato AS ENUM ('ativo', 'inativo', 'suspenso'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE TYPE public.status_demanda AS ENUM ('aberta', 'em_atendimento', 'concluida', 'cancelada'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE TYPE public.status_proposta AS ENUM ('pendente', 'aceita', 'recusada'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE TYPE public.status_documentacao AS ENUM ('pendente', 'em_analise', 'aprovada', 'reprovada'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE TYPE public.status_assinatura AS ENUM ('pendente', 'assinado', 'cancelado'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE TYPE public.status_execucao AS ENUM ('pendente', 'executada', 'cancelada'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE TYPE public.status_pagamento AS ENUM ('pendente', 'pago', 'atrasado', 'cancelado'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE TYPE public.app_role AS ENUM ('admin', 'gestor_demanda', 'recrutador', 'coordenador_escalas', 'financeiro', 'medico'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $typblk$ BEGIN CREATE TYPE public.tipo_contrato AS ENUM ('licitacao', 'privado'); EXCEPTION WHEN duplicate_object THEN NULL; END $typblk$;
+    CREATE TYPE public.status_contrato AS ENUM ('ativo', 'inativo', 'suspenso');
+    CREATE TYPE public.status_demanda AS ENUM ('aberta', 'em_atendimento', 'concluida', 'cancelada');
+    CREATE TYPE public.status_proposta AS ENUM ('pendente', 'aceita', 'recusada');
+    CREATE TYPE public.status_documentacao AS ENUM ('pendente', 'em_analise', 'aprovada', 'reprovada');
+    CREATE TYPE public.status_assinatura AS ENUM ('pendente', 'assinado', 'cancelado');
+    CREATE TYPE public.status_execucao AS ENUM ('pendente', 'executada', 'cancelada');
+    CREATE TYPE public.status_pagamento AS ENUM ('pendente', 'pago', 'atrasado', 'cancelado');
+    CREATE TYPE public.app_role AS ENUM ('admin', 'gestor_demanda', 'recrutador', 'coordenador_escalas', 'financeiro', 'medico');
 
 -- Create profiles table
 CREATE TABLE IF NOT EXISTS public.profiles (
@@ -356,8 +356,7 @@ CREATE POLICY "Admins and financeiro can manage recebimentos_cliente"
     public.has_role(auth.uid(), 'financeiro')
   );
 
--- DROP TRIGGER IF EXISTS "function" ON for;
-Create trigger function for updating updated_at timestamp
+-- Create trigger function for updating updated_at timestamp
 CREATE OR REPLACE FUNCTION public.update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -417,8 +416,7 @@ CREATE TRIGGER update_recebimentos_cliente_updated_at
   BEFORE UPDATE ON public.recebimentos_cliente
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
--- DROP TRIGGER IF EXISTS "to" ON public.handle_new_user();
-Create trigger to automatically create a profile when a user signs up
+-- Create trigger to automatically create a profile when a user signs up
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -432,7 +430,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
-DROP TRIGGER IF EXISTS "on_auth_user_created" ON auth.users;
+DROP TRIGGER IF EXISTS "on_auth_user_created" ON auth;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
@@ -474,35 +472,35 @@ USING (true);
 
 -- === 20251003160017_3b089b59-1103-44cd-a9be-c78bdd201144.sql ===
 -- Criar enum para status de cliente
-DO $$ BEGIN CREATE TYPE status_cliente AS ENUM ('Ativo', 'Inativo', 'Suspenso', 'Cancelado'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    CREATE TYPE status_cliente AS ENUM ('Ativo', 'Inativo', 'Suspenso', 'Cancelado');
 
 -- Criar enum para especialidade de cliente
-DO $$ BEGIN CREATE TYPE especialidade_cliente AS ENUM ('Hospital', 'Clínica', 'UBS', 'Outros'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    CREATE TYPE especialidade_cliente AS ENUM ('Hospital', 'Clínica', 'UBS', 'Outros');
 
 -- Criar enum para status de médico
-DO $$ BEGIN CREATE TYPE status_medico AS ENUM ('Ativo', 'Inativo', 'Suspenso'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    CREATE TYPE status_medico AS ENUM ('Ativo', 'Inativo', 'Suspenso');
 
 -- Criar enum para tipo de demanda do relacionamento médico
-DO $$ BEGIN CREATE TYPE tipo_relacionamento AS ENUM ('Reclamação', 'Feedback Positivo', 'Alinhamento Escalas', 'Ação Comemorativa'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    CREATE TYPE tipo_relacionamento AS ENUM ('Reclamação', 'Feedback Positivo', 'Alinhamento Escalas', 'Ação Comemorativa');
 
 -- Criar enum para status de assinatura de contrato
-DO $$ BEGIN CREATE TYPE status_assinatura_contrato AS ENUM ('Sim', 'Pendente'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    CREATE TYPE status_assinatura_contrato AS ENUM ('Sim', 'Pendente');
 
 -- Atualizar tabela de clientes
-DO $$ BEGIN ALTER TABLE public.clientes 
+ALTER TABLE public.clientes 
   ADD COLUMN IF NOT EXISTS nome_fantasia TEXT,
   ADD COLUMN IF NOT EXISTS razao_social TEXT,
   ADD COLUMN IF NOT EXISTS status_cliente status_cliente DEFAULT 'Ativo',
-  ADD COLUMN IF NOT EXISTS especialidade_cliente especialidade_cliente; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+  ADD COLUMN IF NOT EXISTS especialidade_cliente especialidade_cliente;
 
 -- Atualizar colunas existentes para se alinharem ao novo modelo
 UPDATE public.clientes SET nome_fantasia = nome_empresa WHERE nome_fantasia IS NULL;
 UPDATE public.clientes SET razao_social = nome_empresa WHERE razao_social IS NULL;
 
 -- Adicionar coluna cliente_vinculado à tabela de médicos
-DO $$ BEGIN ALTER TABLE public.medicos 
+ALTER TABLE public.medicos 
   ADD COLUMN IF NOT EXISTS cliente_vinculado_id UUID REFERENCES public.clientes(id) ON DELETE SET NULL,
-  ADD COLUMN IF NOT EXISTS status_medico status_medico DEFAULT 'Ativo'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+  ADD COLUMN IF NOT EXISTS status_medico status_medico DEFAULT 'Ativo';
 
 -- Criar tabela de relacionamento médico (substitui demandas)
 CREATE TABLE IF NOT EXISTS public.relacionamento_medico (
@@ -812,8 +810,8 @@ $function$;
 
 -- === 20251003172757_484cb785-3835-4130-99bc-36bf6c12d1d2.sql ===
 -- Adicionar campo estado na tabela medicos
-DO $$ BEGIN ALTER TABLE public.medicos 
-ADD COLUMN IF NOT EXISTS estado text; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE public.medicos 
+ADD COLUMN IF NOT EXISTS estado text;
 
 -- Criar tabela para log de disparos
 CREATE TABLE IF NOT EXISTS public.disparos_log (
@@ -864,52 +862,52 @@ CREATE INDEX IF NOT EXISTS idx_disparos_log_created ON public.disparos_log(creat
 
 -- === 20251003173016_e5632b27-9a30-44bc-bc87-507f642518a5.sql ===
 -- Adicionar coluna para armazenar destinatários no log de disparos
-DO $$ BEGIN ALTER TABLE public.disparos_log 
-ADD COLUMN IF NOT EXISTS destinatarios jsonb; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE public.disparos_log 
+ADD COLUMN IF NOT EXISTS destinatarios jsonb;
 
 -- === 20251003185639_d60539a7-96c7-403c-9e5b-36dd4abef58d.sql ===
 -- Add tipo_principal column to relacionamento_medico table
-DO $$ BEGIN ALTER TABLE relacionamento_medico 
-ADD COLUMN IF NOT EXISTS tipo_principal text NOT NULL DEFAULT 'Ação'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE relacionamento_medico 
+ADD COLUMN IF NOT EXISTS tipo_principal text NOT NULL DEFAULT 'Ação';
 
 -- Update the tipo enum to include all new subtypes
-DO $$ BEGIN ALTER TABLE relacionamento_medico 
-ALTER COLUMN tipo TYPE text; EXCEPTION WHEN undefined_column THEN NULL; WHEN undefined_table THEN NULL; END $$;
+ALTER TABLE relacionamento_medico 
+ALTER COLUMN tipo TYPE text;
 
 -- Add check constraint for tipo_principal
-DO $$ BEGIN ALTER TABLE relacionamento_medico
+ALTER TABLE relacionamento_medico
 ADD CONSTRAINT check_tipo_principal 
-CHECK (tipo_principal IN ('Reclamação', 'Ação')); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+CHECK (tipo_principal IN ('Reclamação', 'Ação'));
 
 COMMENT ON COLUMN relacionamento_medico.tipo_principal IS 'Tipo principal: Reclamação ou Ação';
 COMMENT ON COLUMN relacionamento_medico.tipo IS 'Subtipo específico baseado no tipo_principal';
 
 -- === 20251003190407_309e815d-c06e-44dd-99a9-23199d24903d.sql ===
 -- Add status column to relacionamento_medico table
-DO $$ BEGIN ALTER TABLE relacionamento_medico 
-ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'aberta'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE relacionamento_medico 
+ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'aberta';
 
 -- Add check constraint for status
-DO $$ BEGIN ALTER TABLE relacionamento_medico
+ALTER TABLE relacionamento_medico
 ADD CONSTRAINT check_status 
-CHECK (status IN ('aberta', 'em_analise', 'concluida')); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+CHECK (status IN ('aberta', 'em_analise', 'concluida'));
 
 -- === 20251003193846_4ec7f27c-5a2c-4295-9ad7-911c57bf6e52.sql ===
 -- Create enum for user status
-DO $$ BEGIN CREATE TYPE user_status AS ENUM ('ativo', 'inativo', 'suspenso'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    CREATE TYPE user_status AS ENUM ('ativo', 'inativo', 'suspenso');
 
 -- Add status column to profiles table
-DO $$ BEGIN ALTER TABLE public.profiles 
-ADD COLUMN status user_status NOT NULL DEFAULT 'ativo'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE public.profiles 
+ADD COLUMN status user_status NOT NULL DEFAULT 'ativo';
 
 -- === 20251004183935_9ca6668f-1f69-45dc-a35c-197537c730ef.sql ===
 -- Adicionar campo gravidade na tabela relacionamento_medico
-DO $$ BEGIN ALTER TABLE public.relacionamento_medico
-ADD COLUMN gravidade text CHECK (gravidade IN ('baixa', 'media', 'alta', 'critica')); EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE public.relacionamento_medico
+ADD COLUMN gravidade text CHECK (gravidade IN ('baixa', 'media', 'alta', 'critica'));
 
 -- Adicionar campo data_nascimento na tabela medicos para aniversários
-DO $$ BEGIN ALTER TABLE public.medicos
-ADD COLUMN data_nascimento date; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE public.medicos
+ADD COLUMN data_nascimento date;
 
 -- Criar índices para melhorar performance das consultas
 CREATE INDEX IF NOT EXISTS idx_relacionamento_status ON public.relacionamento_medico(status);
@@ -918,8 +916,8 @@ CREATE INDEX IF NOT EXISTS idx_medicos_data_nascimento ON public.medicos(data_na
 
 -- === 20251004184558_edaefc3b-c94f-4021-9883-109995992008.sql ===
 -- Adicionar campo CPF na tabela medicos
-DO $$ BEGIN ALTER TABLE public.medicos
-ADD COLUMN cpf text UNIQUE; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE public.medicos
+ADD COLUMN cpf text UNIQUE;
 
 COMMENT ON COLUMN public.medicos.cpf IS 'CPF do médico (11 dígitos, apenas números)';
 
@@ -928,7 +926,7 @@ CREATE INDEX IF NOT EXISTS idx_medicos_cpf ON public.medicos(cpf);
 
 -- === 20251004190434_010bf4d4-948c-420b-9e3f-00265b5b9b87.sql ===
 -- Adicionar campo codigo_contrato na tabela contratos
-DO $$ BEGIN ALTER TABLE contratos ADD COLUMN IF NOT EXISTS codigo_contrato TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE contratos ADD COLUMN IF NOT EXISTS codigo_contrato TEXT;
 
 -- === 20251004193143_4fa7657e-f4bf-48e5-a0bd-f5500a103f7b.sql ===
 -- Criar bucket para documentos de contratos
@@ -987,7 +985,7 @@ USING (
 );
 
 -- Adicionar coluna documento_url na tabela contratos
-DO $$ BEGIN ALTER TABLE contratos ADD COLUMN documento_url text; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE contratos ADD COLUMN documento_url text;
 
 -- === 20251009141239_5c33710f-ec4f-4c21-af74-7507204799e8.sql ===
 -- Criar tabela de chips disponíveis
@@ -1031,9 +1029,9 @@ CREATE TABLE IF NOT EXISTS public.disparos_programados (
 );
 
 -- Atualizar disparos_log para incluir chip
-DO $$ BEGIN ALTER TABLE public.disparos_log 
+ALTER TABLE public.disparos_log 
 ADD COLUMN IF NOT EXISTS chip_id uuid REFERENCES public.chips(id),
-ADD COLUMN IF NOT EXISTS disparo_programado_id uuid REFERENCES public.disparos_programados(id); EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ADD COLUMN IF NOT EXISTS disparo_programado_id uuid REFERENCES public.disparos_programados(id);
 
 -- Habilitar RLS
 ALTER TABLE public.chips ENABLE ROW LEVEL SECURITY;
@@ -1127,11 +1125,11 @@ CREATE TABLE IF NOT EXISTS public.leads (
 );
 
 -- Adicionar campos à tabela medicos
-DO $$ BEGIN ALTER TABLE public.medicos
+ALTER TABLE public.medicos
 ADD COLUMN IF NOT EXISTS phone_e164 text UNIQUE,
 ADD COLUMN IF NOT EXISTS lead_id uuid REFERENCES public.leads(id) ON DELETE SET NULL,
 ADD COLUMN IF NOT EXISTS alocado_cliente_id uuid REFERENCES public.clientes(id) ON DELETE SET NULL,
-ADD COLUMN IF NOT EXISTS status_contrato text; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ADD COLUMN IF NOT EXISTS status_contrato text;
 
 -- Atualizar tabela blacklist (recriar com estrutura correta)
 DROP TABLE IF EXISTS public.black_list CASCADE;
@@ -1185,9 +1183,9 @@ EXECUTE FUNCTION public.update_updated_at_column();
 
 -- === 20251009172428_a60bff5a-79a3-4e73-bec2-d8c7f82b56b4.sql ===
 -- Adicionar campos necessários na tabela contratos
-DO $$ BEGIN ALTER TABLE contratos 
+ALTER TABLE contratos 
 ADD COLUMN IF NOT EXISTS status_contrato text CHECK (status_contrato IN ('Ativo','Inativo','Suspenso','Cancelado')) DEFAULT 'Ativo',
-ADD COLUMN IF NOT EXISTS especialidade_contrato text CHECK (especialidade_contrato IN ('Hospital','Clínica','Pessoa Física','Pessoa Jurídica')); EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ADD COLUMN IF NOT EXISTS especialidade_contrato text CHECK (especialidade_contrato IN ('Hospital','Clínica','Pessoa Física','Pessoa Jurídica'));
 
 -- Renomear campos na tabela clientes para padronizar
 ALTER TABLE clientes 
@@ -1223,4 +1221,31 @@ WITH CHECK (
   is_admin(auth.uid()) 
   OR has_role(auth.uid(), 'gestor_demanda'::app_role)
   OR has_role(auth.uid(), 'recrutador'::app_role)
+);
+
+-- === 20251010143434_b998850d-5b68-44a0-bdd5-f471be2d10d3.sql ===
+-- Adicionar novos campos na tabela clientes
+ALTER TABLE public.clientes 
+  ADD COLUMN IF NOT EXISTS email_financeiro TEXT,
+  ADD COLUMN IF NOT EXISTS telefone_financeiro TEXT,
+  ADD COLUMN IF NOT EXISTS nome_unidade TEXT;
+
+-- Adicionar novos campos na tabela contratos
+ALTER TABLE public.contratos 
+  ADD COLUMN IF NOT EXISTS codigo_interno INTEGER,
+  ADD COLUMN IF NOT EXISTS objeto_contrato TEXT,
+  ADD COLUMN IF NOT EXISTS tipo_servico TEXT[];
+
+-- Alterar o enum de status_assinatura_contrato
+    ALTER TYPE status_assinatura_contrato ADD VALUE IF NOT EXISTS 'Em Análise';
+    ALTER TYPE status_assinatura_contrato ADD VALUE IF NOT EXISTS 'Aguardando Retorno';
+
+-- Criar tabela para itens do contrato
+CREATE TABLE IF NOT EXISTS public.contrato_itens (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  contrato_id UUID REFERENCES public.contratos(id) ON DELETE CASCADE NOT NULL,
+  item TEXT NOT NULL,
+  valor_item NUMERIC(10, 2) NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );

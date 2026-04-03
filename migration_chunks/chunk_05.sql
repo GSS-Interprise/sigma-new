@@ -1,98 +1,3 @@
-CREATE POLICY "Usuários autenticados podem visualizar contrato_capitacao"
-ON public.contrato_capitacao FOR SELECT
-USING (auth.uid() IS NOT NULL);
-
--- RLS Policies for servico
-DROP POLICY IF EXISTS "Usuários autorizados podem gerenciar servico" ON public.servico;
-CREATE POLICY "Usuários autorizados podem gerenciar servico"
-ON public.servico FOR ALL
-USING (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_captacao') OR has_role(auth.uid(), 'gestor_contratos'));
-
-DROP POLICY IF EXISTS "Usuários autenticados podem visualizar servico" ON public.servico;
-CREATE POLICY "Usuários autenticados podem visualizar servico"
-ON public.servico FOR SELECT
-USING (auth.uid() IS NOT NULL);
-
--- RLS Policies for proposta
-DROP POLICY IF EXISTS "Usuários autorizados podem gerenciar proposta" ON public.proposta;
-CREATE POLICY "Usuários autorizados podem gerenciar proposta"
-ON public.proposta FOR ALL
-USING (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_captacao') OR has_role(auth.uid(), 'gestor_contratos'));
-
-DROP POLICY IF EXISTS "Usuários autenticados podem visualizar proposta" ON public.proposta;
-CREATE POLICY "Usuários autenticados podem visualizar proposta"
-ON public.proposta FOR SELECT
-USING (auth.uid() IS NOT NULL);
-
--- Triggers for updated_at
-DROP TRIGGER IF EXISTS "update_contrato_capitacao_updated_at" ON public.contrato_capitacao;
-CREATE TRIGGER update_contrato_capitacao_updated_at
-  BEFORE UPDATE ON public.contrato_capitacao
-  FOR EACH ROW
-  EXECUTE FUNCTION public.update_updated_at_column();
-
-DROP TRIGGER IF EXISTS "update_servico_updated_at" ON public.servico;
-CREATE TRIGGER update_servico_updated_at
-  BEFORE UPDATE ON public.servico
-  FOR EACH ROW
-  EXECUTE FUNCTION public.update_updated_at_column();
-
-DROP TRIGGER IF EXISTS "update_proposta_updated_at" ON public.proposta;
-CREATE TRIGGER update_proposta_updated_at
-  BEFORE UPDATE ON public.proposta
-  FOR EACH ROW
-  EXECUTE FUNCTION public.update_updated_at_column();
-
--- === 20251204145834_bc40aea2-faac-4403-bd1d-47d0ca80e500.sql ===
--- Update the licitacoes-anexos bucket to allow all file types
-UPDATE storage.buckets 
-SET allowed_mime_types = NULL
-WHERE id = 'licitacoes-anexos';
-
--- If bucket doesn't exist, create it without restrictions
-INSERT INTO storage.buckets (id, name, public, allowed_mime_types)
-VALUES ('licitacoes-anexos', 'licitacoes-anexos', true, NULL)
-ON CONFLICT (id) DO UPDATE SET allowed_mime_types = NULL;
-
--- === 20251204174501_3389fdfc-9014-4028-9e18-66325ebcf798.sql ===
--- Create licitacoes_anexos table
-CREATE TABLE IF NOT EXISTS public.licitacoes_anexos (
-  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  licitacao_id UUID NOT NULL REFERENCES public.licitacoes(id) ON DELETE CASCADE,
-  arquivo_nome TEXT NOT NULL,
-  arquivo_url TEXT NOT NULL,
-  usuario_id UUID,
-  usuario_nome TEXT,
-  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
-);
-
--- Enable RLS
-ALTER TABLE public.licitacoes_anexos ENABLE ROW LEVEL SECURITY;
-
--- RLS policies (authenticated users can manage)
-DROP POLICY IF EXISTS "Authenticated users can view anexos" ON public.licitacoes_anexos;
-CREATE POLICY "Authenticated users can view anexos" 
-ON public.licitacoes_anexos 
-FOR SELECT 
-TO authenticated
-USING (true);
-
-DROP POLICY IF EXISTS "Authenticated users can insert anexos" ON public.licitacoes_anexos;
-CREATE POLICY "Authenticated users can insert anexos" 
-ON public.licitacoes_anexos 
-FOR INSERT 
-TO authenticated
-WITH CHECK (true);
-
-DROP POLICY IF EXISTS "Authenticated users can delete anexos" ON public.licitacoes_anexos;
-CREATE POLICY "Authenticated users can delete anexos" 
-ON public.licitacoes_anexos 
-FOR DELETE 
-TO authenticated
-USING (true);
-
--- Index for faster lookups
-CREATE INDEX IF NOT EXISTS idx_licitacoes_anexos_licitacao_id ON public.licitacoes_anexos(licitacao_id);
 
 -- === 20251204175332_628f6b3a-ec10-4d63-a3ff-06615578a8ee.sql ===
 -- Remove MIME type restrictions from editais-pdfs bucket to allow all file types including ZIP
@@ -320,30 +225,30 @@ EXECUTE FUNCTION public.update_updated_at_column();
 
 -- === 20251208114245_9c8c541e-8ffd-4e1e-8d63-42f9dc3c5e51.sql ===
 -- Add new fields to servico table
-DO $$ BEGIN ALTER TABLE public.servico 
+ALTER TABLE public.servico 
 ADD COLUMN IF NOT EXISTS especialidade text,
-ADD COLUMN IF NOT EXISTS lista_servicos text[] DEFAULT '{}'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ADD COLUMN IF NOT EXISTS lista_servicos text[] DEFAULT '{}';
 
 -- === 20251208130843_0ed82daa-88cc-45b0-8694-4e610b11d06f.sql ===
 -- Alterar proposta: remover obrigatoriedade de lead_id e adicionar novos campos
-DO $$ BEGIN ALTER TABLE public.proposta 
-  ALTER COLUMN lead_id DROP NOT NULL; EXCEPTION WHEN undefined_column THEN NULL; WHEN undefined_table THEN NULL; END $$;
+ALTER TABLE public.proposta 
+  ALTER COLUMN lead_id DROP NOT NULL;
 
 -- Adicionar campo id_proposta (identificador único formatado)
-DO $$ BEGIN ALTER TABLE public.proposta 
-  ADD COLUMN id_proposta TEXT UNIQUE; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE public.proposta 
+  ADD COLUMN id_proposta TEXT UNIQUE;
 
 -- Adicionar campo descricao
-DO $$ BEGIN ALTER TABLE public.proposta 
-  ADD COLUMN descricao TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE public.proposta 
+  ADD COLUMN descricao TEXT;
 
 -- Comentário explicativo do formato do id_proposta
 COMMENT ON COLUMN public.proposta.id_proposta IS 'ID formatado: {codigo_contrato}{3letrasServico}-{especialidade}-{ddMmmYY}-{valorFormatado}. Ex: 75Hem-Neo-08Dez25-50k';
 
 -- === 20251208133040_b34b0d35-0354-4d23-b9ad-28516c219a28.sql ===
 -- Add updated_at column to proposta table
-DO $$ BEGIN ALTER TABLE public.proposta 
-ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(); EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE public.proposta 
+ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT now();
 
 -- DROP TRIGGER IF EXISTS "for" ON public.proposta;
 -- Create trigger for automatic timestamp updates if not exists
@@ -548,7 +453,7 @@ EXECUTE FUNCTION public.update_updated_at_column();
 
 -- 1) Criar ENUM para tipos de evento no histórico do lead
 DO $$ BEGIN
-  DO $$ BEGIN CREATE TYPE tipo_evento_lead AS ENUM (
+-- NESTED_REMOVED:   DO $typblk$ BEGIN CREATE TYPE tipo_evento_lead AS ENUM (
     'disparo_email',
     'disparo_zap', 
     'proposta_enviada',
@@ -561,34 +466,34 @@ DO $$ BEGIN
     'documentacao_solicitada',
     'documentacao_recebida',
     'outro'
-  ); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+  ); EXCEPTION WHEN duplicate_object THEN NULL; END $typblk$;
 EXCEPTION
   WHEN duplicate_object THEN null;
 END $$;
 
 -- 2) Adicionar lead_id na tabela medicos para rastrear origem
-DO $$ BEGIN ALTER TABLE public.medicos 
-ADD COLUMN IF NOT EXISTS lead_id uuid REFERENCES public.leads(id); EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE public.medicos 
+ADD COLUMN IF NOT EXISTS lead_id uuid REFERENCES public.leads(id);
 
 -- 3) Adicionar campos de origem/rastreabilidade na tabela leads
-DO $$ BEGIN ALTER TABLE public.leads
+ALTER TABLE public.leads
 ADD COLUMN IF NOT EXISTS licitacao_origem_id uuid REFERENCES public.licitacoes(id),
 ADD COLUMN IF NOT EXISTS contrato_origem_id uuid REFERENCES public.contratos(id),
 ADD COLUMN IF NOT EXISTS servico_origem_id uuid REFERENCES public.servico(id),
 ADD COLUMN IF NOT EXISTS data_conversao timestamp with time zone,
-ADD COLUMN IF NOT EXISTS convertido_por uuid; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ADD COLUMN IF NOT EXISTS convertido_por uuid;
 
 -- 4) Garantir FK de proposta para lead (se tabela proposta existir)
-DO $$ 
+-- NESTED_REMOVED: DO $$ 
 BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'proposta' AND table_schema = 'public') THEN
     -- Adicionar lead_id se não existir
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'proposta' AND column_name = 'lead_id') THEN
-      DO $$ BEGIN ALTER TABLE public.proposta ADD COLUMN lead_id uuid REFERENCES public.leads(id); EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+      ALTER TABLE public.proposta ADD COLUMN lead_id uuid REFERENCES public.leads(id);
     END IF;
     -- Adicionar licitacao_id para rastreio completo
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'proposta' AND column_name = 'licitacao_id') THEN
-      DO $$ BEGIN ALTER TABLE public.proposta ADD COLUMN licitacao_id uuid REFERENCES public.licitacoes(id); EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+      ALTER TABLE public.proposta ADD COLUMN licitacao_id uuid REFERENCES public.licitacoes(id);
     END IF;
   END IF;
 END $$;
@@ -692,13 +597,13 @@ WITH CHECK (auth.uid() IS NOT NULL);
 
 -- === 20251208175022_360e975c-e2f9-44a8-978c-bd74840685ed.sql ===
 -- Add new event types to track all lead status changes
-DO $$ BEGIN ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'status_alterado'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'enviado_acompanhamento'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'lead_criado'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'lead_editado'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'lead_qualificado'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'em_resposta'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'lead_descartado'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'status_alterado';
+    ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'enviado_acompanhamento';
+    ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'lead_criado';
+    ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'lead_editado';
+    ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'lead_qualificado';
+    ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'em_resposta';
+    ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'lead_descartado';
 
 -- === 20251208175403_b141e099-1377-4664-8536-4823a3f030a1.sql ===
 -- Allow all authenticated users to insert lead history entries
@@ -719,7 +624,7 @@ WITH CHECK (auth.uid() IS NOT NULL);
 ALTER TABLE public.leads DROP CONSTRAINT IF EXISTS leads_status_check;
 
 -- Add updated constraint with all status values
-DO $$ BEGIN ALTER TABLE public.leads ADD CONSTRAINT leads_status_check 
+ALTER TABLE public.leads ADD CONSTRAINT leads_status_check 
 CHECK (status = ANY (ARRAY[
   'Novo'::text, 
   'Qualificado'::text, 
@@ -730,14 +635,14 @@ CHECK (status = ANY (ARRAY[
   'Proposta Enviada'::text,
   'Proposta Aceita'::text,
   'Proposta Recusada'::text
-])); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+]));
 
 -- === 20251208185305_68a2416b-8a55-433b-b11b-f297566ecb85.sql ===
 -- Add missing fields to leads table to match medicos kanban card structure
-DO $$ BEGIN ALTER TABLE public.leads
+ALTER TABLE public.leads
 ADD COLUMN IF NOT EXISTS cpf text,
 ADD COLUMN IF NOT EXISTS crm text,
-ADD COLUMN IF NOT EXISTS data_nascimento date; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ADD COLUMN IF NOT EXISTS data_nascimento date;
 
 -- === 20251208185936_dcf6406d-d3b9-4906-8617-2548d4513214.sql ===
 -- Remove a constraint fixa de status
@@ -775,7 +680,7 @@ CREATE TRIGGER validate_lead_status_trigger
 ALTER TABLE public.leads REPLICA IDENTITY FULL;
 
 -- Adicionar leads ao supabase_realtime se não existir
-DO $$
+-- NESTED_REMOVED: DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_publication_tables 
@@ -788,7 +693,7 @@ END $$;
 -- Habilitar realtime para kanban_status_config
 ALTER TABLE public.kanban_status_config REPLICA IDENTITY FULL;
 
-DO $$
+-- NESTED_REMOVED: DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_publication_tables 
@@ -800,7 +705,7 @@ END $$;
 
 -- === 20251209111201_772a205b-d209-42c1-b69f-c21d84a7430b.sql ===
 -- Add comprehensive lead fields for complete lead profile
-DO $$ BEGIN ALTER TABLE public.leads
+ALTER TABLE public.leads
 ADD COLUMN IF NOT EXISTS rqe text,
 ADD COLUMN IF NOT EXISTS nacionalidade text,
 ADD COLUMN IF NOT EXISTS naturalidade text,
@@ -817,12 +722,12 @@ ADD COLUMN IF NOT EXISTS modalidade_contrato text,
 ADD COLUMN IF NOT EXISTS local_prestacao_servico text,
 ADD COLUMN IF NOT EXISTS data_inicio_contrato date,
 ADD COLUMN IF NOT EXISTS valor_contrato numeric,
-ADD COLUMN IF NOT EXISTS especificacoes_contrato text; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ADD COLUMN IF NOT EXISTS especificacoes_contrato text;
 
 -- === 20251209112004_df31a549-b366-4dbe-bcb2-33f5fe85a969.sql ===
 -- Add additional phones field to support up to 5 contacts
-DO $$ BEGIN ALTER TABLE public.leads
-ADD COLUMN IF NOT EXISTS telefones_adicionais text[] DEFAULT '{}'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE public.leads
+ADD COLUMN IF NOT EXISTS telefones_adicionais text[] DEFAULT '{}';
 
 -- === 20251209112428_ad581878-7b28-46ff-8428-8a59305e99c9.sql ===
 -- CREATE TABLE IF NOT EXISTS for lead attachments
@@ -979,12 +884,12 @@ USING (auth.uid() IS NOT NULL);
 
 -- === 20251209172228_9fab5640-a4bd-4aca-8c04-fc9b369494cf.sql ===
 -- Add responsavel_id to conversas table for assigning operators
-DO $$ BEGIN ALTER TABLE public.conversas 
-ADD COLUMN IF NOT EXISTS responsavel_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE public.conversas 
+ADD COLUMN IF NOT EXISTS responsavel_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL;
 
 -- Add status field for conversation tracking
-DO $$ BEGIN ALTER TABLE public.conversas 
-ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'aberto'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE public.conversas 
+ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'aberto';
 
 -- === 20251209174829_05a8b359-cd42-449c-815d-c1fb88135783.sql ===
 
@@ -1157,3 +1062,131 @@ CREATE POLICY "Usuários autenticados podem inserir mensagens"
   WITH CHECK (auth.uid() IS NOT NULL);
 
 DROP POLICY IF EXISTS "Sistema pode inserir mensagens" ON public.sigzap_messages;
+CREATE POLICY "Sistema pode inserir mensagens"
+  ON public.sigzap_messages FOR INSERT
+  WITH CHECK (true);
+
+-- Políticas para sigzap_events
+DROP POLICY IF EXISTS "Admins podem visualizar eventos" ON public.sigzap_events;
+CREATE POLICY "Admins podem visualizar eventos"
+  ON public.sigzap_events FOR SELECT
+  USING (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_captacao'));
+
+DROP POLICY IF EXISTS "Sistema pode inserir eventos" ON public.sigzap_events;
+CREATE POLICY "Sistema pode inserir eventos"
+  ON public.sigzap_events FOR INSERT
+  WITH CHECK (true);
+
+-- Habilitar Realtime para as tabelas principais
+ALTER PUBLICATION supabase_realtime ADD TABLE public.sigzap_conversations;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.sigzap_messages;
+
+-- Storage bucket para mídia
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+  'sigzap-media',
+  'sigzap-media',
+  false,
+  52428800, -- 50MB
+  ARRAY['image/*', 'video/*', 'audio/*', 'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']
+) ON CONFLICT (id) DO NOTHING;
+
+-- Políticas de storage para sigzap-media
+DROP POLICY IF EXISTS "Usuários autenticados podem visualizar mídia sigzap" ON storage.objects;
+CREATE POLICY "Usuários autenticados podem visualizar mídia sigzap"
+  ON storage.objects FOR SELECT
+  USING (bucket_id = 'sigzap-media' AND auth.uid() IS NOT NULL);
+
+DROP POLICY IF EXISTS "Sistema pode inserir mídia sigzap" ON storage.objects;
+CREATE POLICY "Sistema pode inserir mídia sigzap"
+  ON storage.objects FOR INSERT
+  WITH CHECK (bucket_id = 'sigzap-media');
+
+DROP POLICY IF EXISTS "Admins podem gerenciar mídia sigzap" ON storage.objects;
+CREATE POLICY "Admins podem gerenciar mídia sigzap"
+  ON storage.objects FOR ALL
+  USING (bucket_id = 'sigzap-media' AND (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_captacao')));
+
+-- Migrar dados existentes de chips para sigzap_instances
+INSERT INTO public.sigzap_instances (name, instance_uuid, phone_number, status, profile_name, profile_picture_url, chip_id)
+SELECT 
+  nome,
+  instance_id,
+  numero,
+  CASE WHEN connection_state = 'open' THEN 'connected' ELSE 'disconnected' END,
+  profile_name,
+  profile_picture_url,
+  id
+FROM public.chips
+WHERE instance_id IS NOT NULL
+ON CONFLICT DO NOTHING;
+
+
+-- === 20251209181841_efccf096-a9d0-4768-a3f1-d054d422feaf.sql ===
+-- Adicionar campo cor à tabela captacao_permissoes_usuario
+ALTER TABLE public.captacao_permissoes_usuario 
+ADD COLUMN IF NOT EXISTS cor TEXT;
+
+-- === 20251209191836_839c991f-b55b-4d9e-a5f6-47ef5ae3621c.sql ===
+-- Tornar o bucket sigzap-media público para permitir acesso às URLs de mídia
+UPDATE storage.buckets 
+SET public = true 
+WHERE id = 'sigzap-media';
+
+-- Se não existir, criar como público
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('sigzap-media', 'sigzap-media', true)
+ON CONFLICT (id) DO UPDATE SET public = true;
+
+-- === 20251210113204_bf598681-a621-4743-95aa-c32122d7254f.sql ===
+-- Add approval fields for "Corpo Médico" conversion
+ALTER TABLE public.medicos
+ADD COLUMN IF NOT EXISTS aprovacao_contrato_assinado boolean DEFAULT false,
+ADD COLUMN IF NOT EXISTS aprovacao_documentacao_unidade boolean DEFAULT false,
+ADD COLUMN IF NOT EXISTS aprovacao_cadastro_unidade boolean DEFAULT false,
+ADD COLUMN IF NOT EXISTS data_aprovacao_corpo_medico timestamp with time zone,
+ADD COLUMN IF NOT EXISTS aprovado_corpo_medico_por uuid;
+
+-- === 20251210120722_94f8652c-b17e-49db-9c4a-1dfd5c99ed33.sql ===
+-- Add policy to allow authenticated users to insert leads
+DROP POLICY IF EXISTS "Authenticated users can insert leads" ON public.leads;
+CREATE POLICY "Authenticated users can insert leads" 
+ON public.leads 
+FOR INSERT 
+WITH CHECK (auth.uid() IS NOT NULL);
+
+-- === 20251212120225_d83064fa-233c-456f-9cb9-44ee135daafb.sql ===
+-- Add reaction column to sigzap_messages table
+ALTER TABLE public.sigzap_messages 
+ADD COLUMN reaction TEXT;
+
+-- Add comment explaining the column
+COMMENT ON COLUMN public.sigzap_messages.reaction IS 'Emoji reaction to this message';
+
+-- === 20251212133705_b59348e3-8480-4a18-a44c-639bac5a0377.sql ===
+
+-- AGES Profissionais (cadastro de profissionais não-médicos)
+CREATE TABLE IF NOT EXISTS public.ages_profissionais (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  nome TEXT NOT NULL,
+  cpf TEXT,
+  rg TEXT,
+  data_nascimento DATE,
+  profissao TEXT NOT NULL,
+  registro_profissional TEXT,
+  telefone TEXT,
+  email TEXT,
+  endereco TEXT,
+  cidade TEXT,
+  uf TEXT,
+  cep TEXT,
+  banco TEXT,
+  agencia TEXT,
+  conta_corrente TEXT,
+  chave_pix TEXT,
+  status TEXT NOT NULL DEFAULT 'pendente_documentacao',
+  observacoes TEXT,
+  lead_origem_id UUID,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+);

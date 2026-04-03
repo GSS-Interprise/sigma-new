@@ -1,169 +1,10 @@
-CREATE POLICY "Usuários autenticados podem visualizar proposta_itens"
-ON public.proposta_itens
-FOR SELECT
-USING (auth.uid() IS NOT NULL);
-
-DROP POLICY IF EXISTS "Gestores podem gerenciar proposta_itens" ON public.proposta_itens;
-CREATE POLICY "Gestores podem gerenciar proposta_itens"
-ON public.proposta_itens
-FOR ALL
-USING (
-  is_admin(auth.uid()) OR 
-  has_role(auth.uid(), 'gestor_captacao') OR 
-  has_role(auth.uid(), 'gestor_contratos')
-)
-WITH CHECK (
-  is_admin(auth.uid()) OR 
-  has_role(auth.uid(), 'gestor_captacao') OR 
-  has_role(auth.uid(), 'gestor_contratos')
-);
-
--- 6. Add updated_at trigger for proposta_itens
-DROP TRIGGER IF EXISTS "update_proposta_itens_updated_at" ON public.proposta_itens;
-CREATE TRIGGER update_proposta_itens_updated_at
-BEFORE UPDATE ON public.proposta_itens
-FOR EACH ROW
-EXECUTE FUNCTION public.update_updated_at_column();
-
--- 7. CREATE INDEX IF NOT EXISTSes for performance
-CREATE INDEX IF NOT EXISTS idx_proposta_contrato_id ON public.proposta(contrato_id);
-CREATE INDEX IF NOT EXISTS idx_proposta_unidade_id ON public.proposta(unidade_id);
-CREATE INDEX IF NOT EXISTS idx_proposta_itens_proposta_id ON public.proposta_itens(proposta_id);
-
--- === 20251218143501_70b0b795-c815-4719-bba2-db370b692da6.sql ===
--- Desvincula registros
-UPDATE public.contratos SET licitacao_origem_id = NULL 
-WHERE licitacao_origem_id IN (SELECT id FROM public.licitacoes);
-
-UPDATE public.leads SET licitacao_origem_id = NULL 
-WHERE licitacao_origem_id IN (SELECT id FROM public.licitacoes);
-
--- Deleta registros derivados
-DELETE FROM public.captacao_contratos_board 
-WHERE origem_licitacao_id IN (SELECT id FROM public.licitacoes);
-
-DELETE FROM public.contrato_rascunho_anexos 
-WHERE contrato_rascunho_id IN (
-  SELECT id FROM public.contrato_rascunho WHERE licitacao_id IN (SELECT id FROM public.licitacoes)
-);
-
-DELETE FROM public.contrato_rascunho 
-WHERE licitacao_id IN (SELECT id FROM public.licitacoes);
-
-DELETE FROM public.licitacoes_atividades 
-WHERE licitacao_id IN (SELECT id FROM public.licitacoes);
-
--- Remove todas as licitações
-DELETE FROM public.licitacoes;
-
--- Limpa os buckets de storage
-DELETE FROM storage.objects WHERE bucket_id IN ('licitacoes-anexos', 'editais-pdfs');
-
--- === 20251218144413_4852b6ed-2138-4347-bfa1-c80228eca6c0.sql ===
--- Desvincula registros
-UPDATE public.contratos SET licitacao_origem_id = NULL 
-WHERE licitacao_origem_id IN (SELECT id FROM public.licitacoes);
-
-UPDATE public.leads SET licitacao_origem_id = NULL 
-WHERE licitacao_origem_id IN (SELECT id FROM public.licitacoes);
-
--- Deleta registros derivados
-DELETE FROM public.captacao_contratos_board 
-WHERE origem_licitacao_id IN (SELECT id FROM public.licitacoes);
-
-DELETE FROM public.contrato_rascunho_anexos 
-WHERE contrato_rascunho_id IN (
-  SELECT id FROM public.contrato_rascunho WHERE licitacao_id IN (SELECT id FROM public.licitacoes)
-);
-
-DELETE FROM public.contrato_rascunho 
-WHERE licitacao_id IN (SELECT id FROM public.licitacoes);
-
-DELETE FROM public.licitacoes_atividades 
-WHERE licitacao_id IN (SELECT id FROM public.licitacoes);
-
--- Remove todas as licitações
-DELETE FROM public.licitacoes;
-
--- Limpa os buckets de storage
-DELETE FROM storage.objects WHERE bucket_id IN ('licitacoes-anexos', 'editais-pdfs');
-
--- === 20251218162716_709f290f-8591-4e7d-9572-4b06e6f70082.sql ===
--- Adicionar campo para dados customizados nas licitações
-DO $$ BEGIN ALTER TABLE public.licitacoes 
-ADD COLUMN IF NOT EXISTS dados_customizados JSONB DEFAULT '{}'::jsonb; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
-
--- === 20251218163735_9e2d6301-5b85-401e-ab1b-6f253c64b925.sql ===
--- Adicionar campo tipo_licitacao para distinguir licitações GSS vs AGES
-DO $$ BEGIN ALTER TABLE public.licitacoes
-ADD COLUMN IF NOT EXISTS tipo_licitacao TEXT DEFAULT 'GSS' CHECK (tipo_licitacao IN ('GSS', 'AGES')); EXCEPTION WHEN duplicate_column THEN NULL; END $$;
-
--- Criar índice para filtros por tipo
-CREATE INDEX IF NOT EXISTS idx_licitacoes_tipo_licitacao ON public.licitacoes(tipo_licitacao);
-
--- === 20251218174741_0f535efa-3cb3-4dc6-a5c6-7d29342d94e4.sql ===
--- Add prioridade column to licitacoes table
-DO $$ BEGIN ALTER TABLE public.licitacoes 
-ADD COLUMN IF NOT EXISTS prioridade TEXT DEFAULT NULL; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
-
--- === 20251219121419_44ec1a74-51a5-4741-a208-65a6e5310c5a.sql ===
--- Add UPDATE policy for comunicacao_mensagens to allow users to edit their own messages
-DROP POLICY IF EXISTS "Users can update their own messages" ON public.comunicacao_mensagens;
-CREATE POLICY "Users can update their own messages" 
-ON public.comunicacao_mensagens 
-FOR UPDATE 
-USING (auth.uid() = user_id)
-WITH CHECK (auth.uid() = user_id);
-
--- === 20251219122823_6d7e2502-0cbb-4b2f-b1ba-0711a159e4c5.sql ===
--- Criar tabela para armazenar configuração global de etiquetas de licitações
-CREATE TABLE IF NOT EXISTS public.licitacoes_etiquetas_config (
-  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  nome TEXT NOT NULL UNIQUE,
-  cor_id TEXT NOT NULL DEFAULT 'gray',
-  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
-);
-
--- Habilitar RLS
-ALTER TABLE public.licitacoes_etiquetas_config ENABLE ROW LEVEL SECURITY;
-
--- Política para visualização - usuários autenticados
-DROP POLICY IF EXISTS "Usuários autenticados podem visualizar etiquetas" ON public.licitacoes_etiquetas_config;
-CREATE POLICY "Usuários autenticados podem visualizar etiquetas" 
-ON public.licitacoes_etiquetas_config 
-FOR SELECT 
-USING (auth.uid() IS NOT NULL);
-
--- Política para gerenciamento - gestores
-DROP POLICY IF EXISTS "Gestores podem gerenciar etiquetas" ON public.licitacoes_etiquetas_config;
-CREATE POLICY "Gestores podem gerenciar etiquetas" 
-ON public.licitacoes_etiquetas_config 
-FOR ALL 
-USING (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_contratos'::app_role) OR has_role(auth.uid(), 'gestor_captacao'::app_role) OR has_role(auth.uid(), 'lideres'::app_role))
-WITH CHECK (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_contratos'::app_role) OR has_role(auth.uid(), 'gestor_captacao'::app_role) OR has_role(auth.uid(), 'lideres'::app_role));
-
--- Inserir etiquetas padrão
-INSERT INTO public.licitacoes_etiquetas_config (nome, cor_id) VALUES
-  ('Saúde', 'teal'),
-  ('Radiologia', 'purple'),
-  ('Urgente', 'red'),
-  ('Prioritário', 'orange'),
-  ('Médico', 'blue'),
-  ('Equipamento', 'green'),
-  ('Análise Técnica', 'yellow'),
-  ('Documentação', 'gray');
-
--- === 20251222195011_dd01ac85-fbb8-49cc-9d00-7dd07ef10663.sql ===
--- Adicionar novo valor ao enum tipo_evento_lead
-DO $$ BEGIN ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'desconvertido_para_lead'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- === 20251223143019_815a9e5d-3e97-4b59-bdf7-31e5a277c2fc.sql ===
 -- Etapa 1: Adicionar novos campos para suportar layout V2
 -- Mantendo retrocompatibilidade total com layout V1
 
 -- Novos campos para o layout V2
-DO $$ BEGIN ALTER TABLE public.radiologia_pendencias 
+ALTER TABLE public.radiologia_pendencias 
 ADD COLUMN IF NOT EXISTS cod_acesso TEXT,
 ADD COLUMN IF NOT EXISTS sla TEXT,
 ADD COLUMN IF NOT EXISTS sla_horas INTEGER,
@@ -171,7 +12,7 @@ ADD COLUMN IF NOT EXISTS medico_atribuido_id UUID REFERENCES public.medicos(id),
 ADD COLUMN IF NOT EXISTS medico_atribuido_nome TEXT,
 ADD COLUMN IF NOT EXISTS medico_finalizador_id UUID REFERENCES public.medicos(id),
 ADD COLUMN IF NOT EXISTS data_final TIMESTAMP WITH TIME ZONE,
-ADD COLUMN IF NOT EXISTS layout_versao TEXT DEFAULT 'v1'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ADD COLUMN IF NOT EXISTS layout_versao TEXT DEFAULT 'v1';
 
 -- Índice para cod_acesso (campo chave do novo layout)
 CREATE INDEX IF NOT EXISTS idx_radiologia_pendencias_cod_acesso 
@@ -207,19 +48,19 @@ WHERE layout_versao IS NULL OR sla IS NULL;
 
 -- === 20251223194449_1022a7ca-8621-4a9f-832b-309f281062ae.sql ===
 -- Adicionar coluna para ignorar pendências
-DO $$ BEGIN ALTER TABLE public.radiologia_pendencias 
-ADD COLUMN IF NOT EXISTS ignorada BOOLEAN DEFAULT false; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE public.radiologia_pendencias 
+ADD COLUMN IF NOT EXISTS ignorada BOOLEAN DEFAULT false;
 
 -- Adicionar coluna para motivo da ignorância
-DO $$ BEGIN ALTER TABLE public.radiologia_pendencias 
-ADD COLUMN IF NOT EXISTS motivo_ignorar TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE public.radiologia_pendencias 
+ADD COLUMN IF NOT EXISTS motivo_ignorar TEXT;
 
 -- === 20251229121958_8dd7a7e5-d2b1-448d-b5cf-ebc8e504e95e.sql ===
 -- Adicionar campos para vincular ajustes às pendências importadas
-DO $$ BEGIN ALTER TABLE radiologia_ajuste_laudos
+ALTER TABLE radiologia_ajuste_laudos
 ADD COLUMN IF NOT EXISTS pendencia_id UUID REFERENCES radiologia_pendencias(id) ON DELETE SET NULL,
 ADD COLUMN IF NOT EXISTS nome_paciente TEXT,
-ADD COLUMN IF NOT EXISTS cod_acesso TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ADD COLUMN IF NOT EXISTS cod_acesso TEXT;
 
 -- Índice para busca por pendência
 CREATE INDEX IF NOT EXISTS idx_radiologia_ajuste_laudos_pendencia_id ON radiologia_ajuste_laudos(pendencia_id);
@@ -325,7 +166,7 @@ USING (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_radiologia') OR has_
 
 -- === 20251229180131_396f5335-e758-41ab-8996-3351ec6ccbf8.sql ===
 -- Primeiro: Adicionar o novo role ao enum
-DO $$ BEGIN ALTER TYPE public.app_role ADD VALUE IF NOT EXISTS 'gestor_ages'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $atvblk$ BEGIN ALTER TYPE public.app_role ADD VALUE IF NOT EXISTS 'gestor_ages'; EXCEPTION WHEN duplicate_object THEN NULL; END $atvblk$;
 
 -- === 20251229180210_440681d8-7cdb-4a29-8605-06dc99048ee8.sql ===
 -- 1. Atualizar política da tabela ages_profissionais para incluir gestor_ages
@@ -804,9 +645,9 @@ CREATE TABLE IF NOT EXISTS public.ages_unidades (
 
 -- 1.3 Adicionar novas colunas em ages_contratos para referenciar ages_clientes e ages_unidades
 -- Primeiro, adicionar as novas colunas
-DO $$ BEGIN ALTER TABLE public.ages_contratos 
+ALTER TABLE public.ages_contratos 
   ADD COLUMN IF NOT EXISTS ages_cliente_id UUID REFERENCES public.ages_clientes(id),
-  ADD COLUMN IF NOT EXISTS ages_unidade_id UUID REFERENCES public.ages_unidades(id); EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+  ADD COLUMN IF NOT EXISTS ages_unidade_id UUID REFERENCES public.ages_unidades(id);
 
 -- 1.4 Habilitar RLS
 ALTER TABLE public.ages_clientes ENABLE ROW LEVEL SECURITY;
@@ -871,7 +712,7 @@ CREATE INDEX IF NOT EXISTS idx_ages_contratos_ages_unidade ON public.ages_contra
 
 -- === 20260102145941_a8e4317e-2ec4-45a9-b80f-7c2b4aefc1cf.sql ===
 -- Adicionar mais campos ao ages_leads para ficar igual ao GSS
-DO $$ BEGIN ALTER TABLE public.ages_leads 
+ALTER TABLE public.ages_leads 
 ADD COLUMN IF NOT EXISTS cpf TEXT,
 ADD COLUMN IF NOT EXISTS rg TEXT,
 ADD COLUMN IF NOT EXISTS data_nascimento DATE,
@@ -887,7 +728,7 @@ ADD COLUMN IF NOT EXISTS modalidade_contrato TEXT,
 ADD COLUMN IF NOT EXISTS local_prestacao_servico TEXT,
 ADD COLUMN IF NOT EXISTS data_inicio_contrato DATE,
 ADD COLUMN IF NOT EXISTS valor_contrato NUMERIC,
-ADD COLUMN IF NOT EXISTS especificacoes_contrato TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ADD COLUMN IF NOT EXISTS especificacoes_contrato TEXT;
 
 -- Criar tabela de histórico para ages_leads
 CREATE TABLE IF NOT EXISTS public.ages_lead_historico (
@@ -969,7 +810,7 @@ SET public = true
 WHERE id = 'ages-documentos';
 
 -- Criar política de upload se não existir
-DO $$
+-- NESTED_REMOVED: DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_policies 
@@ -985,7 +826,7 @@ CREATE POLICY "Permitir upload ages-documentos"
 END $$;
 
 -- Criar política de leitura pública se não existir
-DO $$
+-- NESTED_REMOVED: DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_policies 
@@ -1001,7 +842,7 @@ CREATE POLICY "Permitir leitura ages-documentos"
 END $$;
 
 -- Criar política de delete se não existir
-DO $$
+-- NESTED_REMOVED: DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_policies 
@@ -1018,8 +859,8 @@ END $$;
 
 -- === 20260102172924_2d9ecf95-0402-4621-aebb-222a98e88bb7.sql ===
 -- Adicionar campo unidades_vinculadas ao ages_leads
-DO $$ BEGIN ALTER TABLE public.ages_leads 
-ADD COLUMN IF NOT EXISTS unidades_vinculadas uuid[] DEFAULT '{}'::uuid[]; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE public.ages_leads 
+ADD COLUMN IF NOT EXISTS unidades_vinculadas uuid[] DEFAULT '{}'::uuid[];
 
 -- Criar tabela de propostas AGES
 CREATE TABLE IF NOT EXISTS public.ages_propostas (
@@ -1037,3 +878,164 @@ CREATE TABLE IF NOT EXISTS public.ages_propostas (
   criado_em timestamp with time zone NOT NULL DEFAULT now(),
   atualizado_em timestamp with time zone NOT NULL DEFAULT now()
 );
+
+-- Enable RLS
+ALTER TABLE public.ages_propostas ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies
+DROP POLICY IF EXISTS "Authenticated users can view ages_propostas" ON public.ages_propostas;
+CREATE POLICY "Authenticated users can view ages_propostas"
+ON public.ages_propostas FOR SELECT
+USING (auth.uid() IS NOT NULL);
+
+DROP POLICY IF EXISTS "Authorized users can manage ages_propostas" ON public.ages_propostas;
+CREATE POLICY "Authorized users can manage ages_propostas"
+ON public.ages_propostas FOR ALL
+USING (
+  is_admin(auth.uid()) OR 
+  has_role(auth.uid(), 'gestor_captacao') OR 
+  has_role(auth.uid(), 'gestor_contratos') OR 
+  has_role(auth.uid(), 'gestor_ages')
+);
+
+-- Trigger para updated_at
+DROP TRIGGER IF EXISTS "update_ages_propostas_updated_at" ON public.ages_propostas;
+CREATE TRIGGER update_ages_propostas_updated_at
+  BEFORE UPDATE ON public.ages_propostas
+  FOR EACH ROW
+  EXECUTE FUNCTION public.update_updated_at_column();
+
+-- === 20260102191409_4e500cd0-d9cd-4301-a213-ab7c6557e597.sql ===
+
+-- Tabela para armazenar contas/perfis de marketing
+CREATE TABLE IF NOT EXISTS public.marketing_contas (
+    id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+    nome TEXT NOT NULL UNIQUE,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+);
+
+-- Habilitar RLS
+ALTER TABLE public.marketing_contas ENABLE ROW LEVEL SECURITY;
+
+-- Política para visualização
+DROP POLICY IF EXISTS "Authenticated users can view marketing_contas" ON public.marketing_contas;
+CREATE POLICY "Authenticated users can view marketing_contas"
+ON public.marketing_contas
+FOR SELECT
+USING (auth.uid() IS NOT NULL);
+
+-- Política para gerenciamento
+DROP POLICY IF EXISTS "Authorized users can manage marketing_contas" ON public.marketing_contas;
+CREATE POLICY "Authorized users can manage marketing_contas"
+ON public.marketing_contas
+FOR ALL
+USING (
+    is_admin(auth.uid()) OR 
+    has_role(auth.uid(), 'gestor_marketing'::app_role) OR 
+    has_role(auth.uid(), 'diretoria'::app_role)
+);
+
+-- Alterar coluna conta_perfil para permitir null
+ALTER TABLE public.marketing_conteudos 
+ALTER COLUMN conta_perfil DROP NOT NULL;
+
+
+-- === 20260102194559_779f2c2f-7cc7-4bdd-b749-652669bc708b.sql ===
+
+-- Adicionar colunas faltantes na tabela ages_contratos
+ALTER TABLE public.ages_contratos 
+ADD COLUMN IF NOT EXISTS assinado text DEFAULT 'Pendente',
+ADD COLUMN IF NOT EXISTS motivo_pendente text,
+ADD COLUMN IF NOT EXISTS prazo_meses integer,
+ADD COLUMN IF NOT EXISTS codigo_interno integer;
+
+-- Criar sequência para codigo_interno em ages_contratos
+CREATE SEQUENCE IF NOT EXISTS ages_contratos_codigo_interno_seq START WITH 1;
+
+-- Definir default para codigo_interno usando a sequência
+ALTER TABLE public.ages_contratos 
+ALTER COLUMN codigo_interno SET DEFAULT nextval('ages_contratos_codigo_interno_seq');
+
+-- Criar tabela ages_contrato_itens
+CREATE TABLE IF NOT EXISTS public.ages_contrato_itens (
+  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  contrato_id uuid NOT NULL REFERENCES public.ages_contratos(id) ON DELETE CASCADE,
+  item text NOT NULL,
+  valor_item numeric NOT NULL,
+  quantidade integer DEFAULT 1,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+-- Criar tabela ages_contrato_renovacoes
+CREATE TABLE IF NOT EXISTS public.ages_contrato_renovacoes (
+  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  contrato_id uuid NOT NULL REFERENCES public.ages_contratos(id) ON DELETE CASCADE,
+  data_vigencia date NOT NULL,
+  percentual_reajuste numeric,
+  valor numeric,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+-- Criar tabela ages_contrato_aditivos
+CREATE TABLE IF NOT EXISTS public.ages_contrato_aditivos (
+  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  contrato_id uuid NOT NULL REFERENCES public.ages_contratos(id) ON DELETE CASCADE,
+  data_inicio date NOT NULL,
+  prazo_meses integer NOT NULL,
+  data_termino date NOT NULL,
+  observacoes text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+-- Habilitar RLS nas novas tabelas
+ALTER TABLE public.ages_contrato_itens ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ages_contrato_renovacoes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ages_contrato_aditivos ENABLE ROW LEVEL SECURITY;
+
+-- Políticas RLS para ages_contrato_itens
+DROP POLICY IF EXISTS "Authenticated users can view ages_contrato_itens" ON public.ages_contrato_itens;
+CREATE POLICY "Authenticated users can view ages_contrato_itens" 
+ON public.ages_contrato_itens 
+FOR SELECT 
+USING (auth.uid() IS NOT NULL);
+
+DROP POLICY IF EXISTS "Authorized users can manage ages_contrato_itens" ON public.ages_contrato_itens;
+CREATE POLICY "Authorized users can manage ages_contrato_itens" 
+ON public.ages_contrato_itens 
+FOR ALL 
+USING (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_captacao'::app_role) OR has_role(auth.uid(), 'gestor_contratos'::app_role) OR has_role(auth.uid(), 'gestor_ages'::app_role));
+
+-- Políticas RLS para ages_contrato_renovacoes
+DROP POLICY IF EXISTS "Authenticated users can view ages_contrato_renovacoes" ON public.ages_contrato_renovacoes;
+CREATE POLICY "Authenticated users can view ages_contrato_renovacoes" 
+ON public.ages_contrato_renovacoes 
+FOR SELECT 
+USING (auth.uid() IS NOT NULL);
+
+DROP POLICY IF EXISTS "Authorized users can manage ages_contrato_renovacoes" ON public.ages_contrato_renovacoes;
+CREATE POLICY "Authorized users can manage ages_contrato_renovacoes" 
+ON public.ages_contrato_renovacoes 
+FOR ALL 
+USING (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_captacao'::app_role) OR has_role(auth.uid(), 'gestor_contratos'::app_role) OR has_role(auth.uid(), 'gestor_ages'::app_role));
+
+-- Políticas RLS para ages_contrato_aditivos
+DROP POLICY IF EXISTS "Authenticated users can view ages_contrato_aditivos" ON public.ages_contrato_aditivos;
+CREATE POLICY "Authenticated users can view ages_contrato_aditivos" 
+ON public.ages_contrato_aditivos 
+FOR SELECT 
+USING (auth.uid() IS NOT NULL);
+
+DROP POLICY IF EXISTS "Authorized users can manage ages_contrato_aditivos" ON public.ages_contrato_aditivos;
+CREATE POLICY "Authorized users can manage ages_contrato_aditivos" 
+ON public.ages_contrato_aditivos 
+FOR ALL 
+USING (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_captacao'::app_role) OR has_role(auth.uid(), 'gestor_contratos'::app_role) OR has_role(auth.uid(), 'gestor_ages'::app_role));
+
+-- Trigger para updated_at nas novas tabelas
+CREATE OR REPLACE FUNCTION public.update_ages_contrato_related_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = now();

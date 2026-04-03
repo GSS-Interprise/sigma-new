@@ -1,191 +1,3 @@
-CREATE POLICY "Usuários podem deletar suas próprias pastas"
-  ON public.user_pastas FOR DELETE
-  USING (auth.uid() = user_id);
-
--- Políticas RLS para user_notas (privado por usuário)
-DROP POLICY IF EXISTS "Usuários podem ver suas próprias notas" ON public.user_notas;
-CREATE POLICY "Usuários podem ver suas próprias notas"
-  ON public.user_notas FOR SELECT
-  USING (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Usuários podem criar suas próprias notas" ON public.user_notas;
-CREATE POLICY "Usuários podem criar suas próprias notas"
-  ON public.user_notas FOR INSERT
-  WITH CHECK (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Usuários podem atualizar suas próprias notas" ON public.user_notas;
-CREATE POLICY "Usuários podem atualizar suas próprias notas"
-  ON public.user_notas FOR UPDATE
-  USING (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Usuários podem deletar suas próprias notas" ON public.user_notas;
-CREATE POLICY "Usuários podem deletar suas próprias notas"
-  ON public.user_notas FOR DELETE
-  USING (auth.uid() = user_id);
-
--- Políticas RLS para checklist (via nota do usuário)
-DROP POLICY IF EXISTS "Usuários podem ver checklist de suas notas" ON public.user_notas_checklist;
-CREATE POLICY "Usuários podem ver checklist de suas notas"
-  ON public.user_notas_checklist FOR SELECT
-  USING (EXISTS (
-    SELECT 1 FROM public.user_notas 
-    WHERE id = nota_id AND user_id = auth.uid()
-  ));
-
-DROP POLICY IF EXISTS "Usuários podem criar checklist em suas notas" ON public.user_notas_checklist;
-CREATE POLICY "Usuários podem criar checklist em suas notas"
-  ON public.user_notas_checklist FOR INSERT
-  WITH CHECK (EXISTS (
-    SELECT 1 FROM public.user_notas 
-    WHERE id = nota_id AND user_id = auth.uid()
-  ));
-
-DROP POLICY IF EXISTS "Usuários podem atualizar checklist de suas notas" ON public.user_notas_checklist;
-CREATE POLICY "Usuários podem atualizar checklist de suas notas"
-  ON public.user_notas_checklist FOR UPDATE
-  USING (EXISTS (
-    SELECT 1 FROM public.user_notas 
-    WHERE id = nota_id AND user_id = auth.uid()
-  ));
-
-DROP POLICY IF EXISTS "Usuários podem deletar checklist de suas notas" ON public.user_notas_checklist;
-CREATE POLICY "Usuários podem deletar checklist de suas notas"
-  ON public.user_notas_checklist FOR DELETE
-  USING (EXISTS (
-    SELECT 1 FROM public.user_notas 
-    WHERE id = nota_id AND user_id = auth.uid()
-  ));
-
--- Políticas RLS para anexos (via nota do usuário)
-DROP POLICY IF EXISTS "Usuários podem ver anexos de suas notas" ON public.user_notas_anexos;
-CREATE POLICY "Usuários podem ver anexos de suas notas"
-  ON public.user_notas_anexos FOR SELECT
-  USING (EXISTS (
-    SELECT 1 FROM public.user_notas 
-    WHERE id = nota_id AND user_id = auth.uid()
-  ));
-
-DROP POLICY IF EXISTS "Usuários podem criar anexos em suas notas" ON public.user_notas_anexos;
-CREATE POLICY "Usuários podem criar anexos em suas notas"
-  ON public.user_notas_anexos FOR INSERT
-  WITH CHECK (EXISTS (
-    SELECT 1 FROM public.user_notas 
-    WHERE id = nota_id AND user_id = auth.uid()
-  ));
-
-DROP POLICY IF EXISTS "Usuários podem atualizar anexos de suas notas" ON public.user_notas_anexos;
-CREATE POLICY "Usuários podem atualizar anexos de suas notas"
-  ON public.user_notas_anexos FOR UPDATE
-  USING (EXISTS (
-    SELECT 1 FROM public.user_notas 
-    WHERE id = nota_id AND user_id = auth.uid()
-  ));
-
-DROP POLICY IF EXISTS "Usuários podem deletar anexos de suas notas" ON public.user_notas_anexos;
-CREATE POLICY "Usuários podem deletar anexos de suas notas"
-  ON public.user_notas_anexos FOR DELETE
-  USING (EXISTS (
-    SELECT 1 FROM public.user_notas 
-    WHERE id = nota_id AND user_id = auth.uid()
-  ));
-
--- Índices para performance
-CREATE INDEX IF NOT EXISTS idx_user_pastas_user_id ON public.user_pastas(user_id);
-CREATE INDEX IF NOT EXISTS idx_user_notas_user_id ON public.user_notas(user_id);
-CREATE INDEX IF NOT EXISTS idx_user_notas_pasta_id ON public.user_notas(pasta_id);
-CREATE INDEX IF NOT EXISTS idx_user_notas_checklist_nota_id ON public.user_notas_checklist(nota_id);
-CREATE INDEX IF NOT EXISTS idx_user_notas_anexos_nota_id ON public.user_notas_anexos(nota_id);
-
--- Trigger para atualizar updated_at
-DROP TRIGGER IF EXISTS "update_user_pastas_updated_at" ON public.user_pastas;
-CREATE TRIGGER update_user_pastas_updated_at
-  BEFORE UPDATE ON public.user_pastas
-  FOR EACH ROW
-  EXECUTE FUNCTION public.update_updated_at_column();
-
-DROP TRIGGER IF EXISTS "update_user_notas_updated_at" ON public.user_notas;
-CREATE TRIGGER update_user_notas_updated_at
-  BEFORE UPDATE ON public.user_notas
-  FOR EACH ROW
-  EXECUTE FUNCTION public.update_updated_at_column();
-
--- Bucket para anexos de notas
-INSERT INTO storage.buckets (id, name, public) 
-VALUES ('user-notas-anexos', 'user-notas-anexos', false)
-ON CONFLICT (id) DO NOTHING;
-
--- Políticas de storage para anexos
-DROP POLICY IF EXISTS "Usuários podem ver seus próprios anexos" ON storage.objects;
-CREATE POLICY "Usuários podem ver seus próprios anexos"
-  ON storage.objects FOR SELECT
-  USING (bucket_id = 'user-notas-anexos' AND auth.uid()::text = (storage.foldername(name))[1]);
-
-DROP POLICY IF EXISTS "Usuários podem fazer upload de seus próprios anexos" ON storage.objects;
-CREATE POLICY "Usuários podem fazer upload de seus próprios anexos"
-  ON storage.objects FOR INSERT
-  WITH CHECK (bucket_id = 'user-notas-anexos' AND auth.uid()::text = (storage.foldername(name))[1]);
-
-DROP POLICY IF EXISTS "Usuários podem deletar seus próprios anexos" ON storage.objects;
-CREATE POLICY "Usuários podem deletar seus próprios anexos"
-  ON storage.objects FOR DELETE
-  USING (bucket_id = 'user-notas-anexos' AND auth.uid()::text = (storage.foldername(name))[1]);
-
--- === 20260116173214_18916f1e-6940-4d45-a9b5-c81005044c32.sql ===
--- =====================================================
--- ESTRUTURA PARA INTELIGÊNCIA COMPETITIVA POR ITEM
--- =====================================================
-
--- 1. Tabela de Itens da Licitação
-CREATE TABLE IF NOT EXISTS public.licitacao_itens (
-  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  licitacao_id UUID NOT NULL REFERENCES public.licitacoes(id) ON DELETE CASCADE,
-  nome TEXT NOT NULL,
-  tipo TEXT NOT NULL DEFAULT 'outro', -- consulta, exame, servico, plantao, especialidade, outro
-  descricao TEXT,
-  valor_referencia NUMERIC(15,2),
-  quantidade INTEGER DEFAULT 1,
-  unidade_medida TEXT, -- unidade, hora, mes, etc
-  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
-);
-
--- 2. Tabela de Concorrentes por Item
-CREATE TABLE IF NOT EXISTS public.licitacao_item_concorrentes (
-  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  item_id UUID NOT NULL REFERENCES public.licitacao_itens(id) ON DELETE CASCADE,
-  empresa_id UUID REFERENCES public.empresas_concorrentes(id),
-  empresa_nome TEXT NOT NULL,
-  empresa_cnpj TEXT,
-  valor_ofertado NUMERIC(15,2) NOT NULL,
-  posicao INTEGER NOT NULL DEFAULT 1, -- 1º, 2º, 3º...
-  situacao TEXT NOT NULL DEFAULT 'habilitada', -- habilitada, inabilitada, desclassificada
-  motivo_situacao TEXT, -- motivo de inabilitação ou desclassificação
-  is_gss BOOLEAN NOT NULL DEFAULT false,
-  is_vencedor BOOLEAN NOT NULL DEFAULT false,
-  observacoes TEXT,
-  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
-);
-
--- 3. Índices para performance
-CREATE INDEX IF NOT EXISTS idx_licitacao_itens_licitacao ON public.licitacao_itens(licitacao_id);
-CREATE INDEX IF NOT EXISTS idx_licitacao_item_concorrentes_item ON public.licitacao_item_concorrentes(item_id);
-CREATE INDEX IF NOT EXISTS idx_licitacao_item_concorrentes_empresa ON public.licitacao_item_concorrentes(empresa_id);
-CREATE INDEX IF NOT EXISTS idx_licitacao_item_concorrentes_is_gss ON public.licitacao_item_concorrentes(is_gss);
-CREATE INDEX IF NOT EXISTS idx_licitacao_item_concorrentes_is_vencedor ON public.licitacao_item_concorrentes(is_vencedor);
-
--- 4. Triggers para updated_at
-DROP TRIGGER IF EXISTS "update_licitacao_itens_updated_at" ON public.licitacao_itens;
-CREATE TRIGGER update_licitacao_itens_updated_at
-  BEFORE UPDATE ON public.licitacao_itens
-  FOR EACH ROW
-  EXECUTE FUNCTION public.update_updated_at_column();
-
-DROP TRIGGER IF EXISTS "update_licitacao_item_concorrentes_updated_at" ON public.licitacao_item_concorrentes;
-CREATE TRIGGER update_licitacao_item_concorrentes_updated_at
-  BEFORE UPDATE ON public.licitacao_item_concorrentes
-  FOR EACH ROW
-  EXECUTE FUNCTION public.update_updated_at_column();
 
 -- 5. RLS
 ALTER TABLE public.licitacao_itens ENABLE ROW LEVEL SECURITY;
@@ -237,11 +49,11 @@ COMMENT ON COLUMN public.licitacao_item_concorrentes.is_vencedor IS 'Flag para i
 
 -- === 20260116183901_2e05c08b-0bf7-4ee2-a575-8697676051d6.sql ===
 -- 1. Criar ENUM para tipo de disparo
-DO $$ BEGIN CREATE TYPE tipo_disparo_enum AS ENUM ('zap', 'email', 'outros'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $typblk$ BEGIN CREATE TYPE tipo_disparo_enum AS ENUM ('zap', 'email', 'outros'); EXCEPTION WHEN duplicate_object THEN NULL; END $typblk$;
 
 -- 2. Adicionar coluna tipo_disparo na tabela proposta
-DO $$ BEGIN ALTER TABLE public.proposta 
-ADD COLUMN tipo_disparo tipo_disparo_enum NOT NULL DEFAULT 'zap'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE public.proposta 
+ADD COLUMN tipo_disparo tipo_disparo_enum NOT NULL DEFAULT 'zap';
 
 -- 3. Migração: todas as propostas existentes recebem 'zap'
 UPDATE public.proposta SET tipo_disparo = 'zap' WHERE tipo_disparo IS NULL;
@@ -319,12 +131,12 @@ USING (true);
 ALTER PUBLICATION supabase_realtime ADD TABLE public.email_interacoes;
 
 -- 10. Adicionar coluna status_email na proposta para tracking
-DO $$ BEGIN ALTER TABLE public.proposta 
-ADD COLUMN status_email TEXT DEFAULT 'aguardando_envio' CHECK (status_email IN ('aguardando_envio', 'enviado', 'entregue', 'respondido', 'falha')); EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE public.proposta 
+ADD COLUMN status_email TEXT DEFAULT 'aguardando_envio' CHECK (status_email IN ('aguardando_envio', 'enviado', 'entregue', 'respondido', 'falha'));
 
 -- 11. Adicionar timestamp de último envio
-DO $$ BEGIN ALTER TABLE public.proposta 
-ADD COLUMN ultimo_envio_email TIMESTAMPTZ; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE public.proposta 
+ADD COLUMN ultimo_envio_email TIMESTAMPTZ;
 
 -- === 20260116185438_eab3abb6-a87a-43f6-924d-4133f36d1f1f.sql ===
 -- Tabela de campanhas de email (similar a disparos_campanhas)
@@ -467,14 +279,14 @@ CREATE INDEX IF NOT EXISTS idx_licitacao_motivos_descarte_ativo ON public.licita
 
 -- === 20260120172834_1df28966-3185-476c-8222-6c2476ddfcfe.sql ===
 -- Adicionar colunas de snapshot para indicadores estratégicos
-DO $$ BEGIN ALTER TABLE public.licitacao_descartes ADD COLUMN IF NOT EXISTS valor_estimado NUMERIC; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
-DO $$ BEGIN ALTER TABLE public.licitacao_descartes ADD COLUMN IF NOT EXISTS uf VARCHAR(2); EXCEPTION WHEN duplicate_column THEN NULL; END $$;
-DO $$ BEGIN ALTER TABLE public.licitacao_descartes ADD COLUMN IF NOT EXISTS municipio TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
-DO $$ BEGIN ALTER TABLE public.licitacao_descartes ADD COLUMN IF NOT EXISTS orgao TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
-DO $$ BEGIN ALTER TABLE public.licitacao_descartes ADD COLUMN IF NOT EXISTS modalidade TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
-DO $$ BEGIN ALTER TABLE public.licitacao_descartes ADD COLUMN IF NOT EXISTS numero_edital TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
-DO $$ BEGIN ALTER TABLE public.licitacao_descartes ADD COLUMN IF NOT EXISTS objeto TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
-DO $$ BEGIN ALTER TABLE public.licitacao_descartes ADD COLUMN IF NOT EXISTS motivo_nome TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE public.licitacao_descartes ADD COLUMN IF NOT EXISTS valor_estimado NUMERIC;
+ALTER TABLE public.licitacao_descartes ADD COLUMN IF NOT EXISTS uf VARCHAR(2);
+ALTER TABLE public.licitacao_descartes ADD COLUMN IF NOT EXISTS municipio TEXT;
+ALTER TABLE public.licitacao_descartes ADD COLUMN IF NOT EXISTS orgao TEXT;
+ALTER TABLE public.licitacao_descartes ADD COLUMN IF NOT EXISTS modalidade TEXT;
+ALTER TABLE public.licitacao_descartes ADD COLUMN IF NOT EXISTS numero_edital TEXT;
+ALTER TABLE public.licitacao_descartes ADD COLUMN IF NOT EXISTS objeto TEXT;
+ALTER TABLE public.licitacao_descartes ADD COLUMN IF NOT EXISTS motivo_nome TEXT;
 
 -- Comentários para documentação
 COMMENT ON COLUMN public.licitacao_descartes.valor_estimado IS 'Snapshot do valor estimado da licitação no momento do descarte';
@@ -505,8 +317,8 @@ WITH CHECK (
 
 -- === 20260121130716_f656ba46-6fce-44f4-b75f-168446643642.sql ===
 -- Adicionar coluna assunto_email na tabela email_campanhas
-DO $$ BEGIN ALTER TABLE public.email_campanhas 
-ADD COLUMN IF NOT EXISTS assunto_email TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE public.email_campanhas 
+ADD COLUMN IF NOT EXISTS assunto_email TEXT;
 
 -- === 20260121132647_b4a9a625-8bef-4576-9f81-368375b672ed.sql ===
 -- Tabela para configurações do sistema (webhook URLs, etc.)
@@ -771,9 +583,9 @@ CREATE TABLE IF NOT EXISTS public.escalas_ambulatoriais_templates (
 );
 
 -- Adicionar FK do template na tabela de fontes
-DO $$ BEGIN ALTER TABLE public.escalas_ambulatoriais_fontes 
+ALTER TABLE public.escalas_ambulatoriais_fontes 
 ADD CONSTRAINT escalas_ambulatoriais_fontes_template_id_fkey 
-FOREIGN KEY (template_id) REFERENCES public.escalas_ambulatoriais_templates(id); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+FOREIGN KEY (template_id) REFERENCES public.escalas_ambulatoriais_templates(id);
 
 -- Tabela de escalas ambulatoriais (dados normalizados)
 CREATE TABLE IF NOT EXISTS public.escalas_ambulatoriais (
@@ -896,7 +708,7 @@ VALUES ('Template Padrão', 'Layout padrão com recursos na coluna A e dias nas 
 
 -- === 20260123115414_8190efdd-399f-4205-b8ce-f9597a937bdb.sql ===
 -- Add missing enum value used by Kanban column "Conferência"
-DO $$
+-- NESTED_REMOVED: DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1
@@ -905,19 +717,19 @@ BEGIN
     WHERE t.typname = 'status_licitacao'
       AND e.enumlabel = 'conferencia'
   ) THEN
-    DO $$ BEGIN ALTER TYPE public.status_licitacao ADD VALUE 'conferencia' AFTER 'edital_analise'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    ALTER TYPE public.status_licitacao ADD VALUE 'conferencia' AFTER 'edital_analise';
   END IF;
 END $$;
 
 -- === 20260123150247_a4bb1357-91a5-4af8-9b37-3cae2d4fcf40.sql ===
 -- Adicionar campos de rastreamento de resposta na tabela licitacoes_atividades
-DO $$ BEGIN ALTER TABLE public.licitacoes_atividades 
+ALTER TABLE public.licitacoes_atividades 
 ADD COLUMN resposta_esperada_ate TIMESTAMP WITH TIME ZONE,
 ADD COLUMN responsavel_resposta_id UUID REFERENCES auth.users(id),
 ADD COLUMN setor_responsavel TEXT,
 ADD COLUMN respondido_em TIMESTAMP WITH TIME ZONE,
 ADD COLUMN respondido_por UUID REFERENCES auth.users(id),
-ADD COLUMN is_critico BOOLEAN DEFAULT false; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ADD COLUMN is_critico BOOLEAN DEFAULT false;
 
 -- Criar índice para consultas de mensagens pendentes
 CREATE INDEX IF NOT EXISTS idx_licitacoes_atividades_resposta_pendente 
@@ -930,8 +742,8 @@ ON public.licitacoes_atividades(licitacao_id, is_critico)
 WHERE is_critico = true AND respondido_em IS NULL;
 
 -- Adicionar campo de risco na tabela licitacoes para indicador visual
-DO $$ BEGIN ALTER TABLE public.licitacoes
-ADD COLUMN IF NOT EXISTS tem_mensagem_critica_pendente BOOLEAN DEFAULT false; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE public.licitacoes
+ADD COLUMN IF NOT EXISTS tem_mensagem_critica_pendente BOOLEAN DEFAULT false;
 
 -- Função para calcular status da mensagem baseado no prazo
 CREATE OR REPLACE FUNCTION public.calcular_status_resposta_atividade(
@@ -1028,7 +840,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_licitacoes_notificacoes_prazo_unique
 ON public.licitacoes_notificacoes_prazo(atividade_id, tipo_notificacao);
 
 -- Habilitar realtime para atividades (se ainda não estiver)
-DO $$
+-- NESTED_REMOVED: DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_publication_tables 
@@ -1041,7 +853,7 @@ END $$;
 
 -- === 20260123170048_e2f05bd5-9b89-44a7-b926-b1efb83588d6.sql ===
 -- Add new status 'suspenso_revogado' to the status_licitacao enum
-DO $$
+-- NESTED_REMOVED: DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1
@@ -1050,15 +862,15 @@ BEGIN
     WHERE t.typname = 'status_licitacao'
       AND e.enumlabel = 'suspenso_revogado'
   ) THEN
-    DO $$ BEGIN ALTER TYPE public.status_licitacao ADD VALUE 'suspenso_revogado' AFTER 'descarte_edital'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    ALTER TYPE public.status_licitacao ADD VALUE 'suspenso_revogado' AFTER 'descarte_edital';
   END IF;
 END $$;
 
 -- === 20260123175102_9b5b9518-3fad-44c1-aadd-518f438f1515.sql ===
 -- Adicionar coluna para múltiplas unidades nos contratos AGES
 -- Mantém a coluna ages_unidade_id existente para retrocompatibilidade e migração
-DO $$ BEGIN ALTER TABLE public.ages_contratos 
-ADD COLUMN IF NOT EXISTS ages_unidades_ids UUID[] DEFAULT '{}'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE public.ages_contratos 
+ADD COLUMN IF NOT EXISTS ages_unidades_ids UUID[] DEFAULT '{}';
 
 -- Migrar dados existentes: copiar ages_unidade_id para o array ages_unidades_ids
 UPDATE public.ages_contratos 
@@ -1082,8 +894,8 @@ USING (
 
 -- === 20260123191531_7e66790a-d208-41a2-866f-7b5282e904c6.sql ===
 -- Adicionar coluna de chave composta única para anti-duplicação
-DO $$ BEGIN ALTER TABLE public.leads 
-ADD COLUMN IF NOT EXISTS chave_unica TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE public.leads 
+ADD COLUMN IF NOT EXISTS chave_unica TEXT;
 
 -- Criar função para gerar chave única
 CREATE OR REPLACE FUNCTION public.generate_lead_chave_unica()
@@ -1148,3 +960,251 @@ WITH CHECK (
 -- === 20260127143410_a8a47710-d09c-49a1-ad9b-3c7cf21e5d79.sql ===
 -- Drop existing UPDATE policies on profiles
 DROP POLICY IF EXISTS "Captação managers can update user sectors" ON public.profiles;
+DROP POLICY IF EXISTS "Users can update their own profile" ON public.profiles;
+DROP POLICY IF EXISTS "Users or admins can update profiles" ON public.profiles;
+
+-- Create a single consolidated UPDATE policy
+DROP POLICY IF EXISTS "Profiles update policy" ON public.profiles;
+CREATE POLICY "Profiles update policy"
+ON public.profiles
+FOR UPDATE
+USING (
+  -- User can update their own profile
+  auth.uid() = id
+  -- OR admin can update any profile
+  OR is_admin(auth.uid())
+  -- OR gestor_captacao can update any profile (for adding captadores)
+  OR has_role(auth.uid(), 'gestor_captacao'::app_role)
+  -- OR captação leader can update any profile (for adding captadores)
+  OR is_captacao_leader(auth.uid())
+)
+WITH CHECK (
+  auth.uid() = id
+  OR is_admin(auth.uid())
+  OR has_role(auth.uid(), 'gestor_captacao'::app_role)
+  OR is_captacao_leader(auth.uid())
+);
+
+-- === 20260127182444_d4868a95-a4b3-4092-b1e1-f1442e6cd592.sql ===
+-- Drop existing policies for comunicacao tables
+DROP POLICY IF EXISTS "Participantes podem ver canais" ON public.comunicacao_canais;
+DROP POLICY IF EXISTS "Usuários autenticados podem criar canais" ON public.comunicacao_canais;
+DROP POLICY IF EXISTS "Criadores podem atualizar canais" ON public.comunicacao_canais;
+DROP POLICY IF EXISTS "Criadores podem deletar canais" ON public.comunicacao_canais;
+
+DROP POLICY IF EXISTS "Participantes podem ver mensagens" ON public.comunicacao_mensagens;
+DROP POLICY IF EXISTS "Participantes podem enviar mensagens" ON public.comunicacao_mensagens;
+DROP POLICY IF EXISTS "Autores podem editar mensagens" ON public.comunicacao_mensagens;
+DROP POLICY IF EXISTS "Autores podem deletar mensagens" ON public.comunicacao_mensagens;
+
+DROP POLICY IF EXISTS "Usuários podem ver participantes" ON public.comunicacao_participantes;
+DROP POLICY IF EXISTS "Participantes podem ser adicionados" ON public.comunicacao_participantes;
+DROP POLICY IF EXISTS "Participantes podem sair" ON public.comunicacao_participantes;
+
+DROP POLICY IF EXISTS "Usuários podem ver notificações" ON public.comunicacao_notificacoes;
+DROP POLICY IF EXISTS "Sistema pode criar notificações" ON public.comunicacao_notificacoes;
+DROP POLICY IF EXISTS "Usuários podem atualizar notificações" ON public.comunicacao_notificacoes;
+
+-- Canais: Admins veem todos, outros veem apenas onde são participantes
+DROP POLICY IF EXISTS "Admins ou participantes podem ver canais" ON public.comunicacao_canais;
+CREATE POLICY "Admins ou participantes podem ver canais"
+ON public.comunicacao_canais FOR SELECT
+USING (
+  public.is_admin(auth.uid()) 
+  OR public.is_channel_participant(auth.uid(), id)
+);
+
+DROP POLICY IF EXISTS "Usuários autenticados podem criar canais" ON public.comunicacao_canais;
+CREATE POLICY "Usuários autenticados podem criar canais"
+ON public.comunicacao_canais FOR INSERT
+WITH CHECK (auth.uid() IS NOT NULL);
+
+DROP POLICY IF EXISTS "Admins ou criadores podem atualizar canais" ON public.comunicacao_canais;
+CREATE POLICY "Admins ou criadores podem atualizar canais"
+ON public.comunicacao_canais FOR UPDATE
+USING (
+  public.is_admin(auth.uid()) 
+  OR criado_por = auth.uid()
+);
+
+DROP POLICY IF EXISTS "Admins ou criadores podem deletar canais" ON public.comunicacao_canais;
+CREATE POLICY "Admins ou criadores podem deletar canais"
+ON public.comunicacao_canais FOR DELETE
+USING (
+  public.is_admin(auth.uid()) 
+  OR criado_por = auth.uid()
+);
+
+-- Mensagens: Admins veem todas, outros veem apenas de canais onde são participantes
+DROP POLICY IF EXISTS "Admins ou participantes podem ver mensagens" ON public.comunicacao_mensagens;
+CREATE POLICY "Admins ou participantes podem ver mensagens"
+ON public.comunicacao_mensagens FOR SELECT
+USING (
+  public.is_admin(auth.uid()) 
+  OR public.is_channel_participant(auth.uid(), canal_id)
+);
+
+DROP POLICY IF EXISTS "Admins ou participantes podem enviar mensagens" ON public.comunicacao_mensagens;
+CREATE POLICY "Admins ou participantes podem enviar mensagens"
+ON public.comunicacao_mensagens FOR INSERT
+WITH CHECK (
+  public.is_admin(auth.uid()) 
+  OR public.is_channel_participant(auth.uid(), canal_id)
+);
+
+DROP POLICY IF EXISTS "Admins ou autores podem editar mensagens" ON public.comunicacao_mensagens;
+CREATE POLICY "Admins ou autores podem editar mensagens"
+ON public.comunicacao_mensagens FOR UPDATE
+USING (
+  public.is_admin(auth.uid()) 
+  OR user_id = auth.uid()
+);
+
+DROP POLICY IF EXISTS "Admins ou autores podem deletar mensagens" ON public.comunicacao_mensagens;
+CREATE POLICY "Admins ou autores podem deletar mensagens"
+ON public.comunicacao_mensagens FOR DELETE
+USING (
+  public.is_admin(auth.uid()) 
+  OR user_id = auth.uid()
+);
+
+-- Participantes: Admins veem todos, outros veem apenas de canais onde são participantes
+DROP POLICY IF EXISTS "Admins ou participantes podem ver participantes" ON public.comunicacao_participantes;
+CREATE POLICY "Admins ou participantes podem ver participantes"
+ON public.comunicacao_participantes FOR SELECT
+USING (
+  public.is_admin(auth.uid()) 
+  OR public.is_channel_participant(auth.uid(), canal_id)
+);
+
+DROP POLICY IF EXISTS "Admins ou participantes podem adicionar" ON public.comunicacao_participantes;
+CREATE POLICY "Admins ou participantes podem adicionar"
+ON public.comunicacao_participantes FOR INSERT
+WITH CHECK (
+  public.is_admin(auth.uid()) 
+  OR public.is_channel_participant(auth.uid(), canal_id)
+);
+
+DROP POLICY IF EXISTS "Admins ou próprio usuário podem remover" ON public.comunicacao_participantes;
+CREATE POLICY "Admins ou próprio usuário podem remover"
+ON public.comunicacao_participantes FOR DELETE
+USING (
+  public.is_admin(auth.uid()) 
+  OR user_id = auth.uid()
+);
+
+-- Notificações: Usuários veem apenas suas próprias, admins veem todas
+DROP POLICY IF EXISTS "Admins ou próprio usuário podem ver notificações" ON public.comunicacao_notificacoes;
+CREATE POLICY "Admins ou próprio usuário podem ver notificações"
+ON public.comunicacao_notificacoes FOR SELECT
+USING (
+  public.is_admin(auth.uid()) 
+  OR user_id = auth.uid()
+);
+
+DROP POLICY IF EXISTS "Sistema pode criar notificações" ON public.comunicacao_notificacoes;
+CREATE POLICY "Sistema pode criar notificações"
+ON public.comunicacao_notificacoes FOR INSERT
+WITH CHECK (auth.uid() IS NOT NULL);
+
+DROP POLICY IF EXISTS "Admins ou próprio usuário podem atualizar notificações" ON public.comunicacao_notificacoes;
+CREATE POLICY "Admins ou próprio usuário podem atualizar notificações"
+ON public.comunicacao_notificacoes FOR UPDATE
+USING (
+  public.is_admin(auth.uid()) 
+  OR user_id = auth.uid()
+);
+
+-- === 20260127182902_7815fbef-faeb-4d53-88be-4ec7c3282c87.sql ===
+-- Adicionar coluna para soft delete em mensagens
+ALTER TABLE public.comunicacao_mensagens 
+ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP WITH TIME ZONE DEFAULT NULL;
+
+-- Criar índice para performance
+CREATE INDEX IF NOT EXISTS idx_comunicacao_mensagens_deleted_at 
+ON public.comunicacao_mensagens(deleted_at);
+
+-- Atualizar política de SELECT para filtrar mensagens excluídas
+DROP POLICY IF EXISTS "Admins ou participantes podem ver mensagens" ON public.comunicacao_mensagens;
+
+DROP POLICY IF EXISTS "Admins ou participantes podem ver mensagens" ON public.comunicacao_mensagens;
+CREATE POLICY "Admins ou participantes podem ver mensagens" 
+ON public.comunicacao_mensagens FOR SELECT
+USING (
+  deleted_at IS NULL
+  AND (
+    public.is_admin(auth.uid()) 
+    OR public.is_channel_participant(auth.uid(), canal_id)
+  )
+);
+
+-- Política de UPDATE para permitir soft delete
+DROP POLICY IF EXISTS "Participantes podem editar suas mensagens" ON public.comunicacao_mensagens;
+
+DROP POLICY IF EXISTS "Participantes podem editar ou deletar mensagens" ON public.comunicacao_mensagens;
+CREATE POLICY "Participantes podem editar ou deletar mensagens" 
+ON public.comunicacao_mensagens FOR UPDATE
+USING (
+  public.is_admin(auth.uid()) 
+  OR (
+    public.is_channel_participant(auth.uid(), canal_id)
+    AND (user_id = auth.uid() OR public.is_admin(auth.uid()))
+  )
+)
+WITH CHECK (
+  public.is_admin(auth.uid()) 
+  OR public.is_channel_participant(auth.uid(), canal_id)
+);
+
+-- Remover política de DELETE (não será mais usada)
+DROP POLICY IF EXISTS "Admins ou donos podem excluir mensagens" ON public.comunicacao_mensagens;
+
+-- === 20260127195445_448b5f26-5107-4da0-a766-0fa7f5deaccb.sql ===
+
+-- Remover política antiga de gerenciamento
+DROP POLICY IF EXISTS "Usuários autorizados podem gerenciar proposta" ON public.proposta;
+
+-- Criar nova política que inclui usuários com permissão de contratos_servicos
+DROP POLICY IF EXISTS "Usuários autorizados podem gerenciar proposta" ON public.proposta;
+CREATE POLICY "Usuários autorizados podem gerenciar proposta" 
+ON public.proposta 
+FOR ALL
+USING (
+  is_admin(auth.uid()) 
+  OR has_role(auth.uid(), 'gestor_captacao') 
+  OR has_role(auth.uid(), 'gestor_contratos')
+  OR is_captacao_leader(auth.uid())
+  OR has_captacao_permission(auth.uid(), 'contratos_servicos')
+)
+WITH CHECK (
+  is_admin(auth.uid()) 
+  OR has_role(auth.uid(), 'gestor_captacao') 
+  OR has_role(auth.uid(), 'gestor_contratos')
+  OR is_captacao_leader(auth.uid())
+  OR has_captacao_permission(auth.uid(), 'contratos_servicos')
+);
+
+
+-- === 20260127200239_b9c77fb2-4c52-4d6d-91d9-9292b2f51e3a.sql ===
+-- Remover política antiga de gerenciamento
+DROP POLICY IF EXISTS "Gestores de contratos can manage medicos" ON public.medicos;
+
+-- Criar nova política que inclui líderes de captação e usuários com permissão contratos_servicos
+DROP POLICY IF EXISTS "Gestores de contratos can manage medicos" ON public.medicos;
+CREATE POLICY "Gestores de contratos can manage medicos" 
+ON public.medicos 
+FOR ALL
+USING (
+  is_admin(auth.uid()) 
+  OR has_role(auth.uid(), 'gestor_captacao') 
+  OR has_role(auth.uid(), 'gestor_contratos')
+  OR is_captacao_leader(auth.uid())
+  OR has_captacao_permission(auth.uid(), 'contratos_servicos')
+)
+WITH CHECK (
+  is_admin(auth.uid()) 
+  OR has_role(auth.uid(), 'gestor_captacao') 
+  OR has_role(auth.uid(), 'gestor_contratos')
+  OR is_captacao_leader(auth.uid())
+  OR has_captacao_permission(auth.uid(), 'contratos_servicos')
+);

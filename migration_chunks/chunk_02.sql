@@ -1,50 +1,4 @@
 
--- Tabela: radiologia_pendencias
-CREATE TABLE IF NOT EXISTS public.radiologia_pendencias (
-  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  cliente_id UUID NOT NULL REFERENCES public.clientes(id) ON DELETE CASCADE,
-  medico_id UUID NOT NULL REFERENCES public.medicos(id) ON DELETE CASCADE,
-  segmento segmento_radiologia NOT NULL,
-  data_referencia DATE NOT NULL,
-  quantidade_pendente INTEGER NOT NULL CHECK (quantidade_pendente >= 0),
-  observacoes TEXT,
-  anexos TEXT[],
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
-
--- Tabela: radiologia_ajuste_laudos
-CREATE TABLE IF NOT EXISTS public.radiologia_ajuste_laudos (
-  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  cliente_id UUID NOT NULL REFERENCES public.clientes(id) ON DELETE CASCADE,
-  medico_responsavel_id UUID NOT NULL REFERENCES public.medicos(id) ON DELETE CASCADE,
-  segmento segmento_radiologia NOT NULL,
-  identificador_laudo TEXT NOT NULL,
-  data_emissao DATE NOT NULL,
-  motivo_ajuste motivo_ajuste_laudo NOT NULL,
-  descricao_ajuste TEXT NOT NULL,
-  status status_ajuste_laudo NOT NULL DEFAULT 'Pendente',
-  responsavel_ajuste_id UUID REFERENCES public.medicos(id),
-  prazo_ajuste TIMESTAMP WITH TIME ZONE,
-  anexos TEXT[],
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
-
--- Tabela: radiologia_exames_atraso
-CREATE TABLE IF NOT EXISTS public.radiologia_exames_atraso (
-  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  exame TEXT NOT NULL,
-  segmento segmento_radiologia NOT NULL,
-  cliente_id UUID NOT NULL REFERENCES public.clientes(id) ON DELETE CASCADE,
-  medico_id UUID NOT NULL REFERENCES public.medicos(id) ON DELETE CASCADE,
-  data_hora_execucao TIMESTAMP WITH TIME ZONE NOT NULL,
-  observacao TEXT,
-  anexos TEXT[],
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
-
 -- Tabela: radiologia_ecg
 CREATE TABLE IF NOT EXISTS public.radiologia_ecg (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -178,7 +132,7 @@ USING (
 
 -- === 20251024135139_a24af66c-e9bc-4224-a590-50c617d752b2.sql ===
 -- Adicionar novo role para radiologia (será usado em migration posterior)
-DO $$ BEGIN ALTER TYPE app_role ADD VALUE IF NOT EXISTS 'gestor_radiologia'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $atvblk$ BEGIN ALTER TYPE app_role ADD VALUE IF NOT EXISTS 'gestor_radiologia'; EXCEPTION WHEN duplicate_object THEN NULL; END $atvblk$;
 
 -- === 20251024135829_f1f33f5a-45f7-456f-b215-e477fe7e5fad.sql ===
 -- Atualizar RLS policies das tabelas de radiologia para incluir gestor_radiologia
@@ -266,7 +220,7 @@ USING (auth.uid() = id OR is_admin(auth.uid()))
 WITH CHECK (auth.uid() = id OR is_admin(auth.uid()));
 
 -- Ensure foreign key from profiles.setor_id -> setores.id for nested select and data integrity
-DO $$
+-- NESTED_REMOVED: DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.table_constraints 
@@ -275,9 +229,9 @@ BEGIN
       AND constraint_type = 'FOREIGN KEY'
       AND constraint_name = 'profiles_setor_id_fkey'
   ) THEN
-    DO $$ BEGIN ALTER TABLE public.profiles
+    ALTER TABLE public.profiles
     ADD CONSTRAINT profiles_setor_id_fkey
-    FOREIGN KEY (setor_id) REFERENCES public.setores(id) ON DELETE SET NULL; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    FOREIGN KEY (setor_id) REFERENCES public.setores(id) ON DELETE SET NULL;
   END IF;
 END $$;
 
@@ -304,10 +258,10 @@ DROP POLICY IF EXISTS "Admins and recrutadores can manage medicos" ON public.med
 
 -- === 20251024145636_84e12f95-1588-4121-b4d8-09e61cb97683.sql ===
 -- Criar enums para suporte
-DO $$ BEGIN CREATE TYPE public.destino_suporte AS ENUM ('interno', 'externo'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE TYPE public.tipo_suporte AS ENUM ('software', 'hardware'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE TYPE public.status_ticket AS ENUM ('pendente', 'em_analise', 'concluido'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE TYPE public.fornecedor_externo AS ENUM ('dr_escala', 'infra_ti'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    CREATE TYPE public.destino_suporte AS ENUM ('interno', 'externo');
+    CREATE TYPE public.tipo_suporte AS ENUM ('software', 'hardware');
+    CREATE TYPE public.status_ticket AS ENUM ('pendente', 'em_analise', 'concluido');
+    CREATE TYPE public.fornecedor_externo AS ENUM ('dr_escala', 'infra_ti');
 
 -- Criar tabela de tickets de suporte
 CREATE TABLE IF NOT EXISTS public.suporte_tickets (
@@ -501,7 +455,7 @@ USING (
 
 -- === 20251024165355_f738ab87-fd6f-469d-8429-d166e1609444.sql ===
 -- Adicionar novos campos à tabela radiologia_pendencias
-DO $$ BEGIN ALTER TABLE radiologia_pendencias 
+ALTER TABLE radiologia_pendencias 
   ADD COLUMN IF NOT EXISTS data_deteccao TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   ADD COLUMN IF NOT EXISTS quantidade_pendente INTEGER DEFAULT 1 CHECK (quantidade_pendente >= 1),
   ADD COLUMN IF NOT EXISTS descricao_inicial TEXT,
@@ -511,7 +465,7 @@ DO $$ BEGIN ALTER TABLE radiologia_pendencias
   ADD COLUMN IF NOT EXISTS data_resolucao TIMESTAMP WITH TIME ZONE,
   ADD COLUMN IF NOT EXISTS descricao_resolucao TEXT,
   ADD COLUMN IF NOT EXISTS observacoes_internas TEXT,
-  ADD COLUMN IF NOT EXISTS id_exame_externo TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+  ADD COLUMN IF NOT EXISTS id_exame_externo TEXT;
 
 -- Criar índices para performance
 CREATE INDEX IF NOT EXISTS idx_radiologia_pendencias_status ON radiologia_pendencias(status_pendencia);
@@ -665,13 +619,13 @@ EXECUTE FUNCTION update_radiologia_pendencias_comentarios_updated_at();
 
 -- === 20251024172505_9438fe21-7ec5-4a7d-a8f3-f215586a85e0.sql ===
 -- Atualizar enum de status_ticket para incluir novos status
-DO $$ BEGIN ALTER TYPE status_ticket ADD VALUE IF NOT EXISTS 'aberto'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN ALTER TYPE status_ticket ADD VALUE IF NOT EXISTS 'aguardando_usuario'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN ALTER TYPE status_ticket ADD VALUE IF NOT EXISTS 'em_validacao'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    ALTER TYPE status_ticket ADD VALUE IF NOT EXISTS 'aberto';
+    ALTER TYPE status_ticket ADD VALUE IF NOT EXISTS 'aguardando_usuario';
+    ALTER TYPE status_ticket ADD VALUE IF NOT EXISTS 'em_validacao';
 
 -- Adicionar campo setor_responsavel à tabela suporte_tickets
-DO $$ BEGIN ALTER TABLE public.suporte_tickets
-ADD COLUMN IF NOT EXISTS setor_responsavel text DEFAULT 'TI'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE public.suporte_tickets
+ADD COLUMN IF NOT EXISTS setor_responsavel text DEFAULT 'TI';
 
 -- Criar índice para melhor performance nas consultas por setor
 CREATE INDEX IF NOT EXISTS idx_suporte_tickets_setor_responsavel 
@@ -699,7 +653,7 @@ USING (
 
 -- === 20251024191515_e2d95c6a-cb48-43be-9e61-51f0f08f7b3e.sql ===
 -- Adiciona "equipamento_hospitalar" ao enum categoria_patrimonio
-DO $$ BEGIN ALTER TYPE categoria_patrimonio ADD VALUE IF NOT EXISTS 'equipamento_hospitalar'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    ALTER TYPE categoria_patrimonio ADD VALUE IF NOT EXISTS 'equipamento_hospitalar';
 
 -- === 20251029172833_53213961-c276-4e27-8942-3800d4db331b.sql ===
 -- Create unidades table
@@ -714,17 +668,17 @@ CREATE TABLE IF NOT EXISTS public.unidades (
 );
 
 -- Create tipo_contratacao enum
-DO $$ BEGIN CREATE TYPE tipo_contratacao AS ENUM (
+-- NESTED_REMOVED: DO $typblk$ BEGIN CREATE TYPE tipo_contratacao AS ENUM (
   'credenciamento',
   'licitacao',
   'dispensa',
   'direta_privada'
-); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+); EXCEPTION WHEN duplicate_object THEN NULL; END $typblk$;
 
 -- Add unidade_id and tipo_contratacao to contratos table
-DO $$ BEGIN ALTER TABLE public.contratos 
+ALTER TABLE public.contratos 
 ADD COLUMN IF NOT EXISTS unidade_id UUID REFERENCES public.unidades(id) ON DELETE CASCADE,
-ADD COLUMN IF NOT EXISTS tipo_contratacao tipo_contratacao; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ADD COLUMN IF NOT EXISTS tipo_contratacao tipo_contratacao;
 
 -- Create unique constraint for cliente_id + unidade_id + codigo_contrato
 CREATE UNIQUE INDEX IF NOT EXISTS contratos_cliente_unidade_codigo_unique 
@@ -882,19 +836,19 @@ CREATE INDEX IF NOT EXISTS idx_licitacoes_atividades_created_at ON public.licita
 -- e mesclar as tabelas em uma única estrutura
 
 -- Criar tipo enum para nível de urgência
-DO $$ BEGIN CREATE TYPE nivel_urgencia_radiologia AS ENUM ('pronto_socorro', 'internados', 'oncologicos'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    CREATE TYPE nivel_urgencia_radiologia AS ENUM ('pronto_socorro', 'internados', 'oncologicos');
 
 -- Adicionar campo nivel_urgencia à tabela radiologia_pendencias
-DO $$ BEGIN ALTER TABLE radiologia_pendencias 
-ADD COLUMN IF NOT EXISTS nivel_urgencia nivel_urgencia_radiologia DEFAULT 'internados'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE radiologia_pendencias 
+ADD COLUMN IF NOT EXISTS nivel_urgencia nivel_urgencia_radiologia DEFAULT 'internados';
 
 -- Adicionar campo tipo_registro para diferenciar pendências de exames em atraso
-DO $$ BEGIN ALTER TABLE radiologia_pendencias
-ADD COLUMN IF NOT EXISTS tipo_registro text DEFAULT 'pendencia'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE radiologia_pendencias
+ADD COLUMN IF NOT EXISTS tipo_registro text DEFAULT 'pendencia';
 
 -- Adicionar campo exame (para quando for exame em atraso)
-DO $$ BEGIN ALTER TABLE radiologia_pendencias
-ADD COLUMN IF NOT EXISTS exame text; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE radiologia_pendencias
+ADD COLUMN IF NOT EXISTS exame text;
 
 -- Comentários explicativos
 COMMENT ON COLUMN radiologia_pendencias.nivel_urgencia IS 'Nível de urgência: pronto_socorro (SLA 2h), internados (SLA 4h), oncologicos (SLA 48h)';
@@ -961,8 +915,8 @@ INSERT INTO public.kanban_status_config (modulo, status_id, label, ordem) VALUES
 
 -- === 20251031114250_9c3d69bb-ea90-4966-8540-5e6666d3a342.sql ===
 -- Adicionar campo is_externo à tabela suporte_comentarios
-DO $$ BEGIN ALTER TABLE public.suporte_comentarios 
-ADD COLUMN IF NOT EXISTS is_externo BOOLEAN DEFAULT false; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE public.suporte_comentarios 
+ADD COLUMN IF NOT EXISTS is_externo BOOLEAN DEFAULT false;
 
 -- Adicionar índice para melhor performance
 CREATE INDEX IF NOT EXISTS idx_suporte_comentarios_ticket_id 
@@ -976,12 +930,12 @@ COMMENT ON COLUMN public.suporte_comentarios.is_externo IS 'Indica se o comentá
 
 -- === 20251031114515_9efafde1-d445-4d18-8e3e-e3279ae6dda2.sql ===
 -- Adicionar campo autor_email à tabela suporte_comentarios
-DO $$ BEGIN ALTER TABLE public.suporte_comentarios 
-ADD COLUMN IF NOT EXISTS autor_email TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE public.suporte_comentarios 
+ADD COLUMN IF NOT EXISTS autor_email TEXT;
 
 -- Tornar autor_id nullable para permitir comentários de emails externos
-DO $$ BEGIN ALTER TABLE public.suporte_comentarios 
-ALTER COLUMN autor_id DROP NOT NULL; EXCEPTION WHEN undefined_column THEN NULL; WHEN undefined_table THEN NULL; END $$;
+ALTER TABLE public.suporte_comentarios 
+ALTER COLUMN autor_id DROP NOT NULL;
 
 -- Atualizar RLS policies para permitir inserção de comentários externos (via edge function)
 DROP POLICY IF EXISTS "Users can create comments on their tickets" ON public.suporte_comentarios;
@@ -1062,7 +1016,7 @@ ON CONFLICT (status_vinculado) DO NOTHING;
 
 -- === 20251031145556_a085c3ca-0bb3-4f02-9cc9-d8efaff64731.sql ===
 -- Add missing status value to status_licitacao ENUM
-DO $$ BEGIN ALTER TYPE status_licitacao ADD VALUE IF NOT EXISTS 'capitacao_de_credenciamento'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    ALTER TYPE status_licitacao ADD VALUE IF NOT EXISTS 'capitacao_de_credenciamento';
 
 -- === 20251031162910_3f76362e-5bac-401a-b98c-66e9d582e3da.sql ===
 -- Criar tabela para anotações de prontuário dos médicos
@@ -1158,3 +1112,81 @@ WITH CHECK (
 );
 
 DROP POLICY IF EXISTS "Usuários autorizados podem atualizar documentos" ON storage.objects;
+CREATE POLICY "Usuários autorizados podem atualizar documentos"
+ON storage.objects FOR UPDATE
+TO authenticated
+USING (
+  bucket_id = 'medicos-documentos' AND
+  (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_captacao'::app_role) OR has_role(auth.uid(), 'gestor_contratos'::app_role))
+);
+
+DROP POLICY IF EXISTS "Usuários autorizados podem deletar documentos" ON storage.objects;
+CREATE POLICY "Usuários autorizados podem deletar documentos"
+ON storage.objects FOR DELETE
+TO authenticated
+USING (
+  bucket_id = 'medicos-documentos' AND
+  (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_captacao'::app_role) OR has_role(auth.uid(), 'gestor_contratos'::app_role))
+);
+
+-- Tipos de documento
+-- NESTED_REMOVED: DO $typblk$ BEGIN CREATE TYPE tipo_documento_medico AS ENUM (
+  'diploma',
+  'certificado',
+  'rg',
+  'cpf',
+  'crm',
+  'rqe',
+  'titulo_especialista',
+  'comprovante_residencia',
+  'certidao',
+  'carta_recomendacao',
+  'outro'
+); EXCEPTION WHEN duplicate_object THEN NULL; END $typblk$;
+
+-- Tabela de documentos dos médicos
+CREATE TABLE IF NOT EXISTS public.medico_documentos (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  medico_id UUID NOT NULL REFERENCES public.medicos(id) ON DELETE CASCADE,
+  arquivo_path TEXT NOT NULL,
+  arquivo_nome TEXT NOT NULL,
+  tipo_documento tipo_documento_medico NOT NULL,
+  emissor TEXT,
+  data_emissao DATE,
+  data_validade DATE,
+  observacoes TEXT,
+  texto_extraido TEXT,
+  uploaded_by UUID REFERENCES auth.users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Habilitar RLS
+ALTER TABLE public.medico_documentos ENABLE ROW LEVEL SECURITY;
+
+-- Políticas de RLS para documentos
+DROP POLICY IF EXISTS "Usuários autenticados podem ver documentos" ON public.medico_documentos;
+CREATE POLICY "Usuários autenticados podem ver documentos"
+ON public.medico_documentos FOR SELECT
+TO authenticated
+USING (true);
+
+DROP POLICY IF EXISTS "Usuários autorizados podem inserir documentos" ON public.medico_documentos;
+CREATE POLICY "Usuários autorizados podem inserir documentos"
+ON public.medico_documentos FOR INSERT
+TO authenticated
+WITH CHECK (
+  is_admin(auth.uid()) OR 
+  has_role(auth.uid(), 'gestor_captacao'::app_role) OR 
+  has_role(auth.uid(), 'gestor_contratos'::app_role)
+);
+
+DROP POLICY IF EXISTS "Usuários autorizados podem atualizar documentos" ON public.medico_documentos;
+CREATE POLICY "Usuários autorizados podem atualizar documentos"
+ON public.medico_documentos FOR UPDATE
+TO authenticated
+USING (
+  is_admin(auth.uid()) OR 
+  has_role(auth.uid(), 'gestor_captacao'::app_role) OR 
+  has_role(auth.uid(), 'gestor_contratos'::app_role)
+);

@@ -1,31 +1,4 @@
 
--- === 20251010143434_b998850d-5b68-44a0-bdd5-f471be2d10d3.sql ===
--- Adicionar novos campos na tabela clientes
-DO $$ BEGIN ALTER TABLE public.clientes 
-  ADD COLUMN IF NOT EXISTS email_financeiro TEXT,
-  ADD COLUMN IF NOT EXISTS telefone_financeiro TEXT,
-  ADD COLUMN IF NOT EXISTS nome_unidade TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
-
--- Adicionar novos campos na tabela contratos
-DO $$ BEGIN ALTER TABLE public.contratos 
-  ADD COLUMN IF NOT EXISTS codigo_interno INTEGER,
-  ADD COLUMN IF NOT EXISTS objeto_contrato TEXT,
-  ADD COLUMN IF NOT EXISTS tipo_servico TEXT[]; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
-
--- Alterar o enum de status_assinatura_contrato
-DO $$ BEGIN ALTER TYPE status_assinatura_contrato ADD VALUE IF NOT EXISTS 'Em Análise'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN ALTER TYPE status_assinatura_contrato ADD VALUE IF NOT EXISTS 'Aguardando Retorno'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-
--- Criar tabela para itens do contrato
-CREATE TABLE IF NOT EXISTS public.contrato_itens (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  contrato_id UUID REFERENCES public.contratos(id) ON DELETE CASCADE NOT NULL,
-  item TEXT NOT NULL,
-  valor_item NUMERIC(10, 2) NOT NULL,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
-
 -- Criar tabela para renovações de contrato
 CREATE TABLE IF NOT EXISTS public.contrato_renovacoes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -95,23 +68,23 @@ EXECUTE FUNCTION public.update_updated_at_column();
 
 -- === 20251010150942_c79e9319-87d5-4945-aaec-17d1693f72b3.sql ===
 -- Add estado column to clientes table
-DO $$ BEGIN ALTER TABLE public.clientes 
-ADD COLUMN estado TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE public.clientes 
+ADD COLUMN estado TEXT;
 
 -- === 20251010194608_d235d6ac-c147-48bc-acc5-98ea88c902d3.sql ===
 -- 1. Criar novo enum
-DO $$ BEGIN CREATE TYPE public.app_role_new AS ENUM (
+DO $typblk$ BEGIN CREATE TYPE public.app_role_new AS ENUM (
   'admin',
   'gestor_contratos',
   'gestor_captacao',
   'coordenador_escalas',
   'gestor_financeiro',
   'diretoria'
-); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+); EXCEPTION WHEN duplicate_object THEN NULL; END $typblk$;
 
 -- 2. Adicionar colunas temporárias
-DO $$ BEGIN ALTER TABLE public.user_roles ADD COLUMN role_new app_role_new; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
-DO $$ BEGIN ALTER TABLE public.menu_permissions ADD COLUMN role_new app_role_new; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE public.user_roles ADD COLUMN role_new app_role_new;
+ALTER TABLE public.menu_permissions ADD COLUMN role_new app_role_new;
 
 -- 3. Migrar dados
 UPDATE public.user_roles SET role_new = 
@@ -172,8 +145,8 @@ DROP FUNCTION IF EXISTS public.has_role(uuid, app_role) CASCADE;
 DROP FUNCTION IF EXISTS public.is_admin(uuid) CASCADE;
 
 -- 6. Remover colunas antigas
-DO $$ BEGIN ALTER TABLE public.user_roles DROP COLUMN role; EXCEPTION WHEN undefined_column THEN NULL; END $$;
-DO $$ BEGIN ALTER TABLE public.menu_permissions DROP COLUMN role; EXCEPTION WHEN undefined_column THEN NULL; END $$;
+ALTER TABLE public.user_roles DROP COLUMN role;
+ALTER TABLE public.menu_permissions DROP COLUMN role;
 
 -- 7. Dropar enum antigo
 DROP TYPE public.app_role;
@@ -181,9 +154,9 @@ DROP TYPE public.app_role;
 -- 8. Renomear novo enum e colunas
 ALTER TYPE public.app_role_new RENAME TO app_role;
 ALTER TABLE public.user_roles RENAME COLUMN role_new TO role;
-DO $$ BEGIN ALTER TABLE public.user_roles ALTER COLUMN role SET NOT NULL; EXCEPTION WHEN undefined_column THEN NULL; WHEN undefined_table THEN NULL; END $$;
+ALTER TABLE public.user_roles ALTER COLUMN role SET NOT NULL;
 ALTER TABLE public.menu_permissions RENAME COLUMN role_new TO role;
-DO $$ BEGIN ALTER TABLE public.menu_permissions ALTER COLUMN role SET NOT NULL; EXCEPTION WHEN undefined_column THEN NULL; WHEN undefined_table THEN NULL; END $$;
+ALTER TABLE public.menu_permissions ALTER COLUMN role SET NOT NULL;
 
 -- 9. Recriar funções
 CREATE OR REPLACE FUNCTION public.has_role(_user_id uuid, _role app_role)
@@ -546,16 +519,16 @@ CREATE TRIGGER update_permissoes_updated_at
 -- === 20251014192827_6b975d7c-61d5-4a3e-a42d-215d2c701860.sql ===
 -- Adicionar coluna para armazenar números de RQE (Registro de Qualificação de Especialista)
 -- Usando array de texto pois médicos especialistas podem ter múltiplos RQEs
-DO $$ BEGIN ALTER TABLE public.medicos 
-ADD COLUMN rqe_numeros text[] DEFAULT NULL; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE public.medicos 
+ADD COLUMN rqe_numeros text[] DEFAULT NULL;
 
 COMMENT ON COLUMN public.medicos.rqe_numeros IS 'Números de RQE do médico. Campo opcional, usado apenas para especialistas.';
 
 -- === 20251014193351_76f293b6-969b-4f6b-8e07-29b3615ea2d1.sql ===
 -- Alterar coluna especialidade para aceitar múltiplas especialidades
 -- Primeiro vamos criar uma coluna temporária com array
-DO $$ BEGIN ALTER TABLE public.medicos 
-ADD COLUMN especialidades text[] DEFAULT NULL; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE public.medicos 
+ADD COLUMN especialidades text[] DEFAULT NULL;
 
 -- Copiar dados existentes da coluna especialidade para especialidades como array
 UPDATE public.medicos 
@@ -563,25 +536,25 @@ SET especialidades = ARRAY[especialidade]
 WHERE especialidade IS NOT NULL;
 
 -- Remover a coluna antiga especialidade
-DO $$ BEGIN ALTER TABLE public.medicos 
-DROP COLUMN especialidade; EXCEPTION WHEN undefined_column THEN NULL; END $$;
+ALTER TABLE public.medicos 
+DROP COLUMN especialidade;
 
 -- Renomear a nova coluna para especialidade
 ALTER TABLE public.medicos 
 RENAME COLUMN especialidades TO especialidade;
 
 -- Adicionar constraint para garantir que não seja vazio se preenchido
-DO $$ BEGIN ALTER TABLE public.medicos 
+ALTER TABLE public.medicos 
 ADD CONSTRAINT medicos_especialidade_not_empty 
-CHECK (especialidade IS NULL OR array_length(especialidade, 1) > 0); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+CHECK (especialidade IS NULL OR array_length(especialidade, 1) > 0);
 
 COMMENT ON COLUMN public.medicos.especialidade IS 'Especialidades médicas do profissional. Campo obrigatório, permite múltiplas especialidades.';
 
 -- === 20251014193708_7f897197-d18a-4aac-8d9d-96e262968230.sql ===
 -- Alterar coluna alocado_cliente_id para aceitar múltiplos clientes
 -- Primeiro vamos criar uma coluna temporária com array
-DO $$ BEGIN ALTER TABLE public.medicos 
-ADD COLUMN alocado_clientes_ids uuid[] DEFAULT NULL; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE public.medicos 
+ADD COLUMN alocado_clientes_ids uuid[] DEFAULT NULL;
 
 -- Copiar dados existentes da coluna alocado_cliente_id para alocado_clientes_ids como array
 UPDATE public.medicos 
@@ -589,8 +562,8 @@ SET alocado_clientes_ids = ARRAY[alocado_cliente_id]
 WHERE alocado_cliente_id IS NOT NULL;
 
 -- Remover a coluna antiga alocado_cliente_id
-DO $$ BEGIN ALTER TABLE public.medicos 
-DROP COLUMN alocado_cliente_id; EXCEPTION WHEN undefined_column THEN NULL; END $$;
+ALTER TABLE public.medicos 
+DROP COLUMN alocado_cliente_id;
 
 -- Renomear a nova coluna para alocado_cliente_id
 ALTER TABLE public.medicos 
@@ -642,7 +615,7 @@ $$;
 
 -- === 20251016142827_22d0fade-a372-4b5e-bf85-f762147b7457.sql ===
 -- Criar enum para status de licitações
-DO $$ BEGIN CREATE TYPE status_licitacao AS ENUM (
+-- NESTED_REMOVED: DO $typblk$ BEGIN CREATE TYPE status_licitacao AS ENUM (
   'captacao_edital',
   'edital_analise',
   'deliberacao',
@@ -656,10 +629,10 @@ DO $$ BEGIN CREATE TYPE status_licitacao AS ENUM (
   'arrematados',
   'descarte_edital',
   'nao_ganhamos'
-); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+); EXCEPTION WHEN duplicate_object THEN NULL; END $typblk$;
 
 -- Criar enum para status de disparos
-DO $$ BEGIN CREATE TYPE status_disparo AS ENUM (
+-- NESTED_REMOVED: DO $typblk$ BEGIN CREATE TYPE status_disparo AS ENUM (
   'nova_oportunidade',
   'disparo',
   'analise_proposta',
@@ -668,16 +641,16 @@ DO $$ BEGIN CREATE TYPE status_disparo AS ENUM (
   'proposta_aceita',
   'proposta_arquivada',
   'relacionamento_medico'
-); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+); EXCEPTION WHEN duplicate_object THEN NULL; END $typblk$;
 
 -- Criar enum para status de relacionamento médico
-DO $$ BEGIN CREATE TYPE status_relacionamento AS ENUM (
+-- NESTED_REMOVED: DO $typblk$ BEGIN CREATE TYPE status_relacionamento AS ENUM (
   'inicio_identificacao',
   'captacao_documentacao',
   'pendencia_documentacao',
   'documentacao_finalizada',
   'criacao_escalas'
-); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+); EXCEPTION WHEN duplicate_object THEN NULL; END $typblk$;
 
 -- Tabela de licitações
 CREATE TABLE IF NOT EXISTS licitacoes (
@@ -714,19 +687,19 @@ CREATE TABLE IF NOT EXISTS worklist_tarefas (
 );
 
 -- Adicionar novos campos em contratos
-DO $$ BEGIN ALTER TABLE contratos
+ALTER TABLE contratos
 ADD COLUMN IF NOT EXISTS condicao_pagamento TEXT,
 ADD COLUMN IF NOT EXISTS valor_estimado NUMERIC(15,2),
 ADD COLUMN IF NOT EXISTS prazo_meses INTEGER DEFAULT 12,
-ADD COLUMN IF NOT EXISTS data_termino DATE; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ADD COLUMN IF NOT EXISTS data_termino DATE;
 
 -- Adicionar campo quantidade em contrato_itens
-DO $$ BEGIN ALTER TABLE contrato_itens
-ADD COLUMN IF NOT EXISTS quantidade INTEGER DEFAULT 1 CHECK (quantidade >= 1); EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE contrato_itens
+ADD COLUMN IF NOT EXISTS quantidade INTEGER DEFAULT 1 CHECK (quantidade >= 1);
 
 -- Adicionar campo UF em clientes se não existir
-DO $$ BEGIN ALTER TABLE clientes
-ADD COLUMN IF NOT EXISTS uf TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE clientes
+ADD COLUMN IF NOT EXISTS uf TEXT;
 
 -- Habilitar RLS nas novas tabelas
 ALTER TABLE licitacoes ENABLE ROW LEVEL SECURITY;
@@ -832,7 +805,7 @@ $$ LANGUAGE plpgsql;
 
 -- Trigger para automação Licitações → Disparos
 DROP TRIGGER IF EXISTS licitacao_to_disparo_automation ON licitacoes;
--- (removed invalid DROP TRIGGER)
+DROP TRIGGER IF EXISTS "licitacao_to_disparo_automation" ON licitacoes;
 CREATE TRIGGER licitacao_to_disparo_automation
   AFTER INSERT OR UPDATE OF status
   ON licitacoes
@@ -861,7 +834,7 @@ CREATE TRIGGER update_worklist_updated_at
 
 -- === 20251016145610_6f34eb41-01d1-4bf8-8c81-b911fe7aeba9.sql ===
 -- Adicionar novos campos à tabela licitacoes
-DO $$ BEGIN ALTER TABLE public.licitacoes
+ALTER TABLE public.licitacoes
 ADD COLUMN IF NOT EXISTS licitacao_codigo TEXT,
 ADD COLUMN IF NOT EXISTS municipio_uf TEXT,
 ADD COLUMN IF NOT EXISTS modalidade TEXT,
@@ -869,7 +842,7 @@ ADD COLUMN IF NOT EXISTS data_disputa TIMESTAMP WITH TIME ZONE,
 ADD COLUMN IF NOT EXISTS etiquetas TEXT[],
 ADD COLUMN IF NOT EXISTS fonte TEXT DEFAULT 'Manual',
 ADD COLUMN IF NOT EXISTS effect_id TEXT,
-ADD COLUMN IF NOT EXISTS titulo TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ADD COLUMN IF NOT EXISTS titulo TEXT;
 
 -- Criar índices para otimizar buscas e deduplicação
 CREATE INDEX IF NOT EXISTS idx_licitacoes_codigo ON public.licitacoes(licitacao_codigo);
@@ -1023,9 +996,9 @@ $$;
 
 -- === 20251017192550_f5821b20-923c-4e25-a1b8-96b1bbe08874.sql ===
 -- Create enums for patrimonio
-DO $$ BEGIN CREATE TYPE categoria_patrimonio AS ENUM ('equipamento', 'mobiliario', 'veiculo', 'informatica', 'outros'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE TYPE estado_conservacao AS ENUM ('novo', 'usado', 'danificado', 'inservivel'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE TYPE status_patrimonio AS ENUM ('ativo', 'transferido', 'baixado'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    CREATE TYPE categoria_patrimonio AS ENUM ('equipamento', 'mobiliario', 'veiculo', 'informatica', 'outros');
+    CREATE TYPE estado_conservacao AS ENUM ('novo', 'usado', 'danificado', 'inservivel');
+    CREATE TYPE status_patrimonio AS ENUM ('ativo', 'transferido', 'baixado');
 
 -- Create patrimonio table
 CREATE TABLE IF NOT EXISTS public.patrimonio (
@@ -1184,12 +1157,12 @@ INSERT INTO public.centros_custo (nome) VALUES
   ('Externos');
 
 -- Add setor_id to profiles table
-DO $$ BEGIN ALTER TABLE public.profiles
-ADD COLUMN setor_id UUID REFERENCES public.setores(id) ON DELETE SET NULL; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE public.profiles
+ADD COLUMN setor_id UUID REFERENCES public.setores(id) ON DELETE SET NULL;
 
 -- Add setor_id to patrimonio table
-DO $$ BEGIN ALTER TABLE public.patrimonio
-ADD COLUMN setor_id UUID REFERENCES public.setores(id) ON DELETE SET NULL; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE public.patrimonio
+ADD COLUMN setor_id UUID REFERENCES public.setores(id) ON DELETE SET NULL;
 
 -- DROP TRIGGER IF EXISTS "for" ON public.centros_custo;
 -- Create trigger for updated_at
@@ -1206,10 +1179,10 @@ EXECUTE FUNCTION public.update_updated_at_column();
 
 -- === 20251023195534_dc69ddf2-f426-482e-86a6-17b3e5153eb4.sql ===
 -- Enums para Radiologia
-DO $$ BEGIN CREATE TYPE segmento_radiologia AS ENUM ('RX', 'TC', 'US', 'RM', 'MM'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE TYPE motivo_ajuste_laudo AS ENUM ('Erro de digitação', 'Informação clínica incompleta', 'Padrão fora do protocolo', 'Solicitado pelo cliente', 'Outro'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE TYPE status_ajuste_laudo AS ENUM ('Pendente', 'Em Ajuste', 'Ajustado'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE TYPE motivo_indisponibilidade AS ENUM ('Viagem', 'Férias', 'Motivos pessoais', 'Problemas de saúde'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    CREATE TYPE segmento_radiologia AS ENUM ('RX', 'TC', 'US', 'RM', 'MM');
+    CREATE TYPE motivo_ajuste_laudo AS ENUM ('Erro de digitação', 'Informação clínica incompleta', 'Padrão fora do protocolo', 'Solicitado pelo cliente', 'Outro');
+    CREATE TYPE status_ajuste_laudo AS ENUM ('Pendente', 'Em Ajuste', 'Ajustado');
+    CREATE TYPE motivo_indisponibilidade AS ENUM ('Viagem', 'Férias', 'Motivos pessoais', 'Problemas de saúde');
 
 -- Tabela: radiologia_agendas
 CREATE TABLE IF NOT EXISTS public.radiologia_agendas (
@@ -1231,6 +1204,52 @@ CREATE TABLE IF NOT EXISTS public.radiologia_producao_exames (
   data DATE NOT NULL,
   quantidade INTEGER NOT NULL CHECK (quantidade >= 0),
   observacoes TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- Tabela: radiologia_pendencias
+CREATE TABLE IF NOT EXISTS public.radiologia_pendencias (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  cliente_id UUID NOT NULL REFERENCES public.clientes(id) ON DELETE CASCADE,
+  medico_id UUID NOT NULL REFERENCES public.medicos(id) ON DELETE CASCADE,
+  segmento segmento_radiologia NOT NULL,
+  data_referencia DATE NOT NULL,
+  quantidade_pendente INTEGER NOT NULL CHECK (quantidade_pendente >= 0),
+  observacoes TEXT,
+  anexos TEXT[],
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- Tabela: radiologia_ajuste_laudos
+CREATE TABLE IF NOT EXISTS public.radiologia_ajuste_laudos (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  cliente_id UUID NOT NULL REFERENCES public.clientes(id) ON DELETE CASCADE,
+  medico_responsavel_id UUID NOT NULL REFERENCES public.medicos(id) ON DELETE CASCADE,
+  segmento segmento_radiologia NOT NULL,
+  identificador_laudo TEXT NOT NULL,
+  data_emissao DATE NOT NULL,
+  motivo_ajuste motivo_ajuste_laudo NOT NULL,
+  descricao_ajuste TEXT NOT NULL,
+  status status_ajuste_laudo NOT NULL DEFAULT 'Pendente',
+  responsavel_ajuste_id UUID REFERENCES public.medicos(id),
+  prazo_ajuste TIMESTAMP WITH TIME ZONE,
+  anexos TEXT[],
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- Tabela: radiologia_exames_atraso
+CREATE TABLE IF NOT EXISTS public.radiologia_exames_atraso (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  exame TEXT NOT NULL,
+  segmento segmento_radiologia NOT NULL,
+  cliente_id UUID NOT NULL REFERENCES public.clientes(id) ON DELETE CASCADE,
+  medico_id UUID NOT NULL REFERENCES public.medicos(id) ON DELETE CASCADE,
+  data_hora_execucao TIMESTAMP WITH TIME ZONE NOT NULL,
+  observacao TEXT,
+  anexos TEXT[],
   created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );

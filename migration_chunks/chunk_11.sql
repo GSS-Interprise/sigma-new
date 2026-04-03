@@ -1,288 +1,4 @@
 
--- Enable RLS
-ALTER TABLE public.regiao_interesse_leads ENABLE ROW LEVEL SECURITY;
-
--- All authenticated users can view
-DROP POLICY IF EXISTS "Authenticated users can view regiao_interesse_leads" ON public.regiao_interesse_leads;
-CREATE POLICY "Authenticated users can view regiao_interesse_leads"
-  ON public.regiao_interesse_leads FOR SELECT
-  TO authenticated USING (true);
-
--- Authenticated users can insert
-DROP POLICY IF EXISTS "Authenticated users can insert regiao_interesse_leads" ON public.regiao_interesse_leads;
-CREATE POLICY "Authenticated users can insert regiao_interesse_leads"
-  ON public.regiao_interesse_leads FOR INSERT
-  TO authenticated WITH CHECK (true);
-
--- Authenticated users can delete
-DROP POLICY IF EXISTS "Authenticated users can delete regiao_interesse_leads" ON public.regiao_interesse_leads;
-CREATE POLICY "Authenticated users can delete regiao_interesse_leads"
-  ON public.regiao_interesse_leads FOR DELETE
-  TO authenticated USING (true);
-
--- Index for fast lookups
-CREATE INDEX IF NOT EXISTS idx_regiao_interesse_leads_lead_id ON public.regiao_interesse_leads(lead_id);
-
-
--- === 20260216195758_9e6a02f4-f52f-412e-81a9-c68367901382.sql ===
-
--- Table to track modules in maintenance mode
-CREATE TABLE IF NOT EXISTS public.modulos_manutencao (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  modulo_key text NOT NULL UNIQUE,
-  motivo text,
-  desativado_por uuid,
-  created_at timestamptz NOT NULL DEFAULT now()
-);
-
-ALTER TABLE public.modulos_manutencao ENABLE ROW LEVEL SECURITY;
-
--- Everyone authenticated can read (to check if module is disabled)
-DROP POLICY IF EXISTS "Authenticated users can view maintenance status" ON public.modulos_manutencao;
-CREATE POLICY "Authenticated users can view maintenance status"
-ON public.modulos_manutencao FOR SELECT TO authenticated USING (true);
-
--- Only admins can insert/delete
-DROP POLICY IF EXISTS "Admins can insert maintenance" ON public.modulos_manutencao;
-CREATE POLICY "Admins can insert maintenance"
-ON public.modulos_manutencao FOR INSERT TO authenticated
-WITH CHECK (public.has_role(auth.uid(), 'admin'));
-
-DROP POLICY IF EXISTS "Admins can delete maintenance" ON public.modulos_manutencao;
-CREATE POLICY "Admins can delete maintenance"
-ON public.modulos_manutencao FOR DELETE TO authenticated
-USING (public.has_role(auth.uid(), 'admin'));
-
-
--- === 20260218114815_f8345d88-77e1-4761-a5a0-6678246eb25d.sql ===
--- Add storage policies for suporte-anexos bucket
--- Allow all authenticated users to upload (they need to attach files to tickets)
-DROP POLICY IF EXISTS "Authenticated users can upload suporte anexos" ON storage.objects;
-CREATE POLICY "Authenticated users can upload suporte anexos"
-ON storage.objects FOR INSERT
-TO authenticated
-WITH CHECK (bucket_id = 'suporte-anexos');
-
--- Allow all authenticated users to view/download
-DROP POLICY IF EXISTS "Authenticated users can view suporte anexos" ON storage.objects;
-CREATE POLICY "Authenticated users can view suporte anexos"
-ON storage.objects FOR SELECT
-TO authenticated
-USING (bucket_id = 'suporte-anexos');
-
--- Allow all authenticated users to delete their own uploads
-DROP POLICY IF EXISTS "Authenticated users can delete suporte anexos" ON storage.objects;
-CREATE POLICY "Authenticated users can delete suporte anexos"
-ON storage.objects FOR DELETE
-TO authenticated
-USING (bucket_id = 'suporte-anexos');
-
--- === 20260218115824_bb8ee126-30b0-488e-9308-57dbccb609f7.sql ===
--- Drop the existing INSERT policy
-DROP POLICY "Users can create comments on their tickets" ON public.suporte_comentarios;
-
--- Recreate with support for 'externos' role
-DROP POLICY IF EXISTS "Users can create comments on their tickets" ON public.suporte_comentarios;
-CREATE POLICY "Users can create comments on their tickets"
-ON public.suporte_comentarios
-FOR INSERT
-TO authenticated
-WITH CHECK (
-  auth.uid() = autor_id
-  AND (
-    EXISTS (
-      SELECT 1 FROM suporte_tickets
-      WHERE suporte_tickets.id = suporte_comentarios.ticket_id
-      AND (
-        suporte_tickets.solicitante_id = auth.uid()
-        OR is_admin(auth.uid())
-        OR has_role(auth.uid(), 'externos')
-      )
-    )
-    OR auth.role() = 'service_role'
-  )
-);
-
-
--- === 20260218142719_7a04350e-3d88-4e87-9ad9-3e4babdb75c3.sql ===
--- Add unique constraint on 'name' column for sigzap_instances
--- This is needed for the upsert in receive-whatsapp-messages edge function
-DO $$ BEGIN ALTER TABLE public.sigzap_instances ADD CONSTRAINT sigzap_instances_name_key UNIQUE (name); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-
--- === 20260218144731_e7108012-642a-4c13-bd90-5a7dfbf029bd.sql ===
-
--- Add created_by column to chips table to track who created each instance
-DO $$ BEGIN ALTER TABLE public.chips ADD COLUMN created_by uuid REFERENCES auth.users(id); EXCEPTION WHEN duplicate_column THEN NULL; END $$;
-
--- Also add created_by_name for display without needing joins
-DO $$ BEGIN ALTER TABLE public.chips ADD COLUMN created_by_name text; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
-
-
--- === 20260218182934_f1485469-598e-4c48-88ff-42c12d57e461.sql ===
-
--- Allow captacao users (like Brenda) to insert proposta_itens when cloning proposals
-DROP POLICY IF EXISTS "Captadores podem inserir proposta_itens" ON public.proposta_itens;
-CREATE POLICY "Captadores podem inserir proposta_itens"
-ON public.proposta_itens
-FOR INSERT
-WITH CHECK (
-  is_admin(auth.uid()) 
-  OR has_role(auth.uid(), 'gestor_captacao'::app_role) 
-  OR has_role(auth.uid(), 'gestor_contratos'::app_role)
-  OR is_captacao_leader(auth.uid())
-  OR has_captacao_permission(auth.uid(), 'contratos_servicos'::text)
-);
-
--- Also allow them to update proposta_itens (for editing linked proposals)
-DROP POLICY IF EXISTS "Captadores podem atualizar proposta_itens" ON public.proposta_itens;
-CREATE POLICY "Captadores podem atualizar proposta_itens"
-ON public.proposta_itens
-FOR UPDATE
-USING (
-  is_admin(auth.uid()) 
-  OR has_role(auth.uid(), 'gestor_captacao'::app_role) 
-  OR has_role(auth.uid(), 'gestor_contratos'::app_role)
-  OR is_captacao_leader(auth.uid())
-  OR has_captacao_permission(auth.uid(), 'contratos_servicos'::text)
-);
-
--- Also allow delete for captadores
-DROP POLICY IF EXISTS "Captadores podem deletar proposta_itens" ON public.proposta_itens;
-CREATE POLICY "Captadores podem deletar proposta_itens"
-ON public.proposta_itens
-FOR DELETE
-USING (
-  is_admin(auth.uid()) 
-  OR has_role(auth.uid(), 'gestor_captacao'::app_role) 
-  OR has_role(auth.uid(), 'gestor_contratos'::app_role)
-  OR is_captacao_leader(auth.uid())
-  OR has_captacao_permission(auth.uid(), 'contratos_servicos'::text)
-);
-
-
--- === 20260218182958_84e7c032-0197-4d2e-a38f-943ee38cf9a9.sql ===
-
--- Drop the old restrictive ALL policy that only allowed gestores
-DROP POLICY IF EXISTS "Gestores podem gerenciar proposta_itens" ON public.proposta_itens;
-
-
--- === 20260223184151_058592d3-7b89-44f5-a539-ebe0adb8a23e.sql ===
-
--- 1. Adicionar coluna especialidades_crua
-DO $$ BEGIN ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS especialidades_crua TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
-
--- 2. Limpar CPFs duplicados (manter o mais recente)
-DELETE FROM leads 
-WHERE id NOT IN (
-  SELECT DISTINCT ON (cpf) id 
-  FROM leads 
-  WHERE cpf IS NOT NULL AND TRIM(cpf) != ''
-  ORDER BY cpf, updated_at DESC NULLS LAST
-)
-AND cpf IN (
-  SELECT cpf FROM leads 
-  WHERE cpf IS NOT NULL AND TRIM(cpf) != ''
-  GROUP BY cpf HAVING COUNT(*) > 1
-);
-
--- 3. Criar indice unique parcial no CPF
-CREATE UNIQUE INDEX IF NOT EXISTS idx_leads_cpf_unique 
-ON public.leads (cpf) WHERE cpf IS NOT NULL AND TRIM(cpf) != '';
-
--- 4. Relaxar phone_e164 (permitir NULL)
-DO $$ BEGIN ALTER TABLE public.leads ALTER COLUMN phone_e164 DROP NOT NULL; EXCEPTION WHEN undefined_column THEN NULL; WHEN undefined_table THEN NULL; END $$;
-
--- 5. Atualizar trigger chave_unica para priorizar CPF
-CREATE OR REPLACE FUNCTION public.generate_lead_chave_unica()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public'
-AS $function$
-BEGIN
-  IF NEW.cpf IS NOT NULL AND TRIM(NEW.cpf) != '' THEN
-    NEW.chave_unica := 'cpf_' || REGEXP_REPLACE(NEW.cpf, '[^0-9]', '', 'g');
-  ELSIF NEW.nome IS NOT NULL AND NEW.data_nascimento IS NOT NULL THEN
-    NEW.chave_unica := LOWER(TRIM(NEW.nome)) || '_' || NEW.data_nascimento;
-  ELSE
-    NEW.chave_unica := NULL;
-  END IF;
-  RETURN NEW;
-END;
-$function$;
-
-
--- === 20260223185012_5aa11ac1-1548-4c72-bf6e-3d3402a0c336.sql ===
-
--- 1. Limpar leads com CPF duplicado (manter o mais recente por updated_at)
-DELETE FROM public.leads a
-USING public.leads b
-WHERE a.id != b.id
-  AND a.cpf IS NOT NULL AND TRIM(a.cpf) != ''
-  AND b.cpf IS NOT NULL AND TRIM(b.cpf) != ''
-  AND REGEXP_REPLACE(a.cpf, '[^0-9]', '', 'g') = REGEXP_REPLACE(b.cpf, '[^0-9]', '', 'g')
-  AND a.updated_at < b.updated_at;
-
--- 2. Criar tabela especialidades normalizada
-CREATE TABLE IF NOT EXISTS public.especialidades (
-  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  nome TEXT NOT NULL UNIQUE,
-  ativo BOOLEAN NOT NULL DEFAULT true,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-ALTER TABLE public.especialidades ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "Especialidades são visíveis por todos autenticados" ON public.especialidades;
-CREATE POLICY "Especialidades são visíveis por todos autenticados"
-  ON public.especialidades FOR SELECT
-  USING (auth.uid() IS NOT NULL);
-
-DROP POLICY IF EXISTS "Admins podem gerenciar especialidades" ON public.especialidades;
-CREATE POLICY "Admins podem gerenciar especialidades"
-  ON public.especialidades FOR ALL
-  USING (public.is_admin(auth.uid()));
-
--- 3. Popular com dados existentes
-INSERT INTO public.especialidades (nome)
-SELECT DISTINCT UPPER(TRIM(especialidade))
-FROM public.leads
-WHERE especialidade IS NOT NULL AND TRIM(especialidade) != ''
-ON CONFLICT (nome) DO NOTHING;
-
--- 4. Adicionar FK na tabela leads
-DO $$ BEGIN ALTER TABLE public.leads ADD COLUMN especialidade_id UUID REFERENCES public.especialidades(id); EXCEPTION WHEN duplicate_column THEN NULL; END $$;
-CREATE INDEX IF NOT EXISTS idx_leads_especialidade_id ON public.leads (especialidade_id);
-
--- 5. Dropar triggers de user-land temporariamente
-DROP TRIGGER IF EXISTS trigger_lead_chave_unica ON public.leads;
-DROP TRIGGER IF EXISTS update_leads_updated_at ON public.leads;
-DROP TRIGGER IF EXISTS validate_lead_status_trigger ON public.leads;
-
--- 6. Preencher especialidade_id
-UPDATE public.leads l
-SET especialidade_id = e.id
-FROM public.especialidades e
-WHERE UPPER(TRIM(l.especialidade)) = e.nome
-  AND l.especialidade IS NOT NULL
-  AND TRIM(l.especialidade) != '';
-
--- 7. Recriar triggers
-DROP TRIGGER IF EXISTS "trigger_lead_chave_unica" ON public.leads;
-CREATE TRIGGER trigger_lead_chave_unica
-  BEFORE INSERT OR UPDATE ON public.leads
-  FOR EACH ROW EXECUTE FUNCTION public.generate_lead_chave_unica();
-
-DROP TRIGGER IF EXISTS "update_leads_updated_at" ON public.leads;
-CREATE TRIGGER update_leads_updated_at
-  BEFORE UPDATE ON public.leads
-  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
-
-DROP TRIGGER IF EXISTS "validate_lead_status_trigger" ON public.leads;
-CREATE TRIGGER validate_lead_status_trigger
-  BEFORE INSERT OR UPDATE ON public.leads
-  FOR EACH ROW EXECUTE FUNCTION public.validate_lead_status();
-
 -- 8. Índices para SELECT DISTINCT
 CREATE INDEX IF NOT EXISTS idx_leads_status ON public.leads (status) WHERE status IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_leads_origem ON public.leads (origem) WHERE origem IS NOT NULL;
@@ -349,10 +65,10 @@ USING (
 
 
 -- === 20260226132425_99961531-eb69-4414-92e2-f30dd07258b0.sql ===
-DO $$ BEGIN ALTER TABLE public.licitacoes ADD COLUMN IF NOT EXISTS objeto_contrato TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE public.licitacoes ADD COLUMN IF NOT EXISTS objeto_contrato TEXT;
 
 -- === 20260226135938_499daed8-5d9d-4d84-92ef-12e19abb6454.sql ===
-DO $$ BEGIN ALTER TABLE public.licitacoes ADD COLUMN IF NOT EXISTS cnpj_orgao text; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE public.licitacoes ADD COLUMN IF NOT EXISTS cnpj_orgao text;
 
 -- === 20260226140635_8caf1781-6316-405d-a274-b9d4537e2dc7.sql ===
 
@@ -373,10 +89,10 @@ USING (
 
 -- === 20260303190730_74354ccc-ccb8-40f6-91dc-5308fc5eac4e.sql ===
 
-DO $$ BEGIN ALTER TABLE public.leads 
+ALTER TABLE public.leads 
   ADD COLUMN IF NOT EXISTS api_enrich_status text DEFAULT 'pendente',
   ADD COLUMN IF NOT EXISTS api_enrich_last_attempt timestamptz,
-  ADD COLUMN IF NOT EXISTS api_enrich_source text; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+  ADD COLUMN IF NOT EXISTS api_enrich_source text;
 
 CREATE INDEX IF NOT EXISTS idx_leads_enrich_status 
   ON public.leads(api_enrich_status, api_enrich_last_attempt);
@@ -401,11 +117,11 @@ WHERE
 ALTER TABLE public.chips DROP CONSTRAINT IF EXISTS chips_numero_key;
 
 -- Adiciona UNIQUE em instance_name para permitir UPSERT correto
-DO $$ BEGIN ALTER TABLE public.chips ADD CONSTRAINT chips_instance_name_key UNIQUE (instance_name); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+ALTER TABLE public.chips ADD CONSTRAINT chips_instance_name_key UNIQUE (instance_name);
 
 
 -- === 20260312194816_5f5b89e1-bf13-4b5c-acef-39614d6e0af7.sql ===
-DO $$ BEGIN ALTER TABLE captacao_permissoes_usuario ADD COLUMN IF NOT EXISTS realtime_licitacoes boolean NOT NULL DEFAULT false; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE captacao_permissoes_usuario ADD COLUMN IF NOT EXISTS realtime_licitacoes boolean NOT NULL DEFAULT false;
 
 -- === 20260317135448_93e06409-b15d-487b-be1a-bc7d60bc2e71.sql ===
 
@@ -439,8 +155,8 @@ CREATE POLICY "Service role full access to failed queue"
 -- === 20260317143138_c74a68da-9903-4356-a0c7-455585fdbd26.sql ===
 
 -- Adicionar coluna abandonment_reason à tabela import_leads_failed_queue
-DO $$ BEGIN ALTER TABLE public.import_leads_failed_queue
-  ADD COLUMN IF NOT EXISTS abandonment_reason text; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE public.import_leads_failed_queue
+  ADD COLUMN IF NOT EXISTS abandonment_reason text;
 
 COMMENT ON COLUMN public.import_leads_failed_queue.abandonment_reason IS 
   'Motivo do abandono: invalid_payload | phone_conflict_unresolvable | lead_not_found | max_retries_exceeded | timeout | unknown_error';
@@ -465,8 +181,8 @@ BEGIN
       AND table_name = 'import_leads_failed_queue'
       AND column_name = 'abandonment_reason'
   ) THEN
-    DO $$ BEGIN ALTER TABLE public.import_leads_failed_queue
-      ADD COLUMN abandonment_reason text; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+    ALTER TABLE public.import_leads_failed_queue
+      ADD COLUMN abandonment_reason text;
   END IF;
 END;
 $$;
@@ -537,15 +253,15 @@ WHERE cpf IS NOT NULL;
 
 
 -- === 20260325173640_b9ae8d14-6912-4cd7-86f8-c2aacaa63c59.sql ===
-DO $$ BEGIN ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS emails_adicionais text[] DEFAULT '{}'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS emails_adicionais text[] DEFAULT '{}';
 
 -- === 20260325182106_2fc9c5b4-d1e2-4d29-afe2-904d3fdc9026.sql ===
-DO $$ BEGIN ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS data_formatura date; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS data_formatura date;
 
 -- === 20260326122101_f11b47f3-3bd5-47e4-acbe-f68cfd4f7fdb.sql ===
 
 -- Create leads_bloqueio_temporario table
-CREATE TABLE IF NOT EXISTS public.leads_bloqueio_temporario (
+CREATE TABLE public.leads_bloqueio_temporario (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
   lead_id UUID NOT NULL REFERENCES public.leads(id) ON DELETE CASCADE,
   motivo TEXT NOT NULL,
@@ -559,8 +275,8 @@ CREATE TABLE IF NOT EXISTS public.leads_bloqueio_temporario (
 ALTER TABLE public.leads_bloqueio_temporario ENABLE ROW LEVEL SECURITY;
 
 -- Indexes for fast lookup
-CREATE INDEX IF NOT EXISTS idx_leads_bloqueio_lead_id ON public.leads_bloqueio_temporario(lead_id);
-CREATE INDEX IF NOT EXISTS idx_leads_bloqueio_active ON public.leads_bloqueio_temporario(lead_id) WHERE removed_at IS NULL;
+CREATE INDEX idx_leads_bloqueio_lead_id ON public.leads_bloqueio_temporario(lead_id);
+CREATE INDEX idx_leads_bloqueio_active ON public.leads_bloqueio_temporario(lead_id) WHERE removed_at IS NULL;
 
 -- SELECT: all authenticated users
 DROP POLICY IF EXISTS "Authenticated can view bloqueio temporario" ON public.leads_bloqueio_temporario;
@@ -714,7 +430,7 @@ SELECT cron.schedule(
 -- === 20260330150111_e2bc9233-5614-4a36-802b-c2795933d70f.sql ===
 
 -- Table to register external BI clients
-CREATE TABLE IF NOT EXISTS public.bi_clientes (
+CREATE TABLE public.bi_clientes (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
   nome TEXT NOT NULL,
   slug TEXT NOT NULL UNIQUE,
@@ -736,7 +452,7 @@ CREATE POLICY "Admins can manage bi_clientes"
   WITH CHECK (public.is_admin(auth.uid()));
 
 -- Table for import history per client
-CREATE TABLE IF NOT EXISTS public.bi_client_imports (
+CREATE TABLE public.bi_client_imports (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
   cliente_id UUID NOT NULL REFERENCES public.bi_clientes(id) ON DELETE CASCADE,
   arquivo_nome TEXT NOT NULL,
@@ -765,7 +481,7 @@ CREATE POLICY "Authenticated users can update bi_client_imports"
   ON public.bi_client_imports FOR UPDATE TO authenticated USING (true);
 
 -- Staging table for imported rows with per-row error tracking
-CREATE TABLE IF NOT EXISTS public.bi_client_import_rows (
+CREATE TABLE public.bi_client_import_rows (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
   import_id UUID NOT NULL REFERENCES public.bi_client_imports(id) ON DELETE CASCADE,
   linha_numero INTEGER NOT NULL,
@@ -801,9 +517,9 @@ CREATE TRIGGER update_bi_client_imports_updated_at
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 -- Index for performance
-CREATE INDEX IF NOT EXISTS idx_bi_client_imports_cliente ON public.bi_client_imports(cliente_id);
-CREATE INDEX IF NOT EXISTS idx_bi_client_import_rows_import ON public.bi_client_import_rows(import_id);
-CREATE INDEX IF NOT EXISTS idx_bi_client_import_rows_status ON public.bi_client_import_rows(status);
+CREATE INDEX idx_bi_client_imports_cliente ON public.bi_client_imports(cliente_id);
+CREATE INDEX idx_bi_client_import_rows_import ON public.bi_client_import_rows(import_id);
+CREATE INDEX idx_bi_client_import_rows_status ON public.bi_client_import_rows(status);
 
 -- Seed Hospital de Gaspar
 INSERT INTO public.bi_clientes (nome, slug) VALUES ('Hospital de Gaspar', 'hospital-de-gaspar');
@@ -812,7 +528,7 @@ INSERT INTO public.bi_clientes (nome, slug) VALUES ('Hospital de Gaspar', 'hospi
 -- === 20260330175007_e5d07e64-beca-4fa3-9437-39c0f030bd90.sql ===
 
 -- Config table for hourly rates per tipo_plantao/setor
-CREATE TABLE IF NOT EXISTS public.financeiro_config_valores (
+CREATE TABLE public.financeiro_config_valores (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
   descricao TEXT NOT NULL,
   tipo_plantao TEXT,
@@ -825,7 +541,7 @@ CREATE TABLE IF NOT EXISTS public.financeiro_config_valores (
 );
 
 -- Consolidated payments per doctor per period
-CREATE TABLE IF NOT EXISTS public.financeiro_pagamentos (
+CREATE TABLE public.financeiro_pagamentos (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
   profissional_nome TEXT NOT NULL,
   profissional_id_externo TEXT,
@@ -848,7 +564,7 @@ CREATE TABLE IF NOT EXISTS public.financeiro_pagamentos (
 );
 
 -- Individual shifts linked to a payment
-CREATE TABLE IF NOT EXISTS public.financeiro_pagamento_itens (
+CREATE TABLE public.financeiro_pagamento_itens (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
   pagamento_id UUID NOT NULL REFERENCES public.financeiro_pagamentos(id) ON DELETE CASCADE,
   escala_integrada_id UUID REFERENCES public.escalas_integradas(id),
@@ -892,7 +608,7 @@ CREATE TRIGGER update_financeiro_pagamentos_updated_at BEFORE UPDATE ON public.f
 
 
 -- === 20260331172239_61f49e1b-9c77-4be9-a5b3-70b5a48b0336.sql ===
-DO $$ BEGIN ALTER TABLE public.ages_leads ADD COLUMN IF NOT EXISTS cnpj text; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+ALTER TABLE public.ages_leads ADD COLUMN IF NOT EXISTS cnpj text;
 
 -- === 20260331183226_80df11f9-5aa5-4199-9643-b14892e6559b.sql ===
 -- Fix: usar objeto_contrato (texto puro) em vez de objeto (HTML) no pré-contrato
@@ -1111,15 +827,15 @@ DELETE FROM public.escalas_integradas WHERE sistema_origem = 'DR_ESCALA' AND loc
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Create enum types
-DO $tyblk$ BEGIN DO $$ BEGIN CREATE TYPE public.tipo_contrato AS ENUM ('licitacao', 'privado'); EXCEPTION WHEN duplicate_object THEN NULL; END $$; EXCEPTION WHEN duplicate_object THEN NULL; END $tyblk$;
-DO $tyblk$ BEGIN DO $$ BEGIN CREATE TYPE public.status_contrato AS ENUM ('ativo', 'inativo', 'suspenso'); EXCEPTION WHEN duplicate_object THEN NULL; END $$; EXCEPTION WHEN duplicate_object THEN NULL; END $tyblk$;
-DO $tyblk$ BEGIN DO $$ BEGIN CREATE TYPE public.status_demanda AS ENUM ('aberta', 'em_atendimento', 'concluida', 'cancelada'); EXCEPTION WHEN duplicate_object THEN NULL; END $$; EXCEPTION WHEN duplicate_object THEN NULL; END $tyblk$;
-DO $tyblk$ BEGIN DO $$ BEGIN CREATE TYPE public.status_proposta AS ENUM ('pendente', 'aceita', 'recusada'); EXCEPTION WHEN duplicate_object THEN NULL; END $$; EXCEPTION WHEN duplicate_object THEN NULL; END $tyblk$;
-DO $tyblk$ BEGIN DO $$ BEGIN CREATE TYPE public.status_documentacao AS ENUM ('pendente', 'em_analise', 'aprovada', 'reprovada'); EXCEPTION WHEN duplicate_object THEN NULL; END $$; EXCEPTION WHEN duplicate_object THEN NULL; END $tyblk$;
-DO $tyblk$ BEGIN DO $$ BEGIN CREATE TYPE public.status_assinatura AS ENUM ('pendente', 'assinado', 'cancelado'); EXCEPTION WHEN duplicate_object THEN NULL; END $$; EXCEPTION WHEN duplicate_object THEN NULL; END $tyblk$;
-DO $tyblk$ BEGIN DO $$ BEGIN CREATE TYPE public.status_execucao AS ENUM ('pendente', 'executada', 'cancelada'); EXCEPTION WHEN duplicate_object THEN NULL; END $$; EXCEPTION WHEN duplicate_object THEN NULL; END $tyblk$;
-DO $tyblk$ BEGIN DO $$ BEGIN CREATE TYPE public.status_pagamento AS ENUM ('pendente', 'pago', 'atrasado', 'cancelado'); EXCEPTION WHEN duplicate_object THEN NULL; END $$; EXCEPTION WHEN duplicate_object THEN NULL; END $tyblk$;
-DO $tyblk$ BEGIN DO $$ BEGIN CREATE TYPE public.app_role AS ENUM ('admin', 'gestor_demanda', 'recrutador', 'coordenador_escalas', 'financeiro', 'medico'); EXCEPTION WHEN duplicate_object THEN NULL; END $$; EXCEPTION WHEN duplicate_object THEN NULL; END $tyblk$;
+    CREATE TYPE public.tipo_contrato AS ENUM ('licitacao', 'privado');
+    CREATE TYPE public.status_contrato AS ENUM ('ativo', 'inativo', 'suspenso');
+    CREATE TYPE public.status_demanda AS ENUM ('aberta', 'em_atendimento', 'concluida', 'cancelada');
+    CREATE TYPE public.status_proposta AS ENUM ('pendente', 'aceita', 'recusada');
+    CREATE TYPE public.status_documentacao AS ENUM ('pendente', 'em_analise', 'aprovada', 'reprovada');
+    CREATE TYPE public.status_assinatura AS ENUM ('pendente', 'assinado', 'cancelado');
+    CREATE TYPE public.status_execucao AS ENUM ('pendente', 'executada', 'cancelada');
+    CREATE TYPE public.status_pagamento AS ENUM ('pendente', 'pago', 'atrasado', 'cancelado');
+    CREATE TYPE public.app_role AS ENUM ('admin', 'gestor_demanda', 'recrutador', 'coordenador_escalas', 'financeiro', 'medico');
 
 CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -1226,3 +942,312 @@ CREATE TABLE IF NOT EXISTS public.escalas (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS public.pagamentos_medico (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  escala_id UUID NOT NULL REFERENCES public.escalas(id) ON DELETE CASCADE,
+  medico_id UUID NOT NULL REFERENCES public.medicos(id) ON DELETE CASCADE,
+  valor DECIMAL(10, 2) NOT NULL,
+  data_vencimento DATE NOT NULL,
+  data_pagamento DATE,
+  status_pagamento status_pagamento NOT NULL DEFAULT 'pendente',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.recebimentos_cliente (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  contrato_demanda_id UUID NOT NULL REFERENCES public.contratos_demanda(id) ON DELETE CASCADE,
+  valor DECIMAL(12, 2) NOT NULL,
+  data_vencimento DATE NOT NULL,
+  data_recebimento DATE,
+  status_recebimento status_pagamento NOT NULL DEFAULT 'pendente',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_roles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.clientes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.contratos_demanda ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.demandas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.medicos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.propostas_medicas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.contratos_medico ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.escalas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.pagamentos_medico ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.recebimentos_cliente ENABLE ROW LEVEL SECURITY;
+
+CREATE OR REPLACE FUNCTION public.has_role(_user_id UUID, _role app_role)
+RETURNS BOOLEAN
+LANGUAGE SQL
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.user_roles
+    WHERE user_id = _user_id
+      AND role = _role
+  )
+$$;
+
+CREATE OR REPLACE FUNCTION public.is_admin(_user_id UUID)
+RETURNS BOOLEAN
+LANGUAGE SQL
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT public.has_role(_user_id, 'admin')
+$$;
+
+DROP POLICY IF EXISTS "Users can view their own profile" ON public.profiles;
+DROP POLICY IF EXISTS "Users can view their own profile" ON public.profiles;
+CREATE POLICY "Users can view their own profile"
+  ON public.profiles FOR SELECT
+  USING (auth.uid() = id);
+
+DROP POLICY IF EXISTS "Users can update their own profile" ON public.profiles;
+DROP POLICY IF EXISTS "Users can update their own profile" ON public.profiles;
+CREATE POLICY "Users can update their own profile"
+  ON public.profiles FOR UPDATE
+  USING (auth.uid() = id);
+
+DROP POLICY IF EXISTS "Admins can view all profiles" ON public.profiles;
+DROP POLICY IF EXISTS "Admins can view all profiles" ON public.profiles;
+CREATE POLICY "Admins can view all profiles"
+  ON public.profiles FOR SELECT
+  USING (public.is_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Users can view their own roles" ON public.user_roles;
+DROP POLICY IF EXISTS "Users can view their own roles" ON public.user_roles;
+CREATE POLICY "Users can view their own roles"
+  ON public.user_roles FOR SELECT
+  USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Admins can manage all roles" ON public.user_roles;
+DROP POLICY IF EXISTS "Admins can manage all roles" ON public.user_roles;
+CREATE POLICY "Admins can manage all roles"
+  ON public.user_roles FOR ALL
+  USING (public.is_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Authenticated users can view clientes" ON public.clientes;
+DROP POLICY IF EXISTS "Authenticated users can view clientes" ON public.clientes;
+CREATE POLICY "Authenticated users can view clientes"
+  ON public.clientes FOR SELECT
+  TO authenticated
+  USING (true);
+
+DROP POLICY IF EXISTS "Admins and gestores can manage clientes" ON public.clientes;
+DROP POLICY IF EXISTS "Admins and gestores can manage clientes" ON public.clientes;
+CREATE POLICY "Admins and gestores can manage clientes"
+  ON public.clientes FOR ALL
+  USING (
+    public.is_admin(auth.uid()) OR
+    public.has_role(auth.uid(), 'gestor_demanda')
+  );
+
+DROP POLICY IF EXISTS "Authenticated users can view contratos_demanda" ON public.contratos_demanda;
+DROP POLICY IF EXISTS "Authenticated users can view contratos_demanda" ON public.contratos_demanda;
+CREATE POLICY "Authenticated users can view contratos_demanda"
+  ON public.contratos_demanda FOR SELECT
+  TO authenticated
+  USING (true);
+
+DROP POLICY IF EXISTS "Admins and gestores can manage contratos_demanda" ON public.contratos_demanda;
+DROP POLICY IF EXISTS "Admins and gestores can manage contratos_demanda" ON public.contratos_demanda;
+CREATE POLICY "Admins and gestores can manage contratos_demanda"
+  ON public.contratos_demanda FOR ALL
+  USING (
+    public.is_admin(auth.uid()) OR
+    public.has_role(auth.uid(), 'gestor_demanda')
+  );
+
+DROP POLICY IF EXISTS "Authenticated users can view demandas" ON public.demandas;
+DROP POLICY IF EXISTS "Authenticated users can view demandas" ON public.demandas;
+CREATE POLICY "Authenticated users can view demandas"
+  ON public.demandas FOR SELECT
+  TO authenticated
+  USING (true);
+
+DROP POLICY IF EXISTS "Admins, gestores and recrutadores can manage demandas" ON public.demandas;
+DROP POLICY IF EXISTS "Admins, gestores and recrutadores can manage demandas" ON public.demandas;
+CREATE POLICY "Admins, gestores and recrutadores can manage demandas"
+  ON public.demandas FOR ALL
+  USING (
+    public.is_admin(auth.uid()) OR
+    public.has_role(auth.uid(), 'gestor_demanda') OR
+    public.has_role(auth.uid(), 'recrutador')
+  );
+
+DROP POLICY IF EXISTS "Authenticated users can view medicos" ON public.medicos;
+DROP POLICY IF EXISTS "Authenticated users can view medicos" ON public.medicos;
+CREATE POLICY "Authenticated users can view medicos"
+  ON public.medicos FOR SELECT
+  TO authenticated
+  USING (true);
+
+DROP POLICY IF EXISTS "Admins and recrutadores can manage medicos" ON public.medicos;
+DROP POLICY IF EXISTS "Admins and recrutadores can manage medicos" ON public.medicos;
+CREATE POLICY "Admins and recrutadores can manage medicos"
+  ON public.medicos FOR ALL
+  USING (
+    public.is_admin(auth.uid()) OR
+    public.has_role(auth.uid(), 'recrutador')
+  );
+
+DROP POLICY IF EXISTS "Authenticated users can view propostas" ON public.propostas_medicas;
+DROP POLICY IF EXISTS "Authenticated users can view propostas" ON public.propostas_medicas;
+CREATE POLICY "Authenticated users can view propostas"
+  ON public.propostas_medicas FOR SELECT
+  TO authenticated
+  USING (true);
+
+DROP POLICY IF EXISTS "Admins and recrutadores can manage propostas" ON public.propostas_medicas;
+DROP POLICY IF EXISTS "Admins and recrutadores can manage propostas" ON public.propostas_medicas;
+CREATE POLICY "Admins and recrutadores can manage propostas"
+  ON public.propostas_medicas FOR ALL
+  USING (
+    public.is_admin(auth.uid()) OR
+    public.has_role(auth.uid(), 'recrutador')
+  );
+
+DROP POLICY IF EXISTS "Authenticated users can view contratos_medico" ON public.contratos_medico;
+DROP POLICY IF EXISTS "Authenticated users can view contratos_medico" ON public.contratos_medico;
+CREATE POLICY "Authenticated users can view contratos_medico"
+  ON public.contratos_medico FOR SELECT
+  TO authenticated
+  USING (true);
+
+DROP POLICY IF EXISTS "Admins can manage contratos_medico" ON public.contratos_medico;
+DROP POLICY IF EXISTS "Admins can manage contratos_medico" ON public.contratos_medico;
+CREATE POLICY "Admins can manage contratos_medico"
+  ON public.contratos_medico FOR ALL
+  USING (public.is_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Authenticated users can view escalas" ON public.escalas;
+DROP POLICY IF EXISTS "Authenticated users can view escalas" ON public.escalas;
+CREATE POLICY "Authenticated users can view escalas"
+  ON public.escalas FOR SELECT
+  TO authenticated
+  USING (true);
+
+DROP POLICY IF EXISTS "Admins and coordenadores can manage escalas" ON public.escalas;
+DROP POLICY IF EXISTS "Admins and coordenadores can manage escalas" ON public.escalas;
+CREATE POLICY "Admins and coordenadores can manage escalas"
+  ON public.escalas FOR ALL
+  USING (
+    public.is_admin(auth.uid()) OR
+    public.has_role(auth.uid(), 'coordenador_escalas')
+  );
+
+DROP POLICY IF EXISTS "Authenticated users can view pagamentos" ON public.pagamentos_medico;
+DROP POLICY IF EXISTS "Authenticated users can view pagamentos" ON public.pagamentos_medico;
+CREATE POLICY "Authenticated users can view pagamentos"
+  ON public.pagamentos_medico FOR SELECT
+  TO authenticated
+  USING (true);
+
+DROP POLICY IF EXISTS "Admins and financeiro can manage pagamentos" ON public.pagamentos_medico;
+DROP POLICY IF EXISTS "Admins and financeiro can manage pagamentos" ON public.pagamentos_medico;
+CREATE POLICY "Admins and financeiro can manage pagamentos"
+  ON public.pagamentos_medico FOR ALL
+  USING (
+    public.is_admin(auth.uid()) OR
+    public.has_role(auth.uid(), 'financeiro')
+  );
+
+DROP POLICY IF EXISTS "Authenticated users can view recebimentos" ON public.recebimentos_cliente;
+DROP POLICY IF EXISTS "Authenticated users can view recebimentos" ON public.recebimentos_cliente;
+CREATE POLICY "Authenticated users can view recebimentos"
+  ON public.recebimentos_cliente FOR SELECT
+  TO authenticated
+  USING (true);
+
+DROP POLICY IF EXISTS "Admins and financeiro can manage recebimentos" ON public.recebimentos_cliente;
+DROP POLICY IF EXISTS "Admins and financeiro can manage recebimentos" ON public.recebimentos_cliente;
+CREATE POLICY "Admins and financeiro can manage recebimentos"
+  ON public.recebimentos_cliente FOR ALL
+  USING (
+    public.is_admin(auth.uid()) OR
+    public.has_role(auth.uid(), 'financeiro')
+  );
+
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.profiles (id, nome_completo, email)
+  VALUES (NEW.id, COALESCE(NEW.raw_user_meta_data->>'nome_completo', NEW.email), NEW.email);
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+DROP TRIGGER IF EXISTS "on_auth_user_created" ON auth;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW
+  EXECUTE FUNCTION public.handle_new_user();
+
+CREATE TABLE IF NOT EXISTS public.log_auditoria (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  tabela TEXT NOT NULL,
+  acao TEXT NOT NULL,
+  registro_id TEXT,
+  dados_anteriores JSONB,
+  dados_novos JSONB,
+  usuario_id UUID REFERENCES auth.users(id),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+ALTER TABLE public.log_auditoria ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Authenticated users can insert logs" ON public.log_auditoria;
+DROP POLICY IF EXISTS "Authenticated users can insert logs" ON public.log_auditoria;
+CREATE POLICY "Authenticated users can insert logs"
+  ON public.log_auditoria FOR INSERT
+  TO authenticated
+  WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Admins can view all logs" ON public.log_auditoria;
+DROP POLICY IF EXISTS "Admins can view all logs" ON public.log_auditoria;
+CREATE POLICY "Admins can view all logs"
+  ON public.log_auditoria FOR SELECT
+  USING (public.is_admin(auth.uid()));
+
+CREATE TABLE IF NOT EXISTS public.contrato_itens (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  contrato_demanda_id UUID NOT NULL REFERENCES public.contratos_demanda(id) ON DELETE CASCADE,
+  descricao TEXT NOT NULL,
+  valor_unitario DECIMAL(10, 2),
+  quantidade INTEGER DEFAULT 1,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+ALTER TABLE public.contrato_itens ENABLE ROW LEVEL SECURITY;
+
+-- === 20260403003525_7f4208db-1e7c-4cab-beab-e6db5aa9cd5f.sql ===
+CREATE TABLE IF NOT EXISTS public.blacklist (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  phone_e164 text UNIQUE NOT NULL,
+  nome text,
+  origem text,
+  reason text,
+  created_at timestamptz DEFAULT now(),
+  created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL
+);
+
+ALTER TABLE public.blacklist ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Authenticated users can view blacklist" ON public.blacklist;
+DROP POLICY IF EXISTS "Authenticated users can view blacklist" ON public.blacklist;
+CREATE POLICY "Authenticated users can view blacklist"
+ON public.blacklist FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Authorized users can manage blacklist" ON public.blacklist;
+DROP POLICY IF EXISTS "Authorized users can manage blacklist" ON public.blacklist;
+CREATE POLICY "Authorized users can manage blacklist"
+ON public.blacklist FOR ALL
+USING (is_admin(auth.uid()) OR has_role(auth.uid(), 'recrutador') OR has_role(auth.uid(), 'gestor_demanda'));
