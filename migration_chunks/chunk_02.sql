@@ -1,3 +1,90 @@
+
+-- Tabela: radiologia_pendencias
+CREATE TABLE IF NOT EXISTS public.radiologia_pendencias (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  cliente_id UUID NOT NULL REFERENCES public.clientes(id) ON DELETE CASCADE,
+  medico_id UUID NOT NULL REFERENCES public.medicos(id) ON DELETE CASCADE,
+  segmento segmento_radiologia NOT NULL,
+  data_referencia DATE NOT NULL,
+  quantidade_pendente INTEGER NOT NULL CHECK (quantidade_pendente >= 0),
+  observacoes TEXT,
+  anexos TEXT[],
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- Tabela: radiologia_ajuste_laudos
+CREATE TABLE IF NOT EXISTS public.radiologia_ajuste_laudos (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  cliente_id UUID NOT NULL REFERENCES public.clientes(id) ON DELETE CASCADE,
+  medico_responsavel_id UUID NOT NULL REFERENCES public.medicos(id) ON DELETE CASCADE,
+  segmento segmento_radiologia NOT NULL,
+  identificador_laudo TEXT NOT NULL,
+  data_emissao DATE NOT NULL,
+  motivo_ajuste motivo_ajuste_laudo NOT NULL,
+  descricao_ajuste TEXT NOT NULL,
+  status status_ajuste_laudo NOT NULL DEFAULT 'Pendente',
+  responsavel_ajuste_id UUID REFERENCES public.medicos(id),
+  prazo_ajuste TIMESTAMP WITH TIME ZONE,
+  anexos TEXT[],
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- Tabela: radiologia_exames_atraso
+CREATE TABLE IF NOT EXISTS public.radiologia_exames_atraso (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  exame TEXT NOT NULL,
+  segmento segmento_radiologia NOT NULL,
+  cliente_id UUID NOT NULL REFERENCES public.clientes(id) ON DELETE CASCADE,
+  medico_id UUID NOT NULL REFERENCES public.medicos(id) ON DELETE CASCADE,
+  data_hora_execucao TIMESTAMP WITH TIME ZONE NOT NULL,
+  observacao TEXT,
+  anexos TEXT[],
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- Tabela: radiologia_ecg
+CREATE TABLE IF NOT EXISTS public.radiologia_ecg (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  cliente_id UUID NOT NULL REFERENCES public.clientes(id) ON DELETE CASCADE,
+  medico_id UUID NOT NULL REFERENCES public.medicos(id) ON DELETE CASCADE,
+  paciente TEXT NOT NULL,
+  data_hora_liberacao TIMESTAMP WITH TIME ZONE NOT NULL,
+  anexos TEXT[],
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- Tabela: medico_indisponibilidades
+CREATE TABLE IF NOT EXISTS public.medico_indisponibilidades (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  medico_id UUID NOT NULL REFERENCES public.medicos(id) ON DELETE CASCADE,
+  motivo motivo_indisponibilidade NOT NULL,
+  inicio TIMESTAMP WITH TIME ZONE NOT NULL,
+  fim TIMESTAMP WITH TIME ZONE NOT NULL,
+  detalhes TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  CHECK (fim >= inicio)
+);
+
+-- Enable RLS
+ALTER TABLE public.radiologia_agendas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.radiologia_producao_exames ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.radiologia_pendencias ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.radiologia_ajuste_laudos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.radiologia_exames_atraso ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.radiologia_ecg ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.medico_indisponibilidades ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies (admin e gestor_contratos podem gerenciar, outros apenas leitura)
+DROP POLICY IF EXISTS "Authorized users can manage radiologia_agendas" ON public.radiologia_agendas;
+CREATE POLICY "Authorized users can manage radiologia_agendas" ON public.radiologia_agendas
+  FOR ALL USING (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_contratos'::app_role));
+
+DROP POLICY IF EXISTS "Authorized users can manage radiologia_producao_exames" ON public.radiologia_producao_exames;
 CREATE POLICY "Authorized users can manage radiologia_producao_exames" ON public.radiologia_producao_exames
   FOR ALL USING (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_contratos'::app_role));
 
@@ -22,30 +109,37 @@ CREATE POLICY "Authorized users can manage medico_indisponibilidades" ON public.
   FOR ALL USING (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_captacao'::app_role));
 
 -- Triggers para updated_at
+DROP TRIGGER IF EXISTS "update_radiologia_agendas_updated_at" ON public.radiologia_agendas;
 CREATE TRIGGER update_radiologia_agendas_updated_at
   BEFORE UPDATE ON public.radiologia_agendas
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
+DROP TRIGGER IF EXISTS "update_radiologia_producao_exames_updated_at" ON public.radiologia_producao_exames;
 CREATE TRIGGER update_radiologia_producao_exames_updated_at
   BEFORE UPDATE ON public.radiologia_producao_exames
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
+DROP TRIGGER IF EXISTS "update_radiologia_pendencias_updated_at" ON public.radiologia_pendencias;
 CREATE TRIGGER update_radiologia_pendencias_updated_at
   BEFORE UPDATE ON public.radiologia_pendencias
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
+DROP TRIGGER IF EXISTS "update_radiologia_ajuste_laudos_updated_at" ON public.radiologia_ajuste_laudos;
 CREATE TRIGGER update_radiologia_ajuste_laudos_updated_at
   BEFORE UPDATE ON public.radiologia_ajuste_laudos
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
+DROP TRIGGER IF EXISTS "update_radiologia_exames_atraso_updated_at" ON public.radiologia_exames_atraso;
 CREATE TRIGGER update_radiologia_exames_atraso_updated_at
   BEFORE UPDATE ON public.radiologia_exames_atraso
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
+DROP TRIGGER IF EXISTS "update_radiologia_ecg_updated_at" ON public.radiologia_ecg;
 CREATE TRIGGER update_radiologia_ecg_updated_at
   BEFORE UPDATE ON public.radiologia_ecg
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
+DROP TRIGGER IF EXISTS "update_medico_indisponibilidades_updated_at" ON public.medico_indisponibilidades;
 CREATE TRIGGER update_medico_indisponibilidades_updated_at
   BEFORE UPDATE ON public.medico_indisponibilidades
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
@@ -84,7 +178,7 @@ USING (
 
 -- === 20251024135139_a24af66c-e9bc-4224-a590-50c617d752b2.sql ===
 -- Adicionar novo role para radiologia (será usado em migration posterior)
-ALTER TYPE app_role ADD VALUE IF NOT EXISTS 'gestor_radiologia';
+DO $$ BEGIN ALTER TYPE app_role ADD VALUE IF NOT EXISTS 'gestor_radiologia'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- === 20251024135829_f1f33f5a-45f7-456f-b215-e477fe7e5fad.sql ===
 -- Atualizar RLS policies das tabelas de radiologia para incluir gestor_radiologia
@@ -181,9 +275,9 @@ BEGIN
       AND constraint_type = 'FOREIGN KEY'
       AND constraint_name = 'profiles_setor_id_fkey'
   ) THEN
-    ALTER TABLE public.profiles
+    DO $$ BEGIN ALTER TABLE public.profiles
     ADD CONSTRAINT profiles_setor_id_fkey
-    FOREIGN KEY (setor_id) REFERENCES public.setores(id) ON DELETE SET NULL;
+    FOREIGN KEY (setor_id) REFERENCES public.setores(id) ON DELETE SET NULL; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
   END IF;
 END $$;
 
@@ -210,10 +304,10 @@ DROP POLICY IF EXISTS "Admins and recrutadores can manage medicos" ON public.med
 
 -- === 20251024145636_84e12f95-1588-4121-b4d8-09e61cb97683.sql ===
 -- Criar enums para suporte
-DO $$  BEGIN CREATE TYPE public.destino_suporte AS ENUM ('interno', 'externo'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$  BEGIN CREATE TYPE public.tipo_suporte AS ENUM ('software', 'hardware'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$  BEGIN CREATE TYPE public.status_ticket AS ENUM ('pendente', 'em_analise', 'concluido'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$  BEGIN CREATE TYPE public.fornecedor_externo AS ENUM ('dr_escala', 'infra_ti'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE TYPE public.destino_suporte AS ENUM ('interno', 'externo'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE TYPE public.tipo_suporte AS ENUM ('software', 'hardware'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE TYPE public.status_ticket AS ENUM ('pendente', 'em_analise', 'concluido'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE TYPE public.fornecedor_externo AS ENUM ('dr_escala', 'infra_ti'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- Criar tabela de tickets de suporte
 CREATE TABLE IF NOT EXISTS public.suporte_tickets (
@@ -283,17 +377,20 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS "trigger_set_ticket_numero" ON public.suporte_tickets;
 CREATE TRIGGER trigger_set_ticket_numero
 BEFORE INSERT ON public.suporte_tickets
 FOR EACH ROW
 EXECUTE FUNCTION public.set_ticket_numero();
 
 -- Criar trigger para atualizar data_ultima_atualizacao
+DROP TRIGGER IF EXISTS "update_suporte_tickets_updated_at" ON public.suporte_tickets;
 CREATE TRIGGER update_suporte_tickets_updated_at
 BEFORE UPDATE ON public.suporte_tickets
 FOR EACH ROW
 EXECUTE FUNCTION public.update_updated_at_column();
 
+DROP TRIGGER IF EXISTS "update_suporte_comentarios_updated_at" ON public.suporte_comentarios;
 CREATE TRIGGER update_suporte_comentarios_updated_at
 BEFORE UPDATE ON public.suporte_comentarios
 FOR EACH ROW
@@ -404,7 +501,7 @@ USING (
 
 -- === 20251024165355_f738ab87-fd6f-469d-8429-d166e1609444.sql ===
 -- Adicionar novos campos à tabela radiologia_pendencias
-ALTER TABLE radiologia_pendencias 
+DO $$ BEGIN ALTER TABLE radiologia_pendencias 
   ADD COLUMN IF NOT EXISTS data_deteccao TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   ADD COLUMN IF NOT EXISTS quantidade_pendente INTEGER DEFAULT 1 CHECK (quantidade_pendente >= 1),
   ADD COLUMN IF NOT EXISTS descricao_inicial TEXT,
@@ -414,7 +511,7 @@ ALTER TABLE radiologia_pendencias
   ADD COLUMN IF NOT EXISTS data_resolucao TIMESTAMP WITH TIME ZONE,
   ADD COLUMN IF NOT EXISTS descricao_resolucao TEXT,
   ADD COLUMN IF NOT EXISTS observacoes_internas TEXT,
-  ADD COLUMN IF NOT EXISTS id_exame_externo TEXT;
+  ADD COLUMN IF NOT EXISTS id_exame_externo TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 
 -- Criar índices para performance
 CREATE INDEX IF NOT EXISTS idx_radiologia_pendencias_status ON radiologia_pendencias(status_pendencia);
@@ -531,12 +628,14 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS "update_pendencias_comentarios_updated_at" ON radiologia_pendencias_comentarios;
 CREATE TRIGGER update_pendencias_comentarios_updated_at
 BEFORE UPDATE ON radiologia_pendencias_comentarios
 FOR EACH ROW
 EXECUTE FUNCTION update_radiologia_pendencias_comentarios_updated_at();
 
 -- Trigger para atualizar updated_at em config_sla
+DROP TRIGGER IF EXISTS "update_config_sla_updated_at" ON radiologia_config_sla_cliente;
 CREATE TRIGGER update_config_sla_updated_at
 BEFORE UPDATE ON radiologia_config_sla_cliente
 FOR EACH ROW
@@ -558,6 +657,7 @@ END;
 $$;
 
 -- Recriar o trigger
+DROP TRIGGER IF EXISTS "update_pendencias_comentarios_updated_at" ON radiologia_pendencias_comentarios;
 CREATE TRIGGER update_pendencias_comentarios_updated_at
 BEFORE UPDATE ON radiologia_pendencias_comentarios
 FOR EACH ROW
@@ -565,13 +665,13 @@ EXECUTE FUNCTION update_radiologia_pendencias_comentarios_updated_at();
 
 -- === 20251024172505_9438fe21-7ec5-4a7d-a8f3-f215586a85e0.sql ===
 -- Atualizar enum de status_ticket para incluir novos status
-ALTER TYPE status_ticket ADD VALUE IF NOT EXISTS 'aberto';
-ALTER TYPE status_ticket ADD VALUE IF NOT EXISTS 'aguardando_usuario';
-ALTER TYPE status_ticket ADD VALUE IF NOT EXISTS 'em_validacao';
+DO $$ BEGIN ALTER TYPE status_ticket ADD VALUE IF NOT EXISTS 'aberto'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN ALTER TYPE status_ticket ADD VALUE IF NOT EXISTS 'aguardando_usuario'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN ALTER TYPE status_ticket ADD VALUE IF NOT EXISTS 'em_validacao'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- Adicionar campo setor_responsavel à tabela suporte_tickets
-ALTER TABLE public.suporte_tickets
-ADD COLUMN IF NOT EXISTS setor_responsavel text DEFAULT 'TI';
+DO $$ BEGIN ALTER TABLE public.suporte_tickets
+ADD COLUMN IF NOT EXISTS setor_responsavel text DEFAULT 'TI'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 
 -- Criar índice para melhor performance nas consultas por setor
 CREATE INDEX IF NOT EXISTS idx_suporte_tickets_setor_responsavel 
@@ -599,7 +699,7 @@ USING (
 
 -- === 20251024191515_e2d95c6a-cb48-43be-9e61-51f0f08f7b3e.sql ===
 -- Adiciona "equipamento_hospitalar" ao enum categoria_patrimonio
-ALTER TYPE categoria_patrimonio ADD VALUE IF NOT EXISTS 'equipamento_hospitalar';
+DO $$ BEGIN ALTER TYPE categoria_patrimonio ADD VALUE IF NOT EXISTS 'equipamento_hospitalar'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- === 20251029172833_53213961-c276-4e27-8942-3800d4db331b.sql ===
 -- Create unidades table
@@ -614,7 +714,7 @@ CREATE TABLE IF NOT EXISTS public.unidades (
 );
 
 -- Create tipo_contratacao enum
-DO $$  BEGIN CREATE TYPE tipo_contratacao AS ENUM (
+DO $$ BEGIN CREATE TYPE tipo_contratacao AS ENUM (
   'credenciamento',
   'licitacao',
   'dispensa',
@@ -622,9 +722,9 @@ DO $$  BEGIN CREATE TYPE tipo_contratacao AS ENUM (
 ); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- Add unidade_id and tipo_contratacao to contratos table
-ALTER TABLE public.contratos 
+DO $$ BEGIN ALTER TABLE public.contratos 
 ADD COLUMN IF NOT EXISTS unidade_id UUID REFERENCES public.unidades(id) ON DELETE CASCADE,
-ADD COLUMN IF NOT EXISTS tipo_contratacao tipo_contratacao;
+ADD COLUMN IF NOT EXISTS tipo_contratacao tipo_contratacao; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 
 -- Create unique constraint for cliente_id + unidade_id + codigo_contrato
 CREATE UNIQUE INDEX IF NOT EXISTS contratos_cliente_unidade_codigo_unique 
@@ -731,11 +831,13 @@ AND NOT EXISTS (
 );
 
 -- Add updated_at trigger for new tables
+DROP TRIGGER IF EXISTS "update_unidades_updated_at" ON public.unidades;
 CREATE TRIGGER update_unidades_updated_at
 BEFORE UPDATE ON public.unidades
 FOR EACH ROW
 EXECUTE FUNCTION public.update_updated_at_column();
 
+DROP TRIGGER IF EXISTS "update_medico_vinculo_unidade_updated_at" ON public.medico_vinculo_unidade;
 CREATE TRIGGER update_medico_vinculo_unidade_updated_at
 BEFORE UPDATE ON public.medico_vinculo_unidade
 FOR EACH ROW
@@ -780,19 +882,19 @@ CREATE INDEX IF NOT EXISTS idx_licitacoes_atividades_created_at ON public.licita
 -- e mesclar as tabelas em uma única estrutura
 
 -- Criar tipo enum para nível de urgência
-DO $$  BEGIN CREATE TYPE nivel_urgencia_radiologia AS ENUM ('pronto_socorro', 'internados', 'oncologicos'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE TYPE nivel_urgencia_radiologia AS ENUM ('pronto_socorro', 'internados', 'oncologicos'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- Adicionar campo nivel_urgencia à tabela radiologia_pendencias
-ALTER TABLE radiologia_pendencias 
-ADD COLUMN IF NOT EXISTS nivel_urgencia nivel_urgencia_radiologia DEFAULT 'internados';
+DO $$ BEGIN ALTER TABLE radiologia_pendencias 
+ADD COLUMN IF NOT EXISTS nivel_urgencia nivel_urgencia_radiologia DEFAULT 'internados'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 
 -- Adicionar campo tipo_registro para diferenciar pendências de exames em atraso
-ALTER TABLE radiologia_pendencias
-ADD COLUMN IF NOT EXISTS tipo_registro text DEFAULT 'pendencia';
+DO $$ BEGIN ALTER TABLE radiologia_pendencias
+ADD COLUMN IF NOT EXISTS tipo_registro text DEFAULT 'pendencia'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 
 -- Adicionar campo exame (para quando for exame em atraso)
-ALTER TABLE radiologia_pendencias
-ADD COLUMN IF NOT EXISTS exame text;
+DO $$ BEGIN ALTER TABLE radiologia_pendencias
+ADD COLUMN IF NOT EXISTS exame text; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 
 -- Comentários explicativos
 COMMENT ON COLUMN radiologia_pendencias.nivel_urgencia IS 'Nível de urgência: pronto_socorro (SLA 2h), internados (SLA 4h), oncologicos (SLA 48h)';
@@ -835,6 +937,7 @@ CREATE POLICY "Admins can manage kanban status"
   WITH CHECK (is_admin(auth.uid()));
 
 -- Trigger for updated_at
+DROP TRIGGER IF EXISTS "update_kanban_status_config_updated_at" ON public.kanban_status_config;
 CREATE TRIGGER update_kanban_status_config_updated_at
   BEFORE UPDATE ON public.kanban_status_config
   FOR EACH ROW
@@ -858,8 +961,8 @@ INSERT INTO public.kanban_status_config (modulo, status_id, label, ordem) VALUES
 
 -- === 20251031114250_9c3d69bb-ea90-4966-8540-5e6666d3a342.sql ===
 -- Adicionar campo is_externo à tabela suporte_comentarios
-ALTER TABLE public.suporte_comentarios 
-ADD COLUMN IF NOT EXISTS is_externo BOOLEAN DEFAULT false;
+DO $$ BEGIN ALTER TABLE public.suporte_comentarios 
+ADD COLUMN IF NOT EXISTS is_externo BOOLEAN DEFAULT false; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 
 -- Adicionar índice para melhor performance
 CREATE INDEX IF NOT EXISTS idx_suporte_comentarios_ticket_id 
@@ -873,12 +976,12 @@ COMMENT ON COLUMN public.suporte_comentarios.is_externo IS 'Indica se o comentá
 
 -- === 20251031114515_9efafde1-d445-4d18-8e3e-e3279ae6dda2.sql ===
 -- Adicionar campo autor_email à tabela suporte_comentarios
-ALTER TABLE public.suporte_comentarios 
-ADD COLUMN IF NOT EXISTS autor_email TEXT;
+DO $$ BEGIN ALTER TABLE public.suporte_comentarios 
+ADD COLUMN IF NOT EXISTS autor_email TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 
 -- Tornar autor_id nullable para permitir comentários de emails externos
-ALTER TABLE public.suporte_comentarios 
-ALTER COLUMN autor_id DROP NOT NULL;
+DO $$ BEGIN ALTER TABLE public.suporte_comentarios 
+ALTER COLUMN autor_id DROP NOT NULL; EXCEPTION WHEN undefined_column THEN NULL; WHEN undefined_table THEN NULL; END $$;
 
 -- Atualizar RLS policies para permitir inserção de comentários externos (via edge function)
 DROP POLICY IF EXISTS "Users can create comments on their tickets" ON public.suporte_comentarios;
@@ -934,6 +1037,7 @@ CREATE POLICY "Usuários autorizados podem gerenciar colunas"
   );
 
 -- Trigger para updated_at
+DROP TRIGGER IF EXISTS "update_licitacoes_colunas_updated_at" ON public.licitacoes_colunas;
 CREATE TRIGGER update_licitacoes_colunas_updated_at
   BEFORE UPDATE ON public.licitacoes_colunas
   FOR EACH ROW
@@ -958,7 +1062,7 @@ ON CONFLICT (status_vinculado) DO NOTHING;
 
 -- === 20251031145556_a085c3ca-0bb3-4f02-9cc9-d8efaff64731.sql ===
 -- Add missing status value to status_licitacao ENUM
-ALTER TYPE status_licitacao ADD VALUE IF NOT EXISTS 'capitacao_de_credenciamento';
+DO $$ BEGIN ALTER TYPE status_licitacao ADD VALUE IF NOT EXISTS 'capitacao_de_credenciamento'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- === 20251031162910_3f76362e-5bac-401a-b98c-66e9d582e3da.sql ===
 -- Criar tabela para anotações de prontuário dos médicos
@@ -1006,6 +1110,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS "trigger_update_medico_prontuario_updated_at" ON public.medico_prontuario;
 CREATE TRIGGER trigger_update_medico_prontuario_updated_at
 BEFORE UPDATE ON public.medico_prontuario
 FOR EACH ROW
@@ -1024,6 +1129,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SET search_path = public;
 
+DROP TRIGGER IF EXISTS "trigger_update_medico_prontuario_updated_at" ON public.medico_prontuario;
 CREATE TRIGGER trigger_update_medico_prontuario_updated_at
 BEFORE UPDATE ON public.medico_prontuario
 FOR EACH ROW
@@ -1052,178 +1158,3 @@ WITH CHECK (
 );
 
 DROP POLICY IF EXISTS "Usuários autorizados podem atualizar documentos" ON storage.objects;
-CREATE POLICY "Usuários autorizados podem atualizar documentos"
-ON storage.objects FOR UPDATE
-TO authenticated
-USING (
-  bucket_id = 'medicos-documentos' AND
-  (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_captacao'::app_role) OR has_role(auth.uid(), 'gestor_contratos'::app_role))
-);
-
-DROP POLICY IF EXISTS "Usuários autorizados podem deletar documentos" ON storage.objects;
-CREATE POLICY "Usuários autorizados podem deletar documentos"
-ON storage.objects FOR DELETE
-TO authenticated
-USING (
-  bucket_id = 'medicos-documentos' AND
-  (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_captacao'::app_role) OR has_role(auth.uid(), 'gestor_contratos'::app_role))
-);
-
--- Tipos de documento
-DO $$  BEGIN CREATE TYPE tipo_documento_medico AS ENUM (
-  'diploma',
-  'certificado',
-  'rg',
-  'cpf',
-  'crm',
-  'rqe',
-  'titulo_especialista',
-  'comprovante_residencia',
-  'certidao',
-  'carta_recomendacao',
-  'outro'
-); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-
--- Tabela de documentos dos médicos
-CREATE TABLE IF NOT EXISTS public.medico_documentos (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  medico_id UUID NOT NULL REFERENCES public.medicos(id) ON DELETE CASCADE,
-  arquivo_path TEXT NOT NULL,
-  arquivo_nome TEXT NOT NULL,
-  tipo_documento tipo_documento_medico NOT NULL,
-  emissor TEXT,
-  data_emissao DATE,
-  data_validade DATE,
-  observacoes TEXT,
-  texto_extraido TEXT,
-  uploaded_by UUID REFERENCES auth.users(id),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
--- Habilitar RLS
-ALTER TABLE public.medico_documentos ENABLE ROW LEVEL SECURITY;
-
--- Políticas de RLS para documentos
-DROP POLICY IF EXISTS "Usuários autenticados podem ver documentos" ON public.medico_documentos;
-CREATE POLICY "Usuários autenticados podem ver documentos"
-ON public.medico_documentos FOR SELECT
-TO authenticated
-USING (true);
-
-DROP POLICY IF EXISTS "Usuários autorizados podem inserir documentos" ON public.medico_documentos;
-CREATE POLICY "Usuários autorizados podem inserir documentos"
-ON public.medico_documentos FOR INSERT
-TO authenticated
-WITH CHECK (
-  is_admin(auth.uid()) OR 
-  has_role(auth.uid(), 'gestor_captacao'::app_role) OR 
-  has_role(auth.uid(), 'gestor_contratos'::app_role)
-);
-
-DROP POLICY IF EXISTS "Usuários autorizados podem atualizar documentos" ON public.medico_documentos;
-CREATE POLICY "Usuários autorizados podem atualizar documentos"
-ON public.medico_documentos FOR UPDATE
-TO authenticated
-USING (
-  is_admin(auth.uid()) OR 
-  has_role(auth.uid(), 'gestor_captacao'::app_role) OR 
-  has_role(auth.uid(), 'gestor_contratos'::app_role)
-);
-
-DROP POLICY IF EXISTS "Usuários autorizados podem deletar documentos" ON public.medico_documentos;
-CREATE POLICY "Usuários autorizados podem deletar documentos"
-ON public.medico_documentos FOR DELETE
-TO authenticated
-USING (
-  is_admin(auth.uid()) OR 
-  has_role(auth.uid(), 'gestor_captacao'::app_role) OR 
-  has_role(auth.uid(), 'gestor_contratos'::app_role)
-);
-
--- Tabela de logs de auditoria de documentos
-CREATE TABLE IF NOT EXISTS public.medico_documentos_log (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  documento_id UUID REFERENCES public.medico_documentos(id) ON DELETE CASCADE,
-  medico_id UUID NOT NULL REFERENCES public.medicos(id) ON DELETE CASCADE,
-  usuario_id UUID REFERENCES auth.users(id),
-  usuario_nome TEXT NOT NULL,
-  acao TEXT NOT NULL, -- 'upload', 'download', 'update', 'delete', 'view'
-  detalhes TEXT,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
--- Habilitar RLS
-ALTER TABLE public.medico_documentos_log ENABLE ROW LEVEL SECURITY;
-
--- Políticas de RLS para logs
-DROP POLICY IF EXISTS "Usuários autenticados podem ver logs" ON public.medico_documentos_log;
-CREATE POLICY "Usuários autenticados podem ver logs"
-ON public.medico_documentos_log FOR SELECT
-TO authenticated
-USING (true);
-
-DROP POLICY IF EXISTS "Sistema pode inserir logs" ON public.medico_documentos_log;
-CREATE POLICY "Sistema pode inserir logs"
-ON public.medico_documentos_log FOR INSERT
-TO authenticated
-WITH CHECK (auth.uid() = usuario_id);
-
--- Adicionar coluna para resumo IA no médico
-ALTER TABLE public.medicos
-ADD COLUMN IF NOT EXISTS resumo_ia TEXT,
-ADD COLUMN IF NOT EXISTS resumo_ia_gerado_em TIMESTAMPTZ,
-ADD COLUMN IF NOT EXISTS resumo_ia_gerado_por UUID REFERENCES auth.users(id),
-ADD COLUMN IF NOT EXISTS resumo_ia_aprovado BOOLEAN DEFAULT false,
-ADD COLUMN IF NOT EXISTS resumo_ia_aprovado_por UUID REFERENCES auth.users(id),
-ADD COLUMN IF NOT EXISTS resumo_ia_aprovado_em TIMESTAMPTZ;
-
--- Trigger para atualizar updated_at
-CREATE TRIGGER update_medico_documentos_updated_at
-  BEFORE UPDATE ON public.medico_documentos
-  FOR EACH ROW
-  EXECUTE FUNCTION public.update_updated_at_column();
-
--- Índices para performance
-CREATE INDEX IF NOT EXISTS idx_medico_documentos_medico_id ON public.medico_documentos(medico_id);
-CREATE INDEX IF NOT EXISTS idx_medico_documentos_tipo ON public.medico_documentos(tipo_documento);
-CREATE INDEX IF NOT EXISTS idx_medico_documentos_validade ON public.medico_documentos(data_validade);
-CREATE INDEX IF NOT EXISTS idx_medico_documentos_log_medico_id ON public.medico_documentos_log(medico_id);
-CREATE INDEX IF NOT EXISTS idx_medico_documentos_log_documento_id ON public.medico_documentos_log(documento_id);
-
--- === 20251031185624_16f1033c-17f3-4ae6-ad64-e0e4220e7c76.sql ===
--- Garantir que o bucket existe
-INSERT INTO storage.buckets (id, name, public)
-VALUES ('medicos-documentos', 'medicos-documentos', false)
-ON CONFLICT (id) DO NOTHING;
-
--- Remover policies antigas se existirem
-DROP POLICY IF EXISTS "Usuários autenticados podem fazer upload" ON storage.objects;
-DROP POLICY IF EXISTS "Usuários autenticados podem baixar" ON storage.objects;
-DROP POLICY IF EXISTS "Usuários autenticados podem atualizar" ON storage.objects;
-DROP POLICY IF EXISTS "Usuários autenticados podem deletar" ON storage.objects;
-
--- Criar policies para storage
-DROP POLICY IF EXISTS "Usuários autenticados podem fazer upload" ON storage.objects;
-CREATE POLICY "Usuários autenticados podem fazer upload"
-ON storage.objects FOR INSERT
-TO authenticated
-WITH CHECK (bucket_id = 'medicos-documentos');
-
-DROP POLICY IF EXISTS "Usuários autenticados podem baixar" ON storage.objects;
-CREATE POLICY "Usuários autenticados podem baixar"
-ON storage.objects FOR SELECT
-TO authenticated
-USING (bucket_id = 'medicos-documentos');
-
-DROP POLICY IF EXISTS "Usuários autenticados podem atualizar" ON storage.objects;
-CREATE POLICY "Usuários autenticados podem atualizar"
-ON storage.objects FOR UPDATE
-TO authenticated
-USING (bucket_id = 'medicos-documentos');
-
-DROP POLICY IF EXISTS "Usuários autenticados podem deletar" ON storage.objects;
-CREATE POLICY "Usuários autenticados podem deletar"
-ON storage.objects FOR DELETE
-TO authenticated
-USING (bucket_id = 'medicos-documentos');

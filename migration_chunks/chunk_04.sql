@@ -1,3 +1,253 @@
+
+-- Criar índice no campo acesso para busca rápida
+CREATE INDEX IF NOT EXISTS idx_radiologia_pendencias_acesso ON public.radiologia_pendencias(acesso);
+
+-- Criar tabela para histórico de importações
+CREATE TABLE IF NOT EXISTS public.radiologia_importacoes (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  arquivo_nome TEXT NOT NULL,
+  total_linhas INTEGER NOT NULL,
+  linhas_inseridas INTEGER NOT NULL,
+  linhas_atualizadas INTEGER NOT NULL,
+  linhas_erro INTEGER NOT NULL,
+  erros JSONB,
+  importado_por UUID REFERENCES auth.users(id),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Habilitar RLS na tabela de importações
+ALTER TABLE public.radiologia_importacoes ENABLE ROW LEVEL SECURITY;
+
+-- Política RLS para importações
+DROP POLICY IF EXISTS "Usuários autorizados podem ver importações" ON public.radiologia_importacoes;
+CREATE POLICY "Usuários autorizados podem ver importações"
+  ON public.radiologia_importacoes
+  FOR SELECT
+  USING (
+    is_admin(auth.uid()) OR 
+    has_role(auth.uid(), 'gestor_radiologia'::app_role) OR
+    has_role(auth.uid(), 'gestor_contratos'::app_role)
+  );
+
+DROP POLICY IF EXISTS "Usuários autorizados podem criar importações" ON public.radiologia_importacoes;
+CREATE POLICY "Usuários autorizados podem criar importações"
+  ON public.radiologia_importacoes
+  FOR INSERT
+  WITH CHECK (
+    is_admin(auth.uid()) OR 
+    has_role(auth.uid(), 'gestor_radiologia'::app_role) OR
+    has_role(auth.uid(), 'gestor_contratos'::app_role)
+  );
+
+-- Trigger para updated_at
+DROP TRIGGER IF EXISTS "update_radiologia_importacoes_updated_at" ON public.radiologia_importacoes;
+CREATE TRIGGER update_radiologia_importacoes_updated_at
+  BEFORE UPDATE ON public.radiologia_importacoes
+  FOR EACH ROW
+  EXECUTE FUNCTION public.update_updated_at_column();
+
+-- === 20251113190918_868c92b1-0a14-4c6d-985a-941059f29690.sql ===
+-- Tornar campos opcionais para permitir importação de dados individuais de exames
+DO $$ BEGIN ALTER TABLE radiologia_pendencias 
+  ALTER COLUMN cliente_id DROP NOT NULL,
+  ALTER COLUMN medico_id DROP NOT NULL,
+  ALTER COLUMN segmento DROP NOT NULL,
+  ALTER COLUMN data_referencia DROP NOT NULL,
+  ALTER COLUMN quantidade_pendente DROP NOT NULL; EXCEPTION WHEN undefined_column THEN NULL; WHEN undefined_table THEN NULL; END $$;
+
+-- === 20251114144354_55d502ef-a122-4257-8372-366e50a49d97.sql ===
+-- Adicionar o role 'externos' ao enum app_role
+DO $$ BEGIN ALTER TYPE public.app_role ADD VALUE IF NOT EXISTS 'externos'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- === 20251114144432_250ee486-17af-4787-b73e-a7c83190dae3.sql ===
+-- Adicionar permissões para o perfil externos
+INSERT INTO public.permissoes (modulo, acao, perfil, ativo)
+VALUES 
+  ('suporte', 'visualizar', 'externos', true),
+  ('suporte', 'criar', 'externos', true)
+ON CONFLICT DO NOTHING;
+
+-- === 20251114165332_9d3db261-63b8-4a38-b1e4-6f2947717a62.sql ===
+-- Adicionar novo tipo de documento "Link Externo"
+DO $$ BEGIN ALTER TYPE tipo_documento_medico ADD VALUE IF NOT EXISTS 'link_externo'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- Adicionar campo para URL externa na tabela medico_documentos
+DO $$ BEGIN ALTER TABLE medico_documentos ADD COLUMN IF NOT EXISTS url_externa TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+-- Adicionar índice para melhorar performance de consultas
+CREATE INDEX IF NOT EXISTS idx_medico_documentos_url_externa ON medico_documentos(url_externa) WHERE url_externa IS NOT NULL;
+
+-- === 20251114170446_de815008-3144-4f2b-82bf-9ba9186edd41.sql ===
+-- Fix search_path for functions that don't have it set
+-- This addresses the Supabase linter warning about mutable search paths
+
+-- Fix calculate_data_termino function
+CREATE OR REPLACE FUNCTION public.calculate_data_termino()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public
+AS $function$
+BEGIN
+  IF NEW.data_inicio IS NOT NULL AND NEW.prazo_meses IS NOT NULL THEN
+    NEW.data_termino := (NEW.data_inicio + (NEW.prazo_meses || ' months')::INTERVAL - INTERVAL '1 day')::DATE;
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+
+-- Fix create_disparo_task_on_licitacao_won function
+CREATE OR REPLACE FUNCTION public.create_disparo_task_on_licitacao_won()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public
+AS $function$
+BEGIN
+  IF NEW.status = 'arrematados' AND (OLD.status IS NULL OR OLD.status != 'arrematados') THEN
+    INSERT INTO worklist_tarefas (
+      modulo,
+      titulo,
+      descricao,
+      status,
+      data_limite,
+      licitacao_id,
+      created_by
+    ) VALUES (
+      'disparos',
+      'Iniciar captação pós-licitação',
+      'Licitação arrematada: ' || NEW.numero_edital || ' - ' || NEW.objeto,
+      'nova_oportunidade',
+      CURRENT_DATE + INTERVAL '2 days',
+      NEW.id,
+      NEW.responsavel_id
+    );
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+
+-- Fix set_ticket_numero function
+CREATE OR REPLACE FUNCTION public.set_ticket_numero()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public
+AS $function$
+BEGIN
+  IF NEW.numero IS NULL OR NEW.numero = '' THEN
+    NEW.numero := public.generate_ticket_numero();
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+
+-- Fix update_conversas_updated_at function
+CREATE OR REPLACE FUNCTION public.update_conversas_updated_at()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public
+AS $function$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$function$;
+
+-- === 20251114171852_221869ed-5b09-4691-bbea-c8144a5336ef.sql ===
+-- Fix RLS policy for comunicacao_participantes to allow participants to add others
+-- Currently only channel creators can add participants, which is too restrictive
+
+-- Drop the existing restrictive policy
+DROP POLICY IF EXISTS "Channel creators can add participants" ON comunicacao_participantes;
+
+-- Create new policy that allows:
+-- 1. Channel creators to add participants
+-- 2. Existing channel participants to add new participants
+DROP POLICY IF EXISTS "Channel creators and participants can add participants" ON comunicacao_participantes;
+CREATE POLICY "Channel creators and participants can add participants"
+ON comunicacao_participantes
+FOR INSERT
+TO authenticated
+WITH CHECK (
+  EXISTS (
+    SELECT 1
+    FROM comunicacao_canais
+    WHERE comunicacao_canais.id = comunicacao_participantes.canal_id
+    AND comunicacao_canais.criado_por = auth.uid()
+  )
+  OR
+  EXISTS (
+    SELECT 1
+    FROM comunicacao_participantes existing_participant
+    WHERE existing_participant.canal_id = comunicacao_participantes.canal_id
+    AND existing_participant.user_id = auth.uid()
+  )
+);
+
+-- === 20251114173220_aa3b34f0-e04b-4738-b6d7-51785bb3c984.sql ===
+-- Enable RLS on profiles table if not already enabled
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+
+-- Drop existing policies if they exist to recreate them properly
+DROP POLICY IF EXISTS "Profiles are viewable by authenticated users" ON profiles;
+DROP POLICY IF EXISTS "Users can update their own profile" ON profiles;
+DROP POLICY IF EXISTS "Users can insert their own profile" ON profiles;
+
+-- Allow all authenticated users to view all profiles (needed for selecting participants)
+DROP POLICY IF EXISTS "Profiles are viewable by authenticated users" ON profiles;
+CREATE POLICY "Profiles are viewable by authenticated users"
+ON profiles FOR SELECT
+TO authenticated
+USING (true);
+
+-- Allow users to update their own profile
+DROP POLICY IF EXISTS "Users can update their own profile" ON profiles;
+CREATE POLICY "Users can update their own profile"
+ON profiles FOR UPDATE
+TO authenticated
+USING (auth.uid() = id);
+
+-- Allow users to insert their own profile
+DROP POLICY IF EXISTS "Users can insert their own profile" ON profiles;
+CREATE POLICY "Users can insert their own profile"
+ON profiles FOR INSERT
+TO authenticated
+WITH CHECK (auth.uid() = id);
+
+-- === 20251114173315_2489ac6f-36b4-4132-af90-d15aceb588bf.sql ===
+-- Enable RLS on profiles table if not already enabled
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+
+-- Drop existing policies if they exist to recreate them properly
+DROP POLICY IF EXISTS "Profiles are viewable by authenticated users" ON profiles;
+DROP POLICY IF EXISTS "Users can update their own profile" ON profiles;
+DROP POLICY IF EXISTS "Users can insert their own profile" ON profiles;
+
+-- Allow all authenticated users to view all profiles (needed for selecting participants)
+DROP POLICY IF EXISTS "Profiles are viewable by authenticated users" ON profiles;
+CREATE POLICY "Profiles are viewable by authenticated users"
+ON profiles FOR SELECT
+TO authenticated
+USING (true);
+
+-- Allow users to update their own profile
+DROP POLICY IF EXISTS "Users can update their own profile" ON profiles;
+CREATE POLICY "Users can update their own profile"
+ON profiles FOR UPDATE
+TO authenticated
+USING (auth.uid() = id);
+
+-- Allow users to insert their own profile
+DROP POLICY IF EXISTS "Users can insert their own profile" ON profiles;
+CREATE POLICY "Users can insert their own profile"
+ON profiles FOR INSERT
+TO authenticated
+WITH CHECK (auth.uid() = id);
+
+-- === 20251114173353_b61b3a78-c576-47e0-aca8-1365dd1fa124.sql ===
+-- Enable RLS on profiles table if not already enabled
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+
+-- Drop existing policies if they exist to recreate them properly
+DROP POLICY IF EXISTS "Profiles are viewable by authenticated users" ON profiles;
 DROP POLICY IF EXISTS "Users can update their own profile" ON profiles;
 DROP POLICY IF EXISTS "Users can insert their own profile" ON profiles;
 
@@ -74,6 +324,7 @@ USING (
 );
 
 -- Trigger para updated_at
+DROP TRIGGER IF EXISTS "update_captacao_leads_updated_at" ON captacao_leads;
 CREATE TRIGGER update_captacao_leads_updated_at
   BEFORE UPDATE ON captacao_leads
   FOR EACH ROW
@@ -241,22 +492,22 @@ WHERE id = 'contratos-documentos';
 
 -- === 20251117142254_a2e5c5a1-f9f7-4a60-b4b9-03b4c39067c5.sql ===
 -- Adicionar campo para customização de dias de aviso de vencimento
-ALTER TABLE public.contratos 
-ADD COLUMN dias_aviso_vencimento integer DEFAULT 60 CHECK (dias_aviso_vencimento >= 30 AND dias_aviso_vencimento <= 60);
+DO $$ BEGIN ALTER TABLE public.contratos 
+ADD COLUMN dias_aviso_vencimento integer DEFAULT 60 CHECK (dias_aviso_vencimento >= 30 AND dias_aviso_vencimento <= 60); EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 
 COMMENT ON COLUMN public.contratos.dias_aviso_vencimento IS 'Número de dias antes do vencimento para começar a exibir alertas (entre 30 e 60 dias)';
 
 -- === 20251117144230_6b984197-6bf6-4022-b660-6dc2265d64eb.sql ===
 -- Adicionar campo para rastrear última visualização do ticket pelo admin
-ALTER TABLE public.suporte_tickets 
-ADD COLUMN ultima_visualizacao_admin timestamp with time zone;
+DO $$ BEGIN ALTER TABLE public.suporte_tickets 
+ADD COLUMN ultima_visualizacao_admin timestamp with time zone; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 
 COMMENT ON COLUMN public.suporte_tickets.ultima_visualizacao_admin IS 'Última vez que um admin visualizou este ticket (para controlar notificações de novas respostas)';
 
 -- === 20251117145618_2543ce20-896a-4a6f-8597-bdd73a3ffaaa.sql ===
 -- Adicionar campo anexos na tabela suporte_comentarios
-ALTER TABLE public.suporte_comentarios
-ADD COLUMN IF NOT EXISTS anexos TEXT[] DEFAULT '{}';
+DO $$ BEGIN ALTER TABLE public.suporte_comentarios
+ADD COLUMN IF NOT EXISTS anexos TEXT[] DEFAULT '{}'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 
 COMMENT ON COLUMN public.suporte_comentarios.anexos IS 'Caminhos dos arquivos anexados ao comentário';
 
@@ -291,14 +542,14 @@ USING (
 
 -- === 20251119175007_8d54b4af-822e-4d94-bf72-3d866a8c0524.sql ===
 -- Adicionar campos para rastrear envio de emails na tabela suporte_tickets
-ALTER TABLE public.suporte_tickets
+DO $$ BEGIN ALTER TABLE public.suporte_tickets
 ADD COLUMN email_enviado_em timestamp with time zone,
 ADD COLUMN email_status text DEFAULT 'pendente' CHECK (email_status IN ('pendente', 'enviado', 'falha')),
-ADD COLUMN email_erro text;
+ADD COLUMN email_erro text; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 
 -- === 20251121165234_587425d6-2b91-4ddb-82fe-c14f4832e01f.sql ===
 -- Adicionar 'lideres' ao enum app_role
-ALTER TYPE app_role ADD VALUE IF NOT EXISTS 'lideres';
+DO $$ BEGIN ALTER TYPE app_role ADD VALUE IF NOT EXISTS 'lideres'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- === 20251121165258_ee0e283d-ce22-4dea-9106-6d4ecfd4c087.sql ===
 -- Função para verificar se usuário é líder de um setor específico
@@ -578,121 +829,140 @@ $$;
 
 -- CONTRATOS
 DROP TRIGGER IF EXISTS audit_contratos ON contratos;
+DROP TRIGGER IF EXISTS "audit_contratos" ON contratos;
 CREATE TRIGGER audit_contratos
   AFTER INSERT OR UPDATE OR DELETE ON contratos
   FOR EACH ROW EXECUTE FUNCTION trigger_auditoria();
 
 DROP TRIGGER IF EXISTS audit_contrato_itens ON contrato_itens;
+DROP TRIGGER IF EXISTS "audit_contrato_itens" ON contrato_itens;
 CREATE TRIGGER audit_contrato_itens
   AFTER INSERT OR UPDATE OR DELETE ON contrato_itens
   FOR EACH ROW EXECUTE FUNCTION trigger_auditoria();
 
 DROP TRIGGER IF EXISTS audit_contrato_renovacoes ON contrato_renovacoes;
+DROP TRIGGER IF EXISTS "audit_contrato_renovacoes" ON contrato_renovacoes;
 CREATE TRIGGER audit_contrato_renovacoes
   AFTER INSERT OR UPDATE OR DELETE ON contrato_renovacoes
   FOR EACH ROW EXECUTE FUNCTION trigger_auditoria();
 
 DROP TRIGGER IF EXISTS audit_contratos_medico ON contratos_medico;
+DROP TRIGGER IF EXISTS "audit_contratos_medico" ON contratos_medico;
 CREATE TRIGGER audit_contratos_medico
   AFTER INSERT OR UPDATE OR DELETE ON contratos_medico
   FOR EACH ROW EXECUTE FUNCTION trigger_auditoria();
 
 -- MÉDICOS
 DROP TRIGGER IF EXISTS audit_medicos ON medicos;
+DROP TRIGGER IF EXISTS "audit_medicos" ON medicos;
 CREATE TRIGGER audit_medicos
   AFTER INSERT OR UPDATE OR DELETE ON medicos
   FOR EACH ROW EXECUTE FUNCTION trigger_auditoria();
 
 DROP TRIGGER IF EXISTS audit_medico_vinculo_unidade ON medico_vinculo_unidade;
+DROP TRIGGER IF EXISTS "audit_medico_vinculo_unidade" ON medico_vinculo_unidade;
 CREATE TRIGGER audit_medico_vinculo_unidade
   AFTER INSERT OR UPDATE OR DELETE ON medico_vinculo_unidade
   FOR EACH ROW EXECUTE FUNCTION trigger_auditoria();
 
 -- CLIENTES
 DROP TRIGGER IF EXISTS audit_clientes ON clientes;
+DROP TRIGGER IF EXISTS "audit_clientes" ON clientes;
 CREATE TRIGGER audit_clientes
   AFTER INSERT OR UPDATE OR DELETE ON clientes
   FOR EACH ROW EXECUTE FUNCTION trigger_auditoria();
 
 DROP TRIGGER IF EXISTS audit_unidades ON unidades;
+DROP TRIGGER IF EXISTS "audit_unidades" ON unidades;
 CREATE TRIGGER audit_unidades
   AFTER INSERT OR UPDATE OR DELETE ON unidades
   FOR EACH ROW EXECUTE FUNCTION trigger_auditoria();
 
 -- LICITAÇÕES
 DROP TRIGGER IF EXISTS audit_licitacoes ON licitacoes;
+DROP TRIGGER IF EXISTS "audit_licitacoes" ON licitacoes;
 CREATE TRIGGER audit_licitacoes
   AFTER INSERT OR UPDATE OR DELETE ON licitacoes
   FOR EACH ROW EXECUTE FUNCTION trigger_auditoria();
 
 -- DISPAROS
 DROP TRIGGER IF EXISTS audit_disparos_log ON disparos_log;
+DROP TRIGGER IF EXISTS "audit_disparos_log" ON disparos_log;
 CREATE TRIGGER audit_disparos_log
   AFTER INSERT OR UPDATE OR DELETE ON disparos_log
   FOR EACH ROW EXECUTE FUNCTION trigger_auditoria();
 
 DROP TRIGGER IF EXISTS audit_disparos_programados ON disparos_programados;
+DROP TRIGGER IF EXISTS "audit_disparos_programados" ON disparos_programados;
 CREATE TRIGGER audit_disparos_programados
   AFTER INSERT OR UPDATE OR DELETE ON disparos_programados
   FOR EACH ROW EXECUTE FUNCTION trigger_auditoria();
 
 -- MARKETING
 DROP TRIGGER IF EXISTS audit_campanhas ON campanhas;
+DROP TRIGGER IF EXISTS "audit_campanhas" ON campanhas;
 CREATE TRIGGER audit_campanhas
   AFTER INSERT OR UPDATE OR DELETE ON campanhas
   FOR EACH ROW EXECUTE FUNCTION trigger_auditoria();
 
 DROP TRIGGER IF EXISTS audit_marketing_leads ON marketing_leads;
+DROP TRIGGER IF EXISTS "audit_marketing_leads" ON marketing_leads;
 CREATE TRIGGER audit_marketing_leads
   AFTER INSERT OR UPDATE OR DELETE ON marketing_leads
   FOR EACH ROW EXECUTE FUNCTION trigger_auditoria();
 
 -- SUPORTE
 DROP TRIGGER IF EXISTS audit_suporte_tickets ON suporte_tickets;
+DROP TRIGGER IF EXISTS "audit_suporte_tickets" ON suporte_tickets;
 CREATE TRIGGER audit_suporte_tickets
   AFTER INSERT OR UPDATE OR DELETE ON suporte_tickets
   FOR EACH ROW EXECUTE FUNCTION trigger_auditoria();
 
 -- PATRIMÔNIO
 DROP TRIGGER IF EXISTS audit_patrimonio ON patrimonio;
+DROP TRIGGER IF EXISTS "audit_patrimonio" ON patrimonio;
 CREATE TRIGGER audit_patrimonio
   AFTER INSERT OR UPDATE OR DELETE ON patrimonio
   FOR EACH ROW EXECUTE FUNCTION trigger_auditoria();
 
 -- ESCALAS
 DROP TRIGGER IF EXISTS audit_escalas ON escalas;
+DROP TRIGGER IF EXISTS "audit_escalas" ON escalas;
 CREATE TRIGGER audit_escalas
   AFTER INSERT OR UPDATE OR DELETE ON escalas
   FOR EACH ROW EXECUTE FUNCTION trigger_auditoria();
 
 -- CONFIGURAÇÕES
 DROP TRIGGER IF EXISTS audit_profiles ON profiles;
+DROP TRIGGER IF EXISTS "audit_profiles" ON profiles;
 CREATE TRIGGER audit_profiles
   AFTER INSERT OR UPDATE OR DELETE ON profiles
   FOR EACH ROW EXECUTE FUNCTION trigger_auditoria();
 
 DROP TRIGGER IF EXISTS audit_user_roles ON user_roles;
+DROP TRIGGER IF EXISTS "audit_user_roles" ON user_roles;
 CREATE TRIGGER audit_user_roles
   AFTER INSERT OR UPDATE OR DELETE ON user_roles
   FOR EACH ROW EXECUTE FUNCTION trigger_auditoria();
 
 DROP TRIGGER IF EXISTS audit_permissoes ON permissoes;
+DROP TRIGGER IF EXISTS "audit_permissoes" ON permissoes;
 CREATE TRIGGER audit_permissoes
   AFTER INSERT OR UPDATE OR DELETE ON permissoes
   FOR EACH ROW EXECUTE FUNCTION trigger_auditoria();
 
 -- === 20251121184242_d75612d2-816e-46b6-8908-cec85c0beb7e.sql ===
 -- Adicionar campo para múltiplos turnos nas escalas
-ALTER TABLE radiologia_agendas_escalas 
-ADD COLUMN turnos JSONB DEFAULT '[]'::jsonb;
+DO $$ BEGIN ALTER TABLE radiologia_agendas_escalas 
+ADD COLUMN turnos JSONB DEFAULT '[]'::jsonb; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 
 -- Comentário explicativo
 COMMENT ON COLUMN radiologia_agendas_escalas.turnos IS 'Array de turnos diários no formato: [{"inicio": "07:00", "fim": "12:00"}, ...]';
 
 -- === 20251121193706_37652016-8863-4f27-a5ee-511271bc664d.sql ===
 -- Adicionar coluna observacoes na tabela radiologia_agendas_escalas
-ALTER TABLE radiologia_agendas_escalas
-ADD COLUMN observacoes text;
+DO $$ BEGIN ALTER TABLE radiologia_agendas_escalas
+ADD COLUMN observacoes text; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 
 -- === 20251121195212_058b5947-c634-4034-b2a3-5b0e3c2fecf6.sql ===
 
@@ -800,6 +1070,7 @@ FOR DELETE
 USING (auth.uid() IS NOT NULL);
 
 -- Trigger para atualizar updated_at
+DROP TRIGGER IF EXISTS "update_contrato_aditivos_tempo_updated_at" ON public.contrato_aditivos_tempo;
 CREATE TRIGGER update_contrato_aditivos_tempo_updated_at
   BEFORE UPDATE ON public.contrato_aditivos_tempo
   FOR EACH ROW
@@ -814,9 +1085,9 @@ COMMENT ON COLUMN public.contrato_aditivos_tempo.data_termino IS 'Data de térmi
 
 -- === 20251124181756_b3652795-5546-4c7e-a389-49d51fad0a9e.sql ===
 -- Adicionar campos para rastrear quem resolveu o ticket
-ALTER TABLE public.suporte_tickets
+DO $$ BEGIN ALTER TABLE public.suporte_tickets
 ADD COLUMN IF NOT EXISTS resolvido_por_id UUID,
-ADD COLUMN IF NOT EXISTS resolvido_por_nome TEXT;
+ADD COLUMN IF NOT EXISTS resolvido_por_nome TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 
 -- Adicionar comentário explicativo
 COMMENT ON COLUMN public.suporte_tickets.resolvido_por_id IS 'ID do usuário da equipe de suporte que resolveu o ticket';
@@ -824,11 +1095,11 @@ COMMENT ON COLUMN public.suporte_tickets.resolvido_por_nome IS 'Nome do usuário
 
 -- === 20251127175823_bd6dca51-b1a8-41c4-94a9-f616803e9b76.sql ===
 -- Add new value to tipo_documento_medico enum
-ALTER TYPE public.tipo_documento_medico ADD VALUE IF NOT EXISTS 'contrato_aditivo';
+DO $$ BEGIN ALTER TYPE public.tipo_documento_medico ADD VALUE IF NOT EXISTS 'contrato_aditivo'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- === 20251127195420_c4493478-6d82-4754-94f1-f5c9c9a4b654.sql ===
 -- Add new columns to campanhas table for enhanced functionality
-ALTER TABLE public.campanhas 
+DO $$ BEGIN ALTER TABLE public.campanhas 
 ADD COLUMN IF NOT EXISTS descricao TEXT,
 ADD COLUMN IF NOT EXISTS mensagem TEXT,
 ADD COLUMN IF NOT EXISTS assunto_email TEXT,
@@ -847,7 +1118,7 @@ ADD COLUMN IF NOT EXISTS total_cliques INTEGER DEFAULT 0,
 ADD COLUMN IF NOT EXISTS total_respostas INTEGER DEFAULT 0,
 ADD COLUMN IF NOT EXISTS total_conversoes INTEGER DEFAULT 0,
 ADD COLUMN IF NOT EXISTS custo_total NUMERIC DEFAULT 0,
-ADD COLUMN IF NOT EXISTS criado_por UUID REFERENCES auth.users(id);
+ADD COLUMN IF NOT EXISTS criado_por UUID REFERENCES auth.users(id); EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 
 -- Create segmentos table for saved audience segments
 CREATE TABLE IF NOT EXISTS public.segmentos_publico (
@@ -917,7 +1188,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.licitacoes;
 
 -- === 20251203175624_b1b51e67-5f67-4419-baf9-66fcd1159135.sql ===
 -- Add Evolution API fields to chips table
-ALTER TABLE public.chips 
+DO $$ BEGIN ALTER TABLE public.chips 
 ADD COLUMN IF NOT EXISTS instance_id text,
 ADD COLUMN IF NOT EXISTS instance_name text,
 ADD COLUMN IF NOT EXISTS connection_state text DEFAULT 'close',
@@ -927,7 +1198,7 @@ ADD COLUMN IF NOT EXISTS webhook_url text,
 ADD COLUMN IF NOT EXISTS engine text DEFAULT 'baileys',
 ADD COLUMN IF NOT EXISTS behavior_config jsonb DEFAULT '{"rejectCall": false, "ignoreGroups": false, "alwaysOnline": false, "readMessages": false, "syncFullHistory": false}'::jsonb,
 ADD COLUMN IF NOT EXISTS proxy_config jsonb,
-ADD COLUMN IF NOT EXISTS updated_at timestamp with time zone DEFAULT now();
+ADD COLUMN IF NOT EXISTS updated_at timestamp with time zone DEFAULT now(); EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 
 -- CREATE INDEX IF NOT EXISTS for instance_id
 CREATE INDEX IF NOT EXISTS idx_chips_instance_id ON public.chips(instance_id);
@@ -942,6 +1213,7 @@ END;
 $$ LANGUAGE plpgsql SET search_path = public;
 
 DROP TRIGGER IF EXISTS update_chips_updated_at ON public.chips;
+DROP TRIGGER IF EXISTS "update_chips_updated_at" ON public.chips;
 CREATE TRIGGER update_chips_updated_at
   BEFORE UPDATE ON public.chips
   FOR EACH ROW
@@ -987,6 +1259,7 @@ USING (
 );
 
 -- Trigger for updated_at
+DROP TRIGGER IF EXISTS "update_instance_proxy_settings_updated_at" ON public.instance_proxy_settings;
 CREATE TRIGGER update_instance_proxy_settings_updated_at
   BEFORE UPDATE ON public.instance_proxy_settings
   FOR EACH ROW
@@ -1048,262 +1321,3 @@ ON public.contrato_capitacao FOR ALL
 USING (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_captacao') OR has_role(auth.uid(), 'gestor_contratos'));
 
 DROP POLICY IF EXISTS "Usuários autenticados podem visualizar contrato_capitacao" ON public.contrato_capitacao;
-CREATE POLICY "Usuários autenticados podem visualizar contrato_capitacao"
-ON public.contrato_capitacao FOR SELECT
-USING (auth.uid() IS NOT NULL);
-
--- RLS Policies for servico
-DROP POLICY IF EXISTS "Usuários autorizados podem gerenciar servico" ON public.servico;
-CREATE POLICY "Usuários autorizados podem gerenciar servico"
-ON public.servico FOR ALL
-USING (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_captacao') OR has_role(auth.uid(), 'gestor_contratos'));
-
-DROP POLICY IF EXISTS "Usuários autenticados podem visualizar servico" ON public.servico;
-CREATE POLICY "Usuários autenticados podem visualizar servico"
-ON public.servico FOR SELECT
-USING (auth.uid() IS NOT NULL);
-
--- RLS Policies for proposta
-DROP POLICY IF EXISTS "Usuários autorizados podem gerenciar proposta" ON public.proposta;
-CREATE POLICY "Usuários autorizados podem gerenciar proposta"
-ON public.proposta FOR ALL
-USING (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_captacao') OR has_role(auth.uid(), 'gestor_contratos'));
-
-DROP POLICY IF EXISTS "Usuários autenticados podem visualizar proposta" ON public.proposta;
-CREATE POLICY "Usuários autenticados podem visualizar proposta"
-ON public.proposta FOR SELECT
-USING (auth.uid() IS NOT NULL);
-
--- Triggers for updated_at
-CREATE TRIGGER update_contrato_capitacao_updated_at
-  BEFORE UPDATE ON public.contrato_capitacao
-  FOR EACH ROW
-  EXECUTE FUNCTION public.update_updated_at_column();
-
-CREATE TRIGGER update_servico_updated_at
-  BEFORE UPDATE ON public.servico
-  FOR EACH ROW
-  EXECUTE FUNCTION public.update_updated_at_column();
-
-CREATE TRIGGER update_proposta_updated_at
-  BEFORE UPDATE ON public.proposta
-  FOR EACH ROW
-  EXECUTE FUNCTION public.update_updated_at_column();
-
--- === 20251204145834_bc40aea2-faac-4403-bd1d-47d0ca80e500.sql ===
--- Update the licitacoes-anexos bucket to allow all file types
-UPDATE storage.buckets 
-SET allowed_mime_types = NULL
-WHERE id = 'licitacoes-anexos';
-
--- If bucket doesn't exist, create it without restrictions
-INSERT INTO storage.buckets (id, name, public, allowed_mime_types)
-VALUES ('licitacoes-anexos', 'licitacoes-anexos', true, NULL)
-ON CONFLICT (id) DO UPDATE SET allowed_mime_types = NULL;
-
--- === 20251204174501_3389fdfc-9014-4028-9e18-66325ebcf798.sql ===
--- Create licitacoes_anexos table
-CREATE TABLE IF NOT EXISTS public.licitacoes_anexos (
-  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  licitacao_id UUID NOT NULL REFERENCES public.licitacoes(id) ON DELETE CASCADE,
-  arquivo_nome TEXT NOT NULL,
-  arquivo_url TEXT NOT NULL,
-  usuario_id UUID,
-  usuario_nome TEXT,
-  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
-);
-
--- Enable RLS
-ALTER TABLE public.licitacoes_anexos ENABLE ROW LEVEL SECURITY;
-
--- RLS policies (authenticated users can manage)
-DROP POLICY IF EXISTS "Authenticated users can view anexos" ON public.licitacoes_anexos;
-CREATE POLICY "Authenticated users can view anexos" 
-ON public.licitacoes_anexos 
-FOR SELECT 
-TO authenticated
-USING (true);
-
-DROP POLICY IF EXISTS "Authenticated users can insert anexos" ON public.licitacoes_anexos;
-CREATE POLICY "Authenticated users can insert anexos" 
-ON public.licitacoes_anexos 
-FOR INSERT 
-TO authenticated
-WITH CHECK (true);
-
-DROP POLICY IF EXISTS "Authenticated users can delete anexos" ON public.licitacoes_anexos;
-CREATE POLICY "Authenticated users can delete anexos" 
-ON public.licitacoes_anexos 
-FOR DELETE 
-TO authenticated
-USING (true);
-
--- Index for faster lookups
-CREATE INDEX IF NOT EXISTS idx_licitacoes_anexos_licitacao_id ON public.licitacoes_anexos(licitacao_id);
-
--- === 20251204175332_628f6b3a-ec10-4d63-a3ff-06615578a8ee.sql ===
--- Remove MIME type restrictions from editais-pdfs bucket to allow all file types including ZIP
-UPDATE storage.buckets 
-SET allowed_mime_types = NULL 
-WHERE id = 'editais-pdfs';
-
--- === 20251204184049_01db28cc-294f-4a53-aaf4-6ece7b843dd0.sql ===
--- Delete all objects from editais-pdfs bucket
-DELETE FROM storage.objects WHERE bucket_id = 'editais-pdfs';
-
--- === 20251205112240_51466887-1374-49c8-849d-06b4dcb0fca5.sql ===
--- Marketing Conteúdos (Posts de Redes Sociais)
-CREATE TABLE IF NOT EXISTS public.marketing_conteudos (
-  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  campanha_id UUID REFERENCES public.campanhas(id) ON DELETE SET NULL,
-  conta_perfil TEXT NOT NULL,
-  tipo TEXT NOT NULL CHECK (tipo IN ('post', 'reels', 'story', 'video', 'carousel')),
-  objetivo TEXT,
-  legenda TEXT,
-  materiais TEXT[] DEFAULT '{}',
-  checklist JSONB DEFAULT '[]',
-  comentarios_internos JSONB DEFAULT '[]',
-  status TEXT NOT NULL DEFAULT 'a_fazer' CHECK (status IN ('a_fazer', 'em_producao', 'em_revisao', 'aprovado', 'agendado', 'publicado')),
-  data_publicacao TIMESTAMP WITH TIME ZONE,
-  metricas JSONB DEFAULT '{}',
-  responsavel_id UUID,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
-
--- Marketing Eventos
-CREATE TABLE IF NOT EXISTS public.marketing_eventos (
-  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  campanha_id UUID REFERENCES public.campanhas(id) ON DELETE SET NULL,
-  nome TEXT NOT NULL,
-  data_inicio TIMESTAMP WITH TIME ZONE NOT NULL,
-  data_fim TIMESTAMP WITH TIME ZONE,
-  local TEXT,
-  objetivo TEXT,
-  tipo_evento TEXT,
-  fornecedores JSONB DEFAULT '[]',
-  orcamentos JSONB DEFAULT '[]',
-  materiais TEXT[] DEFAULT '{}',
-  timeline JSONB DEFAULT '{"pre_evento": [], "durante": [], "pos_evento": []}',
-  checklist_pre JSONB DEFAULT '[]',
-  checklist_durante JSONB DEFAULT '[]',
-  checklist_pos JSONB DEFAULT '[]',
-  status TEXT NOT NULL DEFAULT 'planejando' CHECK (status IN ('planejando', 'executando', 'finalizado')),
-  responsavel_id UUID,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
-
--- Marketing Tráfego Pago
-CREATE TABLE IF NOT EXISTS public.marketing_trafego_pago (
-  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  campanha_id UUID REFERENCES public.campanhas(id) ON DELETE SET NULL,
-  nome TEXT NOT NULL,
-  objetivo TEXT,
-  orcamento NUMERIC(12,2),
-  publico TEXT,
-  plataforma TEXT NOT NULL CHECK (plataforma IN ('meta_ads', 'google_ads', 'linkedin_ads', 'tiktok_ads', 'outro')),
-  data_inicio DATE,
-  data_fim DATE,
-  criativos TEXT[] DEFAULT '{}',
-  status TEXT NOT NULL DEFAULT 'planejada' CHECK (status IN ('planejada', 'ativa', 'pausada', 'finalizada')),
-  resultados JSONB DEFAULT '{"cpc": null, "cpm": null, "ctr": null, "impressoes": null, "cliques": null, "conversoes": null, "gasto_total": null}',
-  responsavel_id UUID,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
-
--- Marketing Endomarketing
-CREATE TABLE IF NOT EXISTS public.marketing_endomarketing (
-  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  campanha_id UUID REFERENCES public.campanhas(id) ON DELETE SET NULL,
-  nome TEXT NOT NULL,
-  publico_interno TEXT[],
-  objetivo TEXT,
-  checklist JSONB DEFAULT '[]',
-  artes TEXT[] DEFAULT '{}',
-  status TEXT NOT NULL DEFAULT 'em_criacao' CHECK (status IN ('em_criacao', 'aprovado', 'enviado')),
-  data_envio TIMESTAMP WITH TIME ZONE,
-  responsavel_id UUID,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
-
--- Banco de Ideias
-CREATE TABLE IF NOT EXISTS public.marketing_ideias (
-  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  titulo TEXT NOT NULL,
-  categoria TEXT NOT NULL CHECK (categoria IN ('post', 'evento', 'campanha', 'endomarketing', 'trafego', 'outro')),
-  descricao TEXT,
-  referencia_url TEXT,
-  referencia_imagem TEXT,
-  status TEXT NOT NULL DEFAULT 'pendente' CHECK (status IN ('pendente', 'analisada', 'convertida', 'descartada')),
-  convertido_para_tipo TEXT,
-  convertido_para_id UUID,
-  criado_por UUID,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
-
--- Quadro de Prioridades
-CREATE TABLE IF NOT EXISTS public.marketing_prioridades (
-  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  titulo TEXT NOT NULL,
-  descricao TEXT,
-  coluna TEXT NOT NULL DEFAULT 'para_depois' CHECK (coluna IN ('urgente', 'importante', 'em_andamento', 'para_depois')),
-  ordem INTEGER DEFAULT 0,
-  tipo_relacionado TEXT,
-  id_relacionado UUID,
-  responsavel_id UUID,
-  data_limite DATE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
-
--- Planejamento de Campanhas
-CREATE TABLE IF NOT EXISTS public.marketing_planejamentos (
-  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  campanha_id UUID REFERENCES public.campanhas(id) ON DELETE SET NULL,
-  objetivo TEXT NOT NULL,
-  publico TEXT,
-  materiais_necessarios TEXT[] DEFAULT '{}',
-  cronograma JSONB DEFAULT '[]',
-  tarefas JSONB DEFAULT '[]',
-  relatorio_final TEXT,
-  status TEXT NOT NULL DEFAULT 'em_planejamento' CHECK (status IN ('em_planejamento', 'em_execucao', 'finalizado')),
-  responsavel_id UUID,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
-
--- Enable RLS
-ALTER TABLE public.marketing_conteudos ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.marketing_eventos ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.marketing_trafego_pago ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.marketing_endomarketing ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.marketing_ideias ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.marketing_prioridades ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.marketing_planejamentos ENABLE ROW LEVEL SECURITY;
-
--- RLS Policies
-DROP POLICY IF EXISTS "Usuários autorizados podem gerenciar marketing_conteudos" ON public.marketing_conteudos;
-CREATE POLICY "Usuários autorizados podem gerenciar marketing_conteudos" ON public.marketing_conteudos
-FOR ALL USING (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_marketing'::app_role) OR has_role(auth.uid(), 'diretoria'::app_role));
-
-DROP POLICY IF EXISTS "Usuários autorizados podem gerenciar marketing_eventos" ON public.marketing_eventos;
-CREATE POLICY "Usuários autorizados podem gerenciar marketing_eventos" ON public.marketing_eventos
-FOR ALL USING (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_marketing'::app_role) OR has_role(auth.uid(), 'diretoria'::app_role));
-
-DROP POLICY IF EXISTS "Usuários autorizados podem gerenciar marketing_trafego_pago" ON public.marketing_trafego_pago;
-CREATE POLICY "Usuários autorizados podem gerenciar marketing_trafego_pago" ON public.marketing_trafego_pago
-FOR ALL USING (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_marketing'::app_role) OR has_role(auth.uid(), 'diretoria'::app_role));
-
-DROP POLICY IF EXISTS "Usuários autorizados podem gerenciar marketing_endomarketing" ON public.marketing_endomarketing;
-CREATE POLICY "Usuários autorizados podem gerenciar marketing_endomarketing" ON public.marketing_endomarketing
-FOR ALL USING (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_marketing'::app_role) OR has_role(auth.uid(), 'diretoria'::app_role));
-
-DROP POLICY IF EXISTS "Usuários autorizados podem gerenciar marketing_ideias" ON public.marketing_ideias;
-CREATE POLICY "Usuários autorizados podem gerenciar marketing_ideias" ON public.marketing_ideias
-FOR ALL USING (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_marketing'::app_role) OR has_role(auth.uid(), 'diretoria'::app_role));
-
-DROP POLICY IF EXISTS "Usuários autorizados podem gerenciar marketing_prioridades" ON public.marketing_prioridades;
