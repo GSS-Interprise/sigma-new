@@ -56,31 +56,53 @@ const TABLES = [
   "user_roles", "whatsapp_rate_limit", "worklist_tarefas",
 ];
 
-const BATCH_SIZE = 50;
+const BATCH_SIZE = 10;
+const MAX_CONSECUTIVE_REQUEST_ERRORS = 3;
+
+function detectDelimiter(headerLine: string) {
+  const commaCount = (headerLine.match(/,/g) || []).length;
+  const semicolonCount = (headerLine.match(/;/g) || []).length;
+  return semicolonCount > commaCount ? ";" : ",";
+}
+
+function parseCSVLine(line: string, delimiter: string): string[] {
+  const values: string[] = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    const next = line[i + 1];
+
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === delimiter && !inQuotes) {
+      values.push(current.trim());
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+
+  values.push(current.trim());
+  return values.map(value => value.replace(/^"|"$/g, ""));
+}
 
 function parseCSV(text: string): Record<string, string>[] {
   const lines = text.split(/\r?\n/).filter(l => l.trim());
   if (lines.length < 2) return [];
 
-  const headers = lines[0].split(",").map(h => h.trim().replace(/^"|"$/g, ""));
+  const delimiter = detectDelimiter(lines[0]);
+  const headers = parseCSVLine(lines[0], delimiter);
   const rows: Record<string, string>[] = [];
 
   for (let i = 1; i < lines.length; i++) {
-    const values: string[] = [];
-    let current = "";
-    let inQuotes = false;
-
-    for (const char of lines[i]) {
-      if (char === '"') {
-        inQuotes = !inQuotes;
-      } else if (char === "," && !inQuotes) {
-        values.push(current.trim());
-        current = "";
-      } else {
-        current += char;
-      }
-    }
-    values.push(current.trim());
+    const values = parseCSVLine(lines[i], delimiter);
 
     if (values.length === headers.length) {
       const row: Record<string, string> = {};
@@ -143,6 +165,7 @@ function AdminImportContent() {
 
       const totalBatches = Math.ceil(rows.length / BATCH_SIZE);
       let errorCount = 0;
+      let consecutiveRequestErrors = 0;
 
       for (let i = 0; i < totalBatches; i++) {
         const batch = rows.slice(i * BATCH_SIZE, (i + 1) * BATCH_SIZE);
@@ -156,11 +179,20 @@ function AdminImportContent() {
 
         if (error) {
           errorCount++;
+          consecutiveRequestErrors++;
           addLog(`❌ Lote ${batchNum} erro: ${error.message}`);
+
+          if (consecutiveRequestErrors >= MAX_CONSECUTIVE_REQUEST_ERRORS) {
+            addLog("⛔ A importação foi interrompida porque a Edge Function não respondeu em 3 tentativas seguidas.");
+            addLog("💡 Verifique se a função import-csv-bulk está publicada e tente novamente.");
+            break;
+          }
         } else if (data?.error) {
           errorCount++;
+          consecutiveRequestErrors = 0;
           addLog(`❌ Lote ${batchNum} erro: ${data.error}${data.hint ? ` (${data.hint})` : ""}`);
         } else {
+          consecutiveRequestErrors = 0;
           addLog(`✅ Lote ${batchNum} OK: ${data?.inserted || batch.length} linhas`);
         }
 
