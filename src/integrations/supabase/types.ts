@@ -5568,13 +5568,6 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "licitacao_descartes_licitacao_id_fkey"
-            columns: ["licitacao_id"]
-            isOneToOne: false
-            referencedRelation: "licitacoes"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "licitacao_descartes_motivo_id_fkey"
             columns: ["motivo_id"]
             isOneToOne: false
@@ -5638,13 +5631,6 @@ export type Database = {
             columns: ["empresa_id"]
             isOneToOne: false
             referencedRelation: "empresas_concorrentes"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "licitacao_item_concorrentes_item_id_fkey"
-            columns: ["item_id"]
-            isOneToOne: false
-            referencedRelation: "licitacao_itens"
             referencedColumns: ["id"]
           },
         ]
@@ -5928,15 +5914,7 @@ export type Database = {
           usuario_id?: string | null
           usuario_nome?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "licitacoes_anexos_licitacao_id_fkey"
-            columns: ["licitacao_id"]
-            isOneToOne: false
-            referencedRelation: "licitacoes"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       licitacoes_atividades: {
         Row: {
@@ -5991,13 +5969,6 @@ export type Database = {
           valor_novo?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "licitacoes_atividades_licitacao_id_fkey"
-            columns: ["licitacao_id"]
-            isOneToOne: false
-            referencedRelation: "licitacoes"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "licitacoes_atividades_user_id_fkey"
             columns: ["user_id"]
@@ -9990,6 +9961,13 @@ export type Database = {
         | "outro"
         | "desconvertido_para_lead"
         | "reprocessado_kanban"
+        | "enviado_acompanhamento"
+        | "lead_editado"
+        | "lead_criado"
+        | "status_alterado"
+        | "lead_qualificado"
+        | "em_resposta"
+        | "lead_descartado"
       tipo_impacto_suporte:
         | "sistema"
         | "infraestrutura"
@@ -10334,6 +10312,13 @@ export const Constants = {
         "outro",
         "desconvertido_para_lead",
         "reprocessado_kanban",
+        "enviado_acompanhamento",
+        "lead_editado",
+        "lead_criado",
+        "status_alterado",
+        "lead_qualificado",
+        "em_resposta",
+        "lead_descartado",
       ],
       tipo_impacto_suporte: [
         "sistema",
