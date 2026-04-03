@@ -55,9 +55,12 @@ export type Database = {
           estado: string | null
           id: string
           nome_empresa: string
+          nome_fantasia: string | null
           nome_unidade: string | null
+          razao_social: string | null
           telefone: string
           telefone_financeiro: string | null
+          uf: string | null
           updated_at: string | null
         }
         Insert: {
@@ -70,9 +73,12 @@ export type Database = {
           estado?: string | null
           id?: string
           nome_empresa: string
+          nome_fantasia?: string | null
           nome_unidade?: string | null
+          razao_social?: string | null
           telefone: string
           telefone_financeiro?: string | null
+          uf?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -85,10 +91,34 @@ export type Database = {
           estado?: string | null
           id?: string
           nome_empresa?: string
+          nome_fantasia?: string | null
           nome_unidade?: string | null
+          razao_social?: string | null
           telefone?: string
           telefone_financeiro?: string | null
+          uf?: string | null
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      config_lista_items: {
+        Row: {
+          campo_nome: string
+          created_at: string | null
+          id: string
+          valor: string
+        }
+        Insert: {
+          campo_nome: string
+          created_at?: string | null
+          id?: string
+          valor: string
+        }
+        Update: {
+          campo_nome?: string
+          created_at?: string | null
+          id?: string
+          valor?: string
         }
         Relationships: []
       }
@@ -184,6 +214,69 @@ export type Database = {
           percentual_reajuste?: number | null
           updated_at?: string | null
           valor?: number
+        }
+        Relationships: []
+      }
+      contratos: {
+        Row: {
+          assinado: string | null
+          cliente_id: string | null
+          codigo_interno: number | null
+          condicao_pagamento: string | null
+          created_at: string | null
+          data_fim: string
+          data_inicio: string
+          data_termino: string | null
+          especialidade_contrato: string | null
+          id: string
+          medico_id: string | null
+          motivo_pendente: string | null
+          objeto_contrato: string | null
+          prazo_meses: number | null
+          status_contrato: string | null
+          tipo_servico: string[] | null
+          updated_at: string | null
+          valor_estimado: number | null
+        }
+        Insert: {
+          assinado?: string | null
+          cliente_id?: string | null
+          codigo_interno?: number | null
+          condicao_pagamento?: string | null
+          created_at?: string | null
+          data_fim: string
+          data_inicio: string
+          data_termino?: string | null
+          especialidade_contrato?: string | null
+          id?: string
+          medico_id?: string | null
+          motivo_pendente?: string | null
+          objeto_contrato?: string | null
+          prazo_meses?: number | null
+          status_contrato?: string | null
+          tipo_servico?: string[] | null
+          updated_at?: string | null
+          valor_estimado?: number | null
+        }
+        Update: {
+          assinado?: string | null
+          cliente_id?: string | null
+          codigo_interno?: number | null
+          condicao_pagamento?: string | null
+          created_at?: string | null
+          data_fim?: string
+          data_inicio?: string
+          data_termino?: string | null
+          especialidade_contrato?: string | null
+          id?: string
+          medico_id?: string | null
+          motivo_pendente?: string | null
+          objeto_contrato?: string | null
+          prazo_meses?: number | null
+          status_contrato?: string | null
+          tipo_servico?: string[] | null
+          updated_at?: string | null
+          valor_estimado?: number | null
         }
         Relationships: []
       }
@@ -385,6 +478,156 @@ export type Database = {
           },
         ]
       }
+      historico_acessos: {
+        Row: {
+          acao: string
+          created_at: string | null
+          detalhes: Json | null
+          id: string
+          user_id: string | null
+        }
+        Insert: {
+          acao: string
+          created_at?: string | null
+          detalhes?: Json | null
+          id?: string
+          user_id?: string | null
+        }
+        Update: {
+          acao?: string
+          created_at?: string | null
+          detalhes?: Json | null
+          id?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      kanban_status_config: {
+        Row: {
+          ativo: boolean | null
+          cor: string | null
+          created_at: string | null
+          id: string
+          label: string
+          modulo: string
+          ordem: number
+          status_id: string
+        }
+        Insert: {
+          ativo?: boolean | null
+          cor?: string | null
+          created_at?: string | null
+          id?: string
+          label: string
+          modulo: string
+          ordem: number
+          status_id: string
+        }
+        Update: {
+          ativo?: boolean | null
+          cor?: string | null
+          created_at?: string | null
+          id?: string
+          label?: string
+          modulo?: string
+          ordem?: number
+          status_id?: string
+        }
+        Relationships: []
+      }
+      leads: {
+        Row: {
+          cidade: string | null
+          created_at: string | null
+          crm: string | null
+          email: string | null
+          especialidade: string | null
+          id: string
+          nome: string
+          observacoes: string | null
+          origem: string | null
+          status: string | null
+          telefone: string | null
+          uf: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          cidade?: string | null
+          created_at?: string | null
+          crm?: string | null
+          email?: string | null
+          especialidade?: string | null
+          id?: string
+          nome: string
+          observacoes?: string | null
+          origem?: string | null
+          status?: string | null
+          telefone?: string | null
+          uf?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          cidade?: string | null
+          created_at?: string | null
+          crm?: string | null
+          email?: string | null
+          especialidade?: string | null
+          id?: string
+          nome?: string
+          observacoes?: string | null
+          origem?: string | null
+          status?: string | null
+          telefone?: string | null
+          uf?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      licitacoes: {
+        Row: {
+          created_at: string | null
+          data_abertura: string | null
+          data_limite: string | null
+          id: string
+          numero_edital: string
+          objeto: string
+          observacoes: string | null
+          orgao: string
+          responsavel_id: string | null
+          status: Database["public"]["Enums"]["status_licitacao"]
+          updated_at: string | null
+          valor_estimado: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          data_abertura?: string | null
+          data_limite?: string | null
+          id?: string
+          numero_edital: string
+          objeto: string
+          observacoes?: string | null
+          orgao: string
+          responsavel_id?: string | null
+          status?: Database["public"]["Enums"]["status_licitacao"]
+          updated_at?: string | null
+          valor_estimado?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          data_abertura?: string | null
+          data_limite?: string | null
+          id?: string
+          numero_edital?: string
+          objeto?: string
+          observacoes?: string | null
+          orgao?: string
+          responsavel_id?: string | null
+          status?: Database["public"]["Enums"]["status_licitacao"]
+          updated_at?: string | null
+          valor_estimado?: number | null
+        }
+        Relationships: []
+      }
       log_auditoria: {
         Row: {
           acao: string
@@ -420,6 +663,7 @@ export type Database = {
       }
       medicos: {
         Row: {
+          cliente_vinculado_id: string | null
           created_at: string | null
           crm: string
           documentos_url: string[] | null
@@ -428,10 +672,12 @@ export type Database = {
           id: string
           nome_completo: string
           status_documentacao: Database["public"]["Enums"]["status_documentacao"]
+          status_medico: string | null
           telefone: string
           updated_at: string | null
         }
         Insert: {
+          cliente_vinculado_id?: string | null
           created_at?: string | null
           crm: string
           documentos_url?: string[] | null
@@ -440,10 +686,12 @@ export type Database = {
           id?: string
           nome_completo: string
           status_documentacao?: Database["public"]["Enums"]["status_documentacao"]
+          status_medico?: string | null
           telefone: string
           updated_at?: string | null
         }
         Update: {
+          cliente_vinculado_id?: string | null
           created_at?: string | null
           crm?: string
           documentos_url?: string[] | null
@@ -452,8 +700,33 @@ export type Database = {
           id?: string
           nome_completo?: string
           status_documentacao?: Database["public"]["Enums"]["status_documentacao"]
+          status_medico?: string | null
           telefone?: string
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      menu_permissions: {
+        Row: {
+          can_access: boolean | null
+          created_at: string | null
+          id: string
+          menu_item: string
+          role: Database["public"]["Enums"]["app_role"]
+        }
+        Insert: {
+          can_access?: boolean | null
+          created_at?: string | null
+          id?: string
+          menu_item: string
+          role: Database["public"]["Enums"]["app_role"]
+        }
+        Update: {
+          can_access?: boolean | null
+          created_at?: string | null
+          id?: string
+          menu_item?: string
+          role?: Database["public"]["Enums"]["app_role"]
         }
         Relationships: []
       }
@@ -624,6 +897,69 @@ export type Database = {
           },
         ]
       }
+      relacionamento_medico: {
+        Row: {
+          cliente_vinculado_id: string | null
+          created_at: string | null
+          descricao: string
+          id: string
+          medico_vinculado_id: string | null
+          tipo: Database["public"]["Enums"]["tipo_relacionamento"]
+          updated_at: string | null
+        }
+        Insert: {
+          cliente_vinculado_id?: string | null
+          created_at?: string | null
+          descricao: string
+          id?: string
+          medico_vinculado_id?: string | null
+          tipo: Database["public"]["Enums"]["tipo_relacionamento"]
+          updated_at?: string | null
+        }
+        Update: {
+          cliente_vinculado_id?: string | null
+          created_at?: string | null
+          descricao?: string
+          id?: string
+          medico_vinculado_id?: string | null
+          tipo?: Database["public"]["Enums"]["tipo_relacionamento"]
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      unidades: {
+        Row: {
+          cidade: string | null
+          cliente_id: string | null
+          created_at: string | null
+          endereco: string | null
+          id: string
+          nome: string
+          uf: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          cidade?: string | null
+          cliente_id?: string | null
+          created_at?: string | null
+          endereco?: string | null
+          id?: string
+          nome: string
+          uf?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          cidade?: string | null
+          cliente_id?: string | null
+          created_at?: string | null
+          endereco?: string | null
+          id?: string
+          nome?: string
+          uf?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string | null
@@ -653,6 +989,57 @@ export type Database = {
           },
         ]
       }
+      worklist_tarefas: {
+        Row: {
+          contrato_id: string | null
+          created_at: string | null
+          created_by: string | null
+          data_limite: string | null
+          descricao: string | null
+          id: string
+          licitacao_id: string | null
+          modulo: string
+          prioridade: string | null
+          relacionamento_id: string | null
+          responsavel_id: string | null
+          status: string
+          titulo: string
+          updated_at: string | null
+        }
+        Insert: {
+          contrato_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          data_limite?: string | null
+          descricao?: string | null
+          id?: string
+          licitacao_id?: string | null
+          modulo: string
+          prioridade?: string | null
+          relacionamento_id?: string | null
+          responsavel_id?: string | null
+          status: string
+          titulo: string
+          updated_at?: string | null
+        }
+        Update: {
+          contrato_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          data_limite?: string | null
+          descricao?: string | null
+          id?: string
+          licitacao_id?: string | null
+          modulo?: string
+          prioridade?: string | null
+          relacionamento_id?: string | null
+          responsavel_id?: string | null
+          status?: string
+          titulo?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -675,14 +1062,52 @@ export type Database = {
         | "coordenador_escalas"
         | "financeiro"
         | "medico"
+      especialidade_cliente: "Hospital" | "Clínica" | "UBS" | "Outros"
       status_assinatura: "pendente" | "assinado" | "cancelado"
+      status_assinatura_contrato: "Sim" | "Pendente"
+      status_cliente: "Ativo" | "Inativo" | "Suspenso" | "Cancelado"
       status_contrato: "ativo" | "inativo" | "suspenso"
       status_demanda: "aberta" | "em_atendimento" | "concluida" | "cancelada"
+      status_disparo:
+        | "nova_oportunidade"
+        | "disparo"
+        | "analise_proposta"
+        | "negociacao"
+        | "investigacao"
+        | "proposta_aceita"
+        | "proposta_arquivada"
+        | "relacionamento_medico"
       status_documentacao: "pendente" | "em_analise" | "aprovada" | "reprovada"
       status_execucao: "pendente" | "executada" | "cancelada"
+      status_licitacao:
+        | "captacao_edital"
+        | "edital_analise"
+        | "deliberacao"
+        | "esclarecimentos_impugnacao"
+        | "cadastro_proposta"
+        | "aguardando_sessao"
+        | "em_disputa"
+        | "proposta_final"
+        | "recurso_contrarrazao"
+        | "adjudicacao_homologacao"
+        | "arrematados"
+        | "descarte_edital"
+        | "nao_ganhamos"
+      status_medico: "Ativo" | "Inativo" | "Suspenso"
       status_pagamento: "pendente" | "pago" | "atrasado" | "cancelado"
       status_proposta: "pendente" | "aceita" | "recusada"
+      status_relacionamento:
+        | "inicio_identificacao"
+        | "captacao_documentacao"
+        | "pendencia_documentacao"
+        | "documentacao_finalizada"
+        | "criacao_escalas"
       tipo_contrato: "licitacao" | "privado"
+      tipo_relacionamento:
+        | "Reclamação"
+        | "Feedback Positivo"
+        | "Alinhamento Escalas"
+        | "Ação Comemorativa"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -818,14 +1243,56 @@ export const Constants = {
         "financeiro",
         "medico",
       ],
+      especialidade_cliente: ["Hospital", "Clínica", "UBS", "Outros"],
       status_assinatura: ["pendente", "assinado", "cancelado"],
+      status_assinatura_contrato: ["Sim", "Pendente"],
+      status_cliente: ["Ativo", "Inativo", "Suspenso", "Cancelado"],
       status_contrato: ["ativo", "inativo", "suspenso"],
       status_demanda: ["aberta", "em_atendimento", "concluida", "cancelada"],
+      status_disparo: [
+        "nova_oportunidade",
+        "disparo",
+        "analise_proposta",
+        "negociacao",
+        "investigacao",
+        "proposta_aceita",
+        "proposta_arquivada",
+        "relacionamento_medico",
+      ],
       status_documentacao: ["pendente", "em_analise", "aprovada", "reprovada"],
       status_execucao: ["pendente", "executada", "cancelada"],
+      status_licitacao: [
+        "captacao_edital",
+        "edital_analise",
+        "deliberacao",
+        "esclarecimentos_impugnacao",
+        "cadastro_proposta",
+        "aguardando_sessao",
+        "em_disputa",
+        "proposta_final",
+        "recurso_contrarrazao",
+        "adjudicacao_homologacao",
+        "arrematados",
+        "descarte_edital",
+        "nao_ganhamos",
+      ],
+      status_medico: ["Ativo", "Inativo", "Suspenso"],
       status_pagamento: ["pendente", "pago", "atrasado", "cancelado"],
       status_proposta: ["pendente", "aceita", "recusada"],
+      status_relacionamento: [
+        "inicio_identificacao",
+        "captacao_documentacao",
+        "pendencia_documentacao",
+        "documentacao_finalizada",
+        "criacao_escalas",
+      ],
       tipo_contrato: ["licitacao", "privado"],
+      tipo_relacionamento: [
+        "Reclamação",
+        "Feedback Positivo",
+        "Alinhamento Escalas",
+        "Ação Comemorativa",
+      ],
     },
   },
 } as const
