@@ -1,0 +1,18 @@
+INSERT INTO "ages_profissionais" ("id", "nome", "cpf", "rg", "data_nascimento", "profissao", "registro_profissional", "telefone", "email", "endereco", "cidade", "uf", "cep", "banco", "agencia", "conta_corrente", "chave_pix", "status", "observacoes", "lead_origem_id", "created_at", "updated_at") VALUES
+('96ff48a8-e315-4221-a6d6-cdd12739034b', 'Ismara Ribeiro de Oliveira', '025.723.519-00', '6699841-0', '1978-03-03T00:00:00.000Z', 'Psicólogo', 'CRP 08/21683', '4396353306', 'ismaradeoliveira78@gmail.com', 'Rua General Tasso Fragoso, Bancários, Londrina - PR - CEP 86062050', 'Londrina', 'PR', '86062050', 'Sicoob', '4355', '122125-6', '43996639613', 'ativo', 'CRP 08/21683', 'a95d43a4-769f-472a-8b79-6aed3777c7c4', '2026-01-13T19:03:27.320Z', '2026-01-13T20:52:27.765Z'),
+('d4e9dc99-561b-4e97-b5d8-7a7a86b89c70', 'Raissa Pereira Carvalho', '433.367.208-26', '498168360', '1997-04-29T00:00:00.000Z', 'Fonoaudiólogo', NULL, '(14) 98835-8976', 'raissa.pc@outlook.com', 'Rua. Virginia Degasperi Pereira 3-25 Nobuji Nagasawa, Bauru - SP', 'Bauru', 'SP', '17026-831', 'DOCK IP S.A. - 301', '0001', '31130008-', '53817134000166', 'ativo', 'Profissão FONOAUDIOLOGO
+Registro Profissional 20872
+Status ativo', 'e8e3ca75-de80-4bae-a6c3-6ea18c1d7e03', '2026-01-06T16:46:21.392Z', '2026-01-06T16:46:21.392Z'),
+('8fb85fad-e133-4d74-b7b7-abf543f87cef', 'Amanda Gibin Ferro', '127.264.339-52', '13.815.636-2', '2002-07-17T00:00:00.000Z', 'Psicólogo', '0843451', '43991304498', 'am-ferro2011@hotmail.com', 'Rua Mato Grosso, 939, Centro', 'Sertanópolis', 'PR', '86170-000', 'Banco C6 S.A.', '0001', '40745247-8', '64.084.959/0001-35', 'ativo', 'Banco: 336', '2542eddf-2dc1-47f8-b506-0f38318daa95', '2026-01-13T18:39:02.098Z', '2026-01-13T20:52:46.095Z'),
+('2532f16e-4cbf-4d2c-bad4-2787d965c6fc', 'Helena Kuhn da Rocha', '001.004.320-93', '1084934593', '1983-10-24T00:00:00.000Z', 'Fonoaudiólogo', '3-9034', '(47) 98811-6957', 'fonofisioclin@yahoo.com', 'Rua Pinheiro nº 96, Centro, Penha, SC', 'Penha', 'SC', '88350-000', 'SICREDI', '2602', '62206-2', '48.746.294/0001-21', 'ativo', 'Profissão Fonoaudióloga
+Registro Profissional 3-9034
+Status ativo', 'f413a76c-110e-476e-870f-87310aeaed35', '2026-01-08T13:39:08.078Z', '2026-01-14T11:25:43.742Z'),
+('7366ee2a-61f6-4da6-8430-2ca999594c83', 'Andréia Faldi Lima', '475.223.050-04', '5004903059', '1969-02-19T00:00:00.000Z', 'Enfermeiro', '052.765', '51985005001', 'faldiandreia@gmail.com', 'Rua Carlos Silveira Martins Pacheco', 'Porto Alegre - RS', 'RS', '91350-300', NULL, NULL, NULL, NULL, 'ativo', NULL, '444a458c-26e9-4bc9-87ae-d4c0751b0cf9', '2026-03-31T14:04:47.580Z', '2026-03-31T14:04:47.580Z'),
+('40a9932b-a9c2-4b7d-b9a4-c9340a12ad51', 'VALERIA ALVES DA COSTA FERNANDES', '451.732.499-00', '33504888', '1962-12-17T00:00:00.000Z', 'Fonoaudiólogo', NULL, '(43) 91304-4981', 'va_cst@hotmail.com', 'Rua Princesa Isabel, nº 67, apt 701, Bairro Canoas', 'Rio do Sul', 'SC', '89164-054', 'Ailos', '0115-5', '1648775-3', '49553876000154', 'ativo', 'Profissão Psicologia
+Registro Profissional 0843451
+Status ativo
+Tipo: Conta Corrente
+Posto Atendimento: 014', '8fadd7c6-042a-4363-9874-468fb0384493', '2026-01-06T16:57:32.960Z', '2026-01-13T14:03:51.839Z'),
+('9e434a23-50d9-404d-9c3f-31ecb202de97', 'ANTERA PSICOLOGIA E CONSULTORIA', NULL, NULL, NULL, 'Outros', NULL, '(51) 9762-6508', 'anterapsicologia@gmail.com', 'R GARIBALDI', 'PORTO ALEGRE', 'RS', '90.035-050', 'NUBANK', '0001', '40609172-1', '51528838000193', 'pendente', 'R$25,83
+R$4.650,00', '1d023ddf-f4b4-4add-8ff6-0e13914baa69', '2026-03-31T18:04:42.301Z', '2026-03-31T18:05:01.015Z')
+ON CONFLICT (id) DO NOTHING;
