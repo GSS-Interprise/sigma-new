@@ -70,7 +70,8 @@ WHERE id = 'editais-pdfs';
 
 -- === 20251204184049_01db28cc-294f-4a53-aaf4-6ece7b843dd0.sql ===
 -- Delete all objects from editais-pdfs bucket
-DELETE FROM storage.objects WHERE bucket_id = 'editais-pdfs';
+-- SKIPPED: DELETE FROM storage.objects (not allowed via SQL, use Storage API)
+-- DELETE FROM storage.objects WHERE bucket_id = 'editais-pdfs';
 
 -- === 20251205112240_51466887-1374-49c8-849d-06b4dcb0fca5.sql ===
 -- Marketing Conteúdos (Posts de Redes Sociais)

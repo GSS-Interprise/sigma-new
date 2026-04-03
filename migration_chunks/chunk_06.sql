@@ -1122,7 +1122,7 @@ WHERE licitacao_id IN (SELECT id FROM public.licitacoes);
 DELETE FROM public.licitacoes;
 
 -- Limpa os buckets de storage
-DELETE FROM storage.objects WHERE bucket_id IN ('licitacoes-anexos', 'editais-pdfs');
+-- SKIPPED: DELETE FROM storage.objects (not allowed via SQL);
 
 -- === 20251218144413_4852b6ed-2138-4347-bfa1-c80228eca6c0.sql ===
 -- Desvincula registros
@@ -1151,7 +1151,7 @@ WHERE licitacao_id IN (SELECT id FROM public.licitacoes);
 DELETE FROM public.licitacoes;
 
 -- Limpa os buckets de storage
-DELETE FROM storage.objects WHERE bucket_id IN ('licitacoes-anexos', 'editais-pdfs');
+-- SKIPPED: DELETE FROM storage.objects (not allowed via SQL);
 
 -- === 20251218162716_709f290f-8591-4e7d-9572-4b06e6f70082.sql ===
 -- Adicionar campo para dados customizados nas licitações
