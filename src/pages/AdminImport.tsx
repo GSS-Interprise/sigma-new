@@ -56,8 +56,9 @@ const TABLES = [
   "user_roles", "whatsapp_rate_limit", "worklist_tarefas",
 ];
 
-const BATCH_SIZE = 10;
-const MAX_CONSECUTIVE_REQUEST_ERRORS = 3;
+const BATCH_SIZE = 500;
+const MAX_CONCURRENT = 3;
+const MAX_CONSECUTIVE_ERRORS = 5;
 
 function detectDelimiter(headerLine: string) {
   const commaCount = (headerLine.match(/,/g) || []).length;
@@ -237,49 +238,85 @@ function AdminImportContent() {
 
       addLog(`Colunas detectadas: ${Object.keys(rows[0]).join(", ")}`);
 
-      const totalBatches = Math.ceil(rows.length / BATCH_SIZE);
-      let errorCount = 0;
-      let consecutiveRequestErrors = 0;
-
-      for (let i = 0; i < totalBatches; i++) {
-        const batch = rows.slice(i * BATCH_SIZE, (i + 1) * BATCH_SIZE);
-        const batchNum = i + 1;
-
-        addLog(`📦 Enviando lote ${batchNum}/${totalBatches} (${batch.length} linhas)...`);
-
-        const { data, error } = await supabase.functions.invoke("import-csv-bulk", {
-          body: { table, rows: batch, key: "sigma2026" },
-        });
-
-        if (error) {
-          errorCount++;
-          consecutiveRequestErrors++;
-          addLog(`❌ Lote ${batchNum} erro: ${error.message}`);
-
-          if (consecutiveRequestErrors >= MAX_CONSECUTIVE_REQUEST_ERRORS) {
-            addLog("⛔ A importação foi interrompida porque a Edge Function não respondeu em 3 tentativas seguidas.");
-            addLog("💡 Verifique se a função import-csv-bulk está publicada e tente novamente.");
-            break;
+      // Clean rows: remove empty string values → null, trim strings
+      const cleanedRows = rows.map(row => {
+        const clean: Record<string, any> = {};
+        for (const [key, value] of Object.entries(row)) {
+          if (value === "" || value === undefined) {
+            clean[key] = null;
+          } else {
+            clean[key] = value;
           }
-        } else if (data?.error) {
-          errorCount++;
-          consecutiveRequestErrors = 0;
-          addLog(`❌ Lote ${batchNum} erro: ${data.error}${data.hint ? ` (${data.hint})` : ""}`);
-        } else {
-          consecutiveRequestErrors = 0;
-          addLog(`✅ Lote ${batchNum} OK: ${data?.inserted || batch.length} linhas`);
+        }
+        return clean;
+      });
+
+      const totalBatches = Math.ceil(cleanedRows.length / BATCH_SIZE);
+      let errorCount = 0;
+      let successCount = 0;
+      let consecutiveErrors = 0;
+
+      addLog(`📦 Total: ${totalBatches} lotes de até ${BATCH_SIZE} linhas (${MAX_CONCURRENT} em paralelo)`);
+
+      // Process batches with concurrency control
+      for (let i = 0; i < totalBatches; i += MAX_CONCURRENT) {
+        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+          addLog("⛔ Importação interrompida: muitos erros consecutivos.");
+          break;
         }
 
-        const done = Math.min((i + 1) * BATCH_SIZE, rows.length);
+        const batchPromises: Promise<{ batchNum: number; count: number; error?: string }>[] = [];
+
+        for (let j = 0; j < MAX_CONCURRENT && (i + j) < totalBatches; j++) {
+          const batchIndex = i + j;
+          const batch = cleanedRows.slice(batchIndex * BATCH_SIZE, (batchIndex + 1) * BATCH_SIZE);
+          const batchNum = batchIndex + 1;
+
+          batchPromises.push(
+            (async () => {
+              try {
+                const { error } = await (supabase.from(table as any) as any).upsert(batch, {
+                  onConflict: "id",
+                  ignoreDuplicates: false,
+                });
+                if (error) {
+                  return { batchNum, count: 0, error: error.message };
+                }
+                return { batchNum, count: batch.length };
+              } catch (err: any) {
+                return { batchNum, count: 0, error: err.message || "Erro desconhecido" };
+              }
+            })()
+          );
+        }
+
+        const results = await Promise.all(batchPromises);
+
+        for (const result of results) {
+          if (result.error) {
+            errorCount++;
+            consecutiveErrors++;
+            addLog(`❌ Lote ${result.batchNum}/${totalBatches}: ${result.error}`);
+          } else {
+            consecutiveErrors = 0;
+            successCount += result.count;
+            // Only log every 10 batches or last batch to avoid log spam on large imports
+            if (result.batchNum % 10 === 0 || result.batchNum === totalBatches) {
+              addLog(`✅ Lote ${result.batchNum}/${totalBatches} OK (${successCount} linhas inseridas)`);
+            }
+          }
+        }
+
+        const done = Math.min((i + MAX_CONCURRENT) * BATCH_SIZE, cleanedRows.length);
         setProcessedRows(done);
-        setProgress(Math.round((done / rows.length) * 100));
+        setProgress(Math.round((done / cleanedRows.length) * 100));
       }
 
       if (errorCount === 0) {
-        addLog(`🎉 Importação concluída com sucesso! ${rows.length} linhas processadas.`);
+        addLog(`🎉 Importação concluída! ${successCount} linhas inseridas.`);
         setStatus("done");
       } else {
-        addLog(`⚠️ Importação concluída com ${errorCount} erro(s) de ${totalBatches} lotes.`);
+        addLog(`⚠️ Concluída com ${errorCount} erro(s). ${successCount} linhas inseridas.`);
         setStatus("error");
       }
     } catch (err: unknown) {
