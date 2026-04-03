@@ -54,7 +54,7 @@ Deno.serve(async (req) => {
           results.push({ email: u.email, success: true })
         }
       } catch (e) {
-        results.push({ email: u.email, success: false, error: e.message })
+        results.push({ email: u.email, success: false, error: (e as Error).message })
       }
     }
 
