@@ -292,8 +292,7 @@ EXECUTE FUNCTION public.update_updated_at_column();
 
 -- Bucket para imagens das anotações
 INSERT INTO storage.buckets (id, name, public) 
-VALUES ('lead-anotacoes', 'lead-anotacoes', true)
-ON CONFLICT (id) DO NOTHING;
+VALUES ('lead-anotacoes', 'lead-anotacoes', true) ON CONFLICT (id) DO NOTHING;
 
 -- Policies do storage
 DROP POLICY IF EXISTS "Anyone can view lead-anotacoes images" ON storage.objects;

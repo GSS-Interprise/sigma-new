@@ -133,8 +133,7 @@ CREATE TRIGGER update_medico_indisponibilidades_updated_at
 -- === 20251024131724_c0e06b4b-398d-4320-a18f-e915e2e4ead2.sql ===
 -- Create storage bucket for radiologia attachments
 INSERT INTO storage.buckets (id, name, public)
-VALUES ('radiologia-anexos', 'radiologia-anexos', true)
-ON CONFLICT (id) DO NOTHING;
+VALUES ('radiologia-anexos', 'radiologia-anexos', true) ON CONFLICT (id) DO NOTHING;
 
 -- Create storage policy for viewing attachments
 DROP POLICY IF EXISTS "Authenticated users can view radiologia attachments" ON storage.objects;
@@ -465,8 +464,7 @@ CREATE INDEX IF NOT EXISTS idx_suporte_comentarios_ticket ON public.suporte_come
 -- === 20251024145935_8e00069a-14a2-4866-9db8-d652a996f2ba.sql ===
 -- Criar bucket para anexos de suporte
 INSERT INTO storage.buckets (id, name, public) 
-VALUES ('suporte-anexos', 'suporte-anexos', false)
-ON CONFLICT (id) DO NOTHING;
+VALUES ('suporte-anexos', 'suporte-anexos', false) ON CONFLICT (id) DO NOTHING;
 
 -- Políticas de storage para suporte-anexos
 DROP POLICY IF EXISTS "Users can upload their own files" ON storage.objects;
@@ -1135,8 +1133,7 @@ EXECUTE FUNCTION update_medico_prontuario_updated_at();
 -- === 20251031174051_9dcf9493-50ef-45a8-9319-a14a42fca9a9.sql ===
 -- Criar bucket de storage para documentos dos médicos
 INSERT INTO storage.buckets (id, name, public)
-VALUES ('medicos-documentos', 'medicos-documentos', false)
-ON CONFLICT (id) DO NOTHING;
+VALUES ('medicos-documentos', 'medicos-documentos', false) ON CONFLICT (id) DO NOTHING;
 
 -- Políticas de storage para documentos dos médicos
 DROP POLICY IF EXISTS "Usuários autenticados podem ver documentos" ON storage.objects;

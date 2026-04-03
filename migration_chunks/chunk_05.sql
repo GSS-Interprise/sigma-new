@@ -359,8 +359,7 @@ USING (true);
 
 -- Create storage bucket for kanban card attachments
 INSERT INTO storage.buckets (id, name, public)
-VALUES ('medico-kanban-anexos', 'medico-kanban-anexos', true)
-ON CONFLICT (id) DO NOTHING;
+VALUES ('medico-kanban-anexos', 'medico-kanban-anexos', true) ON CONFLICT (id) DO NOTHING;
 
 -- Storage policies
 DROP POLICY IF EXISTS "Anyone can view medico kanban attachments" ON storage.objects;
@@ -834,7 +833,7 @@ USING (auth.uid() IS NOT NULL);
 
 -- Create storage bucket for lead attachments
 INSERT INTO storage.buckets (id, name, public)
-VALUES ('lead-anexos', 'lead-anexos', true);
+VALUES ('lead-anexos', 'lead-anexos', true) ON CONFLICT (id) DO NOTHING;
 
 -- Storage policies
 DROP POLICY IF EXISTS "Authenticated users can view lead attachments" ON storage.objects;

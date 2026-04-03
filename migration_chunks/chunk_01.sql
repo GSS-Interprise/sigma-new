@@ -911,8 +911,7 @@ VALUES (
   false,
   52428800, -- 50MB limit
   ARRAY['application/pdf', 'image/png', 'image/jpeg']
-)
-ON CONFLICT (id) DO NOTHING;
+) ON CONFLICT (id) DO NOTHING;
 
 -- Políticas de storage para editais-pdfs
 DROP POLICY IF EXISTS "Authenticated users can view editais PDFs" ON storage.objects;

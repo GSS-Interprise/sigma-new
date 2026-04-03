@@ -951,7 +951,7 @@ VALUES (
   false,
   52428800, -- 50MB limit
   ARRAY['application/pdf', 'image/jpeg', 'image/jpg', 'image/png', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
-);
+) ON CONFLICT (id) DO NOTHING;
 
 -- Políticas RLS para o bucket de contratos
 -- Usuários autorizados podem fazer upload

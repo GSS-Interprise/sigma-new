@@ -110,8 +110,7 @@ CREATE INDEX IF NOT EXISTS idx_medico_documentos_log_documento_id ON public.medi
 -- === 20251031185624_16f1033c-17f3-4ae6-ad64-e0e4220e7c76.sql ===
 -- Garantir que o bucket existe
 INSERT INTO storage.buckets (id, name, public)
-VALUES ('medicos-documentos', 'medicos-documentos', false)
-ON CONFLICT (id) DO NOTHING;
+VALUES ('medicos-documentos', 'medicos-documentos', false) ON CONFLICT (id) DO NOTHING;
 
 -- Remover policies antigas se existirem
 DROP POLICY IF EXISTS "Usuários autenticados podem fazer upload" ON storage.objects;
@@ -369,8 +368,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.comunicacao_leituras;
 
 -- Create storage bucket for message attachments
 INSERT INTO storage.buckets (id, name, public)
-VALUES ('comunicacao-anexos', 'comunicacao-anexos', false)
-ON CONFLICT (id) DO NOTHING;
+VALUES ('comunicacao-anexos', 'comunicacao-anexos', false) ON CONFLICT (id) DO NOTHING;
 
 -- Storage policies for comunicacao-anexos
 DROP POLICY IF EXISTS "Users can upload attachments to their channels" ON storage.objects;
@@ -1122,13 +1120,13 @@ CREATE POLICY "Admins e gestores marketing podem gerenciar automações"
 
 -- Criar storage buckets
 INSERT INTO storage.buckets (id, name, public) 
-VALUES ('campanhas-pecas', 'campanhas-pecas', false);
+VALUES ('campanhas-pecas', 'campanhas-pecas', false) ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO storage.buckets (id, name, public) 
-VALUES ('materiais-biblioteca', 'materiais-biblioteca', false);
+VALUES ('materiais-biblioteca', 'materiais-biblioteca', false) ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO storage.buckets (id, name, public) 
-VALUES ('eventos-materiais', 'eventos-materiais', false);
+VALUES ('eventos-materiais', 'eventos-materiais', false) ON CONFLICT (id) DO NOTHING;
 
 -- Políticas de storage para campanhas-pecas (INSERT)
 DROP POLICY IF EXISTS "Upload campanhas autorizado" ON storage.objects;

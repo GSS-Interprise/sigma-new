@@ -5,8 +5,7 @@ CREATE TRIGGER update_user_notas_updated_at
 
 -- Bucket para anexos de notas
 INSERT INTO storage.buckets (id, name, public) 
-VALUES ('user-notas-anexos', 'user-notas-anexos', false)
-ON CONFLICT (id) DO NOTHING;
+VALUES ('user-notas-anexos', 'user-notas-anexos', false) ON CONFLICT (id) DO NOTHING;
 
 -- Políticas de storage para anexos
 DROP POLICY IF EXISTS "Usuários podem ver seus próprios anexos" ON storage.objects;
