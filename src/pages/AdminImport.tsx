@@ -56,8 +56,9 @@ const TABLES = [
   "user_roles", "whatsapp_rate_limit", "worklist_tarefas",
 ];
 
-const BATCH_SIZE = 10;
-const MAX_CONSECUTIVE_REQUEST_ERRORS = 3;
+const BATCH_SIZE = 500;
+const MAX_CONCURRENT = 3;
+const MAX_CONSECUTIVE_ERRORS = 5;
 
 function detectDelimiter(headerLine: string) {
   const commaCount = (headerLine.match(/,/g) || []).length;
