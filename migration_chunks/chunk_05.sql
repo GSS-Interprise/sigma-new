@@ -312,7 +312,7 @@ VALUES
   ('medicos', 'ativo', 'Ativo', '#22c55e', 7, true);
 
 -- DROP TRIGGER IF EXISTS "for" ON public.medico_kanban_cards;
-Create trigger for updated_at
+-- Create trigger for updated_at
 CREATE TRIGGER update_medico_kanban_cards_updated_at
 BEFORE UPDATE ON public.medico_kanban_cards
 FOR EACH ROW
@@ -346,7 +346,7 @@ DO $$ BEGIN ALTER TABLE public.proposta
 ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(); EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 
 -- DROP TRIGGER IF EXISTS "for" ON public.proposta;
-Create trigger for automatic timestamp updates if not exists
+-- Create trigger for automatic timestamp updates if not exists
 CREATE OR REPLACE TRIGGER update_proposta_updated_at
 BEFORE UPDATE ON public.proposta
 FOR EACH ROW

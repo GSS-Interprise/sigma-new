@@ -1086,7 +1086,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- DROP TRIGGER IF EXISTS "for" ON public.patrimonio;
-Create trigger for auto-generating codigo_bem
+-- Create trigger for auto-generating codigo_bem
 CREATE TRIGGER set_codigo_bem
 BEFORE INSERT ON public.patrimonio
 FOR EACH ROW
@@ -1094,7 +1094,7 @@ WHEN (NEW.codigo_bem IS NULL OR NEW.codigo_bem = '')
 EXECUTE FUNCTION generate_codigo_bem();
 
 -- DROP TRIGGER IF EXISTS "for" ON public.patrimonio;
-Create trigger for updated_at
+-- Create trigger for updated_at
 CREATE TRIGGER update_patrimonio_updated_at
 BEFORE UPDATE ON public.patrimonio
 FOR EACH ROW
@@ -1192,7 +1192,7 @@ DO $$ BEGIN ALTER TABLE public.patrimonio
 ADD COLUMN setor_id UUID REFERENCES public.setores(id) ON DELETE SET NULL; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 
 -- DROP TRIGGER IF EXISTS "for" ON public.centros_custo;
-Create trigger for updated_at
+-- Create trigger for updated_at
 CREATE TRIGGER update_centros_custo_updated_at
 BEFORE UPDATE ON public.centros_custo
 FOR EACH ROW
