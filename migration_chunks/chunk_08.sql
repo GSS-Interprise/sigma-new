@@ -392,7 +392,7 @@ CREATE TRIGGER set_contrato_codigo_interno
 DO $altc$ BEGIN ALTER TABLE contratos ALTER COLUMN codigo_interno DROP DEFAULT; EXCEPTION WHEN undefined_column THEN NULL; WHEN undefined_table THEN NULL; END $altc$;
 
 -- Resetar a sequência para o valor correto (para backup caso precise no futuro)
-SELECT setval('contratos_codigo_interno_seq', (SELECT COALESCE(MAX(codigo_interno), 0) FROM contratos), true);
+SELECT setval('contratos_codigo_interno_seq', GREATEST((SELECT COALESCE(MAX(codigo_interno), 0) FROM contratos), 1), true);
 
 -- === 20260107115813_0426ef0e-1143-45ff-bd5a-b98a5b06898d.sql ===
 -- Add missing contract field used by the UI

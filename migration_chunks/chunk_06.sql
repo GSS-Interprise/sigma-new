@@ -280,7 +280,7 @@ USING (auth.uid() IS NOT NULL);
 CREATE SEQUENCE IF NOT EXISTS contratos_codigo_interno_seq;
 
 -- Ajustar a sequência para começar do próximo valor disponível
-SELECT setval('contratos_codigo_interno_seq', COALESCE((SELECT MAX(codigo_interno) FROM contratos), 0) + 1, false);
+SELECT setval('contratos_codigo_interno_seq', GREATEST(COALESCE((SELECT MAX(codigo_interno) FROM contratos), 0) + 1, 1), false);
 
 -- Definir o default do campo codigo_interno para usar a sequência
 DO $altc$ BEGIN ALTER TABLE contratos ALTER COLUMN codigo_interno SET DEFAULT nextval('contratos_codigo_interno_seq'); EXCEPTION WHEN undefined_column THEN NULL; WHEN undefined_table THEN NULL; END $altc$;
