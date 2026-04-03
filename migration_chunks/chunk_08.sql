@@ -1,0 +1,1191 @@
+
+-- Índices para performance
+CREATE INDEX IF NOT EXISTS idx_system_notifications_user_id ON public.system_notifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_system_notifications_lida ON public.system_notifications(user_id, lida);
+CREATE INDEX IF NOT EXISTS idx_system_notifications_tipo ON public.system_notifications(tipo);
+
+-- Enable RLS
+ALTER TABLE public.system_notifications ENABLE ROW LEVEL SECURITY;
+
+-- Políticas RLS
+DROP POLICY IF EXISTS "Users can view their own notifications" ON public.system_notifications;
+CREATE POLICY "Users can view their own notifications"
+ON public.system_notifications
+FOR SELECT
+USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can update their own notifications" ON public.system_notifications;
+CREATE POLICY "Users can update their own notifications"
+ON public.system_notifications
+FOR UPDATE
+USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "System can insert notifications" ON public.system_notifications;
+CREATE POLICY "System can insert notifications"
+ON public.system_notifications
+FOR INSERT
+WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Users can delete their own notifications" ON public.system_notifications;
+CREATE POLICY "Users can delete their own notifications"
+ON public.system_notifications
+FOR DELETE
+USING (auth.uid() = user_id);
+
+-- Enable realtime
+ALTER PUBLICATION supabase_realtime ADD TABLE public.system_notifications;
+
+-- === 20260106131544_56b8fa3a-9665-4581-81ec-0113e9d83256.sql ===
+-- Remover trigger antigo
+DROP TRIGGER IF EXISTS set_contrato_codigo_interno ON contratos;
+
+-- Criar nova função que usa MAX+1
+CREATE OR REPLACE FUNCTION public.generate_contrato_codigo_interno()
+RETURNS TRIGGER AS $$
+DECLARE
+  next_id INTEGER;
+BEGIN
+  IF NEW.codigo_interno IS NULL THEN
+    SELECT COALESCE(MAX(codigo_interno), 0) + 1 INTO next_id FROM contratos;
+    NEW.codigo_interno := next_id;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SET search_path = public;
+
+-- Recriar trigger com nova função
+CREATE TRIGGER set_contrato_codigo_interno
+  BEFORE INSERT ON contratos
+  FOR EACH ROW
+  EXECUTE FUNCTION public.generate_contrato_codigo_interno();
+
+-- === 20260106144028_64ce2e65-4525-433e-9738-f23d8ea486a5.sql ===
+-- Remover o DEFAULT da sequência para que o trigger MAX+1 funcione
+ALTER TABLE contratos ALTER COLUMN codigo_interno DROP DEFAULT;
+
+-- Resetar a sequência para o valor correto (para backup caso precise no futuro)
+SELECT setval('contratos_codigo_interno_seq', (SELECT COALESCE(MAX(codigo_interno), 0) FROM contratos), true);
+
+-- === 20260107115813_0426ef0e-1143-45ff-bd5a-b98a5b06898d.sql ===
+-- Add missing contract field used by the UI
+ALTER TABLE public.ages_contratos
+ADD COLUMN IF NOT EXISTS tipo_servico TEXT[];
+
+-- === 20260107121351_c19e825d-08ad-4303-98dc-0ab667311c5c.sql ===
+-- CREATE TABLE IF NOT EXISTS for lead etiquetas configuration (similar to licitacoes_etiquetas_config)
+CREATE TABLE IF NOT EXISTS public.leads_etiquetas_config (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  nome TEXT NOT NULL UNIQUE,
+  cor_id TEXT NOT NULL DEFAULT 'gray',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- Enable RLS
+ALTER TABLE public.leads_etiquetas_config ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for leads_etiquetas_config
+DROP POLICY IF EXISTS "Authenticated users can view lead etiquetas config" ON public.leads_etiquetas_config;
+CREATE POLICY "Authenticated users can view lead etiquetas config"
+ON public.leads_etiquetas_config
+FOR SELECT
+TO authenticated
+USING (true);
+
+DROP POLICY IF EXISTS "Authenticated users can insert lead etiquetas config" ON public.leads_etiquetas_config;
+CREATE POLICY "Authenticated users can insert lead etiquetas config"
+ON public.leads_etiquetas_config
+FOR INSERT
+TO authenticated
+WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Authenticated users can update lead etiquetas config" ON public.leads_etiquetas_config;
+CREATE POLICY "Authenticated users can update lead etiquetas config"
+ON public.leads_etiquetas_config
+FOR UPDATE
+TO authenticated
+USING (true);
+
+DROP POLICY IF EXISTS "Authenticated users can delete lead etiquetas config" ON public.leads_etiquetas_config;
+CREATE POLICY "Authenticated users can delete lead etiquetas config"
+ON public.leads_etiquetas_config
+FOR DELETE
+TO authenticated
+USING (true);
+
+-- Add trigger to update updated_at
+CREATE OR REPLACE TRIGGER update_leads_etiquetas_config_updated_at
+BEFORE UPDATE ON public.leads_etiquetas_config
+FOR EACH ROW
+EXECUTE FUNCTION public.update_updated_at_column();
+
+-- === 20260107122554_13ce61a6-a299-421c-923b-8d941edbc033.sql ===
+-- Enable realtime for captacao_permissoes_usuario
+ALTER TABLE public.captacao_permissoes_usuario REPLICA IDENTITY FULL;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.captacao_permissoes_usuario;
+
+-- === 20260107134026_34aa1dbf-9351-42da-9275-ed6ea76f76bb.sql ===
+-- Enable realtime for chips table
+ALTER TABLE public.chips REPLICA IDENTITY FULL;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.chips;
+
+-- === 20260107194153_480bffc6-365b-40ab-bfcd-5714b52457e8.sql ===
+-- Tabela principal: Campanhas/Lotes de disparo
+CREATE TABLE IF NOT EXISTS public.disparos_campanhas (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  nome TEXT NOT NULL,
+  proposta_id TEXT,
+  texto_ia TEXT,
+  instancia TEXT,
+  chip_id UUID REFERENCES public.chips(id),
+  responsavel_id UUID,
+  responsavel_nome TEXT,
+  status TEXT DEFAULT 'pendente' CHECK (status IN ('pendente', 'em_andamento', 'pausado', 'concluido', 'cancelado')),
+  total_contatos INTEGER DEFAULT 0,
+  enviados INTEGER DEFAULT 0,
+  falhas INTEGER DEFAULT 0,
+  nozap INTEGER DEFAULT 0,
+  reenviar INTEGER DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Tabela de contatos do disparo
+CREATE TABLE IF NOT EXISTS public.disparos_contatos (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  campanha_id UUID REFERENCES public.disparos_campanhas(id) ON DELETE CASCADE,
+  nome TEXT,
+  telefone_original TEXT,
+  telefone_e164 TEXT,
+  status TEXT DEFAULT '0-PENDENTE' CHECK (status IN ('0-PENDENTE', '1-FILA', '2-REENVIAR', '3-PROCESSANDO', '4-ENVIADO', '5-NOZAP', '6-BLOQUEADORA', '7-ERRO')),
+  data_envio TIMESTAMPTZ,
+  tipo_erro TEXT,
+  data_reenvio TIMESTAMPTZ,
+  mensagem_enviada TEXT,
+  tentativas INTEGER DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Índices para performance
+CREATE INDEX IF NOT EXISTS idx_disparos_campanhas_status ON public.disparos_campanhas(status);
+CREATE INDEX IF NOT EXISTS idx_disparos_contatos_campanha ON public.disparos_contatos(campanha_id);
+CREATE INDEX IF NOT EXISTS idx_disparos_contatos_status ON public.disparos_contatos(status);
+CREATE INDEX IF NOT EXISTS idx_disparos_contatos_telefone ON public.disparos_contatos(telefone_e164);
+
+-- Trigger para atualizar updated_at
+CREATE TRIGGER update_disparos_campanhas_updated_at
+  BEFORE UPDATE ON public.disparos_campanhas
+  FOR EACH ROW
+  EXECUTE FUNCTION public.update_updated_at_column();
+
+CREATE TRIGGER update_disparos_contatos_updated_at
+  BEFORE UPDATE ON public.disparos_contatos
+  FOR EACH ROW
+  EXECUTE FUNCTION public.update_updated_at_column();
+
+-- RLS
+ALTER TABLE public.disparos_campanhas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.disparos_contatos ENABLE ROW LEVEL SECURITY;
+
+-- Políticas para campanhas
+DROP POLICY IF EXISTS "Usuários autenticados podem ver campanhas" ON public.disparos_campanhas;
+CREATE POLICY "Usuários autenticados podem ver campanhas"
+  ON public.disparos_campanhas FOR SELECT
+  USING (auth.uid() IS NOT NULL);
+
+DROP POLICY IF EXISTS "Usuários autenticados podem criar campanhas" ON public.disparos_campanhas;
+CREATE POLICY "Usuários autenticados podem criar campanhas"
+  ON public.disparos_campanhas FOR INSERT
+  WITH CHECK (auth.uid() IS NOT NULL);
+
+DROP POLICY IF EXISTS "Usuários autenticados podem atualizar campanhas" ON public.disparos_campanhas;
+CREATE POLICY "Usuários autenticados podem atualizar campanhas"
+  ON public.disparos_campanhas FOR UPDATE
+  USING (auth.uid() IS NOT NULL);
+
+DROP POLICY IF EXISTS "Usuários autenticados podem deletar campanhas" ON public.disparos_campanhas;
+CREATE POLICY "Usuários autenticados podem deletar campanhas"
+  ON public.disparos_campanhas FOR DELETE
+  USING (auth.uid() IS NOT NULL);
+
+-- Políticas para contatos
+DROP POLICY IF EXISTS "Usuários autenticados podem ver contatos" ON public.disparos_contatos;
+CREATE POLICY "Usuários autenticados podem ver contatos"
+  ON public.disparos_contatos FOR SELECT
+  USING (auth.uid() IS NOT NULL);
+
+DROP POLICY IF EXISTS "Usuários autenticados podem criar contatos" ON public.disparos_contatos;
+CREATE POLICY "Usuários autenticados podem criar contatos"
+  ON public.disparos_contatos FOR INSERT
+  WITH CHECK (auth.uid() IS NOT NULL);
+
+DROP POLICY IF EXISTS "Usuários autenticados podem atualizar contatos" ON public.disparos_contatos;
+CREATE POLICY "Usuários autenticados podem atualizar contatos"
+  ON public.disparos_contatos FOR UPDATE
+  USING (auth.uid() IS NOT NULL);
+
+DROP POLICY IF EXISTS "Usuários autenticados podem deletar contatos" ON public.disparos_contatos;
+CREATE POLICY "Usuários autenticados podem deletar contatos"
+  ON public.disparos_contatos FOR DELETE
+  USING (auth.uid() IS NOT NULL);
+
+-- Habilitar realtime para acompanhamento em tempo real
+ALTER PUBLICATION supabase_realtime ADD TABLE public.disparos_campanhas;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.disparos_contatos;
+
+-- === 20260107210859_95db3851-2135-458b-96bb-2db8b559c67c.sql ===
+-- Permitir licitacao_id nulo para cards criados manualmente
+ALTER TABLE public.contrato_rascunho ALTER COLUMN licitacao_id DROP NOT NULL;
+
+-- === 20260107221256_c3fd05a5-5dea-4255-897e-aaed403ab456.sql ===
+-- Adicionar coluna cidade na tabela leads
+ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS cidade TEXT;
+
+-- === 20260107230409_4499d305-22c8-4611-a3fa-fd424da856fc.sql ===
+-- Remover o CHECK constraint atual
+ALTER TABLE public.disparos_contatos DROP CONSTRAINT IF EXISTS disparos_contatos_status_check;
+
+-- Atualizar os registros existentes para os novos status
+UPDATE public.disparos_contatos SET status = '1-ENVIAR' WHERE status NOT IN ('1-ENVIAR', '2-REENVIAR', '3-TRATANDO', '4-ENVIADO', '5-NOZAP', '6-BLOQUEADORA');
+
+-- Adicionar novo CHECK constraint com os status corretos
+ALTER TABLE public.disparos_contatos 
+ADD CONSTRAINT disparos_contatos_status_check 
+CHECK (status IN ('1-ENVIAR', '2-REENVIAR', '3-TRATANDO', '4-ENVIADO', '5-NOZAP', '6-BLOQUEADORA'));
+
+-- Atualizar o default para 1-ENVIAR
+ALTER TABLE public.disparos_contatos ALTER COLUMN status SET DEFAULT '1-ENVIAR';
+
+-- === 20260107234929_1dfaa482-d86b-42c9-913f-460b75fba148.sql ===
+-- Adicionar coluna proximo_envio para agendamento de lotes
+ALTER TABLE public.disparos_campanhas 
+ADD COLUMN IF NOT EXISTS proximo_envio TIMESTAMP WITH TIME ZONE;
+
+-- === 20260108114129_efe68c38-0eca-49ff-9b2e-e88e1814da79.sql ===
+-- Adicionar campo ativo na tabela disparos_campanhas
+ALTER TABLE public.disparos_campanhas 
+ADD COLUMN IF NOT EXISTS ativo boolean NOT NULL DEFAULT true;
+
+-- Criar índice para filtro de ativos
+CREATE INDEX IF NOT EXISTS idx_disparos_campanhas_ativo ON public.disparos_campanhas(ativo);
+
+-- === 20260108122235_5ac21cd0-4bf2-4050-9d66-9d10b1fed111.sql ===
+-- Adicionar campo lead_id na tabela disparos_contatos para rastreabilidade
+ALTER TABLE public.disparos_contatos 
+ADD COLUMN IF NOT EXISTS lead_id uuid REFERENCES public.leads(id) ON DELETE SET NULL;
+
+-- Criar índice para buscas por lead
+CREATE INDEX IF NOT EXISTS idx_disparos_contatos_lead_id ON public.disparos_contatos(lead_id);
+
+-- Comentário explicativo
+COMMENT ON COLUMN public.disparos_contatos.lead_id IS 'Referência ao lead original para rastreabilidade no histórico do prontuário';
+
+-- === 20260109170426_687df272-b5ac-46e9-b0fd-5966d4451cad.sql ===
+-- Adicionar política para permitir que usuários com permissão de captação gerenciem chips
+DROP POLICY IF EXISTS "Captacao users can manage chips" ON public.chips;
+CREATE POLICY "Captacao users can manage chips"
+ON public.chips
+FOR ALL
+USING (
+  has_captacao_permission(auth.uid(), 'seigzaps_config')
+)
+WITH CHECK (
+  has_captacao_permission(auth.uid(), 'seigzaps_config')
+);
+
+-- Também permitir líderes gerenciarem chips
+DROP POLICY IF EXISTS "Leaders can manage chips" ON public.chips;
+CREATE POLICY "Leaders can manage chips"
+ON public.chips
+FOR ALL
+USING (
+  is_leader(auth.uid())
+)
+WITH CHECK (
+  is_leader(auth.uid())
+);
+
+-- === 20260112123756_167dad94-53b7-4f37-bae0-5e2025e7696c.sql ===
+-- Tabela para histórico de importações de leads
+CREATE TABLE IF NOT EXISTS public.lead_import_jobs (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  status TEXT NOT NULL DEFAULT 'pendente', -- pendente, processando, concluido, erro
+  arquivo_nome TEXT NOT NULL,
+  arquivo_url TEXT,
+  total_linhas INTEGER DEFAULT 0,
+  inseridos INTEGER DEFAULT 0,
+  atualizados INTEGER DEFAULT 0,
+  ignorados INTEGER DEFAULT 0,
+  erros JSONB DEFAULT '[]'::jsonb,
+  mapeamento_colunas JSONB,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+  started_at TIMESTAMP WITH TIME ZONE,
+  finished_at TIMESTAMP WITH TIME ZONE,
+  created_by UUID,
+  created_by_nome TEXT
+);
+
+-- Habilitar RLS
+ALTER TABLE public.lead_import_jobs ENABLE ROW LEVEL SECURITY;
+
+-- Política para visualização - usuários autenticados podem ver todos os imports
+DROP POLICY IF EXISTS "Usuários autenticados podem visualizar imports" ON public.lead_import_jobs;
+CREATE POLICY "Usuários autenticados podem visualizar imports" 
+ON public.lead_import_jobs 
+FOR SELECT 
+TO authenticated
+USING (true);
+
+-- Política para inserção - usuários autenticados podem criar imports
+DROP POLICY IF EXISTS "Usuários autenticados podem criar imports" ON public.lead_import_jobs;
+CREATE POLICY "Usuários autenticados podem criar imports" 
+ON public.lead_import_jobs 
+FOR INSERT 
+TO authenticated
+WITH CHECK (true);
+
+-- Política para atualização - apenas o sistema (service role) pode atualizar
+DROP POLICY IF EXISTS "Service role pode atualizar imports" ON public.lead_import_jobs;
+CREATE POLICY "Service role pode atualizar imports" 
+ON public.lead_import_jobs 
+FOR UPDATE 
+USING (true);
+
+-- Trigger para atualizar updated_at
+CREATE TRIGGER update_lead_import_jobs_updated_at
+BEFORE UPDATE ON public.lead_import_jobs
+FOR EACH ROW
+EXECUTE FUNCTION public.update_updated_at_column();
+
+-- Habilitar realtime para atualizações em tempo real
+ALTER PUBLICATION supabase_realtime ADD TABLE public.lead_import_jobs;
+
+-- === 20260112130559_2255a8a3-68ce-4447-a582-b33a1359da3c.sql ===
+-- Add columns for chunk-based processing
+ALTER TABLE lead_import_jobs ADD COLUMN IF NOT EXISTS arquivo_storage_path TEXT;
+ALTER TABLE lead_import_jobs ADD COLUMN IF NOT EXISTS chunk_atual INTEGER DEFAULT 0;
+ALTER TABLE lead_import_jobs ADD COLUMN IF NOT EXISTS total_chunks INTEGER DEFAULT 1;
+ALTER TABLE lead_import_jobs ADD COLUMN IF NOT EXISTS linhas_processadas INTEGER DEFAULT 0;
+
+-- Add unique constraint on leads.phone_e164 for efficient upsert
+ALTER TABLE leads ADD CONSTRAINT leads_phone_e164_unique UNIQUE (phone_e164);
+
+-- === 20260112144134_05e1b5ad-1e36-40f7-a70d-116139263d7e.sql ===
+-- Adicionar políticas de INSERT para sigzap_contacts baseado em permissão de captação
+DROP POLICY IF EXISTS "Captadores com permissao zap podem inserir contatos" ON public.sigzap_contacts;
+CREATE POLICY "Captadores com permissao zap podem inserir contatos"
+  ON public.sigzap_contacts FOR INSERT
+  WITH CHECK (public.has_captacao_permission(auth.uid(), 'disparos_zap'));
+
+-- Adicionar políticas de INSERT para sigzap_conversations baseado em permissão de captação
+DROP POLICY IF EXISTS "Captadores com permissao zap podem inserir conversas" ON public.sigzap_conversations;
+CREATE POLICY "Captadores com permissao zap podem inserir conversas"
+  ON public.sigzap_conversations FOR INSERT
+  WITH CHECK (public.has_captacao_permission(auth.uid(), 'disparos_zap'));
+
+-- Adicionar política de UPDATE para sigzap_contacts (para atualizar dados do contato)
+DROP POLICY IF EXISTS "Captadores com permissao zap podem atualizar contatos" ON public.sigzap_contacts;
+CREATE POLICY "Captadores com permissao zap podem atualizar contatos"
+  ON public.sigzap_contacts FOR UPDATE
+  USING (public.has_captacao_permission(auth.uid(), 'disparos_zap'));
+
+-- === 20260113161600_6f65fda1-3f96-4ef8-b609-3fee0f4bccd9.sql ===
+-- Adicionar novo tipo de evento para reprocessamento de médico no Kanban
+ALTER TYPE public.tipo_evento_lead ADD VALUE IF NOT EXISTS 'reprocessado_kanban';
+
+-- === 20260113162126_194501a7-56bf-4077-9caa-1460842f19a6.sql ===
+-- Atualizar política de visualização de médicos para incluir gestor_financeiro
+DROP POLICY IF EXISTS "Gestores de radiologia podem visualizar medicos" ON public.medicos;
+
+DROP POLICY IF EXISTS "Gestores podem visualizar medicos" ON public.medicos;
+CREATE POLICY "Gestores podem visualizar medicos"
+ON public.medicos
+FOR SELECT
+TO authenticated
+USING (
+  is_admin(auth.uid()) 
+  OR has_role(auth.uid(), 'gestor_captacao'::app_role) 
+  OR has_role(auth.uid(), 'gestor_contratos'::app_role) 
+  OR has_role(auth.uid(), 'gestor_radiologia'::app_role) 
+  OR has_role(auth.uid(), 'gestor_financeiro'::app_role)
+  OR has_role(auth.uid(), 'coordenador_escalas'::app_role)
+);
+
+-- === 20260113163057_82fc60c2-6dda-4c12-a23a-820bb4584dbf.sql ===
+-- Adicionar campo etiquetas na tabela medico_kanban_cards
+ALTER TABLE public.medico_kanban_cards
+ADD COLUMN etiquetas text[] DEFAULT '{}';
+
+-- Criar índice para busca por etiquetas
+CREATE INDEX IF NOT EXISTS idx_medico_kanban_cards_etiquetas ON public.medico_kanban_cards USING GIN(etiquetas);
+
+-- === 20260115145801_9f81baeb-2c88-4d14-a0a5-9c0644eaf027.sql ===
+-- Adicionar nova coluna para ages_clientes
+ALTER TABLE public.ages_producao 
+ADD COLUMN ages_cliente_id UUID REFERENCES public.ages_clientes(id);
+
+-- Adicionar nova coluna para ages_unidades (opcional)
+ALTER TABLE public.ages_producao 
+ADD COLUMN ages_unidade_id UUID REFERENCES public.ages_unidades(id);
+
+-- Criar índices para performance
+CREATE INDEX IF NOT EXISTS idx_ages_producao_ages_cliente ON public.ages_producao(ages_cliente_id);
+CREATE INDEX IF NOT EXISTS idx_ages_producao_ages_unidade ON public.ages_producao(ages_unidade_id);
+
+-- === 20260115183459_a76151f6-62b5-4d75-ac84-412d1960d051.sql ===
+-- Permitir que cliente_id seja NULL já que agora usamos ages_cliente_id
+ALTER TABLE public.ages_producao ALTER COLUMN cliente_id DROP NOT NULL;
+
+-- === 20260116115825_47058580-d88a-44d4-9021-287aa9ec1311.sql ===
+-- Criar enum para níveis de urgência
+DO $$  BEGIN CREATE TYPE public.nivel_urgencia_suporte AS ENUM (
+  'critica',
+  'alta',
+  'media',
+  'baixa'
+); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- Criar enum para tipos de impacto
+DO $$  BEGIN CREATE TYPE public.tipo_impacto_suporte AS ENUM (
+  'sistema',
+  'infraestrutura',
+  'acesso_permissao',
+  'integracao',
+  'duvida_operacional',
+  'melhoria'
+); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- Adicionar novos campos na tabela suporte_tickets
+ALTER TABLE public.suporte_tickets
+ADD COLUMN nivel_urgencia public.nivel_urgencia_suporte DEFAULT NULL,
+ADD COLUMN tipo_impacto public.tipo_impacto_suporte DEFAULT NULL,
+ADD COLUMN responsavel_ti_id uuid DEFAULT NULL,
+ADD COLUMN responsavel_ti_nome text DEFAULT NULL,
+ADD COLUMN sla_resposta_minutos integer DEFAULT NULL,
+ADD COLUMN sla_resolucao_minutos integer DEFAULT NULL,
+ADD COLUMN data_primeira_resposta timestamp with time zone DEFAULT NULL;
+
+-- Criar tabela de configuração de SLA por urgência
+CREATE TABLE IF NOT EXISTS public.suporte_sla_config (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  nivel_urgencia public.nivel_urgencia_suporte NOT NULL UNIQUE,
+  sla_resposta_minutos integer NOT NULL,
+  sla_resolucao_minutos integer NOT NULL,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now()
+);
+
+-- Inserir configuração padrão de SLA (em minutos)
+INSERT INTO public.suporte_sla_config (nivel_urgencia, sla_resposta_minutos, sla_resolucao_minutos) VALUES
+  ('critica', 30, 240),      -- 30 min resposta, 4h resolução
+  ('alta', 60, 480),         -- 1h resposta, 8h resolução
+  ('media', 240, 1440),      -- 4h resposta, 24h resolução
+  ('baixa', 480, 2880);      -- 8h resposta, 48h resolução
+
+-- Habilitar RLS
+ALTER TABLE public.suporte_sla_config ENABLE ROW LEVEL SECURITY;
+
+-- Políticas para suporte_sla_config (leitura para todos autenticados)
+DROP POLICY IF EXISTS "Todos podem visualizar configuração de SLA" ON public.suporte_sla_config;
+CREATE POLICY "Todos podem visualizar configuração de SLA"
+ON public.suporte_sla_config
+FOR SELECT
+TO authenticated
+USING (true);
+
+-- Criar função para definir SLA automaticamente baseado na urgência
+CREATE OR REPLACE FUNCTION public.set_ticket_sla()
+RETURNS TRIGGER AS $$
+BEGIN
+  -- Se o nível de urgência foi definido ou alterado
+  IF NEW.nivel_urgencia IS NOT NULL AND (OLD IS NULL OR OLD.nivel_urgencia IS DISTINCT FROM NEW.nivel_urgencia) THEN
+    SELECT sla_resposta_minutos, sla_resolucao_minutos
+    INTO NEW.sla_resposta_minutos, NEW.sla_resolucao_minutos
+    FROM public.suporte_sla_config
+    WHERE nivel_urgencia = NEW.nivel_urgencia;
+  END IF;
+  
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- Criar trigger para aplicar SLA automaticamente
+CREATE TRIGGER trigger_set_ticket_sla
+BEFORE INSERT OR UPDATE ON public.suporte_tickets
+FOR EACH ROW
+EXECUTE FUNCTION public.set_ticket_sla();
+
+-- === 20260116123425_ec38c08c-3d56-41f8-a304-2a3c3597c491.sql ===
+-- 1. Criar enums para classificação e motivo de perda
+DO $$  BEGIN CREATE TYPE classificacao_gss_licitacao AS ENUM (
+  'primeiro_lugar',
+  'segundo_lugar',
+  'desclassificada',
+  'nao_habilitada'
+); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$  BEGIN CREATE TYPE motivo_perda_licitacao AS ENUM (
+  'preco',
+  'documentacao',
+  'prazo',
+  'habilitacao_tecnica',
+  'estrategia',
+  'outros'
+); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- 2. Criar tabela de empresas concorrentes
+CREATE TABLE IF NOT EXISTS public.empresas_concorrentes (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  nome TEXT NOT NULL,
+  cnpj TEXT,
+  regiao_atuacao TEXT,
+  observacoes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Criar índice único no nome (case insensitive) para evitar duplicatas
+CREATE UNIQUE INDEX IF NOT EXISTS empresas_concorrentes_nome_unique ON public.empresas_concorrentes (LOWER(TRIM(nome)));
+
+-- Enable RLS
+ALTER TABLE public.empresas_concorrentes ENABLE ROW LEVEL SECURITY;
+
+-- Políticas para empresas_concorrentes
+DROP POLICY IF EXISTS "Usuários autenticados podem visualizar empresas concorrentes" ON public.empresas_concorrentes;
+CREATE POLICY "Usuários autenticados podem visualizar empresas concorrentes"
+ON public.empresas_concorrentes FOR SELECT
+TO authenticated
+USING (true);
+
+DROP POLICY IF EXISTS "Usuários autenticados podem criar empresas concorrentes" ON public.empresas_concorrentes;
+CREATE POLICY "Usuários autenticados podem criar empresas concorrentes"
+ON public.empresas_concorrentes FOR INSERT
+TO authenticated
+WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Usuários autenticados podem atualizar empresas concorrentes" ON public.empresas_concorrentes;
+CREATE POLICY "Usuários autenticados podem atualizar empresas concorrentes"
+ON public.empresas_concorrentes FOR UPDATE
+TO authenticated
+USING (true);
+
+-- 3. Criar tabela de resultados de licitação
+CREATE TABLE IF NOT EXISTS public.licitacao_resultados (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  licitacao_id UUID NOT NULL REFERENCES public.licitacoes(id) ON DELETE CASCADE,
+  empresa_vencedora_id UUID REFERENCES public.empresas_concorrentes(id),
+  empresa_vencedora_nome TEXT NOT NULL,
+  valor_homologado NUMERIC(15,2) NOT NULL,
+  classificacao_gss classificacao_gss_licitacao NOT NULL,
+  motivo_perda motivo_perda_licitacao,
+  observacoes_estrategicas TEXT,
+  registrado_por UUID,
+  registrado_por_nome TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT licitacao_resultados_unique UNIQUE (licitacao_id)
+);
+
+-- Índices para performance em BI
+CREATE INDEX IF NOT EXISTS licitacao_resultados_empresa_idx ON public.licitacao_resultados(empresa_vencedora_id);
+CREATE INDEX IF NOT EXISTS licitacao_resultados_classificacao_idx ON public.licitacao_resultados(classificacao_gss);
+CREATE INDEX IF NOT EXISTS licitacao_resultados_motivo_idx ON public.licitacao_resultados(motivo_perda);
+CREATE INDEX IF NOT EXISTS licitacao_resultados_created_idx ON public.licitacao_resultados(created_at);
+
+-- Enable RLS
+ALTER TABLE public.licitacao_resultados ENABLE ROW LEVEL SECURITY;
+
+-- Políticas para licitacao_resultados
+DROP POLICY IF EXISTS "Usuários autenticados podem visualizar resultados" ON public.licitacao_resultados;
+CREATE POLICY "Usuários autenticados podem visualizar resultados"
+ON public.licitacao_resultados FOR SELECT
+TO authenticated
+USING (true);
+
+DROP POLICY IF EXISTS "Usuários autenticados podem criar resultados" ON public.licitacao_resultados;
+CREATE POLICY "Usuários autenticados podem criar resultados"
+ON public.licitacao_resultados FOR INSERT
+TO authenticated
+WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Usuários autenticados podem atualizar resultados" ON public.licitacao_resultados;
+CREATE POLICY "Usuários autenticados podem atualizar resultados"
+ON public.licitacao_resultados FOR UPDATE
+TO authenticated
+USING (true);
+
+-- 4. Trigger para atualizar updated_at
+CREATE OR REPLACE FUNCTION update_empresas_concorrentes_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SET search_path = public;
+
+CREATE TRIGGER tr_empresas_concorrentes_updated_at
+BEFORE UPDATE ON public.empresas_concorrentes
+FOR EACH ROW
+EXECUTE FUNCTION update_empresas_concorrentes_updated_at();
+
+CREATE OR REPLACE FUNCTION update_licitacao_resultados_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SET search_path = public;
+
+CREATE TRIGGER tr_licitacao_resultados_updated_at
+BEFORE UPDATE ON public.licitacao_resultados
+FOR EACH ROW
+EXECUTE FUNCTION update_licitacao_resultados_updated_at();
+
+-- 5. Função helper para criar ou buscar empresa concorrente (evitar duplicatas)
+CREATE OR REPLACE FUNCTION get_or_create_empresa_concorrente(p_nome TEXT)
+RETURNS UUID AS $$
+DECLARE
+  v_id UUID;
+  v_nome_normalizado TEXT;
+BEGIN
+  v_nome_normalizado := TRIM(p_nome);
+  
+  -- Tentar encontrar existente
+  SELECT id INTO v_id
+  FROM public.empresas_concorrentes
+  WHERE LOWER(TRIM(nome)) = LOWER(v_nome_normalizado);
+  
+  -- Se não existe, criar
+  IF v_id IS NULL THEN
+    INSERT INTO public.empresas_concorrentes (nome)
+    VALUES (v_nome_normalizado)
+    RETURNING id INTO v_id;
+  END IF;
+  
+  RETURN v_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- === 20260116170424_5a492dae-3060-4fbe-bcfb-99afefa40d25.sql ===
+-- Tabela de pastas/temas do usuário
+CREATE TABLE IF NOT EXISTS public.user_pastas (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID NOT NULL,
+  nome TEXT NOT NULL,
+  cor TEXT DEFAULT '#6366f1',
+  icone TEXT DEFAULT 'folder',
+  ordem INTEGER DEFAULT 0,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+);
+
+-- Tabela de notas/cards
+CREATE TABLE IF NOT EXISTS public.user_notas (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID NOT NULL,
+  pasta_id UUID REFERENCES public.user_pastas(id) ON DELETE SET NULL,
+  titulo TEXT NOT NULL,
+  conteudo TEXT,
+  tags TEXT[] DEFAULT '{}',
+  fixada BOOLEAN DEFAULT false,
+  arquivada BOOLEAN DEFAULT false,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+);
+
+-- Tabela de checklist items
+CREATE TABLE IF NOT EXISTS public.user_notas_checklist (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  nota_id UUID NOT NULL REFERENCES public.user_notas(id) ON DELETE CASCADE,
+  texto TEXT NOT NULL,
+  concluido BOOLEAN DEFAULT false,
+  ordem INTEGER DEFAULT 0,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+);
+
+-- Tabela de anexos/links
+CREATE TABLE IF NOT EXISTS public.user_notas_anexos (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  nota_id UUID NOT NULL REFERENCES public.user_notas(id) ON DELETE CASCADE,
+  tipo TEXT NOT NULL DEFAULT 'link', -- 'link' ou 'arquivo'
+  nome TEXT NOT NULL,
+  url TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+);
+
+-- Habilitar RLS em todas as tabelas
+ALTER TABLE public.user_pastas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_notas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_notas_checklist ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_notas_anexos ENABLE ROW LEVEL SECURITY;
+
+-- Políticas RLS para user_pastas (privado por usuário)
+DROP POLICY IF EXISTS "Usuários podem ver suas próprias pastas" ON public.user_pastas;
+CREATE POLICY "Usuários podem ver suas próprias pastas"
+  ON public.user_pastas FOR SELECT
+  USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Usuários podem criar suas próprias pastas" ON public.user_pastas;
+CREATE POLICY "Usuários podem criar suas próprias pastas"
+  ON public.user_pastas FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Usuários podem atualizar suas próprias pastas" ON public.user_pastas;
+CREATE POLICY "Usuários podem atualizar suas próprias pastas"
+  ON public.user_pastas FOR UPDATE
+  USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Usuários podem deletar suas próprias pastas" ON public.user_pastas;
+CREATE POLICY "Usuários podem deletar suas próprias pastas"
+  ON public.user_pastas FOR DELETE
+  USING (auth.uid() = user_id);
+
+-- Políticas RLS para user_notas (privado por usuário)
+DROP POLICY IF EXISTS "Usuários podem ver suas próprias notas" ON public.user_notas;
+CREATE POLICY "Usuários podem ver suas próprias notas"
+  ON public.user_notas FOR SELECT
+  USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Usuários podem criar suas próprias notas" ON public.user_notas;
+CREATE POLICY "Usuários podem criar suas próprias notas"
+  ON public.user_notas FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Usuários podem atualizar suas próprias notas" ON public.user_notas;
+CREATE POLICY "Usuários podem atualizar suas próprias notas"
+  ON public.user_notas FOR UPDATE
+  USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Usuários podem deletar suas próprias notas" ON public.user_notas;
+CREATE POLICY "Usuários podem deletar suas próprias notas"
+  ON public.user_notas FOR DELETE
+  USING (auth.uid() = user_id);
+
+-- Políticas RLS para checklist (via nota do usuário)
+DROP POLICY IF EXISTS "Usuários podem ver checklist de suas notas" ON public.user_notas_checklist;
+CREATE POLICY "Usuários podem ver checklist de suas notas"
+  ON public.user_notas_checklist FOR SELECT
+  USING (EXISTS (
+    SELECT 1 FROM public.user_notas 
+    WHERE id = nota_id AND user_id = auth.uid()
+  ));
+
+DROP POLICY IF EXISTS "Usuários podem criar checklist em suas notas" ON public.user_notas_checklist;
+CREATE POLICY "Usuários podem criar checklist em suas notas"
+  ON public.user_notas_checklist FOR INSERT
+  WITH CHECK (EXISTS (
+    SELECT 1 FROM public.user_notas 
+    WHERE id = nota_id AND user_id = auth.uid()
+  ));
+
+DROP POLICY IF EXISTS "Usuários podem atualizar checklist de suas notas" ON public.user_notas_checklist;
+CREATE POLICY "Usuários podem atualizar checklist de suas notas"
+  ON public.user_notas_checklist FOR UPDATE
+  USING (EXISTS (
+    SELECT 1 FROM public.user_notas 
+    WHERE id = nota_id AND user_id = auth.uid()
+  ));
+
+DROP POLICY IF EXISTS "Usuários podem deletar checklist de suas notas" ON public.user_notas_checklist;
+CREATE POLICY "Usuários podem deletar checklist de suas notas"
+  ON public.user_notas_checklist FOR DELETE
+  USING (EXISTS (
+    SELECT 1 FROM public.user_notas 
+    WHERE id = nota_id AND user_id = auth.uid()
+  ));
+
+-- Políticas RLS para anexos (via nota do usuário)
+DROP POLICY IF EXISTS "Usuários podem ver anexos de suas notas" ON public.user_notas_anexos;
+CREATE POLICY "Usuários podem ver anexos de suas notas"
+  ON public.user_notas_anexos FOR SELECT
+  USING (EXISTS (
+    SELECT 1 FROM public.user_notas 
+    WHERE id = nota_id AND user_id = auth.uid()
+  ));
+
+DROP POLICY IF EXISTS "Usuários podem criar anexos em suas notas" ON public.user_notas_anexos;
+CREATE POLICY "Usuários podem criar anexos em suas notas"
+  ON public.user_notas_anexos FOR INSERT
+  WITH CHECK (EXISTS (
+    SELECT 1 FROM public.user_notas 
+    WHERE id = nota_id AND user_id = auth.uid()
+  ));
+
+DROP POLICY IF EXISTS "Usuários podem atualizar anexos de suas notas" ON public.user_notas_anexos;
+CREATE POLICY "Usuários podem atualizar anexos de suas notas"
+  ON public.user_notas_anexos FOR UPDATE
+  USING (EXISTS (
+    SELECT 1 FROM public.user_notas 
+    WHERE id = nota_id AND user_id = auth.uid()
+  ));
+
+DROP POLICY IF EXISTS "Usuários podem deletar anexos de suas notas" ON public.user_notas_anexos;
+CREATE POLICY "Usuários podem deletar anexos de suas notas"
+  ON public.user_notas_anexos FOR DELETE
+  USING (EXISTS (
+    SELECT 1 FROM public.user_notas 
+    WHERE id = nota_id AND user_id = auth.uid()
+  ));
+
+-- Índices para performance
+CREATE INDEX IF NOT EXISTS idx_user_pastas_user_id ON public.user_pastas(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_notas_user_id ON public.user_notas(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_notas_pasta_id ON public.user_notas(pasta_id);
+CREATE INDEX IF NOT EXISTS idx_user_notas_checklist_nota_id ON public.user_notas_checklist(nota_id);
+CREATE INDEX IF NOT EXISTS idx_user_notas_anexos_nota_id ON public.user_notas_anexos(nota_id);
+
+-- Trigger para atualizar updated_at
+CREATE TRIGGER update_user_pastas_updated_at
+  BEFORE UPDATE ON public.user_pastas
+  FOR EACH ROW
+  EXECUTE FUNCTION public.update_updated_at_column();
+
+CREATE TRIGGER update_user_notas_updated_at
+  BEFORE UPDATE ON public.user_notas
+  FOR EACH ROW
+  EXECUTE FUNCTION public.update_updated_at_column();
+
+-- Bucket para anexos de notas
+INSERT INTO storage.buckets (id, name, public) 
+VALUES ('user-notas-anexos', 'user-notas-anexos', false)
+ON CONFLICT (id) DO NOTHING;
+
+-- Políticas de storage para anexos
+DROP POLICY IF EXISTS "Usuários podem ver seus próprios anexos" ON storage.objects;
+CREATE POLICY "Usuários podem ver seus próprios anexos"
+  ON storage.objects FOR SELECT
+  USING (bucket_id = 'user-notas-anexos' AND auth.uid()::text = (storage.foldername(name))[1]);
+
+DROP POLICY IF EXISTS "Usuários podem fazer upload de seus próprios anexos" ON storage.objects;
+CREATE POLICY "Usuários podem fazer upload de seus próprios anexos"
+  ON storage.objects FOR INSERT
+  WITH CHECK (bucket_id = 'user-notas-anexos' AND auth.uid()::text = (storage.foldername(name))[1]);
+
+DROP POLICY IF EXISTS "Usuários podem deletar seus próprios anexos" ON storage.objects;
+CREATE POLICY "Usuários podem deletar seus próprios anexos"
+  ON storage.objects FOR DELETE
+  USING (bucket_id = 'user-notas-anexos' AND auth.uid()::text = (storage.foldername(name))[1]);
+
+-- === 20260116173214_18916f1e-6940-4d45-a9b5-c81005044c32.sql ===
+-- =====================================================
+-- ESTRUTURA PARA INTELIGÊNCIA COMPETITIVA POR ITEM
+-- =====================================================
+
+-- 1. Tabela de Itens da Licitação
+CREATE TABLE IF NOT EXISTS public.licitacao_itens (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  licitacao_id UUID NOT NULL REFERENCES public.licitacoes(id) ON DELETE CASCADE,
+  nome TEXT NOT NULL,
+  tipo TEXT NOT NULL DEFAULT 'outro', -- consulta, exame, servico, plantao, especialidade, outro
+  descricao TEXT,
+  valor_referencia NUMERIC(15,2),
+  quantidade INTEGER DEFAULT 1,
+  unidade_medida TEXT, -- unidade, hora, mes, etc
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+);
+
+-- 2. Tabela de Concorrentes por Item
+CREATE TABLE IF NOT EXISTS public.licitacao_item_concorrentes (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  item_id UUID NOT NULL REFERENCES public.licitacao_itens(id) ON DELETE CASCADE,
+  empresa_id UUID REFERENCES public.empresas_concorrentes(id),
+  empresa_nome TEXT NOT NULL,
+  empresa_cnpj TEXT,
+  valor_ofertado NUMERIC(15,2) NOT NULL,
+  posicao INTEGER NOT NULL DEFAULT 1, -- 1º, 2º, 3º...
+  situacao TEXT NOT NULL DEFAULT 'habilitada', -- habilitada, inabilitada, desclassificada
+  motivo_situacao TEXT, -- motivo de inabilitação ou desclassificação
+  is_gss BOOLEAN NOT NULL DEFAULT false,
+  is_vencedor BOOLEAN NOT NULL DEFAULT false,
+  observacoes TEXT,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+);
+
+-- 3. Índices para performance
+CREATE INDEX IF NOT EXISTS idx_licitacao_itens_licitacao ON public.licitacao_itens(licitacao_id);
+CREATE INDEX IF NOT EXISTS idx_licitacao_item_concorrentes_item ON public.licitacao_item_concorrentes(item_id);
+CREATE INDEX IF NOT EXISTS idx_licitacao_item_concorrentes_empresa ON public.licitacao_item_concorrentes(empresa_id);
+CREATE INDEX IF NOT EXISTS idx_licitacao_item_concorrentes_is_gss ON public.licitacao_item_concorrentes(is_gss);
+CREATE INDEX IF NOT EXISTS idx_licitacao_item_concorrentes_is_vencedor ON public.licitacao_item_concorrentes(is_vencedor);
+
+-- 4. Triggers para updated_at
+CREATE TRIGGER update_licitacao_itens_updated_at
+  BEFORE UPDATE ON public.licitacao_itens
+  FOR EACH ROW
+  EXECUTE FUNCTION public.update_updated_at_column();
+
+CREATE TRIGGER update_licitacao_item_concorrentes_updated_at
+  BEFORE UPDATE ON public.licitacao_item_concorrentes
+  FOR EACH ROW
+  EXECUTE FUNCTION public.update_updated_at_column();
+
+-- 5. RLS
+ALTER TABLE public.licitacao_itens ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.licitacao_item_concorrentes ENABLE ROW LEVEL SECURITY;
+
+-- Políticas para licitacao_itens
+DROP POLICY IF EXISTS "Usuarios autenticados podem ver itens de licitacao" ON public.licitacao_itens;
+CREATE POLICY "Usuarios autenticados podem ver itens de licitacao"
+  ON public.licitacao_itens FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Usuarios autenticados podem inserir itens de licitacao" ON public.licitacao_itens;
+CREATE POLICY "Usuarios autenticados podem inserir itens de licitacao"
+  ON public.licitacao_itens FOR INSERT TO authenticated WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Usuarios autenticados podem atualizar itens de licitacao" ON public.licitacao_itens;
+CREATE POLICY "Usuarios autenticados podem atualizar itens de licitacao"
+  ON public.licitacao_itens FOR UPDATE TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Usuarios autenticados podem deletar itens de licitacao" ON public.licitacao_itens;
+CREATE POLICY "Usuarios autenticados podem deletar itens de licitacao"
+  ON public.licitacao_itens FOR DELETE TO authenticated USING (true);
+
+-- Políticas para licitacao_item_concorrentes
+DROP POLICY IF EXISTS "Usuarios autenticados podem ver concorrentes de item" ON public.licitacao_item_concorrentes;
+CREATE POLICY "Usuarios autenticados podem ver concorrentes de item"
+  ON public.licitacao_item_concorrentes FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Usuarios autenticados podem inserir concorrentes de item" ON public.licitacao_item_concorrentes;
+CREATE POLICY "Usuarios autenticados podem inserir concorrentes de item"
+  ON public.licitacao_item_concorrentes FOR INSERT TO authenticated WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Usuarios autenticados podem atualizar concorrentes de item" ON public.licitacao_item_concorrentes;
+CREATE POLICY "Usuarios autenticados podem atualizar concorrentes de item"
+  ON public.licitacao_item_concorrentes FOR UPDATE TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Usuarios autenticados podem deletar concorrentes de item" ON public.licitacao_item_concorrentes;
+CREATE POLICY "Usuarios autenticados podem deletar concorrentes de item"
+  ON public.licitacao_item_concorrentes FOR DELETE TO authenticated USING (true);
+
+-- 6. Habilitar realtime para atualizações em tempo real
+ALTER PUBLICATION supabase_realtime ADD TABLE public.licitacao_itens;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.licitacao_item_concorrentes;
+
+-- 7. Comentários para documentação
+COMMENT ON TABLE public.licitacao_itens IS 'Itens de uma licitação (consultas, exames, serviços, etc.)';
+COMMENT ON TABLE public.licitacao_item_concorrentes IS 'Empresas concorrentes por item de licitação com valores e posições';
+COMMENT ON COLUMN public.licitacao_item_concorrentes.is_gss IS 'Marcação automática quando a empresa é GSS';
+COMMENT ON COLUMN public.licitacao_item_concorrentes.is_vencedor IS 'Flag para indicar empresa vencedora do item';
+
+-- === 20260116183901_2e05c08b-0bf7-4ee2-a575-8697676051d6.sql ===
+-- 1. Criar ENUM para tipo de disparo
+DO $$  BEGIN CREATE TYPE tipo_disparo_enum AS ENUM ('zap', 'email', 'outros'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- 2. Adicionar coluna tipo_disparo na tabela proposta
+ALTER TABLE public.proposta 
+ADD COLUMN tipo_disparo tipo_disparo_enum NOT NULL DEFAULT 'zap';
+
+-- 3. Migração: todas as propostas existentes recebem 'zap'
+UPDATE public.proposta SET tipo_disparo = 'zap' WHERE tipo_disparo IS NULL;
+
+-- 4. Criar tabela de interações de email (chat simplificado)
+CREATE TABLE IF NOT EXISTS public.email_interacoes (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  proposta_id UUID REFERENCES public.proposta(id) ON DELETE CASCADE,
+  lead_id UUID REFERENCES public.leads(id) ON DELETE SET NULL,
+  email_destino TEXT NOT NULL,
+  nome_destino TEXT,
+  
+  -- Direção da mensagem
+  direcao TEXT NOT NULL CHECK (direcao IN ('enviado', 'recebido')),
+  
+  -- Conteúdo
+  assunto TEXT,
+  corpo TEXT NOT NULL,
+  corpo_html TEXT,
+  
+  -- Metadados
+  message_id TEXT, -- ID único do email para threading
+  in_reply_to TEXT, -- Para encadeamento
+  
+  -- Status
+  status TEXT DEFAULT 'enviado' CHECK (status IN ('enviado', 'entregue', 'lido', 'respondido', 'falha')),
+  
+  -- Usuário que enviou (se enviado pelo sistema)
+  enviado_por UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  enviado_por_nome TEXT,
+  
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- 5. Índices para performance
+CREATE INDEX IF NOT EXISTS idx_email_interacoes_proposta ON public.email_interacoes(proposta_id);
+CREATE INDEX IF NOT EXISTS idx_email_interacoes_lead ON public.email_interacoes(lead_id);
+CREATE INDEX IF NOT EXISTS idx_email_interacoes_email ON public.email_interacoes(email_destino);
+CREATE INDEX IF NOT EXISTS idx_email_interacoes_created ON public.email_interacoes(created_at DESC);
+
+-- 6. Trigger para updated_at
+CREATE TRIGGER update_email_interacoes_updated_at
+BEFORE UPDATE ON public.email_interacoes
+FOR EACH ROW
+EXECUTE FUNCTION public.update_updated_at_column();
+
+-- 7. Enable RLS
+ALTER TABLE public.email_interacoes ENABLE ROW LEVEL SECURITY;
+
+-- 8. Políticas de acesso
+DROP POLICY IF EXISTS "Usuários autenticados podem ver interações" ON public.email_interacoes;
+CREATE POLICY "Usuários autenticados podem ver interações" 
+ON public.email_interacoes 
+FOR SELECT 
+TO authenticated 
+USING (true);
+
+DROP POLICY IF EXISTS "Usuários autenticados podem inserir interações" ON public.email_interacoes;
+CREATE POLICY "Usuários autenticados podem inserir interações" 
+ON public.email_interacoes 
+FOR INSERT 
+TO authenticated 
+WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Usuários autenticados podem atualizar interações" ON public.email_interacoes;
+CREATE POLICY "Usuários autenticados podem atualizar interações" 
+ON public.email_interacoes 
+FOR UPDATE 
+TO authenticated 
+USING (true);
+
+-- 9. Enable realtime para interações
+ALTER PUBLICATION supabase_realtime ADD TABLE public.email_interacoes;
+
+-- 10. Adicionar coluna status_email na proposta para tracking
+ALTER TABLE public.proposta 
+ADD COLUMN status_email TEXT DEFAULT 'aguardando_envio' CHECK (status_email IN ('aguardando_envio', 'enviado', 'entregue', 'respondido', 'falha'));
+
+-- 11. Adicionar timestamp de último envio
+ALTER TABLE public.proposta 
+ADD COLUMN ultimo_envio_email TIMESTAMPTZ;
+
+-- === 20260116185438_eab3abb6-a87a-43f6-924d-4133f36d1f1f.sql ===
+-- Tabela de campanhas de email (similar a disparos_campanhas)
+CREATE TABLE IF NOT EXISTS public.email_campanhas (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  nome TEXT NOT NULL,
+  proposta_id UUID REFERENCES public.proposta(id) ON DELETE SET NULL,
+  texto_ia TEXT,
+  responsavel_id UUID,
+  responsavel_nome TEXT,
+  status TEXT DEFAULT 'pendente',
+  total_contatos INTEGER DEFAULT 0,
+  enviados INTEGER DEFAULT 0,
+  falhas INTEGER DEFAULT 0,
+  respondidos INTEGER DEFAULT 0,
+  ativo BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Tabela de contatos de campanhas de email
+CREATE TABLE IF NOT EXISTS public.email_contatos (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  campanha_id UUID NOT NULL REFERENCES public.email_campanhas(id) ON DELETE CASCADE,
+  lead_id UUID REFERENCES public.leads(id) ON DELETE SET NULL,
+  email TEXT NOT NULL,
+  nome TEXT,
+  especialidade TEXT,
+  uf TEXT,
+  status TEXT DEFAULT 'pendente',
+  data_envio TIMESTAMPTZ,
+  data_resposta TIMESTAMPTZ,
+  erro TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Índices
+CREATE INDEX IF NOT EXISTS idx_email_campanhas_proposta ON public.email_campanhas(proposta_id);
+CREATE INDEX IF NOT EXISTS idx_email_campanhas_ativo ON public.email_campanhas(ativo);
+CREATE INDEX IF NOT EXISTS idx_email_contatos_campanha ON public.email_contatos(campanha_id);
+CREATE INDEX IF NOT EXISTS idx_email_contatos_status ON public.email_contatos(status);
+
+-- RLS
+ALTER TABLE public.email_campanhas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.email_contatos ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can view email_campanhas" ON public.email_campanhas;
+CREATE POLICY "Users can view email_campanhas" ON public.email_campanhas FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Users can insert email_campanhas" ON public.email_campanhas;
+CREATE POLICY "Users can insert email_campanhas" ON public.email_campanhas FOR INSERT WITH CHECK (true);
+DROP POLICY IF EXISTS "Users can update email_campanhas" ON public.email_campanhas;
+CREATE POLICY "Users can update email_campanhas" ON public.email_campanhas FOR UPDATE USING (true);
+DROP POLICY IF EXISTS "Users can delete email_campanhas" ON public.email_campanhas;
+CREATE POLICY "Users can delete email_campanhas" ON public.email_campanhas FOR DELETE USING (true);
+
+DROP POLICY IF EXISTS "Users can view email_contatos" ON public.email_contatos;
+CREATE POLICY "Users can view email_contatos" ON public.email_contatos FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Users can insert email_contatos" ON public.email_contatos;
+CREATE POLICY "Users can insert email_contatos" ON public.email_contatos FOR INSERT WITH CHECK (true);
+DROP POLICY IF EXISTS "Users can update email_contatos" ON public.email_contatos;
+CREATE POLICY "Users can update email_contatos" ON public.email_contatos FOR UPDATE USING (true);
+DROP POLICY IF EXISTS "Users can delete email_contatos" ON public.email_contatos;
+CREATE POLICY "Users can delete email_contatos" ON public.email_contatos FOR DELETE USING (true);
+
+-- Trigger para updated_at
+CREATE TRIGGER update_email_campanhas_updated_at
+  BEFORE UPDATE ON public.email_campanhas
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+-- Realtime
+ALTER PUBLICATION supabase_realtime ADD TABLE public.email_campanhas;
+
+-- === 20260120171612_6e33538f-a530-4094-93e8-df9cf396f84c.sql ===
+-- Tabela para motivos de descarte de licitação
+CREATE TABLE IF NOT EXISTS public.licitacao_motivos_descarte (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  nome TEXT NOT NULL UNIQUE,
+  ativo BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+  created_by UUID REFERENCES auth.users(id)
+);
+
+-- Inserir motivos padrão
+INSERT INTO public.licitacao_motivos_descarte (nome) VALUES
+  ('EXIGE CLT'),
+  ('VALOR BAIXO'),
+  ('VOLUMETRIA BAIXA'),
+  ('EXCLUSIVIDADE ME/EPP'),
+  ('NECESSIDADE DE LOCAL'),
+  ('EXIGE EQUIPAMENTO'),
+  ('FORA DO ESCOPO'),
+  ('EDITAL REPETIDO');
+
+-- Tabela para registrar descartes de licitação
+CREATE TABLE IF NOT EXISTS public.licitacao_descartes (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  licitacao_id UUID NOT NULL REFERENCES public.licitacoes(id) ON DELETE CASCADE,
+  motivo_id UUID NOT NULL REFERENCES public.licitacao_motivos_descarte(id),
+  justificativa TEXT NOT NULL CHECK (char_length(justificativa) >= 30),
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+  created_by UUID REFERENCES auth.users(id),
+  created_by_nome TEXT
+);
+
+-- RLS para motivos
+ALTER TABLE public.licitacao_motivos_descarte ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Todos podem visualizar motivos ativos" ON public.licitacao_motivos_descarte;
+CREATE POLICY "Todos podem visualizar motivos ativos"
+ON public.licitacao_motivos_descarte FOR SELECT
+USING (ativo = true);
+
+DROP POLICY IF EXISTS "Admins podem inserir motivos" ON public.licitacao_motivos_descarte;
+CREATE POLICY "Admins podem inserir motivos"
+ON public.licitacao_motivos_descarte FOR INSERT
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM public.user_roles
+    WHERE user_id = auth.uid() AND role = 'admin'
+  )
+);
+
+-- RLS para descartes
+ALTER TABLE public.licitacao_descartes ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Usuários autenticados podem ver descartes" ON public.licitacao_descartes;
+CREATE POLICY "Usuários autenticados podem ver descartes"
+ON public.licitacao_descartes FOR SELECT
+USING (auth.uid() IS NOT NULL);
