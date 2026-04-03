@@ -42,12 +42,40 @@ Deno.serve(async (req) => {
       { auth: { autoRefreshToken: false, persistSession: false } }
     )
 
-    // Process rows: convert empty strings to null, handle JSON arrays
+    // Fetch boolean columns for the target table
+    const { data: boolCols } = await supabaseAdmin.rpc('get_boolean_columns', { p_table: table }).maybeSingle()
+    
+    // Fallback: query information_schema directly
+    let booleanColumns: Set<string> = new Set()
+    const { data: colInfo } = await supabaseAdmin
+      .from('information_schema.columns' as any)
+      .select('column_name')
+      .eq('table_schema', 'public')
+      .eq('table_name', table)
+      .eq('data_type', 'boolean')
+    
+    if (colInfo && Array.isArray(colInfo)) {
+      for (const c of colInfo) {
+        booleanColumns.add((c as any).column_name)
+      }
+    }
+
+    // Process rows: convert empty strings to null, handle JSON arrays, sanitize booleans
     const processedRows = rows.map(row => {
       const processed: Record<string, unknown> = {}
       for (const [col, val] of Object.entries(row)) {
         if (val === '' || val === undefined) {
           processed[col] = null
+        } else if (booleanColumns.has(col)) {
+          // Sanitize boolean columns: only accept true/false/t/f/1/0
+          const lower = String(val).toLowerCase().trim()
+          if (lower === 'true' || lower === 't' || lower === '1') {
+            processed[col] = true
+          } else if (lower === 'false' || lower === 'f' || lower === '0') {
+            processed[col] = false
+          } else {
+            processed[col] = null
+          }
         } else if (typeof val === 'string' && val.startsWith('[') && val.endsWith(']')) {
           try {
             const arr = JSON.parse(val)
