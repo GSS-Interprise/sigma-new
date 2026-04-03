@@ -20,7 +20,7 @@ export function SigZapAudioRecorder({ onSend, onCancel, isUploading }: SigZapAud
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Cleanup function
   const cleanup = useCallback(() => {
