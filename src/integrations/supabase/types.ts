@@ -14,16 +14,50 @@ export type Database = {
   }
   public: {
     Tables: {
+      blacklist: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          id: string
+          nome: string | null
+          origem: string | null
+          phone_e164: string
+          reason: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          nome?: string | null
+          origem?: string | null
+          phone_e164: string
+          reason?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          nome?: string | null
+          origem?: string | null
+          phone_e164?: string
+          reason?: string | null
+        }
+        Relationships: []
+      }
       clientes: {
         Row: {
           cnpj: string
           contato_principal: string
           created_at: string | null
           email: string
+          email_financeiro: string | null
           endereco: string | null
+          estado: string | null
           id: string
           nome_empresa: string
+          nome_unidade: string | null
           telefone: string
+          telefone_financeiro: string | null
           updated_at: string | null
         }
         Insert: {
@@ -31,10 +65,14 @@ export type Database = {
           contato_principal: string
           created_at?: string | null
           email: string
+          email_financeiro?: string | null
           endereco?: string | null
+          estado?: string | null
           id?: string
           nome_empresa: string
+          nome_unidade?: string | null
           telefone: string
+          telefone_financeiro?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -42,11 +80,45 @@ export type Database = {
           contato_principal?: string
           created_at?: string | null
           email?: string
+          email_financeiro?: string | null
           endereco?: string | null
+          estado?: string | null
           id?: string
           nome_empresa?: string
+          nome_unidade?: string | null
           telefone?: string
+          telefone_financeiro?: string | null
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      contrato_anexos: {
+        Row: {
+          arquivo_nome: string
+          arquivo_url: string
+          contrato_id: string
+          created_at: string | null
+          id: string
+          usuario_id: string | null
+          usuario_nome: string | null
+        }
+        Insert: {
+          arquivo_nome: string
+          arquivo_url: string
+          contrato_id: string
+          created_at?: string | null
+          id?: string
+          usuario_id?: string | null
+          usuario_nome?: string | null
+        }
+        Update: {
+          arquivo_nome?: string
+          arquivo_url?: string
+          contrato_id?: string
+          created_at?: string | null
+          id?: string
+          usuario_id?: string | null
+          usuario_nome?: string | null
         }
         Relationships: []
       }
@@ -84,6 +156,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      contrato_renovacoes: {
+        Row: {
+          contrato_id: string
+          created_at: string | null
+          data_vigencia: string
+          id: string
+          percentual_reajuste: number | null
+          updated_at: string | null
+          valor: number
+        }
+        Insert: {
+          contrato_id: string
+          created_at?: string | null
+          data_vigencia: string
+          id?: string
+          percentual_reajuste?: number | null
+          updated_at?: string | null
+          valor: number
+        }
+        Update: {
+          contrato_id?: string
+          created_at?: string | null
+          data_vigencia?: string
+          id?: string
+          percentual_reajuste?: number | null
+          updated_at?: string | null
+          valor?: number
+        }
+        Relationships: []
       }
       contratos_demanda: {
         Row: {
