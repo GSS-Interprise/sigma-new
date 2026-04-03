@@ -65,7 +65,7 @@ export function DashboardHeader() {
               <h1 className="text-3xl font-bold text-foreground">
                 {getGreeting()}, {nomeUsuario}!
               </h1>
-              <NotificacoesSino />
+              
             </div>
             {profile?.setores?.nome && (
               <div className="flex items-center gap-2 mt-2">
