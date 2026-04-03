@@ -72,7 +72,7 @@ const TABLES = [
 ];
 
 const BATCH_SIZE = 500;
-const MAX_CONCURRENT = 3;
+const MAX_CONCURRENT = 1;
 const MAX_CONSECUTIVE_ERRORS = 5;
 
 function detectDelimiter(headerLine: string) {
