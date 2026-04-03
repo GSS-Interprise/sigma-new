@@ -14,6 +14,859 @@ export type Database = {
   }
   public: {
     Tables: {
+      ages_clientes: {
+        Row: {
+          cidade: string | null
+          cnpj: string | null
+          contato_principal: string | null
+          created_at: string
+          email_contato: string | null
+          endereco: string | null
+          especialidade_cliente: string | null
+          id: string
+          nome_empresa: string
+          nome_fantasia: string | null
+          observacoes: string | null
+          razao_social: string | null
+          status_cliente: string
+          telefone_contato: string | null
+          uf: string | null
+          updated_at: string
+        }
+        Insert: {
+          cidade?: string | null
+          cnpj?: string | null
+          contato_principal?: string | null
+          created_at?: string
+          email_contato?: string | null
+          endereco?: string | null
+          especialidade_cliente?: string | null
+          id?: string
+          nome_empresa: string
+          nome_fantasia?: string | null
+          observacoes?: string | null
+          razao_social?: string | null
+          status_cliente?: string
+          telefone_contato?: string | null
+          uf?: string | null
+          updated_at?: string
+        }
+        Update: {
+          cidade?: string | null
+          cnpj?: string | null
+          contato_principal?: string | null
+          created_at?: string
+          email_contato?: string | null
+          endereco?: string | null
+          especialidade_cliente?: string | null
+          id?: string
+          nome_empresa?: string
+          nome_fantasia?: string | null
+          observacoes?: string | null
+          razao_social?: string | null
+          status_cliente?: string
+          telefone_contato?: string | null
+          uf?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      ages_contrato_aditivos: {
+        Row: {
+          contrato_id: string
+          created_at: string
+          data_inicio: string
+          data_termino: string
+          id: string
+          observacoes: string | null
+          prazo_meses: number
+          updated_at: string
+        }
+        Insert: {
+          contrato_id: string
+          created_at?: string
+          data_inicio: string
+          data_termino: string
+          id?: string
+          observacoes?: string | null
+          prazo_meses: number
+          updated_at?: string
+        }
+        Update: {
+          contrato_id?: string
+          created_at?: string
+          data_inicio?: string
+          data_termino?: string
+          id?: string
+          observacoes?: string | null
+          prazo_meses?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ages_contrato_aditivos_contrato_id_fkey"
+            columns: ["contrato_id"]
+            isOneToOne: false
+            referencedRelation: "ages_contratos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ages_contrato_itens: {
+        Row: {
+          contrato_id: string
+          created_at: string
+          id: string
+          item: string
+          quantidade: number | null
+          updated_at: string
+          valor_item: number
+        }
+        Insert: {
+          contrato_id: string
+          created_at?: string
+          id?: string
+          item: string
+          quantidade?: number | null
+          updated_at?: string
+          valor_item: number
+        }
+        Update: {
+          contrato_id?: string
+          created_at?: string
+          id?: string
+          item?: string
+          quantidade?: number | null
+          updated_at?: string
+          valor_item?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ages_contrato_itens_contrato_id_fkey"
+            columns: ["contrato_id"]
+            isOneToOne: false
+            referencedRelation: "ages_contratos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ages_contrato_renovacoes: {
+        Row: {
+          contrato_id: string
+          created_at: string
+          data_vigencia: string
+          id: string
+          percentual_reajuste: number | null
+          updated_at: string
+          valor: number | null
+        }
+        Insert: {
+          contrato_id: string
+          created_at?: string
+          data_vigencia: string
+          id?: string
+          percentual_reajuste?: number | null
+          updated_at?: string
+          valor?: number | null
+        }
+        Update: {
+          contrato_id?: string
+          created_at?: string
+          data_vigencia?: string
+          id?: string
+          percentual_reajuste?: number | null
+          updated_at?: string
+          valor?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ages_contrato_renovacoes_contrato_id_fkey"
+            columns: ["contrato_id"]
+            isOneToOne: false
+            referencedRelation: "ages_contratos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ages_contratos: {
+        Row: {
+          ages_cliente_id: string | null
+          ages_unidade_id: string | null
+          assinado: string | null
+          carga_horaria_mensal: number | null
+          cliente_id: string | null
+          codigo_contrato: string | null
+          codigo_interno: number | null
+          created_at: string
+          data_fim: string | null
+          data_inicio: string
+          documento_url: string | null
+          id: string
+          motivo_pendente: string | null
+          objeto_contrato: string | null
+          observacoes: string | null
+          prazo_meses: number | null
+          profissional_id: string | null
+          status: string
+          tipo_contrato: string | null
+          unidade_id: string | null
+          updated_at: string
+          valor_hora: number | null
+          valor_mensal: number | null
+        }
+        Insert: {
+          ages_cliente_id?: string | null
+          ages_unidade_id?: string | null
+          assinado?: string | null
+          carga_horaria_mensal?: number | null
+          cliente_id?: string | null
+          codigo_contrato?: string | null
+          codigo_interno?: number | null
+          created_at?: string
+          data_fim?: string | null
+          data_inicio: string
+          documento_url?: string | null
+          id?: string
+          motivo_pendente?: string | null
+          objeto_contrato?: string | null
+          observacoes?: string | null
+          prazo_meses?: number | null
+          profissional_id?: string | null
+          status?: string
+          tipo_contrato?: string | null
+          unidade_id?: string | null
+          updated_at?: string
+          valor_hora?: number | null
+          valor_mensal?: number | null
+        }
+        Update: {
+          ages_cliente_id?: string | null
+          ages_unidade_id?: string | null
+          assinado?: string | null
+          carga_horaria_mensal?: number | null
+          cliente_id?: string | null
+          codigo_contrato?: string | null
+          codigo_interno?: number | null
+          created_at?: string
+          data_fim?: string | null
+          data_inicio?: string
+          documento_url?: string | null
+          id?: string
+          motivo_pendente?: string | null
+          objeto_contrato?: string | null
+          observacoes?: string | null
+          prazo_meses?: number | null
+          profissional_id?: string | null
+          status?: string
+          tipo_contrato?: string | null
+          unidade_id?: string | null
+          updated_at?: string
+          valor_hora?: number | null
+          valor_mensal?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ages_contratos_profissional_id_fkey"
+            columns: ["profissional_id"]
+            isOneToOne: false
+            referencedRelation: "ages_profissionais"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_ages_contratos_ages_cliente"
+            columns: ["ages_cliente_id"]
+            isOneToOne: false
+            referencedRelation: "ages_clientes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_ages_contratos_ages_unidade"
+            columns: ["ages_unidade_id"]
+            isOneToOne: false
+            referencedRelation: "ages_unidades"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ages_contratos_documentos: {
+        Row: {
+          arquivo_nome: string
+          arquivo_url: string
+          contrato_id: string
+          created_at: string
+          id: string
+          observacoes: string | null
+          tipo_documento: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          arquivo_nome: string
+          arquivo_url: string
+          contrato_id: string
+          created_at?: string
+          id?: string
+          observacoes?: string | null
+          tipo_documento: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          arquivo_nome?: string
+          arquivo_url?: string
+          contrato_id?: string
+          created_at?: string
+          id?: string
+          observacoes?: string | null
+          tipo_documento?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ages_contratos_documentos_contrato_id_fkey"
+            columns: ["contrato_id"]
+            isOneToOne: false
+            referencedRelation: "ages_contratos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ages_lead_anexos: {
+        Row: {
+          arquivo_nome: string
+          arquivo_url: string
+          created_at: string
+          id: string
+          lead_id: string
+          observacoes: string | null
+          tipo_documento: string | null
+          uploaded_by: string | null
+          uploaded_by_nome: string | null
+        }
+        Insert: {
+          arquivo_nome: string
+          arquivo_url: string
+          created_at?: string
+          id?: string
+          lead_id: string
+          observacoes?: string | null
+          tipo_documento?: string | null
+          uploaded_by?: string | null
+          uploaded_by_nome?: string | null
+        }
+        Update: {
+          arquivo_nome?: string
+          arquivo_url?: string
+          created_at?: string
+          id?: string
+          lead_id?: string
+          observacoes?: string | null
+          tipo_documento?: string | null
+          uploaded_by?: string | null
+          uploaded_by_nome?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ages_lead_anexos_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "ages_leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ages_lead_historico: {
+        Row: {
+          campos_alterados: string[] | null
+          criado_em: string
+          dados_anteriores: Json | null
+          dados_novos: Json | null
+          descricao_resumida: string
+          id: string
+          lead_id: string
+          tipo_evento: string
+          usuario_id: string | null
+          usuario_nome: string | null
+        }
+        Insert: {
+          campos_alterados?: string[] | null
+          criado_em?: string
+          dados_anteriores?: Json | null
+          dados_novos?: Json | null
+          descricao_resumida: string
+          id?: string
+          lead_id: string
+          tipo_evento: string
+          usuario_id?: string | null
+          usuario_nome?: string | null
+        }
+        Update: {
+          campos_alterados?: string[] | null
+          criado_em?: string
+          dados_anteriores?: Json | null
+          dados_novos?: Json | null
+          descricao_resumida?: string
+          id?: string
+          lead_id?: string
+          tipo_evento?: string
+          usuario_id?: string | null
+          usuario_nome?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ages_lead_historico_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "ages_leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ages_leads: {
+        Row: {
+          agencia: string | null
+          arquivo_id: string | null
+          banco: string | null
+          cep: string | null
+          chave_pix: string | null
+          cidade: string | null
+          conta_corrente: string | null
+          cpf: string | null
+          created_at: string
+          data_inicio_contrato: string | null
+          data_nascimento: string | null
+          email: string | null
+          endereco: string | null
+          especificacoes_contrato: string | null
+          id: string
+          local_prestacao_servico: string | null
+          modalidade_contrato: string | null
+          nome: string
+          observacoes: string | null
+          origem: string | null
+          profissao: string | null
+          registro_profissional: string | null
+          rg: string | null
+          status: string
+          telefone: string | null
+          telefones_adicionais: string[] | null
+          uf: string | null
+          unidades_vinculadas: string[] | null
+          updated_at: string
+          valor_contrato: number | null
+        }
+        Insert: {
+          agencia?: string | null
+          arquivo_id?: string | null
+          banco?: string | null
+          cep?: string | null
+          chave_pix?: string | null
+          cidade?: string | null
+          conta_corrente?: string | null
+          cpf?: string | null
+          created_at?: string
+          data_inicio_contrato?: string | null
+          data_nascimento?: string | null
+          email?: string | null
+          endereco?: string | null
+          especificacoes_contrato?: string | null
+          id?: string
+          local_prestacao_servico?: string | null
+          modalidade_contrato?: string | null
+          nome: string
+          observacoes?: string | null
+          origem?: string | null
+          profissao?: string | null
+          registro_profissional?: string | null
+          rg?: string | null
+          status?: string
+          telefone?: string | null
+          telefones_adicionais?: string[] | null
+          uf?: string | null
+          unidades_vinculadas?: string[] | null
+          updated_at?: string
+          valor_contrato?: number | null
+        }
+        Update: {
+          agencia?: string | null
+          arquivo_id?: string | null
+          banco?: string | null
+          cep?: string | null
+          chave_pix?: string | null
+          cidade?: string | null
+          conta_corrente?: string | null
+          cpf?: string | null
+          created_at?: string
+          data_inicio_contrato?: string | null
+          data_nascimento?: string | null
+          email?: string | null
+          endereco?: string | null
+          especificacoes_contrato?: string | null
+          id?: string
+          local_prestacao_servico?: string | null
+          modalidade_contrato?: string | null
+          nome?: string
+          observacoes?: string | null
+          origem?: string | null
+          profissao?: string | null
+          registro_profissional?: string | null
+          rg?: string | null
+          status?: string
+          telefone?: string | null
+          telefones_adicionais?: string[] | null
+          uf?: string | null
+          unidades_vinculadas?: string[] | null
+          updated_at?: string
+          valor_contrato?: number | null
+        }
+        Relationships: []
+      }
+      ages_licitacoes: {
+        Row: {
+          created_at: string
+          id: string
+          licitacao_id: string | null
+          observacoes: string | null
+          prazo_licitacao: string | null
+          prazo_retorno_gss: string | null
+          responsavel_id: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          licitacao_id?: string | null
+          observacoes?: string | null
+          prazo_licitacao?: string | null
+          prazo_retorno_gss?: string | null
+          responsavel_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          licitacao_id?: string | null
+          observacoes?: string | null
+          prazo_licitacao?: string | null
+          prazo_retorno_gss?: string | null
+          responsavel_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      ages_producao: {
+        Row: {
+          ano_referencia: number
+          cliente_id: string | null
+          conferido_em: string | null
+          conferido_por: string | null
+          created_at: string
+          folha_ponto_url: string | null
+          id: string
+          mes_referencia: number
+          observacoes: string | null
+          profissional_id: string
+          status_conferencia: string
+          tipo_alocacao: string | null
+          total_horas: number
+          unidade_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          ano_referencia: number
+          cliente_id?: string | null
+          conferido_em?: string | null
+          conferido_por?: string | null
+          created_at?: string
+          folha_ponto_url?: string | null
+          id?: string
+          mes_referencia: number
+          observacoes?: string | null
+          profissional_id: string
+          status_conferencia?: string
+          tipo_alocacao?: string | null
+          total_horas?: number
+          unidade_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          ano_referencia?: number
+          cliente_id?: string | null
+          conferido_em?: string | null
+          conferido_por?: string | null
+          created_at?: string
+          folha_ponto_url?: string | null
+          id?: string
+          mes_referencia?: number
+          observacoes?: string | null
+          profissional_id?: string
+          status_conferencia?: string
+          tipo_alocacao?: string | null
+          total_horas?: number
+          unidade_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ages_producao_profissional_id_fkey"
+            columns: ["profissional_id"]
+            isOneToOne: false
+            referencedRelation: "ages_profissionais"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ages_profissionais: {
+        Row: {
+          agencia: string | null
+          banco: string | null
+          cep: string | null
+          chave_pix: string | null
+          cidade: string | null
+          conta_corrente: string | null
+          cpf: string | null
+          created_at: string
+          data_nascimento: string | null
+          email: string | null
+          endereco: string | null
+          id: string
+          lead_origem_id: string | null
+          nome: string
+          observacoes: string | null
+          profissao: string
+          registro_profissional: string | null
+          rg: string | null
+          status: string
+          telefone: string | null
+          uf: string | null
+          updated_at: string
+        }
+        Insert: {
+          agencia?: string | null
+          banco?: string | null
+          cep?: string | null
+          chave_pix?: string | null
+          cidade?: string | null
+          conta_corrente?: string | null
+          cpf?: string | null
+          created_at?: string
+          data_nascimento?: string | null
+          email?: string | null
+          endereco?: string | null
+          id?: string
+          lead_origem_id?: string | null
+          nome: string
+          observacoes?: string | null
+          profissao: string
+          registro_profissional?: string | null
+          rg?: string | null
+          status?: string
+          telefone?: string | null
+          uf?: string | null
+          updated_at?: string
+        }
+        Update: {
+          agencia?: string | null
+          banco?: string | null
+          cep?: string | null
+          chave_pix?: string | null
+          cidade?: string | null
+          conta_corrente?: string | null
+          cpf?: string | null
+          created_at?: string
+          data_nascimento?: string | null
+          email?: string | null
+          endereco?: string | null
+          id?: string
+          lead_origem_id?: string | null
+          nome?: string
+          observacoes?: string | null
+          profissao?: string
+          registro_profissional?: string | null
+          rg?: string | null
+          status?: string
+          telefone?: string | null
+          uf?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      ages_profissionais_documentos: {
+        Row: {
+          arquivo_nome: string
+          arquivo_url: string
+          created_at: string
+          data_emissao: string | null
+          data_validade: string | null
+          id: string
+          observacoes: string | null
+          profissional_id: string
+          tipo_documento: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          arquivo_nome: string
+          arquivo_url: string
+          created_at?: string
+          data_emissao?: string | null
+          data_validade?: string | null
+          id?: string
+          observacoes?: string | null
+          profissional_id: string
+          tipo_documento: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          arquivo_nome?: string
+          arquivo_url?: string
+          created_at?: string
+          data_emissao?: string | null
+          data_validade?: string | null
+          id?: string
+          observacoes?: string | null
+          profissional_id?: string
+          tipo_documento?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ages_profissionais_documentos_profissional_id_fkey"
+            columns: ["profissional_id"]
+            isOneToOne: false
+            referencedRelation: "ages_profissionais"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ages_propostas: {
+        Row: {
+          atualizado_em: string
+          cliente_id: string | null
+          contrato_id: string | null
+          criado_em: string
+          descricao: string | null
+          id: string
+          id_proposta: string | null
+          lead_id: string
+          observacoes: string | null
+          profissional_id: string | null
+          status: string
+          unidade_id: string | null
+          valor: number | null
+        }
+        Insert: {
+          atualizado_em?: string
+          cliente_id?: string | null
+          contrato_id?: string | null
+          criado_em?: string
+          descricao?: string | null
+          id?: string
+          id_proposta?: string | null
+          lead_id: string
+          observacoes?: string | null
+          profissional_id?: string | null
+          status?: string
+          unidade_id?: string | null
+          valor?: number | null
+        }
+        Update: {
+          atualizado_em?: string
+          cliente_id?: string | null
+          contrato_id?: string | null
+          criado_em?: string
+          descricao?: string | null
+          id?: string
+          id_proposta?: string | null
+          lead_id?: string
+          observacoes?: string | null
+          profissional_id?: string | null
+          status?: string
+          unidade_id?: string | null
+          valor?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ages_propostas_cliente_id_fkey"
+            columns: ["cliente_id"]
+            isOneToOne: false
+            referencedRelation: "ages_clientes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ages_propostas_contrato_id_fkey"
+            columns: ["contrato_id"]
+            isOneToOne: false
+            referencedRelation: "ages_contratos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ages_propostas_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "ages_leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ages_propostas_profissional_id_fkey"
+            columns: ["profissional_id"]
+            isOneToOne: false
+            referencedRelation: "ages_profissionais"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ages_propostas_unidade_id_fkey"
+            columns: ["unidade_id"]
+            isOneToOne: false
+            referencedRelation: "ages_unidades"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ages_unidades: {
+        Row: {
+          cidade: string | null
+          cliente_id: string
+          codigo: string | null
+          created_at: string
+          endereco: string | null
+          id: string
+          nome: string
+          uf: string | null
+          updated_at: string
+        }
+        Insert: {
+          cidade?: string | null
+          cliente_id: string
+          codigo?: string | null
+          created_at?: string
+          endereco?: string | null
+          id?: string
+          nome: string
+          uf?: string | null
+          updated_at?: string
+        }
+        Update: {
+          cidade?: string | null
+          cliente_id?: string
+          codigo?: string | null
+          created_at?: string
+          endereco?: string | null
+          id?: string
+          nome?: string
+          uf?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ages_unidades_cliente_id_fkey"
+            columns: ["cliente_id"]
+            isOneToOne: false
+            referencedRelation: "ages_clientes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       blacklist: {
         Row: {
           created_at: string | null
