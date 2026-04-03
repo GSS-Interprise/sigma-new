@@ -985,7 +985,7 @@ DO $tyblk$ BEGIN CREATE TYPE public.status_documentacao AS ENUM ('pendente', 'em
 DO $tyblk$ BEGIN CREATE TYPE public.status_assinatura AS ENUM ('pendente', 'assinado', 'cancelado'); EXCEPTION WHEN duplicate_object THEN NULL; END $tyblk$;
 DO $tyblk$ BEGIN CREATE TYPE public.status_execucao AS ENUM ('pendente', 'executada', 'cancelada'); EXCEPTION WHEN duplicate_object THEN NULL; END $tyblk$;
 DO $tyblk$ BEGIN CREATE TYPE public.status_pagamento AS ENUM ('pendente', 'pago', 'atrasado', 'cancelado'); EXCEPTION WHEN duplicate_object THEN NULL; END $tyblk$;
-DO $tyblk$ BEGIN CREATE TYPE public.app_role AS ENUM ('admin', 'gestor_demanda', 'recrutador', 'coordenador_escalas', 'financeiro', 'medico'); EXCEPTION WHEN duplicate_object THEN NULL; END $tyblk$;
+DO $tyblk$ BEGIN CREATE TYPE public.app_role AS ENUM ('admin', 'gestor_contratos', 'gestor_captacao', 'coordenador_escalas', 'gestor_financeiro', 'medico'); EXCEPTION WHEN duplicate_object THEN NULL; END $tyblk$;
 
 CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -1196,7 +1196,7 @@ CREATE POLICY "Admins and gestores can manage clientes"
   ON public.clientes FOR ALL
   USING (
     public.is_admin(auth.uid()) OR
-    public.has_role(auth.uid(), 'gestor_demanda')
+    public.has_role(auth.uid(), 'gestor_contratos')
   );
 
 DROP POLICY IF EXISTS "Authenticated users can view contratos_demanda" ON public.contratos_demanda;
@@ -1212,7 +1212,7 @@ CREATE POLICY "Admins and gestores can manage contratos_demanda"
   ON public.contratos_demanda FOR ALL
   USING (
     public.is_admin(auth.uid()) OR
-    public.has_role(auth.uid(), 'gestor_demanda')
+    public.has_role(auth.uid(), 'gestor_contratos')
   );
 
 DROP POLICY IF EXISTS "Authenticated users can view demandas" ON public.demandas;
@@ -1228,8 +1228,8 @@ CREATE POLICY "Admins, gestores and recrutadores can manage demandas"
   ON public.demandas FOR ALL
   USING (
     public.is_admin(auth.uid()) OR
-    public.has_role(auth.uid(), 'gestor_demanda') OR
-    public.has_role(auth.uid(), 'recrutador')
+    public.has_role(auth.uid(), 'gestor_contratos') OR
+    public.has_role(auth.uid(), 'gestor_captacao')
   );
 
 DROP POLICY IF EXISTS "Authenticated users can view medicos" ON public.medicos;
@@ -1245,7 +1245,7 @@ CREATE POLICY "Admins and recrutadores can manage medicos"
   ON public.medicos FOR ALL
   USING (
     public.is_admin(auth.uid()) OR
-    public.has_role(auth.uid(), 'recrutador')
+    public.has_role(auth.uid(), 'gestor_captacao')
   );
 
 DROP POLICY IF EXISTS "Authenticated users can view propostas" ON public.propostas_medicas;

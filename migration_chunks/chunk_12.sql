@@ -2,7 +2,7 @@ CREATE POLICY "Admins and recrutadores can manage propostas"
   ON public.propostas_medicas FOR ALL
   USING (
     public.is_admin(auth.uid()) OR
-    public.has_role(auth.uid(), 'recrutador')
+    public.has_role(auth.uid(), 'gestor_captacao')
   );
 
 DROP POLICY IF EXISTS "Authenticated users can view contratos_medico" ON public.contratos_medico;
@@ -47,7 +47,7 @@ CREATE POLICY "Admins and financeiro can manage pagamentos"
   ON public.pagamentos_medico FOR ALL
   USING (
     public.is_admin(auth.uid()) OR
-    public.has_role(auth.uid(), 'financeiro')
+    public.has_role(auth.uid(), 'gestor_financeiro')
   );
 
 DROP POLICY IF EXISTS "Authenticated users can view recebimentos" ON public.recebimentos_cliente;
@@ -63,7 +63,7 @@ CREATE POLICY "Admins and financeiro can manage recebimentos"
   ON public.recebimentos_cliente FOR ALL
   USING (
     public.is_admin(auth.uid()) OR
-    public.has_role(auth.uid(), 'financeiro')
+    public.has_role(auth.uid(), 'gestor_financeiro')
   );
 
 CREATE OR REPLACE FUNCTION public.handle_new_user()
@@ -140,7 +140,7 @@ DROP POLICY IF EXISTS "Authorized users can manage blacklist" ON public.blacklis
 DROP POLICY IF EXISTS "Authorized users can manage blacklist" ON public.blacklist;
 CREATE POLICY "Authorized users can manage blacklist"
 ON public.blacklist FOR ALL
-USING (is_admin(auth.uid()) OR has_role(auth.uid(), 'recrutador') OR has_role(auth.uid(), 'gestor_demanda'));
+USING (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_captacao') OR has_role(auth.uid(), 'gestor_contratos'));
 
 ALTER TABLE public.clientes ADD COLUMN IF NOT EXISTS email_financeiro TEXT;
 ALTER TABLE public.clientes ADD COLUMN IF NOT EXISTS telefone_financeiro TEXT;
@@ -174,20 +174,20 @@ DROP POLICY IF EXISTS "Authorized users can manage contrato_renovacoes" ON publi
 DROP POLICY IF EXISTS "Authorized users can manage contrato_renovacoes" ON public.contrato_renovacoes;
 CREATE POLICY "Authorized users can manage contrato_renovacoes"
 ON public.contrato_renovacoes FOR ALL
-USING (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_demanda'))
-WITH CHECK (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_demanda'));
+USING (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_contratos'))
+WITH CHECK (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_contratos'));
 
 DROP POLICY IF EXISTS "Authorized users can view contrato_anexos" ON public.contrato_anexos;
 DROP POLICY IF EXISTS "Authorized users can view contrato_anexos" ON public.contrato_anexos;
 CREATE POLICY "Authorized users can view contrato_anexos"
 ON public.contrato_anexos FOR SELECT
-USING (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_demanda'));
+USING (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_contratos'));
 
 DROP POLICY IF EXISTS "Authorized users can insert contrato_anexos" ON public.contrato_anexos;
 DROP POLICY IF EXISTS "Authorized users can insert contrato_anexos" ON public.contrato_anexos;
 CREATE POLICY "Authorized users can insert contrato_anexos"
 ON public.contrato_anexos FOR INSERT
-WITH CHECK (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_demanda'));
+WITH CHECK (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_contratos'));
 
 -- === 20260403003745_cb21b369-59d4-450a-8d3f-d642d09debe2.sql ===
 -- Função update_updated_at_column
