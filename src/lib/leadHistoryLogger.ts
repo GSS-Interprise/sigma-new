@@ -75,7 +75,7 @@ export async function registrarHistoricoLead(params: LeadHistoryParams): Promise
     const userInfo = await getCurrentUserInfo();
 
     const { error } = await supabase
-      .from('lead_historico')
+      .from('lead_historico' as any)
       .insert({
         lead_id: params.leadId,
         tipo_evento: params.tipoEvento,

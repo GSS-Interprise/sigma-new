@@ -1639,7 +1639,7 @@ export type Database = {
           instance_name: string | null
           limite_diario: number | null
           nome: string
-          numero: string
+          numero: string | null
           profile_name: string | null
           profile_picture_url: string | null
           provedor: string | null
@@ -1660,7 +1660,7 @@ export type Database = {
           instance_name?: string | null
           limite_diario?: number | null
           nome: string
-          numero: string
+          numero?: string | null
           profile_name?: string | null
           profile_picture_url?: string | null
           provedor?: string | null
@@ -1681,7 +1681,7 @@ export type Database = {
           instance_name?: string | null
           limite_diario?: number | null
           nome?: string
-          numero?: string
+          numero?: string | null
           profile_name?: string | null
           profile_picture_url?: string | null
           provedor?: string | null
@@ -7272,13 +7272,6 @@ export type Database = {
             columns: ["cliente_vinculado_id"]
             isOneToOne: false
             referencedRelation: "clientes"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "medicos_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads"
             referencedColumns: ["id"]
           },
         ]

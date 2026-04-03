@@ -26,8 +26,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Duração máxima da sessão (13 horas) - força login diário
   const MAX_SESSION_DURATION = 13 * 60 * 60 * 1000;
   const SESSION_START_KEY = 'sigma_session_start';
-  let inactivityTimer: NodeJS.Timeout;
-  let sessionTimer: NodeJS.Timeout;
+  let inactivityTimer: ReturnType<typeof setTimeout>;
+  let sessionTimer: ReturnType<typeof setTimeout>;
 
   const checkSessionExpiry = () => {
     const sessionStart = localStorage.getItem(SESSION_START_KEY);
