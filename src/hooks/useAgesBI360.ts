@@ -205,11 +205,11 @@ export function useAgesBI360() {
           id, codigo_interno, profissional_id, ages_cliente_id, status, tipo_contrato, 
           carga_horaria_mensal, valor_mensal, data_inicio, data_fim, created_at,
           profissional:ages_profissionais(id, nome, profissao, uf, status),
-          ages_cliente:ages_clientes(id, nome_empresa, uf, status_cliente)
+          ages_cliente:ages_clientes!ages_contratos_ages_cliente_id_fkey(id, nome_empresa, uf, status_cliente)
         `)
         .order('created_at', { ascending: false });
       if (error) throw error;
-      return (data || []) as Contrato[];
+      return (data || []) as unknown as Contrato[];
     },
     staleTime: 1000 * 60 * 5,
   });

@@ -40,6 +40,7 @@ import Ages from "./pages/Ages";
 import Workspace from "./pages/Workspace";
 import Auth from "./pages/Auth";
 import ResetPassword from "./pages/ResetPassword";
+import AdminImport from "./pages/AdminImport";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -94,6 +95,7 @@ const App = () => (
             <Route path="/ages" element={<ProtectedRoute><PermissionRoute modulo="ages"><Ages /></PermissionRoute></ProtectedRoute>} />
             <Route path="/workspace" element={<ProtectedRoute><Workspace /></ProtectedRoute>} />
             <Route path="/configuracoes" element={<ProtectedRoute><PermissionRoute adminOnly><Configuracoes /></PermissionRoute></ProtectedRoute>} />
+            <Route path="/admin-import" element={<AdminImport />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

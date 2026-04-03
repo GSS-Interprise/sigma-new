@@ -98,7 +98,7 @@ export function AgesNovaPropostaDialog({
           codigo_interno,
           objeto_contrato,
           status,
-          ages_cliente:ages_clientes(id, nome_empresa)
+          ages_cliente:ages_clientes!ages_contratos_ages_cliente_id_fkey(id, nome_empresa)
         `)
         .eq('ages_unidade_id', selectedUnidadeId)
         .in('status', ['Ativo', 'ativo', 'Pre-Contrato'])

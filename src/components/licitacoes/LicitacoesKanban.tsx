@@ -148,7 +148,7 @@ export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filt
 
   // Auto-scroll durante drag
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const autoScrollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const autoScrollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
   // Configurações do auto-scroll

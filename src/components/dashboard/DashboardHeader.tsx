@@ -2,7 +2,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { NotificacoesSino } from "@/components/layout/NotificacoesSino";
+
 import gssLogo from "@/assets/gss-logo.jpeg";
 
 export function DashboardHeader() {
@@ -65,7 +65,7 @@ export function DashboardHeader() {
               <h1 className="text-3xl font-bold text-foreground">
                 {getGreeting()}, {nomeUsuario}!
               </h1>
-              <NotificacoesSino />
+              
             </div>
             {profile?.setores?.nome && (
               <div className="flex items-center gap-2 mt-2">
