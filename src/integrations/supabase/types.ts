@@ -5830,7 +5830,7 @@ export type Database = {
           licitacao_codigo: string | null
           municipio_uf: string | null
           numero_edital: string
-          objeto: string
+          objeto: string | null
           objeto_contrato: string | null
           observacoes: string | null
           orgao: string
@@ -5867,7 +5867,7 @@ export type Database = {
           licitacao_codigo?: string | null
           municipio_uf?: string | null
           numero_edital: string
-          objeto: string
+          objeto?: string | null
           objeto_contrato?: string | null
           observacoes?: string | null
           orgao: string
@@ -5904,7 +5904,7 @@ export type Database = {
           licitacao_codigo?: string | null
           municipio_uf?: string | null
           numero_edital?: string
-          objeto?: string
+          objeto?: string | null
           objeto_contrato?: string | null
           observacoes?: string | null
           orgao?: string
