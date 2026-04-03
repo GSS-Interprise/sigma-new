@@ -40,6 +40,7 @@ import Ages from "./pages/Ages";
 import Workspace from "./pages/Workspace";
 import Auth from "./pages/Auth";
 import ResetPassword from "./pages/ResetPassword";
+import AdminImport from "./pages/AdminImport";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
