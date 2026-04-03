@@ -163,7 +163,7 @@ USING (
 
 -- === 20251024135139_a24af66c-e9bc-4224-a590-50c617d752b2.sql ===
 -- Adicionar novo role para radiologia (será usado em migration posterior)
-DO $aw$ BEGIN ALTER TYPE app_role ADD VALUE IF NOT EXISTS 'gestor_radiologia'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
+-- MOVED TO chunk_pre.sql: DO $aw$ BEGIN ALTER TYPE app_role ADD VALUE IF NOT EXISTS 'gestor_radiologia'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
 
 
 -- === 20251024135829_f1f33f5a-45f7-456f-b215-e477fe7e5fad.sql ===
@@ -654,11 +654,11 @@ EXECUTE FUNCTION update_radiologia_pendencias_comentarios_updated_at();
 
 -- === 20251024172505_9438fe21-7ec5-4a7d-a8f3-f215586a85e0.sql ===
 -- Atualizar enum de status_ticket para incluir novos status
-DO $aw$ BEGIN ALTER TYPE status_ticket ADD VALUE IF NOT EXISTS 'aberto'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
+-- MOVED TO chunk_pre.sql: DO $aw$ BEGIN ALTER TYPE status_ticket ADD VALUE IF NOT EXISTS 'aberto'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
 
-DO $aw$ BEGIN ALTER TYPE status_ticket ADD VALUE IF NOT EXISTS 'aguardando_usuario'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
+-- MOVED TO chunk_pre.sql: DO $aw$ BEGIN ALTER TYPE status_ticket ADD VALUE IF NOT EXISTS 'aguardando_usuario'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
 
-DO $aw$ BEGIN ALTER TYPE status_ticket ADD VALUE IF NOT EXISTS 'em_validacao'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
+-- MOVED TO chunk_pre.sql: DO $aw$ BEGIN ALTER TYPE status_ticket ADD VALUE IF NOT EXISTS 'em_validacao'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
 
 
 -- Adicionar campo setor_responsavel à tabela suporte_tickets
@@ -691,7 +691,7 @@ USING (
 
 -- === 20251024191515_e2d95c6a-cb48-43be-9e61-51f0f08f7b3e.sql ===
 -- Adiciona "equipamento_hospitalar" ao enum categoria_patrimonio
-DO $aw$ BEGIN ALTER TYPE categoria_patrimonio ADD VALUE IF NOT EXISTS 'equipamento_hospitalar'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
+-- MOVED TO chunk_pre.sql: DO $aw$ BEGIN ALTER TYPE categoria_patrimonio ADD VALUE IF NOT EXISTS 'equipamento_hospitalar'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
 
 
 -- === 20251029172833_53213961-c276-4e27-8942-3800d4db331b.sql ===
@@ -1056,7 +1056,7 @@ ON CONFLICT (status_vinculado) DO NOTHING;
 
 -- === 20251031145556_a085c3ca-0bb3-4f02-9cc9-d8efaff64731.sql ===
 -- Add missing status value to status_licitacao ENUM
-DO $aw$ BEGIN ALTER TYPE status_licitacao ADD VALUE IF NOT EXISTS 'capitacao_de_credenciamento'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
+-- MOVED TO chunk_pre.sql: DO $aw$ BEGIN ALTER TYPE status_licitacao ADD VALUE IF NOT EXISTS 'capitacao_de_credenciamento'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
 
 
 -- === 20251031162910_3f76362e-5bac-401a-b98c-66e9d582e3da.sql ===

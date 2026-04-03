@@ -62,7 +62,7 @@ INSERT INTO public.licitacoes_etiquetas_config (nome, cor_id) VALUES
 
 -- === 20251222195011_dd01ac85-fbb8-49cc-9d00-7dd07ef10663.sql ===
 -- Adicionar novo valor ao enum tipo_evento_lead
-DO $aw$ BEGIN ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'desconvertido_para_lead'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
+-- MOVED TO chunk_pre.sql: DO $aw$ BEGIN ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'desconvertido_para_lead'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
 
 
 -- === 20251223143019_815a9e5d-3e97-4b59-bdf7-31e5a277c2fc.sql ===
@@ -232,7 +232,7 @@ USING (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_radiologia') OR has_
 
 -- === 20251229180131_396f5335-e758-41ab-8996-3351ec6ccbf8.sql ===
 -- Primeiro: Adicionar o novo role ao enum
-DO $aw$ BEGIN ALTER TYPE public.app_role ADD VALUE IF NOT EXISTS 'gestor_ages'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
+-- MOVED TO chunk_pre.sql: DO $aw$ BEGIN ALTER TYPE public.app_role ADD VALUE IF NOT EXISTS 'gestor_ages'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
 
 
 -- === 20251229180210_440681d8-7cdb-4a29-8605-06dc99048ee8.sql ===

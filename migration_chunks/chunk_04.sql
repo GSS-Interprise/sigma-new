@@ -27,7 +27,7 @@ DO $altc$ BEGIN ALTER TABLE radiologia_pendencias
 
 -- === 20251114144354_55d502ef-a122-4257-8372-366e50a49d97.sql ===
 -- Adicionar o role 'externos' ao enum app_role
-DO $aw$ BEGIN ALTER TYPE public.app_role ADD VALUE IF NOT EXISTS 'externos'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
+-- MOVED TO chunk_pre.sql: DO $aw$ BEGIN ALTER TYPE public.app_role ADD VALUE IF NOT EXISTS 'externos'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
 
 
 -- === 20251114144432_250ee486-17af-4787-b73e-a7c83190dae3.sql ===
@@ -40,7 +40,7 @@ ON CONFLICT DO NOTHING;
 
 -- === 20251114165332_9d3db261-63b8-4a38-b1e4-6f2947717a62.sql ===
 -- Adicionar novo tipo de documento "Link Externo"
-DO $aw$ BEGIN ALTER TYPE tipo_documento_medico ADD VALUE IF NOT EXISTS 'link_externo'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
+-- MOVED TO chunk_pre.sql: DO $aw$ BEGIN ALTER TYPE tipo_documento_medico ADD VALUE IF NOT EXISTS 'link_externo'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
 
 
 -- Adicionar campo para URL externa na tabela medico_documentos
@@ -521,7 +521,7 @@ ADD COLUMN email_erro text; EXCEPTION WHEN duplicate_column THEN NULL; END $acol
 
 -- === 20251121165234_587425d6-2b91-4ddb-82fe-c14f4832e01f.sql ===
 -- Adicionar 'lideres' ao enum app_role
-DO $aw$ BEGIN ALTER TYPE app_role ADD VALUE IF NOT EXISTS 'lideres'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
+-- MOVED TO chunk_pre.sql: DO $aw$ BEGIN ALTER TYPE app_role ADD VALUE IF NOT EXISTS 'lideres'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
 
 
 -- === 20251121165258_ee0e283d-ce22-4dea-9106-6d4ecfd4c087.sql ===
@@ -1068,7 +1068,7 @@ COMMENT ON COLUMN public.suporte_tickets.resolvido_por_nome IS 'Nome do usuário
 
 -- === 20251127175823_bd6dca51-b1a8-41c4-94a9-f616803e9b76.sql ===
 -- Add new value to tipo_documento_medico enum
-DO $aw$ BEGIN ALTER TYPE public.tipo_documento_medico ADD VALUE IF NOT EXISTS 'contrato_aditivo'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
+-- MOVED TO chunk_pre.sql: DO $aw$ BEGIN ALTER TYPE public.tipo_documento_medico ADD VALUE IF NOT EXISTS 'contrato_aditivo'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
 
 
 -- === 20251127195420_c4493478-6d82-4754-94f1-f5c9c9a4b654.sql ===

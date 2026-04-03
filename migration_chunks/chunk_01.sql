@@ -1,8 +1,8 @@
 
 -- Alterar o enum de status_assinatura_contrato
-DO $aw$ BEGIN ALTER TYPE status_assinatura_contrato ADD VALUE IF NOT EXISTS 'Em Análise'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
+-- MOVED TO chunk_pre.sql: DO $aw$ BEGIN ALTER TYPE status_assinatura_contrato ADD VALUE IF NOT EXISTS 'Em Análise'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
 
-DO $aw$ BEGIN ALTER TYPE status_assinatura_contrato ADD VALUE IF NOT EXISTS 'Aguardando Retorno'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
+-- MOVED TO chunk_pre.sql: DO $aw$ BEGIN ALTER TYPE status_assinatura_contrato ADD VALUE IF NOT EXISTS 'Aguardando Retorno'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
 
 
 -- Criar tabela para itens do contrato
