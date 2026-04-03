@@ -1119,7 +1119,7 @@ EXECUTE FUNCTION update_medico_prontuario_updated_at();
 -- === 20251031163248_0e1ce4d1-374c-4a37-ae31-b71f75492f09.sql ===
 -- Corrigir search_path para função de prontuário
 DROP TRIGGER IF EXISTS trigger_update_medico_prontuario_updated_at ON public.medico_prontuario;
-DROP FUNCTION IF EXISTS update_medico_prontuario_updated_at();
+DROP FUNCTION IF EXISTS update_medico_prontuario_updated_at() CASCADE;
 
 CREATE OR REPLACE FUNCTION public.update_medico_prontuario_updated_at()
 RETURNS TRIGGER AS $$

@@ -168,8 +168,8 @@ DROP POLICY IF EXISTS "Users can update their own disparos_programados" ON publi
 DROP POLICY IF EXISTS "Admins can delete disparos_programados" ON public.disparos_programados;
 
 -- 5. Dropar funções
-DROP FUNCTION IF EXISTS public.has_role(uuid, app_role);
-DROP FUNCTION IF EXISTS public.is_admin(uuid);
+DROP FUNCTION IF EXISTS public.has_role(uuid, app_role) CASCADE;
+DROP FUNCTION IF EXISTS public.is_admin(uuid) CASCADE;
 
 -- 6. Remover colunas antigas
 DO $$ BEGIN ALTER TABLE public.user_roles DROP COLUMN role; EXCEPTION WHEN undefined_column THEN NULL; END $$;
