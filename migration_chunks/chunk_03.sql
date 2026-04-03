@@ -1,4 +1,73 @@
 
+-- Tabela de documentos dos médicos
+CREATE TABLE IF NOT EXISTS public.medico_documentos (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  medico_id UUID NOT NULL REFERENCES public.medicos(id) ON DELETE CASCADE,
+  arquivo_path TEXT NOT NULL,
+  arquivo_nome TEXT NOT NULL,
+  tipo_documento tipo_documento_medico NOT NULL,
+  emissor TEXT,
+  data_emissao DATE,
+  data_validade DATE,
+  observacoes TEXT,
+  texto_extraido TEXT,
+  uploaded_by UUID REFERENCES auth.users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Habilitar RLS
+ALTER TABLE public.medico_documentos ENABLE ROW LEVEL SECURITY;
+
+-- Políticas de RLS para documentos
+DROP POLICY IF EXISTS "Usuários autenticados podem ver documentos" ON public.medico_documentos;
+CREATE POLICY "Usuários autenticados podem ver documentos"
+ON public.medico_documentos FOR SELECT
+TO authenticated
+USING (true);
+
+DROP POLICY IF EXISTS "Usuários autorizados podem inserir documentos" ON public.medico_documentos;
+CREATE POLICY "Usuários autorizados podem inserir documentos"
+ON public.medico_documentos FOR INSERT
+TO authenticated
+WITH CHECK (
+  is_admin(auth.uid()) OR 
+  has_role(auth.uid(), 'gestor_captacao'::app_role) OR 
+  has_role(auth.uid(), 'gestor_contratos'::app_role)
+);
+
+DROP POLICY IF EXISTS "Usuários autorizados podem atualizar documentos" ON public.medico_documentos;
+CREATE POLICY "Usuários autorizados podem atualizar documentos"
+ON public.medico_documentos FOR UPDATE
+TO authenticated
+USING (
+  is_admin(auth.uid()) OR 
+  has_role(auth.uid(), 'gestor_captacao'::app_role) OR 
+  has_role(auth.uid(), 'gestor_contratos'::app_role)
+);
+
+DROP POLICY IF EXISTS "Usuários autorizados podem deletar documentos" ON public.medico_documentos;
+CREATE POLICY "Usuários autorizados podem deletar documentos"
+ON public.medico_documentos FOR DELETE
+TO authenticated
+USING (
+  is_admin(auth.uid()) OR 
+  has_role(auth.uid(), 'gestor_captacao'::app_role) OR 
+  has_role(auth.uid(), 'gestor_contratos'::app_role)
+);
+
+-- Tabela de logs de auditoria de documentos
+CREATE TABLE IF NOT EXISTS public.medico_documentos_log (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  documento_id UUID REFERENCES public.medico_documentos(id) ON DELETE CASCADE,
+  medico_id UUID NOT NULL REFERENCES public.medicos(id) ON DELETE CASCADE,
+  usuario_id UUID REFERENCES auth.users(id),
+  usuario_nome TEXT NOT NULL,
+  acao TEXT NOT NULL, -- 'upload', 'download', 'update', 'delete', 'view'
+  detalhes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Habilitar RLS
 ALTER TABLE public.medico_documentos_log ENABLE ROW LEVEL SECURITY;
 
@@ -445,19 +514,19 @@ CREATE TRIGGER update_conversas_updated_at
 
 -- === 20251106193841_6d7b857d-f0ea-4fc1-bbb9-aada1f0ba044.sql ===
 -- Adicionar constraint UNIQUE para evitar conversas duplicadas
-ALTER TABLE public.conversas
-ADD CONSTRAINT conversas_id_conversa_unique UNIQUE (id_conversa);
+DO $ac$ BEGIN ALTER TABLE public.conversas
+ADD CONSTRAINT conversas_id_conversa_unique UNIQUE (id_conversa); EXCEPTION WHEN duplicate_object THEN NULL; END $ac$;
 
 -- === 20251107182140_f10acd8d-4f2a-4b70-874d-ab5a32040101.sql ===
 -- Criar enum para motivos de ausência
-DO $typwrap$ BEGIN DO $typwrap$ BEGIN CREATE TYPE public.motivo_ausencia AS ENUM (
+DO $tw$ BEGIN CREATE TYPE public.motivo_ausencia AS ENUM (
   'ferias',
   'atestado_medico',
   'congresso',
   'viagem',
   'folga',
   'outro'
-); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$; EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+); EXCEPTION WHEN duplicate_object THEN NULL; END $tw$;
 
 -- Tabela de ausências de médicos
 CREATE TABLE IF NOT EXISTS public.medico_ausencias (
@@ -557,11 +626,11 @@ USING (
 );
 
 -- Adicionar campos à tabela radiologia_agendas
-ALTER TABLE public.radiologia_agendas 
+DO $acol$ BEGIN ALTER TABLE public.radiologia_agendas 
 ADD COLUMN exame_servico TEXT,
 ADD COLUMN data_inicio DATE,
 ADD COLUMN data_fim DATE,
-ADD COLUMN total_horas_dia NUMERIC(5, 2);
+ADD COLUMN total_horas_dia NUMERIC(5, 2); EXCEPTION WHEN duplicate_column THEN NULL; END $acol$;
 
 -- Atualizar registros existentes
 UPDATE public.radiologia_agendas 
@@ -627,22 +696,22 @@ EXECUTE FUNCTION public.update_updated_at_column();
 
 -- === 20251107190708_d8a63174-6bc9-4611-af3a-2625d33f6185.sql ===
 -- Add updated_at column to effect_sync_logs table
-ALTER TABLE public.effect_sync_logs 
-ADD COLUMN updated_at TIMESTAMP WITH TIME ZONE DEFAULT now();
+DO $acol$ BEGIN ALTER TABLE public.effect_sync_logs 
+ADD COLUMN updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(); EXCEPTION WHEN duplicate_column THEN NULL; END $acol$;
 
 -- === 20251112154853_472e1157-0ffe-4a1f-9bb2-5ed3d799867b.sql ===
 -- Adicionar novo status "aguardando_confirmacao" ao enum status_ticket
-DO $atwrap$ BEGIN ALTER TYPE status_ticket ADD VALUE IF NOT EXISTS 'aguardando_confirmacao'; EXCEPTION WHEN duplicate_object THEN NULL; END $atwrap$;
+DO $aw$ BEGIN ALTER TYPE status_ticket ADD VALUE IF NOT EXISTS 'aguardando_confirmacao'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
 
 
 -- Adicionar novo status "resolvido" ao enum status_ticket  
-DO $atwrap$ BEGIN ALTER TYPE status_ticket ADD VALUE IF NOT EXISTS 'resolvido'; EXCEPTION WHEN duplicate_object THEN NULL; END $atwrap$;
+DO $aw$ BEGIN ALTER TYPE status_ticket ADD VALUE IF NOT EXISTS 'resolvido'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
 
 
 -- === 20251113115645_82903b74-6c9f-476e-85c2-64aedbae5591.sql ===
 -- Adicionar coluna email na tabela leads
-ALTER TABLE public.leads 
-ADD COLUMN email text;
+DO $acol$ BEGIN ALTER TABLE public.leads 
+ADD COLUMN email text; EXCEPTION WHEN duplicate_column THEN NULL; END $acol$;
 
 -- Adicionar índice para melhor performance
 CREATE INDEX IF NOT EXISTS idx_leads_email ON public.leads(email);
@@ -790,28 +859,28 @@ COMMENT ON COLUMN public.email_respostas.status_lead IS 'Status do lead: novo, e
 
 -- === 20251113173835_59a44538-2ef1-4f04-a8cf-761b424856ee.sql ===
 -- Adicionar gestor_marketing ao enum app_role
-DO $atwrap$ BEGIN ALTER TYPE app_role ADD VALUE IF NOT EXISTS 'gestor_marketing'; EXCEPTION WHEN duplicate_object THEN NULL; END $atwrap$;
+DO $aw$ BEGIN ALTER TYPE app_role ADD VALUE IF NOT EXISTS 'gestor_marketing'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
 
 
 -- === 20251113174802_491b4487-8ccb-46ac-82bc-30ceec0b9c9f.sql ===
 -- Criar enum para status de campanha
-DO $typwrap$ BEGIN CREATE TYPE status_campanha AS ENUM ('planejada', 'ativa', 'pausada', 'finalizada'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+DO $tw$ BEGIN CREATE TYPE status_campanha AS ENUM ('planejada', 'ativa', 'pausada', 'finalizada'); EXCEPTION WHEN duplicate_object THEN NULL; END $tw$;
 
 
 -- Criar enum para canais de campanha
-DO $typwrap$ BEGIN CREATE TYPE canal_campanha AS ENUM ('whatsapp', 'email', 'instagram', 'linkedin', 'anuncios', 'eventos'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+DO $tw$ BEGIN CREATE TYPE canal_campanha AS ENUM ('whatsapp', 'email', 'instagram', 'linkedin', 'anuncios', 'eventos'); EXCEPTION WHEN duplicate_object THEN NULL; END $tw$;
 
 
 -- Criar enum para tipo de conteúdo
-DO $typwrap$ BEGIN CREATE TYPE tipo_conteudo AS ENUM ('video', 'card', 'reels', 'artigo', 'newsletter'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+DO $tw$ BEGIN CREATE TYPE tipo_conteudo AS ENUM ('video', 'card', 'reels', 'artigo', 'newsletter'); EXCEPTION WHEN duplicate_object THEN NULL; END $tw$;
 
 
 -- Criar enum para status de conteúdo
-DO $typwrap$ BEGIN CREATE TYPE status_conteudo AS ENUM ('rascunho', 'pronto', 'publicado'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+DO $tw$ BEGIN CREATE TYPE status_conteudo AS ENUM ('rascunho', 'pronto', 'publicado'); EXCEPTION WHEN duplicate_object THEN NULL; END $tw$;
 
 
 -- Criar enum para etapas do funil
-DO $typwrap$ BEGIN DO $typwrap$ BEGIN CREATE TYPE etapa_funil_marketing AS ENUM (
+DO $tw$ BEGIN CREATE TYPE etapa_funil_marketing AS ENUM (
   'lead_gerado',
   'contato_inicial',
   'envio_informacoes',
@@ -819,10 +888,10 @@ DO $typwrap$ BEGIN DO $typwrap$ BEGIN CREATE TYPE etapa_funil_marketing AS ENUM 
   'encaminhado_captacao',
   'processo_contratacao',
   'plantao_agendado'
-); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$; EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+); EXCEPTION WHEN duplicate_object THEN NULL; END $tw$;
 
 -- Criar enum para categoria de material
-DO $typwrap$ BEGIN CREATE TYPE categoria_material AS ENUM ('pdf', 'apresentacao', 'modelo_mensagem', 'logo', 'template', 'politica_interna'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+DO $tw$ BEGIN CREATE TYPE categoria_material AS ENUM ('pdf', 'apresentacao', 'modelo_mensagem', 'logo', 'template', 'politica_interna'); EXCEPTION WHEN duplicate_object THEN NULL; END $tw$;
 
 
 -- Tabela de Campanhas
@@ -1216,67 +1285,3 @@ CREATE POLICY "Usuários autorizados podem ver importações"
     has_role(auth.uid(), 'gestor_radiologia'::app_role) OR
     has_role(auth.uid(), 'gestor_contratos'::app_role)
   );
-
-DROP POLICY IF EXISTS "Usuários autorizados podem criar importações" ON public.radiologia_importacoes;
-CREATE POLICY "Usuários autorizados podem criar importações"
-  ON public.radiologia_importacoes
-  FOR INSERT
-  WITH CHECK (
-    is_admin(auth.uid()) OR 
-    has_role(auth.uid(), 'gestor_radiologia'::app_role) OR
-    has_role(auth.uid(), 'gestor_contratos'::app_role)
-  );
-
--- Trigger para updated_at
-DROP TRIGGER IF EXISTS "update_radiologia_importacoes_updated_at" ON public.radiologia_importacoes;
-CREATE TRIGGER update_radiologia_importacoes_updated_at
-  BEFORE UPDATE ON public.radiologia_importacoes
-  FOR EACH ROW
-  EXECUTE FUNCTION public.update_updated_at_column();
-
--- === 20251113190918_868c92b1-0a14-4c6d-985a-941059f29690.sql ===
--- Tornar campos opcionais para permitir importação de dados individuais de exames
-ALTER TABLE radiologia_pendencias 
-  ALTER COLUMN cliente_id DROP NOT NULL,
-  ALTER COLUMN medico_id DROP NOT NULL,
-  ALTER COLUMN segmento DROP NOT NULL,
-  ALTER COLUMN data_referencia DROP NOT NULL,
-  ALTER COLUMN quantidade_pendente DROP NOT NULL;
-
--- === 20251114144354_55d502ef-a122-4257-8372-366e50a49d97.sql ===
--- Adicionar o role 'externos' ao enum app_role
-DO $atwrap$ BEGIN ALTER TYPE public.app_role ADD VALUE IF NOT EXISTS 'externos'; EXCEPTION WHEN duplicate_object THEN NULL; END $atwrap$;
-
-
--- === 20251114144432_250ee486-17af-4787-b73e-a7c83190dae3.sql ===
--- Adicionar permissões para o perfil externos
-INSERT INTO public.permissoes (modulo, acao, perfil, ativo)
-VALUES 
-  ('suporte', 'visualizar', 'externos', true),
-  ('suporte', 'criar', 'externos', true)
-ON CONFLICT DO NOTHING;
-
--- === 20251114165332_9d3db261-63b8-4a38-b1e4-6f2947717a62.sql ===
--- Adicionar novo tipo de documento "Link Externo"
-DO $atwrap$ BEGIN ALTER TYPE tipo_documento_medico ADD VALUE IF NOT EXISTS 'link_externo'; EXCEPTION WHEN duplicate_object THEN NULL; END $atwrap$;
-
-
--- Adicionar campo para URL externa na tabela medico_documentos
-ALTER TABLE medico_documentos ADD COLUMN IF NOT EXISTS url_externa TEXT;
-
--- Adicionar índice para melhorar performance de consultas
-CREATE INDEX IF NOT EXISTS idx_medico_documentos_url_externa ON medico_documentos(url_externa) WHERE url_externa IS NOT NULL;
-
--- === 20251114170446_de815008-3144-4f2b-82bf-9ba9186edd41.sql ===
--- Fix search_path for functions that don't have it set
--- This addresses the Supabase linter warning about mutable search paths
-
--- Fix calculate_data_termino function
-CREATE OR REPLACE FUNCTION public.calculate_data_termino()
-RETURNS trigger
-LANGUAGE plpgsql
-SET search_path = public
-AS $function$
-BEGIN
-  IF NEW.data_inicio IS NOT NULL AND NEW.prazo_meses IS NOT NULL THEN
-    NEW.data_termino := (NEW.data_inicio + (NEW.prazo_meses || ' months')::INTERVAL - INTERVAL '1 day')::DATE;

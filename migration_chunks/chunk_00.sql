@@ -3,23 +3,23 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Create enum types
-DO $typwrap$ BEGIN CREATE TYPE public.tipo_contrato AS ENUM ('licitacao', 'privado'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+DO $tw$ BEGIN CREATE TYPE public.tipo_contrato AS ENUM ('licitacao', 'privado'); EXCEPTION WHEN duplicate_object THEN NULL; END $tw$;
 
-DO $typwrap$ BEGIN CREATE TYPE public.status_contrato AS ENUM ('ativo', 'inativo', 'suspenso'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+DO $tw$ BEGIN CREATE TYPE public.status_contrato AS ENUM ('ativo', 'inativo', 'suspenso'); EXCEPTION WHEN duplicate_object THEN NULL; END $tw$;
 
-DO $typwrap$ BEGIN CREATE TYPE public.status_demanda AS ENUM ('aberta', 'em_atendimento', 'concluida', 'cancelada'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+DO $tw$ BEGIN CREATE TYPE public.status_demanda AS ENUM ('aberta', 'em_atendimento', 'concluida', 'cancelada'); EXCEPTION WHEN duplicate_object THEN NULL; END $tw$;
 
-DO $typwrap$ BEGIN CREATE TYPE public.status_proposta AS ENUM ('pendente', 'aceita', 'recusada'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+DO $tw$ BEGIN CREATE TYPE public.status_proposta AS ENUM ('pendente', 'aceita', 'recusada'); EXCEPTION WHEN duplicate_object THEN NULL; END $tw$;
 
-DO $typwrap$ BEGIN CREATE TYPE public.status_documentacao AS ENUM ('pendente', 'em_analise', 'aprovada', 'reprovada'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+DO $tw$ BEGIN CREATE TYPE public.status_documentacao AS ENUM ('pendente', 'em_analise', 'aprovada', 'reprovada'); EXCEPTION WHEN duplicate_object THEN NULL; END $tw$;
 
-DO $typwrap$ BEGIN CREATE TYPE public.status_assinatura AS ENUM ('pendente', 'assinado', 'cancelado'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+DO $tw$ BEGIN CREATE TYPE public.status_assinatura AS ENUM ('pendente', 'assinado', 'cancelado'); EXCEPTION WHEN duplicate_object THEN NULL; END $tw$;
 
-DO $typwrap$ BEGIN CREATE TYPE public.status_execucao AS ENUM ('pendente', 'executada', 'cancelada'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+DO $tw$ BEGIN CREATE TYPE public.status_execucao AS ENUM ('pendente', 'executada', 'cancelada'); EXCEPTION WHEN duplicate_object THEN NULL; END $tw$;
 
-DO $typwrap$ BEGIN CREATE TYPE public.status_pagamento AS ENUM ('pendente', 'pago', 'atrasado', 'cancelado'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+DO $tw$ BEGIN CREATE TYPE public.status_pagamento AS ENUM ('pendente', 'pago', 'atrasado', 'cancelado'); EXCEPTION WHEN duplicate_object THEN NULL; END $tw$;
 
-DO $typwrap$ BEGIN CREATE TYPE public.app_role AS ENUM ('admin', 'gestor_demanda', 'recrutador', 'coordenador_escalas', 'financeiro', 'medico'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+DO $tw$ BEGIN CREATE TYPE public.app_role AS ENUM ('admin', 'gestor_demanda', 'recrutador', 'coordenador_escalas', 'financeiro', 'medico'); EXCEPTION WHEN duplicate_object THEN NULL; END $tw$;
 
 
 -- Create profiles table
@@ -480,23 +480,23 @@ USING (true);
 
 -- === 20251003160017_3b089b59-1103-44cd-a9be-c78bdd201144.sql ===
 -- Criar enum para status de cliente
-DO $typwrap$ BEGIN CREATE TYPE status_cliente AS ENUM ('Ativo', 'Inativo', 'Suspenso', 'Cancelado'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+DO $tw$ BEGIN CREATE TYPE status_cliente AS ENUM ('Ativo', 'Inativo', 'Suspenso', 'Cancelado'); EXCEPTION WHEN duplicate_object THEN NULL; END $tw$;
 
 
 -- Criar enum para especialidade de cliente
-DO $typwrap$ BEGIN CREATE TYPE especialidade_cliente AS ENUM ('Hospital', 'Clínica', 'UBS', 'Outros'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+DO $tw$ BEGIN CREATE TYPE especialidade_cliente AS ENUM ('Hospital', 'Clínica', 'UBS', 'Outros'); EXCEPTION WHEN duplicate_object THEN NULL; END $tw$;
 
 
 -- Criar enum para status de médico
-DO $typwrap$ BEGIN CREATE TYPE status_medico AS ENUM ('Ativo', 'Inativo', 'Suspenso'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+DO $tw$ BEGIN CREATE TYPE status_medico AS ENUM ('Ativo', 'Inativo', 'Suspenso'); EXCEPTION WHEN duplicate_object THEN NULL; END $tw$;
 
 
 -- Criar enum para tipo de demanda do relacionamento médico
-DO $typwrap$ BEGIN CREATE TYPE tipo_relacionamento AS ENUM ('Reclamação', 'Feedback Positivo', 'Alinhamento Escalas', 'Ação Comemorativa'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+DO $tw$ BEGIN CREATE TYPE tipo_relacionamento AS ENUM ('Reclamação', 'Feedback Positivo', 'Alinhamento Escalas', 'Ação Comemorativa'); EXCEPTION WHEN duplicate_object THEN NULL; END $tw$;
 
 
 -- Criar enum para status de assinatura de contrato
-DO $typwrap$ BEGIN CREATE TYPE status_assinatura_contrato AS ENUM ('Sim', 'Pendente'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+DO $tw$ BEGIN CREATE TYPE status_assinatura_contrato AS ENUM ('Sim', 'Pendente'); EXCEPTION WHEN duplicate_object THEN NULL; END $tw$;
 
 
 -- Atualizar tabela de clientes
@@ -884,13 +884,13 @@ ALTER TABLE relacionamento_medico
 ADD COLUMN IF NOT EXISTS tipo_principal text NOT NULL DEFAULT 'Ação';
 
 -- Update the tipo enum to include all new subtypes
-ALTER TABLE relacionamento_medico 
-ALTER COLUMN tipo TYPE text;
+DO $altc$ BEGIN ALTER TABLE relacionamento_medico 
+ALTER COLUMN tipo TYPE text; EXCEPTION WHEN undefined_column THEN NULL; WHEN undefined_table THEN NULL; END $altc$;
 
 -- Add check constraint for tipo_principal
-ALTER TABLE relacionamento_medico
+DO $ac$ BEGIN ALTER TABLE relacionamento_medico
 ADD CONSTRAINT check_tipo_principal 
-CHECK (tipo_principal IN ('Reclamação', 'Ação'));
+CHECK (tipo_principal IN ('Reclamação', 'Ação')); EXCEPTION WHEN duplicate_object THEN NULL; END $ac$;
 
 COMMENT ON COLUMN relacionamento_medico.tipo_principal IS 'Tipo principal: Reclamação ou Ação';
 COMMENT ON COLUMN relacionamento_medico.tipo IS 'Subtipo específico baseado no tipo_principal';
@@ -901,27 +901,27 @@ ALTER TABLE relacionamento_medico
 ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'aberta';
 
 -- Add check constraint for status
-ALTER TABLE relacionamento_medico
+DO $ac$ BEGIN ALTER TABLE relacionamento_medico
 ADD CONSTRAINT check_status 
-CHECK (status IN ('aberta', 'em_analise', 'concluida'));
+CHECK (status IN ('aberta', 'em_analise', 'concluida')); EXCEPTION WHEN duplicate_object THEN NULL; END $ac$;
 
 -- === 20251003193846_4ec7f27c-5a2c-4295-9ad7-911c57bf6e52.sql ===
 -- Create enum for user status
-DO $typwrap$ BEGIN CREATE TYPE user_status AS ENUM ('ativo', 'inativo', 'suspenso'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+DO $tw$ BEGIN CREATE TYPE user_status AS ENUM ('ativo', 'inativo', 'suspenso'); EXCEPTION WHEN duplicate_object THEN NULL; END $tw$;
 
 
 -- Add status column to profiles table
-ALTER TABLE public.profiles 
-ADD COLUMN status user_status NOT NULL DEFAULT 'ativo';
+DO $acol$ BEGIN ALTER TABLE public.profiles 
+ADD COLUMN status user_status NOT NULL DEFAULT 'ativo'; EXCEPTION WHEN duplicate_column THEN NULL; END $acol$;
 
 -- === 20251004183935_9ca6668f-1f69-45dc-a35c-197537c730ef.sql ===
 -- Adicionar campo gravidade na tabela relacionamento_medico
-ALTER TABLE public.relacionamento_medico
-ADD COLUMN gravidade text CHECK (gravidade IN ('baixa', 'media', 'alta', 'critica'));
+DO $acol$ BEGIN ALTER TABLE public.relacionamento_medico
+ADD COLUMN gravidade text CHECK (gravidade IN ('baixa', 'media', 'alta', 'critica')); EXCEPTION WHEN duplicate_column THEN NULL; END $acol$;
 
 -- Adicionar campo data_nascimento na tabela medicos para aniversários
-ALTER TABLE public.medicos
-ADD COLUMN data_nascimento date;
+DO $acol$ BEGIN ALTER TABLE public.medicos
+ADD COLUMN data_nascimento date; EXCEPTION WHEN duplicate_column THEN NULL; END $acol$;
 
 -- Criar índices para melhorar performance das consultas
 CREATE INDEX IF NOT EXISTS idx_relacionamento_status ON public.relacionamento_medico(status);
@@ -930,8 +930,8 @@ CREATE INDEX IF NOT EXISTS idx_medicos_data_nascimento ON public.medicos(data_na
 
 -- === 20251004184558_edaefc3b-c94f-4021-9883-109995992008.sql ===
 -- Adicionar campo CPF na tabela medicos
-ALTER TABLE public.medicos
-ADD COLUMN cpf text UNIQUE;
+DO $acol$ BEGIN ALTER TABLE public.medicos
+ADD COLUMN cpf text UNIQUE; EXCEPTION WHEN duplicate_column THEN NULL; END $acol$;
 
 COMMENT ON COLUMN public.medicos.cpf IS 'CPF do médico (11 dígitos, apenas números)';
 
@@ -999,7 +999,7 @@ USING (
 );
 
 -- Adicionar coluna documento_url na tabela contratos
-ALTER TABLE contratos ADD COLUMN documento_url text;
+DO $acol$ BEGIN ALTER TABLE contratos ADD COLUMN documento_url text; EXCEPTION WHEN duplicate_column THEN NULL; END $acol$;
 
 -- === 20251009141239_5c33710f-ec4f-4c21-af74-7507204799e8.sql ===
 -- Criar tabela de chips disponíveis
@@ -1249,19 +1249,3 @@ ALTER TABLE public.contratos
   ADD COLUMN IF NOT EXISTS codigo_interno INTEGER,
   ADD COLUMN IF NOT EXISTS objeto_contrato TEXT,
   ADD COLUMN IF NOT EXISTS tipo_servico TEXT[];
-
--- Alterar o enum de status_assinatura_contrato
-DO $atwrap$ BEGIN ALTER TYPE status_assinatura_contrato ADD VALUE IF NOT EXISTS 'Em Análise'; EXCEPTION WHEN duplicate_object THEN NULL; END $atwrap$;
-
-DO $atwrap$ BEGIN ALTER TYPE status_assinatura_contrato ADD VALUE IF NOT EXISTS 'Aguardando Retorno'; EXCEPTION WHEN duplicate_object THEN NULL; END $atwrap$;
-
-
--- Criar tabela para itens do contrato
-CREATE TABLE IF NOT EXISTS public.contrato_itens (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  contrato_id UUID REFERENCES public.contratos(id) ON DELETE CASCADE NOT NULL,
-  item TEXT NOT NULL,
-  valor_item NUMERIC(10, 2) NOT NULL,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);

@@ -1,3 +1,67 @@
+
+DROP POLICY IF EXISTS "Usuários autorizados podem criar importações" ON public.radiologia_importacoes;
+CREATE POLICY "Usuários autorizados podem criar importações"
+  ON public.radiologia_importacoes
+  FOR INSERT
+  WITH CHECK (
+    is_admin(auth.uid()) OR 
+    has_role(auth.uid(), 'gestor_radiologia'::app_role) OR
+    has_role(auth.uid(), 'gestor_contratos'::app_role)
+  );
+
+-- Trigger para updated_at
+DROP TRIGGER IF EXISTS "update_radiologia_importacoes_updated_at" ON public.radiologia_importacoes;
+CREATE TRIGGER update_radiologia_importacoes_updated_at
+  BEFORE UPDATE ON public.radiologia_importacoes
+  FOR EACH ROW
+  EXECUTE FUNCTION public.update_updated_at_column();
+
+-- === 20251113190918_868c92b1-0a14-4c6d-985a-941059f29690.sql ===
+-- Tornar campos opcionais para permitir importação de dados individuais de exames
+DO $altc$ BEGIN ALTER TABLE radiologia_pendencias 
+  ALTER COLUMN cliente_id DROP NOT NULL,
+  ALTER COLUMN medico_id DROP NOT NULL,
+  ALTER COLUMN segmento DROP NOT NULL,
+  ALTER COLUMN data_referencia DROP NOT NULL,
+  ALTER COLUMN quantidade_pendente DROP NOT NULL; EXCEPTION WHEN undefined_column THEN NULL; WHEN undefined_table THEN NULL; END $altc$;
+
+-- === 20251114144354_55d502ef-a122-4257-8372-366e50a49d97.sql ===
+-- Adicionar o role 'externos' ao enum app_role
+DO $aw$ BEGIN ALTER TYPE public.app_role ADD VALUE IF NOT EXISTS 'externos'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
+
+
+-- === 20251114144432_250ee486-17af-4787-b73e-a7c83190dae3.sql ===
+-- Adicionar permissões para o perfil externos
+INSERT INTO public.permissoes (modulo, acao, perfil, ativo)
+VALUES 
+  ('suporte', 'visualizar', 'externos', true),
+  ('suporte', 'criar', 'externos', true)
+ON CONFLICT DO NOTHING;
+
+-- === 20251114165332_9d3db261-63b8-4a38-b1e4-6f2947717a62.sql ===
+-- Adicionar novo tipo de documento "Link Externo"
+DO $aw$ BEGIN ALTER TYPE tipo_documento_medico ADD VALUE IF NOT EXISTS 'link_externo'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
+
+
+-- Adicionar campo para URL externa na tabela medico_documentos
+ALTER TABLE medico_documentos ADD COLUMN IF NOT EXISTS url_externa TEXT;
+
+-- Adicionar índice para melhorar performance de consultas
+CREATE INDEX IF NOT EXISTS idx_medico_documentos_url_externa ON medico_documentos(url_externa) WHERE url_externa IS NOT NULL;
+
+-- === 20251114170446_de815008-3144-4f2b-82bf-9ba9186edd41.sql ===
+-- Fix search_path for functions that don't have it set
+-- This addresses the Supabase linter warning about mutable search paths
+
+-- Fix calculate_data_termino function
+CREATE OR REPLACE FUNCTION public.calculate_data_termino()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public
+AS $function$
+BEGIN
+  IF NEW.data_inicio IS NOT NULL AND NEW.prazo_meses IS NOT NULL THEN
+    NEW.data_termino := (NEW.data_inicio + (NEW.prazo_meses || ' months')::INTERVAL - INTERVAL '1 day')::DATE;
   END IF;
   RETURN NEW;
 END;
@@ -400,15 +464,15 @@ WHERE id = 'contratos-documentos';
 
 -- === 20251117142254_a2e5c5a1-f9f7-4a60-b4b9-03b4c39067c5.sql ===
 -- Adicionar campo para customização de dias de aviso de vencimento
-ALTER TABLE public.contratos 
-ADD COLUMN dias_aviso_vencimento integer DEFAULT 60 CHECK (dias_aviso_vencimento >= 30 AND dias_aviso_vencimento <= 60);
+DO $acol$ BEGIN ALTER TABLE public.contratos 
+ADD COLUMN dias_aviso_vencimento integer DEFAULT 60 CHECK (dias_aviso_vencimento >= 30 AND dias_aviso_vencimento <= 60); EXCEPTION WHEN duplicate_column THEN NULL; END $acol$;
 
 COMMENT ON COLUMN public.contratos.dias_aviso_vencimento IS 'Número de dias antes do vencimento para começar a exibir alertas (entre 30 e 60 dias)';
 
 -- === 20251117144230_6b984197-6bf6-4022-b660-6dc2265d64eb.sql ===
 -- Adicionar campo para rastrear última visualização do ticket pelo admin
-ALTER TABLE public.suporte_tickets 
-ADD COLUMN ultima_visualizacao_admin timestamp with time zone;
+DO $acol$ BEGIN ALTER TABLE public.suporte_tickets 
+ADD COLUMN ultima_visualizacao_admin timestamp with time zone; EXCEPTION WHEN duplicate_column THEN NULL; END $acol$;
 
 COMMENT ON COLUMN public.suporte_tickets.ultima_visualizacao_admin IS 'Última vez que um admin visualizou este ticket (para controlar notificações de novas respostas)';
 
@@ -450,14 +514,14 @@ USING (
 
 -- === 20251119175007_8d54b4af-822e-4d94-bf72-3d866a8c0524.sql ===
 -- Adicionar campos para rastrear envio de emails na tabela suporte_tickets
-ALTER TABLE public.suporte_tickets
+DO $acol$ BEGIN ALTER TABLE public.suporte_tickets
 ADD COLUMN email_enviado_em timestamp with time zone,
 ADD COLUMN email_status text DEFAULT 'pendente' CHECK (email_status IN ('pendente', 'enviado', 'falha')),
-ADD COLUMN email_erro text;
+ADD COLUMN email_erro text; EXCEPTION WHEN duplicate_column THEN NULL; END $acol$;
 
 -- === 20251121165234_587425d6-2b91-4ddb-82fe-c14f4832e01f.sql ===
 -- Adicionar 'lideres' ao enum app_role
-DO $atwrap$ BEGIN ALTER TYPE app_role ADD VALUE IF NOT EXISTS 'lideres'; EXCEPTION WHEN duplicate_object THEN NULL; END $atwrap$;
+DO $aw$ BEGIN ALTER TYPE app_role ADD VALUE IF NOT EXISTS 'lideres'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
 
 
 -- === 20251121165258_ee0e283d-ce22-4dea-9106-6d4ecfd4c087.sql ===
@@ -862,16 +926,16 @@ CREATE TRIGGER audit_permissoes
 
 -- === 20251121184242_d75612d2-816e-46b6-8908-cec85c0beb7e.sql ===
 -- Adicionar campo para múltiplos turnos nas escalas
-ALTER TABLE radiologia_agendas_escalas 
-ADD COLUMN turnos JSONB DEFAULT '[]'::jsonb;
+DO $acol$ BEGIN ALTER TABLE radiologia_agendas_escalas 
+ADD COLUMN turnos JSONB DEFAULT '[]'::jsonb; EXCEPTION WHEN duplicate_column THEN NULL; END $acol$;
 
 -- Comentário explicativo
 COMMENT ON COLUMN radiologia_agendas_escalas.turnos IS 'Array de turnos diários no formato: [{"inicio": "07:00", "fim": "12:00"}, ...]';
 
 -- === 20251121193706_37652016-8863-4f27-a5ee-511271bc664d.sql ===
 -- Adicionar coluna observacoes na tabela radiologia_agendas_escalas
-ALTER TABLE radiologia_agendas_escalas
-ADD COLUMN observacoes text;
+DO $acol$ BEGIN ALTER TABLE radiologia_agendas_escalas
+ADD COLUMN observacoes text; EXCEPTION WHEN duplicate_column THEN NULL; END $acol$;
 
 -- === 20251121195212_058b5947-c634-4034-b2a3-5b0e3c2fecf6.sql ===
 
@@ -1004,7 +1068,7 @@ COMMENT ON COLUMN public.suporte_tickets.resolvido_por_nome IS 'Nome do usuário
 
 -- === 20251127175823_bd6dca51-b1a8-41c4-94a9-f616803e9b76.sql ===
 -- Add new value to tipo_documento_medico enum
-DO $atwrap$ BEGIN ALTER TYPE public.tipo_documento_medico ADD VALUE IF NOT EXISTS 'contrato_aditivo'; EXCEPTION WHEN duplicate_object THEN NULL; END $atwrap$;
+DO $aw$ BEGIN ALTER TYPE public.tipo_documento_medico ADD VALUE IF NOT EXISTS 'contrato_aditivo'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
 
 
 -- === 20251127195420_c4493478-6d82-4754-94f1-f5c9c9a4b654.sql ===
@@ -1263,96 +1327,3 @@ CREATE TRIGGER update_contrato_capitacao_updated_at
   BEFORE UPDATE ON public.contrato_capitacao
   FOR EACH ROW
   EXECUTE FUNCTION public.update_updated_at_column();
-
-DROP TRIGGER IF EXISTS "update_servico_updated_at" ON public.servico;
-CREATE TRIGGER update_servico_updated_at
-  BEFORE UPDATE ON public.servico
-  FOR EACH ROW
-  EXECUTE FUNCTION public.update_updated_at_column();
-
-DROP TRIGGER IF EXISTS "update_proposta_updated_at" ON public.proposta;
-CREATE TRIGGER update_proposta_updated_at
-  BEFORE UPDATE ON public.proposta
-  FOR EACH ROW
-  EXECUTE FUNCTION public.update_updated_at_column();
-
--- === 20251204145834_bc40aea2-faac-4403-bd1d-47d0ca80e500.sql ===
--- Update the licitacoes-anexos bucket to allow all file types
-UPDATE storage.buckets 
-SET allowed_mime_types = NULL
-WHERE id = 'licitacoes-anexos';
-
--- If bucket doesn't exist, create it without restrictions
-INSERT INTO storage.buckets (id, name, public, allowed_mime_types)
-VALUES ('licitacoes-anexos', 'licitacoes-anexos', true, NULL)
-ON CONFLICT (id) DO UPDATE SET allowed_mime_types = NULL;
-
--- === 20251204174501_3389fdfc-9014-4028-9e18-66325ebcf798.sql ===
--- Create licitacoes_anexos table
-CREATE TABLE IF NOT EXISTS public.licitacoes_anexos (
-  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  licitacao_id UUID NOT NULL REFERENCES public.licitacoes(id) ON DELETE CASCADE,
-  arquivo_nome TEXT NOT NULL,
-  arquivo_url TEXT NOT NULL,
-  usuario_id UUID,
-  usuario_nome TEXT,
-  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
-);
-
--- Enable RLS
-ALTER TABLE public.licitacoes_anexos ENABLE ROW LEVEL SECURITY;
-
--- RLS policies (authenticated users can manage)
-DROP POLICY IF EXISTS "Authenticated users can view anexos" ON public.licitacoes_anexos;
-CREATE POLICY "Authenticated users can view anexos" 
-ON public.licitacoes_anexos 
-FOR SELECT 
-TO authenticated
-USING (true);
-
-DROP POLICY IF EXISTS "Authenticated users can insert anexos" ON public.licitacoes_anexos;
-CREATE POLICY "Authenticated users can insert anexos" 
-ON public.licitacoes_anexos 
-FOR INSERT 
-TO authenticated
-WITH CHECK (true);
-
-DROP POLICY IF EXISTS "Authenticated users can delete anexos" ON public.licitacoes_anexos;
-CREATE POLICY "Authenticated users can delete anexos" 
-ON public.licitacoes_anexos 
-FOR DELETE 
-TO authenticated
-USING (true);
-
--- Index for faster lookups
-CREATE INDEX IF NOT EXISTS idx_licitacoes_anexos_licitacao_id ON public.licitacoes_anexos(licitacao_id);
-
--- === 20251204175332_628f6b3a-ec10-4d63-a3ff-06615578a8ee.sql ===
--- Remove MIME type restrictions from editais-pdfs bucket to allow all file types including ZIP
-UPDATE storage.buckets 
-SET allowed_mime_types = NULL 
-WHERE id = 'editais-pdfs';
-
--- === 20251204184049_01db28cc-294f-4a53-aaf4-6ece7b843dd0.sql ===
--- Delete all objects from editais-pdfs bucket
-DELETE FROM storage.objects WHERE bucket_id = 'editais-pdfs';
-
--- === 20251205112240_51466887-1374-49c8-849d-06b4dcb0fca5.sql ===
--- Marketing Conteúdos (Posts de Redes Sociais)
-CREATE TABLE IF NOT EXISTS public.marketing_conteudos (
-  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  campanha_id UUID REFERENCES public.campanhas(id) ON DELETE SET NULL,
-  conta_perfil TEXT NOT NULL,
-  tipo TEXT NOT NULL CHECK (tipo IN ('post', 'reels', 'story', 'video', 'carousel')),
-  objetivo TEXT,
-  legenda TEXT,
-  materiais TEXT[] DEFAULT '{}',
-  checklist JSONB DEFAULT '[]',
-  comentarios_internos JSONB DEFAULT '[]',
-  status TEXT NOT NULL DEFAULT 'a_fazer' CHECK (status IN ('a_fazer', 'em_producao', 'em_revisao', 'aprovado', 'agendado', 'publicado')),
-  data_publicacao TIMESTAMP WITH TIME ZONE,
-  metricas JSONB DEFAULT '{}',
-  responsavel_id UUID,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);

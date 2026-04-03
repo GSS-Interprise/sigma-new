@@ -1,4 +1,97 @@
 
+DROP TRIGGER IF EXISTS "update_servico_updated_at" ON public.servico;
+CREATE TRIGGER update_servico_updated_at
+  BEFORE UPDATE ON public.servico
+  FOR EACH ROW
+  EXECUTE FUNCTION public.update_updated_at_column();
+
+DROP TRIGGER IF EXISTS "update_proposta_updated_at" ON public.proposta;
+CREATE TRIGGER update_proposta_updated_at
+  BEFORE UPDATE ON public.proposta
+  FOR EACH ROW
+  EXECUTE FUNCTION public.update_updated_at_column();
+
+-- === 20251204145834_bc40aea2-faac-4403-bd1d-47d0ca80e500.sql ===
+-- Update the licitacoes-anexos bucket to allow all file types
+UPDATE storage.buckets 
+SET allowed_mime_types = NULL
+WHERE id = 'licitacoes-anexos';
+
+-- If bucket doesn't exist, create it without restrictions
+INSERT INTO storage.buckets (id, name, public, allowed_mime_types)
+VALUES ('licitacoes-anexos', 'licitacoes-anexos', true, NULL)
+ON CONFLICT (id) DO UPDATE SET allowed_mime_types = NULL;
+
+-- === 20251204174501_3389fdfc-9014-4028-9e18-66325ebcf798.sql ===
+-- Create licitacoes_anexos table
+CREATE TABLE IF NOT EXISTS public.licitacoes_anexos (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  licitacao_id UUID NOT NULL REFERENCES public.licitacoes(id) ON DELETE CASCADE,
+  arquivo_nome TEXT NOT NULL,
+  arquivo_url TEXT NOT NULL,
+  usuario_id UUID,
+  usuario_nome TEXT,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+);
+
+-- Enable RLS
+ALTER TABLE public.licitacoes_anexos ENABLE ROW LEVEL SECURITY;
+
+-- RLS policies (authenticated users can manage)
+DROP POLICY IF EXISTS "Authenticated users can view anexos" ON public.licitacoes_anexos;
+CREATE POLICY "Authenticated users can view anexos" 
+ON public.licitacoes_anexos 
+FOR SELECT 
+TO authenticated
+USING (true);
+
+DROP POLICY IF EXISTS "Authenticated users can insert anexos" ON public.licitacoes_anexos;
+CREATE POLICY "Authenticated users can insert anexos" 
+ON public.licitacoes_anexos 
+FOR INSERT 
+TO authenticated
+WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Authenticated users can delete anexos" ON public.licitacoes_anexos;
+CREATE POLICY "Authenticated users can delete anexos" 
+ON public.licitacoes_anexos 
+FOR DELETE 
+TO authenticated
+USING (true);
+
+-- Index for faster lookups
+CREATE INDEX IF NOT EXISTS idx_licitacoes_anexos_licitacao_id ON public.licitacoes_anexos(licitacao_id);
+
+-- === 20251204175332_628f6b3a-ec10-4d63-a3ff-06615578a8ee.sql ===
+-- Remove MIME type restrictions from editais-pdfs bucket to allow all file types including ZIP
+UPDATE storage.buckets 
+SET allowed_mime_types = NULL 
+WHERE id = 'editais-pdfs';
+
+-- === 20251204184049_01db28cc-294f-4a53-aaf4-6ece7b843dd0.sql ===
+-- Delete all objects from editais-pdfs bucket
+DELETE FROM storage.objects WHERE bucket_id = 'editais-pdfs';
+
+-- === 20251205112240_51466887-1374-49c8-849d-06b4dcb0fca5.sql ===
+-- Marketing Conteúdos (Posts de Redes Sociais)
+CREATE TABLE IF NOT EXISTS public.marketing_conteudos (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  campanha_id UUID REFERENCES public.campanhas(id) ON DELETE SET NULL,
+  conta_perfil TEXT NOT NULL,
+  tipo TEXT NOT NULL CHECK (tipo IN ('post', 'reels', 'story', 'video', 'carousel')),
+  objetivo TEXT,
+  legenda TEXT,
+  materiais TEXT[] DEFAULT '{}',
+  checklist JSONB DEFAULT '[]',
+  comentarios_internos JSONB DEFAULT '[]',
+  status TEXT NOT NULL DEFAULT 'a_fazer' CHECK (status IN ('a_fazer', 'em_producao', 'em_revisao', 'aprovado', 'agendado', 'publicado')),
+  data_publicacao TIMESTAMP WITH TIME ZONE,
+  metricas JSONB DEFAULT '{}',
+  responsavel_id UUID,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
 -- Marketing Eventos
 CREATE TABLE IF NOT EXISTS public.marketing_eventos (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -201,16 +294,16 @@ ADD COLUMN IF NOT EXISTS lista_servicos text[] DEFAULT '{}';
 
 -- === 20251208130843_0ed82daa-88cc-45b0-8694-4e610b11d06f.sql ===
 -- Alterar proposta: remover obrigatoriedade de lead_id e adicionar novos campos
-ALTER TABLE public.proposta 
-  ALTER COLUMN lead_id DROP NOT NULL;
+DO $altc$ BEGIN ALTER TABLE public.proposta 
+  ALTER COLUMN lead_id DROP NOT NULL; EXCEPTION WHEN undefined_column THEN NULL; WHEN undefined_table THEN NULL; END $altc$;
 
 -- Adicionar campo id_proposta (identificador único formatado)
-ALTER TABLE public.proposta 
-  ADD COLUMN id_proposta TEXT UNIQUE;
+DO $acol$ BEGIN ALTER TABLE public.proposta 
+  ADD COLUMN id_proposta TEXT UNIQUE; EXCEPTION WHEN duplicate_column THEN NULL; END $acol$;
 
 -- Adicionar campo descricao
-ALTER TABLE public.proposta 
-  ADD COLUMN descricao TEXT;
+DO $acol$ BEGIN ALTER TABLE public.proposta 
+  ADD COLUMN descricao TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $acol$;
 
 -- Comentário explicativo do formato do id_proposta
 COMMENT ON COLUMN public.proposta.id_proposta IS 'ID formatado: {codigo_contrato}{3letrasServico}-{especialidade}-{ddMmmYY}-{valorFormatado}. Ex: 75Hem-Neo-08Dez25-50k';
@@ -423,7 +516,7 @@ EXECUTE FUNCTION public.update_updated_at_column();
 
 -- 1) Criar ENUM para tipos de evento no histórico do lead
 DO $$ BEGIN
-  DO $typwrap$ BEGIN CREATE TYPE tipo_evento_lead AS ENUM (
+  DO $tw$ BEGIN CREATE TYPE tipo_evento_lead AS ENUM (
     'disparo_email',
     'disparo_zap', 
     'proposta_enviada',
@@ -436,7 +529,7 @@ DO $$ BEGIN
     'documentacao_solicitada',
     'documentacao_recebida',
     'outro'
-  ); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+  ); EXCEPTION WHEN duplicate_object THEN NULL; END $tw$;
 EXCEPTION
   WHEN duplicate_object THEN null;
 END $$;
@@ -459,11 +552,11 @@ BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'proposta' AND table_schema = 'public') THEN
     -- Adicionar lead_id se não existir
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'proposta' AND column_name = 'lead_id') THEN
-      ALTER TABLE public.proposta ADD COLUMN lead_id uuid REFERENCES public.leads(id);
+      DO $acol$ BEGIN ALTER TABLE public.proposta ADD COLUMN lead_id uuid REFERENCES public.leads(id); EXCEPTION WHEN duplicate_column THEN NULL; END $acol$;
     END IF;
     -- Adicionar licitacao_id para rastreio completo
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'proposta' AND column_name = 'licitacao_id') THEN
-      ALTER TABLE public.proposta ADD COLUMN licitacao_id uuid REFERENCES public.licitacoes(id);
+      DO $acol$ BEGIN ALTER TABLE public.proposta ADD COLUMN licitacao_id uuid REFERENCES public.licitacoes(id); EXCEPTION WHEN duplicate_column THEN NULL; END $acol$;
     END IF;
   END IF;
 END $$;
@@ -567,19 +660,19 @@ WITH CHECK (auth.uid() IS NOT NULL);
 
 -- === 20251208175022_360e975c-e2f9-44a8-978c-bd74840685ed.sql ===
 -- Add new event types to track all lead status changes
-DO $atwrap$ BEGIN ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'status_alterado'; EXCEPTION WHEN duplicate_object THEN NULL; END $atwrap$;
+DO $aw$ BEGIN ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'status_alterado'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
 
-DO $atwrap$ BEGIN ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'enviado_acompanhamento'; EXCEPTION WHEN duplicate_object THEN NULL; END $atwrap$;
+DO $aw$ BEGIN ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'enviado_acompanhamento'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
 
-DO $atwrap$ BEGIN ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'lead_criado'; EXCEPTION WHEN duplicate_object THEN NULL; END $atwrap$;
+DO $aw$ BEGIN ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'lead_criado'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
 
-DO $atwrap$ BEGIN ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'lead_editado'; EXCEPTION WHEN duplicate_object THEN NULL; END $atwrap$;
+DO $aw$ BEGIN ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'lead_editado'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
 
-DO $atwrap$ BEGIN ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'lead_qualificado'; EXCEPTION WHEN duplicate_object THEN NULL; END $atwrap$;
+DO $aw$ BEGIN ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'lead_qualificado'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
 
-DO $atwrap$ BEGIN ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'em_resposta'; EXCEPTION WHEN duplicate_object THEN NULL; END $atwrap$;
+DO $aw$ BEGIN ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'em_resposta'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
 
-DO $atwrap$ BEGIN ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'lead_descartado'; EXCEPTION WHEN duplicate_object THEN NULL; END $atwrap$;
+DO $aw$ BEGIN ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'lead_descartado'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
 
 
 -- === 20251208175403_b141e099-1377-4664-8536-4823a3f030a1.sql ===
@@ -601,7 +694,7 @@ WITH CHECK (auth.uid() IS NOT NULL);
 ALTER TABLE public.leads DROP CONSTRAINT IF EXISTS leads_status_check;
 
 -- Add updated constraint with all status values
-ALTER TABLE public.leads ADD CONSTRAINT leads_status_check 
+DO $ac$ BEGIN ALTER TABLE public.leads ADD CONSTRAINT leads_status_check 
 CHECK (status = ANY (ARRAY[
   'Novo'::text, 
   'Qualificado'::text, 
@@ -612,7 +705,7 @@ CHECK (status = ANY (ARRAY[
   'Proposta Enviada'::text,
   'Proposta Aceita'::text,
   'Proposta Recusada'::text
-]));
+])); EXCEPTION WHEN duplicate_object THEN NULL; END $ac$;
 
 -- === 20251208185305_68a2416b-8a55-433b-b11b-f297566ecb85.sql ===
 -- Add missing fields to leads table to match medicos kanban card structure
@@ -1097,108 +1190,3 @@ SELECT
 FROM public.chips
 WHERE instance_id IS NOT NULL
 ON CONFLICT DO NOTHING;
-
-
--- === 20251209181841_efccf096-a9d0-4768-a3f1-d054d422feaf.sql ===
--- Adicionar campo cor à tabela captacao_permissoes_usuario
-ALTER TABLE public.captacao_permissoes_usuario 
-ADD COLUMN IF NOT EXISTS cor TEXT;
-
--- === 20251209191836_839c991f-b55b-4d9e-a5f6-47ef5ae3621c.sql ===
--- Tornar o bucket sigzap-media público para permitir acesso às URLs de mídia
-UPDATE storage.buckets 
-SET public = true 
-WHERE id = 'sigzap-media';
-
--- Se não existir, criar como público
-INSERT INTO storage.buckets (id, name, public)
-VALUES ('sigzap-media', 'sigzap-media', true)
-ON CONFLICT (id) DO UPDATE SET public = true;
-
--- === 20251210113204_bf598681-a621-4743-95aa-c32122d7254f.sql ===
--- Add approval fields for "Corpo Médico" conversion
-ALTER TABLE public.medicos
-ADD COLUMN IF NOT EXISTS aprovacao_contrato_assinado boolean DEFAULT false,
-ADD COLUMN IF NOT EXISTS aprovacao_documentacao_unidade boolean DEFAULT false,
-ADD COLUMN IF NOT EXISTS aprovacao_cadastro_unidade boolean DEFAULT false,
-ADD COLUMN IF NOT EXISTS data_aprovacao_corpo_medico timestamp with time zone,
-ADD COLUMN IF NOT EXISTS aprovado_corpo_medico_por uuid;
-
--- === 20251210120722_94f8652c-b17e-49db-9c4a-1dfd5c99ed33.sql ===
--- Add policy to allow authenticated users to insert leads
-DROP POLICY IF EXISTS "Authenticated users can insert leads" ON public.leads;
-CREATE POLICY "Authenticated users can insert leads" 
-ON public.leads 
-FOR INSERT 
-WITH CHECK (auth.uid() IS NOT NULL);
-
--- === 20251212120225_d83064fa-233c-456f-9cb9-44ee135daafb.sql ===
--- Add reaction column to sigzap_messages table
-ALTER TABLE public.sigzap_messages 
-ADD COLUMN reaction TEXT;
-
--- Add comment explaining the column
-COMMENT ON COLUMN public.sigzap_messages.reaction IS 'Emoji reaction to this message';
-
--- === 20251212133705_b59348e3-8480-4a18-a44c-639bac5a0377.sql ===
-
--- AGES Profissionais (cadastro de profissionais não-médicos)
-CREATE TABLE IF NOT EXISTS public.ages_profissionais (
-  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  nome TEXT NOT NULL,
-  cpf TEXT,
-  rg TEXT,
-  data_nascimento DATE,
-  profissao TEXT NOT NULL,
-  registro_profissional TEXT,
-  telefone TEXT,
-  email TEXT,
-  endereco TEXT,
-  cidade TEXT,
-  uf TEXT,
-  cep TEXT,
-  banco TEXT,
-  agencia TEXT,
-  conta_corrente TEXT,
-  chave_pix TEXT,
-  status TEXT NOT NULL DEFAULT 'pendente_documentacao',
-  observacoes TEXT,
-  lead_origem_id UUID,
-  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
-);
-
--- AGES Profissionais Documentos
-CREATE TABLE IF NOT EXISTS public.ages_profissionais_documentos (
-  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  profissional_id UUID NOT NULL REFERENCES public.ages_profissionais(id) ON DELETE CASCADE,
-  tipo_documento TEXT NOT NULL,
-  arquivo_nome TEXT NOT NULL,
-  arquivo_url TEXT NOT NULL,
-  data_emissao DATE,
-  data_validade DATE,
-  observacoes TEXT,
-  uploaded_by UUID,
-  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
-);
-
--- AGES Contratos (independente dos contratos gerais)
-CREATE TABLE IF NOT EXISTS public.ages_contratos (
-  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  codigo_contrato TEXT,
-  profissional_id UUID REFERENCES public.ages_profissionais(id),
-  cliente_id UUID REFERENCES public.clientes(id),
-  unidade_id UUID REFERENCES public.unidades(id),
-  tipo_contrato TEXT,
-  objeto_contrato TEXT,
-  data_inicio DATE NOT NULL,
-  data_fim DATE,
-  valor_mensal NUMERIC,
-  valor_hora NUMERIC,
-  carga_horaria_mensal INTEGER,
-  documento_url TEXT,
-  status TEXT NOT NULL DEFAULT 'em_negociacao',
-  observacoes TEXT,
-  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
-);

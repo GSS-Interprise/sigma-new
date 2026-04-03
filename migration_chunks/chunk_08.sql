@@ -1,3 +1,100 @@
+
+-- Criar tabela ages_contrato_aditivos
+CREATE TABLE IF NOT EXISTS public.ages_contrato_aditivos (
+  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  contrato_id uuid NOT NULL REFERENCES public.ages_contratos(id) ON DELETE CASCADE,
+  data_inicio date NOT NULL,
+  prazo_meses integer NOT NULL,
+  data_termino date NOT NULL,
+  observacoes text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+-- Habilitar RLS nas novas tabelas
+ALTER TABLE public.ages_contrato_itens ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ages_contrato_renovacoes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ages_contrato_aditivos ENABLE ROW LEVEL SECURITY;
+
+-- Políticas RLS para ages_contrato_itens
+DROP POLICY IF EXISTS "Authenticated users can view ages_contrato_itens" ON public.ages_contrato_itens;
+CREATE POLICY "Authenticated users can view ages_contrato_itens" 
+ON public.ages_contrato_itens 
+FOR SELECT 
+USING (auth.uid() IS NOT NULL);
+
+DROP POLICY IF EXISTS "Authorized users can manage ages_contrato_itens" ON public.ages_contrato_itens;
+CREATE POLICY "Authorized users can manage ages_contrato_itens" 
+ON public.ages_contrato_itens 
+FOR ALL 
+USING (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_captacao'::app_role) OR has_role(auth.uid(), 'gestor_contratos'::app_role) OR has_role(auth.uid(), 'gestor_ages'::app_role));
+
+-- Políticas RLS para ages_contrato_renovacoes
+DROP POLICY IF EXISTS "Authenticated users can view ages_contrato_renovacoes" ON public.ages_contrato_renovacoes;
+CREATE POLICY "Authenticated users can view ages_contrato_renovacoes" 
+ON public.ages_contrato_renovacoes 
+FOR SELECT 
+USING (auth.uid() IS NOT NULL);
+
+DROP POLICY IF EXISTS "Authorized users can manage ages_contrato_renovacoes" ON public.ages_contrato_renovacoes;
+CREATE POLICY "Authorized users can manage ages_contrato_renovacoes" 
+ON public.ages_contrato_renovacoes 
+FOR ALL 
+USING (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_captacao'::app_role) OR has_role(auth.uid(), 'gestor_contratos'::app_role) OR has_role(auth.uid(), 'gestor_ages'::app_role));
+
+-- Políticas RLS para ages_contrato_aditivos
+DROP POLICY IF EXISTS "Authenticated users can view ages_contrato_aditivos" ON public.ages_contrato_aditivos;
+CREATE POLICY "Authenticated users can view ages_contrato_aditivos" 
+ON public.ages_contrato_aditivos 
+FOR SELECT 
+USING (auth.uid() IS NOT NULL);
+
+DROP POLICY IF EXISTS "Authorized users can manage ages_contrato_aditivos" ON public.ages_contrato_aditivos;
+CREATE POLICY "Authorized users can manage ages_contrato_aditivos" 
+ON public.ages_contrato_aditivos 
+FOR ALL 
+USING (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_captacao'::app_role) OR has_role(auth.uid(), 'gestor_contratos'::app_role) OR has_role(auth.uid(), 'gestor_ages'::app_role));
+
+-- Trigger para updated_at nas novas tabelas
+CREATE OR REPLACE FUNCTION public.update_ages_contrato_related_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SET search_path = public;
+
+DROP TRIGGER IF EXISTS "update_ages_contrato_itens_updated_at" ON public.ages_contrato_itens;
+CREATE TRIGGER update_ages_contrato_itens_updated_at
+BEFORE UPDATE ON public.ages_contrato_itens
+FOR EACH ROW
+EXECUTE FUNCTION public.update_ages_contrato_related_updated_at();
+
+DROP TRIGGER IF EXISTS "update_ages_contrato_renovacoes_updated_at" ON public.ages_contrato_renovacoes;
+CREATE TRIGGER update_ages_contrato_renovacoes_updated_at
+BEFORE UPDATE ON public.ages_contrato_renovacoes
+FOR EACH ROW
+EXECUTE FUNCTION public.update_ages_contrato_related_updated_at();
+
+DROP TRIGGER IF EXISTS "update_ages_contrato_aditivos_updated_at" ON public.ages_contrato_aditivos;
+CREATE TRIGGER update_ages_contrato_aditivos_updated_at
+BEFORE UPDATE ON public.ages_contrato_aditivos
+FOR EACH ROW
+EXECUTE FUNCTION public.update_ages_contrato_related_updated_at();
+
+
+-- === 20260105115408_0cfaa47a-0dd9-4809-aff1-f009fbb87b9d.sql ===
+-- Adicionar campos faltantes na tabela ages_contratos
+ALTER TABLE public.ages_contratos
+ADD COLUMN IF NOT EXISTS condicao_pagamento TEXT,
+ADD COLUMN IF NOT EXISTS valor_estimado TEXT,
+ADD COLUMN IF NOT EXISTS dias_antecedencia_aviso INTEGER DEFAULT 60;
+
+-- === 20260105144855_cd5b1afe-8b7e-4f0b-afa2-9e862d77182f.sql ===
+-- Drop existing restrictive SELECT policies and recreate with diretoria access
+
+-- 1. contratos-documentos - Add diretoria to SELECT
+DROP POLICY IF EXISTS "Authorized users can view contract documents" ON storage.objects;
 DROP POLICY IF EXISTS "Authorized users can view contract documents" ON storage.objects;
 CREATE POLICY "Authorized users can view contract documents" ON storage.objects 
 FOR SELECT USING (
@@ -97,7 +194,7 @@ FOR SELECT USING (
 -- Atualizar constraint de status_contrato para incluir 'Em Processo de Renovação' que é usado no frontend
 ALTER TABLE public.contratos DROP CONSTRAINT IF EXISTS contratos_status_contrato_check;
 
-ALTER TABLE public.contratos ADD CONSTRAINT contratos_status_contrato_check 
+DO $ac$ BEGIN ALTER TABLE public.contratos ADD CONSTRAINT contratos_status_contrato_check 
   CHECK (status_contrato = ANY (ARRAY[
     'Ativo'::text, 
     'Inativo'::text, 
@@ -106,12 +203,12 @@ ALTER TABLE public.contratos ADD CONSTRAINT contratos_status_contrato_check
     'Em Renovação'::text, 
     'Em Processo de Renovação'::text, 
     'Pre-Contrato'::text
-  ]));
+  ])); EXCEPTION WHEN duplicate_object THEN NULL; END $ac$;
 
 -- Para ages_contratos - adicionar constraints (campos são TEXT)
 ALTER TABLE public.ages_contratos DROP CONSTRAINT IF EXISTS ages_contratos_status_check;
 
-ALTER TABLE public.ages_contratos ADD CONSTRAINT ages_contratos_status_check 
+DO $ac$ BEGIN ALTER TABLE public.ages_contratos ADD CONSTRAINT ages_contratos_status_check 
   CHECK (status IS NULL OR status = ANY (ARRAY[
     'Ativo'::text, 
     'Inativo'::text, 
@@ -120,17 +217,17 @@ ALTER TABLE public.ages_contratos ADD CONSTRAINT ages_contratos_status_check
     'Em Renovação'::text, 
     'Em Processo de Renovação'::text, 
     'Pre-Contrato'::text
-  ]));
+  ])); EXCEPTION WHEN duplicate_object THEN NULL; END $ac$;
 
 ALTER TABLE public.ages_contratos DROP CONSTRAINT IF EXISTS ages_contratos_assinado_check;
 
-ALTER TABLE public.ages_contratos ADD CONSTRAINT ages_contratos_assinado_check 
+DO $ac$ BEGIN ALTER TABLE public.ages_contratos ADD CONSTRAINT ages_contratos_assinado_check 
   CHECK (assinado IS NULL OR assinado = ANY (ARRAY[
     'Sim'::text, 
     'Pendente'::text, 
     'Em Análise'::text, 
     'Aguardando Retorno'::text
-  ]));
+  ])); EXCEPTION WHEN duplicate_object THEN NULL; END $ac$;
 
 -- === 20260105171030_44ed8510-129e-4796-b46e-92516772c20a.sql ===
 -- Tabela para anotações do prontuário médico (área de notas rica)
@@ -149,9 +246,9 @@ CREATE TABLE IF NOT EXISTS public.lead_anotacoes (
 );
 
 -- Foreign key para leads
-ALTER TABLE public.lead_anotacoes 
+DO $ac$ BEGIN ALTER TABLE public.lead_anotacoes 
 ADD CONSTRAINT lead_anotacoes_lead_id_fkey 
-FOREIGN KEY (lead_id) REFERENCES public.leads(id) ON DELETE CASCADE;
+FOREIGN KEY (lead_id) REFERENCES public.leads(id) ON DELETE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $ac$;
 
 -- Índices
 CREATE INDEX IF NOT EXISTS idx_lead_anotacoes_lead_id ON public.lead_anotacoes(lead_id);
@@ -293,7 +390,7 @@ CREATE TRIGGER set_contrato_codigo_interno
 
 -- === 20260106144028_64ce2e65-4525-433e-9738-f23d8ea486a5.sql ===
 -- Remover o DEFAULT da sequência para que o trigger MAX+1 funcione
-ALTER TABLE contratos ALTER COLUMN codigo_interno DROP DEFAULT;
+DO $altc$ BEGIN ALTER TABLE contratos ALTER COLUMN codigo_interno DROP DEFAULT; EXCEPTION WHEN undefined_column THEN NULL; WHEN undefined_table THEN NULL; END $altc$;
 
 -- Resetar a sequência para o valor correto (para backup caso precise no futuro)
 SELECT setval('contratos_codigo_interno_seq', (SELECT COALESCE(MAX(codigo_interno), 0) FROM contratos), true);
@@ -470,7 +567,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.disparos_contatos;
 
 -- === 20260107210859_95db3851-2135-458b-96bb-2db8b559c67c.sql ===
 -- Permitir licitacao_id nulo para cards criados manualmente
-ALTER TABLE public.contrato_rascunho ALTER COLUMN licitacao_id DROP NOT NULL;
+DO $altc$ BEGIN ALTER TABLE public.contrato_rascunho ALTER COLUMN licitacao_id DROP NOT NULL; EXCEPTION WHEN undefined_column THEN NULL; WHEN undefined_table THEN NULL; END $altc$;
 
 -- === 20260107221256_c3fd05a5-5dea-4255-897e-aaed403ab456.sql ===
 -- Adicionar coluna cidade na tabela leads
@@ -484,12 +581,12 @@ ALTER TABLE public.disparos_contatos DROP CONSTRAINT IF EXISTS disparos_contatos
 UPDATE public.disparos_contatos SET status = '1-ENVIAR' WHERE status NOT IN ('1-ENVIAR', '2-REENVIAR', '3-TRATANDO', '4-ENVIADO', '5-NOZAP', '6-BLOQUEADORA');
 
 -- Adicionar novo CHECK constraint com os status corretos
-ALTER TABLE public.disparos_contatos 
+DO $ac$ BEGIN ALTER TABLE public.disparos_contatos 
 ADD CONSTRAINT disparos_contatos_status_check 
-CHECK (status IN ('1-ENVIAR', '2-REENVIAR', '3-TRATANDO', '4-ENVIADO', '5-NOZAP', '6-BLOQUEADORA'));
+CHECK (status IN ('1-ENVIAR', '2-REENVIAR', '3-TRATANDO', '4-ENVIADO', '5-NOZAP', '6-BLOQUEADORA')); EXCEPTION WHEN duplicate_object THEN NULL; END $ac$;
 
 -- Atualizar o default para 1-ENVIAR
-ALTER TABLE public.disparos_contatos ALTER COLUMN status SET DEFAULT '1-ENVIAR';
+DO $altc$ BEGIN ALTER TABLE public.disparos_contatos ALTER COLUMN status SET DEFAULT '1-ENVIAR'; EXCEPTION WHEN undefined_column THEN NULL; WHEN undefined_table THEN NULL; END $altc$;
 
 -- === 20260107234929_1dfaa482-d86b-42c9-913f-460b75fba148.sql ===
 -- Adicionar coluna proximo_envio para agendamento de lotes
@@ -605,7 +702,7 @@ ALTER TABLE lead_import_jobs ADD COLUMN IF NOT EXISTS total_chunks INTEGER DEFAU
 ALTER TABLE lead_import_jobs ADD COLUMN IF NOT EXISTS linhas_processadas INTEGER DEFAULT 0;
 
 -- Add unique constraint on leads.phone_e164 for efficient upsert
-ALTER TABLE leads ADD CONSTRAINT leads_phone_e164_unique UNIQUE (phone_e164);
+DO $ac$ BEGIN ALTER TABLE leads ADD CONSTRAINT leads_phone_e164_unique UNIQUE (phone_e164); EXCEPTION WHEN duplicate_object THEN NULL; END $ac$;
 
 -- === 20260112144134_05e1b5ad-1e36-40f7-a70d-116139263d7e.sql ===
 -- Adicionar políticas de INSERT para sigzap_contacts baseado em permissão de captação
@@ -628,7 +725,7 @@ CREATE POLICY "Captadores com permissao zap podem atualizar contatos"
 
 -- === 20260113161600_6f65fda1-3f96-4ef8-b609-3fee0f4bccd9.sql ===
 -- Adicionar novo tipo de evento para reprocessamento de médico no Kanban
-DO $atwrap$ BEGIN ALTER TYPE public.tipo_evento_lead ADD VALUE IF NOT EXISTS 'reprocessado_kanban'; EXCEPTION WHEN duplicate_object THEN NULL; END $atwrap$;
+DO $aw$ BEGIN ALTER TYPE public.tipo_evento_lead ADD VALUE IF NOT EXISTS 'reprocessado_kanban'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
 
 
 -- === 20260113162126_194501a7-56bf-4077-9caa-1460842f19a6.sql ===
@@ -651,20 +748,20 @@ USING (
 
 -- === 20260113163057_82fc60c2-6dda-4c12-a23a-820bb4584dbf.sql ===
 -- Adicionar campo etiquetas na tabela medico_kanban_cards
-ALTER TABLE public.medico_kanban_cards
-ADD COLUMN etiquetas text[] DEFAULT '{}';
+DO $acol$ BEGIN ALTER TABLE public.medico_kanban_cards
+ADD COLUMN etiquetas text[] DEFAULT '{}'; EXCEPTION WHEN duplicate_column THEN NULL; END $acol$;
 
 -- Criar índice para busca por etiquetas
 CREATE INDEX IF NOT EXISTS idx_medico_kanban_cards_etiquetas ON public.medico_kanban_cards USING GIN(etiquetas);
 
 -- === 20260115145801_9f81baeb-2c88-4d14-a0a5-9c0644eaf027.sql ===
 -- Adicionar nova coluna para ages_clientes
-ALTER TABLE public.ages_producao 
-ADD COLUMN ages_cliente_id UUID REFERENCES public.ages_clientes(id);
+DO $acol$ BEGIN ALTER TABLE public.ages_producao 
+ADD COLUMN ages_cliente_id UUID REFERENCES public.ages_clientes(id); EXCEPTION WHEN duplicate_column THEN NULL; END $acol$;
 
 -- Adicionar nova coluna para ages_unidades (opcional)
-ALTER TABLE public.ages_producao 
-ADD COLUMN ages_unidade_id UUID REFERENCES public.ages_unidades(id);
+DO $acol$ BEGIN ALTER TABLE public.ages_producao 
+ADD COLUMN ages_unidade_id UUID REFERENCES public.ages_unidades(id); EXCEPTION WHEN duplicate_column THEN NULL; END $acol$;
 
 -- Criar índices para performance
 CREATE INDEX IF NOT EXISTS idx_ages_producao_ages_cliente ON public.ages_producao(ages_cliente_id);
@@ -672,36 +769,36 @@ CREATE INDEX IF NOT EXISTS idx_ages_producao_ages_unidade ON public.ages_produca
 
 -- === 20260115183459_a76151f6-62b5-4d75-ac84-412d1960d051.sql ===
 -- Permitir que cliente_id seja NULL já que agora usamos ages_cliente_id
-ALTER TABLE public.ages_producao ALTER COLUMN cliente_id DROP NOT NULL;
+DO $altc$ BEGIN ALTER TABLE public.ages_producao ALTER COLUMN cliente_id DROP NOT NULL; EXCEPTION WHEN undefined_column THEN NULL; WHEN undefined_table THEN NULL; END $altc$;
 
 -- === 20260116115825_47058580-d88a-44d4-9021-287aa9ec1311.sql ===
 -- Criar enum para níveis de urgência
-DO $typwrap$ BEGIN DO $typwrap$ BEGIN CREATE TYPE public.nivel_urgencia_suporte AS ENUM (
+DO $tw$ BEGIN CREATE TYPE public.nivel_urgencia_suporte AS ENUM (
   'critica',
   'alta',
   'media',
   'baixa'
-); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$; EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+); EXCEPTION WHEN duplicate_object THEN NULL; END $tw$;
 
 -- Criar enum para tipos de impacto
-DO $typwrap$ BEGIN DO $typwrap$ BEGIN CREATE TYPE public.tipo_impacto_suporte AS ENUM (
+DO $tw$ BEGIN CREATE TYPE public.tipo_impacto_suporte AS ENUM (
   'sistema',
   'infraestrutura',
   'acesso_permissao',
   'integracao',
   'duvida_operacional',
   'melhoria'
-); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$; EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+); EXCEPTION WHEN duplicate_object THEN NULL; END $tw$;
 
 -- Adicionar novos campos na tabela suporte_tickets
-ALTER TABLE public.suporte_tickets
+DO $acol$ BEGIN ALTER TABLE public.suporte_tickets
 ADD COLUMN nivel_urgencia public.nivel_urgencia_suporte DEFAULT NULL,
 ADD COLUMN tipo_impacto public.tipo_impacto_suporte DEFAULT NULL,
 ADD COLUMN responsavel_ti_id uuid DEFAULT NULL,
 ADD COLUMN responsavel_ti_nome text DEFAULT NULL,
 ADD COLUMN sla_resposta_minutos integer DEFAULT NULL,
 ADD COLUMN sla_resolucao_minutos integer DEFAULT NULL,
-ADD COLUMN data_primeira_resposta timestamp with time zone DEFAULT NULL;
+ADD COLUMN data_primeira_resposta timestamp with time zone DEFAULT NULL; EXCEPTION WHEN duplicate_column THEN NULL; END $acol$;
 
 -- Criar tabela de configuração de SLA por urgência
 CREATE TABLE IF NOT EXISTS public.suporte_sla_config (
@@ -756,21 +853,21 @@ EXECUTE FUNCTION public.set_ticket_sla();
 
 -- === 20260116123425_ec38c08c-3d56-41f8-a304-2a3c3597c491.sql ===
 -- 1. Criar enums para classificação e motivo de perda
-DO $typwrap$ BEGIN DO $typwrap$ BEGIN CREATE TYPE classificacao_gss_licitacao AS ENUM (
+DO $tw$ BEGIN CREATE TYPE classificacao_gss_licitacao AS ENUM (
   'primeiro_lugar',
   'segundo_lugar',
   'desclassificada',
   'nao_habilitada'
-); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$; EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+); EXCEPTION WHEN duplicate_object THEN NULL; END $tw$;
 
-DO $typwrap$ BEGIN DO $typwrap$ BEGIN CREATE TYPE motivo_perda_licitacao AS ENUM (
+DO $tw$ BEGIN CREATE TYPE motivo_perda_licitacao AS ENUM (
   'preco',
   'documentacao',
   'prazo',
   'habilitacao_tecnica',
   'estrategia',
   'outros'
-); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$; EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+); EXCEPTION WHEN duplicate_object THEN NULL; END $tw$;
 
 -- 2. Criar tabela de empresas concorrentes
 CREATE TABLE IF NOT EXISTS public.empresas_concorrentes (
@@ -1083,117 +1180,3 @@ CREATE TRIGGER update_user_pastas_updated_at
   EXECUTE FUNCTION public.update_updated_at_column();
 
 DROP TRIGGER IF EXISTS "update_user_notas_updated_at" ON public.user_notas;
-CREATE TRIGGER update_user_notas_updated_at
-  BEFORE UPDATE ON public.user_notas
-  FOR EACH ROW
-  EXECUTE FUNCTION public.update_updated_at_column();
-
--- Bucket para anexos de notas
-INSERT INTO storage.buckets (id, name, public) 
-VALUES ('user-notas-anexos', 'user-notas-anexos', false)
-ON CONFLICT (id) DO NOTHING;
-
--- Políticas de storage para anexos
-DROP POLICY IF EXISTS "Usuários podem ver seus próprios anexos" ON storage.objects;
-CREATE POLICY "Usuários podem ver seus próprios anexos"
-  ON storage.objects FOR SELECT
-  USING (bucket_id = 'user-notas-anexos' AND auth.uid()::text = (storage.foldername(name))[1]);
-
-DROP POLICY IF EXISTS "Usuários podem fazer upload de seus próprios anexos" ON storage.objects;
-CREATE POLICY "Usuários podem fazer upload de seus próprios anexos"
-  ON storage.objects FOR INSERT
-  WITH CHECK (bucket_id = 'user-notas-anexos' AND auth.uid()::text = (storage.foldername(name))[1]);
-
-DROP POLICY IF EXISTS "Usuários podem deletar seus próprios anexos" ON storage.objects;
-CREATE POLICY "Usuários podem deletar seus próprios anexos"
-  ON storage.objects FOR DELETE
-  USING (bucket_id = 'user-notas-anexos' AND auth.uid()::text = (storage.foldername(name))[1]);
-
--- === 20260116173214_18916f1e-6940-4d45-a9b5-c81005044c32.sql ===
--- =====================================================
--- ESTRUTURA PARA INTELIGÊNCIA COMPETITIVA POR ITEM
--- =====================================================
-
--- 1. Tabela de Itens da Licitação
-CREATE TABLE IF NOT EXISTS public.licitacao_itens (
-  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  licitacao_id UUID NOT NULL REFERENCES public.licitacoes(id) ON DELETE CASCADE,
-  nome TEXT NOT NULL,
-  tipo TEXT NOT NULL DEFAULT 'outro', -- consulta, exame, servico, plantao, especialidade, outro
-  descricao TEXT,
-  valor_referencia NUMERIC(15,2),
-  quantidade INTEGER DEFAULT 1,
-  unidade_medida TEXT, -- unidade, hora, mes, etc
-  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
-);
-
--- 2. Tabela de Concorrentes por Item
-CREATE TABLE IF NOT EXISTS public.licitacao_item_concorrentes (
-  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  item_id UUID NOT NULL REFERENCES public.licitacao_itens(id) ON DELETE CASCADE,
-  empresa_id UUID REFERENCES public.empresas_concorrentes(id),
-  empresa_nome TEXT NOT NULL,
-  empresa_cnpj TEXT,
-  valor_ofertado NUMERIC(15,2) NOT NULL,
-  posicao INTEGER NOT NULL DEFAULT 1, -- 1º, 2º, 3º...
-  situacao TEXT NOT NULL DEFAULT 'habilitada', -- habilitada, inabilitada, desclassificada
-  motivo_situacao TEXT, -- motivo de inabilitação ou desclassificação
-  is_gss BOOLEAN NOT NULL DEFAULT false,
-  is_vencedor BOOLEAN NOT NULL DEFAULT false,
-  observacoes TEXT,
-  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
-);
-
--- 3. Índices para performance
-CREATE INDEX IF NOT EXISTS idx_licitacao_itens_licitacao ON public.licitacao_itens(licitacao_id);
-CREATE INDEX IF NOT EXISTS idx_licitacao_item_concorrentes_item ON public.licitacao_item_concorrentes(item_id);
-CREATE INDEX IF NOT EXISTS idx_licitacao_item_concorrentes_empresa ON public.licitacao_item_concorrentes(empresa_id);
-CREATE INDEX IF NOT EXISTS idx_licitacao_item_concorrentes_is_gss ON public.licitacao_item_concorrentes(is_gss);
-CREATE INDEX IF NOT EXISTS idx_licitacao_item_concorrentes_is_vencedor ON public.licitacao_item_concorrentes(is_vencedor);
-
--- 4. Triggers para updated_at
-DROP TRIGGER IF EXISTS "update_licitacao_itens_updated_at" ON public.licitacao_itens;
-CREATE TRIGGER update_licitacao_itens_updated_at
-  BEFORE UPDATE ON public.licitacao_itens
-  FOR EACH ROW
-  EXECUTE FUNCTION public.update_updated_at_column();
-
-DROP TRIGGER IF EXISTS "update_licitacao_item_concorrentes_updated_at" ON public.licitacao_item_concorrentes;
-CREATE TRIGGER update_licitacao_item_concorrentes_updated_at
-  BEFORE UPDATE ON public.licitacao_item_concorrentes
-  FOR EACH ROW
-  EXECUTE FUNCTION public.update_updated_at_column();
-
--- 5. RLS
-ALTER TABLE public.licitacao_itens ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.licitacao_item_concorrentes ENABLE ROW LEVEL SECURITY;
-
--- Políticas para licitacao_itens
-DROP POLICY IF EXISTS "Usuarios autenticados podem ver itens de licitacao" ON public.licitacao_itens;
-CREATE POLICY "Usuarios autenticados podem ver itens de licitacao"
-  ON public.licitacao_itens FOR SELECT TO authenticated USING (true);
-
-DROP POLICY IF EXISTS "Usuarios autenticados podem inserir itens de licitacao" ON public.licitacao_itens;
-CREATE POLICY "Usuarios autenticados podem inserir itens de licitacao"
-  ON public.licitacao_itens FOR INSERT TO authenticated WITH CHECK (true);
-
-DROP POLICY IF EXISTS "Usuarios autenticados podem atualizar itens de licitacao" ON public.licitacao_itens;
-CREATE POLICY "Usuarios autenticados podem atualizar itens de licitacao"
-  ON public.licitacao_itens FOR UPDATE TO authenticated USING (true);
-
-DROP POLICY IF EXISTS "Usuarios autenticados podem deletar itens de licitacao" ON public.licitacao_itens;
-CREATE POLICY "Usuarios autenticados podem deletar itens de licitacao"
-  ON public.licitacao_itens FOR DELETE TO authenticated USING (true);
-
--- Políticas para licitacao_item_concorrentes
-DROP POLICY IF EXISTS "Usuarios autenticados podem ver concorrentes de item" ON public.licitacao_item_concorrentes;
-CREATE POLICY "Usuarios autenticados podem ver concorrentes de item"
-  ON public.licitacao_item_concorrentes FOR SELECT TO authenticated USING (true);
-
-DROP POLICY IF EXISTS "Usuarios autenticados podem inserir concorrentes de item" ON public.licitacao_item_concorrentes;
-CREATE POLICY "Usuarios autenticados podem inserir concorrentes de item"
-  ON public.licitacao_item_concorrentes FOR INSERT TO authenticated WITH CHECK (true);
-
-DROP POLICY IF EXISTS "Usuarios autenticados podem atualizar concorrentes de item" ON public.licitacao_item_concorrentes;

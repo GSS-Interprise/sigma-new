@@ -1,3 +1,193 @@
+CREATE POLICY "Admins and recrutadores can manage propostas"
+  ON public.propostas_medicas FOR ALL
+  USING (
+    public.is_admin(auth.uid()) OR
+    public.has_role(auth.uid(), 'recrutador')
+  );
+
+DROP POLICY IF EXISTS "Authenticated users can view contratos_medico" ON public.contratos_medico;
+DROP POLICY IF EXISTS "Authenticated users can view contratos_medico" ON public.contratos_medico;
+CREATE POLICY "Authenticated users can view contratos_medico"
+  ON public.contratos_medico FOR SELECT
+  TO authenticated
+  USING (true);
+
+DROP POLICY IF EXISTS "Admins can manage contratos_medico" ON public.contratos_medico;
+DROP POLICY IF EXISTS "Admins can manage contratos_medico" ON public.contratos_medico;
+CREATE POLICY "Admins can manage contratos_medico"
+  ON public.contratos_medico FOR ALL
+  USING (public.is_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Authenticated users can view escalas" ON public.escalas;
+DROP POLICY IF EXISTS "Authenticated users can view escalas" ON public.escalas;
+CREATE POLICY "Authenticated users can view escalas"
+  ON public.escalas FOR SELECT
+  TO authenticated
+  USING (true);
+
+DROP POLICY IF EXISTS "Admins and coordenadores can manage escalas" ON public.escalas;
+DROP POLICY IF EXISTS "Admins and coordenadores can manage escalas" ON public.escalas;
+CREATE POLICY "Admins and coordenadores can manage escalas"
+  ON public.escalas FOR ALL
+  USING (
+    public.is_admin(auth.uid()) OR
+    public.has_role(auth.uid(), 'coordenador_escalas')
+  );
+
+DROP POLICY IF EXISTS "Authenticated users can view pagamentos" ON public.pagamentos_medico;
+DROP POLICY IF EXISTS "Authenticated users can view pagamentos" ON public.pagamentos_medico;
+CREATE POLICY "Authenticated users can view pagamentos"
+  ON public.pagamentos_medico FOR SELECT
+  TO authenticated
+  USING (true);
+
+DROP POLICY IF EXISTS "Admins and financeiro can manage pagamentos" ON public.pagamentos_medico;
+DROP POLICY IF EXISTS "Admins and financeiro can manage pagamentos" ON public.pagamentos_medico;
+CREATE POLICY "Admins and financeiro can manage pagamentos"
+  ON public.pagamentos_medico FOR ALL
+  USING (
+    public.is_admin(auth.uid()) OR
+    public.has_role(auth.uid(), 'financeiro')
+  );
+
+DROP POLICY IF EXISTS "Authenticated users can view recebimentos" ON public.recebimentos_cliente;
+DROP POLICY IF EXISTS "Authenticated users can view recebimentos" ON public.recebimentos_cliente;
+CREATE POLICY "Authenticated users can view recebimentos"
+  ON public.recebimentos_cliente FOR SELECT
+  TO authenticated
+  USING (true);
+
+DROP POLICY IF EXISTS "Admins and financeiro can manage recebimentos" ON public.recebimentos_cliente;
+DROP POLICY IF EXISTS "Admins and financeiro can manage recebimentos" ON public.recebimentos_cliente;
+CREATE POLICY "Admins and financeiro can manage recebimentos"
+  ON public.recebimentos_cliente FOR ALL
+  USING (
+    public.is_admin(auth.uid()) OR
+    public.has_role(auth.uid(), 'financeiro')
+  );
+
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.profiles (id, nome_completo, email)
+  VALUES (NEW.id, COALESCE(NEW.raw_user_meta_data->>'nome_completo', NEW.email), NEW.email);
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW
+  EXECUTE FUNCTION public.handle_new_user();
+
+CREATE TABLE IF NOT EXISTS public.log_auditoria (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  tabela TEXT NOT NULL,
+  acao TEXT NOT NULL,
+  registro_id TEXT,
+  dados_anteriores JSONB,
+  dados_novos JSONB,
+  usuario_id UUID REFERENCES auth.users(id),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+ALTER TABLE public.log_auditoria ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Authenticated users can insert logs" ON public.log_auditoria;
+DROP POLICY IF EXISTS "Authenticated users can insert logs" ON public.log_auditoria;
+CREATE POLICY "Authenticated users can insert logs"
+  ON public.log_auditoria FOR INSERT
+  TO authenticated
+  WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Admins can view all logs" ON public.log_auditoria;
+DROP POLICY IF EXISTS "Admins can view all logs" ON public.log_auditoria;
+CREATE POLICY "Admins can view all logs"
+  ON public.log_auditoria FOR SELECT
+  USING (public.is_admin(auth.uid()));
+
+CREATE TABLE IF NOT EXISTS public.contrato_itens (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  contrato_demanda_id UUID NOT NULL REFERENCES public.contratos_demanda(id) ON DELETE CASCADE,
+  descricao TEXT NOT NULL,
+  valor_unitario DECIMAL(10, 2),
+  quantidade INTEGER DEFAULT 1,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+ALTER TABLE public.contrato_itens ENABLE ROW LEVEL SECURITY;
+
+-- === 20260403003525_7f4208db-1e7c-4cab-beab-e6db5aa9cd5f.sql ===
+CREATE TABLE IF NOT EXISTS public.blacklist (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  phone_e164 text UNIQUE NOT NULL,
+  nome text,
+  origem text,
+  reason text,
+  created_at timestamptz DEFAULT now(),
+  created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL
+);
+
+ALTER TABLE public.blacklist ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Authenticated users can view blacklist" ON public.blacklist;
+DROP POLICY IF EXISTS "Authenticated users can view blacklist" ON public.blacklist;
+CREATE POLICY "Authenticated users can view blacklist"
+ON public.blacklist FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Authorized users can manage blacklist" ON public.blacklist;
+DROP POLICY IF EXISTS "Authorized users can manage blacklist" ON public.blacklist;
+CREATE POLICY "Authorized users can manage blacklist"
+ON public.blacklist FOR ALL
+USING (is_admin(auth.uid()) OR has_role(auth.uid(), 'recrutador') OR has_role(auth.uid(), 'gestor_demanda'));
+
+ALTER TABLE public.clientes ADD COLUMN IF NOT EXISTS email_financeiro TEXT;
+ALTER TABLE public.clientes ADD COLUMN IF NOT EXISTS telefone_financeiro TEXT;
+ALTER TABLE public.clientes ADD COLUMN IF NOT EXISTS nome_unidade TEXT;
+ALTER TABLE public.clientes ADD COLUMN IF NOT EXISTS estado TEXT;
+
+CREATE TABLE IF NOT EXISTS public.contrato_renovacoes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  contrato_id UUID NOT NULL,
+  data_vigencia DATE NOT NULL,
+  percentual_reajuste NUMERIC(5, 2),
+  valor NUMERIC(10, 2) NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.contrato_anexos (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  contrato_id UUID NOT NULL,
+  arquivo_nome TEXT NOT NULL,
+  arquivo_url TEXT NOT NULL,
+  usuario_id UUID REFERENCES auth.users(id),
+  usuario_nome TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+ALTER TABLE public.contrato_renovacoes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.contrato_anexos ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Authorized users can manage contrato_renovacoes" ON public.contrato_renovacoes;
+DROP POLICY IF EXISTS "Authorized users can manage contrato_renovacoes" ON public.contrato_renovacoes;
+CREATE POLICY "Authorized users can manage contrato_renovacoes"
+ON public.contrato_renovacoes FOR ALL
+USING (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_demanda'))
+WITH CHECK (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_demanda'));
+
+DROP POLICY IF EXISTS "Authorized users can view contrato_anexos" ON public.contrato_anexos;
+DROP POLICY IF EXISTS "Authorized users can view contrato_anexos" ON public.contrato_anexos;
+CREATE POLICY "Authorized users can view contrato_anexos"
+ON public.contrato_anexos FOR SELECT
+USING (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_demanda'));
+
+DROP POLICY IF EXISTS "Authorized users can insert contrato_anexos" ON public.contrato_anexos;
+DROP POLICY IF EXISTS "Authorized users can insert contrato_anexos" ON public.contrato_anexos;
+CREATE POLICY "Authorized users can insert contrato_anexos"
+ON public.contrato_anexos FOR INSERT
+WITH CHECK (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_demanda'));
 
 -- === 20260403003745_cb21b369-59d4-450a-8d3f-d642d09debe2.sql ===
 -- Função update_updated_at_column
@@ -461,8 +651,8 @@ CREATE TABLE IF NOT EXISTS public.ages_contrato_aditivos (
 ALTER TABLE public.ages_contrato_aditivos ENABLE ROW LEVEL SECURITY;
 
 -- FKs on ages_contratos
-ALTER TABLE public.ages_contratos ADD CONSTRAINT fk_ages_contratos_ages_cliente FOREIGN KEY (ages_cliente_id) REFERENCES public.ages_clientes(id) ON DELETE SET NULL;
-ALTER TABLE public.ages_contratos ADD CONSTRAINT fk_ages_contratos_ages_unidade FOREIGN KEY (ages_unidade_id) REFERENCES public.ages_unidades(id) ON DELETE SET NULL;
+DO $ac$ BEGIN ALTER TABLE public.ages_contratos ADD CONSTRAINT fk_ages_contratos_ages_cliente FOREIGN KEY (ages_cliente_id) REFERENCES public.ages_clientes(id) ON DELETE SET NULL; EXCEPTION WHEN duplicate_object THEN NULL; END $ac$;
+DO $ac$ BEGIN ALTER TABLE public.ages_contratos ADD CONSTRAINT fk_ages_contratos_ages_unidade FOREIGN KEY (ages_unidade_id) REFERENCES public.ages_unidades(id) ON DELETE SET NULL; EXCEPTION WHEN duplicate_object THEN NULL; END $ac$;
 
 -- RLS Policies for all AGES tables
 DO $cp$ BEGIN DROP POLICY IF EXISTS "auth_all_ages_profissionais" ON public.ages_profissionais;
@@ -516,5 +706,5 @@ CREATE INDEX IF NOT EXISTS idx_ages_lead_anexos_lead_id ON public.ages_lead_anex
 
 -- Sequência para codigo_interno
 CREATE SEQUENCE IF NOT EXISTS ages_contratos_codigo_interno_seq START WITH 1;
-ALTER TABLE public.ages_contratos ALTER COLUMN codigo_interno SET DEFAULT nextval('ages_contratos_codigo_interno_seq');
+DO $altc$ BEGIN ALTER TABLE public.ages_contratos ALTER COLUMN codigo_interno SET DEFAULT nextval('ages_contratos_codigo_interno_seq'); EXCEPTION WHEN undefined_column THEN NULL; WHEN undefined_table THEN NULL; END $altc$;
 

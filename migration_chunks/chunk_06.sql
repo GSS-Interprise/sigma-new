@@ -1,4 +1,109 @@
 
+
+-- === 20251209181841_efccf096-a9d0-4768-a3f1-d054d422feaf.sql ===
+-- Adicionar campo cor à tabela captacao_permissoes_usuario
+ALTER TABLE public.captacao_permissoes_usuario 
+ADD COLUMN IF NOT EXISTS cor TEXT;
+
+-- === 20251209191836_839c991f-b55b-4d9e-a5f6-47ef5ae3621c.sql ===
+-- Tornar o bucket sigzap-media público para permitir acesso às URLs de mídia
+UPDATE storage.buckets 
+SET public = true 
+WHERE id = 'sigzap-media';
+
+-- Se não existir, criar como público
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('sigzap-media', 'sigzap-media', true)
+ON CONFLICT (id) DO UPDATE SET public = true;
+
+-- === 20251210113204_bf598681-a621-4743-95aa-c32122d7254f.sql ===
+-- Add approval fields for "Corpo Médico" conversion
+ALTER TABLE public.medicos
+ADD COLUMN IF NOT EXISTS aprovacao_contrato_assinado boolean DEFAULT false,
+ADD COLUMN IF NOT EXISTS aprovacao_documentacao_unidade boolean DEFAULT false,
+ADD COLUMN IF NOT EXISTS aprovacao_cadastro_unidade boolean DEFAULT false,
+ADD COLUMN IF NOT EXISTS data_aprovacao_corpo_medico timestamp with time zone,
+ADD COLUMN IF NOT EXISTS aprovado_corpo_medico_por uuid;
+
+-- === 20251210120722_94f8652c-b17e-49db-9c4a-1dfd5c99ed33.sql ===
+-- Add policy to allow authenticated users to insert leads
+DROP POLICY IF EXISTS "Authenticated users can insert leads" ON public.leads;
+CREATE POLICY "Authenticated users can insert leads" 
+ON public.leads 
+FOR INSERT 
+WITH CHECK (auth.uid() IS NOT NULL);
+
+-- === 20251212120225_d83064fa-233c-456f-9cb9-44ee135daafb.sql ===
+-- Add reaction column to sigzap_messages table
+DO $acol$ BEGIN ALTER TABLE public.sigzap_messages 
+ADD COLUMN reaction TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $acol$;
+
+-- Add comment explaining the column
+COMMENT ON COLUMN public.sigzap_messages.reaction IS 'Emoji reaction to this message';
+
+-- === 20251212133705_b59348e3-8480-4a18-a44c-639bac5a0377.sql ===
+
+-- AGES Profissionais (cadastro de profissionais não-médicos)
+CREATE TABLE IF NOT EXISTS public.ages_profissionais (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  nome TEXT NOT NULL,
+  cpf TEXT,
+  rg TEXT,
+  data_nascimento DATE,
+  profissao TEXT NOT NULL,
+  registro_profissional TEXT,
+  telefone TEXT,
+  email TEXT,
+  endereco TEXT,
+  cidade TEXT,
+  uf TEXT,
+  cep TEXT,
+  banco TEXT,
+  agencia TEXT,
+  conta_corrente TEXT,
+  chave_pix TEXT,
+  status TEXT NOT NULL DEFAULT 'pendente_documentacao',
+  observacoes TEXT,
+  lead_origem_id UUID,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+);
+
+-- AGES Profissionais Documentos
+CREATE TABLE IF NOT EXISTS public.ages_profissionais_documentos (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  profissional_id UUID NOT NULL REFERENCES public.ages_profissionais(id) ON DELETE CASCADE,
+  tipo_documento TEXT NOT NULL,
+  arquivo_nome TEXT NOT NULL,
+  arquivo_url TEXT NOT NULL,
+  data_emissao DATE,
+  data_validade DATE,
+  observacoes TEXT,
+  uploaded_by UUID,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+);
+
+-- AGES Contratos (independente dos contratos gerais)
+CREATE TABLE IF NOT EXISTS public.ages_contratos (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  codigo_contrato TEXT,
+  profissional_id UUID REFERENCES public.ages_profissionais(id),
+  cliente_id UUID REFERENCES public.clientes(id),
+  unidade_id UUID REFERENCES public.unidades(id),
+  tipo_contrato TEXT,
+  objeto_contrato TEXT,
+  data_inicio DATE NOT NULL,
+  data_fim DATE,
+  valor_mensal NUMERIC,
+  valor_hora NUMERIC,
+  carga_horaria_mensal INTEGER,
+  documento_url TEXT,
+  status TEXT NOT NULL DEFAULT 'em_negociacao',
+  observacoes TEXT,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+);
+
 -- AGES Produção (controle mensal)
 CREATE TABLE IF NOT EXISTS public.ages_producao (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -178,7 +283,7 @@ CREATE SEQUENCE IF NOT EXISTS contratos_codigo_interno_seq;
 SELECT setval('contratos_codigo_interno_seq', COALESCE((SELECT MAX(codigo_interno) FROM contratos), 0) + 1, false);
 
 -- Definir o default do campo codigo_interno para usar a sequência
-ALTER TABLE contratos ALTER COLUMN codigo_interno SET DEFAULT nextval('contratos_codigo_interno_seq');
+DO $altc$ BEGIN ALTER TABLE contratos ALTER COLUMN codigo_interno SET DEFAULT nextval('contratos_codigo_interno_seq'); EXCEPTION WHEN undefined_column THEN NULL; WHEN undefined_table THEN NULL; END $altc$;
 
 -- Criar função para gerar codigo_interno automaticamente se não fornecido
 CREATE OR REPLACE FUNCTION public.generate_contrato_codigo_interno()
@@ -336,11 +441,11 @@ COMMENT ON COLUMN public.licitacoes.check_conversao_3 IS 'Checkbox 3: Responsáv
 
 -- === 20251212191621_ab8efb82-ea9c-4075-a770-fd49b4904054.sql ===
 -- Criar enum para tipos de origem do card
-DO $typwrap$ BEGIN CREATE TYPE origem_tipo_board AS ENUM ('manual', 'licitacao_arrematada'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+DO $tw$ BEGIN CREATE TYPE origem_tipo_board AS ENUM ('manual', 'licitacao_arrematada'); EXCEPTION WHEN duplicate_object THEN NULL; END $tw$;
 
 
 -- Criar enum para status do kanban de captação
-DO $typwrap$ BEGIN CREATE TYPE status_captacao_board AS ENUM ('prospectar', 'analisando', 'em_andamento', 'completo', 'descarte'); EXCEPTION WHEN duplicate_object THEN NULL; END $typwrap$;
+DO $tw$ BEGIN CREATE TYPE status_captacao_board AS ENUM ('prospectar', 'analisando', 'em_andamento', 'completo', 'descarte'); EXCEPTION WHEN duplicate_object THEN NULL; END $tw$;
 
 
 -- Criar tabela do Kanban de Captação
@@ -646,7 +751,7 @@ USING (bucket_id = 'comunicacao-anexos' AND auth.uid()::text = (storage.folderna
 
 -- === 20251216113319_029f5d9d-0e62-40d2-8f83-796895bba44b.sql ===
 -- Permitir user_id NULL na tabela licitacoes_atividades para atividades do sistema/API
-ALTER TABLE licitacoes_atividades ALTER COLUMN user_id DROP NOT NULL;
+DO $altc$ BEGIN ALTER TABLE licitacoes_atividades ALTER COLUMN user_id DROP NOT NULL; EXCEPTION WHEN undefined_column THEN NULL; WHEN undefined_table THEN NULL; END $altc$;
 
 -- Adicionar política para service_role inserir atividades
 DROP POLICY IF EXISTS "Service role pode inserir atividades" ON licitacoes_atividades;
@@ -767,12 +872,12 @@ CREATE TRIGGER on_licitacao_arrematada
 ALTER TABLE public.contratos DROP CONSTRAINT IF EXISTS check_cliente_ou_medico;
 
 -- Criar novo constraint que permite Pre-Contratos sem cliente_id ou medico_id
-ALTER TABLE public.contratos ADD CONSTRAINT check_cliente_ou_medico 
+DO $ac$ BEGIN ALTER TABLE public.contratos ADD CONSTRAINT check_cliente_ou_medico 
   CHECK (
     status_contrato = 'Pre-Contrato' 
     OR cliente_id IS NOT NULL 
     OR medico_id IS NOT NULL
-  );
+  ); EXCEPTION WHEN duplicate_object THEN NULL; END $ac$;
 
 
 -- === 20251216122601_3bfe7a7a-3381-4c6b-a094-f678fe348f4b.sql ===
@@ -781,14 +886,14 @@ ALTER TABLE public.contratos ADD CONSTRAINT check_cliente_ou_medico
 ALTER TABLE public.contratos DROP CONSTRAINT IF EXISTS contratos_status_contrato_check;
 
 -- Criar novo constraint incluindo 'Pre-Contrato' como valor válido
-ALTER TABLE public.contratos ADD CONSTRAINT contratos_status_contrato_check 
-  CHECK (status_contrato IN ('Ativo', 'Inativo', 'Encerrado', 'Suspenso', 'Em Renovação', 'Pre-Contrato'));
+DO $ac$ BEGIN ALTER TABLE public.contratos ADD CONSTRAINT contratos_status_contrato_check 
+  CHECK (status_contrato IN ('Ativo', 'Inativo', 'Encerrado', 'Suspenso', 'Em Renovação', 'Pre-Contrato')); EXCEPTION WHEN duplicate_object THEN NULL; END $ac$;
 
 
 -- === 20251217115359_9c70c46b-b196-474d-a6a6-40b18c2fe86d.sql ===
 -- Add reply_to_id field for message replies
-ALTER TABLE public.comunicacao_mensagens 
-ADD COLUMN reply_to_id uuid REFERENCES public.comunicacao_mensagens(id) ON DELETE SET NULL;
+DO $acol$ BEGIN ALTER TABLE public.comunicacao_mensagens 
+ADD COLUMN reply_to_id uuid REFERENCES public.comunicacao_mensagens(id) ON DELETE SET NULL; EXCEPTION WHEN duplicate_column THEN NULL; END $acol$;
 
 -- Create index for faster reply lookups
 CREATE INDEX IF NOT EXISTS idx_comunicacao_mensagens_reply_to ON public.comunicacao_mensagens(reply_to_id);
@@ -821,10 +926,10 @@ ALTER TABLE public.licitacoes REPLICA IDENTITY FULL;
 
 -- === 20251217181247_003afd75-8aee-47ef-af3c-d0fc097e9a2b.sql ===
 -- Add FK so PostgREST can join licitacoes_atividades.user_id -> profiles.id
-ALTER TABLE public.licitacoes_atividades
+DO $ac$ BEGIN ALTER TABLE public.licitacoes_atividades
   ADD CONSTRAINT licitacoes_atividades_user_id_fkey
   FOREIGN KEY (user_id) REFERENCES public.profiles (id)
-  ON DELETE SET NULL;
+  ON DELETE SET NULL; EXCEPTION WHEN duplicate_object THEN NULL; END $ac$;
 
 -- === 20251217182601_8d33587d-58a2-4bb2-b132-e272f9a3bad3.sql ===
 -- Add RLS policies for non-admin users to access contrato_rascunho and contratos
@@ -938,7 +1043,7 @@ ALTER TABLE public.proposta ADD COLUMN IF NOT EXISTS contrato_id uuid REFERENCES
 ALTER TABLE public.proposta ADD COLUMN IF NOT EXISTS unidade_id uuid REFERENCES public.unidades(id) ON DELETE SET NULL;
 
 -- 2. Make servico_id nullable (for backwards compatibility)
-ALTER TABLE public.proposta ALTER COLUMN servico_id DROP NOT NULL;
+DO $altc$ BEGIN ALTER TABLE public.proposta ALTER COLUMN servico_id DROP NOT NULL; EXCEPTION WHEN undefined_column THEN NULL; WHEN undefined_table THEN NULL; END $altc$;
 
 -- 3. Create proposta_itens table to store items with values
 CREATE TABLE IF NOT EXISTS public.proposta_itens (
@@ -1052,93 +1157,3 @@ DELETE FROM storage.objects WHERE bucket_id IN ('licitacoes-anexos', 'editais-pd
 -- Adicionar campo para dados customizados nas licitações
 ALTER TABLE public.licitacoes 
 ADD COLUMN IF NOT EXISTS dados_customizados JSONB DEFAULT '{}'::jsonb;
-
--- === 20251218163735_9e2d6301-5b85-401e-ab1b-6f253c64b925.sql ===
--- Adicionar campo tipo_licitacao para distinguir licitações GSS vs AGES
-ALTER TABLE public.licitacoes
-ADD COLUMN IF NOT EXISTS tipo_licitacao TEXT DEFAULT 'GSS' CHECK (tipo_licitacao IN ('GSS', 'AGES'));
-
--- Criar índice para filtros por tipo
-CREATE INDEX IF NOT EXISTS idx_licitacoes_tipo_licitacao ON public.licitacoes(tipo_licitacao);
-
--- === 20251218174741_0f535efa-3cb3-4dc6-a5c6-7d29342d94e4.sql ===
--- Add prioridade column to licitacoes table
-ALTER TABLE public.licitacoes 
-ADD COLUMN IF NOT EXISTS prioridade TEXT DEFAULT NULL;
-
--- === 20251219121419_44ec1a74-51a5-4741-a208-65a6e5310c5a.sql ===
--- Add UPDATE policy for comunicacao_mensagens to allow users to edit their own messages
-DROP POLICY IF EXISTS "Users can update their own messages" ON public.comunicacao_mensagens;
-CREATE POLICY "Users can update their own messages" 
-ON public.comunicacao_mensagens 
-FOR UPDATE 
-USING (auth.uid() = user_id)
-WITH CHECK (auth.uid() = user_id);
-
--- === 20251219122823_6d7e2502-0cbb-4b2f-b1ba-0711a159e4c5.sql ===
--- Criar tabela para armazenar configuração global de etiquetas de licitações
-CREATE TABLE IF NOT EXISTS public.licitacoes_etiquetas_config (
-  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  nome TEXT NOT NULL UNIQUE,
-  cor_id TEXT NOT NULL DEFAULT 'gray',
-  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
-);
-
--- Habilitar RLS
-ALTER TABLE public.licitacoes_etiquetas_config ENABLE ROW LEVEL SECURITY;
-
--- Política para visualização - usuários autenticados
-DROP POLICY IF EXISTS "Usuários autenticados podem visualizar etiquetas" ON public.licitacoes_etiquetas_config;
-CREATE POLICY "Usuários autenticados podem visualizar etiquetas" 
-ON public.licitacoes_etiquetas_config 
-FOR SELECT 
-USING (auth.uid() IS NOT NULL);
-
--- Política para gerenciamento - gestores
-DROP POLICY IF EXISTS "Gestores podem gerenciar etiquetas" ON public.licitacoes_etiquetas_config;
-CREATE POLICY "Gestores podem gerenciar etiquetas" 
-ON public.licitacoes_etiquetas_config 
-FOR ALL 
-USING (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_contratos'::app_role) OR has_role(auth.uid(), 'gestor_captacao'::app_role) OR has_role(auth.uid(), 'lideres'::app_role))
-WITH CHECK (is_admin(auth.uid()) OR has_role(auth.uid(), 'gestor_contratos'::app_role) OR has_role(auth.uid(), 'gestor_captacao'::app_role) OR has_role(auth.uid(), 'lideres'::app_role));
-
--- Inserir etiquetas padrão
-INSERT INTO public.licitacoes_etiquetas_config (nome, cor_id) VALUES
-  ('Saúde', 'teal'),
-  ('Radiologia', 'purple'),
-  ('Urgente', 'red'),
-  ('Prioritário', 'orange'),
-  ('Médico', 'blue'),
-  ('Equipamento', 'green'),
-  ('Análise Técnica', 'yellow'),
-  ('Documentação', 'gray');
-
--- === 20251222195011_dd01ac85-fbb8-49cc-9d00-7dd07ef10663.sql ===
--- Adicionar novo valor ao enum tipo_evento_lead
-DO $atwrap$ BEGIN ALTER TYPE tipo_evento_lead ADD VALUE IF NOT EXISTS 'desconvertido_para_lead'; EXCEPTION WHEN duplicate_object THEN NULL; END $atwrap$;
-
-
--- === 20251223143019_815a9e5d-3e97-4b59-bdf7-31e5a277c2fc.sql ===
--- Etapa 1: Adicionar novos campos para suportar layout V2
--- Mantendo retrocompatibilidade total com layout V1
-
--- Novos campos para o layout V2
-ALTER TABLE public.radiologia_pendencias 
-ADD COLUMN IF NOT EXISTS cod_acesso TEXT,
-ADD COLUMN IF NOT EXISTS sla TEXT,
-ADD COLUMN IF NOT EXISTS sla_horas INTEGER,
-ADD COLUMN IF NOT EXISTS medico_atribuido_id UUID REFERENCES public.medicos(id),
-ADD COLUMN IF NOT EXISTS medico_atribuido_nome TEXT,
-ADD COLUMN IF NOT EXISTS medico_finalizador_id UUID REFERENCES public.medicos(id),
-ADD COLUMN IF NOT EXISTS data_final TIMESTAMP WITH TIME ZONE,
-ADD COLUMN IF NOT EXISTS layout_versao TEXT DEFAULT 'v1';
-
--- Índice para cod_acesso (campo chave do novo layout)
-CREATE INDEX IF NOT EXISTS idx_radiologia_pendencias_cod_acesso 
-ON public.radiologia_pendencias(cod_acesso);
-
--- Comentários de documentação
-COMMENT ON COLUMN radiologia_pendencias.sla IS 'Tipo SLA do layout V2: Atendimento Ambulatorial (48h), Internado (4h), Pronto Socorro (2h), Alta (2h)';
-COMMENT ON COLUMN radiologia_pendencias.sla_horas IS 'Horas do SLA calculadas automaticamente';
-COMMENT ON COLUMN radiologia_pendencias.medico_atribuido_id IS 'Médico atribuído (do campo atribuido do layout V2)';
