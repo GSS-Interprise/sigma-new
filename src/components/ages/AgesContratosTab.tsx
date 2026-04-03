@@ -89,7 +89,7 @@ const AgesContratosTab = () => {
           *,
           profissional:ages_profissionais(id, nome),
           ages_cliente:ages_clientes!ages_contratos_ages_cliente_id_fkey(id, nome_empresa, nome_fantasia, razao_social, cnpj, endereco, email_contato, telefone_contato, uf, cidade),
-          ages_unidade:ages_unidades(id, nome)
+          ages_unidade:ages_unidades!ages_contratos_ages_unidade_id_fkey(id, nome)
         `)
         .order("created_at", { ascending: false });
 
