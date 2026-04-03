@@ -165,6 +165,7 @@ function AdminImportContent() {
 
       const totalBatches = Math.ceil(rows.length / BATCH_SIZE);
       let errorCount = 0;
+      let consecutiveRequestErrors = 0;
 
       for (let i = 0; i < totalBatches; i++) {
         const batch = rows.slice(i * BATCH_SIZE, (i + 1) * BATCH_SIZE);
@@ -178,11 +179,20 @@ function AdminImportContent() {
 
         if (error) {
           errorCount++;
+          consecutiveRequestErrors++;
           addLog(`❌ Lote ${batchNum} erro: ${error.message}`);
+
+          if (consecutiveRequestErrors >= MAX_CONSECUTIVE_REQUEST_ERRORS) {
+            addLog("⛔ A importação foi interrompida porque a Edge Function não respondeu em 3 tentativas seguidas.");
+            addLog("💡 Verifique se a função import-csv-bulk está publicada e tente novamente.");
+            break;
+          }
         } else if (data?.error) {
           errorCount++;
+          consecutiveRequestErrors = 0;
           addLog(`❌ Lote ${batchNum} erro: ${data.error}${data.hint ? ` (${data.hint})` : ""}`);
         } else {
+          consecutiveRequestErrors = 0;
           addLog(`✅ Lote ${batchNum} OK: ${data?.inserted || batch.length} linhas`);
         }
 
