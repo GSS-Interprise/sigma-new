@@ -5032,15 +5032,7 @@ export type Database = {
           usuario_id?: string | null
           usuario_nome?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "lead_anexos_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       lead_anotacoes: {
         Row: {
@@ -5082,15 +5074,7 @@ export type Database = {
           usuario_id?: string | null
           usuario_nome?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "lead_anotacoes_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       lead_historico: {
         Row: {
@@ -5164,13 +5148,6 @@ export type Database = {
             columns: ["disparo_programado_id"]
             isOneToOne: false
             referencedRelation: "disparos_programados"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "lead_historico_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads"
             referencedColumns: ["id"]
           },
           {
