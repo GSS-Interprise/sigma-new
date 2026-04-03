@@ -104,24 +104,32 @@ export function NotificacoesSino() {
     };
   }, [naoLidas, updatePageTitle]);
 
+  // Refs to avoid re-subscribing when callbacks change
+  const notifyRef = useRef(notify);
+  notifyRef.current = notify;
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
+  const queryClientRef = useRef(queryClient);
+  queryClientRef.current = queryClient;
+
   // Setup realtime com notificações
   useEffect(() => {
-    if (!user) return;
+    if (!user?.id) return;
 
+    const userId = user.id;
     const channel = supabase
-      .channel("notificacoes-realtime")
+      .channel(`notificacoes-realtime-${userId}`)
       .on(
         "postgres_changes",
         {
           event: "INSERT",
           schema: "public",
           table: "comunicacao_notificacoes",
-          filter: `user_id=eq.${user.id}`,
+          filter: `user_id=eq.${userId}`,
         },
         async (payload) => {
-          queryClient.invalidateQueries({ queryKey: ["notificacoes-comunicacao"] });
+          queryClientRef.current.invalidateQueries({ queryKey: ["notificacoes-comunicacao"] });
           
-          // Buscar detalhes da notificação
           const { data: notifDetails } = await supabase
             .from("comunicacao_notificacoes")
             .select(`
@@ -137,21 +145,19 @@ export function NotificacoesSino() {
             const userNome = notifDetails.comunicacao_mensagens?.user_nome || "Usuário";
             const mensagem = notifDetails.comunicacao_mensagens?.mensagem || "";
 
-            // Notificação completa (som + browser)
-            notify({
+            notifyRef.current({
               title: `Nova mensagem em #${canalNome}`,
               body: `${userNome}: ${mensagem.substring(0, 100)}`,
               tag: `sigma-msg-${payload.new.id}`,
-              onClick: () => navigate("/comunicacao"),
+              onClick: () => navigateRef.current("/comunicacao"),
             });
 
-            // Toast se estiver na página
             if (document.hasFocus()) {
               toast.info(`Nova mensagem em #${canalNome}`, {
                 description: `${userNome}: ${mensagem.substring(0, 50)}...`,
                 action: {
                   label: "Ver",
-                  onClick: () => navigate("/comunicacao"),
+                  onClick: () => navigateRef.current("/comunicacao"),
                 },
               });
             }
@@ -164,43 +170,40 @@ export function NotificacoesSino() {
           event: "UPDATE",
           schema: "public",
           table: "comunicacao_notificacoes",
-          filter: `user_id=eq.${user.id}`,
+          filter: `user_id=eq.${userId}`,
         },
         () => {
-          queryClient.invalidateQueries({ queryKey: ["notificacoes-comunicacao"] });
+          queryClientRef.current.invalidateQueries({ queryKey: ["notificacoes-comunicacao"] });
         }
       )
-      // Notificações do sistema
       .on(
         "postgres_changes",
         {
           event: "INSERT",
           schema: "public",
           table: "system_notifications",
-          filter: `user_id=eq.${user.id}`,
+          filter: `user_id=eq.${userId}`,
         },
         async (payload) => {
-          queryClient.invalidateQueries({ queryKey: ["notificacoes-sistema"] });
+          queryClientRef.current.invalidateQueries({ queryKey: ["notificacoes-sistema"] });
           
           const newNotif = payload.new as any;
           
-          // Notificação completa (som + browser)
-          notify({
+          notifyRef.current({
             title: newNotif.titulo || "Nova notificação",
             body: newNotif.mensagem || "",
             tag: `sigma-sys-${newNotif.id}`,
             onClick: () => {
               if (newNotif.link) {
                 if (newNotif.tipo?.startsWith('suporte_') && newNotif.referencia_id) {
-                  navigate(`${newNotif.link}?ticket=${newNotif.referencia_id}`);
+                  navigateRef.current(`${newNotif.link}?ticket=${newNotif.referencia_id}`);
                 } else {
-                  navigate(newNotif.link);
+                  navigateRef.current(newNotif.link);
                 }
               }
             },
           });
 
-          // Toast se estiver na página
           if (document.hasFocus()) {
             const toastLink = newNotif.tipo?.startsWith('suporte_') && newNotif.referencia_id
               ? `${newNotif.link}?ticket=${newNotif.referencia_id}`
@@ -209,7 +212,7 @@ export function NotificacoesSino() {
               description: newNotif.mensagem?.substring(0, 80),
               action: toastLink ? {
                 label: "Ver",
-                onClick: () => navigate(toastLink),
+                onClick: () => navigateRef.current(toastLink),
               } : undefined,
             });
           }
@@ -221,10 +224,10 @@ export function NotificacoesSino() {
           event: "UPDATE",
           schema: "public",
           table: "system_notifications",
-          filter: `user_id=eq.${user.id}`,
+          filter: `user_id=eq.${userId}`,
         },
         () => {
-          queryClient.invalidateQueries({ queryKey: ["notificacoes-sistema"] });
+          queryClientRef.current.invalidateQueries({ queryKey: ["notificacoes-sistema"] });
         }
       )
       .subscribe();
@@ -232,7 +235,7 @@ export function NotificacoesSino() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user, queryClient, notify, navigate]);
+  }, [user?.id]);
 
   // Solicitar permissão ao abrir popover
   const handleOpenChange = (open: boolean) => {
