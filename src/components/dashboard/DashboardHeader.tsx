@@ -2,7 +2,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { NotificacoesSino } from "@/components/layout/NotificacoesSino";
+
 import gssLogo from "@/assets/gss-logo.jpeg";
 
 export function DashboardHeader() {
