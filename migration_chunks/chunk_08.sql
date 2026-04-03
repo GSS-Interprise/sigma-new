@@ -724,7 +724,6 @@ CREATE POLICY "Captadores com permissao zap podem atualizar contatos"
 
 -- === 20260113161600_6f65fda1-3f96-4ef8-b609-3fee0f4bccd9.sql ===
 -- Adicionar novo tipo de evento para reprocessamento de médico no Kanban
--- MOVED TO chunk_pre.sql: DO $aw$ BEGIN ALTER TYPE public.tipo_evento_lead ADD VALUE IF NOT EXISTS 'reprocessado_kanban'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
 
 
 -- === 20260113162126_194501a7-56bf-4077-9caa-1460842f19a6.sql ===

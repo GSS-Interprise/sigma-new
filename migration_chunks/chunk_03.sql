@@ -699,11 +699,9 @@ ADD COLUMN updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(); EXCEPTION WHEN dup
 
 -- === 20251112154853_472e1157-0ffe-4a1f-9bb2-5ed3d799867b.sql ===
 -- Adicionar novo status "aguardando_confirmacao" ao enum status_ticket
--- MOVED TO chunk_pre.sql: DO $aw$ BEGIN ALTER TYPE status_ticket ADD VALUE IF NOT EXISTS 'aguardando_confirmacao'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
 
 
 -- Adicionar novo status "resolvido" ao enum status_ticket  
--- MOVED TO chunk_pre.sql: DO $aw$ BEGIN ALTER TYPE status_ticket ADD VALUE IF NOT EXISTS 'resolvido'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
 
 
 -- === 20251113115645_82903b74-6c9f-476e-85c2-64aedbae5591.sql ===
@@ -857,7 +855,6 @@ COMMENT ON COLUMN public.email_respostas.status_lead IS 'Status do lead: novo, e
 
 -- === 20251113173835_59a44538-2ef1-4f04-a8cf-761b424856ee.sql ===
 -- Adicionar gestor_marketing ao enum app_role
--- MOVED TO chunk_pre.sql: DO $aw$ BEGIN ALTER TYPE app_role ADD VALUE IF NOT EXISTS 'gestor_marketing'; EXCEPTION WHEN duplicate_object THEN NULL; END $aw$;
 
 
 -- === 20251113174802_491b4487-8ccb-46ac-82bc-30ceec0b9c9f.sql ===

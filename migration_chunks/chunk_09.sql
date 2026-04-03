@@ -799,7 +799,6 @@ BEGIN
     WHERE t.typname = 'status_licitacao'
       AND e.enumlabel = 'conferencia'
   ) THEN
--- MOVED TO chunk_pre.sql: ALTER TYPE public.status_licitacao ADD VALUE 'conferencia' AFTER 'edital_analise';
   END IF;
 END $$;
 
@@ -944,7 +943,6 @@ BEGIN
     WHERE t.typname = 'status_licitacao'
       AND e.enumlabel = 'suspenso_revogado'
   ) THEN
--- MOVED TO chunk_pre.sql: ALTER TYPE public.status_licitacao ADD VALUE 'suspenso_revogado' AFTER 'descarte_edital';
   END IF;
 END $$;
 
