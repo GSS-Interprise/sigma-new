@@ -65,7 +65,47 @@ function detectDelimiter(headerLine: string) {
   return semicolonCount > commaCount ? ";" : ",";
 }
 
-function parseCSVLine(line: string, delimiter: string): string[] {
+/**
+ * Full RFC-4180 CSV parser that handles:
+ * - Multiline fields (newlines inside quoted values)
+ * - Escaped quotes ("" inside quoted fields)
+ * - Delimiters inside quoted fields
+ */
+function parseCSV(text: string): Record<string, string>[] {
+  // First, extract the header line (first line, never contains multiline)
+  const firstNewline = text.indexOf('\n');
+  if (firstNewline === -1) return [];
+  
+  const headerLine = text.substring(0, firstNewline).replace(/\r$/, '');
+  const delimiter = detectDelimiter(headerLine);
+  const headers = parseSimpleLine(headerLine, delimiter);
+  
+  // Now parse the rest character by character to handle multiline quoted fields
+  const body = text.substring(firstNewline + 1);
+  const rows: Record<string, string>[] = [];
+  
+  let i = 0;
+  while (i < body.length) {
+    const result = parseNextRow(body, i, delimiter);
+    if (!result) break;
+    
+    const { values, nextIndex } = result;
+    
+    if (values.length === headers.length) {
+      const row: Record<string, string> = {};
+      headers.forEach((h, idx) => {
+        row[h] = values[idx];
+      });
+      rows.push(row);
+    }
+    
+    i = nextIndex;
+  }
+  
+  return rows;
+}
+
+function parseSimpleLine(line: string, delimiter: string): string[] {
   const values: string[] = [];
   let current = "";
   let inQuotes = false;
@@ -93,27 +133,61 @@ function parseCSVLine(line: string, delimiter: string): string[] {
   return values.map(value => value.replace(/^"|"$/g, ""));
 }
 
-function parseCSV(text: string): Record<string, string>[] {
-  const lines = text.split(/\r?\n/).filter(l => l.trim());
-  if (lines.length < 2) return [];
-
-  const delimiter = detectDelimiter(lines[0]);
-  const headers = parseCSVLine(lines[0], delimiter);
-  const rows: Record<string, string>[] = [];
-
-  for (let i = 1; i < lines.length; i++) {
-    const values = parseCSVLine(lines[i], delimiter);
-
-    if (values.length === headers.length) {
-      const row: Record<string, string> = {};
-      headers.forEach((h, idx) => {
-        row[h] = values[idx];
-      });
-      rows.push(row);
-    }
+function parseNextRow(text: string, start: number, delimiter: string): { values: string[]; nextIndex: number } | null {
+  // Skip leading whitespace/newlines
+  while (start < text.length && (text[start] === '\r' || text[start] === '\n')) {
+    start++;
   }
+  if (start >= text.length) return null;
 
-  return rows;
+  const values: string[] = [];
+  let i = start;
+  
+  while (i < text.length) {
+    let value = "";
+    
+    if (text[i] === '"') {
+      // Quoted field - can contain newlines, delimiters, escaped quotes
+      i++; // skip opening quote
+      while (i < text.length) {
+        if (text[i] === '"') {
+          if (i + 1 < text.length && text[i + 1] === '"') {
+            value += '"';
+            i += 2;
+          } else {
+            i++; // skip closing quote
+            break;
+          }
+        } else {
+          value += text[i];
+          i++;
+        }
+      }
+      values.push(value.trim());
+    } else {
+      // Unquoted field - read until delimiter or newline
+      while (i < text.length && text[i] !== delimiter && text[i] !== '\n' && text[i] !== '\r') {
+        value += text[i];
+        i++;
+      }
+      values.push(value.trim());
+    }
+    
+    // Check what's next
+    if (i >= text.length) break;
+    
+    if (text[i] === delimiter) {
+      i++; // skip delimiter, continue to next field
+      continue;
+    }
+    
+    // End of row (newline)
+    if (text[i] === '\r') i++;
+    if (i < text.length && text[i] === '\n') i++;
+    break;
+  }
+  
+  return { values, nextIndex: i };
 }
 
 export default function AdminImport() {
