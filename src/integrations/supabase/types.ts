@@ -1831,7 +1831,7 @@ export type Database = {
           data_envio: string
           deleted_at: string | null
           id: string
-          mensagem: string
+          mensagem: string | null
           reply_to_id: string | null
           updated_at: string
           user_id: string
@@ -1844,7 +1844,7 @@ export type Database = {
           data_envio?: string
           deleted_at?: string | null
           id?: string
-          mensagem: string
+          mensagem?: string | null
           reply_to_id?: string | null
           updated_at?: string
           user_id: string
@@ -1857,7 +1857,7 @@ export type Database = {
           data_envio?: string
           deleted_at?: string | null
           id?: string
-          mensagem?: string
+          mensagem?: string | null
           reply_to_id?: string | null
           updated_at?: string
           user_id?: string
@@ -4901,7 +4901,15 @@ export type Database = {
           resolved_at?: string | null
           status?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "import_leads_failed_queue_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       instance_proxy_settings: {
         Row: {
@@ -5032,7 +5040,15 @@ export type Database = {
           usuario_id?: string | null
           usuario_nome?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "lead_anexos_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       lead_anotacoes: {
         Row: {
@@ -5074,7 +5090,15 @@ export type Database = {
           usuario_id?: string | null
           usuario_nome?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "lead_anotacoes_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       lead_historico: {
         Row: {
@@ -5148,6 +5172,13 @@ export type Database = {
             columns: ["disparo_programado_id"]
             isOneToOne: false
             referencedRelation: "disparos_programados"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_historico_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
             referencedColumns: ["id"]
           },
           {
@@ -5568,6 +5599,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "licitacao_descartes_licitacao_id_fkey"
+            columns: ["licitacao_id"]
+            isOneToOne: false
+            referencedRelation: "licitacoes"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "licitacao_descartes_motivo_id_fkey"
             columns: ["motivo_id"]
             isOneToOne: false
@@ -5631,6 +5669,13 @@ export type Database = {
             columns: ["empresa_id"]
             isOneToOne: false
             referencedRelation: "empresas_concorrentes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "licitacao_item_concorrentes_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "licitacao_itens"
             referencedColumns: ["id"]
           },
         ]
@@ -5793,7 +5838,7 @@ export type Database = {
           licitacao_codigo: string | null
           municipio_uf: string | null
           numero_edital: string
-          objeto: string | null
+          objeto: string
           objeto_contrato: string | null
           observacoes: string | null
           orgao: string
@@ -5830,7 +5875,7 @@ export type Database = {
           licitacao_codigo?: string | null
           municipio_uf?: string | null
           numero_edital: string
-          objeto?: string | null
+          objeto: string
           objeto_contrato?: string | null
           observacoes?: string | null
           orgao: string
@@ -5867,7 +5912,7 @@ export type Database = {
           licitacao_codigo?: string | null
           municipio_uf?: string | null
           numero_edital?: string
-          objeto?: string | null
+          objeto?: string
           objeto_contrato?: string | null
           observacoes?: string | null
           orgao?: string
@@ -5914,7 +5959,15 @@ export type Database = {
           usuario_id?: string | null
           usuario_nome?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "licitacoes_anexos_licitacao_id_fkey"
+            columns: ["licitacao_id"]
+            isOneToOne: false
+            referencedRelation: "licitacoes"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       licitacoes_atividades: {
         Row: {
@@ -5969,6 +6022,13 @@ export type Database = {
           valor_novo?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "licitacoes_atividades_licitacao_id_fkey"
+            columns: ["licitacao_id"]
+            isOneToOne: false
+            referencedRelation: "licitacoes"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "licitacoes_atividades_user_id_fkey"
             columns: ["user_id"]
@@ -7220,6 +7280,13 @@ export type Database = {
             columns: ["cliente_vinculado_id"]
             isOneToOne: false
             referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "medicos_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
             referencedColumns: ["id"]
           },
         ]
