@@ -25,7 +25,7 @@ Auth funcional — Raul testou login e reset de senha com sucesso.
 | Auth | ✅ Login e reset de senha funcionando |
 | Secrets | ⏳ Dev GSS configura (ver handover-dev-gss.md) |
 | N8N Webhooks | ⏳ Dev GSS atualiza URLs (ver handover-dev-gss.md) |
-| Storage (arquivos) | ⏳ URLs ainda apontam para Supabase antigo |
+| Storage (arquivos) | ✅ 4491 arquivos migrados, independente do projeto antigo |
 
 ---
 

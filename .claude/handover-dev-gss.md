@@ -92,14 +92,20 @@ No Supabase Dashboard → Authentication → URL Configuration:
 
 ---
 
-## 5. STORAGE
+## 5. STORAGE — MIGRADO ✅
 
-Os buckets foram criados nas migrations. Verificar se precisam ser migrados arquivos do storage antigo:
-- Documentos de médicos
-- Anexos de contratos e licitações
-- Anexos de leads
+Arquivos migrados do storage antigo para o novo (2026-04-05):
 
-**Nota**: Os URLs de arquivos no banco ainda apontam para o Supabase antigo (`qyapnxtghhdcfafnogii`). Se os arquivos forem migrados, será necessário atualizar as URLs nas tabelas.
+| Bucket | Migrados | Status |
+|--------|----------|--------|
+| licitacoes-anexos | 2305 | ✅ Público |
+| lead-anexos | 1630 | ✅ Público (resto são Google Drive links) |
+| ages-documentos | 103 | ✅ Público |
+| contratos-documentos | 399 | ✅ Migrado (era privado) |
+| medicos-documentos | 354 | ✅ Migrado (era privado) |
+| **Total** | **4491** | **Independente do projeto antigo** |
+
+URLs no banco estão como paths relativos — o sistema usa o storage novo automaticamente.
 
 ---
 
