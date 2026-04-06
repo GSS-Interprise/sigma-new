@@ -52,7 +52,21 @@ export function ResidentesCharts({ porUf, porEspecialidade, porPeriodo, selected
                 tickLine={false}
               />
               <Tooltip content={<CustomTooltipContent />} cursor={{ fill: "hsl(var(--muted)/0.2)" }} />
-              <Bar dataKey="quantidade" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+              <Bar
+                dataKey="quantidade"
+                radius={[4, 4, 0, 0]}
+                cursor="pointer"
+                onClick={(data: any) => {
+                  if (data?.uf) onUfClick?.(data.uf === selectedUf ? null : data.uf);
+                }}
+              >
+                {porUf.slice(0, 15).map((entry) => (
+                  <Cell
+                    key={entry.uf}
+                    fill={!selectedUf || selectedUf === entry.uf ? "hsl(var(--primary))" : "hsl(var(--muted))"}
+                  />
+                ))}
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>
