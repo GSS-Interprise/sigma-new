@@ -95,7 +95,7 @@ const App = () => (
             <Route path="/ages" element={<ProtectedRoute><PermissionRoute modulo="ages"><Ages /></PermissionRoute></ProtectedRoute>} />
             <Route path="/workspace" element={<ProtectedRoute><Workspace /></ProtectedRoute>} />
             <Route path="/configuracoes" element={<ProtectedRoute><PermissionRoute adminOnly><Configuracoes /></PermissionRoute></ProtectedRoute>} />
-            <Route path="/admin-import" element={<AdminImport />} />
+            <Route path="/admin-import" element={<ProtectedRoute><PermissionRoute adminOnly><AdminImport /></PermissionRoute></ProtectedRoute>} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
