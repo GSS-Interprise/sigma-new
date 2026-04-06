@@ -152,7 +152,9 @@ export default function DisparosResidentes() {
       }
 
       const result = await response.json();
-      setData(result);
+      // O webhook retorna um array direto de residentes — transformar para o formato do dashboard
+      const parsed = Array.isArray(result) ? transformWebhookData(result) : result;
+      setData(parsed);
       toast.success("Dados carregados com sucesso!");
     } catch (err: any) {
       console.error("Erro ao buscar dados de residentes:", err);
