@@ -90,7 +90,8 @@ serve(async (req) => {
       .select('campo_nome, valor')
       .in('campo_nome', ['evolution_api_url', 'evolution_api_key']);
 
-    const evolutionUrl = evolutionConfig?.find(c => c.campo_nome === 'evolution_api_url')?.valor || Deno.env.get('EVOLUTION_API_URL');
+    const rawEvolutionUrl = evolutionConfig?.find(c => c.campo_nome === 'evolution_api_url')?.valor || Deno.env.get('EVOLUTION_API_URL');
+    const evolutionUrl = rawEvolutionUrl?.replace(/\/+$/, ''); // Remove trailing slashes
     const evolutionKey = evolutionConfig?.find(c => c.campo_nome === 'evolution_api_key')?.valor || Deno.env.get('EVOLUTION_API_KEY');
 
     if (!evolutionUrl || !evolutionKey) {
