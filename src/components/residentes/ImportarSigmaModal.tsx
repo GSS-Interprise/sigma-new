@@ -74,6 +74,7 @@ export function ImportarSigmaModal({ open, onOpenChange, residentes }: ImportarS
             const firstName = nomeParts[0];
             const lastName = nomeParts.length > 1 ? nomeParts[nomeParts.length - 1] : "";
 
+            // Require at least 2 name parts to match (first + last)
             let query = supabase
               .from("medicos")
               .select("id, nome_completo, especialidade, crm")
@@ -83,29 +84,56 @@ export function ImportarSigmaModal({ open, onOpenChange, residentes }: ImportarS
               query = query.ilike("nome_completo", `%${lastName}%`);
             }
 
-            const { data: medicos } = await query.limit(10);
+            const { data: medicos } = await query.limit(20);
 
             if (medicos && medicos.length > 0) {
-              const espRoot = getSpecialtyRoot(item.residente.especialidade);
-
-              const bestMatch = medicos.find(m => {
-                if (!m.especialidade || !Array.isArray(m.especialidade)) return false;
-                return m.especialidade.some(e =>
-                  normalizeForSearch(e).includes(espRoot) ||
-                  espRoot.includes(normalizeForSearch(e).substring(0, 5))
-                );
+              // Score each candidate by how many name parts match
+              const residenteNameParts = nomeParts.map(p => normalizeForSearch(p));
+              
+              const scored = medicos.map(m => {
+                const candidateParts = (m.nome_completo || "").trim().split(/\s+/).map(p => normalizeForSearch(p));
+                // Count how many resident name parts appear in candidate
+                const nameMatches = residenteNameParts.filter(rp => 
+                  candidateParts.some(cp => cp === rp)
+                ).length;
+                const nameScore = nameMatches / residenteNameParts.length;
+                
+                // Check specialty match
+                const espRoot = getSpecialtyRoot(item.residente.especialidade);
+                let espMatch = false;
+                if (m.especialidade && Array.isArray(m.especialidade)) {
+                  espMatch = m.especialidade.some(e =>
+                    normalizeForSearch(e).includes(espRoot) ||
+                    espRoot.includes(normalizeForSearch(e).substring(0, 5))
+                  );
+                }
+                
+                return { medico: m, nameScore, espMatch };
               });
 
-              const match = bestMatch || medicos[0];
+              // Require at least 60% of name parts matching (e.g. 2 out of 3 for short names, 3 out of 5 for longer)
+              const validCandidates = scored
+                .filter(s => s.nameScore >= 0.6)
+                .sort((a, b) => {
+                  // Prefer specialty match, then higher name score
+                  if (a.espMatch !== b.espMatch) return a.espMatch ? -1 : 1;
+                  return b.nameScore - a.nameScore;
+                });
 
-              results[idx] = {
-                ...results[idx],
-                encontrado: true,
-                medicoId: match.id,
-                medicoNome: match.nome_completo,
-                medicoEspecialidades: match.especialidade as string[] || [],
-                loading: false,
-              };
+              const best = validCandidates[0];
+
+              if (best) {
+                results[idx] = {
+                  ...results[idx],
+                  encontrado: true,
+                  medicoId: best.medico.id,
+                  medicoNome: best.medico.nome_completo,
+                  medicoEspecialidades: best.medico.especialidade as string[] || [],
+                  loading: false,
+                };
+              } else {
+                results[idx] = { ...results[idx], encontrado: false, loading: false };
+              }
             } else {
               results[idx] = { ...results[idx], encontrado: false, loading: false };
             }
