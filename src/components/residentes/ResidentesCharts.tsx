@@ -23,7 +23,7 @@ const CustomTooltipContent = ({ active, payload, label }: any) => {
   );
 };
 
-export function ResidentesCharts({ porUf, porEspecialidade, porPeriodo }: ChartsProps) {
+export function ResidentesCharts({ porUf, porEspecialidade, porPeriodo, selectedUf, onUfClick }: ChartsProps) {
   const totalCerts = porEspecialidade.reduce((s, e) => s + e.quantidade, 0);
 
   return (
