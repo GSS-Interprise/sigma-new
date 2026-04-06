@@ -429,7 +429,7 @@ const ALL_SUPABASE_CONFIG_KEYS = WEBHOOK_MODULES.flatMap(m =>
 export function WebhookCentralTab() {
   const [busca, setBusca] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [openModules, setOpenModules] = useState<Set<string>>(new Set(WEBHOOK_MODULES.map(m => m.module)));
+  const [openModules, setOpenModules] = useState<Set<string>>(new Set());
   const [configUrls, setConfigUrls] = useState<Record<string, string>>({});
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const queryClient = useQueryClient();
