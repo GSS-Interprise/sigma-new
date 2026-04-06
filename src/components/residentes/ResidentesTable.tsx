@@ -153,6 +153,17 @@ export function ResidentesTable({ residentes }: ResidentesTableProps) {
               className="pl-8 h-7 text-xs rounded-lg border-border/50 bg-muted/30 focus:bg-background"
             />
           </div>
+          <div className="h-4 w-px bg-border/60" />
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs gap-1.5"
+            onClick={() => setImportarOpen(true)}
+            disabled={filtered.length === 0}
+          >
+            <Upload className="h-3 w-3" />
+            Importar para Sigma
+          </Button>
         </div>
       </div>
       <ScrollArea className="h-[calc(100vh-580px)] min-h-[250px]">
