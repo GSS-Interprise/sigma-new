@@ -90,8 +90,9 @@ export function useCaptacaoPermissions() {
   useEffect(() => {
     if (!user?.id) return;
 
+    const channelName = `captacao-permissions-${user.id}-${Date.now()}`;
     const channel = supabase
-      .channel(`captacao-permissions-${user.id}`)
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
@@ -101,7 +102,6 @@ export function useCaptacaoPermissions() {
           filter: `user_id=eq.${user.id}`,
         },
         () => {
-          // Invalidate and refetch permissions immediately
           queryClient.invalidateQueries({ queryKey: ['captacao-permissions', user.id] });
         }
       )
