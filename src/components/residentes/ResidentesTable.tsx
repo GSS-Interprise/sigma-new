@@ -220,6 +220,11 @@ export function ResidentesTable({ residentes }: ResidentesTableProps) {
           </tbody>
         </table>
       </ScrollArea>
+      <ImportarSigmaModal
+        open={importarOpen}
+        onOpenChange={setImportarOpen}
+        residentes={filtered}
+      />
     </div>
   );
 }
