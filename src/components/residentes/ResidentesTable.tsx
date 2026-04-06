@@ -46,6 +46,7 @@ export function ResidentesTable({ residentes }: ResidentesTableProps) {
   const [sortDir, setSortDir] = useState<SortDir>(null);
   const [anoTermino, setAnoTermino] = useState("todos");
   const [anoEmissao, setAnoEmissao] = useState("todos");
+  const [importarOpen, setImportarOpen] = useState(false);
 
   const terminoYears = useMemo(() => getUniqueYears(residentes, "termino"), [residentes]);
   const emissaoYears = useMemo(() => getUniqueYears(residentes, "emissao"), [residentes]);
