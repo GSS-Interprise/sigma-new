@@ -56,7 +56,7 @@ export function ResidentesFilters({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {Array.from({ length: 24 }, (_, i) => i + 1).map(n => (
+            {Array.from({ length: 11 }, (_, i) => i + 1).map(n => (
               <SelectItem key={n} value={n.toString()}>{n}</SelectItem>
             ))}
           </SelectContent>
