@@ -1,8 +1,10 @@
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
-import { Search, Database, ArrowUpDown, ArrowUp, ArrowDown, Filter } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Search, Database, ArrowUpDown, ArrowUp, ArrowDown, Filter, Upload } from "lucide-react";
 import { useState, useMemo } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ImportarSigmaModal } from "./ImportarSigmaModal";
 import type { ResidenteData } from "./constants";
 
 type SortKey = keyof ResidenteData;
