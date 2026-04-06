@@ -50,39 +50,18 @@ export function ResidentesFilters({
       <div className="h-4 w-px bg-border/60" />
 
       <div className="flex items-center gap-1.5">
-        <span className="text-xs text-muted-foreground">Período</span>
-        <Select value={periodoTipo} onValueChange={onPeriodoTipoChange}>
-          <SelectTrigger className="w-[90px] h-7 text-xs rounded-lg border-border/50">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ultimo">Último</SelectItem>
-            <SelectItem value="ano">Ano</SelectItem>
-            <SelectItem value="mes">Mês</SelectItem>
-          </SelectContent>
-        </Select>
+        <span className="text-xs text-muted-foreground">Últimos</span>
         <Select value={periodoValor} onValueChange={onPeriodoValorChange}>
-          <SelectTrigger className="w-[100px] h-7 text-xs rounded-lg border-border/50">
+          <SelectTrigger className="w-[70px] h-7 text-xs rounded-lg border-border/50">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {periodoTipo === "ultimo" ? (
-              Array.from({ length: 10 }, (_, i) => i + 1).map(n => (
-                <SelectItem key={n} value={n.toString()}>{n}</SelectItem>
-              ))
-            ) : periodoTipo === "ano" ? (
-              Array.from({ length: 26 }, (_, i) => new Date().getFullYear() - i).map(y => (
-                <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
-              ))
-            ) : (
-              ["01 - Jan", "02 - Fev", "03 - Mar", "04 - Abr", "05 - Mai", "06 - Jun",
-                "07 - Jul", "08 - Ago", "09 - Set", "10 - Out", "11 - Nov", "12 - Dez"
-              ].map((m, i) => (
-                <SelectItem key={i + 1} value={(i + 1).toString()}>{m}</SelectItem>
-              ))
-            )}
+            {Array.from({ length: 24 }, (_, i) => i + 1).map(n => (
+              <SelectItem key={n} value={n.toString()}>{n}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
+        <span className="text-xs text-muted-foreground">meses</span>
       </div>
 
       <div className="h-4 w-px bg-border/60" />
