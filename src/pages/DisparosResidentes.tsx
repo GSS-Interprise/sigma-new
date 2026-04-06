@@ -8,7 +8,98 @@ import { ResidentesCharts } from "@/components/residentes/ResidentesCharts";
 import { ResidentesTable } from "@/components/residentes/ResidentesTable";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import type { ResidentesDashboardData } from "@/components/residentes/constants";
+import type { ResidentesDashboardData, ResidenteData } from "@/components/residentes/constants";
+
+interface WebhookResidente {
+  instituicao: string;
+  medico: string;
+  uf: string;
+  especialidade: string;
+  inicio: string;
+  termino: string;
+  num_certificado: string | null;
+  emissao_certificado: string | null;
+  informacoes_adicionais: string | null;
+  crm: number;
+  periodo: string;
+}
+
+function transformWebhookData(raw: WebhookResidente[]): ResidentesDashboardData {
+  const residentes: ResidenteData[] = raw.map(r => ({
+    medico: r.medico,
+    crm: String(r.crm || ""),
+    especialidade: r.especialidade,
+    periodo: r.periodo,
+    inicio: r.inicio,
+    termino: r.termino,
+    emissao: r.emissao_certificado || "",
+    numero_certificado: r.num_certificado || "",
+    instituicao: r.instituicao,
+    uf: r.uf,
+    status: r.informacoes_adicionais === "CURSANDO" || r.periodo?.startsWith("R") ? "Em Andamento" : "Concluído",
+  }));
+
+  const certificados = residentes.filter(r => r.status === "Concluído").length;
+  const emAndamento = residentes.filter(r => r.status === "Em Andamento").length;
+  const profissionais = new Set(residentes.map(r => r.medico)).size;
+  const especialidades = new Set(residentes.map(r => r.especialidade)).size;
+  const instituicoes = new Set(residentes.map(r => r.instituicao)).size;
+
+  // por UF
+  const ufMap = new Map<string, number>();
+  residentes.forEach(r => { if (r.uf) ufMap.set(r.uf, (ufMap.get(r.uf) || 0) + 1); });
+  const porUf = Array.from(ufMap.entries())
+    .map(([uf, quantidade]) => ({ uf, quantidade }))
+    .sort((a, b) => b.quantidade - a.quantidade);
+
+  // por especialidade
+  const espMap = new Map<string, number>();
+  residentes.forEach(r => espMap.set(r.especialidade, (espMap.get(r.especialidade) || 0) + 1));
+  const porEspecialidade = Array.from(espMap.entries())
+    .map(([programa, quantidade]) => ({ programa, quantidade }))
+    .sort((a, b) => b.quantidade - a.quantidade);
+
+  // por periodo
+  const perMap = new Map<string, number>();
+  residentes.forEach(r => { if (r.periodo) perMap.set(r.periodo, (perMap.get(r.periodo) || 0) + 1); });
+  const porPeriodo = Array.from(perMap.entries())
+    .map(([periodo, quantidade]) => ({ periodo, quantidade }))
+    .sort((a, b) => a.periodo.localeCompare(b.periodo));
+
+  // evolução por ano (baseado no ano de início)
+  const anoMap = new Map<number, number>();
+  residentes.forEach(r => {
+    const match = r.inicio?.match(/(\d{4})/);
+    if (match) {
+      const ano = parseInt(match[1]);
+      anoMap.set(ano, (anoMap.get(ano) || 0) + 1);
+    }
+  });
+  const evolucaoAno = Array.from(anoMap.entries())
+    .map(([ano, quantidade]) => ({ ano, quantidade }))
+    .sort((a, b) => a.ano - b.ano);
+
+  // por instituição
+  const instMap = new Map<string, number>();
+  residentes.forEach(r => instMap.set(r.instituicao, (instMap.get(r.instituicao) || 0) + 1));
+  const porInstituicao = Array.from(instMap.entries())
+    .map(([instituicao, certificados]) => ({ instituicao, certificados }))
+    .sort((a, b) => b.certificados - a.certificados);
+
+  return {
+    certificados_emitidos: certificados,
+    em_andamento: emAndamento,
+    total_profissionais: profissionais,
+    total_especialidades: especialidades,
+    total_instituicoes: instituicoes,
+    por_uf: porUf,
+    por_especialidade: porEspecialidade,
+    por_periodo: porPeriodo,
+    evolucao_ano: evolucaoAno,
+    por_instituicao: porInstituicao,
+    residentes,
+  };
+}
 
 export default function DisparosResidentes() {
   const [periodoTipo, setPeriodoTipo] = useState("ultimo");
