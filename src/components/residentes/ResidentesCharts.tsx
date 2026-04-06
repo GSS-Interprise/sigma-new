@@ -7,6 +7,8 @@ interface ChartsProps {
   porPeriodo: { periodo: string; quantidade: number }[];
   evolucaoAno: { ano: number; quantidade: number }[];
   porInstituicao: { instituicao: string; certificados: number }[];
+  selectedUf?: string | null;
+  onUfClick?: (uf: string | null) => void;
 }
 
 const PIE_COLORS = ["#6366f1", "#22d3ee", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#10b981", "#f97316"];
@@ -21,7 +23,7 @@ const CustomTooltipContent = ({ active, payload, label }: any) => {
   );
 };
 
-export function ResidentesCharts({ porUf, porEspecialidade, porPeriodo }: ChartsProps) {
+export function ResidentesCharts({ porUf, porEspecialidade, porPeriodo, selectedUf, onUfClick }: ChartsProps) {
   const totalCerts = porEspecialidade.reduce((s, e) => s + e.quantidade, 0);
 
   return (
@@ -50,7 +52,21 @@ export function ResidentesCharts({ porUf, porEspecialidade, porPeriodo }: Charts
                 tickLine={false}
               />
               <Tooltip content={<CustomTooltipContent />} cursor={{ fill: "hsl(var(--muted)/0.2)" }} />
-              <Bar dataKey="quantidade" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+              <Bar
+                dataKey="quantidade"
+                radius={[4, 4, 0, 0]}
+                cursor="pointer"
+                onClick={(data: any) => {
+                  if (data?.uf) onUfClick?.(data.uf === selectedUf ? null : data.uf);
+                }}
+              >
+                {porUf.slice(0, 15).map((entry) => (
+                  <Cell
+                    key={entry.uf}
+                    fill={!selectedUf || selectedUf === entry.uf ? "hsl(var(--primary))" : "hsl(var(--muted))"}
+                  />
+                ))}
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>

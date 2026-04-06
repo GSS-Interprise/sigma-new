@@ -108,6 +108,7 @@ export default function DisparosResidentes() {
   const [especialidade, setEspecialidade] = useState("todas");
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<ResidentesDashboardData | null>(null);
+  const [chartUfFilter, setChartUfFilter] = useState<string | null>(null);
 
   const clearFilters = useCallback(() => {
     setPeriodoTipo("ultimo");
@@ -213,9 +214,17 @@ export default function DisparosResidentes() {
           porPeriodo={data?.por_periodo ?? []}
           evolucaoAno={data?.evolucao_ano ?? []}
           porInstituicao={data?.por_instituicao ?? []}
+          selectedUf={chartUfFilter}
+          onUfClick={setChartUfFilter}
         />
 
-        <ResidentesTable residentes={data?.residentes ?? []} />
+        <ResidentesTable
+          residentes={
+            chartUfFilter
+              ? (data?.residentes ?? []).filter(r => r.uf === chartUfFilter)
+              : (data?.residentes ?? [])
+          }
+        />
       </div>
     </AppLayout>
   );
