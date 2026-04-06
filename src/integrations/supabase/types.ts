@@ -9228,7 +9228,7 @@ export type Database = {
           created_at: string | null
           id: string
           is_externo: boolean | null
-          mensagem: string
+          mensagem: string | null
           ticket_id: string
         }
         Insert: {
@@ -9239,7 +9239,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           is_externo?: boolean | null
-          mensagem: string
+          mensagem?: string | null
           ticket_id: string
         }
         Update: {
@@ -9250,18 +9250,10 @@ export type Database = {
           created_at?: string | null
           id?: string
           is_externo?: boolean | null
-          mensagem?: string
+          mensagem?: string | null
           ticket_id?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "suporte_comentarios_ticket_id_fkey"
-            columns: ["ticket_id"]
-            isOneToOne: false
-            referencedRelation: "suporte_tickets"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       suporte_sla_config: {
         Row: {
@@ -9411,15 +9403,7 @@ export type Database = {
           ultima_visualizacao_admin?: string | null
           updated_at?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "suporte_tickets_setor_id_fkey"
-            columns: ["setor_id"]
-            isOneToOne: false
-            referencedRelation: "setores"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       system_notifications: {
         Row: {
