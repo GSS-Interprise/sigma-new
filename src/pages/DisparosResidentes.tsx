@@ -108,6 +108,7 @@ export default function DisparosResidentes() {
   const [especialidade, setEspecialidade] = useState("todas");
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<ResidentesDashboardData | null>(null);
+  const [chartUfFilter, setChartUfFilter] = useState<string | null>(null);
 
   const clearFilters = useCallback(() => {
     setPeriodoTipo("ultimo");
