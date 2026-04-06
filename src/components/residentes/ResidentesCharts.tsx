@@ -7,6 +7,8 @@ interface ChartsProps {
   porPeriodo: { periodo: string; quantidade: number }[];
   evolucaoAno: { ano: number; quantidade: number }[];
   porInstituicao: { instituicao: string; certificados: number }[];
+  selectedUf?: string | null;
+  onUfClick?: (uf: string | null) => void;
 }
 
 const PIE_COLORS = ["#6366f1", "#22d3ee", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#10b981", "#f97316"];
