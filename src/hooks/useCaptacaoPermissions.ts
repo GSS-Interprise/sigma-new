@@ -90,7 +90,7 @@ export function useCaptacaoPermissions() {
   useEffect(() => {
     if (!user?.id) return;
 
-    const channelName = `captacao-permissions-${user.id}-${Date.now()}`;
+    const channelName = `captacao-perms-${user.id}-${crypto.randomUUID()}`;
     const channel = supabase
       .channel(channelName)
       .on(
