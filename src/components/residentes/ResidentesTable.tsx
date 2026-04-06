@@ -1,8 +1,10 @@
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
-import { Search, Database, ArrowUpDown, ArrowUp, ArrowDown, Filter } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Search, Database, ArrowUpDown, ArrowUp, ArrowDown, Filter, Upload } from "lucide-react";
 import { useState, useMemo } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ImportarSigmaModal } from "./ImportarSigmaModal";
 import type { ResidenteData } from "./constants";
 
 type SortKey = keyof ResidenteData;
@@ -44,6 +46,7 @@ export function ResidentesTable({ residentes }: ResidentesTableProps) {
   const [sortDir, setSortDir] = useState<SortDir>(null);
   const [anoTermino, setAnoTermino] = useState("todos");
   const [anoEmissao, setAnoEmissao] = useState("todos");
+  const [importarOpen, setImportarOpen] = useState(false);
 
   const terminoYears = useMemo(() => getUniqueYears(residentes, "termino"), [residentes]);
   const emissaoYears = useMemo(() => getUniqueYears(residentes, "emissao"), [residentes]);
@@ -150,6 +153,17 @@ export function ResidentesTable({ residentes }: ResidentesTableProps) {
               className="pl-8 h-7 text-xs rounded-lg border-border/50 bg-muted/30 focus:bg-background"
             />
           </div>
+          <div className="h-4 w-px bg-border/60" />
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs gap-1.5"
+            onClick={() => setImportarOpen(true)}
+            disabled={filtered.length === 0}
+          >
+            <Upload className="h-3 w-3" />
+            Importar para Sigma
+          </Button>
         </div>
       </div>
       <ScrollArea className="h-[calc(100vh-580px)] min-h-[250px]">
@@ -206,6 +220,11 @@ export function ResidentesTable({ residentes }: ResidentesTableProps) {
           </tbody>
         </table>
       </ScrollArea>
+      <ImportarSigmaModal
+        open={importarOpen}
+        onOpenChange={setImportarOpen}
+        residentes={filtered}
+      />
     </div>
   );
 }
