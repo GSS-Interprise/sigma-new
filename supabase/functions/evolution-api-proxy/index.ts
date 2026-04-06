@@ -18,7 +18,7 @@ async function getEvolutionConfig(supabase: any): Promise<{ url: string | null; 
     .select("campo_nome, valor")
     .in("campo_nome", ["evolution_api_url", "evolution_api_key"]);
 
-  let url = configItems?.find((i: any) => i.campo_nome === "evolution_api_url")?.valor || null;
+  let url = configItems?.find((i: any) => i.campo_nome === "evolution_api_url")?.valor?.replace(/\/+$/, '') || null;
   let key = configItems?.find((i: any) => i.campo_nome === "evolution_api_key")?.valor || null;
 
   // Fallback to environment variables if not found in database
