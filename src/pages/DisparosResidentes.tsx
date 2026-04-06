@@ -40,8 +40,7 @@ export default function DisparosResidentes() {
         return;
       }
 
-      // referencia: 2 = mês, 3 = ano
-      const referencia = periodoTipo === "mes" ? 2 : 3;
+      const referencia = 2; // sempre meses
       const campos = periodoValor;
 
       const response = await fetch(configData.valor, {

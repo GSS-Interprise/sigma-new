@@ -27,12 +27,12 @@ export function ResidentesFilters({
   onPeriodoTipoChange, onPeriodoValorChange, onUfChange, onEspecialidadeChange, onClearFilters, onSearch
 }: ResidentesFiltersProps) {
   const [espOpen, setEspOpen] = useState(false);
-  const hasFilters = uf !== "todos" || especialidade !== "todas" || periodoTipo !== "ultimo" || periodoValor !== "1";
+  const hasFilters = uf !== "todos" || especialidade !== "todas" || periodoValor !== "1";
 
   const activeCount = [
     uf !== "todos",
     especialidade !== "todas",
-    periodoTipo !== "ultimo" || periodoValor !== "1"
+    periodoValor !== "1"
   ].filter(Boolean).length;
 
   return (
