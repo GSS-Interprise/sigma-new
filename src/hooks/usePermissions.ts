@@ -52,7 +52,7 @@ export function usePermissions() {
   const isAdmin = roles.some(r => r.role === 'admin');
   const isLeader = roles.some(r => r.role === 'lideres');
 
-  const { data: permissions } = useQuery({
+  const { data: permissions, isLoading: isLoadingPermissions } = useQuery({
     queryKey: ['user-permissions', user?.id, roles],
     enabled: !!user?.id && roles.length > 0,
     staleTime: 1000 * 60 * 5,
@@ -81,10 +81,12 @@ export function usePermissions() {
   const canDelete = (modulo: Modulo) => hasPermission(modulo, 'excluir');
   const canApprove = (modulo: Modulo) => hasPermission(modulo, 'aprovar');
 
+  const isLoadingPermissions_ = isLoadingRoles || (roles.length > 0 && isLoadingPermissions);
+
   return {
     isAdmin,
     isLeader,
-    isLoadingRoles,
+    isLoadingRoles: isLoadingPermissions_,
     hasPermission,
     canView,
     canCreate,
