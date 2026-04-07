@@ -516,7 +516,7 @@ export function LicitacaoDetailDialog({
         .from("licitacoes_atividades")
         .select(`
           *,
-          profiles:user_id (
+          profiles:user_id!left (
             nome_completo
           )
         `)
