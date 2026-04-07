@@ -81,10 +81,12 @@ export function usePermissions() {
   const canDelete = (modulo: Modulo) => hasPermission(modulo, 'excluir');
   const canApprove = (modulo: Modulo) => hasPermission(modulo, 'aprovar');
 
+  const isLoadingPermissions_ = isLoadingRoles || (roles.length > 0 && isLoadingPermissions);
+
   return {
     isAdmin,
     isLeader,
-    isLoadingRoles,
+    isLoadingRoles: isLoadingPermissions_,
     hasPermission,
     canView,
     canCreate,
