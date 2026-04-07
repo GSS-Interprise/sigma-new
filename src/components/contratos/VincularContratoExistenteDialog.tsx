@@ -129,7 +129,7 @@ export function VincularContratoExistenteDialog({
       if (Object.keys(updates).length > 0) {
         await supabase
           .from("contratos")
-          .update(updates)
+          .update(updates as any)
           .eq("id", contratoSelecionado.id);
       }
 

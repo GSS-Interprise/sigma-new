@@ -205,7 +205,7 @@ export function LeadBulkEditDialog({ open, onOpenChange, arquivoNome, totalLeads
 
           const { error: updateError } = await supabase
             .from("leads")
-            .update(fieldsToUpdate)
+            .update(fieldsToUpdate as any)
             .in("id", ids);
 
           if (updateError) {

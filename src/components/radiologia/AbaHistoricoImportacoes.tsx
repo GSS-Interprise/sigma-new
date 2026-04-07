@@ -111,7 +111,7 @@ export function AbaHistoricoImportacoes({ clienteIdFilter }: AbaHistoricoImporta
             
             const { error } = await supabase
               .from('radiologia_pendencias')
-              .update(dadosAnteriores)
+              .update(dadosAnteriores as any)
               .eq('id', snapshot.pendencia_id);
             
             if (error) {

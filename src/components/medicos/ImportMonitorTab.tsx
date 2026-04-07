@@ -327,7 +327,7 @@ function PayloadRow({ item, onDone }: { item: FailureItem; onDone: () => void })
 
       const { data: updated, error: updateError } = await supabase
         .from("leads")
-        .update(patch)
+        .update(patch as any)
         .eq("id", targetId)
         .select("id, nome")
         .single();
