@@ -324,7 +324,7 @@ export function useAtualizarStatusPagamento() {
 
       const { error } = await supabase
         .from("financeiro_pagamentos")
-        .update(updateData)
+        .update(updateData as any)
         .eq("id", id);
       if (error) throw error;
     },

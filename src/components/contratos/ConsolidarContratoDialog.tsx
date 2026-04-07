@@ -216,7 +216,7 @@ export function ConsolidarContratoDialog({
       camposAlterados.forEach(key => {
         if (camposEditados[key]) updates[key] = camposEditados[key];
       });
-      await supabase.from('licitacoes').update(updates).eq('id', licitacaoId);
+      await supabase.from('licitacoes').update(updates as any).eq('id', licitacaoId);
     }
 
     // Montar dados resolvidos da licitação
