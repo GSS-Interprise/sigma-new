@@ -44,7 +44,7 @@ export function AuditoriaPermissoes() {
         .from('permissoes_log')
         .select(`
           *,
-          profiles:user_id (
+          profiles:user_id!left (
             nome_completo,
             email,
             setor_id
