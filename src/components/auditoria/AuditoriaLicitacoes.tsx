@@ -57,7 +57,7 @@ export function AuditoriaLicitacoes() {
         .select(`
           *,
           licitacoes (numero_edital, objeto),
-          profiles:user_id (nome_completo)
+          profiles:user_id!left (nome_completo)
         `)
         .order('created_at', { ascending: false })
         .limit(500);
