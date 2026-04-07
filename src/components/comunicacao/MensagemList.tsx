@@ -137,7 +137,8 @@ export function MensagemList({ mensagens, currentUserId, onReply, onEdit, onUser
   };
 
   // Função para destacar menções no texto
-  const renderMensagemComMencoes = (texto: string, isOwn: boolean) => {
+  const renderMensagemComMencoes = (texto: string | null | undefined, isOwn: boolean) => {
+    if (!texto) return null;
     // Regex para encontrar @NomeSobrenome (palavras após @)
     const parts = texto.split(/(@\S+)/g);
     
