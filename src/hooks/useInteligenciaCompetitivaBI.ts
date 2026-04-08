@@ -181,7 +181,7 @@ export function useInteligenciaCompetitivaBI() {
       if (!vitoriaPorTipo[tipoLabel]) vitoriaPorTipo[tipoLabel] = { vitorias: 0, total: 0 };
       if (!evolucaoMensal[mesKey]) {
         evolucaoMensal[mesKey] = { 
-          mes: format(new Date(item.created_at), "MMM/yy", { locale: ptBR }), 
+          mes: format(itemDate, "MMM/yy", { locale: ptBR }), 
           rankingMedio: 0, 
           taxaVitoria: 0, 
           count: 0, 
