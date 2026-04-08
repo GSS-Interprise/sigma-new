@@ -360,7 +360,8 @@ export function useLicitacoesBI() {
     const months: Record<string, { iniciadas: number; encerradas: number; ganhas: number; valor: number; date: Date }> = {};
     
     licitacoes.forEach(l => {
-      const date = new Date(l.created_at || '');
+      const date = l.created_at ? new Date(l.created_at) : null;
+      if (!date || isNaN(date.getTime())) return;
       const monthKey = format(date, 'yyyy-MM');
       
       if (!months[monthKey]) {
