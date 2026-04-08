@@ -167,12 +167,12 @@ export function DisparosImportDialog({ open, onOpenChange, campanhaId, propostaI
         recentes: phonesBloqueados.size,
         mesmaProposta: phonesMesmaProposta.size,
         ativos: phonesEmDisparosAtivos.size,
-        medicos: phonesMedicos.size,
+        medicosLeadIds: leadIdsMedicos.size,
         medicosLeadIds: leadIdsMedicos.size,
         bloqueadosTemp: leadIdsBloqueadosTemp.size,
       });
 
-      return { blacklistedPhones, phonesBloqueados, phonesMesmaProposta, phonesEmDisparosAtivos, phonesMedicos, leadIdsMedicos, leadIdsBloqueadosTemp };
+      return { blacklistedPhones, phonesBloqueados, phonesMesmaProposta, phonesEmDisparosAtivos, leadIdsMedicos, leadIdsBloqueadosTemp };
     },
     enabled: open,
     staleTime: 0,
