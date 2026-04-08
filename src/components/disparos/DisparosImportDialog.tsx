@@ -168,7 +168,6 @@ export function DisparosImportDialog({ open, onOpenChange, campanhaId, propostaI
         mesmaProposta: phonesMesmaProposta.size,
         ativos: phonesEmDisparosAtivos.size,
         medicosLeadIds: leadIdsMedicos.size,
-        medicosLeadIds: leadIdsMedicos.size,
         bloqueadosTemp: leadIdsBloqueadosTemp.size,
       });
 
