@@ -169,14 +169,19 @@ export function useInteligenciaCompetitivaBI() {
       const gss = concorrentes.find(c => c.is_gss);
       const vencedor = concorrentes.find(c => c.is_vencedor);
       const tipoLabel = TIPO_ITEM_LABELS[item.tipo] || item.tipo;
-      const mesKey = format(new Date(item.created_at), "yyyy-MM");
+      
+      // Guard against invalid dates
+      const itemDate = item.created_at ? new Date(item.created_at) : null;
+      if (!itemDate || isNaN(itemDate.getTime())) return;
+      
+      const mesKey = format(itemDate, "yyyy-MM");
 
       // Inicializar estruturas
       if (!rankingPorTipo[tipoLabel]) rankingPorTipo[tipoLabel] = { soma: 0, count: 0 };
       if (!vitoriaPorTipo[tipoLabel]) vitoriaPorTipo[tipoLabel] = { vitorias: 0, total: 0 };
       if (!evolucaoMensal[mesKey]) {
         evolucaoMensal[mesKey] = { 
-          mes: format(new Date(item.created_at), "MMM/yy", { locale: ptBR }), 
+          mes: format(itemDate, "MMM/yy", { locale: ptBR }), 
           rankingMedio: 0, 
           taxaVitoria: 0, 
           count: 0, 
