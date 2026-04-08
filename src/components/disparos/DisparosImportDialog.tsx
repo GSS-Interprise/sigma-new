@@ -144,11 +144,7 @@ export function DisparosImportDialog({ open, onOpenChange, campanhaId, propostaI
         .from("medicos")
         .select("phone_e164, lead_id");
 
-      const phonesMedicos = new Set(
-        (medicosData || [])
-          .map((m) => toPhoneKey(m.phone_e164))
-          .filter(Boolean) as string[]
-      );
+      // Exclusão por telefone removida — filtramos apenas por lead_id vinculado ao médico
 
       const leadIdsMedicos = new Set(
         (medicosData || [])
@@ -326,7 +322,7 @@ export function DisparosImportDialog({ open, onOpenChange, campanhaId, propostaI
       if (exclusionSets.phonesBloqueados.has(key)) return false;
       if (exclusionSets.phonesMesmaProposta.has(key)) return false;
       if (exclusionSets.phonesEmDisparosAtivos.has(key)) return false;
-      if (exclusionSets.phonesMedicos.has(key)) return false;
+      // phonesMedicos removido — exclusão agora apenas por lead_id
       if (exclusionSets.leadIdsMedicos.has(lead.id)) return false;
       if (exclusionSets.leadIdsBloqueadosTemp.has(lead.id)) return false;
       return true;
