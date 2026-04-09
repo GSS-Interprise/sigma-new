@@ -190,6 +190,14 @@ export function PhoneEmailArrayFields({
       }
 
       setWhatsappStatus(newStatuses);
+      
+      // Persist confirmed WhatsApp phones
+      if (onWhatsappPhonesChange) {
+        const confirmedPhones = Object.entries(newStatuses)
+          .filter(([_, s]) => s === "has_whatsapp")
+          .map(([phone]) => phone);
+        onWhatsappPhonesChange(confirmedPhones);
+      }
     } catch (err: any) {
       toast.error("Erro ao verificar WhatsApp");
     } finally {
