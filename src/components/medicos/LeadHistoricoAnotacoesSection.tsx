@@ -13,7 +13,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   PlusCircle, Image, X, Trash2, AlertTriangle, Ban, 
-  Undo2, StickyNote, Calendar, User, Loader2, Send, FileText
+  Undo2, StickyNote, Calendar, User, Loader2, Send, FileText, MessageCircle
 } from "lucide-react";
 import {
   AlertDialog,
@@ -223,6 +223,32 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164 }: LeadHistori
         ...p,
         itens: itensMap[p.id] || []
       }));
+    },
+    enabled: !!leadId,
+  });
+
+  // Fetch conversas SigZap vinculadas ao lead
+  const { data: sigzapConversas } = useQuery({
+    queryKey: ['lead-sigzap-conversas', leadId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('sigzap_conversations')
+        .select(`
+          id,
+          status,
+          last_message_at,
+          last_message_text,
+          unread_count,
+          created_at,
+          contact:sigzap_contacts(contact_name, contact_phone),
+          instance:sigzap_instances(id, name),
+          assigned_user:profiles!sigzap_conversations_assigned_user_id_fkey(nome_completo)
+        `)
+        .eq('lead_id', leadId)
+        .order('last_message_at', { ascending: false });
+      
+      if (error) throw error;
+      return data || [];
     },
     enabled: !!leadId,
   });
