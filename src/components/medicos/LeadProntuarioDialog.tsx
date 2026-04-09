@@ -2792,7 +2792,7 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
 
           {/* Channels Sidebar - WhatsApp / Instagram / LinkedIn */}
           <div className="w-[380px] flex-shrink-0 border-l bg-muted/20 flex flex-col">
-            {leadId && <LeadChannelsSidebar leadId={leadId} />}
+            {leadId && <LeadChannelsSidebar leadId={leadId} activeConversaIdOverride={sidebarConversaId} />}
           </div>
         </div>
       </DialogContent>
