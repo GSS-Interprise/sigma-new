@@ -68,6 +68,7 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
   const [editedData, setEditedData] = useState<Record<string, any>>({});
   const [hasChanges, setHasChanges] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [sidebarConversaId, setSidebarConversaId] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   
   // Check if we're on the medicos page (corpo clínico context)
@@ -1979,6 +1980,7 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                   <LeadHistoricoAnotacoesSection 
                     leadId={leadId} 
                     phoneE164={lead?.phone_e164 || editedData.phone_e164}
+                    onConversaClick={(conversaId) => setSidebarConversaId(conversaId)}
                   />
                 </TabsContent>
 
@@ -2790,7 +2792,7 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
 
           {/* Channels Sidebar - WhatsApp / Instagram / LinkedIn */}
           <div className="w-[380px] flex-shrink-0 border-l bg-muted/20 flex flex-col">
-            {leadId && <LeadChannelsSidebar leadId={leadId} />}
+            {leadId && <LeadChannelsSidebar leadId={leadId} activeConversaIdOverride={sidebarConversaId} />}
           </div>
         </div>
       </DialogContent>

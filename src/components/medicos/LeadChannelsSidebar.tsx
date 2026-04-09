@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -9,10 +9,20 @@ import { cn } from "@/lib/utils";
 
 interface LeadChannelsSidebarProps {
   leadId: string;
+  activeConversaIdOverride?: string | null;
 }
 
-export function LeadChannelsSidebar({ leadId }: LeadChannelsSidebarProps) {
+export function LeadChannelsSidebar({ leadId, activeConversaIdOverride }: LeadChannelsSidebarProps) {
   const [selectedConversaId, setSelectedConversaId] = useState<string | null>(null);
+  const [activeChannelTab, setActiveChannelTab] = useState("whatsapp");
+
+  // When parent sets a conversation, switch to whatsapp tab and select it
+  useEffect(() => {
+    if (activeConversaIdOverride) {
+      setSelectedConversaId(activeConversaIdOverride);
+      setActiveChannelTab("whatsapp");
+    }
+  }, [activeConversaIdOverride]);
 
   // Fetch conversations for this lead
   const { data: conversas, isLoading } = useQuery({
@@ -37,7 +47,7 @@ export function LeadChannelsSidebar({ leadId }: LeadChannelsSidebarProps) {
   const activeConversaId = selectedConversaId || conversas?.[0]?.id || null;
 
   return (
-    <Tabs defaultValue="whatsapp" className="flex flex-col h-full">
+    <Tabs value={activeChannelTab} onValueChange={setActiveChannelTab} className="flex flex-col h-full">
       <TabsList className="grid grid-cols-3 mx-2 mt-2 flex-shrink-0">
         <TabsTrigger value="whatsapp" className="gap-1 text-[10px] px-1">
           <MessageCircle className="h-3 w-3" />
