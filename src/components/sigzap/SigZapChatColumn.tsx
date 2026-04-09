@@ -1508,11 +1508,7 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
 
       {/* Footer: Input */}
       <div className="p-3 border-t bg-muted/10">
-        {!conversa?.assigned_user_id ? (
-          <div className="text-center py-2 text-sm text-muted-foreground">
-            Assuma a conversa para enviar mensagens
-          </div>
-        ) : (
+        {conversa ? (
           <div className="flex gap-2 items-end">
             {/* Hidden file input - now accepts multiple */}
             <input
@@ -1588,6 +1584,10 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
                 )}
               </>
             )}
+          </div>
+        ) : (
+          <div className="text-center py-2 text-sm text-muted-foreground">
+            Selecione uma conversa
           </div>
         )}
       </div>
