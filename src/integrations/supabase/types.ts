@@ -5300,6 +5300,7 @@ export type Database = {
           unidades_vinculadas: string[] | null
           updated_at: string | null
           valor_contrato: number | null
+          whatsapp_phones: string[] | null
         }
         Insert: {
           agencia?: string | null
@@ -5357,6 +5358,7 @@ export type Database = {
           unidades_vinculadas?: string[] | null
           updated_at?: string | null
           valor_contrato?: number | null
+          whatsapp_phones?: string[] | null
         }
         Update: {
           agencia?: string | null
@@ -5414,6 +5416,7 @@ export type Database = {
           unidades_vinculadas?: string[] | null
           updated_at?: string | null
           valor_contrato?: number | null
+          whatsapp_phones?: string[] | null
         }
         Relationships: [
           {
