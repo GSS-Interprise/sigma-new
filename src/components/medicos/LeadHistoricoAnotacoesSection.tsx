@@ -29,9 +29,10 @@ import {
 interface LeadHistoricoAnotacoesSectionProps {
   leadId: string;
   phoneE164?: string | null;
+  onConversaClick?: (conversaId: string) => void;
 }
 
-export function LeadHistoricoAnotacoesSection({ leadId, phoneE164 }: LeadHistoricoAnotacoesSectionProps) {
+export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaClick }: LeadHistoricoAnotacoesSectionProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -655,7 +656,14 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164 }: LeadHistori
                   </div>
 
                   {/* Content */}
-                  <div className="flex-1 rounded-lg border bg-card p-4 group">
+                  <div 
+                    className={`flex-1 rounded-lg border bg-card p-4 group ${entry.tipo === 'conversa' && onConversaClick ? 'cursor-pointer hover:border-primary/50 hover:shadow-sm transition-all' : ''}`}
+                    onClick={() => {
+                      if (entry.tipo === 'conversa' && onConversaClick) {
+                        onConversaClick(entry.id);
+                      }
+                    }}
+                  >
                     <div className="flex items-start justify-between gap-2 mb-2">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
