@@ -311,6 +311,12 @@ export function CaptacaoKanban() {
                                     {lead.uf}
                                   </Badge>
                                 )}
+                                {lead.convertido_por_nome && (
+                                  <Badge variant="outline" className="text-xs gap-1 bg-primary/10 text-primary border-primary/20">
+                                    <UserCheck className="h-3 w-3" />
+                                    {lead.convertido_por_nome.split(' ')[0]}
+                                  </Badge>
+                                )}
                               </div>
                             </CardContent>
                           </Card>
