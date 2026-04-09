@@ -5297,6 +5297,7 @@ export type Database = {
           tags: string[] | null
           telefones_adicionais: string[] | null
           uf: string | null
+          ultimo_disparo_em: string | null
           unidades_vinculadas: string[] | null
           updated_at: string | null
           valor_contrato: number | null
@@ -5355,6 +5356,7 @@ export type Database = {
           tags?: string[] | null
           telefones_adicionais?: string[] | null
           uf?: string | null
+          ultimo_disparo_em?: string | null
           unidades_vinculadas?: string[] | null
           updated_at?: string | null
           valor_contrato?: number | null
@@ -5413,6 +5415,7 @@ export type Database = {
           tags?: string[] | null
           telefones_adicionais?: string[] | null
           uf?: string | null
+          ultimo_disparo_em?: string | null
           unidades_vinculadas?: string[] | null
           updated_at?: string | null
           valor_contrato?: number | null
@@ -7626,6 +7629,7 @@ export type Database = {
           lead_id: string | null
           licitacao_id: string | null
           nome: string | null
+          numero_proposta: number | null
           observacoes: string | null
           servico_id: string | null
           status: string
@@ -7649,6 +7653,7 @@ export type Database = {
           lead_id?: string | null
           licitacao_id?: string | null
           nome?: string | null
+          numero_proposta?: number | null
           observacoes?: string | null
           servico_id?: string | null
           status?: string
@@ -7672,6 +7677,7 @@ export type Database = {
           lead_id?: string | null
           licitacao_id?: string | null
           nome?: string | null
+          numero_proposta?: number | null
           observacoes?: string | null
           servico_id?: string | null
           status?: string
