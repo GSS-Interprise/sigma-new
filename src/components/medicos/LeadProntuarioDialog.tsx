@@ -1598,6 +1598,8 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                                     }
                                   }}
                                   onEmailChange={(email) => handleFieldChange('email', email)}
+                                  whatsappPhones={editedData.whatsapp_phones || []}
+                                  onWhatsappPhonesChange={(wps) => handleFieldChange('whatsapp_phones', wps)}
                                 />
                               </div>
 
