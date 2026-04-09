@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useKanbanColumns } from "@/hooks/useKanbanColumns";
-import { User, Mail, Phone, FileText, Calendar, CreditCard, Loader2, Settings } from "lucide-react";
+import { User, Mail, Phone, FileText, Calendar, CreditCard, Loader2, Settings, UserCheck } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { useState, useEffect } from "react";
