@@ -735,11 +735,14 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
     mutationFn: async (propostaId: string) => {
       if (!leadId) throw new Error('Lead não encontrado');
       
+      const { data: { user } } = await supabase.auth.getUser();
       const { error } = await supabase
         .from('proposta')
         .update({ 
           lead_id: leadId,
-          descricao: `Proposta vinculada a ${lead?.nome || 'Lead'}`
+          descricao: `Proposta vinculada a ${lead?.nome || 'Lead'}`,
+          criado_por: user?.id || null,
+          criado_por_nome: user?.user_metadata?.nome_completo || user?.email || null,
         })
         .eq('id', propostaId);
       
