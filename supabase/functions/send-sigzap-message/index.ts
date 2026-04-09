@@ -152,6 +152,27 @@ serve(async (req) => {
         };
         break;
 
+      case 'edit':
+        // Edit message text
+        if (!targetMessageId || !editedText) {
+          return new Response(JSON.stringify({ error: 'targetMessageId e editedText são obrigatórios para editar' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+        
+        evolutionEndpoint = `${evolutionUrl}/message/updateMessage/${instanceName}`;
+        evolutionBody = {
+          number,
+          key: {
+            remoteJid: contactJid,
+            fromMe: true,
+            id: targetMessageId
+          },
+          text: editedText
+        };
+        break;
+
       case 'send':
       default:
         // Regular message sending
