@@ -327,7 +327,7 @@ export function LeadPropostasSection({ leadId, leadNome, unidadesVinculadas }: L
                     {/* ID, Status and Actions */}
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-mono text-sm font-medium text-primary">
-                        {proposta.id_proposta || proposta.id.slice(0, 8)}
+                        {proposta.numero_proposta ? `Proposta #${proposta.numero_proposta}` : (proposta.id_proposta || proposta.id.slice(0, 8))}
                       </span>
                       {getStatusBadge(proposta.status, proposta.tipo)}
                       
