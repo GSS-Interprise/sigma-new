@@ -77,6 +77,33 @@ Deno.serve(async (req) => {
 
       if (status === '4-ENVIADO') {
         updateData.data_envio = new Date().toISOString();
+
+        // Vincular lead ao Acompanhamento quando disparo é confirmado
+        try {
+          const { data: contatoFull } = await supabase
+            .from('disparos_contatos')
+            .select('lead_id, telefone_e164')
+            .eq('id', contato_id)
+            .single();
+
+          if (contatoFull?.lead_id) {
+            const { data: leadData } = await supabase
+              .from('leads')
+              .select('status')
+              .eq('id', contatoFull.lead_id)
+              .single();
+
+            if (leadData?.status === 'Novo') {
+              await supabase
+                .from('leads')
+                .update({ status: 'Acompanhamento', updated_at: new Date().toISOString() })
+                .eq('id', contatoFull.lead_id);
+              console.log('[disparos-callback] Lead atualizado para Acompanhamento:', contatoFull.lead_id);
+            }
+          }
+        } catch (leadErr) {
+          console.warn('[disparos-callback] Erro ao atualizar lead (não-crítico):', leadErr);
+        }
       }
 
       if (status === '2-REENVIAR') {

@@ -851,6 +851,49 @@ serve(async (req) => {
       console.log('✅ Conversa atualizada:', conversation.id);
     }
 
+    // 3.5 Vincular lead à conversa (se ainda não vinculado)
+    try {
+      const contactPhone = contact.contact_phone || '';
+      let normalizedPhone = contactPhone.replace(/\D/g, '');
+      if (normalizedPhone.length >= 10 && !normalizedPhone.startsWith('+')) {
+        normalizedPhone = normalizedPhone.startsWith('55') ? '+' + normalizedPhone : '+55' + normalizedPhone;
+      } else if (normalizedPhone.startsWith('+')) {
+        // already has +
+      } else {
+        normalizedPhone = '+' + normalizedPhone;
+      }
+
+      const { data: leadId } = await supabase.rpc('find_lead_by_phone', { p_phone: normalizedPhone });
+      
+      if (leadId) {
+        // Setar lead_id na conversa
+        await supabase
+          .from('sigzap_conversations')
+          .update({ lead_id: leadId })
+          .eq('id', conversation.id)
+          .is('lead_id', null);
+
+        // Auto-transicionar lead para "Acompanhamento" se status for "Novo"
+        const { data: leadData } = await supabase
+          .from('leads')
+          .select('status')
+          .eq('id', leadId)
+          .single();
+
+        if (leadData?.status === 'Novo') {
+          await supabase
+            .from('leads')
+            .update({ status: 'Acompanhamento', updated_at: new Date().toISOString() })
+            .eq('id', leadId);
+          console.log('✅ Lead atualizado para Acompanhamento:', leadId);
+        }
+
+        console.log('✅ Lead vinculado à conversa:', leadId);
+      }
+    } catch (leadLinkError) {
+      console.warn('⚠️ Erro ao vincular lead (não-crítico):', leadLinkError);
+    }
+
     // 4. Verificar se a mensagem já existe (evitar duplicatas)
     if (messageId && !messageId.startsWith('msg_')) {
       const { data: existingMessage } = await supabase
