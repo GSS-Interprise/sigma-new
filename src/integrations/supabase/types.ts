@@ -8938,6 +8938,7 @@ export type Database = {
           instance_id: string
           last_message_at: string | null
           last_message_text: string | null
+          lead_id: string | null
           status: string | null
           unread_count: number | null
           updated_at: string | null
@@ -8951,6 +8952,7 @@ export type Database = {
           instance_id: string
           last_message_at?: string | null
           last_message_text?: string | null
+          lead_id?: string | null
           status?: string | null
           unread_count?: number | null
           updated_at?: string | null
@@ -8964,6 +8966,7 @@ export type Database = {
           instance_id?: string
           last_message_at?: string | null
           last_message_text?: string | null
+          lead_id?: string | null
           status?: string | null
           unread_count?: number | null
           updated_at?: string | null
@@ -8988,6 +8991,13 @@ export type Database = {
             columns: ["instance_id"]
             isOneToOne: false
             referencedRelation: "sigzap_instances"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sigzap_conversations_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
             referencedColumns: ["id"]
           },
         ]
@@ -9713,6 +9723,7 @@ export type Database = {
       }
       cleanup_expired_edit_locks: { Args: never; Returns: undefined }
       cleanup_whatsapp_rate_limit: { Args: never; Returns: undefined }
+      find_lead_by_phone: { Args: { p_phone: string }; Returns: string }
       generate_ticket_numero: { Args: never; Returns: string }
       get_leads_especialidade_counts: {
         Args: never
