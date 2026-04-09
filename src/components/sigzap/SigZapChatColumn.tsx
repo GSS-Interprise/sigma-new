@@ -1585,6 +1585,10 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
               </>
             )}
           </div>
+        ) : (
+          <div className="text-center py-2 text-sm text-muted-foreground">
+            Selecione uma conversa
+          </div>
         )}
       </div>
 
