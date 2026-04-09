@@ -275,7 +275,8 @@ async function downloadAndStoreMedia(
   messageId: string,
   mimeType: string,
   instanceName: string,
-  serverUrl?: string
+  serverUrl?: string,
+  payloadApiKey?: string
 ): Promise<string | null> {
   if (!mediaUrl) {
     console.log('⚠️ URL de mídia não fornecida');
