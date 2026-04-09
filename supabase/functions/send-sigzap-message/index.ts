@@ -161,12 +161,26 @@ serve(async (req) => {
           });
         }
         
+        // Look up the original message's remoteJid from raw_payload
+        // because the contact JID might be @lid but the message was sent to @s.whatsapp.net
+        let editRemoteJid = contactJid;
+        const { data: originalMsg } = await supabase
+          .from('sigzap_messages')
+          .select('raw_payload')
+          .eq('wa_message_id', targetMessageId)
+          .single();
+        
+        if (originalMsg?.raw_payload?.key?.remoteJid) {
+          editRemoteJid = originalMsg.raw_payload.key.remoteJid;
+          console.log('📝 Usando remoteJid do raw_payload:', editRemoteJid);
+        }
+        
         httpMethod = 'POST';
         evolutionEndpoint = `${evolutionUrl}/chat/updateMessage/${encodeURIComponent(instanceName)}`;
         evolutionBody = {
-          number,
+          number: editRemoteJid.replace('@s.whatsapp.net', '').replace('@lid', ''),
           key: {
-            remoteJid: contactJid,
+            remoteJid: editRemoteJid,
             fromMe: true,
             id: targetMessageId
           },
