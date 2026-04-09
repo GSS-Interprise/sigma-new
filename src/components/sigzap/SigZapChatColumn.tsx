@@ -670,6 +670,13 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
     const textoToSend = mensagem.trim();
     if (!textoToSend) return;
     
+    // If editing, send edit instead of new message
+    if (editingMessage) {
+      editMutation.mutate({ waMessageId: editingMessage.waMessageId, newText: textoToSend });
+      setMensagem("");
+      return;
+    }
+    
     // Generate a temporary ID for tracking
     const tempId = `pending-${Date.now()}`;
     
