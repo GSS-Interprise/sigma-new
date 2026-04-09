@@ -717,6 +717,44 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
     }
   };
 
+  // Edit mutation
+  const editMutation = useMutation({
+    mutationFn: async ({ waMessageId, newText }: { waMessageId: string; newText: string }) => {
+      if (!conversa) throw new Error('Conversa não encontrada');
+      
+      const contact = conversa.contact as any;
+      const instance = conversa.instance as any;
+
+      const { data, error } = await supabase.functions.invoke('send-sigzap-message', {
+        body: {
+          action: 'edit',
+          instanceName: instance.name,
+          contactJid: contact.contact_jid || `${contact.contact_phone}@s.whatsapp.net`,
+          targetMessageId: waMessageId,
+          editedText: newText,
+        },
+      });
+      
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sigzap-messages', conversaId] });
+      toast.success("Mensagem editada!");
+      setEditingMessage(null);
+    },
+    onError: () => {
+      toast.error("Erro ao editar mensagem");
+    },
+  });
+
+  // Handle edit
+  const handleEdit = (messageId: string, waMessageId: string, currentText: string) => {
+    setEditingMessage({ messageId, waMessageId, currentText });
+    setReplyingTo(null);
+    setMensagem(currentText);
+  };
+
   // Handle sending staged files
   const handleSendStagedFiles = async () => {
     if (stagedFiles.length === 0 && !mensagem.trim()) return;
