@@ -123,14 +123,106 @@ Deno.serve(async (req) => {
         );
       }
 
-      const contatosFormatados = contatos.map(c => ({
-        campanha_id,
-        lead_id: c.lead_id || null,
-        nome: c.nome,
-        telefone_original: c.telefone,
-        telefone_e164: formatPhoneE164(c.telefone),
-        status: '1-ENVIAR'
-      }));
+      // 1. Verificar blacklist
+      const phonesE164 = contatos.map(c => formatPhoneE164(c.telefone));
+      const { data: blacklistMatches } = await supabase
+        .from('blacklist')
+        .select('phone_e164')
+        .in('phone_e164', phonesE164);
+      
+      const blacklistedSet = new Set((blacklistMatches || []).map(b => b.phone_e164));
+      const contatosBloqueados: string[] = [];
+      const contatosValidos: typeof contatos = [];
+
+      for (const c of contatos) {
+        const phoneE164 = formatPhoneE164(c.telefone);
+        if (blacklistedSet.has(phoneE164)) {
+          contatosBloqueados.push(c.nome);
+          console.log(`[disparos-webhook] BLACKLIST: ${c.nome} (${phoneE164}) bloqueado`);
+        } else {
+          contatosValidos.push(c);
+        }
+      }
+
+      if (contatosBloqueados.length > 0) {
+        console.log(`[disparos-webhook] ${contatosBloqueados.length} contatos bloqueados por blacklist`);
+      }
+
+      if (contatosValidos.length === 0) {
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            contatos_adicionados: 0,
+            contatos_bloqueados: contatosBloqueados.length,
+            nomes_bloqueados: contatosBloqueados,
+            message: 'Todos os contatos estão na blacklist'
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // 2. Vincular lead_id e processar status do lead
+      const contatosFormatados = [];
+      for (const c of contatosValidos) {
+        const phoneE164 = formatPhoneE164(c.telefone);
+        let leadId = c.lead_id || null;
+
+        // Se não veio lead_id, tentar encontrar por telefone
+        if (!leadId) {
+          const { data: foundLeadId } = await supabase.rpc('find_lead_by_phone', { p_phone: phoneE164 });
+          if (foundLeadId) {
+            leadId = foundLeadId;
+            console.log(`[disparos-webhook] Lead encontrado por telefone: ${leadId} (${phoneE164})`);
+          }
+        }
+
+        // Se encontrou lead, atualizar ultimo_disparo_em e verificar status
+        if (leadId) {
+          try {
+            const { data: leadData } = await supabase
+              .from('leads')
+              .select('status')
+              .eq('id', leadId)
+              .single();
+
+            // Atualizar ultimo_disparo_em sempre
+            await supabase
+              .from('leads')
+              .update({ ultimo_disparo_em: new Date().toISOString(), updated_at: new Date().toISOString() })
+              .eq('id', leadId);
+
+            // Só mover para Acompanhamento se status atual é "Novo"
+            if (leadData?.status === 'Novo') {
+              await supabase
+                .from('leads')
+                .update({ status: 'Acompanhamento', updated_at: new Date().toISOString() })
+                .eq('id', leadId);
+              console.log(`[disparos-webhook] Lead ${leadId} movido para Acompanhamento`);
+            }
+
+            // Registrar no histórico do lead
+            await supabase
+              .from('lead_historico')
+              .insert({
+                lead_id: leadId,
+                tipo_evento: 'disparo',
+                descricao: `Adicionado à campanha de disparo "${campanha.nome || 'Sem nome'}"`,
+                dados_novos: { campanha_id, campanha_nome: campanha.nome, telefone: phoneE164 }
+              });
+          } catch (leadErr) {
+            console.warn('[disparos-webhook] Erro ao processar lead (não-crítico):', leadErr);
+          }
+        }
+
+        contatosFormatados.push({
+          campanha_id,
+          lead_id: leadId,
+          nome: c.nome,
+          telefone_original: c.telefone,
+          telefone_e164: phoneE164,
+          status: '1-ENVIAR'
+        });
+      }
 
       const { error: insertError } = await supabase
         .from('disparos_contatos')
@@ -145,22 +237,25 @@ Deno.serve(async (req) => {
       }
 
       // Atualizar total de contatos na campanha
+      const novoTotalReal = totalAtual + contatosValidos.length;
       await supabase
         .from('disparos_campanhas')
         .update({ 
-          total_contatos: novoTotal,
+          total_contatos: novoTotalReal,
           updated_at: new Date().toISOString()
         })
         .eq('id', campanha_id);
 
-      console.log('[disparos-webhook] Contatos adicionados:', contatos.length, '| Total na campanha:', novoTotal);
+      console.log('[disparos-webhook] Contatos adicionados:', contatosValidos.length, '| Bloqueados (blacklist):', contatosBloqueados.length, '| Total na campanha:', novoTotalReal);
 
       return new Response(
         JSON.stringify({ 
           success: true, 
-          contatos_adicionados: contatos.length,
-          total_campanha: novoTotal,
-          espaco_restante: LIMITE_POR_DISPARO - novoTotal
+          contatos_adicionados: contatosValidos.length,
+          contatos_bloqueados: contatosBloqueados.length,
+          nomes_bloqueados: contatosBloqueados,
+          total_campanha: novoTotalReal,
+          espaco_restante: LIMITE_POR_DISPARO - novoTotalReal
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );

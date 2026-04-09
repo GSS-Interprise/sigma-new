@@ -86,20 +86,55 @@ Deno.serve(async (req) => {
             .eq('id', contato_id)
             .single();
 
-          if (contatoFull?.lead_id) {
+          let leadId = contatoFull?.lead_id;
+
+          // Fallback: se lead_id null, tentar encontrar por telefone
+          if (!leadId && contatoFull?.telefone_e164) {
+            const { data: foundLeadId } = await supabase.rpc('find_lead_by_phone', { p_phone: contatoFull.telefone_e164 });
+            if (foundLeadId) {
+              leadId = foundLeadId;
+              // Atualizar o contato com o lead_id encontrado
+              await supabase
+                .from('disparos_contatos')
+                .update({ lead_id: leadId })
+                .eq('id', contato_id);
+              console.log('[disparos-callback] Lead vinculado por telefone (fallback):', leadId);
+            }
+          }
+
+          if (leadId) {
             const { data: leadData } = await supabase
               .from('leads')
               .select('status')
-              .eq('id', contatoFull.lead_id)
+              .eq('id', leadId)
               .single();
 
+            // Atualizar ultimo_disparo_em sempre
+            await supabase
+              .from('leads')
+              .update({ ultimo_disparo_em: new Date().toISOString(), updated_at: new Date().toISOString() })
+              .eq('id', leadId);
+
+            // Só mover para Acompanhamento se status atual é "Novo"
             if (leadData?.status === 'Novo') {
               await supabase
                 .from('leads')
                 .update({ status: 'Acompanhamento', updated_at: new Date().toISOString() })
-                .eq('id', contatoFull.lead_id);
-              console.log('[disparos-callback] Lead atualizado para Acompanhamento:', contatoFull.lead_id);
+                .eq('id', leadId);
+              console.log('[disparos-callback] Lead atualizado para Acompanhamento:', leadId);
+            } else {
+              console.log('[disparos-callback] Lead já em status:', leadData?.status, '- não rebaixado');
             }
+
+            // Registrar no histórico
+            await supabase
+              .from('lead_historico')
+              .insert({
+                lead_id: leadId,
+                tipo_evento: 'disparo_enviado',
+                descricao: `Disparo confirmado como enviado (campanha ${contato.campanha_id})`,
+                dados_novos: { contato_id, campanha_id: contato.campanha_id, status: '4-ENVIADO' }
+              });
           }
         } catch (leadErr) {
           console.warn('[disparos-callback] Erro ao atualizar lead (não-crítico):', leadErr);

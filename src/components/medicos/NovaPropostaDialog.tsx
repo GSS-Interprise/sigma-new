@@ -251,6 +251,17 @@ export function NovaPropostaDialog({ open, onOpenChange, leadId, leadNome, unida
       } else {
         // CREATE new proposta - propostas criadas no prontuário são sempre personalizadas
         const { data: { user: currentUser } } = await supabase.auth.getUser();
+        
+        // Calcular numero_proposta
+        const { data: maxProposta } = await supabase
+          .from('proposta')
+          .select('numero_proposta')
+          .eq('lead_id', leadId)
+          .order('numero_proposta', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        const nextNumero = (maxProposta?.numero_proposta || 0) + 1;
+        
         const { data: proposta, error: propostaError } = await supabase
           .from('proposta')
           .insert({
@@ -265,6 +276,7 @@ export function NovaPropostaDialog({ open, onOpenChange, leadId, leadNome, unida
             descricao: `Proposta personalizada para ${leadNome || 'Lead'} - ${unidadeSelecionada?.nome || 'Unidade'} - Contrato ${contratoUnidade.codigo_contrato || 'S/N'}`,
             criado_por: currentUser?.id || null,
             criado_por_nome: currentUser?.user_metadata?.nome_completo || currentUser?.email || null,
+            numero_proposta: nextNumero,
           })
           .select()
           .single();

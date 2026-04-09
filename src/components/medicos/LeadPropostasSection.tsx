@@ -201,6 +201,17 @@ export function LeadPropostasSection({ leadId, leadNome, unidadesVinculadas }: L
 
       // 2. Criar nova proposta personalizada
       const { data: { user: currentUser } } = await supabase.auth.getUser();
+      
+      // Calcular numero_proposta
+      const { data: maxProposta } = await supabase
+        .from('proposta')
+        .select('numero_proposta')
+        .eq('lead_id', leadId)
+        .order('numero_proposta', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const nextNumero = (maxProposta?.numero_proposta || 0) + 1;
+      
       const { data: novaProposta, error: createError } = await supabase
         .from('proposta')
         .insert({
@@ -216,6 +227,7 @@ export function LeadPropostasSection({ leadId, leadNome, unidadesVinculadas }: L
           descricao: `Proposta personalizada para ${leadNome || 'Lead'}`,
           criado_por: currentUser?.id || null,
           criado_por_nome: currentUser?.user_metadata?.nome_completo || currentUser?.email || null,
+          numero_proposta: nextNumero,
         })
         .select()
         .single();
@@ -327,7 +339,7 @@ export function LeadPropostasSection({ leadId, leadNome, unidadesVinculadas }: L
                     {/* ID, Status and Actions */}
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-mono text-sm font-medium text-primary">
-                        {proposta.id_proposta || proposta.id.slice(0, 8)}
+                        {proposta.numero_proposta ? `Proposta #${proposta.numero_proposta}` : (proposta.id_proposta || proposta.id.slice(0, 8))}
                       </span>
                       {getStatusBadge(proposta.status, proposta.tipo)}
                       

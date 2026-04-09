@@ -94,6 +94,11 @@ const statusConfig: Record<string, StatusCfg> = {
     className: "bg-purple-600 text-white border-transparent hover:bg-purple-700",
     icon: <XCircle className="h-3 w-3" /> 
   },
+  "7-BLACKLIST": {
+    label: "7-BLACKLIST",
+    className: "bg-gray-800 text-white border-transparent hover:bg-gray-900",
+    icon: <XCircle className="h-3 w-3" />
+  },
 };
 
 export function DisparosContatosPanel({ campanha, onBack }: DisparosContatosPanelProps) {

@@ -153,7 +153,17 @@ export function VincularPropostaExistenteDialog({
         .eq('proposta_id', propostaId);
       
       // Clonar proposta como "personalizada" para o lead, mantendo o template original intacto
-      const { id, id_proposta, criado_em, atualizado_em, criado_por: _cp, criado_por_nome: _cpn, ...camposClonar } = propostaOriginal;
+      const { id, id_proposta, criado_em, atualizado_em, criado_por: _cp, criado_por_nome: _cpn, numero_proposta: _np, ...camposClonar } = propostaOriginal;
+      
+      // Calcular numero_proposta
+      const { data: maxProposta } = await supabase
+        .from('proposta')
+        .select('numero_proposta')
+        .eq('lead_id', leadId)
+        .order('numero_proposta', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const nextNumero = (maxProposta?.numero_proposta || 0) + 1;
       
       const { data: { user: currentUser } } = await supabase.auth.getUser();
       const { data: novaProposta, error: insertError } = await supabase
@@ -166,6 +176,7 @@ export function VincularPropostaExistenteDialog({
           descricao: propostaOriginal.descricao || `Proposta vinculada a ${leadNome || 'Lead'}`,
           criado_por: currentUser?.id || null,
           criado_por_nome: currentUser?.user_metadata?.nome_completo || currentUser?.email || null,
+          numero_proposta: nextNumero,
         })
         .select('id')
         .single();
