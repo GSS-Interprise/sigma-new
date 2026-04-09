@@ -49,14 +49,28 @@ export function CaptacaoKanban() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("leads")
-        .select("*, convertido_por_profile:profiles!leads_convertido_por_fkey(nome_completo)")
+        .select("*")
         .neq("status", "Novo")
         .order("updated_at", { ascending: false });
 
       if (error) throw error;
+      
+      // Get unique convertido_por IDs and fetch names
+      const userIds = [...new Set((data || []).map((l: any) => l.convertido_por).filter(Boolean))];
+      let userMap: Record<string, string> = {};
+      if (userIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("id, nome_completo")
+          .in("id", userIds);
+        if (profiles) {
+          userMap = Object.fromEntries(profiles.map(p => [p.id, p.nome_completo || '']));
+        }
+      }
+      
       return (data || []).map((l: any) => ({
         ...l,
-        convertido_por_nome: l.convertido_por_profile?.nome_completo || null,
+        convertido_por_nome: l.convertido_por ? (userMap[l.convertido_por] || null) : null,
       })) as Lead[];
     },
   });
