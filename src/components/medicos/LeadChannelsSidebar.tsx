@@ -53,7 +53,7 @@ export function LeadChannelsSidebar({ leadId, activeConversaIdOverride }: LeadCh
   const activeConversaId = selectedConversaId || conversas?.[0]?.id || null;
 
   return (
-    <Tabs defaultValue="whatsapp" className="flex flex-col h-full">
+    <Tabs value={activeChannelTab} onValueChange={setActiveChannelTab} className="flex flex-col h-full">
       <TabsList className="grid grid-cols-3 mx-2 mt-2 flex-shrink-0">
         <TabsTrigger value="whatsapp" className="gap-1 text-[10px] px-1">
           <MessageCircle className="h-3 w-3" />
