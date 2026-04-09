@@ -250,6 +250,7 @@ export function NovaPropostaDialog({ open, onOpenChange, leadId, leadNome, unida
         return { id: propostaParaEditar.id };
       } else {
         // CREATE new proposta - propostas criadas no prontuário são sempre personalizadas
+        const { data: { user: currentUser } } = await supabase.auth.getUser();
         const { data: proposta, error: propostaError } = await supabase
           .from('proposta')
           .insert({
@@ -262,6 +263,8 @@ export function NovaPropostaDialog({ open, onOpenChange, leadId, leadNome, unida
             nome: `Proposta personalizada - ${leadNome || 'Lead'}`,
             observacoes: observacoes || null,
             descricao: `Proposta personalizada para ${leadNome || 'Lead'} - ${unidadeSelecionada?.nome || 'Unidade'} - Contrato ${contratoUnidade.codigo_contrato || 'S/N'}`,
+            criado_por: currentUser?.id || null,
+            criado_por_nome: currentUser?.user_metadata?.nome_completo || currentUser?.email || null,
           })
           .select()
           .single();
