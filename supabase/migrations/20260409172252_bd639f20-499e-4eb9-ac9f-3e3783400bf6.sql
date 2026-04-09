@@ -1,0 +1,1 @@
+ALTER TABLE public.proposta ADD COLUMN IF NOT EXISTS criado_por uuid, ADD COLUMN IF NOT EXISTS criado_por_nome text;

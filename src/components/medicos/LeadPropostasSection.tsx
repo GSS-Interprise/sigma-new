@@ -200,6 +200,7 @@ export function LeadPropostasSection({ leadId, leadNome, unidadesVinculadas }: L
         .eq('proposta_id', proposta.id);
 
       // 2. Criar nova proposta personalizada
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
       const { data: novaProposta, error: createError } = await supabase
         .from('proposta')
         .insert({
@@ -213,6 +214,8 @@ export function LeadPropostasSection({ leadId, leadNome, unidadesVinculadas }: L
           nome: `Proposta personalizada - ${leadNome || 'Lead'}`,
           observacoes: proposta.observacoes,
           descricao: `Proposta personalizada para ${leadNome || 'Lead'}`,
+          criado_por: currentUser?.id || null,
+          criado_por_nome: currentUser?.user_metadata?.nome_completo || currentUser?.email || null,
         })
         .select()
         .single();

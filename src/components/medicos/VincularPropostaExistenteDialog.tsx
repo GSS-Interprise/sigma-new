@@ -153,8 +153,9 @@ export function VincularPropostaExistenteDialog({
         .eq('proposta_id', propostaId);
       
       // Clonar proposta como "personalizada" para o lead, mantendo o template original intacto
-      const { id, id_proposta, criado_em, atualizado_em, ...camposClonar } = propostaOriginal;
+      const { id, id_proposta, criado_em, atualizado_em, criado_por: _cp, criado_por_nome: _cpn, ...camposClonar } = propostaOriginal;
       
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
       const { data: novaProposta, error: insertError } = await supabase
         .from('proposta')
         .insert({
@@ -163,6 +164,8 @@ export function VincularPropostaExistenteDialog({
           tipo: 'personalizada',
           status: 'personalizada',
           descricao: propostaOriginal.descricao || `Proposta vinculada a ${leadNome || 'Lead'}`,
+          criado_por: currentUser?.id || null,
+          criado_por_nome: currentUser?.user_metadata?.nome_completo || currentUser?.email || null,
         })
         .select('id')
         .single();

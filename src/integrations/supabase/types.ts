@@ -7618,6 +7618,8 @@ export type Database = {
           atualizado_em: string
           contrato_id: string | null
           criado_em: string
+          criado_por: string | null
+          criado_por_nome: string | null
           descricao: string | null
           id: string
           id_proposta: string | null
@@ -7639,6 +7641,8 @@ export type Database = {
           atualizado_em?: string
           contrato_id?: string | null
           criado_em?: string
+          criado_por?: string | null
+          criado_por_nome?: string | null
           descricao?: string | null
           id?: string
           id_proposta?: string | null
@@ -7660,6 +7664,8 @@ export type Database = {
           atualizado_em?: string
           contrato_id?: string | null
           criado_em?: string
+          criado_por?: string | null
+          criado_por_nome?: string | null
           descricao?: string | null
           id?: string
           id_proposta?: string | null
