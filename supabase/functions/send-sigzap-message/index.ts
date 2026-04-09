@@ -76,7 +76,8 @@ serve(async (req) => {
       action = 'send',
       reaction,
       targetMessageId,
-      targetFromMe
+      targetFromMe,
+      editedText
     } = body;
 
     if (!instanceName || !contactJid) {
