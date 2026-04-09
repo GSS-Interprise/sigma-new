@@ -399,6 +399,7 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164 }: LeadHistori
       case 'alerta': return <AlertTriangle className="h-4 w-4" />;
       case 'disparo': return <Send className="h-4 w-4" />;
       case 'proposta': return <FileText className="h-4 w-4" />;
+      case 'conversa': return <MessageCircle className="h-4 w-4" />;
       default: return <StickyNote className="h-4 w-4" />;
     }
   };
@@ -410,6 +411,7 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164 }: LeadHistori
       case 'alerta': return 'bg-orange-500';
       case 'disparo': return 'bg-blue-500';
       case 'proposta': return 'bg-indigo-500';
+      case 'conversa': return 'bg-green-500';
       default: return 'bg-primary';
     }
   };
@@ -421,6 +423,7 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164 }: LeadHistori
       case 'alerta': return 'Alerta';
       case 'disparo': return 'Disparo';
       case 'proposta': return 'Proposta';
+      case 'conversa': return 'Conversa WhatsApp';
       default: return 'Anotação';
     }
   };
@@ -502,7 +505,32 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164 }: LeadHistori
       created_at: p.criado_em,
       imagens: [],
       source: 'proposta' as const
-    }))
+    })),
+    ...(sigzapConversas || []).map(c => {
+      const contact = c.contact as any;
+      const instance = c.instance as any;
+      const assignedUser = c.assigned_user as any;
+      const statusLabel = c.status === 'active' ? 'Ativa' : c.status === 'inactive' ? 'Inativa' : c.status;
+      const msgCount = c.unread_count || 0;
+      return {
+        id: c.id,
+        tipo: 'conversa',
+        titulo: `${instance?.name || 'Instância'} • ${contact?.contact_phone || ''}`,
+        conteudo: `Status: ${statusLabel}${msgCount > 0 ? ` • ${msgCount} não lidas` : ''}${c.last_message_text ? `\n"${c.last_message_text}"` : ''}`,
+        metadados: {
+          instance_name: instance?.name,
+          contact_phone: contact?.contact_phone,
+          contact_name: contact?.contact_name,
+          assigned_to: assignedUser?.nome_completo,
+          status: c.status,
+          unread_count: msgCount
+        },
+        usuario_nome: assignedUser?.nome_completo || null,
+        created_at: c.last_message_at || c.created_at,
+        imagens: [],
+        source: 'conversa' as const
+      };
+    })
   ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
   return (
