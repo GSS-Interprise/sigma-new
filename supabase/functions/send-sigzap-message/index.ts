@@ -161,8 +161,8 @@ serve(async (req) => {
           });
         }
         
-        httpMethod = 'PUT';
-        evolutionEndpoint = `${evolutionUrl}/message/updateMessage/${encodeURIComponent(instanceName)}`;
+        httpMethod = 'POST';
+        evolutionEndpoint = `${evolutionUrl}/chat/updateMessage/${encodeURIComponent(instanceName)}`;
         evolutionBody = {
           number,
           key: {
