@@ -9,10 +9,26 @@ import { cn } from "@/lib/utils";
 
 interface LeadChannelsSidebarProps {
   leadId: string;
+  activeConversaIdOverride?: string | null;
 }
 
-export function LeadChannelsSidebar({ leadId }: LeadChannelsSidebarProps) {
+export function LeadChannelsSidebar({ leadId, activeConversaIdOverride }: LeadChannelsSidebarProps) {
   const [selectedConversaId, setSelectedConversaId] = useState<string | null>(null);
+  const [activeChannelTab, setActiveChannelTab] = useState("whatsapp");
+
+  // When parent sets a conversation, switch to whatsapp tab and select it
+  const effectiveOverride = activeConversaIdOverride ?? null;
+  useState(() => {
+    // handled via effect below
+  });
+  
+  // Use effect to react to override changes
+  const prevOverrideRef = useRef(effectiveOverride);
+  if (effectiveOverride && effectiveOverride !== prevOverrideRef.current) {
+    prevOverrideRef.current = effectiveOverride;
+    setSelectedConversaId(effectiveOverride);
+    setActiveChannelTab("whatsapp");
+  }
 
   // Fetch conversations for this lead
   const { data: conversas, isLoading } = useQuery({
