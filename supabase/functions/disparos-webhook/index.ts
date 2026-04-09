@@ -237,22 +237,25 @@ Deno.serve(async (req) => {
       }
 
       // Atualizar total de contatos na campanha
+      const novoTotalReal = totalAtual + contatosValidos.length;
       await supabase
         .from('disparos_campanhas')
         .update({ 
-          total_contatos: novoTotal,
+          total_contatos: novoTotalReal,
           updated_at: new Date().toISOString()
         })
         .eq('id', campanha_id);
 
-      console.log('[disparos-webhook] Contatos adicionados:', contatos.length, '| Total na campanha:', novoTotal);
+      console.log('[disparos-webhook] Contatos adicionados:', contatosValidos.length, '| Bloqueados (blacklist):', contatosBloqueados.length, '| Total na campanha:', novoTotalReal);
 
       return new Response(
         JSON.stringify({ 
           success: true, 
-          contatos_adicionados: contatos.length,
-          total_campanha: novoTotal,
-          espaco_restante: LIMITE_POR_DISPARO - novoTotal
+          contatos_adicionados: contatosValidos.length,
+          contatos_bloqueados: contatosBloqueados.length,
+          nomes_bloqueados: contatosBloqueados,
+          total_campanha: novoTotalReal,
+          espaco_restante: LIMITE_POR_DISPARO - novoTotalReal
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
