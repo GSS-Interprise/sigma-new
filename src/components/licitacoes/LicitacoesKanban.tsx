@@ -892,18 +892,36 @@ export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filt
       .from('licitacoes-anexos')
       .getPublicUrl(fileName);
 
-    // Insert record in licitacoes_anexos table
-    const { error: insertError } = await supabase
+    // Verifica duplicata por nome antes de inserir
+    const { data: existingAnexo } = await supabase
       .from('licitacoes_anexos')
-      .insert({
-        licitacao_id: licitacaoId,
-        arquivo_nome: file.name,
-        arquivo_url: publicUrl,
-        usuario_id: user.id,
-        usuario_nome: profile?.nome_completo || 'Usuário',
-      });
+      .select('id')
+      .eq('licitacao_id', licitacaoId)
+      .eq('arquivo_nome', file.name)
+      .limit(1);
 
-    if (insertError) throw insertError;
+    if (existingAnexo && existingAnexo.length > 0) {
+      const { error: updateError } = await supabase
+        .from('licitacoes_anexos')
+        .update({
+          arquivo_url: publicUrl,
+          usuario_id: user.id,
+          usuario_nome: profile?.nome_completo || 'Usuário',
+        })
+        .eq('id', existingAnexo[0].id);
+      if (updateError) throw updateError;
+    } else {
+      const { error: insertError } = await supabase
+        .from('licitacoes_anexos')
+        .insert({
+          licitacao_id: licitacaoId,
+          arquivo_nome: file.name,
+          arquivo_url: publicUrl,
+          usuario_id: user.id,
+          usuario_nome: profile?.nome_completo || 'Usuário',
+        });
+      if (insertError) throw insertError;
+    }
   };
 
   const handleFileDrop = async (e: React.DragEvent, licitacaoId: string) => {
