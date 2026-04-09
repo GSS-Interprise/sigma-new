@@ -296,6 +296,25 @@ serve(async (req) => {
       });
     }
 
+    if (action === 'edit') {
+      // Update message text in database
+      if (targetMessageId && editedText) {
+        await supabase
+          .from('sigzap_messages')
+          .update({ message_text: editedText })
+          .eq('wa_message_id', targetMessageId);
+      }
+      
+      console.log('✅ Mensagem editada com sucesso');
+      return new Response(JSON.stringify({ 
+        success: true, 
+        action: 'edit',
+        evolutionResponse: evolutionResult
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     // For send action - save message to database
     const waMessageId = evolutionResult.key?.id || evolutionResult.id || `sent_${Date.now()}`;
     const messageText = message || mediaCaption || `[${mediaType || 'Mídia'}]`;
