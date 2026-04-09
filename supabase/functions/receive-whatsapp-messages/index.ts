@@ -298,7 +298,7 @@ async function downloadAndStoreMedia(
       console.log('🔄 URL do WhatsApp detectada, usando Evolution API para download...');
       
       const evolutionUrl = serverUrl || Deno.env.get('EVOLUTION_API_URL');
-      const evolutionKey = Deno.env.get('EVOLUTION_API_KEY');
+      const evolutionKey = payloadApiKey || Deno.env.get('EVOLUTION_API_KEY');
       
       if (!evolutionUrl || !evolutionKey) {
         console.error('❌ Evolution API URL ou Key não configuradas');
