@@ -1427,6 +1427,7 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
                     onReply={handleReply}
                     onReact={handleReact}
                     onDelete={handleDelete}
+                    onEdit={handleEdit}
                     onAttachToLead={handleAttachToLead}
                     canDelete={canSendMessages && !isDeleted}
                     hasLinkedLead={!!linkedLead?.id}
@@ -1547,6 +1548,12 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
       <SigZapReplyPreview 
         replyingTo={replyingTo} 
         onCancel={() => setReplyingTo(null)} 
+      />
+
+      {/* Edit preview */}
+      <SigZapEditPreview 
+        editingMessage={editingMessage} 
+        onCancel={() => { setEditingMessage(null); setMensagem(""); }} 
       />
 
       {/* Staging area for files */}
