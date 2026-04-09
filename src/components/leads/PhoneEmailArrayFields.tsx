@@ -18,6 +18,10 @@ interface PhoneEmailArrayFieldsProps {
   onPhonesChange: (phones: string[]) => void;
   onEmailChange: (email: string) => void;
   inputClassName?: string;
+  /** Telefones já confirmados com WhatsApp (persistidos no banco) */
+  whatsappPhones?: string[];
+  /** Callback para salvar os telefones confirmados */
+  onWhatsappPhonesChange?: (phones: string[]) => void;
 }
 
 type WhatsAppStatus = "unchecked" | "checking" | "has_whatsapp" | "no_whatsapp";
@@ -28,11 +32,20 @@ export function PhoneEmailArrayFields({
   onPhonesChange,
   onEmailChange,
   inputClassName = "",
+  whatsappPhones = [],
+  onWhatsappPhonesChange,
 }: PhoneEmailArrayFieldsProps) {
   const [editingPhoneIdx, setEditingPhoneIdx] = useState<number | null>(null);
   const [editingPhoneValue, setEditingPhoneValue] = useState("");
   const [newPhone, setNewPhone] = useState("");
-  const [whatsappStatus, setWhatsappStatus] = useState<Record<string, WhatsAppStatus>>({});
+  // Initialize status from persisted whatsappPhones
+  const [whatsappStatus, setWhatsappStatus] = useState<Record<string, WhatsAppStatus>>(() => {
+    const initial: Record<string, WhatsAppStatus> = {};
+    for (const p of whatsappPhones) {
+      initial[p] = "has_whatsapp";
+    }
+    return initial;
+  });
   const [checkingAll, setCheckingAll] = useState(false);
 
   const [editingEmail, setEditingEmail] = useState(false);
