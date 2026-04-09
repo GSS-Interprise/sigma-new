@@ -279,17 +279,37 @@ export function LicitacaoAnexosBar({ licitacaoId }: LicitacaoAnexosBarProps) {
       
       if (uploadError) throw uploadError;
 
-      const { error: dbError } = await supabase
+      // Verifica duplicata por nome
+      const { data: existing } = await supabase
         .from('licitacoes_anexos')
-        .insert({
-          licitacao_id: licitacaoId,
-          arquivo_nome: file.name,
-          arquivo_url: filePath,
-          usuario_id: userId,
-          usuario_nome: profile?.nome_completo || 'Usuário',
-        });
+        .select('id')
+        .eq('licitacao_id', licitacaoId)
+        .eq('arquivo_nome', file.name)
+        .limit(1);
 
-      if (dbError) throw dbError;
+      if (existing && existing.length > 0) {
+        // Atualiza o registro existente em vez de criar duplicata
+        const { error: dbError } = await supabase
+          .from('licitacoes_anexos')
+          .update({
+            arquivo_url: filePath,
+            usuario_id: userId,
+            usuario_nome: profile?.nome_completo || 'Usuário',
+          })
+          .eq('id', existing[0].id);
+        if (dbError) throw dbError;
+      } else {
+        const { error: dbError } = await supabase
+          .from('licitacoes_anexos')
+          .insert({
+            licitacao_id: licitacaoId,
+            arquivo_nome: file.name,
+            arquivo_url: filePath,
+            usuario_id: userId,
+            usuario_nome: profile?.nome_completo || 'Usuário',
+          });
+        if (dbError) throw dbError;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['licitacao-anexos-tabela', licitacaoId] });
@@ -403,17 +423,36 @@ export function LicitacaoAnexosBar({ licitacaoId }: LicitacaoAnexosBarProps) {
             
             if (uploadError) throw uploadError;
 
-            const { error: dbError } = await supabase
+            // Verifica duplicata por nome
+            const { data: existingPaste } = await supabase
               .from('licitacoes_anexos')
-              .insert({
-                licitacao_id: licitacaoId,
-                arquivo_nome: customName,
-                arquivo_url: filePath,
-                usuario_id: userId,
-                usuario_nome: profile?.nome_completo || 'Usuário',
-              });
+              .select('id')
+              .eq('licitacao_id', licitacaoId)
+              .eq('arquivo_nome', customName)
+              .limit(1);
 
-            if (dbError) throw dbError;
+            if (existingPaste && existingPaste.length > 0) {
+              const { error: dbError } = await supabase
+                .from('licitacoes_anexos')
+                .update({
+                  arquivo_url: filePath,
+                  usuario_id: userId,
+                  usuario_nome: profile?.nome_completo || 'Usuário',
+                })
+                .eq('id', existingPaste[0].id);
+              if (dbError) throw dbError;
+            } else {
+              const { error: dbError } = await supabase
+                .from('licitacoes_anexos')
+                .insert({
+                  licitacao_id: licitacaoId,
+                  arquivo_nome: customName,
+                  arquivo_url: filePath,
+                  usuario_id: userId,
+                  usuario_nome: profile?.nome_completo || 'Usuário',
+                });
+              if (dbError) throw dbError;
+            }
           } catch (err) {
             console.error('Erro ao fazer upload:', err);
             toast.error('Erro ao colar arquivo');
