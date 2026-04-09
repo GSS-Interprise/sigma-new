@@ -1980,6 +1980,7 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                   <LeadHistoricoAnotacoesSection 
                     leadId={leadId} 
                     phoneE164={lead?.phone_e164 || editedData.phone_e164}
+                    onConversaClick={(conversaId) => setSidebarConversaId(conversaId)}
                   />
                 </TabsContent>
 
