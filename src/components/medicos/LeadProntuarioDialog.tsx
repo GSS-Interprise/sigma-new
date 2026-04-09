@@ -2777,19 +2777,20 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                     </div>
                   </ScrollArea>
                 </TabsContent>
+
+                {/* Atividades Tab */}
+                <TabsContent value="atividades" className="m-0 h-full overflow-hidden">
+                  <div className="h-full">
+                    {leadId && <LeadAtividadesPanel leadId={leadId} onClose={() => {}} embedded />}
+                  </div>
+                </TabsContent>
               </div>
             </Tabs>
           </div>
 
-          {/* Activities Sidebar */}
-          <div className="w-[280px] flex-shrink-0 border-l bg-muted/20 flex flex-col">
-            <div className="px-3 py-3 border-b flex items-center gap-2">
-              <History className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium">Atividades</span>
-            </div>
-            <div className="flex-1 min-h-0">
-              {leadId && <LeadAtividadesPanel leadId={leadId} onClose={() => {}} embedded />}
-            </div>
+          {/* Channels Sidebar - WhatsApp / Instagram / LinkedIn */}
+          <div className="w-[380px] flex-shrink-0 border-l bg-muted/20 flex flex-col">
+            {leadId && <LeadChannelsSidebar leadId={leadId} />}
           </div>
         </div>
       </DialogContent>
