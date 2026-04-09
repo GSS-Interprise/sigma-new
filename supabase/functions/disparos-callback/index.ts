@@ -135,6 +135,48 @@ Deno.serve(async (req) => {
                 descricao: `Disparo confirmado como enviado (campanha ${contato.campanha_id})`,
                 dados_novos: { contato_id, campanha_id: contato.campanha_id, status: '4-ENVIADO' }
               });
+
+            // Vincular lead à conversa do SigZap automaticamente
+            try {
+              const phoneE164 = contatoFull?.telefone_e164;
+              if (phoneE164) {
+                // Normalizar telefone para buscar no sigzap_contacts (pode estar sem +)
+                const phoneDigits = phoneE164.replace(/\D/g, '');
+                const phoneVariants = [phoneE164, phoneDigits, '+' + phoneDigits];
+                
+                // Buscar contato do SigZap pelo telefone
+                const { data: sigzapContacts } = await supabase
+                  .from('sigzap_contacts')
+                  .select('id, instance_id')
+                  .or(phoneVariants.map(p => `contact_phone.eq.${p}`).join(','));
+
+                if (sigzapContacts && sigzapContacts.length > 0) {
+                  for (const sc of sigzapContacts) {
+                    // Vincular lead_id nas conversas que ainda não têm lead vinculado
+                    const { data: updatedConvs } = await supabase
+                      .from('sigzap_conversations')
+                      .update({ lead_id: leadId })
+                      .eq('contact_id', sc.id)
+                      .is('lead_id', null)
+                      .select('id');
+
+                    if (updatedConvs && updatedConvs.length > 0) {
+                      console.log('[disparos-callback] Lead vinculado a', updatedConvs.length, 'conversa(s) SigZap:', updatedConvs.map(c => c.id));
+                    }
+                  }
+                } else {
+                  console.log('[disparos-callback] Nenhum contato SigZap encontrado para telefone:', phoneE164);
+                }
+              }
+            } catch (sigzapErr) {
+              console.warn('[disparos-callback] Erro ao vincular conversa SigZap (não-crítico):', sigzapErr);
+            }
+
+            // Atualizar has_whatsapp no lead
+            await supabase
+              .from('leads')
+              .update({ has_whatsapp: true })
+              .eq('id', leadId);
           }
         } catch (leadErr) {
           console.warn('[disparos-callback] Erro ao atualizar lead (não-crítico):', leadErr);
