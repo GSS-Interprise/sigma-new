@@ -111,7 +111,8 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
           *,
           contact:sigzap_contacts(*),
           instance:sigzap_instances(id, name, instance_uuid),
-          assigned_user:profiles!sigzap_conversations_assigned_user_id_fkey(id, nome_completo)
+          assigned_user:profiles!sigzap_conversations_assigned_user_id_fkey(id, nome_completo),
+          lead:leads!sigzap_conversations_lead_id_fkey(id, nome)
         `)
         .eq('id', conversaId)
         .single();
@@ -140,11 +141,16 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
 
   const captadorColor = captadorPermissao?.cor || null;
 
-  // Check if conversation has a linked lead (by contact phone)
+  // Check if conversation has a linked lead (prefer lead_id from join, fallback to phone lookup)
   const contactPhone = (conversa?.contact as any)?.contact_phone;
+  const leadFromJoin = conversa?.lead as any;
   const { data: linkedLead } = useQuery({
-    queryKey: ['sigzap-linked-lead', contactPhone],
+    queryKey: ['sigzap-linked-lead', conversa?.lead_id, contactPhone],
     queryFn: async () => {
+      // If lead is already joined from conversation, use it
+      if (leadFromJoin?.id) return leadFromJoin;
+      
+      // Fallback: lookup by phone
       if (!contactPhone) return null;
       const phoneE164 = normalizeToE164(contactPhone);
       if (!phoneE164) return null;
@@ -155,7 +161,7 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
         .maybeSingle();
       return data;
     },
-    enabled: !!contactPhone,
+    enabled: !!conversaId && (!!leadFromJoin?.id || !!contactPhone),
     staleTime: 60_000,
   });
 

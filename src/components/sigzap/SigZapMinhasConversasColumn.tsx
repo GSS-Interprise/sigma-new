@@ -92,7 +92,8 @@ export function SigZapMinhasConversasColumn({
         .select(`
           *,
           contact:sigzap_contacts(*),
-          instance:sigzap_instances(id, name)
+          instance:sigzap_instances(id, name),
+          lead:leads!sigzap_conversations_lead_id_fkey(id, nome)
         `)
         .eq('assigned_user_id', user.id)
         .neq('status', 'inactive')
@@ -616,10 +617,11 @@ export function SigZapMinhasConversasColumn({
               const lastMessageAt = conversa.last_message_at;
               const msgCount = conversa.unread_count || 0;
               
-              // Get lead name if contact has no name
+              // Get lead name - prioritize join, then phone lookup
+              const leadFromJoin = conversa.lead as any;
               const phoneE164 = contact?.contact_phone ? normalizeToE164(contact.contact_phone) : null;
-              const leadName = phoneE164 && leadsMap ? leadsMap[phoneE164] : null;
-              const displayName = contact?.contact_name || leadName || contact?.contact_phone || 'Contato';
+              const leadName = leadFromJoin?.nome || (phoneE164 && leadsMap ? leadsMap[phoneE164] : null);
+              const displayName = leadName || contact?.contact_name || contact?.contact_phone || 'Contato';
               
               return (
                 <Card
