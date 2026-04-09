@@ -1,74 +1,91 @@
 
 
-# Vincular Conversas SigZap a Leads (com suporte a múltiplos telefones)
+# Estratégia Robusta para Leads no Acompanhamento pós-Disparo
 
-## Contexto: como os telefones ficam no lead
+## Problemas identificados
 
-| Campo | Tipo | Exemplo |
-|-------|------|---------|
-| `phone_e164` | text | `+5547999758708` |
-| `telefones_adicionais` | text[] | `{"+5548991234567","+5547988887777"}` |
+1. **Lead já no corpo clínico** — se alguém dispara para um médico que já é corpo clínico (status "Convertido"), mudar status para "Acompanhamento" APAGA o histórico de conversão
+2. **Lead na blacklist** — disparos manuais podem atingir leads bloqueados sem aviso
+3. **Múltiplas propostas** — o lead pode ter 2+ propostas (já existem 5 leads com múltiplas propostas no banco), mas o sistema precisa garantir que uma nova proposta não substitui a anterior
+4. **Dados do lead** — ao mover status, dados pessoais/contratuais não podem ser perdidos
 
-Quando o WhatsApp recebe uma mensagem de `554799758708`, o sistema precisa encontrar o lead **mesmo que esse número esteja em `telefones_adicionais`** e não no campo principal.
+## Regras de negócio propostas
 
-## Mudanças no plano
+### Regra 1: Verificar blacklist ANTES de adicionar à campanha
+No `disparos-webhook`, ao inserir contatos, cruzar com a tabela `blacklist`. Contatos na blacklist são rejeitados com status `"7-BLACKLIST"` (novo status) e logados. O webhook retorna quantos foram bloqueados.
 
-### 1. Migration SQL — coluna `lead_id` + função de lookup
+### Regra 2: Não rebaixar status de leads avançados
+Ao confirmar envio (`4-ENVIADO`), a lógica de mover para "Acompanhamento" só executa se o status atual do lead for **"Novo"**. Se o lead já estiver em qualquer outro status (Convertido, Qualificado, Acompanhamento, etc.), o status **não muda**. O lead apenas recebe um registro no `lead_historico` dizendo "Novo disparo realizado".
 
-Adicionar `lead_id` à `sigzap_conversations` (como antes) **e** criar uma função SQL `find_lead_by_phone(phone text)` que busca em ambos os campos:
+### Regra 3: Lead do corpo clínico — vincular sem alterar status
+Se o lead já tem um `medico` vinculado (`medicos.lead_id`), ele NÃO sai do corpo clínico. O disparo é registrado no histórico do lead, e uma flag `ultimo_disparo_em` é atualizada no lead para rastreio, mas o status permanece "Convertido".
 
-```sql
-CREATE OR REPLACE FUNCTION find_lead_by_phone(p_phone text)
-RETURNS uuid
-LANGUAGE sql STABLE
-AS $$
-  SELECT id FROM leads
-  WHERE phone_e164 = p_phone
-     OR p_phone = ANY(telefones_adicionais)
-  LIMIT 1;
-$$;
+### Regra 4: Múltiplas propostas
+A tabela `proposta` já suporta múltiplas propostas por lead (já existem leads com 2 propostas). Cada proposta tem seu próprio `contrato_id`, `unidade_id`, `servico_id`. Nenhuma lógica substitui proposta anterior — sempre INSERT, nunca UPDATE de proposta existente. Adicionaremos um campo `numero_proposta` auto-incrementado por lead para identificação clara (Proposta 1, Proposta 2...).
+
+## Mudanças técnicas
+
+### 1. Migration SQL
+- Adicionar coluna `ultimo_disparo_em` (timestamptz) na tabela `leads`
+- Adicionar coluna `numero_proposta` (integer) na tabela `proposta`
+
+### 2. `disparos-webhook/index.ts` — ao inserir contatos (linhas 106-167)
+```text
+Para cada contato:
+  1. Verificar blacklist por phone_e164
+     → Se na blacklist: marcar status "7-BLACKLIST", não inserir na campanha
+  2. Se lead_id não veio no payload:
+     → find_lead_by_phone(telefone_e164) → setar lead_id
+  3. Se lead encontrado:
+     → Se status == "Novo" → mudar para "Acompanhamento"
+     → Se qualquer outro status → NÃO mudar, apenas logar no lead_historico
+     → Atualizar leads.ultimo_disparo_em = now()
 ```
 
-O backfill retroativo também usará essa função para preencher `lead_id` nas conversas existentes.
-
-### 2. Edge Function `receive-whatsapp-messages`
-
-Ao criar/atualizar conversa, normalizar o telefone do contato para E.164 e chamar:
-
-```typescript
-const { data: lead } = await supabase.rpc('find_lead_by_phone', { p_phone: normalizedPhone });
+### 3. `disparos-callback/index.ts` — fallback no status 4-ENVIADO (linhas 78-107)
+```text
+Se lead_id null no contato:
+  → find_lead_by_phone(telefone_e164)
+  → Se encontrou, atualizar lead_id no contato
+Se lead encontrado:
+  → Mesmo check: só muda para "Acompanhamento" se status atual == "Novo"
+  → Registrar no lead_historico "Disparo confirmado como enviado"
 ```
 
-Se encontrar → setar `lead_id` na conversa e atualizar status do lead para "Acompanhamento" (se for "Novo").
+### 4. `NovaPropostaDialog.tsx` / `VincularPropostaExistenteDialog.tsx`
+- Ao criar proposta, calcular `numero_proposta` = max(numero_proposta) do lead + 1
+- Exibir no UI "Proposta #1", "Proposta #2" etc.
 
-### 3. Edge Function `disparos-callback`
+### 5. Frontend — aviso visual no painel de contatos
+- Na `DisparosImportDialog` e `DisparosContatosPanel`, mostrar badge "BLACKLIST" para contatos bloqueados
+- Na `DisparosImportDialog`, filtrar contatos da blacklist com aviso: "X contatos removidos por estarem na blacklist"
 
-Mesmo lookup quando um disparo é confirmado como enviado.
-
-### 4. Frontend — SigZap components
-
-Sem mudança em relação ao plano anterior: JOIN com `leads(id, nome)` via `lead_id`, priorizar nome do lead.
-
-## Fluxo completo
+## Fluxo resumido
 
 ```text
-Mensagem chega de 554799758708
-  → normaliza para +5547999758708
-  → find_lead_by_phone('+5547999758708')
-  → encontra lead (pode estar em phone_e164 OU telefones_adicionais)
-  → sigzap_conversations.lead_id = lead.id
-  → lead.status = "Acompanhamento" (se era "Novo")
-  → UI mostra nome do lead do CRM
+Contato adicionado à campanha
+  ├─ Na blacklist? → Status "7-BLACKLIST", não envia, avisa o captor
+  ├─ Lead encontrado com status "Novo"? → Muda para "Acompanhamento"
+  ├─ Lead já "Convertido" (corpo clínico)? → NÃO muda status, registra histórico
+  ├─ Lead já em outro status? → NÃO muda status, registra histórico
+  └─ Sempre: atualiza ultimo_disparo_em no lead
+
+Proposta criada
+  └─ Sempre INSERT (nunca substitui)
+  └─ numero_proposta auto-incrementa por lead
+  └─ Cada proposta pode ter contrato/unidade/serviço diferentes
 ```
 
 ## Arquivos alterados
 
 | Arquivo | Mudança |
 |---------|---------|
-| Migration SQL | Coluna `lead_id`, index, função `find_lead_by_phone`, backfill |
-| `receive-whatsapp-messages/index.ts` | Lookup via RPC, setar lead_id, auto "Acompanhamento" |
-| `disparos-callback/index.ts` | Mesmo lookup ao confirmar envio |
-| `SigZapConversasColumn.tsx` | Join com leads, priorizar nome do lead |
-| `SigZapMinhasConversasColumn.tsx` | Idem |
-| `SigZapChatColumn.tsx` | Exibir lead info no header |
+| Migration SQL | `ultimo_disparo_em` em leads, `numero_proposta` em proposta |
+| `disparos-webhook/index.ts` | Check blacklist + vinculação de lead + regras de status |
+| `disparos-callback/index.ts` | Fallback lookup + regras de status (não rebaixar) |
+| `NovaPropostaDialog.tsx` | Auto-numerar proposta |
+| `VincularPropostaExistenteDialog.tsx` | Auto-numerar proposta |
+| `LeadPropostasSection.tsx` | Exibir "Proposta #N" |
+| `DisparosImportDialog.tsx` | Filtro de blacklist com aviso |
+| `DisparosContatosPanel.tsx` | Badge "BLACKLIST" no status |
 
