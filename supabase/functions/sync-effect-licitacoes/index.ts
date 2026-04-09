@@ -260,46 +260,59 @@ Deno.serve(async (req) => {
 
           console.log(`Criado: ${favorito.codigo}`);
 
-          // Download e upload do PDF (com retry)
+          // Download e upload do PDF (com retry) - verifica duplicatas antes
           if (favorito.pdfUrl) {
-            let retries = 3;
-            let pdfUploaded = false;
+            const baseFileName = favorito.codigo.replace(/[^a-zA-Z0-9]/g, '_');
 
-            while (retries > 0 && !pdfUploaded) {
-              try {
-                const pdfResponse = await fetch(favorito.pdfUrl);
-                if (!pdfResponse.ok) throw new Error('Falha ao baixar PDF');
+            // Verificar se já existe PDF para esta licitação
+            const { data: existingFiles } = await supabase.storage
+              .from('editais-pdfs')
+              .list(licitacaoId);
 
-                const pdfBlob = await pdfResponse.blob();
-                const fileName = `${favorito.codigo.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}.pdf`;
+            const alreadyExists = existingFiles?.some(f => f.name.startsWith(baseFileName)) ?? false;
 
-                const { error: uploadError } = await supabase.storage
-                  .from('editais-pdfs')
-                  .upload(`${licitacaoId}/${fileName}`, pdfBlob, {
-                    contentType: 'application/pdf',
-                    upsert: false,
-                  });
+            if (alreadyExists) {
+              console.log(`PDF já existe para ${favorito.codigo}, pulando upload`);
+            } else {
+              let retries = 3;
+              let pdfUploaded = false;
 
-                if (uploadError && !uploadError.message.includes('already exists')) {
-                  throw uploadError;
-                }
+              while (retries > 0 && !pdfUploaded) {
+                try {
+                  const pdfResponse = await fetch(favorito.pdfUrl);
+                  if (!pdfResponse.ok) throw new Error('Falha ao baixar PDF');
 
-                pdfUploaded = true;
-                console.log(`PDF anexado: ${fileName}`);
-              } catch (pdfError) {
-                retries--;
-                if (retries === 0) {
-                  console.error(`Falha ao anexar PDF após 3 tentativas: ${pdfError}`);
-                  await supabase.from('effect_sync_logs').insert({
-                    tipo: 'error',
-                    licitacao_id: licitacaoId,
-                    effect_id: favorito.id,
-                    licitacao_codigo: favorito.codigo,
-                    erro: `Falha ao baixar PDF: ${(pdfError as any)?.message || String(pdfError)}`,
-                    usuario_id: userId,
-                  });
-                } else {
-                  await new Promise(resolve => setTimeout(resolve, 2000 * (4 - retries)));
+                  const pdfBlob = await pdfResponse.blob();
+                  const fileName = `${baseFileName}_${Date.now()}.pdf`;
+
+                  const { error: uploadError } = await supabase.storage
+                    .from('editais-pdfs')
+                    .upload(`${licitacaoId}/${fileName}`, pdfBlob, {
+                      contentType: 'application/pdf',
+                      upsert: false,
+                    });
+
+                  if (uploadError && !uploadError.message.includes('already exists')) {
+                    throw uploadError;
+                  }
+
+                  pdfUploaded = true;
+                  console.log(`PDF anexado: ${fileName}`);
+                } catch (pdfError) {
+                  retries--;
+                  if (retries === 0) {
+                    console.error(`Falha ao anexar PDF após 3 tentativas: ${pdfError}`);
+                    await supabase.from('effect_sync_logs').insert({
+                      tipo: 'error',
+                      licitacao_id: licitacaoId,
+                      effect_id: favorito.id,
+                      licitacao_codigo: favorito.codigo,
+                      erro: `Falha ao baixar PDF: ${(pdfError as any)?.message || String(pdfError)}`,
+                      usuario_id: userId,
+                    });
+                  } else {
+                    await new Promise(resolve => setTimeout(resolve, 2000 * (4 - retries)));
+                  }
                 }
               }
             }

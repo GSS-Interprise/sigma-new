@@ -4499,15 +4499,7 @@ export type Database = {
           unidade?: string | null
           unidade_id?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "escalas_integradas_cliente_id_fkey"
-            columns: ["cliente_id"]
-            isOneToOne: false
-            referencedRelation: "clientes"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       escalas_locais: {
         Row: {
