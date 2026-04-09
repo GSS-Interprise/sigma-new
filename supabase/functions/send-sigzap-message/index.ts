@@ -19,11 +19,13 @@ interface SendMessageRequest {
   mediaCaption?: string;
   quotedMessageId?: string;
   // New action types
-  action?: 'send' | 'react' | 'delete';
+  action?: 'send' | 'react' | 'delete' | 'edit';
   // For reactions
   reaction?: string;
   targetMessageId?: string;
   targetFromMe?: boolean;
+  // For edit
+  editedText?: string;
 }
 
 serve(async (req) => {
@@ -74,7 +76,8 @@ serve(async (req) => {
       action = 'send',
       reaction,
       targetMessageId,
-      targetFromMe
+      targetFromMe,
+      editedText
     } = body;
 
     if (!instanceName || !contactJid) {
@@ -146,6 +149,27 @@ serve(async (req) => {
           id: targetMessageId,
           remoteJid: contactJid,
           fromMe: targetFromMe ?? true
+        };
+        break;
+
+      case 'edit':
+        // Edit message text
+        if (!targetMessageId || !editedText) {
+          return new Response(JSON.stringify({ error: 'targetMessageId e editedText são obrigatórios para editar' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+        
+        evolutionEndpoint = `${evolutionUrl}/message/updateMessage/${instanceName}`;
+        evolutionBody = {
+          number,
+          key: {
+            remoteJid: contactJid,
+            fromMe: true,
+            id: targetMessageId
+          },
+          text: editedText
         };
         break;
 
@@ -266,6 +290,25 @@ serve(async (req) => {
       return new Response(JSON.stringify({ 
         success: true, 
         action: 'delete',
+        evolutionResponse: evolutionResult
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (action === 'edit') {
+      // Update message text in database
+      if (targetMessageId && editedText) {
+        await supabase
+          .from('sigzap_messages')
+          .update({ message_text: editedText })
+          .eq('wa_message_id', targetMessageId);
+      }
+      
+      console.log('✅ Mensagem editada com sucesso');
+      return new Response(JSON.stringify({ 
+        success: true, 
+        action: 'edit',
         evolutionResponse: evolutionResult
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

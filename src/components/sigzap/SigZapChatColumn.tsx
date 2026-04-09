@@ -30,7 +30,7 @@ import {
   getFileMediaType, 
   createFilePreview 
 } from "./SigZapStagingArea";
-import { SigZapMessageContextMenu, SigZapReplyPreview } from "./SigZapMessageContextMenu";
+import { SigZapMessageContextMenu, SigZapReplyPreview, SigZapEditPreview } from "./SigZapMessageContextMenu";
 import { LeadProntuarioDialog } from "@/components/medicos/LeadProntuarioDialog";
 import { SigZapLeadLinkDialog } from "./SigZapLeadLinkDialog";
 import { normalizeToE164 } from "@/lib/phoneUtils";
@@ -81,6 +81,11 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
     messageId: string;
     waMessageId: string | null;
     messageText: string | null;
+  } | null>(null);
+  const [editingMessage, setEditingMessage] = useState<{
+    messageId: string;
+    waMessageId: string;
+    currentText: string;
   } | null>(null);
   
   // Lead Prontuario state
@@ -665,6 +670,13 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
     const textoToSend = mensagem.trim();
     if (!textoToSend) return;
     
+    // If editing, send edit instead of new message
+    if (editingMessage) {
+      editMutation.mutate({ waMessageId: editingMessage.waMessageId, newText: textoToSend });
+      setMensagem("");
+      return;
+    }
+    
     // Generate a temporary ID for tracking
     const tempId = `pending-${Date.now()}`;
     
@@ -710,6 +722,44 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
     if (window.confirm('Apagar esta mensagem para todos?')) {
       deleteMutation.mutate({ waMessageId, fromMe });
     }
+  };
+
+  // Edit mutation
+  const editMutation = useMutation({
+    mutationFn: async ({ waMessageId, newText }: { waMessageId: string; newText: string }) => {
+      if (!conversa) throw new Error('Conversa não encontrada');
+      
+      const contact = conversa.contact as any;
+      const instance = conversa.instance as any;
+
+      const { data, error } = await supabase.functions.invoke('send-sigzap-message', {
+        body: {
+          action: 'edit',
+          instanceName: instance.name,
+          contactJid: contact.contact_jid || `${contact.contact_phone}@s.whatsapp.net`,
+          targetMessageId: waMessageId,
+          editedText: newText,
+        },
+      });
+      
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sigzap-messages', conversaId] });
+      toast.success("Mensagem editada!");
+      setEditingMessage(null);
+    },
+    onError: () => {
+      toast.error("Erro ao editar mensagem");
+    },
+  });
+
+  // Handle edit
+  const handleEdit = (messageId: string, waMessageId: string, currentText: string) => {
+    setEditingMessage({ messageId, waMessageId, currentText });
+    setReplyingTo(null);
+    setMensagem(currentText);
   };
 
   // Handle sending staged files
@@ -1377,6 +1427,7 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
                     onReply={handleReply}
                     onReact={handleReact}
                     onDelete={handleDelete}
+                    onEdit={handleEdit}
                     onAttachToLead={handleAttachToLead}
                     canDelete={canSendMessages && !isDeleted}
                     hasLinkedLead={!!linkedLead?.id}
@@ -1497,6 +1548,12 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
       <SigZapReplyPreview 
         replyingTo={replyingTo} 
         onCancel={() => setReplyingTo(null)} 
+      />
+
+      {/* Edit preview */}
+      <SigZapEditPreview 
+        editingMessage={editingMessage} 
+        onCancel={() => { setEditingMessage(null); setMensagem(""); }} 
       />
 
       {/* Staging area for files */}

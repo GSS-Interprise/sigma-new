@@ -15,7 +15,8 @@ import {
   SmilePlus,
   Copy,
   MoreVertical,
-  Paperclip
+  Paperclip,
+  Pencil
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -31,6 +32,7 @@ interface SigZapMessageContextMenuProps {
   onReply: (messageId: string, messageText: string | null) => void;
   onReact: (waMessageId: string, fromMe: boolean, emoji: string) => void;
   onDelete: (waMessageId: string, fromMe: boolean) => void;
+  onEdit?: (messageId: string, waMessageId: string, currentText: string) => void;
   onAttachToLead?: (messageId: string, mediaUrl: string, filename: string) => void;
   canDelete: boolean;
   hasLinkedLead: boolean;
@@ -39,20 +41,14 @@ interface SigZapMessageContextMenuProps {
 const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥', '👏', '🎉', '💯'];
 
 const ATTACHABLE_TYPES = ['document', 'pdf', 'application'];
-const ATTACHABLE_MIMES = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
 
 function isAttachableMessage(messageType: string, mediaUrl: string | null, filename: string | null): boolean {
   if (!mediaUrl) return false;
-  
-  // Check by message type
   if (ATTACHABLE_TYPES.includes(messageType)) return true;
-  
-  // Check by file extension
   if (filename) {
     const ext = filename.split('.').pop()?.toLowerCase();
     if (ext && ['pdf', 'doc', 'docx'].includes(ext)) return true;
   }
-
   return false;
 }
 
@@ -68,12 +64,11 @@ export function SigZapMessageContextMenu({
   onReply,
   onReact,
   onDelete,
+  onEdit,
   onAttachToLead,
   canDelete,
   hasLinkedLead,
 }: SigZapMessageContextMenuProps) {
-  const [isHovered, setIsHovered] = useState(false);
-
   const handleCopy = () => {
     if (messageText) {
       navigator.clipboard.writeText(messageText);
@@ -81,6 +76,7 @@ export function SigZapMessageContextMenu({
   };
 
   const showAttachOption = isAttachableMessage(messageType, mediaUrl, mediaFilename);
+  const canEdit = fromMe && waMessageId && messageType === 'text' && messageText && onEdit;
 
   return (
     <div 
@@ -88,19 +84,17 @@ export function SigZapMessageContextMenu({
         "relative group max-w-[85%]",
         fromMe ? "ml-auto" : "mr-auto"
       )}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
     >
-      {/* 3-dot menu button */}
+      {/* 3-dot menu button - positioned inside the bubble area */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
             className={cn(
-              "absolute top-1 bg-background/90 rounded-full p-1 shadow-sm border opacity-0 group-hover:opacity-100 transition-opacity z-10",
-              fromMe ? "left-0 -translate-x-full -ml-1" : "right-0 translate-x-full ml-1"
+              "absolute top-1 z-10 bg-black/20 hover:bg-black/40 rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity",
+              fromMe ? "left-1" : "right-1"
             )}
           >
-            <MoreVertical className="h-3.5 w-3.5 text-muted-foreground" />
+            <MoreVertical className="h-3.5 w-3.5 text-white drop-shadow-sm" />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent className="w-48" align={fromMe ? "start" : "end"}>
@@ -112,6 +106,17 @@ export function SigZapMessageContextMenu({
             <Reply className="h-4 w-4" />
             Responder
           </DropdownMenuItem>
+
+          {/* Edit - only for own text messages */}
+          {canEdit && (
+            <DropdownMenuItem 
+              onClick={() => onEdit(messageId, waMessageId, messageText)}
+              className="gap-2"
+            >
+              <Pencil className="h-4 w-4" />
+              Editar mensagem
+            </DropdownMenuItem>
+          )}
 
           {/* React with emoji submenu */}
           {waMessageId && (
@@ -203,6 +208,38 @@ export function SigZapReplyPreview({ replyingTo, onCancel }: ReplyPreviewProps) 
         <p className="text-xs text-primary font-medium">Respondendo</p>
         <p className="text-xs text-muted-foreground truncate">
           {replyingTo.messageText || '[Mídia]'}
+        </p>
+      </div>
+      <button
+        onClick={onCancel}
+        className="h-6 w-6 flex items-center justify-center rounded hover:bg-muted text-muted-foreground"
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
+// Edit preview component
+interface EditPreviewProps {
+  editingMessage: {
+    messageId: string;
+    waMessageId: string;
+    currentText: string;
+  } | null;
+  onCancel: () => void;
+}
+
+export function SigZapEditPreview({ editingMessage, onCancel }: EditPreviewProps) {
+  if (!editingMessage) return null;
+
+  return (
+    <div className="px-3 py-2 border-t bg-amber-500/10 flex items-center gap-2">
+      <div className="w-1 h-8 bg-amber-500 rounded-full flex-shrink-0" />
+      <div className="flex-1 min-w-0">
+        <p className="text-xs text-amber-600 font-medium">✏️ Editando mensagem</p>
+        <p className="text-xs text-muted-foreground truncate">
+          {editingMessage.currentText}
         </p>
       </div>
       <button
