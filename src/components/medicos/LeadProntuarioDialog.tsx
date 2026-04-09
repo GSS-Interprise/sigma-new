@@ -33,6 +33,7 @@ import { LeadHistoricoAnotacoesSection } from "./LeadHistoricoAnotacoesSection";
 import { LeadAnexosSection } from "./LeadAnexosSection";
 import { LeadLinksExternosSection } from "./LeadLinksExternosSection";
 import { LeadAtividadesPanel } from "./LeadAtividadesPanel";
+import { LeadChannelsSidebar } from "./LeadChannelsSidebar";
 import { atualizarStatusLead, registrarConversaoMedico, registrarEdicaoLead, registrarCriacaoLead, registrarDesconversaoParaLead, registrarReprocessamentoKanban } from "@/lib/leadHistoryLogger";
 import { EspecialidadeMultiSelect } from "./EspecialidadeMultiSelect";
 import { UnidadeMultiSelect } from "./UnidadeMultiSelect";
@@ -1459,7 +1460,7 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
             </DialogHeader>
 
             <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
-              <TabsList className="grid grid-cols-5 mx-4 mt-2 flex-shrink-0 w-auto">
+              <TabsList className="grid grid-cols-6 mx-4 mt-2 flex-shrink-0 w-auto">
                 <TabsTrigger value="dados" className="gap-1.5 text-xs">
                   <User className="h-3.5 w-3.5" />
                   Dados
@@ -1481,6 +1482,10 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                 <TabsTrigger value="conversao" className="gap-1.5 text-xs">
                   <UserCheck className="h-3.5 w-3.5" />
                   Conversão
+                </TabsTrigger>
+                <TabsTrigger value="atividades" className="gap-1.5 text-xs">
+                  <Activity className="h-3.5 w-3.5" />
+                  Atividades
                 </TabsTrigger>
               </TabsList>
 
