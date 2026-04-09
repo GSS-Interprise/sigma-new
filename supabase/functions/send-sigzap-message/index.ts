@@ -19,11 +19,13 @@ interface SendMessageRequest {
   mediaCaption?: string;
   quotedMessageId?: string;
   // New action types
-  action?: 'send' | 'react' | 'delete';
+  action?: 'send' | 'react' | 'delete' | 'edit';
   // For reactions
   reaction?: string;
   targetMessageId?: string;
   targetFromMe?: boolean;
+  // For edit
+  editedText?: string;
 }
 
 serve(async (req) => {
