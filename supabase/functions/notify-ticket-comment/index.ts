@@ -25,6 +25,14 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
+    if (!gmailUser || !gmailPassword) {
+      console.error("Missing GMAIL_USER or GMAIL_APP_PASSWORD secrets");
+      return new Response(
+        JSON.stringify({ success: false, error: "Email service not configured. Set GMAIL_USER and GMAIL_APP_PASSWORD secrets." }),
+        { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
     const {
       ticketNumero,
       solicitanteNome,
