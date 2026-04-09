@@ -81,20 +81,22 @@ export function SigZapMessageContextMenu({
   return (
     <div 
       className={cn(
-        "relative group max-w-[85%]",
-        fromMe ? "ml-auto" : "mr-auto"
+        "group max-w-[85%] flex items-start gap-1",
+        fromMe ? "ml-auto flex-row" : "mr-auto flex-row-reverse"
       )}
     >
-      {/* 3-dot menu button - positioned inside the bubble area */}
+      {/* Message content */}
+      <div className="flex-1 min-w-0">
+        {children}
+      </div>
+
+      {/* 3-dot menu button - flex sibling, sits beside the bubble */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
-            className={cn(
-              "absolute top-1 z-10 bg-black/20 hover:bg-black/40 rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity",
-              fromMe ? "left-1" : "right-1"
-            )}
+            className="flex-shrink-0 mt-1 bg-black/10 hover:bg-black/30 rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
           >
-            <MoreVertical className="h-3.5 w-3.5 text-white drop-shadow-sm" />
+            <MoreVertical className="h-3.5 w-3.5 text-muted-foreground" />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent className="w-48" align={fromMe ? "start" : "end"}>
