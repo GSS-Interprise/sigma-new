@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -17,18 +17,12 @@ export function LeadChannelsSidebar({ leadId, activeConversaIdOverride }: LeadCh
   const [activeChannelTab, setActiveChannelTab] = useState("whatsapp");
 
   // When parent sets a conversation, switch to whatsapp tab and select it
-  const effectiveOverride = activeConversaIdOverride ?? null;
-  useState(() => {
-    // handled via effect below
-  });
-  
-  // Use effect to react to override changes
-  const prevOverrideRef = useRef(effectiveOverride);
-  if (effectiveOverride && effectiveOverride !== prevOverrideRef.current) {
-    prevOverrideRef.current = effectiveOverride;
-    setSelectedConversaId(effectiveOverride);
-    setActiveChannelTab("whatsapp");
-  }
+  useEffect(() => {
+    if (activeConversaIdOverride) {
+      setSelectedConversaId(activeConversaIdOverride);
+      setActiveChannelTab("whatsapp");
+    }
+  }, [activeConversaIdOverride]);
 
   // Fetch conversations for this lead
   const { data: conversas, isLoading } = useQuery({
