@@ -1103,8 +1103,9 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
   };
 
   // Reset history pagination when conversation changes
+  // Start at page 2 since auto-sync already fetches page 1
   useEffect(() => {
-    setHistoryPage(1);
+    setHistoryPage(2);
     setHistoryHasMore(true);
   }, [conversaId]);
 
@@ -1113,27 +1114,45 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
     if (!conversaId || fetchingHistory) return;
     
     setFetchingHistory(true);
+    let currentPage = historyPage;
+    let totalImported = 0;
 
     try {
-      const { data, error } = await supabase.functions.invoke('sigzap-fetch-history', {
-        body: { conversationId: conversaId, page: historyPage },
-      });
+      // Loop: if a page returns 0 new but has_more, auto-advance to next page
+      while (true) {
+        const { data, error } = await supabase.functions.invoke('sigzap-fetch-history', {
+          body: { conversationId: conversaId, page: currentPage },
+        });
 
-      if (error) throw error;
+        if (error) throw error;
 
-      const imported = data?.imported || 0;
-      const hasMore = data?.has_more ?? false;
+        const imported = data?.imported || 0;
+        const hasMore = data?.has_more ?? false;
+        totalImported += imported;
 
-      setHistoryHasMore(hasMore);
-      if (imported > 0 || (data?.already_existed || 0) > 0) {
-        setHistoryPage(prev => prev + 1);
-      }
-
-      if (imported > 0) {
-        await queryClient.invalidateQueries({ queryKey: ['sigzap-messages', conversaId] });
-        toast.success(`${imported} mensagens importadas (página ${historyPage})`);
-      } else {
-        toast.info(hasMore ? "Nenhuma nova nesta página, tente buscar mais" : "Nenhuma mensagem nova encontrada");
+        if (imported > 0) {
+          // Found new messages, advance page and stop
+          setHistoryPage(currentPage + 1);
+          setHistoryHasMore(hasMore);
+          await queryClient.invalidateQueries({ queryKey: ['sigzap-messages', conversaId] });
+          toast.success(`${totalImported} mensagens importadas`);
+          break;
+        } else if (hasMore) {
+          // All already existed on this page, auto-advance
+          currentPage++;
+          continue;
+        } else {
+          // No more pages
+          setHistoryPage(currentPage + 1);
+          setHistoryHasMore(false);
+          if (totalImported > 0) {
+            await queryClient.invalidateQueries({ queryKey: ['sigzap-messages', conversaId] });
+            toast.success(`${totalImported} mensagens importadas`);
+          } else {
+            toast.info("Nenhuma mensagem nova encontrada");
+          }
+          break;
+        }
       }
     } catch (err: any) {
       console.error('Erro ao buscar histórico:', err);
