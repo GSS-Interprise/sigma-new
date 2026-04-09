@@ -30,7 +30,7 @@ import {
   getFileMediaType, 
   createFilePreview 
 } from "./SigZapStagingArea";
-import { SigZapMessageContextMenu, SigZapReplyPreview } from "./SigZapMessageContextMenu";
+import { SigZapMessageContextMenu, SigZapReplyPreview, SigZapEditPreview } from "./SigZapMessageContextMenu";
 import { LeadProntuarioDialog } from "@/components/medicos/LeadProntuarioDialog";
 import { SigZapLeadLinkDialog } from "./SigZapLeadLinkDialog";
 import { normalizeToE164 } from "@/lib/phoneUtils";
@@ -81,6 +81,11 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
     messageId: string;
     waMessageId: string | null;
     messageText: string | null;
+  } | null>(null);
+  const [editingMessage, setEditingMessage] = useState<{
+    messageId: string;
+    waMessageId: string;
+    currentText: string;
   } | null>(null);
   
   // Lead Prontuario state
