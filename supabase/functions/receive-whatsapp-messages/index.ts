@@ -918,6 +918,7 @@ serve(async (req) => {
     // 5. Se tiver mídia, baixar e salvar no storage
     let storedMediaUrl: string | null = null;
     const serverUrl = (payload as any).server_url;
+    const payloadApiKey = (payload as any).apikey;
     
     if (messageContent.mediaUrl && ['image', 'video', 'audio', 'document', 'sticker'].includes(messageContent.type)) {
       storedMediaUrl = await downloadAndStoreMedia(
@@ -928,7 +929,8 @@ serve(async (req) => {
         messageId,
         messageContent.mediaMimeType || 'application/octet-stream',
         instanceName,
-        serverUrl
+        serverUrl,
+        payloadApiKey
       );
     }
 
