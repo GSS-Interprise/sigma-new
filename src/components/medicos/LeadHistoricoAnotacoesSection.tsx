@@ -192,6 +192,7 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
           descricao,
           observacoes,
           criado_em,
+          criado_por_nome,
           licitacao_id,
           contrato_id,
           unidade_id,
@@ -502,7 +503,7 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
         contrato_codigo: p.contrato?.codigo_contrato,
         cliente_nome: p.contrato?.cliente?.nome_empresa
       },
-      usuario_nome: null,
+      usuario_nome: p.criado_por_nome || null,
       created_at: p.criado_em,
       imagens: [],
       source: 'proposta' as const
