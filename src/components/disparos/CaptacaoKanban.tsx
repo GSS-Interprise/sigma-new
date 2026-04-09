@@ -27,6 +27,7 @@ interface Lead {
   created_at: string;
   updated_at: string | null;
   tags: string[] | null;
+  convertido_por_nome: string | null;
 }
 
 interface TagConfig {
