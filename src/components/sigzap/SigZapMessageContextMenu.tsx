@@ -184,9 +184,6 @@ export function SigZapMessageContextMenu({
           )}
         </DropdownMenuContent>
       </DropdownMenu>
-      
-      {/* Message content */}
-      {children}
     </div>
   );
 }
