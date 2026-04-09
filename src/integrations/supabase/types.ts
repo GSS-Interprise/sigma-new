@@ -4507,27 +4507,6 @@ export type Database = {
             referencedRelation: "clientes"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "escalas_integradas_escala_local_id_fkey"
-            columns: ["escala_local_id"]
-            isOneToOne: false
-            referencedRelation: "escalas_locais"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "escalas_integradas_escala_setor_id_fkey"
-            columns: ["escala_setor_id"]
-            isOneToOne: false
-            referencedRelation: "escalas_setores"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "escalas_integradas_unidade_id_fkey"
-            columns: ["unidade_id"]
-            isOneToOne: false
-            referencedRelation: "unidades"
-            referencedColumns: ["id"]
-          },
         ]
       }
       escalas_locais: {
@@ -4597,15 +4576,7 @@ export type Database = {
           nome?: string
           sincronizado_em?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "escalas_setores_local_id_fkey"
-            columns: ["local_id"]
-            isOneToOne: false
-            referencedRelation: "escalas_locais"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       especialidades: {
         Row: {
@@ -5669,13 +5640,6 @@ export type Database = {
             columns: ["empresa_id"]
             isOneToOne: false
             referencedRelation: "empresas_concorrentes"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "licitacao_item_concorrentes_item_id_fkey"
-            columns: ["item_id"]
-            isOneToOne: false
-            referencedRelation: "licitacao_itens"
             referencedColumns: ["id"]
           },
         ]
