@@ -255,6 +255,7 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
         email: '',
         phone_e164: '',
         telefones_adicionais: [],
+        whatsapp_phones: [],
         data_nascimento: '',
         data_formatura: '',
         nacionalidade: '',
@@ -293,6 +294,7 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
         email: lead.email || '',
         phone_e164: lead.phone_e164 || '',
         telefones_adicionais: lead.telefones_adicionais || [],
+        whatsapp_phones: (lead as any).whatsapp_phones || [],
         data_nascimento: lead.data_nascimento || '',
         data_formatura: (lead as any).data_formatura || '',
         nacionalidade: lead.nacionalidade || '',
@@ -397,7 +399,8 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
           crm: sanitizedData.crm || null,
           rqe: sanitizedData.rqe || null,
           email: sanitizedData.email || null,
-          telefones_adicionais: sanitizedData.telefones_adicionais || [],
+           telefones_adicionais: sanitizedData.telefones_adicionais || [],
+           whatsapp_phones: sanitizedData.whatsapp_phones || [],
           data_nascimento: sanitizedData.data_nascimento || null,
           data_formatura: sanitizedData.data_formatura || null,
           nacionalidade: sanitizedData.nacionalidade || null,
@@ -1598,6 +1601,8 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                                     }
                                   }}
                                   onEmailChange={(email) => handleFieldChange('email', email)}
+                                  whatsappPhones={editedData.whatsapp_phones || []}
+                                  onWhatsappPhonesChange={(wps) => handleFieldChange('whatsapp_phones', wps)}
                                 />
                               </div>
 
