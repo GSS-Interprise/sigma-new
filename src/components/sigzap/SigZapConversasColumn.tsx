@@ -119,7 +119,8 @@ export function SigZapConversasColumn({
           *,
           contact:sigzap_contacts(*),
           instance:sigzap_instances(id, name),
-          assigned_user:profiles!sigzap_conversations_assigned_user_id_fkey(id, nome_completo)
+          assigned_user:profiles!sigzap_conversations_assigned_user_id_fkey(id, nome_completo),
+          lead:leads!sigzap_conversations_lead_id_fkey(id, nome)
         `)
         .in('instance_id', selectedInstanceIds)
         .neq('status', 'inactive')
@@ -312,9 +313,10 @@ export function SigZapConversasColumn({
     const activeColor = isAssigned && corCaptador ? corCaptador : null;
     const assignedName = assignedUser?.nome_completo?.split(' ')[0] || null;
     
+    const leadFromJoin = conversa.lead as any;
     const phoneE164 = contact?.contact_phone ? normalizeToE164(contact.contact_phone) : null;
-    const leadName = phoneE164 && leadsMap ? leadsMap[phoneE164] : null;
-    const displayName = contact?.contact_name || leadName || contact?.contact_phone || 'Contato';
+    const leadName = leadFromJoin?.nome || (phoneE164 && leadsMap ? leadsMap[phoneE164] : null);
+    const displayName = leadName || contact?.contact_name || contact?.contact_phone || 'Contato';
     
     return (
       <Card
