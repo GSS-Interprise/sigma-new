@@ -275,7 +275,8 @@ async function downloadAndStoreMedia(
   messageId: string,
   mimeType: string,
   instanceName: string,
-  serverUrl?: string
+  serverUrl?: string,
+  payloadApiKey?: string
 ): Promise<string | null> {
   if (!mediaUrl) {
     console.log('⚠️ URL de mídia não fornecida');
@@ -297,7 +298,7 @@ async function downloadAndStoreMedia(
       console.log('🔄 URL do WhatsApp detectada, usando Evolution API para download...');
       
       const evolutionUrl = serverUrl || Deno.env.get('EVOLUTION_API_URL');
-      const evolutionKey = Deno.env.get('EVOLUTION_API_KEY');
+      const evolutionKey = payloadApiKey || Deno.env.get('EVOLUTION_API_KEY');
       
       if (!evolutionUrl || !evolutionKey) {
         console.error('❌ Evolution API URL ou Key não configuradas');
@@ -917,6 +918,7 @@ serve(async (req) => {
     // 5. Se tiver mídia, baixar e salvar no storage
     let storedMediaUrl: string | null = null;
     const serverUrl = (payload as any).server_url;
+    const payloadApiKey = (payload as any).apikey;
     
     if (messageContent.mediaUrl && ['image', 'video', 'audio', 'document', 'sticker'].includes(messageContent.type)) {
       storedMediaUrl = await downloadAndStoreMedia(
@@ -927,7 +929,8 @@ serve(async (req) => {
         messageId,
         messageContent.mediaMimeType || 'application/octet-stream',
         instanceName,
-        serverUrl
+        serverUrl,
+        payloadApiKey
       );
     }
 
