@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useKanbanColumns } from "@/hooks/useKanbanColumns";
-import { User, Mail, Phone, FileText, Calendar, CreditCard, Loader2, Settings } from "lucide-react";
+import { User, Mail, Phone, FileText, Calendar, CreditCard, Loader2, Settings, UserCheck } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { useState, useEffect } from "react";
@@ -27,6 +27,7 @@ interface Lead {
   created_at: string;
   updated_at: string | null;
   tags: string[] | null;
+  convertido_por_nome: string | null;
 }
 
 interface TagConfig {
@@ -53,7 +54,24 @@ export function CaptacaoKanban() {
         .order("updated_at", { ascending: false });
 
       if (error) throw error;
-      return data as Lead[];
+      
+      // Get unique convertido_por IDs and fetch names
+      const userIds = [...new Set((data || []).map((l: any) => l.convertido_por).filter(Boolean))];
+      let userMap: Record<string, string> = {};
+      if (userIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("id, nome_completo")
+          .in("id", userIds);
+        if (profiles) {
+          userMap = Object.fromEntries(profiles.map(p => [p.id, p.nome_completo || '']));
+        }
+      }
+      
+      return (data || []).map((l: any) => ({
+        ...l,
+        convertido_por_nome: l.convertido_por ? (userMap[l.convertido_por] || null) : null,
+      })) as Lead[];
     },
   });
 
@@ -291,6 +309,12 @@ export function CaptacaoKanban() {
                                 {lead.uf && (
                                   <Badge variant="outline" className="text-xs">
                                     {lead.uf}
+                                  </Badge>
+                                )}
+                                {lead.convertido_por_nome && (
+                                  <Badge variant="outline" className="text-xs gap-1 bg-primary/10 text-primary border-primary/20">
+                                    <UserCheck className="h-3 w-3" />
+                                    {lead.convertido_por_nome.split(' ')[0]}
                                   </Badge>
                                 )}
                               </div>
