@@ -49,12 +49,15 @@ export function CaptacaoKanban() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("leads")
-        .select("*")
+        .select("*, convertido_por_profile:profiles!leads_convertido_por_fkey(nome_completo)")
         .neq("status", "Novo")
         .order("updated_at", { ascending: false });
 
       if (error) throw error;
-      return data as Lead[];
+      return (data || []).map((l: any) => ({
+        ...l,
+        convertido_por_nome: l.convertido_por_profile?.nome_completo || null,
+      })) as Lead[];
     },
   });
 
