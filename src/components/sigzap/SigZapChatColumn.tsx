@@ -228,8 +228,13 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
               .filter(l => l.score >= 60)
               .sort((a, b) => b.score - a.score);
 
-            if (contactParts.length === 1 && scored.length > 1) {
-              return { mode: 'manual' as const };
+            // Ambiguous: multiple high-score matches → force manual selection
+            if (scored.length > 1) {
+              const topScore = scored[0].score;
+              const closeMatches = scored.filter(l => topScore - l.score <= 15);
+              if (closeMatches.length > 1) {
+                return { mode: 'manual' as const };
+              }
             }
 
             if (scored.length > 0) {
