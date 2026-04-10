@@ -245,10 +245,9 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
       conversaId &&
       autoMatchDismissedFor !== conversaId
     ) {
-      const contactName = (conversa?.contact as any)?.contact_name || 'Contato';
-      const phoneE164 = normalizeToE164(contactPhone) || contactPhone || '';
-      setPendingContactPhone(phoneE164);
-      setPendingContactName(contactName);
+      const phoneDisplay = normalizeToE164(contactPhone) || contactPhone || '';
+      setPendingContactPhone(phoneDisplay);
+      setPendingContactName(contactName || 'Contato');
       setAutoMatchLead(linkedLead);
       setAutoMatchDialogOpen(true);
     }
