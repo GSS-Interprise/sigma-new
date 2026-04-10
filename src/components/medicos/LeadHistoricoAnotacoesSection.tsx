@@ -258,6 +258,59 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
     enabled: !!leadId,
   });
 
+  // Fetch visualizações de todos os usuários para este lead
+  const { data: visualizacoes = [] } = useQuery({
+    queryKey: ['lead-historico-visualizacoes', leadId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('lead_historico_visualizacoes' as any)
+        .select('*')
+        .eq('lead_id', leadId);
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!leadId,
+  });
+
+  // Timer ref for 2s delay before marking entries as viewed
+  const viewTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const hasMarkedRef = useRef(false);
+
+  // Function to mark all visible entries as viewed after 2s on tab
+  const markEntriesAsViewed = useCallback(async (entries: { id: string; source: string }[]) => {
+    if (!user?.id || !leadId || entries.length === 0) return;
+
+    const userName = user?.user_metadata?.nome_completo || user?.email || 'Usuário';
+    
+    // Filter out entries already viewed by this user
+    const viewedKeys = new Set(visualizacoes.map((v: any) => `${v.entry_source}-${v.entry_id}`));
+    const newEntries = entries.filter(e => !viewedKeys.has(`${e.source}-${e.id}`));
+    
+    if (newEntries.length === 0) return;
+
+    // Upsert visualizations
+    const rows = newEntries.map(e => ({
+      lead_id: leadId,
+      entry_id: e.id,
+      entry_source: e.source,
+      user_id: user.id,
+      user_nome: userName,
+      visualizado_em: new Date().toISOString(),
+    }));
+
+    await supabase
+      .from('lead_historico_visualizacoes' as any)
+      .upsert(rows, { onConflict: 'entry_id,entry_source,user_id' });
+    
+    queryClient.invalidateQueries({ queryKey: ['lead-historico-visualizacoes', leadId] });
+    queryClient.invalidateQueries({ queryKey: ['lead-historico-viewed', leadId, user.id] });
+  }, [user, leadId, visualizacoes, queryClient]);
+
+  // Helper to get visualizations for a specific entry
+  const getEntryViews = useCallback((entryId: string, entrySource: string) => {
+    return visualizacoes.filter((v: any) => v.entry_id === entryId && v.entry_source === entrySource);
+  }, [visualizacoes]);
+
   // Create anotação mutation
   const createMutation = useMutation({
     mutationFn: async (data: { titulo?: string; conteudo: string; imagens: string[] }) => {
