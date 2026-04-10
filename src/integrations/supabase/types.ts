@@ -5268,6 +5268,36 @@ export type Database = {
           },
         ]
       }
+      lead_historico_visualizacoes: {
+        Row: {
+          entry_id: string
+          entry_source: string
+          id: string
+          lead_id: string
+          user_id: string
+          user_nome: string
+          visualizado_em: string
+        }
+        Insert: {
+          entry_id: string
+          entry_source: string
+          id?: string
+          lead_id: string
+          user_id: string
+          user_nome: string
+          visualizado_em?: string
+        }
+        Update: {
+          entry_id?: string
+          entry_source?: string
+          id?: string
+          lead_id?: string
+          user_id?: string
+          user_nome?: string
+          visualizado_em?: string
+        }
+        Relationships: []
+      }
       lead_import_jobs: {
         Row: {
           arquivo_nome: string
