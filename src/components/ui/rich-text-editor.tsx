@@ -1,6 +1,7 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { sanitizeHtml } from "@/lib/sanitizeHtml";
 import { Button } from "./button";
 import { 
   Bold, 
@@ -64,8 +65,9 @@ const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorProps>(
 
     React.useEffect(() => {
       if (editorRef.current && value !== undefined) {
-        if (editorRef.current.innerHTML !== value) {
-          editorRef.current.innerHTML = value;
+        const sanitized = sanitizeHtml(value);
+        if (editorRef.current.innerHTML !== sanitized) {
+          editorRef.current.innerHTML = sanitized;
         }
       }
     }, [value]);
@@ -246,6 +248,14 @@ const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorProps>(
           }
           return;
         }
+      }
+
+      // Sanitize pasted HTML to remove dangerous styles (position:absolute, z-index, etc.)
+      const pastedHtml = e.clipboardData?.getData('text/html');
+      if (pastedHtml) {
+        e.preventDefault();
+        const sanitized = sanitizeHtml(pastedHtml);
+        document.execCommand('insertHTML', false, sanitized);
       }
     };
 
@@ -539,7 +549,7 @@ const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorProps>(
           className={cn(
             "w-full rounded-b-md border border-t-0 border-input bg-background px-3 py-2 text-sm ring-offset-background",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-            "overflow-auto",
+            "overflow-auto relative",
             "[&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-1 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-1 [&_li]:my-0.5",
             disabled && "cursor-not-allowed opacity-50",
             !value && !isFocused && "text-muted-foreground"
