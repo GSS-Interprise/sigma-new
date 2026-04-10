@@ -158,6 +158,43 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
   const leadFromJoin = conversa?.lead as any;
   const hasLinkedLead = !!conversa?.lead_id || !!leadFromJoin?.id;
 
+  // Extract the real phone number from contact_jid (strip @s.whatsapp.net)
+  // For LID contacts, resolve from message raw_payload
+  const jidPhone = (!isLidContact && contactJid.includes('@s.whatsapp.net'))
+    ? contactJid.replace('@s.whatsapp.net', '')
+    : null;
+
+  const { data: resolvedLidPhone } = useQuery({
+    queryKey: ['sigzap-resolve-lid-phone', conversaId, contactJid],
+    queryFn: async () => {
+      if (!conversaId) return null;
+      const { data: recentMessages } = await supabase
+        .from('sigzap_messages')
+        .select('raw_payload')
+        .eq('conversation_id', conversaId)
+        .not('raw_payload', 'is', null)
+        .order('sent_at', { ascending: false })
+        .limit(20);
+      if (!recentMessages) return null;
+      for (const msg of recentMessages) {
+        let payload = msg.raw_payload as any;
+        if (typeof payload === 'string') {
+          try { payload = JSON.parse(payload); } catch { continue; }
+        }
+        const alt = payload?.data?.key?.remoteJidAlt;
+        const rjid = payload?.key?.remoteJid;
+        if (alt?.includes('@s.whatsapp.net')) return alt.replace('@s.whatsapp.net', '');
+        if (rjid?.includes('@s.whatsapp.net') && !rjid.includes('@lid')) return rjid.replace('@s.whatsapp.net', '');
+      }
+      return null;
+    },
+    enabled: !!conversaId && isLidContact,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // The resolved display phone: jidPhone for normal contacts, resolvedLidPhone for LID
+  const resolvedDisplayPhone = jidPhone || resolvedLidPhone || null;
+
   // Auto-link ONLY for disparo fallback matches. Everything else is manual.
   const { data: leadMatchResult } = useQuery({
     queryKey: ['sigzap-linked-lead', conversaId, conversa?.lead_id, contactPhone, isLidContact],
@@ -209,9 +246,9 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
   useEffect(() => {
     if (!conversaId || hasLinkedLead) return;
 
-    const phoneDisplay = !isLidContact
-      ? (normalizeToE164(contactPhone) || contactPhone || '')
-      : '';
+    const phoneDisplay = resolvedDisplayPhone
+      ? (normalizeToE164(resolvedDisplayPhone) || resolvedDisplayPhone)
+      : (!isLidContact ? (normalizeToE164(contactPhone) || contactPhone || '') : '');
 
     setPendingContactPhone(phoneDisplay);
     setPendingContactName(contactName || 'Contato');
@@ -238,7 +275,7 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
     }
 
     setLeadLinkDialogOpen(false);
-  }, [leadMatchResult, hasLinkedLead, conversaId, contactPhone, contactName, isLidContact]);
+  }, [leadMatchResult, hasLinkedLead, conversaId, contactPhone, contactName, isLidContact, resolvedDisplayPhone]);
 
   // Reset dismissed state when conversation changes
   const prevConversaIdRef = useRef<string | null>(null);
@@ -970,11 +1007,12 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
     if (!conversa) return;
     
     const contact = conversa.contact as any;
-    let contactPhone = contact?.contact_phone;
-    const contactJid = contact?.contact_jid;
-    const contactName = contact?.contact_name || contactPhone;
+    const contactNameLocal = contact?.contact_name || contact?.contact_phone;
     
-    if (!contactPhone) {
+    // Use the resolved phone (from JID or LID resolution) or fallback to contact_phone
+    let phoneToUse = resolvedDisplayPhone || contact?.contact_phone;
+    
+    if (!phoneToUse) {
       toast.error("Telefone do contato não encontrado");
       return;
     }
@@ -982,62 +1020,11 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
     setIsCheckingLead(true);
     
     try {
-      // Check if this is a LID (Link ID) - need to extract real phone from messages
-      if (contactJid?.includes('@lid')) {
-        // Try to get real phone from message raw_payload (remoteJidAlt)
-        const { data: recentMessages } = await supabase
-          .from('sigzap_messages')
-          .select('raw_payload')
-          .eq('conversation_id', conversaId)
-          .not('raw_payload', 'is', null)
-          .order('sent_at', { ascending: false })
-          .limit(10);
-        
-        let realPhone: string | null = null;
-        
-        if (recentMessages && recentMessages.length > 0) {
-          for (const msg of recentMessages) {
-            if (!msg.raw_payload) continue;
-            
-            // Parse payload if it's a string
-            let payload = msg.raw_payload as any;
-            if (typeof payload === 'string') {
-              try {
-                payload = JSON.parse(payload);
-              } catch {
-                continue;
-              }
-            }
-            
-            // Try multiple paths to find the real phone number
-            const remoteJidAlt = payload?.data?.key?.remoteJidAlt;
-            const keyRemoteJid = payload?.key?.remoteJid; // for from_me messages
-            
-            if (remoteJidAlt && remoteJidAlt.includes('@s.whatsapp.net')) {
-              realPhone = remoteJidAlt.replace('@s.whatsapp.net', '');
-              break;
-            } else if (keyRemoteJid && keyRemoteJid.includes('@s.whatsapp.net')) {
-              realPhone = keyRemoteJid.replace('@s.whatsapp.net', '');
-              break;
-            }
-          }
-        }
-        
-        if (realPhone) {
-          contactPhone = realPhone;
-          console.log('Extracted real phone from LID:', realPhone);
-        } else {
-          toast.error("Não foi possível extrair o número real deste contato LID");
-          setIsCheckingLead(false);
-          return;
-        }
-      }
-      
       // Normalize the phone to E164 format
-      const phoneE164 = normalizeToE164(contactPhone);
+      const phoneE164 = normalizeToE164(phoneToUse);
       
       if (!phoneE164) {
-        toast.error(`Número de telefone inválido: ${contactPhone}`);
+        toast.error(`Número de telefone inválido: ${phoneToUse}`);
         setIsCheckingLead(false);
         return;
       }
@@ -1060,7 +1047,7 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
       } else {
         // Lead doesn't exist with exact match - open dialog to link or create
         setPendingContactPhone(phoneE164);
-        setPendingContactName(contactName);
+        setPendingContactName(contactNameLocal);
         setLeadLinkDialogOpen(true);
       }
     } catch (err: any) {
@@ -1411,17 +1398,12 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
               <div className="flex items-center gap-2 mt-0.5">
                 <Phone className="h-3 w-3 text-muted-foreground" />
                 <span className="text-xs text-muted-foreground truncate">
-                  {isLidContact
-                    ? (leadFromJoin?.phone_e164 || linkedLead?.phone_e164 || 'Contato LID')
-                    : contact?.contact_phone}
+                  {resolvedDisplayPhone 
+                    ? resolvedDisplayPhone 
+                    : (isLidContact 
+                      ? (leadFromJoin?.phone_e164 || linkedLead?.phone_e164 || 'Contato LID') 
+                      : contact?.contact_phone)}
                 </span>
-                {/* Show lead phone alongside if different from contact phone */}
-                {!isLidContact && (leadFromJoin?.phone_e164 || linkedLead?.phone_e164) && 
-                 (leadFromJoin?.phone_e164 || linkedLead?.phone_e164) !== contact?.contact_phone && (
-                  <span className="text-xs text-muted-foreground truncate">
-                    · {leadFromJoin?.phone_e164 || linkedLead?.phone_e164}
-                  </span>
-                )}
                 {instance?.name && (
                   <Badge variant="outline" className="text-[10px] h-4 px-1">
                     {instance.name}
