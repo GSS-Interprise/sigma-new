@@ -274,6 +274,37 @@ serve(async (req) => {
 
         // Construir payload baseado no tipo de mensagem
         if (mediaType && (mediaUrl || mediaBase64)) {
+          // Mensagem com mídia - convert URL to base64 to avoid Evolution API download issues
+          let mediaPayload: string = mediaBase64 || '';
+          
+          if (mediaUrl && !mediaBase64) {
+            try {
+              console.log('⬇️ Baixando mídia para converter em base64:', mediaUrl);
+              const mediaResponse = await fetch(mediaUrl);
+              if (!mediaResponse.ok) {
+                throw new Error(`Failed to download media: ${mediaResponse.status}`);
+              }
+              const arrayBuffer = await mediaResponse.arrayBuffer();
+              const uint8Array = new Uint8Array(arrayBuffer);
+              // Convert to base64
+              let binary = '';
+              for (let i = 0; i < uint8Array.length; i++) {
+                binary += String.fromCharCode(uint8Array[i]);
+              }
+              mediaPayload = btoa(binary);
+              console.log('✅ Mídia convertida para base64, tamanho:', mediaPayload.length);
+            } catch (downloadErr) {
+              console.error('❌ Erro ao baixar mídia:', downloadErr);
+              return new Response(JSON.stringify({ 
+                error: 'Erro ao processar mídia para envio',
+                details: String(downloadErr)
+              }), {
+                status: 500,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              });
+            }
+          }
+          
           // Mensagem com mídia
           evolutionEndpoint = `${evolutionUrl}/message/sendMedia/${encodeURIComponent(instanceName)}`;
           evolutionBody = {
@@ -282,7 +313,7 @@ serve(async (req) => {
             mimetype: mediaMimeType,
             caption: mediaCaption || '',
             fileName: mediaFilename,
-            ...(mediaUrl ? { media: mediaUrl } : { media: mediaBase64 })
+            media: `data:${mediaMimeType || 'application/octet-stream'};base64,${mediaPayload}`
           };
 
           if (quotedMessageId) {
