@@ -180,7 +180,9 @@ serve(async (req) => {
           });
         }
         
-        evolutionEndpoint = `${evolutionUrl}/message/sendReaction/${instanceName}`;
+        const encodedInstanceName = encodeURIComponent(instanceName);
+        
+        evolutionEndpoint = `${evolutionUrl}/message/sendReaction/${encodedInstanceName}`;
         evolutionBody = {
           key: {
             remoteJid: contactJid,
@@ -201,7 +203,7 @@ serve(async (req) => {
         }
         
         httpMethod = 'DELETE';
-        evolutionEndpoint = `${evolutionUrl}/chat/deleteMessageForEveryone/${instanceName}`;
+        evolutionEndpoint = `${evolutionUrl}/chat/deleteMessageForEveryone/${encodeURIComponent(instanceName)}`;
         evolutionBody = {
           id: targetMessageId,
           remoteJid: contactJid,
@@ -265,7 +267,7 @@ serve(async (req) => {
         // Construir payload baseado no tipo de mensagem
         if (mediaType && (mediaUrl || mediaBase64)) {
           // Mensagem com mídia
-          evolutionEndpoint = `${evolutionUrl}/message/sendMedia/${instanceName}`;
+          evolutionEndpoint = `${evolutionUrl}/message/sendMedia/${encodeURIComponent(instanceName)}`;
           evolutionBody = {
             number,
             mediatype: mediaType,
@@ -280,7 +282,7 @@ serve(async (req) => {
           }
         } else {
           // Mensagem de texto
-          evolutionEndpoint = `${evolutionUrl}/message/sendText/${instanceName}`;
+          evolutionEndpoint = `${evolutionUrl}/message/sendText/${encodeURIComponent(instanceName)}`;
           evolutionBody = {
             number,
             text: message
@@ -306,14 +308,23 @@ serve(async (req) => {
       body: JSON.stringify(evolutionBody)
     });
 
-    const evolutionResult = await evolutionResponse.json();
+    const rawEvolutionResult = await evolutionResponse.text();
+    let evolutionResult: any = null;
+    try {
+      evolutionResult = rawEvolutionResult ? JSON.parse(rawEvolutionResult) : null;
+    } catch {
+      evolutionResult = { raw: rawEvolutionResult };
+    }
+
     console.log('📩 Resposta Evolution:', JSON.stringify(evolutionResult, null, 2));
 
     if (!evolutionResponse.ok) {
       console.error('❌ Erro da Evolution API:', evolutionResult);
       return new Response(JSON.stringify({ 
         error: 'Erro ao processar ação',
-        details: evolutionResult 
+        details: evolutionResult,
+        requestedUrl: evolutionEndpoint,
+        payload: evolutionBody,
       }), {
         status: evolutionResponse.status,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
