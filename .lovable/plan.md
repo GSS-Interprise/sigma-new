@@ -1,20 +1,29 @@
 
 
-## Plano: Desconverter envia lead para coluna "Devolução Contratos"
+## Plano: Atualizar campo "Proposta Vinculada" sem refresh
 
-### Contexto
-A coluna `Devolucao_Contratos` já existe no banco (`kanban_status_config`, módulo `disparos`, ordem 8). O Kanban já carrega colunas dinamicamente via `useKanbanColumns`, então a coluna já aparece no board. O problema é que as duas mutações de desconversão ainda definem o status como `'Acompanhamento'`.
+### Problema
+Quando uma proposta é criada via `NovaPropostaDialog`, o `onSuccess` invalida `['lead-propostas', leadId]` mas **não** invalida `['lead-propostas-count', leadId]`. A aba de conversão do prontuário usa exatamente essa query (`lead-propostas-count`) para mostrar se existe proposta vinculada. Por isso, o campo só atualiza após refresh manual.
 
-### Alteração
+### Correção
 
-**Arquivo:** `src/components/medicos/LeadProntuarioDialog.tsx`
+**Arquivo: `src/components/medicos/NovaPropostaDialog.tsx` (~linha 308)**
 
-1. **Linha ~982** — Mutação de desconversão (Kanban médicos): trocar `status: 'Acompanhamento'` por `status: 'Devolucao_Contratos'`
-2. **Linha ~1256** — Mutação de desconversão do Corpo Clínico: trocar `status: 'Acompanhamento'` por `status: 'Devolucao_Contratos'`
-3. Adicionar invalidação de `['leads-acompanhamento']` no `onSuccess` da primeira mutação (já existe na segunda)
+Adicionar invalidação da query `lead-propostas-count` no `onSuccess` da mutação de salvar proposta:
 
-### O que NÃO muda
-- Nenhuma migração necessária (coluna já existe)
-- Nenhuma alteração de rota ou componente de Kanban
-- O Kanban de acompanhamento já renderiza a coluna dinamicamente
+```typescript
+onSuccess: () => {
+  toast.success(isEditing ? "Proposta atualizada!" : "Proposta criada!");
+  queryClient.invalidateQueries({ queryKey: ['lead-propostas', leadId] });
+  queryClient.invalidateQueries({ queryKey: ['lead-propostas-count', leadId] });  // ← ADICIONAR
+  queryClient.invalidateQueries({ queryKey: ['propostas-itens'] });
+  handleClose();
+},
+```
+
+Isso é suficiente porque o `LeadProntuarioDialog` já está montado e escutando essa query key. Ao invalidá-la, o React Query refaz o fetch automaticamente sem precisar de real-time.
+
+### Escopo
+- 1 arquivo, 1 linha adicionada
+- Nenhuma migração necessária
 
