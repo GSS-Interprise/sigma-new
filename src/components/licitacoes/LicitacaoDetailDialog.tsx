@@ -1759,7 +1759,7 @@ export function LicitacaoDetailDialog({
                               />
                             ) : (
                               <div 
-                                className="text-sm prose prose-sm max-w-none bg-muted/30 rounded-md p-3 min-h-[200px] [&_a]:text-blue-600 [&_a]:underline [&_a]:break-all hover:[&_a]:text-blue-800 [&_a]:cursor-pointer [&_a]:relative [&_a]:z-10"
+                                className="text-sm prose prose-sm max-w-none bg-muted/30 rounded-md p-3 min-h-[200px] relative overflow-hidden [&_a]:text-blue-600 [&_a]:underline [&_a]:break-all hover:[&_a]:text-blue-800 [&_a]:cursor-pointer [&_a]:relative [&_a]:z-10"
                                 onClick={(e) => {
                                   const target = e.target as HTMLElement;
                                   if (target.tagName === 'A') {
@@ -1769,7 +1769,7 @@ export function LicitacaoDetailDialog({
                                     if (href) window.open(href, '_blank', 'noopener,noreferrer');
                                   }
                                 }}
-                                dangerouslySetInnerHTML={{ __html: linkifyHtml(licitacao?.objeto || "—") }}
+                                dangerouslySetInnerHTML={{ __html: sanitizeHtml(linkifyHtml(licitacao?.objeto || "—")) }}
                               />
                             )}
                           </div>
