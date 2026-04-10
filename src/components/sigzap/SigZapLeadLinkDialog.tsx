@@ -102,19 +102,31 @@ export function SigZapLeadLinkDialog({
   }, [open]);
 
   // Buscar todos os leads para sugestões
+  const isLidPhone = contactPhone.length > 15 || !/^\+?\d{10,13}$/.test(contactPhone.replace(/\D/g, ''));
   const { data: allLeads, isLoading: loadingSuggestions } = useQuery({
     queryKey: ['sigzap-lead-suggestions', contactPhone, contactName],
     queryFn: async () => {
-      // Busca base ampla para encontrar matches
-      const phoneDigits = contactPhone.replace(/\D/g, '');
-      const lastDigits = phoneDigits.slice(-7); // últimos 7 dígitos
+      const firstName = contactName.split(' ')[0];
       
+      if (isLidPhone) {
+        // LID contact: search only by name (phone is meaningless)
+        const { data, error } = await supabase
+          .from('leads')
+          .select('id, nome, phone_e164, telefones_adicionais, email, especialidade, uf, status')
+          .ilike('nome', `${firstName}%`)
+          .limit(50);
+        if (error) throw error;
+        return data || [];
+      }
+      
+      // Real phone: search by phone digits + name
+      const phoneDigits = contactPhone.replace(/\D/g, '');
+      const lastDigits = phoneDigits.slice(-7);
       const { data, error } = await supabase
         .from('leads')
-        .select('id, nome, phone_e164, email, especialidade, status')
-        .or(`phone_e164.ilike.%${lastDigits}%,nome.ilike.%${contactName.split(' ')[0]}%`)
+        .select('id, nome, phone_e164, telefones_adicionais, email, especialidade, uf, status')
+        .or(`phone_e164.ilike.%${lastDigits}%,nome.ilike.%${firstName}%`)
         .limit(100);
-      
       if (error) throw error;
       return data || [];
     },
