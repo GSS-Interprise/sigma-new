@@ -158,6 +158,43 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
   const leadFromJoin = conversa?.lead as any;
   const hasLinkedLead = !!conversa?.lead_id || !!leadFromJoin?.id;
 
+  // Extract the real phone number from contact_jid (strip @s.whatsapp.net)
+  // For LID contacts, resolve from message raw_payload
+  const jidPhone = (!isLidContact && contactJid.includes('@s.whatsapp.net'))
+    ? contactJid.replace('@s.whatsapp.net', '')
+    : null;
+
+  const { data: resolvedLidPhone } = useQuery({
+    queryKey: ['sigzap-resolve-lid-phone', conversaId, contactJid],
+    queryFn: async () => {
+      if (!conversaId) return null;
+      const { data: recentMessages } = await supabase
+        .from('sigzap_messages')
+        .select('raw_payload')
+        .eq('conversation_id', conversaId)
+        .not('raw_payload', 'is', null)
+        .order('sent_at', { ascending: false })
+        .limit(20);
+      if (!recentMessages) return null;
+      for (const msg of recentMessages) {
+        let payload = msg.raw_payload as any;
+        if (typeof payload === 'string') {
+          try { payload = JSON.parse(payload); } catch { continue; }
+        }
+        const alt = payload?.data?.key?.remoteJidAlt;
+        const rjid = payload?.key?.remoteJid;
+        if (alt?.includes('@s.whatsapp.net')) return alt.replace('@s.whatsapp.net', '');
+        if (rjid?.includes('@s.whatsapp.net') && !rjid.includes('@lid')) return rjid.replace('@s.whatsapp.net', '');
+      }
+      return null;
+    },
+    enabled: !!conversaId && isLidContact,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // The resolved display phone: jidPhone for normal contacts, resolvedLidPhone for LID
+  const resolvedDisplayPhone = jidPhone || resolvedLidPhone || null;
+
   // Auto-link ONLY for disparo fallback matches. Everything else is manual.
   const { data: leadMatchResult } = useQuery({
     queryKey: ['sigzap-linked-lead', conversaId, conversa?.lead_id, contactPhone, isLidContact],
