@@ -204,7 +204,8 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
   const linkedLead = leadMatchResult?.mode === 'auto-silent' ? leadMatchResult.lead : null;
 
   // Show auto-match confirmation modal when lead found but not yet linked
-  // This is "chato" on purpose — forces user to link or dismiss every time
+  // Auto-silent: link automatically without confirmation for disparo matches
+  // Manual: open the manual search dialog for everything else
   useEffect(() => {
     if (!conversaId || hasLinkedLead) return;
 
@@ -215,10 +216,17 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
     setPendingContactPhone(phoneDisplay);
     setPendingContactName(contactName || 'Contato');
 
-    if (leadMatchResult?.mode === 'auto' && leadMatchResult.lead?.id && leadMatchResult.lead?.score) {
-      setLeadLinkDialogOpen(false);
-      setAutoMatchLead(leadMatchResult.lead);
-      setAutoMatchDialogOpen(true);
+    if (leadMatchResult?.mode === 'auto-silent' && leadMatchResult.lead?.id) {
+      // Silently auto-link — no modal needed
+      (async () => {
+        await supabase
+          .from('sigzap_conversations')
+          .update({ lead_id: leadMatchResult.lead.id })
+          .eq('id', conversaId);
+        queryClient.invalidateQueries({ queryKey: ['sigzap-chat-conversa', conversaId] });
+        queryClient.invalidateQueries({ queryKey: ['sigzap-linked-lead'] });
+        toast.success("Lead vinculado automaticamente (disparo)");
+      })();
       return;
     }
 
