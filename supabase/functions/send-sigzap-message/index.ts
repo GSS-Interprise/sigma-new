@@ -313,7 +313,7 @@ serve(async (req) => {
             mimetype: mediaMimeType,
             caption: mediaCaption || '',
             fileName: mediaFilename,
-            media: `data:${mediaMimeType || 'application/octet-stream'};base64,${mediaPayload}`
+            media: mediaPayload
           };
 
           if (quotedMessageId) {
