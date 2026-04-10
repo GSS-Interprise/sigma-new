@@ -306,6 +306,7 @@ export function NovaPropostaDialog({ open, onOpenChange, leadId, leadNome, unida
     onSuccess: () => {
       toast.success(isEditing ? "Proposta atualizada!" : "Proposta criada!");
       queryClient.invalidateQueries({ queryKey: ['lead-propostas', leadId] });
+      queryClient.invalidateQueries({ queryKey: ['lead-propostas-count', leadId] });
       queryClient.invalidateQueries({ queryKey: ['propostas-itens'] });
       handleClose();
     },
