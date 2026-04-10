@@ -305,47 +305,9 @@ serve(async (req) => {
 
         // Construir payload baseado no tipo de mensagem
         if (mediaType && (mediaUrl || mediaBase64)) {
-          // Mensagem com mídia - convert URL to base64 to avoid Evolution API download issues
-          let mediaPayload: string = mediaBase64 || '';
-          
-          if (mediaUrl && !mediaBase64) {
-            try {
-              console.log('⬇️ Baixando mídia para converter em base64:', mediaUrl);
-              const mediaResponse = await fetch(mediaUrl);
-              if (!mediaResponse.ok) {
-                throw new Error(`Failed to download media: ${mediaResponse.status}`);
-              }
-              const arrayBuffer = await mediaResponse.arrayBuffer();
-              const uint8Array = new Uint8Array(arrayBuffer);
-              // Convert to base64
-              let binary = '';
-              for (let i = 0; i < uint8Array.length; i++) {
-                binary += String.fromCharCode(uint8Array[i]);
-              }
-              mediaPayload = btoa(binary);
-              console.log('✅ Mídia convertida para base64, tamanho:', mediaPayload.length);
-            } catch (downloadErr) {
-              console.error('❌ Erro ao baixar mídia:', downloadErr);
-              return new Response(JSON.stringify({ 
-                error: 'Erro ao processar mídia para envio',
-                details: String(downloadErr)
-              }), {
-                status: 500,
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-              });
-            }
-          }
-
-          const normalizedMediaPayload = sanitizeBase64Media(mediaPayload);
-          const mediaVariants = Array.from(new Set([
-            normalizedMediaPayload,
-            mediaMimeType ? `data:${mediaMimeType};base64,${normalizedMediaPayload}` : '',
-            mediaUrl || ''
-          ].filter(Boolean)));
-          
           // Mensagem com mídia
           evolutionEndpoint = `${evolutionUrl}/message/sendMedia/${encodeURIComponent(instanceName)}`;
-          const baseEvolutionBody = {
+          const baseEvolutionBody: any = {
             number,
             mediatype: mediaType,
             mimetype: mediaMimeType,
@@ -357,7 +319,47 @@ serve(async (req) => {
             baseEvolutionBody.quoted = { key: { id: quotedMessageId } };
           }
 
-          evolutionBodyVariants = mediaVariants.map((media) => ({
+          // Build ordered list of media variants to try:
+          // 1. Public URL first (lightweight, avoids /tmp issues on Evolution API)
+          // 2. Raw base64 as fallback
+          const mediaAttempts: string[] = [];
+
+          if (mediaUrl) {
+            mediaAttempts.push(mediaUrl);
+          }
+
+          // Prepare base64 fallback
+          if (mediaBase64) {
+            mediaAttempts.push(sanitizeBase64Media(mediaBase64));
+          } else if (mediaUrl) {
+            // Download and convert to base64 as fallback
+            try {
+              console.log('⬇️ Baixando mídia para fallback base64:', mediaUrl);
+              const mediaResponse = await fetch(mediaUrl);
+              if (mediaResponse.ok) {
+                const arrayBuffer = await mediaResponse.arrayBuffer();
+                const uint8Array = new Uint8Array(arrayBuffer);
+                let binary = '';
+                for (let i = 0; i < uint8Array.length; i++) {
+                  binary += String.fromCharCode(uint8Array[i]);
+                }
+                const b64 = btoa(binary);
+                console.log('✅ Mídia convertida para base64, tamanho:', b64.length);
+                mediaAttempts.push(b64);
+              }
+            } catch (downloadErr) {
+              console.warn('⚠️ Falha ao converter mídia para base64:', downloadErr);
+            }
+          }
+
+          if (mediaAttempts.length === 0) {
+            return new Response(JSON.stringify({ error: 'Nenhuma mídia disponível para envio' }), {
+              status: 400,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            });
+          }
+
+          evolutionBodyVariants = mediaAttempts.map((media) => ({
             ...baseEvolutionBody,
             media,
           }));
