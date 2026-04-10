@@ -1452,7 +1452,7 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                       onClick={() => setShowRegiaoInteresse(true)}
                     >
                       <MapPin className="h-3.5 w-3.5" />
-                      Região de Interesse
+                       Banco de Interesse
                     </Button>
                   )}
                   {/* REMOVIDO: Botão Converter do header - conversões devem ser feitas exclusivamente na aba Conversão */}

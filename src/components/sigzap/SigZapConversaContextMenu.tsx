@@ -175,7 +175,7 @@ export function SigZapConversaContextMenu({
             className={!leadExists ? "opacity-50" : ""}
           >
             <MapPin className="h-4 w-4 mr-2" />
-            Região de Interesse
+            Banco de Interesse
             {!leadExists && (
               <span className="ml-auto text-[10px] text-muted-foreground">sem lead</span>
             )}

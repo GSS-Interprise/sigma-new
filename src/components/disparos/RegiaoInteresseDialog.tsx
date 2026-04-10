@@ -181,7 +181,7 @@ export function RegiaoInteresseDialog({ open, onOpenChange, leadId, onAfterNavig
       if (error) throw error;
 
       queryClient.invalidateQueries({ queryKey: ["regiao-interesse-leads"] });
-      toast.success("Lead encaminhado para Região de Interesse");
+      toast.success("Lead encaminhado para o Banco de Interesse");
       onOpenChange(false);
       onAfterNavigate?.();
       navigate("/disparos/regiao-interesse");
@@ -204,7 +204,7 @@ export function RegiaoInteresseDialog({ open, onOpenChange, leadId, onAfterNavig
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <MapPin className="h-5 w-5 text-primary" />
-            Região de Interesse
+            Banco de Interesse
           </DialogTitle>
           <DialogDescription>
             Selecione estados e opcionalmente cidades. Suas seleções são mantidas ao trocar de estado.
