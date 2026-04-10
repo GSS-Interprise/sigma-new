@@ -111,21 +111,29 @@ serve(async (req) => {
     if (contactJid.includes('@lid')) {
       console.log('🔍 Contato LID detectado, buscando número real...');
       
-      // Try to get real JID from remoteJidAlt in a recent message raw_payload
+      // Try to get real JID from remoteJidAlt OR remoteJid in recent message raw_payload
       const { data: recentMsg } = await supabase
         .from('sigzap_messages')
         .select('raw_payload')
         .eq('conversation_id', conversationId || '')
         .not('raw_payload', 'is', null)
         .order('sent_at', { ascending: false })
-        .limit(10);
+        .limit(20);
       
       let realJid: string | null = null;
       if (recentMsg) {
         for (const msg of recentMsg) {
-          const alt = (msg.raw_payload as any)?.key?.remoteJidAlt;
+          const payload = msg.raw_payload as any;
+          // First try remoteJidAlt (preferred — always the real number)
+          const alt = payload?.key?.remoteJidAlt;
           if (alt && alt.includes('@s.whatsapp.net')) {
             realJid = alt;
+            break;
+          }
+          // Then try remoteJid itself — on sent messages it's the real @s.whatsapp.net JID
+          const rjid = payload?.key?.remoteJid;
+          if (rjid && rjid.includes('@s.whatsapp.net') && !rjid.includes('@lid')) {
+            realJid = rjid;
             break;
           }
         }
