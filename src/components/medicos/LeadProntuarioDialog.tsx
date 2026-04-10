@@ -2012,18 +2012,23 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                 <TabsContent value="conversao" className="m-0 h-full">
                   <ScrollArea className="h-full p-4">
                     <div className="space-y-6">
-                      {/* Blacklist Status */}
-                      <BlacklistSection 
-                        phoneE164={editedData.phone_e164} 
-                        nome={editedData.nome}
-                        origem={medicoVinculado ? 'clinico' : 'lead'}
-                      />
-
-                      {/* Bloqueio Temporário de Disparos */}
-                      <BloqueioTemporarioSection
-                        leadId={leadId}
-                        nome={editedData.nome}
-                      />
+                      {/* Bloco: Controle de Disparos */}
+                      <div className="rounded-xl border bg-card p-5 space-y-4">
+                        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+                          Controle de Disparos
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <BlacklistSection 
+                            phoneE164={editedData.phone_e164} 
+                            nome={editedData.nome}
+                            origem={medicoVinculado ? 'clinico' : 'lead'}
+                          />
+                          <BloqueioTemporarioSection
+                            leadId={leadId}
+                            nome={editedData.nome}
+                          />
+                        </div>
+                      </div>
 
                       {/* Show approval section for Corpo Médico when on medicos page and already converted (check status OR medicoVinculado) */}
                       {isOnMedicosPage && (medicoVinculado || lead?.status === 'Convertido') ? (
