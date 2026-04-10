@@ -155,16 +155,29 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
       // If lead is already joined from conversation, use it
       if (leadFromJoin?.id) return leadFromJoin;
       
-      // Fallback: lookup by phone
+      // Fallback: lookup by phone using RPC that searches phone_e164 + telefones_adicionais
       if (!contactPhone) return null;
       const phoneE164 = normalizeToE164(contactPhone);
       if (!phoneE164) return null;
-      const { data } = await supabase
+
+      const { data: foundId } = await supabase.rpc('find_lead_by_phone', { p_phone: phoneE164 });
+      if (!foundId) return null;
+
+      const { data: lead } = await supabase
         .from('leads')
         .select('id, nome')
-        .eq('phone_e164', phoneE164)
+        .eq('id', foundId)
         .maybeSingle();
-      return data;
+
+      // Auto-link lead_id on conversation if found and not yet linked
+      if (lead?.id && conversaId && !conversa?.lead_id) {
+        await supabase
+          .from('sigzap_conversations')
+          .update({ lead_id: lead.id })
+          .eq('id', conversaId);
+      }
+
+      return lead;
     },
     enabled: !!conversaId && (!!leadFromJoin?.id || !!contactPhone),
     staleTime: 60_000,

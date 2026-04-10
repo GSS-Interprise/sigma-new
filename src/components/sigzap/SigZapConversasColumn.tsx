@@ -210,20 +210,42 @@ export function SigZapConversasColumn({
     queryFn: async () => {
       if (phoneNumbers.length === 0) return {};
       
-      const { data, error } = await supabase
+      // First: direct match on phone_e164
+      const { data: directLeads, error } = await supabase
         .from('leads')
-        .select('id, nome, phone_e164')
+        .select('id, nome, phone_e164, telefones_adicionais')
         .in('phone_e164', phoneNumbers);
       
       if (error) throw error;
       
-      // Create a map of phone -> lead name
       const map: Record<string, string> = {};
-      data?.forEach(lead => {
+      const foundPhones = new Set<string>();
+
+      directLeads?.forEach(lead => {
         if (lead.phone_e164 && lead.nome) {
           map[lead.phone_e164] = lead.nome;
+          foundPhones.add(lead.phone_e164);
         }
       });
+
+      // Second: for phones not found via phone_e164, search telefones_adicionais
+      const missingPhones = phoneNumbers.filter(p => !foundPhones.has(p));
+      if (missingPhones.length > 0) {
+        const { data: extraLeads } = await supabase
+          .from('leads')
+          .select('id, nome, telefones_adicionais')
+          .not('telefones_adicionais', 'is', null);
+
+        extraLeads?.forEach(lead => {
+          if (!lead.telefones_adicionais || !lead.nome) return;
+          for (const phone of missingPhones) {
+            if (lead.telefones_adicionais.includes(phone)) {
+              map[phone] = lead.nome;
+            }
+          }
+        });
+      }
+
       return map;
     },
     enabled: phoneNumbers.length > 0,
