@@ -979,7 +979,7 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
       const { error: leadError } = await supabase
         .from('leads')
         .update({ 
-          status: 'Acompanhamento',
+          status: 'Devolucao_Contratos',
           data_conversao: null,
           convertido_por: null,
         })
@@ -998,6 +998,7 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
       queryClient.invalidateQueries({ queryKey: ['lead-prontuario', leadId] });
       queryClient.invalidateQueries({ queryKey: ['lead-medico-vinculo', leadId] });
       queryClient.invalidateQueries({ queryKey: ['lead-historico', leadId] });
+      queryClient.invalidateQueries({ queryKey: ['leads-acompanhamento'] });
       queryClient.invalidateQueries({ queryKey: ['corpo-clinico'] });
       queryClient.invalidateQueries({ queryKey: ['medicos-kanban-cards'] });
       queryClient.invalidateQueries({ queryKey: ['medicos'] });
@@ -1253,7 +1254,7 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
       const { error: leadError } = await supabase
         .from('leads')
         .update({ 
-          status: 'Acompanhamento',
+          status: 'Devolucao_Contratos',
           data_conversao: null,
           convertido_por: null,
         })
