@@ -605,6 +605,24 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
     })
   ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
+  // 2s timer: mark all entries as viewed after staying on the tab for 2 seconds
+  useEffect(() => {
+    if (allEntries.length === 0) return;
+    
+    hasMarkedRef.current = false;
+    viewTimerRef.current = setTimeout(() => {
+      if (!hasMarkedRef.current) {
+        hasMarkedRef.current = true;
+        const entriesToMark = allEntries.map(e => ({ id: e.id, source: e.source }));
+        markEntriesAsViewed(entriesToMark);
+      }
+    }, 2000);
+
+    return () => {
+      if (viewTimerRef.current) clearTimeout(viewTimerRef.current);
+    };
+  }, [allEntries.length, leadId]);
+
   return (
     <div className="space-y-4" onPaste={handlePaste}>
       {/* Header with Add button */}
