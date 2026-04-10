@@ -158,94 +158,40 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
   const leadFromJoin = conversa?.lead as any;
   const hasLinkedLead = !!conversa?.lead_id || !!leadFromJoin?.id;
 
+  // Auto-link ONLY for disparo fallback matches. Everything else is manual.
   const { data: leadMatchResult } = useQuery({
-    queryKey: ['sigzap-linked-lead', conversaId, conversa?.lead_id, contactPhone, contactName, isLidContact],
+    queryKey: ['sigzap-linked-lead', conversaId, conversa?.lead_id, contactPhone, isLidContact],
     queryFn: async () => {
-      // 1) Real phone → fast RPC lookup
+      // Only auto-link if we have a real phone number (not LID)
       if (!isLidContact && contactPhone) {
         const phoneE164 = normalizeToE164(contactPhone);
         if (phoneE164) {
-          const { data: foundId } = await supabase.rpc('find_lead_by_phone', { p_phone: phoneE164 });
-          if (foundId) {
+          // Check if this phone was part of a disparo and has a linked lead_id
+          const { data: disparoMatch } = await supabase
+            .from('disparos_contatos')
+            .select('lead_id')
+            .eq('telefone_e164', phoneE164)
+            .not('lead_id', 'is', null)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (disparoMatch?.lead_id) {
+            // Fetch the lead details for silent auto-link
             const { data: lead } = await supabase
               .from('leads')
               .select('id, nome, phone_e164, telefones_adicionais, email, uf, especialidade')
-              .eq('id', foundId)
+              .eq('id', disparoMatch.lead_id)
               .maybeSingle();
             if (lead) {
-              const nc = phoneE164.replace(/\D/g, '').slice(-9);
-              const nl = (lead.phone_e164 || '').replace(/\D/g, '').slice(-9);
-              let score = nc === nl ? 100 : 0;
-              if (score === 0 && lead.telefones_adicionais) {
-                for (const t of lead.telefones_adicionais) {
-                  const nt = t.replace(/\D/g, '').slice(-9);
-                  if (nc === nt) { score = 95; break; }
-                  if (nc.slice(-8) === nt.slice(-8)) { score = Math.max(score, 85); }
-                }
-              }
-              if (score === 0 && nc.slice(-8) === nl.slice(-8)) score = 90;
-              return { mode: 'auto' as const, lead: { ...lead, score } };
+              return { mode: 'auto-silent' as const, lead: { ...lead, score: 100 } };
             }
           }
         }
       }
 
-      // 2) LID or phone not found → name search using ALL name parts
-      if (contactName && contactName.length >= 3) {
-        const nameParts = contactName.trim().split(/\s+/).filter(p => p.length >= 3);
-        if (nameParts.length > 0) {
-          const firstName = nameParts[0];
-          const { data: matches } = await supabase
-            .from('leads')
-            .select('id, nome, phone_e164, telefones_adicionais, email, uf, especialidade')
-            .ilike('nome', `%${firstName}%`)
-            .limit(20);
-
-          if (matches && matches.length > 0) {
-            const contactParts = nameParts.map(p => p.toLowerCase());
-            const scored = matches
-              .map(lead => {
-                const leadParts = (lead.nome || '').toLowerCase().trim().split(/\s+/);
-                let partsMatched = 0;
-                for (const cp of contactParts) {
-                  if (leadParts.some(lp => lp === cp || lp.startsWith(cp) || cp.startsWith(lp))) {
-                    partsMatched++;
-                  }
-                }
-
-                let leadUnmatched = 0;
-                for (const lp of leadParts) {
-                  if (!contactParts.some(cp => cp === lp || cp.startsWith(lp) || lp.startsWith(cp))) {
-                    leadUnmatched++;
-                  }
-                }
-
-                const matchRatio = contactParts.length > 0 ? partsMatched / contactParts.length : 0;
-                const penalty = leadUnmatched > 0 ? Math.min(leadUnmatched * 10, 30) : 0;
-                const score = Math.max(0, Math.round(matchRatio * 100) - penalty);
-                return { ...lead, score };
-              })
-              .filter(l => l.score >= 60)
-              .sort((a, b) => b.score - a.score);
-
-            // Ambiguous: multiple high-score matches → force manual selection
-            if (scored.length > 1) {
-              const topScore = scored[0].score;
-              const closeMatches = scored.filter(l => topScore - l.score <= 15);
-              if (closeMatches.length > 1) {
-                return { mode: 'manual' as const };
-              }
-            }
-
-            if (scored.length > 0) {
-              return { mode: 'auto' as const, lead: scored[0] };
-            }
-          }
-        }
-      }
-
-      // Force manual linking when conversation is still unlinked
-      if (contactPhone || contactName) {
+      // Everything else → manual linking
+      if (contactPhone || (contactName && contactName.length >= 3)) {
         return { mode: 'manual' as const };
       }
 
@@ -255,7 +201,7 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
     staleTime: 0,
   });
 
-  const linkedLead = leadMatchResult?.mode === 'auto' ? leadMatchResult.lead : null;
+  const linkedLead = leadMatchResult?.mode === 'auto-silent' ? leadMatchResult.lead : null;
 
   // Show auto-match confirmation modal when lead found but not yet linked
   // This is "chato" on purpose — forces user to link or dismiss every time
