@@ -1099,6 +1099,51 @@ export type Database = {
         }
         Relationships: []
       }
+      banco_interesse_leads: {
+        Row: {
+          cidades: string[] | null
+          created_at: string
+          encaminhado_por: string | null
+          encaminhado_por_nome: string | null
+          id: string
+          lead_id: string
+          ufs: string[] | null
+        }
+        Insert: {
+          cidades?: string[] | null
+          created_at?: string
+          encaminhado_por?: string | null
+          encaminhado_por_nome?: string | null
+          id?: string
+          lead_id: string
+          ufs?: string[] | null
+        }
+        Update: {
+          cidades?: string[] | null
+          created_at?: string
+          encaminhado_por?: string | null
+          encaminhado_por_nome?: string | null
+          id?: string
+          lead_id?: string
+          ufs?: string[] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "regiao_interesse_leads_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "regiao_interesse_leads_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_leads_duplicados"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bi_client_import_rows: {
         Row: {
           created_at: string
@@ -8770,51 +8815,6 @@ export type Database = {
             columns: ["contrato_demanda_id"]
             isOneToOne: false
             referencedRelation: "contratos_demanda"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      regiao_interesse_leads: {
-        Row: {
-          cidades: string[] | null
-          created_at: string
-          encaminhado_por: string | null
-          encaminhado_por_nome: string | null
-          id: string
-          lead_id: string
-          ufs: string[] | null
-        }
-        Insert: {
-          cidades?: string[] | null
-          created_at?: string
-          encaminhado_por?: string | null
-          encaminhado_por_nome?: string | null
-          id?: string
-          lead_id: string
-          ufs?: string[] | null
-        }
-        Update: {
-          cidades?: string[] | null
-          created_at?: string
-          encaminhado_por?: string | null
-          encaminhado_por_nome?: string | null
-          id?: string
-          lead_id?: string
-          ufs?: string[] | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "regiao_interesse_leads_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "regiao_interesse_leads_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "vw_leads_duplicados"
             referencedColumns: ["id"]
           },
         ]

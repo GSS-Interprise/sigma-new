@@ -47,7 +47,7 @@ export function RegiaoInteresseModule() {
     queryKey: ["regiao-interesse-leads"],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("regiao_interesse_leads")
+        .from("banco_interesse_leads")
         .select(`
           id,
           lead_id,
@@ -55,7 +55,7 @@ export function RegiaoInteresseModule() {
           ufs,
           cidades,
           created_at,
-          lead:leads!regiao_interesse_leads_lead_id_fkey (
+          lead:leads!banco_interesse_leads_lead_id_fkey (
             id, nome, phone_e164, especialidade, uf, cidade
           )
         `)
@@ -138,7 +138,7 @@ export function RegiaoInteresseModule() {
   const removeMutation = useMutation({
     mutationFn: async (ids: string[]) => {
       const { error } = await supabase
-        .from("regiao_interesse_leads")
+        .from("banco_interesse_leads")
         .delete()
         .in("id", ids);
       if (error) throw error;

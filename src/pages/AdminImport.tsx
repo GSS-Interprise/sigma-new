@@ -61,7 +61,7 @@ const TABLES = [
   "radiologia_pendencias", "radiologia_pendencias_comentarios",
   "radiologia_pendencias_historico", "radiologia_pendencias_snapshots",
   "radiologia_producao_comparacao", "radiologia_producao_exames",
-  "recebimentos_cliente", "regiao_interesse_leads",
+  "recebimentos_cliente", "banco_interesse_leads",
   "relacionamento_medico", "segmentos_publico", "servico", "setores",
   "sigzap_contacts", "sigzap_conversations", "sigzap_events",
   "sigzap_instances", "sigzap_messages",

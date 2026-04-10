@@ -170,7 +170,7 @@ export function RegiaoInteresseDialog({ open, onOpenChange, leadId, onAfterNavig
         }
       }
 
-      const { error } = await supabase.from("regiao_interesse_leads").insert({
+      const { error } = await supabase.from("banco_interesse_leads").insert({
         lead_id: leadId,
         encaminhado_por: user?.id || null,
         encaminhado_por_nome: user?.user_metadata?.nome_completo || user?.email || "Desconhecido",
