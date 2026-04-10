@@ -146,7 +146,7 @@ export function RegiaoInteresseModule() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["regiao-interesse-leads"] });
       setSelectedIds(new Set());
-      toast.success("Leads removidos da Região de Interesse");
+      toast.success("Leads removidos do Banco de Interesse");
     },
     onError: () => {
       toast.error("Erro ao remover leads");
@@ -312,7 +312,7 @@ export function RegiaoInteresseModule() {
             ) : filteredLeads.length === 0 ? (
               <div className="p-8 text-center text-muted-foreground">
                 {regiaoLeads?.length === 0
-                  ? "Nenhum lead encaminhado para Região de Interesse ainda. Use o menu de contexto no SigZap para encaminhar leads."
+                  ? "Nenhum lead encaminhado para o Banco de Interesse ainda. Use o menu de contexto no SigZap para encaminhar leads."
                   : "Nenhum lead encontrado com esse filtro"}
               </div>
             ) : (

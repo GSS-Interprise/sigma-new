@@ -60,7 +60,7 @@ export default function Disparos() {
     { name: "Leads", href: "/disparos/leads", icon: Users, description: "Gerencie seus leads", permission: "leads" as CaptacaoPermission, adminOnly: false },
     { name: "Contratos Captação", href: "/disparos/contratos", icon: FileText, description: "Contratos, serviços e propostas", permission: "contratos_servicos" as CaptacaoPermission, adminOnly: false },
     { name: "Black List", href: "/disparos/blacklist", icon: Ban, description: "Contatos bloqueados", permission: "blacklist" as CaptacaoPermission, adminOnly: false },
-    { name: "Região de Interesse", href: "/disparos/regiao-interesse", icon: MapPin, description: "Pesquisa de interesse por região", permission: "leads" as CaptacaoPermission, adminOnly: false },
+    { name: "Banco de Interesse", href: "/disparos/regiao-interesse", icon: MapPin, description: "Gerencie leads por região de interesse", permission: "leads" as CaptacaoPermission, adminOnly: false },
     { name: "SIG Zap", href: "/disparos/sigzap", icon: MessageCircle, description: "Integração WhatsApp", permission: "seigzaps_config" as CaptacaoPermission, adminOnly: false },
     { name: "Config Instância", href: "/disparos/config", icon: Settings, description: "Configure chips e instâncias", permission: "seigzaps_config" as CaptacaoPermission, adminOnly: false },
     { name: "Captadores", href: "/disparos/captadores", icon: ShieldCheck, description: "Gerencie permissões do setor", permission: null, adminOnly: false },

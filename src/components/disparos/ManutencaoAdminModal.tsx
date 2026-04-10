@@ -10,7 +10,7 @@ const MODULOS = [
   { key: "leads", label: "Leads" },
   { key: "contratos_servicos", label: "Contratos Captação" },
   { key: "blacklist", label: "Black List" },
-  { key: "regiao_interesse", label: "Região de Interesse" },
+  { key: "regiao_interesse", label: "Banco de Interesse" },
   { key: "sigzap", label: "SIG Zap" },
   { key: "config_instancia", label: "Config Instância" },
   { key: "captadores", label: "Captadores" },

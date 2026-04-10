@@ -10,9 +10,9 @@ export default function DisparosRegiaoInteresse() {
         <MapPin className="h-5 w-5 text-primary" />
       </div>
       <div>
-        <h1 className="text-2xl font-bold">Região de Interesse</h1>
+        <h1 className="text-2xl font-bold">Banco de Interesse</h1>
         <p className="text-sm text-muted-foreground">
-          Selecione leads para pesquisa de interesse por região
+          Gerencie leads encaminhados por região de interesse
         </p>
       </div>
     </div>
