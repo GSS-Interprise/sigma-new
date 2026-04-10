@@ -914,6 +914,28 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
                         {entry.usuario_nome}
                       </p>
                     )}
+
+                    {/* Read receipts - quem visualizou */}
+                    {(() => {
+                      const views = getEntryViews(entry.id, entry.source);
+                      if (views.length === 0) return null;
+                      return (
+                        <div className="mt-2 pt-2 border-t flex items-center gap-2 flex-wrap">
+                          <CheckCheck className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                          <div className="flex flex-wrap gap-x-3 gap-y-1">
+                            {views.map((v: any) => (
+                              <span key={v.id} className="text-[10px] text-muted-foreground flex items-center gap-1">
+                                <Eye className="h-2.5 w-2.5" />
+                                <span className="font-medium">{v.user_nome}</span>
+                                <span className="opacity-60">
+                                  {format(new Date(v.visualizado_em), "dd/MM HH:mm", { locale: ptBR })}
+                                </span>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               ))}
