@@ -1,25 +1,26 @@
 
 
-## Plano: Alterar regra do campo "Responsável" em Licitações
+## Plano: Renomear "Região de Interesse" para "Banco de Interesse"
 
-### Situação atual
-O hook `useLicitacoesProfiles` filtra por `setor_id` (setores Licitações e AGES). Isso é frágil — depende do setor do perfil, não da role do usuário.
+### Arquivos a alterar
 
-### Nova regra
-Mostrar no select de "Responsável" qualquer usuário que tenha a role **`gestor_ages`** e/ou **`gestor_contratos`** na tabela `user_roles`.
+| Arquivo | O que muda |
+|---|---|
+| `src/pages/Disparos.tsx` | Nome do módulo e descrição no card |
+| `src/pages/DisparosRegiaoInteresse.tsx` | Título e subtítulo da página |
+| `src/components/disparos/RegiaoInteresseModule.tsx` | Textos de toast e mensagens vazias |
+| `src/components/disparos/RegiaoInteresseDialog.tsx` | Título do dialog e toast de sucesso |
+| `src/components/disparos/ManutencaoAdminModal.tsx` | Label do módulo na lista de manutenção |
+| `src/components/sigzap/SigZapConversaContextMenu.tsx` | Texto do item no menu de contexto |
+| `src/components/medicos/LeadProntuarioDialog.tsx` | Texto do botão na aba de conversão |
 
-### Alteração
+### O que NÃO muda
+- **Rotas** (`/disparos/regiao-interesse`) — manter para não quebrar links/bookmarks
+- **Nomes de arquivo** — manter os mesmos componentes
+- **Query keys** (`regiao-interesse-leads`) — sem impacto para o usuário
+- **Tabela do banco** (`regiao_interesse_leads`) — sem alteração
+- **Chave de manutenção** (`regiao_interesse`) — sem alteração
 
-**Arquivo: `src/hooks/useLicitacoesProfiles.ts`**
-
-Trocar a query atual (filtro por `setor_id`) por um join com `user_roles`:
-
-1. Buscar todos os `user_id` da tabela `user_roles` onde `role` é `gestor_ages` ou `gestor_contratos`
-2. Buscar os profiles correspondentes (id, nome_completo) ordenados por nome
-
-Como o Supabase client não suporta join direto entre `user_roles` e `profiles`, faremos duas queries sequenciais:
-- Query 1: `SELECT DISTINCT user_id FROM user_roles WHERE role IN ('gestor_ages', 'gestor_contratos')`
-- Query 2: `SELECT id, nome_completo FROM profiles WHERE id IN (...userIds) ORDER BY nome_completo`
-
-Nenhuma alteração de banco de dados necessária — apenas mudança no frontend.
+### Resumo
+Apenas substituição de textos visíveis ao usuário: títulos, labels, toasts e descrições. Nenhuma mudança estrutural, de rota ou de banco.
 
