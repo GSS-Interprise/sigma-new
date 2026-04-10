@@ -273,7 +273,7 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
   });
 
   // Timer ref for 2s delay before marking entries as viewed
-  const viewTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const viewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasMarkedRef = useRef(false);
 
   // Function to mark all visible entries as viewed after 2s on tab
