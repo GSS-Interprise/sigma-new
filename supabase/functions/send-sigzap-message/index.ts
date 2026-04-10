@@ -50,13 +50,6 @@ const getEvolutionErrorMessage = (result: any) => {
   return JSON.stringify(result ?? {});
 };
 
-const shouldRetryMediaWithAlternateFormat = (status: number, result: any) => {
-  if (status < 400) return false;
-
-  const errorMessage = getEvolutionErrorMessage(result);
-  return errorMessage.includes('Owned media must be a url or base64') ||
-    errorMessage.includes('Media upload failed on all hosts');
-};
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -437,9 +430,6 @@ serve(async (req) => {
 
     console.log('📩 Resposta Evolution:', JSON.stringify(evolutionResult, null, 2));
 
-    if (!evolutionResponse) {
-      throw new Error('Falha ao executar requisição para Evolution API');
-    }
 
     if (!evolutionResponse.ok) {
       console.error('❌ Erro da Evolution API:', evolutionResult);
@@ -447,7 +437,7 @@ serve(async (req) => {
         error: 'Erro ao processar ação',
         details: evolutionResult,
         requestedUrl: evolutionEndpoint,
-        payload: requestedPayload,
+        payload: evolutionBody,
       }), {
         status: evolutionResponse.status,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
