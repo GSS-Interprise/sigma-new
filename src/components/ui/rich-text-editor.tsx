@@ -65,8 +65,9 @@ const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorProps>(
 
     React.useEffect(() => {
       if (editorRef.current && value !== undefined) {
-        if (editorRef.current.innerHTML !== value) {
-          editorRef.current.innerHTML = value;
+        const sanitized = sanitizeHtml(value);
+        if (editorRef.current.innerHTML !== sanitized) {
+          editorRef.current.innerHTML = sanitized;
         }
       }
     }, [value]);
