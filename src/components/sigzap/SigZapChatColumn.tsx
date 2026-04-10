@@ -150,76 +150,87 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
 
   const captadorColor = captadorPermissao?.cor || null;
 
-  // Check if conversation has a linked lead (prefer lead_id from join, fallback to phone lookup)
+  // Check if conversation has a linked lead (prefer lead_id from join, fallback to phone/name lookup)
   const contactPhone = (conversa?.contact as any)?.contact_phone;
   const contactName = (conversa?.contact as any)?.contact_name || '';
   const contactJid = (conversa?.contact as any)?.contact_jid || '';
   const isLidContact = contactJid.includes('@lid') || (contactPhone && contactPhone.length > 15);
   const leadFromJoin = conversa?.lead as any;
   const { data: linkedLead } = useQuery({
-    queryKey: ['sigzap-linked-lead', conversa?.lead_id, contactPhone],
+    queryKey: ['sigzap-linked-lead', conversa?.lead_id, contactPhone, contactName, isLidContact],
     queryFn: async () => {
-      // If lead is already joined from conversation, use it
       if (leadFromJoin?.id) return leadFromJoin;
-      
-      // For LID contacts, skip phone lookup (will open manual dialog instead)
-      if (isLidContact || !contactPhone) return null;
 
-      const phoneE164 = normalizeToE164(contactPhone);
-      if (!phoneE164) return null;
-
-      const { data: foundId } = await supabase.rpc('find_lead_by_phone', { p_phone: phoneE164 });
-      if (!foundId) return null;
-
-      const { data: lead } = await supabase
-        .from('leads')
-        .select('id, nome, phone_e164, telefones_adicionais, email, uf, especialidade')
-        .eq('id', foundId)
-        .maybeSingle();
-
-      if (!lead) return null;
-
-      // Calculate similarity score
-      const normalizedContact = phoneE164.replace(/\D/g, '').slice(-9);
-      const normalizedLead = (lead.phone_e164 || '').replace(/\D/g, '').slice(-9);
-      let score = normalizedContact === normalizedLead ? 100 : 0;
-      if (score === 0 && lead.telefones_adicionais) {
-        for (const tel of lead.telefones_adicionais) {
-          const normalizedTel = tel.replace(/\D/g, '').slice(-9);
-          if (normalizedContact === normalizedTel) { score = 95; break; }
-          if (normalizedContact.slice(-8) === normalizedTel.slice(-8)) { score = Math.max(score, 85); }
+      // 1) Real phone → fast RPC lookup
+      if (!isLidContact && contactPhone) {
+        const phoneE164 = normalizeToE164(contactPhone);
+        if (phoneE164) {
+          const { data: foundId } = await supabase.rpc('find_lead_by_phone', { p_phone: phoneE164 });
+          if (foundId) {
+            const { data: lead } = await supabase
+              .from('leads')
+              .select('id, nome, phone_e164, telefones_adicionais, email, uf, especialidade')
+              .eq('id', foundId)
+              .maybeSingle();
+            if (lead) {
+              const nc = phoneE164.replace(/\D/g, '').slice(-9);
+              const nl = (lead.phone_e164 || '').replace(/\D/g, '').slice(-9);
+              let score = nc === nl ? 100 : 0;
+              if (score === 0 && lead.telefones_adicionais) {
+                for (const t of lead.telefones_adicionais) {
+                  const nt = t.replace(/\D/g, '').slice(-9);
+                  if (nc === nt) { score = 95; break; }
+                  if (nc.slice(-8) === nt.slice(-8)) { score = Math.max(score, 85); }
+                }
+              }
+              if (score === 0 && nc.slice(-8) === nl.slice(-8)) score = 90;
+              return { ...lead, score };
+            }
+          }
         }
       }
-      if (score === 0 && normalizedContact.slice(-8) === normalizedLead.slice(-8)) score = 90;
 
-      return { ...lead, score };
+      // 2) LID or phone not found → fast name search (exact first name, limit 10)
+      if (contactName && contactName.length >= 3) {
+        const firstName = contactName.trim().split(' ')[0];
+        if (firstName.length < 3) return null;
+        const { data: matches } = await supabase
+          .from('leads')
+          .select('id, nome, phone_e164, telefones_adicionais, email, uf, especialidade')
+          .ilike('nome', `${firstName}%`)
+          .limit(10);
+        if (matches && matches.length > 0) {
+          const cl = contactName.toLowerCase().trim();
+          const scored = matches.map(lead => {
+            const ll = (lead.nome || '').toLowerCase().trim();
+            let score = 0;
+            if (cl === ll) score = 100;
+            else if (ll.startsWith(cl) || cl.startsWith(ll)) score = 85;
+            else if (ll.split(' ')[0] === cl.split(' ')[0]) score = 70;
+            return { ...lead, score };
+          }).filter(l => l.score >= 70).sort((a, b) => b.score - a.score);
+          if (scored.length === 1) return scored[0]; // single match → use it
+          if (scored.length > 1) return scored[0]; // multiple → best match
+        }
+      }
+
+      return null;
     },
-    enabled: !!conversaId && (!!leadFromJoin?.id || (!!contactPhone && !isLidContact)),
+    enabled: !!conversaId && (!!leadFromJoin?.id || !!contactPhone || (!!contactName && contactName.length >= 3)),
     staleTime: 60_000,
   });
 
-  // For real phone matches: show auto-match confirmation modal
-  // For LID contacts: auto-open the manual link dialog (which has smart suggestions by name)
+  // Show auto-match confirmation modal when lead found but not yet linked
   useEffect(() => {
     if (!conversaId || conversa?.lead_id || autoMatchDismissedFor === conversaId) return;
-
-    // Real phone match found → show auto-match modal
     if (linkedLead?.id && linkedLead?.score) {
       const phoneDisplay = normalizeToE164(contactPhone) || contactPhone || '';
       setPendingContactPhone(phoneDisplay);
       setPendingContactName(contactName || 'Contato');
       setAutoMatchLead(linkedLead);
       setAutoMatchDialogOpen(true);
-      return;
     }
-
-    // LID contact without linked lead → auto-open manual link dialog
-    if (isLidContact && contactName && contactName.length >= 2) {
-      setPendingContactPhone(contactPhone || '');
-      setPendingContactName(contactName);
-      setLeadLinkDialogOpen(true);
-    }
-  }, [linkedLead, conversa?.lead_id, conversaId, autoMatchDismissedFor, isLidContact]);
+  }, [linkedLead, conversa?.lead_id, conversaId, autoMatchDismissedFor]);
 
   // Reset dismissed state when conversation changes
   const prevConversaIdRef = useRef<string | null>(null);
