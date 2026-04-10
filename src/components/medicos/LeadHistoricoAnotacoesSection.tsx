@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
+import { usePermissions } from "@/hooks/usePermissions";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
@@ -34,6 +35,7 @@ interface LeadHistoricoAnotacoesSectionProps {
 
 export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaClick }: LeadHistoricoAnotacoesSectionProps) {
   const { user } = useAuth();
+  const { isAdmin, isLeader } = usePermissions();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -915,8 +917,8 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
                       </p>
                     )}
 
-                    {/* Read receipts - quem visualizou */}
-                    {(() => {
+                    {/* Read receipts - quem visualizou (só admins e líderes veem) */}
+                    {(isAdmin || isLeader) && (() => {
                       const views = getEntryViews(entry.id, entry.source);
                       if (views.length === 0) return null;
                       return (
