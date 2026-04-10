@@ -101,34 +101,59 @@ export function SigZapLeadLinkDialog({
     }
   }, [open]);
 
-  // Buscar todos os leads para sugestões
+  // Buscar apenas leads que foram disparados (têm registro em disparos_log ou origem de disparo)
   const isLidPhone = contactPhone.length > 15 || !/^\+?\d{10,13}$/.test(contactPhone.replace(/\D/g, ''));
   const { data: allLeads, isLoading: loadingSuggestions } = useQuery({
-    queryKey: ['sigzap-lead-suggestions', contactPhone, contactName],
+    queryKey: ['sigzap-lead-suggestions-disparados', contactPhone, contactName],
     queryFn: async () => {
+      // 1) Get lead_ids from disparos_log destinatarios
+      const { data: logs } = await supabase
+        .from('disparos_log')
+        .select('destinatarios')
+        .order('created_at', { ascending: false })
+        .limit(200);
+
+      const disparadoIds = new Set<string>();
+      if (logs) {
+        for (const log of logs) {
+          const dests = log.destinatarios as any[];
+          if (Array.isArray(dests)) {
+            for (const d of dests) {
+              if (d?.lead_id) disparadoIds.add(d.lead_id);
+            }
+          }
+        }
+      }
+
+      // 2) Also include leads with dispatch-related origem
+      const dispOrigens = [
+        'Disparo Manual', 'Disparo por email', 'Robô', 
+        'Sistema de prospecção', 'Leads ferramenta de prospecção',
+        'LISTA-CAPTADORA', 'CRM-LEMIT', 'WHATSAPP'
+      ];
+
       const firstName = contactName.split(' ')[0];
-      
+
       if (isLidPhone) {
-        // LID contact: search only by name (phone is meaningless)
         const { data, error } = await supabase
           .from('leads')
           .select('id, nome, phone_e164, telefones_adicionais, email, especialidade, uf, status')
           .ilike('nome', `${firstName}%`)
-          .limit(50);
+          .limit(100);
         if (error) throw error;
-        return data || [];
+        // Filter: must be in disparadoIds OR have dispatch origem
+        return (data || []).filter(l => disparadoIds.has(l.id) || dispOrigens.some(o => o === (l as any).origem));
       }
-      
-      // Real phone: search by phone digits + name
+
       const phoneDigits = contactPhone.replace(/\D/g, '');
       const lastDigits = phoneDigits.slice(-7);
       const { data, error } = await supabase
         .from('leads')
-        .select('id, nome, phone_e164, telefones_adicionais, email, especialidade, uf, status')
+        .select('id, nome, phone_e164, telefones_adicionais, email, especialidade, uf, status, origem')
         .or(`phone_e164.ilike.%${lastDigits}%,nome.ilike.%${firstName}%`)
-        .limit(100);
+        .limit(200);
       if (error) throw error;
-      return data || [];
+      return (data || []).filter(l => disparadoIds.has(l.id) || dispOrigens.includes(l.origem || ''));
     },
     enabled: open,
   });
@@ -158,22 +183,48 @@ export function SigZapLeadLinkDialog({
       .slice(0, 10);
   }, [allLeads, contactPhone, contactName]);
 
-  // Search leads manual
+  // Search leads manual — also filtered to dispatched leads only
   const { data: searchResults, isLoading: loadingSearch } = useQuery({
-    queryKey: ['sigzap-lead-search', debouncedSearch],
+    queryKey: ['sigzap-lead-search-disparados', debouncedSearch],
     queryFn: async () => {
       if (!debouncedSearch.trim()) return [];
       
       const searchTerm = `%${debouncedSearch.trim()}%`;
-      const { data, error } = await supabase
+      const { data: leads, error } = await supabase
         .from('leads')
-        .select('id, nome, phone_e164, email, especialidade, status')
+        .select('id, nome, phone_e164, email, especialidade, status, origem')
         .or(`nome.ilike.${searchTerm},phone_e164.ilike.${searchTerm},email.ilike.${searchTerm}`)
         .order('nome', { ascending: true })
-        .limit(50);
+        .limit(100);
       
       if (error) throw error;
-      return data || [];
+
+      // Get disparado ids
+      const { data: logs } = await supabase
+        .from('disparos_log')
+        .select('destinatarios')
+        .order('created_at', { ascending: false })
+        .limit(200);
+
+      const disparadoIds = new Set<string>();
+      if (logs) {
+        for (const log of logs) {
+          const dests = log.destinatarios as any[];
+          if (Array.isArray(dests)) {
+            for (const d of dests) {
+              if (d?.lead_id) disparadoIds.add(d.lead_id);
+            }
+          }
+        }
+      }
+
+      const dispOrigens = [
+        'Disparo Manual', 'Disparo por email', 'Robô',
+        'Sistema de prospecção', 'Leads ferramenta de prospecção',
+        'LISTA-CAPTADORA', 'CRM-LEMIT', 'WHATSAPP'
+      ];
+
+      return (leads || []).filter(l => disparadoIds.has(l.id) || dispOrigens.includes(l.origem || ''));
     },
     enabled: open && debouncedSearch.trim().length > 0,
   });
