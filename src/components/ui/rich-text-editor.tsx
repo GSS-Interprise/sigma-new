@@ -249,6 +249,14 @@ const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorProps>(
           return;
         }
       }
+
+      // Sanitize pasted HTML to remove dangerous styles (position:absolute, z-index, etc.)
+      const pastedHtml = e.clipboardData?.getData('text/html');
+      if (pastedHtml) {
+        e.preventDefault();
+        const sanitized = sanitizeHtml(pastedHtml);
+        document.execCommand('insertHTML', false, sanitized);
+      }
     };
 
     const applyHighlight = (color: string) => {
