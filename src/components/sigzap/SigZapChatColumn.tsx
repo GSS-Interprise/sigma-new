@@ -275,7 +275,7 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
     }
 
     setLeadLinkDialogOpen(false);
-  }, [leadMatchResult, hasLinkedLead, conversaId, contactPhone, contactName, isLidContact]);
+  }, [leadMatchResult, hasLinkedLead, conversaId, contactPhone, contactName, isLidContact, resolvedDisplayPhone]);
 
   // Reset dismissed state when conversation changes
   const prevConversaIdRef = useRef<string | null>(null);
