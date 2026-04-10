@@ -41,6 +41,7 @@ import { BlacklistSection } from "./BlacklistSection";
 import { BloqueioTemporarioSection } from "./BloqueioTemporarioSection";
 import { LeadEtiquetasDropdown } from "./LeadEtiquetasDropdown";
 import { PhoneEmailArrayFields } from "@/components/leads/PhoneEmailArrayFields";
+import { useLeadHistoricoUnreadCount } from "@/hooks/useLeadHistoricoVisualizacoes";
 
 export interface LeadProntuarioDialogProps {
   open: boolean;
@@ -120,6 +121,9 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
   
   // Check if we're on acompanhamento context
   const isOnAcompanhamentoPage = location.pathname.includes('/disparos/acompanhamento');
+
+  // Historico unread count for badge
+  const { unreadCount: historicoUnreadCount } = useLeadHistoricoUnreadCount(leadId);
 
   // Auto-resize textarea
   const adjustTextareaHeight = useCallback(() => {
@@ -1477,9 +1481,14 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                   <FileText className="h-3.5 w-3.5" />
                   Propostas
                 </TabsTrigger>
-                <TabsTrigger value="historico" className="gap-1.5 text-xs">
+                <TabsTrigger value="historico" className="gap-1.5 text-xs relative">
                   <History className="h-3.5 w-3.5" />
                   Histórico
+                  {historicoUnreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground">
+                      {historicoUnreadCount > 99 ? '99+' : historicoUnreadCount}
+                    </span>
+                  )}
                 </TabsTrigger>
                 {canViewOld && (
                   <TabsTrigger value="old" className="gap-1.5 text-xs">

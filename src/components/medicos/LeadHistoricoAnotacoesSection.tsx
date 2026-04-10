@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   PlusCircle, Image, X, Trash2, AlertTriangle, Ban, 
-  Undo2, StickyNote, Calendar, User, Loader2, Send, FileText, MessageCircle
+  Undo2, StickyNote, Calendar, User, Loader2, Send, FileText, MessageCircle, CheckCheck, Eye
 } from "lucide-react";
 import {
   AlertDialog,
@@ -257,6 +257,59 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
     },
     enabled: !!leadId,
   });
+
+  // Fetch visualizações de todos os usuários para este lead
+  const { data: visualizacoes = [] } = useQuery({
+    queryKey: ['lead-historico-visualizacoes', leadId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('lead_historico_visualizacoes' as any)
+        .select('*')
+        .eq('lead_id', leadId);
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!leadId,
+  });
+
+  // Timer ref for 2s delay before marking entries as viewed
+  const viewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasMarkedRef = useRef(false);
+
+  // Function to mark all visible entries as viewed after 2s on tab
+  const markEntriesAsViewed = useCallback(async (entries: { id: string; source: string }[]) => {
+    if (!user?.id || !leadId || entries.length === 0) return;
+
+    const userName = user?.user_metadata?.nome_completo || user?.email || 'Usuário';
+    
+    // Filter out entries already viewed by this user
+    const viewedKeys = new Set(visualizacoes.map((v: any) => `${v.entry_source}-${v.entry_id}`));
+    const newEntries = entries.filter(e => !viewedKeys.has(`${e.source}-${e.id}`));
+    
+    if (newEntries.length === 0) return;
+
+    // Upsert visualizations
+    const rows = newEntries.map(e => ({
+      lead_id: leadId,
+      entry_id: e.id,
+      entry_source: e.source,
+      user_id: user.id,
+      user_nome: userName,
+      visualizado_em: new Date().toISOString(),
+    }));
+
+    await supabase
+      .from('lead_historico_visualizacoes' as any)
+      .upsert(rows, { onConflict: 'entry_id,entry_source,user_id' });
+    
+    queryClient.invalidateQueries({ queryKey: ['lead-historico-visualizacoes', leadId] });
+    queryClient.invalidateQueries({ queryKey: ['lead-historico-viewed', leadId, user.id] });
+  }, [user, leadId, visualizacoes, queryClient]);
+
+  // Helper to get visualizations for a specific entry
+  const getEntryViews = useCallback((entryId: string, entrySource: string) => {
+    return visualizacoes.filter((v: any) => v.entry_id === entryId && v.entry_source === entrySource);
+  }, [visualizacoes]);
 
   // Create anotação mutation
   const createMutation = useMutation({
@@ -552,6 +605,24 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
     })
   ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
+  // 2s timer: mark all entries as viewed after staying on the tab for 2 seconds
+  useEffect(() => {
+    if (allEntries.length === 0) return;
+    
+    hasMarkedRef.current = false;
+    viewTimerRef.current = setTimeout(() => {
+      if (!hasMarkedRef.current) {
+        hasMarkedRef.current = true;
+        const entriesToMark = allEntries.map(e => ({ id: e.id, source: e.source }));
+        markEntriesAsViewed(entriesToMark);
+      }
+    }, 2000);
+
+    return () => {
+      if (viewTimerRef.current) clearTimeout(viewTimerRef.current);
+    };
+  }, [allEntries.length, leadId]);
+
   return (
     <div className="space-y-4" onPaste={handlePaste}>
       {/* Header with Add button */}
@@ -843,6 +914,28 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
                         {entry.usuario_nome}
                       </p>
                     )}
+
+                    {/* Read receipts - quem visualizou */}
+                    {(() => {
+                      const views = getEntryViews(entry.id, entry.source);
+                      if (views.length === 0) return null;
+                      return (
+                        <div className="mt-2 pt-2 border-t flex items-center gap-2 flex-wrap">
+                          <CheckCheck className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                          <div className="flex flex-wrap gap-x-3 gap-y-1">
+                            {views.map((v: any) => (
+                              <span key={v.id} className="text-[10px] text-muted-foreground flex items-center gap-1">
+                                <Eye className="h-2.5 w-2.5" />
+                                <span className="font-medium">{v.user_nome}</span>
+                                <span className="opacity-60">
+                                  {format(new Date(v.visualizado_em), "dd/MM HH:mm", { locale: ptBR })}
+                                </span>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               ))}
