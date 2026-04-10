@@ -28,6 +28,36 @@ interface SendMessageRequest {
   editedText?: string;
 }
 
+const sanitizeBase64Media = (value: string) =>
+  value
+    .replace(/^data:[^;]+;base64,/, '')
+    .replace(/^data:[^,]+,/, '')
+    .replace(/\s+/g, '');
+
+const getEvolutionErrorMessage = (result: any) => {
+  const message = result?.response?.message;
+
+  if (Array.isArray(message)) {
+    return message
+      .map((item) => (typeof item === 'string' ? item : JSON.stringify(item)))
+      .join(' | ');
+  }
+
+  if (typeof message === 'string') {
+    return message;
+  }
+
+  return JSON.stringify(result ?? {});
+};
+
+const shouldRetryMediaWithAlternateFormat = (status: number, result: any) => {
+  if (status < 400) return false;
+
+  const errorMessage = getEvolutionErrorMessage(result);
+  return errorMessage.includes('Owned media must be a url or base64') ||
+    errorMessage.includes('Media upload failed on all hosts');
+};
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -175,6 +205,7 @@ serve(async (req) => {
 
     let evolutionEndpoint: string;
     let evolutionBody: any;
+    let evolutionBodyVariants: any[] | null = null;
     let httpMethod = 'POST';
 
     // Handle different actions
@@ -304,21 +335,33 @@ serve(async (req) => {
               });
             }
           }
+
+          const normalizedMediaPayload = sanitizeBase64Media(mediaPayload);
+          const mediaVariants = Array.from(new Set([
+            normalizedMediaPayload,
+            mediaMimeType ? `data:${mediaMimeType};base64,${normalizedMediaPayload}` : '',
+            mediaUrl || ''
+          ].filter(Boolean)));
           
           // Mensagem com mídia
           evolutionEndpoint = `${evolutionUrl}/message/sendMedia/${encodeURIComponent(instanceName)}`;
-          evolutionBody = {
+          const baseEvolutionBody = {
             number,
             mediatype: mediaType,
             mimetype: mediaMimeType,
             caption: mediaCaption || '',
             fileName: mediaFilename,
-            media: mediaPayload
           };
 
           if (quotedMessageId) {
-            evolutionBody.quoted = { key: { id: quotedMessageId } };
+            baseEvolutionBody.quoted = { key: { id: quotedMessageId } };
           }
+
+          evolutionBodyVariants = mediaVariants.map((media) => ({
+            ...baseEvolutionBody,
+            media,
+          }));
+          evolutionBody = evolutionBodyVariants[0];
         } else {
           // Mensagem de texto
           evolutionEndpoint = `${evolutionUrl}/message/sendText/${encodeURIComponent(instanceName)}`;
@@ -334,28 +377,54 @@ serve(async (req) => {
         break;
     }
 
-    console.log(`📡 Chamando Evolution API (${httpMethod}):`, evolutionEndpoint);
-    console.log('📦 Payload:', JSON.stringify(evolutionBody, null, 2));
-
-    // Enviar para Evolution API
-    const evolutionResponse = await fetch(evolutionEndpoint, {
-      method: httpMethod,
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': evolutionKey
-      },
-      body: JSON.stringify(evolutionBody)
-    });
-
-    const rawEvolutionResult = await evolutionResponse.text();
+    const attemptBodies = evolutionBodyVariants?.length ? evolutionBodyVariants : [evolutionBody];
+    let evolutionResponse: Response | null = null;
     let evolutionResult: any = null;
-    try {
-      evolutionResult = rawEvolutionResult ? JSON.parse(rawEvolutionResult) : null;
-    } catch {
-      evolutionResult = { raw: rawEvolutionResult };
+    let requestedPayload = attemptBodies[0];
+
+    for (let index = 0; index < attemptBodies.length; index++) {
+      requestedPayload = attemptBodies[index];
+
+      console.log(`📡 Chamando Evolution API (${httpMethod}) tentativa ${index + 1}/${attemptBodies.length}:`, evolutionEndpoint);
+      console.log('📦 Payload:', JSON.stringify(requestedPayload, null, 2));
+
+      evolutionResponse = await fetch(evolutionEndpoint, {
+        method: httpMethod,
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': evolutionKey
+        },
+        body: JSON.stringify(requestedPayload)
+      });
+
+      const rawEvolutionResult = await evolutionResponse.text();
+      try {
+        evolutionResult = rawEvolutionResult ? JSON.parse(rawEvolutionResult) : null;
+      } catch {
+        evolutionResult = { raw: rawEvolutionResult };
+      }
+
+      console.log('📩 Resposta Evolution:', JSON.stringify(evolutionResult, null, 2));
+
+      if (evolutionResponse.ok) {
+        break;
+      }
+
+      const shouldRetry =
+        index < attemptBodies.length - 1 &&
+        shouldRetryMediaWithAlternateFormat(evolutionResponse.status, evolutionResult);
+
+      if (shouldRetry) {
+        console.warn(`⚠️ Falha na tentativa ${index + 1}; tentando fallback de mídia...`);
+        continue;
+      }
+
+      break;
     }
 
-    console.log('📩 Resposta Evolution:', JSON.stringify(evolutionResult, null, 2));
+    if (!evolutionResponse) {
+      throw new Error('Falha ao executar requisição para Evolution API');
+    }
 
     if (!evolutionResponse.ok) {
       console.error('❌ Erro da Evolution API:', evolutionResult);
@@ -363,7 +432,7 @@ serve(async (req) => {
         error: 'Erro ao processar ação',
         details: evolutionResult,
         requestedUrl: evolutionEndpoint,
-        payload: evolutionBody,
+        payload: requestedPayload,
       }), {
         status: evolutionResponse.status,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
