@@ -246,9 +246,9 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
   useEffect(() => {
     if (!conversaId || hasLinkedLead) return;
 
-    const phoneDisplay = !isLidContact
-      ? (normalizeToE164(contactPhone) || contactPhone || '')
-      : '';
+    const phoneDisplay = resolvedDisplayPhone
+      ? (normalizeToE164(resolvedDisplayPhone) || resolvedDisplayPhone)
+      : (!isLidContact ? (normalizeToE164(contactPhone) || contactPhone || '') : '');
 
     setPendingContactPhone(phoneDisplay);
     setPendingContactName(contactName || 'Contato');
