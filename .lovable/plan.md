@@ -1,26 +1,20 @@
 
 
-## Plano: Renomear "Região de Interesse" para "Banco de Interesse"
+## Plano: Desconverter envia lead para coluna "Devolução Contratos"
 
-### Arquivos a alterar
+### Contexto
+A coluna `Devolucao_Contratos` já existe no banco (`kanban_status_config`, módulo `disparos`, ordem 8). O Kanban já carrega colunas dinamicamente via `useKanbanColumns`, então a coluna já aparece no board. O problema é que as duas mutações de desconversão ainda definem o status como `'Acompanhamento'`.
 
-| Arquivo | O que muda |
-|---|---|
-| `src/pages/Disparos.tsx` | Nome do módulo e descrição no card |
-| `src/pages/DisparosRegiaoInteresse.tsx` | Título e subtítulo da página |
-| `src/components/disparos/RegiaoInteresseModule.tsx` | Textos de toast e mensagens vazias |
-| `src/components/disparos/RegiaoInteresseDialog.tsx` | Título do dialog e toast de sucesso |
-| `src/components/disparos/ManutencaoAdminModal.tsx` | Label do módulo na lista de manutenção |
-| `src/components/sigzap/SigZapConversaContextMenu.tsx` | Texto do item no menu de contexto |
-| `src/components/medicos/LeadProntuarioDialog.tsx` | Texto do botão na aba de conversão |
+### Alteração
+
+**Arquivo:** `src/components/medicos/LeadProntuarioDialog.tsx`
+
+1. **Linha ~982** — Mutação de desconversão (Kanban médicos): trocar `status: 'Acompanhamento'` por `status: 'Devolucao_Contratos'`
+2. **Linha ~1256** — Mutação de desconversão do Corpo Clínico: trocar `status: 'Acompanhamento'` por `status: 'Devolucao_Contratos'`
+3. Adicionar invalidação de `['leads-acompanhamento']` no `onSuccess` da primeira mutação (já existe na segunda)
 
 ### O que NÃO muda
-- **Rotas** (`/disparos/regiao-interesse`) — manter para não quebrar links/bookmarks
-- **Nomes de arquivo** — manter os mesmos componentes
-- **Query keys** (`regiao-interesse-leads`) — sem impacto para o usuário
-- **Tabela do banco** (`regiao_interesse_leads`) — sem alteração
-- **Chave de manutenção** (`regiao_interesse`) — sem alteração
-
-### Resumo
-Apenas substituição de textos visíveis ao usuário: títulos, labels, toasts e descrições. Nenhuma mudança estrutural, de rota ou de banco.
+- Nenhuma migração necessária (coluna já existe)
+- Nenhuma alteração de rota ou componente de Kanban
+- O Kanban de acompanhamento já renderiza a coluna dinamicamente
 
