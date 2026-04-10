@@ -60,15 +60,15 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
     enabled: !!leadId,
   });
 
-  // Fetch eventos de desconversão do histórico
-  const { data: desconversoes } = useQuery({
-    queryKey: ['lead-desconversoes', leadId],
+  // Fetch eventos de desconversão e conversão do histórico
+  const { data: eventosHistorico } = useQuery({
+    queryKey: ['lead-historico-eventos', leadId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('lead_historico')
         .select('*')
         .eq('lead_id', leadId)
-        .eq('tipo_evento', 'desconvertido_para_lead')
+        .in('tipo_evento', ['desconvertido_para_lead', 'convertido_em_medico'])
         .order('criado_em', { ascending: false });
       
       if (error) throw error;
@@ -76,6 +76,9 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
     },
     enabled: !!leadId,
   });
+
+  const desconversoes = eventosHistorico?.filter(e => e.tipo_evento === 'desconvertido_para_lead') || [];
+  const conversoes = eventosHistorico?.filter(e => e.tipo_evento === 'convertido_em_medico') || [];
 
   // Fetch blacklist entries by phone
   const { data: blacklistEntries } = useQuery({
@@ -397,6 +400,7 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
   const getTipoIcon = (tipo: string) => {
     switch (tipo) {
       case 'desconversao': return <Undo2 className="h-4 w-4" />;
+      case 'conversao': return <FileText className="h-4 w-4" />;
       case 'blacklist': return <Ban className="h-4 w-4" />;
       case 'alerta': return <AlertTriangle className="h-4 w-4" />;
       case 'disparo': return <Send className="h-4 w-4" />;
@@ -409,6 +413,7 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
   const getTipoColor = (tipo: string) => {
     switch (tipo) {
       case 'desconversao': return 'bg-amber-500';
+      case 'conversao': return 'bg-green-500';
       case 'blacklist': return 'bg-red-500';
       case 'alerta': return 'bg-orange-500';
       case 'disparo': return 'bg-blue-500';
@@ -421,6 +426,7 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
   const getTipoLabel = (tipo: string) => {
     switch (tipo) {
       case 'desconversao': return 'Desconversão';
+      case 'conversao': return 'Conversão';
       case 'blacklist': return 'Blacklist';
       case 'alerta': return 'Alerta';
       case 'disparo': return 'Disparo';
@@ -453,6 +459,17 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
       metadados: d.metadados,
       usuario_nome: d.usuario_nome,
       created_at: d.criado_em,
+      imagens: [],
+      source: 'historico' as const
+    })),
+    ...(conversoes || []).map(c => ({
+      id: c.id,
+      tipo: 'conversao',
+      titulo: 'Convertido em Médico',
+      conteudo: (c.metadados as any)?.dados_conversao?.motivo_conversao || c.descricao_resumida || 'Lead convertido em médico',
+      metadados: c.metadados,
+      usuario_nome: c.usuario_nome,
+      created_at: c.criado_em,
       imagens: [],
       source: 'historico' as const
     })),
