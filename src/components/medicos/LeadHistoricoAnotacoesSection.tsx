@@ -400,6 +400,7 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
   const getTipoIcon = (tipo: string) => {
     switch (tipo) {
       case 'desconversao': return <Undo2 className="h-4 w-4" />;
+      case 'conversao': return <FileText className="h-4 w-4" />;
       case 'blacklist': return <Ban className="h-4 w-4" />;
       case 'alerta': return <AlertTriangle className="h-4 w-4" />;
       case 'disparo': return <Send className="h-4 w-4" />;
@@ -412,6 +413,7 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
   const getTipoColor = (tipo: string) => {
     switch (tipo) {
       case 'desconversao': return 'bg-amber-500';
+      case 'conversao': return 'bg-green-500';
       case 'blacklist': return 'bg-red-500';
       case 'alerta': return 'bg-orange-500';
       case 'disparo': return 'bg-blue-500';
@@ -424,6 +426,7 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
   const getTipoLabel = (tipo: string) => {
     switch (tipo) {
       case 'desconversao': return 'Desconversão';
+      case 'conversao': return 'Conversão';
       case 'blacklist': return 'Blacklist';
       case 'alerta': return 'Alerta';
       case 'disparo': return 'Disparo';
