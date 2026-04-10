@@ -917,8 +917,8 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
                       </p>
                     )}
 
-                    {/* Read receipts - quem visualizou */}
-                    {(() => {
+                    {/* Read receipts - quem visualizou (só admins e líderes veem) */}
+                    {(isAdmin || isLeader) && (() => {
                       const views = getEntryViews(entry.id, entry.source);
                       if (views.length === 0) return null;
                       return (
