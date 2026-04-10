@@ -1,7 +1,7 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { sanitizeHtml } from "@/lib/sanitizeHtml";
+import { sanitizeHtml as sanitizeExternalHtml } from "@/lib/sanitizeHtml";
 import { Button } from "./button";
 import { 
   Bold, 
@@ -65,7 +65,7 @@ const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorProps>(
 
     React.useEffect(() => {
       if (editorRef.current && value !== undefined) {
-        const sanitized = sanitizeHtml(value);
+        const sanitized = sanitizeExternalHtml(value);
         if (editorRef.current.innerHTML !== sanitized) {
           editorRef.current.innerHTML = sanitized;
         }
@@ -254,7 +254,7 @@ const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorProps>(
       const pastedHtml = e.clipboardData?.getData('text/html');
       if (pastedHtml) {
         e.preventDefault();
-        const sanitized = sanitizeHtml(pastedHtml);
+        const sanitized = sanitizeExternalHtml(pastedHtml);
         document.execCommand('insertHTML', false, sanitized);
       }
     };

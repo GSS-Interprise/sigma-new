@@ -1759,7 +1759,7 @@ export function LicitacaoDetailDialog({
                               />
                             ) : (
                               <div 
-                                className="text-sm prose prose-sm max-w-none bg-muted/30 rounded-md p-3 min-h-[200px] relative overflow-hidden [&_a]:text-blue-600 [&_a]:underline [&_a]:break-all hover:[&_a]:text-blue-800 [&_a]:cursor-pointer [&_a]:relative [&_a]:z-10"
+                                className="text-sm prose prose-sm max-w-none bg-muted/30 rounded-md p-3 min-h-[200px] relative overflow-hidden [&_a]:text-blue-600 [&_a]:underline [&_a]:break-all hover:[&_a]:text-blue-800 [&_a]:cursor-pointer [&_a]:relative [&_a]:z-10 [&_table]:w-full [&_table]:border-collapse [&_table]:my-2 [&_td]:border [&_td]:border-border [&_td]:p-1.5 [&_td]:text-xs [&_th]:border [&_th]:border-border [&_th]:p-1.5 [&_th]:text-xs [&_th]:font-semibold [&_th]:bg-muted/50"
                                 onClick={(e) => {
                                   const target = e.target as HTMLElement;
                                   if (target.tagName === 'A') {
