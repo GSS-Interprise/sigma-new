@@ -549,7 +549,7 @@ const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorProps>(
           className={cn(
             "w-full rounded-b-md border border-t-0 border-input bg-background px-3 py-2 text-sm ring-offset-background",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-            "overflow-auto",
+            "overflow-auto relative [&_*]:!position-static",
             "[&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-1 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-1 [&_li]:my-0.5",
             disabled && "cursor-not-allowed opacity-50",
             !value && !isFocused && "text-muted-foreground"
