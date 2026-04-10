@@ -33,6 +33,7 @@ import {
 import { SigZapMessageContextMenu, SigZapReplyPreview, SigZapEditPreview } from "./SigZapMessageContextMenu";
 import { LeadProntuarioDialog } from "@/components/medicos/LeadProntuarioDialog";
 import { SigZapLeadLinkDialog } from "./SigZapLeadLinkDialog";
+import { SigZapLeadAutoMatchDialog } from "./SigZapLeadAutoMatchDialog";
 import { normalizeToE164 } from "@/lib/phoneUtils";
 import { renderMessageWithPhoneLinks } from "./SigZapPhoneLink";
 
@@ -96,6 +97,9 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
   const [leadLinkDialogOpen, setLeadLinkDialogOpen] = useState(false);
   const [pendingContactPhone, setPendingContactPhone] = useState("");
   const [pendingContactName, setPendingContactName] = useState("");
+  const [autoMatchDialogOpen, setAutoMatchDialogOpen] = useState(false);
+  const [autoMatchLead, setAutoMatchLead] = useState<any>(null);
+  const [autoMatchDismissedFor, setAutoMatchDismissedFor] = useState<string | null>(null);
   const [fetchingHistory, setFetchingHistory] = useState(false);
   const [historyPage, setHistoryPage] = useState(1);
   const [historyHasMore, setHistoryHasMore] = useState(true);
@@ -163,27 +167,54 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
       const { data: foundId } = await supabase.rpc('find_lead_by_phone', { p_phone: phoneE164 });
       if (!foundId) return null;
 
+      // Fetch full lead details for auto-match modal
       const { data: lead } = await supabase
         .from('leads')
-        .select('id, nome')
+        .select('id, nome, phone_e164, telefones_adicionais, email, uf, especialidade')
         .eq('id', foundId)
         .maybeSingle();
 
-      // Auto-link lead_id on conversation if found and not yet linked
-      if (lead?.id && conversaId && !conversa?.lead_id) {
-        await supabase
-          .from('sigzap_conversations')
-          .update({ lead_id: lead.id })
-          .eq('id', conversaId);
-      }
+      if (!lead) return null;
 
-      return lead;
+      // Calculate similarity score
+      const normalizedContact = phoneE164.replace(/\D/g, '').slice(-9);
+      const normalizedLead = (lead.phone_e164 || '').replace(/\D/g, '').slice(-9);
+      let score = normalizedContact === normalizedLead ? 100 : 0;
+      
+      if (score === 0 && lead.telefones_adicionais) {
+        for (const tel of lead.telefones_adicionais) {
+          const normalizedTel = tel.replace(/\D/g, '').slice(-9);
+          if (normalizedContact === normalizedTel) { score = 95; break; }
+          if (normalizedContact.slice(-8) === normalizedTel.slice(-8)) { score = Math.max(score, 85); }
+        }
+      }
+      if (score === 0 && normalizedContact.slice(-8) === normalizedLead.slice(-8)) score = 90;
+
+      return { ...lead, score };
     },
     enabled: !!conversaId && (!!leadFromJoin?.id || !!contactPhone),
     staleTime: 60_000,
   });
 
-  // Track previous conversaId to detect changes and clear state
+  // Show auto-match dialog when a lead is found but not yet linked
+  useEffect(() => {
+    if (
+      linkedLead?.id && 
+      linkedLead?.score && 
+      !conversa?.lead_id && 
+      conversaId &&
+      autoMatchDismissedFor !== conversaId
+    ) {
+      const contactName = (conversa?.contact as any)?.contact_name || 'Contato';
+      const phoneE164 = normalizeToE164(contactPhone) || contactPhone || '';
+      setPendingContactPhone(phoneE164);
+      setPendingContactName(contactName);
+      setAutoMatchLead(linkedLead);
+      setAutoMatchDialogOpen(true);
+    }
+  }, [linkedLead, conversa?.lead_id, conversaId, autoMatchDismissedFor]);
+
+  // Reset dismissed state when conversation changes
   const prevConversaIdRef = useRef<string | null>(null);
 
   // Fetch messages with proper cache handling for conversation switches
@@ -259,6 +290,10 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
       });
       // Clear message input
       setMensagem("");
+      // Reset auto-match dismissed state
+      setAutoMatchDismissedFor(null);
+      setAutoMatchDialogOpen(false);
+      setAutoMatchLead(null);
       
       prevConversaIdRef.current = conversaId;
     }
@@ -1013,6 +1048,29 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
     }
   };
 
+  const handleAutoMatchConfirm = async (leadId: string) => {
+    try {
+      // Link lead_id on conversation
+      if (conversaId) {
+        await supabase
+          .from('sigzap_conversations')
+          .update({ lead_id: leadId })
+          .eq('id', conversaId);
+      }
+      toast.success("Lead vinculado automaticamente!");
+      queryClient.invalidateQueries({ queryKey: ['sigzap-chat-conversa', conversaId] });
+      queryClient.invalidateQueries({ queryKey: ['sigzap-linked-lead'] });
+      setAutoMatchLead(null);
+    } catch (err: any) {
+      toast.error("Erro ao vincular lead");
+    }
+  };
+
+  const handleAutoMatchReject = () => {
+    setAutoMatchDismissedFor(conversaId);
+    setAutoMatchLead(null);
+  };
+
   const handleLinkToExistingLead = async (leadId: string) => {
     // Update the lead's phone if needed
     if (pendingContactPhone) {
@@ -1024,8 +1082,17 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
         })
         .eq('id', leadId);
       
+      // Also link on conversation
+      if (conversaId) {
+        await supabase
+          .from('sigzap_conversations')
+          .update({ lead_id: leadId })
+          .eq('id', conversaId);
+      }
+      
       toast.success("Contato vinculado ao lead");
       queryClient.invalidateQueries({ queryKey: ['leads'] });
+      queryClient.invalidateQueries({ queryKey: ['sigzap-chat-conversa', conversaId] });
     }
     
     setSelectedLeadId(leadId);
@@ -1693,6 +1760,17 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Auto Match Confirmation Dialog */}
+      <SigZapLeadAutoMatchDialog
+        open={autoMatchDialogOpen}
+        onOpenChange={setAutoMatchDialogOpen}
+        contactPhone={pendingContactPhone}
+        contactName={pendingContactName}
+        matchedLead={autoMatchLead}
+        onConfirm={handleAutoMatchConfirm}
+        onReject={handleAutoMatchReject}
+      />
 
       {/* Lead Link Dialog */}
       <SigZapLeadLinkDialog
