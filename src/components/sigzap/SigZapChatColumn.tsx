@@ -1007,11 +1007,12 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
     if (!conversa) return;
     
     const contact = conversa.contact as any;
-    let contactPhone = contact?.contact_phone;
-    const contactJid = contact?.contact_jid;
-    const contactName = contact?.contact_name || contactPhone;
+    const contactNameLocal = contact?.contact_name || contact?.contact_phone;
     
-    if (!contactPhone) {
+    // Use the resolved phone (from JID or LID resolution) or fallback to contact_phone
+    let phoneToUse = resolvedDisplayPhone || contact?.contact_phone;
+    
+    if (!phoneToUse) {
       toast.error("Telefone do contato não encontrado");
       return;
     }
@@ -1019,59 +1020,8 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
     setIsCheckingLead(true);
     
     try {
-      // Check if this is a LID (Link ID) - need to extract real phone from messages
-      if (contactJid?.includes('@lid')) {
-        // Try to get real phone from message raw_payload (remoteJidAlt)
-        const { data: recentMessages } = await supabase
-          .from('sigzap_messages')
-          .select('raw_payload')
-          .eq('conversation_id', conversaId)
-          .not('raw_payload', 'is', null)
-          .order('sent_at', { ascending: false })
-          .limit(10);
-        
-        let realPhone: string | null = null;
-        
-        if (recentMessages && recentMessages.length > 0) {
-          for (const msg of recentMessages) {
-            if (!msg.raw_payload) continue;
-            
-            // Parse payload if it's a string
-            let payload = msg.raw_payload as any;
-            if (typeof payload === 'string') {
-              try {
-                payload = JSON.parse(payload);
-              } catch {
-                continue;
-              }
-            }
-            
-            // Try multiple paths to find the real phone number
-            const remoteJidAlt = payload?.data?.key?.remoteJidAlt;
-            const keyRemoteJid = payload?.key?.remoteJid; // for from_me messages
-            
-            if (remoteJidAlt && remoteJidAlt.includes('@s.whatsapp.net')) {
-              realPhone = remoteJidAlt.replace('@s.whatsapp.net', '');
-              break;
-            } else if (keyRemoteJid && keyRemoteJid.includes('@s.whatsapp.net')) {
-              realPhone = keyRemoteJid.replace('@s.whatsapp.net', '');
-              break;
-            }
-          }
-        }
-        
-        if (realPhone) {
-          contactPhone = realPhone;
-          console.log('Extracted real phone from LID:', realPhone);
-        } else {
-          toast.error("Não foi possível extrair o número real deste contato LID");
-          setIsCheckingLead(false);
-          return;
-        }
-      }
-      
       // Normalize the phone to E164 format
-      const phoneE164 = normalizeToE164(contactPhone);
+      const phoneE164 = normalizeToE164(phoneToUse);
       
       if (!phoneE164) {
         toast.error(`Número de telefone inválido: ${contactPhone}`);
