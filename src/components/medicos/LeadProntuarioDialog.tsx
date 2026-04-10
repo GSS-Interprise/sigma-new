@@ -2012,18 +2012,23 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                 <TabsContent value="conversao" className="m-0 h-full">
                   <ScrollArea className="h-full p-4">
                     <div className="space-y-6">
-                      {/* Blacklist Status */}
-                      <BlacklistSection 
-                        phoneE164={editedData.phone_e164} 
-                        nome={editedData.nome}
-                        origem={medicoVinculado ? 'clinico' : 'lead'}
-                      />
-
-                      {/* Bloqueio Temporário de Disparos */}
-                      <BloqueioTemporarioSection
-                        leadId={leadId}
-                        nome={editedData.nome}
-                      />
+                      {/* Bloco: Controle de Disparos */}
+                      <div className="rounded-xl border bg-card p-5 space-y-4">
+                        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+                          Controle de Disparos
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <BlacklistSection 
+                            phoneE164={editedData.phone_e164} 
+                            nome={editedData.nome}
+                            origem={medicoVinculado ? 'clinico' : 'lead'}
+                          />
+                          <BloqueioTemporarioSection
+                            leadId={leadId}
+                            nome={editedData.nome}
+                          />
+                        </div>
+                      </div>
 
                       {/* Show approval section for Corpo Médico when on medicos page and already converted (check status OR medicoVinculado) */}
                       {isOnMedicosPage && (medicoVinculado || lead?.status === 'Convertido') ? (
@@ -2606,169 +2611,91 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                         </div>
                       )}
 
-                      {/* Seção de Desconversão - aparece quando há médico vinculado e não está no corpo clínico (no Kanban ou Acompanhamento) */}
-                      {medicoVinculado && !medicoVinculado.data_aprovacao_corpo_medico && (isOnMedicosPage || isOnAcompanhamentoPage) && (
-                        <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-6">
-                          <div className="flex items-center gap-3 mb-4">
-                            <Undo2 className="h-8 w-8 text-amber-600" />
-                            <div>
-                              <h3 className="text-lg font-semibold text-amber-700">
-                                Voltar a ser Lead
-                              </h3>
-                              <p className="text-sm text-muted-foreground">
-                                Se o médico desistiu, não tem documentação ou não irá prosseguir, você pode reverter para lead.
-                              </p>
-                            </div>
-                          </div>
-
-                          {!showDesconversaoForm ? (
-                            <Button 
-                              variant="outline"
-                              onClick={() => setShowDesconversaoForm(true)}
-                              className="gap-2 border-amber-500/50 text-amber-700 hover:bg-amber-500/10"
-                            >
-                              <Undo2 className="h-4 w-4" />
-                              Desconverter para Lead
-                            </Button>
-                          ) : (
-                            <div className="space-y-4">
-                              <div className="p-4 rounded-lg bg-amber-500/10 border border-amber-500/30">
-                                <div className="flex items-start gap-2 mb-3">
-                                  <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5" />
+                      {/* Bloco: Ações do Lead */}
+                      {((medicoVinculado && !medicoVinculado.data_aprovacao_corpo_medico && (isOnMedicosPage || isOnAcompanhamentoPage)) ||
+                        ((isOnMedicosPage || isOnAcompanhamentoPage) && !isNewLead && lead?.status !== 'Descartado' && (!medicoVinculado?.data_aprovacao_corpo_medico))) && (
+                        <div className="rounded-xl border bg-card p-5 space-y-4">
+                          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+                            Ações do Lead
+                          </h3>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {/* Seção de Desconversão */}
+                            {medicoVinculado && !medicoVinculado.data_aprovacao_corpo_medico && (isOnMedicosPage || isOnAcompanhamentoPage) && (
+                              <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-5">
+                                <div className="flex items-center gap-3 mb-3">
+                                  <Undo2 className="h-6 w-6 text-amber-600" />
                                   <div>
-                                    <p className="text-sm font-medium text-amber-700">Atenção</p>
-                                    <p className="text-xs text-amber-600">
-                                      Esta ação irá remover o vínculo com o médico e o card do Kanban será excluído.
-                                      O histórico será mantido.
-                                    </p>
+                                    <h4 className="text-base font-semibold text-amber-700">Voltar a ser Lead</h4>
+                                    <p className="text-xs text-muted-foreground">Se o médico desistiu, não tem documentação ou não irá prosseguir, você pode reverter para lead.</p>
                                   </div>
                                 </div>
+                                {!showDesconversaoForm ? (
+                                  <Button variant="outline" size="sm" onClick={() => setShowDesconversaoForm(true)} className="gap-2 border-amber-500/50 text-amber-700 hover:bg-amber-500/10">
+                                    <Undo2 className="h-4 w-4" /> Desconverter para Lead
+                                  </Button>
+                                ) : (
+                                  <div className="space-y-3 mt-2">
+                                    <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
+                                      <div className="flex items-start gap-2">
+                                        <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5" />
+                                        <p className="text-xs text-amber-600">Esta ação irá remover o vínculo com o médico e o card do Kanban será excluído. O histórico será mantido.</p>
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <label className="text-sm font-medium text-foreground mb-1 block">Motivo da desconversão <span className="text-red-500">*</span></label>
+                                      <textarea value={motivoDesconversao} onChange={(e) => setMotivoDesconversao(e.target.value)} placeholder="Descreva o motivo..." className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 min-h-[80px]" />
+                                    </div>
+                                    <div className="flex gap-2 justify-end">
+                                      <Button variant="outline" size="sm" onClick={() => { setShowDesconversaoForm(false); setMotivoDesconversao(''); }}>Cancelar</Button>
+                                      <Button variant="destructive" size="sm" onClick={() => desconversaoMutation.mutate()} disabled={desconversaoMutation.isPending || !motivoDesconversao.trim()} className="gap-2">
+                                        <Undo2 className="h-4 w-4" /> {desconversaoMutation.isPending ? 'Processando...' : 'Confirmar'}
+                                      </Button>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
-
-                              <div>
-                                <label className="text-sm font-medium text-foreground mb-2 block">
-                                  Motivo da desconversão <span className="text-red-500">*</span>
-                                </label>
-                                <textarea
-                                  value={motivoDesconversao}
-                                  onChange={(e) => setMotivoDesconversao(e.target.value)}
-                                  placeholder="Descreva o motivo pelo qual este médico está sendo revertido para lead (ex: desistiu, falta de documentação, não respondeu, etc.)"
-                                  className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 min-h-[100px]"
-                                />
-                              </div>
-
-                              <div className="flex gap-2 justify-end">
-                                <Button 
-                                  variant="outline"
-                                  onClick={() => {
-                                    setShowDesconversaoForm(false);
-                                    setMotivoDesconversao('');
-                                  }}
-                                >
-                                  Cancelar
-                                </Button>
-                                <Button 
-                                  variant="destructive"
-                                  onClick={() => desconversaoMutation.mutate()}
-                                  disabled={desconversaoMutation.isPending || !motivoDesconversao.trim()}
-                                  className="gap-2"
-                                >
-                                  <Undo2 className="h-4 w-4" />
-                                  {desconversaoMutation.isPending ? 'Processando...' : 'Confirmar Desconversão'}
-                                </Button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Seção de Descarte - aparece no Kanban ou Acompanhamento para leads não descartados (exceto se já no corpo clínico) */}
-                      {(isOnMedicosPage || isOnAcompanhamentoPage) && !isNewLead && lead?.status !== 'Descartado' && (!medicoVinculado?.data_aprovacao_corpo_medico) && (
-                        <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-6">
-                          <div className="flex items-center gap-3 mb-4">
-                            <XCircle className="h-8 w-8 text-red-600" />
-                            <div>
-                              <h3 className="text-lg font-semibold text-red-700">
-                                Descartar Lead
-                              </h3>
-                              <p className="text-sm text-muted-foreground">
-                                {medicoVinculado 
-                                  ? 'O vínculo com o médico será removido e o lead voltará para o banco de leads com status "Descartado".'
-                                  : 'Se este lead não tem interesse, não respondeu ou não é viável, você pode descartá-lo do funil.'}
-                              </p>
-                            </div>
-                          </div>
-
-                          {!showDescarteForm ? (
-                            <Button 
-                              variant="outline"
-                              onClick={() => setShowDescarteForm(true)}
-                              className="gap-2 border-red-500/50 text-red-700 hover:bg-red-500/10"
-                            >
-                              <XCircle className="h-4 w-4" />
-                              Descartar Lead
-                            </Button>
-                          ) : (
-                            <div className="space-y-4">
-                              <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/30">
-                                <div className="flex items-start gap-2 mb-3">
-                                  <AlertTriangle className="h-5 w-5 text-red-600 mt-0.5" />
+                            )}
+                            {/* Seção de Descarte */}
+                            {(isOnMedicosPage || isOnAcompanhamentoPage) && !isNewLead && lead?.status !== 'Descartado' && (!medicoVinculado?.data_aprovacao_corpo_medico) && (
+                              <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-5">
+                                <div className="flex items-center gap-3 mb-3">
+                                  <XCircle className="h-6 w-6 text-red-600" />
                                   <div>
-                                    <p className="text-sm font-medium text-red-700">Atenção</p>
-                                    <p className="text-xs text-red-600">
-                                      {medicoVinculado 
-                                        ? 'O vínculo com médico será removido, o card do Kanban será excluído e o lead será marcado como "Descartado".'
-                                        : 'O lead será movido para a coluna "Descartados". O histórico será mantido.'}
-                                    </p>
+                                    <h4 className="text-base font-semibold text-red-700">Descartar Lead</h4>
+                                    <p className="text-xs text-muted-foreground">{medicoVinculado ? 'O vínculo será removido e o lead terá status "Descartado".' : 'Se não tem interesse ou não é viável, descarte do funil.'}</p>
                                   </div>
                                 </div>
+                                {!showDescarteForm ? (
+                                  <Button variant="outline" size="sm" onClick={() => setShowDescarteForm(true)} className="gap-2 border-red-500/50 text-red-700 hover:bg-red-500/10">
+                                    <XCircle className="h-4 w-4" /> Descartar Lead
+                                  </Button>
+                                ) : (
+                                  <div className="space-y-3 mt-2">
+                                    <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30">
+                                      <div className="flex items-start gap-2">
+                                        <AlertTriangle className="h-4 w-4 text-red-600 mt-0.5" />
+                                        <p className="text-xs text-red-600">{medicoVinculado ? 'O vínculo com médico será removido e o lead será marcado como "Descartado".' : 'O lead será movido para "Descartados". O histórico será mantido.'}</p>
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <label className="text-sm font-medium text-foreground mb-1 block">Motivo do descarte <span className="text-red-500">*</span> <span className="text-xs text-muted-foreground ml-2">(mínimo 60 caracteres)</span></label>
+                                      <textarea value={motivoDescarte} onChange={(e) => setMotivoDescarte(e.target.value)} placeholder="Descreva o motivo detalhado..." className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 min-h-[80px]" />
+                                      <div className="mt-1 text-xs text-muted-foreground flex justify-between">
+                                        <span>{motivoDescarte.length}/60 caracteres</span>
+                                        {motivoDescarte.trim().length >= 60 && <span className="text-xs text-green-600">✓ Requisito atendido</span>}
+                                      </div>
+                                    </div>
+                                    <div className="flex gap-2 justify-end">
+                                      <Button variant="outline" size="sm" onClick={() => { setShowDescarteForm(false); setMotivoDescarte(''); }}>Cancelar</Button>
+                                      <Button variant="destructive" size="sm" onClick={() => descartarLeadMutation.mutate()} disabled={descartarLeadMutation.isPending || motivoDescarte.trim().length < 60} className="gap-2">
+                                        <XCircle className="h-4 w-4" /> {descartarLeadMutation.isPending ? 'Processando...' : 'Confirmar Descarte'}
+                                      </Button>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
-
-                              <div>
-                                <label className="text-sm font-medium text-foreground mb-2 block">
-                                  Motivo do descarte <span className="text-red-500">*</span>
-                                  <span className="text-xs text-muted-foreground ml-2">
-                                    (mínimo 60 caracteres)
-                                  </span>
-                                </label>
-                                <textarea
-                                  value={motivoDescarte}
-                                  onChange={(e) => setMotivoDescarte(e.target.value)}
-                                  placeholder="Descreva detalhadamente o motivo pelo qual este lead está sendo descartado (ex: não atende aos requisitos, não respondeu após múltiplas tentativas, desistiu do processo, etc.)"
-                                  className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 min-h-[120px]"
-                                />
-                                <div className="flex justify-between mt-1">
-                                  <span className={`text-xs ${motivoDescarte.length < 60 ? 'text-red-500' : 'text-green-600'}`}>
-                                    {motivoDescarte.length}/60 caracteres mínimos
-                                  </span>
-                                  {motivoDescarte.length >= 60 && (
-                                    <span className="text-xs text-green-600">✓ Requisito atendido</span>
-                                  )}
-                                </div>
-                              </div>
-
-                              <div className="flex gap-2 justify-end">
-                                <Button 
-                                  variant="outline"
-                                  onClick={() => {
-                                    setShowDescarteForm(false);
-                                    setMotivoDescarte('');
-                                  }}
-                                >
-                                  Cancelar
-                                </Button>
-                                <Button 
-                                  variant="destructive"
-                                  onClick={() => descartarLeadMutation.mutate()}
-                                  disabled={descartarLeadMutation.isPending || motivoDescarte.trim().length < 60}
-                                  className="gap-2"
-                                >
-                                  <XCircle className="h-4 w-4" />
-                                  {descartarLeadMutation.isPending ? 'Processando...' : 'Confirmar Descarte'}
-                                </Button>
-                              </div>
-                            </div>
-                          )}
+                            )}
+                          </div>
                         </div>
                       )}
 
