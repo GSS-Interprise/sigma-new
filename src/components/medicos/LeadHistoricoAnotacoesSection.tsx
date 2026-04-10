@@ -60,15 +60,15 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
     enabled: !!leadId,
   });
 
-  // Fetch eventos de desconversão do histórico
-  const { data: desconversoes } = useQuery({
-    queryKey: ['lead-desconversoes', leadId],
+  // Fetch eventos de desconversão e conversão do histórico
+  const { data: eventosHistorico } = useQuery({
+    queryKey: ['lead-historico-eventos', leadId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('lead_historico')
         .select('*')
         .eq('lead_id', leadId)
-        .eq('tipo_evento', 'desconvertido_para_lead')
+        .in('tipo_evento', ['desconvertido_para_lead', 'convertido_em_medico'])
         .order('criado_em', { ascending: false });
       
       if (error) throw error;
@@ -76,6 +76,9 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
     },
     enabled: !!leadId,
   });
+
+  const desconversoes = eventosHistorico?.filter(e => e.tipo_evento === 'desconvertido_para_lead') || [];
+  const conversoes = eventosHistorico?.filter(e => e.tipo_evento === 'convertido_em_medico') || [];
 
   // Fetch blacklist entries by phone
   const { data: blacklistEntries } = useQuery({
