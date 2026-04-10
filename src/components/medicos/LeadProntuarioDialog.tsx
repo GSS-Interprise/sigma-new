@@ -2698,14 +2698,8 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                           </div>
                         </div>
                       )}
-                            </div>
-                          </div>
 
-                          {!showDesconversaoForm ? (
-                            <Button 
-                              variant="outline"
-                              onClick={() => setShowDesconversaoForm(true)}
-                              className="gap-2 border-amber-500/50 text-amber-700 hover:bg-amber-500/10"
+
                             >
                               <Undo2 className="h-4 w-4" />
                               Desconverter para Lead
