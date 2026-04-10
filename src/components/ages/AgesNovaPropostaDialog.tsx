@@ -238,6 +238,7 @@ export function AgesNovaPropostaDialog({
     onSuccess: () => {
       toast.success(isEditing ? 'Proposta atualizada!' : 'Proposta criada!');
       queryClient.invalidateQueries({ queryKey: ['ages-lead-propostas', leadId] });
+      queryClient.invalidateQueries({ queryKey: ['lead-propostas-count', leadId] });
       onOpenChange(false);
       resetForm();
     },
