@@ -462,6 +462,17 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
       imagens: [],
       source: 'historico' as const
     })),
+    ...(conversoes || []).map(c => ({
+      id: c.id,
+      tipo: 'conversao',
+      titulo: 'Convertido em Médico',
+      conteudo: (c.metadados as any)?.dados_conversao?.motivo_conversao || c.descricao_resumida || 'Lead convertido em médico',
+      metadados: c.metadados,
+      usuario_nome: c.usuario_nome,
+      created_at: c.criado_em,
+      imagens: [],
+      source: 'historico' as const
+    })),
     ...(blacklistEntries || []).map(b => ({
       id: b.id,
       tipo: 'blacklist',
