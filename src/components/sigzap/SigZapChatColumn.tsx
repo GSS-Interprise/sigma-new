@@ -1044,6 +1044,29 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
     }
   };
 
+  const handleAutoMatchConfirm = async (leadId: string) => {
+    try {
+      // Link lead_id on conversation
+      if (conversaId) {
+        await supabase
+          .from('sigzap_conversations')
+          .update({ lead_id: leadId })
+          .eq('id', conversaId);
+      }
+      toast.success("Lead vinculado automaticamente!");
+      queryClient.invalidateQueries({ queryKey: ['sigzap-chat-conversa', conversaId] });
+      queryClient.invalidateQueries({ queryKey: ['sigzap-linked-lead'] });
+      setAutoMatchLead(null);
+    } catch (err: any) {
+      toast.error("Erro ao vincular lead");
+    }
+  };
+
+  const handleAutoMatchReject = () => {
+    setAutoMatchDismissedFor(conversaId);
+    setAutoMatchLead(null);
+  };
+
   const handleLinkToExistingLead = async (leadId: string) => {
     // Update the lead's phone if needed
     if (pendingContactPhone) {
@@ -1055,8 +1078,17 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
         })
         .eq('id', leadId);
       
+      // Also link on conversation
+      if (conversaId) {
+        await supabase
+          .from('sigzap_conversations')
+          .update({ lead_id: leadId })
+          .eq('id', conversaId);
+      }
+      
       toast.success("Contato vinculado ao lead");
       queryClient.invalidateQueries({ queryKey: ['leads'] });
+      queryClient.invalidateQueries({ queryKey: ['sigzap-chat-conversa', conversaId] });
     }
     
     setSelectedLeadId(leadId);
