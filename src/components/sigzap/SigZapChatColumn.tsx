@@ -290,6 +290,10 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
       });
       // Clear message input
       setMensagem("");
+      // Reset auto-match dismissed state
+      setAutoMatchDismissedFor(null);
+      setAutoMatchDialogOpen(false);
+      setAutoMatchLead(null);
       
       prevConversaIdRef.current = conversaId;
     }
