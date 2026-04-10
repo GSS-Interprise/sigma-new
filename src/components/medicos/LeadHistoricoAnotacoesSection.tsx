@@ -35,6 +35,7 @@ interface LeadHistoricoAnotacoesSectionProps {
 
 export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaClick }: LeadHistoricoAnotacoesSectionProps) {
   const { user } = useAuth();
+  const { isAdmin, isLeader } = usePermissions();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
