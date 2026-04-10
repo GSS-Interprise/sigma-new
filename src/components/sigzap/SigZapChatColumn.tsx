@@ -1757,6 +1757,17 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
         </DialogContent>
       </Dialog>
 
+      {/* Auto Match Confirmation Dialog */}
+      <SigZapLeadAutoMatchDialog
+        open={autoMatchDialogOpen}
+        onOpenChange={setAutoMatchDialogOpen}
+        contactPhone={pendingContactPhone}
+        contactName={pendingContactName}
+        matchedLead={autoMatchLead}
+        onConfirm={handleAutoMatchConfirm}
+        onReject={handleAutoMatchReject}
+      />
+
       {/* Lead Link Dialog */}
       <SigZapLeadLinkDialog
         open={leadLinkDialogOpen}
