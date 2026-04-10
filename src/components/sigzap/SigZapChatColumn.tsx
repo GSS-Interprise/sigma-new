@@ -121,7 +121,7 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
           contact:sigzap_contacts(*),
           instance:sigzap_instances(id, name, instance_uuid),
           assigned_user:profiles!sigzap_conversations_assigned_user_id_fkey(id, nome_completo),
-          lead:leads!sigzap_conversations_lead_id_fkey(id, nome)
+          lead:leads!sigzap_conversations_lead_id_fkey(id, nome, phone_e164, telefones_adicionais)
         `)
         .eq('id', conversaId)
         .single();
