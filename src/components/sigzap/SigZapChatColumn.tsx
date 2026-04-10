@@ -158,11 +158,9 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
   const leadFromJoin = conversa?.lead as any;
   const hasLinkedLead = !!conversa?.lead_id || !!leadFromJoin?.id;
 
-  const { data: linkedLead } = useQuery({
-    queryKey: ['sigzap-linked-lead', conversa?.lead_id, contactPhone, contactName, isLidContact],
+  const { data: leadMatchResult } = useQuery({
+    queryKey: ['sigzap-linked-lead', conversaId, conversa?.lead_id, contactPhone, contactName, isLidContact],
     queryFn: async () => {
-      if (leadFromJoin?.id) return leadFromJoin;
-
       // 1) Real phone → fast RPC lookup
       if (!isLidContact && contactPhone) {
         const phoneE164 = normalizeToE164(contactPhone);
@@ -186,7 +184,7 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
                 }
               }
               if (score === 0 && nc.slice(-8) === nl.slice(-8)) score = 90;
-              return { ...lead, score };
+              return { mode: 'auto' as const, lead: { ...lead, score } };
             }
           }
         }
@@ -195,69 +193,93 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
       // 2) LID or phone not found → name search using ALL name parts
       if (contactName && contactName.length >= 3) {
         const nameParts = contactName.trim().split(/\s+/).filter(p => p.length >= 3);
-        if (nameParts.length === 0) return null;
+        if (nameParts.length > 0) {
+          const firstName = nameParts[0];
+          const { data: matches } = await supabase
+            .from('leads')
+            .select('id, nome, phone_e164, telefones_adicionais, email, uf, especialidade')
+            .ilike('nome', `%${firstName}%`)
+            .limit(20);
 
-        const firstName = nameParts[0];
-        const { data: matches } = await supabase
-          .from('leads')
-          .select('id, nome, phone_e164, telefones_adicionais, email, uf, especialidade')
-          .ilike('nome', `%${firstName}%`)
-          .limit(20);
+          if (matches && matches.length > 0) {
+            const contactParts = nameParts.map(p => p.toLowerCase());
+            const scored = matches
+              .map(lead => {
+                const leadParts = (lead.nome || '').toLowerCase().trim().split(/\s+/);
+                let partsMatched = 0;
+                for (const cp of contactParts) {
+                  if (leadParts.some(lp => lp === cp || lp.startsWith(cp) || cp.startsWith(lp))) {
+                    partsMatched++;
+                  }
+                }
 
-        if (matches && matches.length > 0) {
-          const contactParts = nameParts.map(p => p.toLowerCase());
-          const scored = matches.map(lead => {
-            const leadParts = (lead.nome || '').toLowerCase().trim().split(/\s+/);
-            let partsMatched = 0;
-            for (const cp of contactParts) {
-              if (leadParts.some(lp => lp === cp || lp.startsWith(cp) || cp.startsWith(lp))) {
-                partsMatched++;
-              }
+                let leadUnmatched = 0;
+                for (const lp of leadParts) {
+                  if (!contactParts.some(cp => cp === lp || cp.startsWith(lp) || lp.startsWith(cp))) {
+                    leadUnmatched++;
+                  }
+                }
+
+                const matchRatio = contactParts.length > 0 ? partsMatched / contactParts.length : 0;
+                const penalty = leadUnmatched > 0 ? Math.min(leadUnmatched * 10, 30) : 0;
+                const score = Math.max(0, Math.round(matchRatio * 100) - penalty);
+                return { ...lead, score };
+              })
+              .filter(l => l.score >= 60)
+              .sort((a, b) => b.score - a.score);
+
+            if (contactParts.length === 1 && scored.length > 1) {
+              return { mode: 'manual' as const };
             }
-            // Also check if lead has MORE name parts that don't match any contact part
-            let leadUnmatched = 0;
-            for (const lp of leadParts) {
-              if (!contactParts.some(cp => cp === lp || cp.startsWith(lp) || lp.startsWith(cp))) {
-                leadUnmatched++;
-              }
-            }
-            const matchRatio = contactParts.length > 0
-              ? partsMatched / contactParts.length
-              : 0;
-            // Penalize if lead has unmatched surname parts (e.g. "Paiva" vs "Barreiros")
-            const penalty = leadUnmatched > 0 ? Math.min(leadUnmatched * 10, 30) : 0;
-            const score = Math.max(0, Math.round(matchRatio * 100) - penalty);
-            return { ...lead, score };
-          }).filter(l => l.score >= 60).sort((a, b) => b.score - a.score);
 
-          // Single-name contacts (e.g. "Jaime") with multiple matches → force manual selection
-          if (contactParts.length === 1 && scored.length > 1) {
-            // Return null so auto-match doesn't trigger; user uses manual link
-            return null;
+            if (scored.length > 0) {
+              return { mode: 'auto' as const, lead: scored[0] };
+            }
           }
-
-          if (scored.length > 0) return scored[0];
         }
+      }
+
+      // Force manual linking when conversation is still unlinked
+      if (contactPhone || contactName) {
+        return { mode: 'manual' as const };
       }
 
       return null;
     },
     enabled: !!conversaId && !hasLinkedLead && (!!contactPhone || (!!contactName && contactName.length >= 3)),
-    staleTime: 0, // Always re-run when switching conversations
+    staleTime: 0,
   });
+
+  const linkedLead = leadMatchResult?.mode === 'auto' ? leadMatchResult.lead : null;
 
   // Show auto-match confirmation modal when lead found but not yet linked
   // This is "chato" on purpose — forces user to link or dismiss every time
   useEffect(() => {
     if (!conversaId || hasLinkedLead) return;
-    if (linkedLead?.id && linkedLead?.score) {
-      const phoneDisplay = normalizeToE164(contactPhone) || contactPhone || '';
-      setPendingContactPhone(phoneDisplay);
-      setPendingContactName(contactName || 'Contato');
-      setAutoMatchLead(linkedLead);
+
+    const phoneDisplay = !isLidContact
+      ? (normalizeToE164(contactPhone) || contactPhone || '')
+      : '';
+
+    setPendingContactPhone(phoneDisplay);
+    setPendingContactName(contactName || 'Contato');
+
+    if (leadMatchResult?.mode === 'auto' && leadMatchResult.lead?.id && leadMatchResult.lead?.score) {
+      setLeadLinkDialogOpen(false);
+      setAutoMatchLead(leadMatchResult.lead);
       setAutoMatchDialogOpen(true);
+      return;
     }
-  }, [linkedLead, hasLinkedLead, conversaId]);
+
+    if (leadMatchResult?.mode === 'manual') {
+      setAutoMatchLead(null);
+      setAutoMatchDialogOpen(false);
+      setLeadLinkDialogOpen(true);
+      return;
+    }
+
+    setLeadLinkDialogOpen(false);
+  }, [leadMatchResult, hasLinkedLead, conversaId, contactPhone, contactName, isLidContact]);
 
   // Reset dismissed state when conversation changes
   const prevConversaIdRef = useRef<string | null>(null);
