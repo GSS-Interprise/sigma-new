@@ -197,8 +197,6 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
         const nameParts = contactName.trim().split(/\s+/).filter(p => p.length >= 3);
         if (nameParts.length === 0) return null;
 
-        // Build OR conditions: each name part as ilike filter
-        // Search leads matching first name AND try to match more parts
         const firstName = nameParts[0];
         const { data: matches } = await supabase
           .from('leads')
@@ -210,19 +208,33 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
           const contactParts = nameParts.map(p => p.toLowerCase());
           const scored = matches.map(lead => {
             const leadParts = (lead.nome || '').toLowerCase().trim().split(/\s+/);
-            // Count how many contact name parts appear in lead name
             let partsMatched = 0;
             for (const cp of contactParts) {
               if (leadParts.some(lp => lp === cp || lp.startsWith(cp) || cp.startsWith(lp))) {
                 partsMatched++;
               }
             }
-            // Score based on proportion of parts matched
-            const score = contactParts.length > 0
-              ? Math.round((partsMatched / contactParts.length) * 100)
+            // Also check if lead has MORE name parts that don't match any contact part
+            let leadUnmatched = 0;
+            for (const lp of leadParts) {
+              if (!contactParts.some(cp => cp === lp || cp.startsWith(lp) || lp.startsWith(cp))) {
+                leadUnmatched++;
+              }
+            }
+            const matchRatio = contactParts.length > 0
+              ? partsMatched / contactParts.length
               : 0;
+            // Penalize if lead has unmatched surname parts (e.g. "Paiva" vs "Barreiros")
+            const penalty = leadUnmatched > 0 ? Math.min(leadUnmatched * 10, 30) : 0;
+            const score = Math.max(0, Math.round(matchRatio * 100) - penalty);
             return { ...lead, score };
           }).filter(l => l.score >= 60).sort((a, b) => b.score - a.score);
+
+          // Single-name contacts (e.g. "Jaime") with multiple matches → force manual selection
+          if (contactParts.length === 1 && scored.length > 1) {
+            // Return null so auto-match doesn't trigger; user uses manual link
+            return null;
+          }
 
           if (scored.length > 0) return scored[0];
         }
@@ -323,8 +335,7 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
       });
       // Clear message input
       setMensagem("");
-      setAutoMatchDialogOpen(false);
-      setAutoMatchLead(null);
+      // Don't clear auto-match state here — let the auto-match effect re-trigger
       
       prevConversaIdRef.current = conversaId;
     }
@@ -1419,7 +1430,9 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
               <div className="flex items-center gap-2 mt-0.5">
                 <Phone className="h-3 w-3 text-muted-foreground" />
                 <span className="text-xs text-muted-foreground truncate">
-                  {contact?.contact_phone}
+                  {isLidContact
+                    ? (linkedLead?.phone_e164 || leadFromJoin?.phone_e164 || 'Contato LID')
+                    : contact?.contact_phone}
                 </span>
                 {instance?.name && (
                   <Badge variant="outline" className="text-[10px] h-4 px-1">
