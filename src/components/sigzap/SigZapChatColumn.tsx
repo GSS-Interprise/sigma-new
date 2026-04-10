@@ -33,6 +33,7 @@ import {
 import { SigZapMessageContextMenu, SigZapReplyPreview, SigZapEditPreview } from "./SigZapMessageContextMenu";
 import { LeadProntuarioDialog } from "@/components/medicos/LeadProntuarioDialog";
 import { SigZapLeadLinkDialog } from "./SigZapLeadLinkDialog";
+import { SigZapLeadAutoMatchDialog } from "./SigZapLeadAutoMatchDialog";
 import { normalizeToE164 } from "@/lib/phoneUtils";
 import { renderMessageWithPhoneLinks } from "./SigZapPhoneLink";
 
