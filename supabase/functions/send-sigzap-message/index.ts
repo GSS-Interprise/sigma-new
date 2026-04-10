@@ -205,7 +205,7 @@ serve(async (req) => {
 
     let evolutionEndpoint: string;
     let evolutionBody: any;
-    let evolutionBodyVariants: any[] | null = null;
+    let httpMethod = 'POST';
     let httpMethod = 'POST';
 
     // Handle different actions
@@ -415,50 +415,27 @@ serve(async (req) => {
         break;
     }
 
-    const attemptBodies = evolutionBodyVariants?.length ? evolutionBodyVariants : [evolutionBody];
-    let evolutionResponse: Response | null = null;
-    let evolutionResult: any = null;
-    let requestedPayload = attemptBodies[0];
+    console.log(`📡 Chamando Evolution API (${httpMethod}):`, evolutionEndpoint);
+    console.log('📦 Payload:', JSON.stringify(evolutionBody, null, 2));
 
-    for (let index = 0; index < attemptBodies.length; index++) {
-      requestedPayload = attemptBodies[index];
+    const evolutionResponse = await fetch(evolutionEndpoint, {
+      method: httpMethod,
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': evolutionKey
+      },
+      body: JSON.stringify(evolutionBody)
+    });
 
-      console.log(`📡 Chamando Evolution API (${httpMethod}) tentativa ${index + 1}/${attemptBodies.length}:`, evolutionEndpoint);
-      console.log('📦 Payload:', JSON.stringify(requestedPayload, null, 2));
-
-      evolutionResponse = await fetch(evolutionEndpoint, {
-        method: httpMethod,
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': evolutionKey
-        },
-        body: JSON.stringify(requestedPayload)
-      });
-
-      const rawEvolutionResult = await evolutionResponse.text();
-      try {
-        evolutionResult = rawEvolutionResult ? JSON.parse(rawEvolutionResult) : null;
-      } catch {
-        evolutionResult = { raw: rawEvolutionResult };
-      }
-
-      console.log('📩 Resposta Evolution:', JSON.stringify(evolutionResult, null, 2));
-
-      if (evolutionResponse.ok) {
-        break;
-      }
-
-      const shouldRetry =
-        index < attemptBodies.length - 1 &&
-        shouldRetryMediaWithAlternateFormat(evolutionResponse.status, evolutionResult);
-
-      if (shouldRetry) {
-        console.warn(`⚠️ Falha na tentativa ${index + 1}; tentando fallback de mídia...`);
-        continue;
-      }
-
-      break;
+    const rawEvolutionResult = await evolutionResponse.text();
+    let evolutionResult: any;
+    try {
+      evolutionResult = rawEvolutionResult ? JSON.parse(rawEvolutionResult) : null;
+    } catch {
+      evolutionResult = { raw: rawEvolutionResult };
     }
+
+    console.log('📩 Resposta Evolution:', JSON.stringify(evolutionResult, null, 2));
 
     if (!evolutionResponse) {
       throw new Error('Falha ao executar requisição para Evolution API');
