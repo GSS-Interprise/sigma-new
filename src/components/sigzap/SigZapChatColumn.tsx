@@ -97,6 +97,9 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
   const [leadLinkDialogOpen, setLeadLinkDialogOpen] = useState(false);
   const [pendingContactPhone, setPendingContactPhone] = useState("");
   const [pendingContactName, setPendingContactName] = useState("");
+  const [autoMatchDialogOpen, setAutoMatchDialogOpen] = useState(false);
+  const [autoMatchLead, setAutoMatchLead] = useState<any>(null);
+  const [autoMatchDismissedFor, setAutoMatchDismissedFor] = useState<string | null>(null);
   const [fetchingHistory, setFetchingHistory] = useState(false);
   const [historyPage, setHistoryPage] = useState(1);
   const [historyHasMore, setHistoryHasMore] = useState(true);
