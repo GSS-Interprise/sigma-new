@@ -122,6 +122,9 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
   // Check if we're on acompanhamento context
   const isOnAcompanhamentoPage = location.pathname.includes('/disparos/acompanhamento');
 
+  // Historico unread count for badge
+  const { unreadCount: historicoUnreadCount } = useLeadHistoricoUnreadCount(leadId);
+
   // Auto-resize textarea
   const adjustTextareaHeight = useCallback(() => {
     const textarea = textareaRef.current;
