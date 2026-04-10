@@ -150,108 +150,76 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
 
   const captadorColor = captadorPermissao?.cor || null;
 
-  // Check if conversation has a linked lead (prefer lead_id from join, fallback to phone/name lookup)
+  // Check if conversation has a linked lead (prefer lead_id from join, fallback to phone lookup)
   const contactPhone = (conversa?.contact as any)?.contact_phone;
   const contactName = (conversa?.contact as any)?.contact_name || '';
   const contactJid = (conversa?.contact as any)?.contact_jid || '';
   const isLidContact = contactJid.includes('@lid') || (contactPhone && contactPhone.length > 15);
   const leadFromJoin = conversa?.lead as any;
   const { data: linkedLead } = useQuery({
-    queryKey: ['sigzap-linked-lead', conversa?.lead_id, contactPhone, contactName],
+    queryKey: ['sigzap-linked-lead', conversa?.lead_id, contactPhone],
     queryFn: async () => {
       // If lead is already joined from conversation, use it
       if (leadFromJoin?.id) return leadFromJoin;
       
-      if (!contactPhone && !contactName) return null;
+      // For LID contacts, skip phone lookup (will open manual dialog instead)
+      if (isLidContact || !contactPhone) return null;
 
-      let foundLead: any = null;
+      const phoneE164 = normalizeToE164(contactPhone);
+      if (!phoneE164) return null;
 
-      // Try phone lookup first (only for real phone numbers, not LIDs)
-      if (!isLidContact && contactPhone) {
-        const phoneE164 = normalizeToE164(contactPhone);
-        if (phoneE164) {
-          const { data: foundId } = await supabase.rpc('find_lead_by_phone', { p_phone: phoneE164 });
-          if (foundId) {
-            const { data: lead } = await supabase
-              .from('leads')
-              .select('id, nome, phone_e164, telefones_adicionais, email, uf, especialidade')
-              .eq('id', foundId)
-              .maybeSingle();
-            if (lead) {
-              const normalizedContact = phoneE164.replace(/\D/g, '').slice(-9);
-              const normalizedLead = (lead.phone_e164 || '').replace(/\D/g, '').slice(-9);
-              let score = normalizedContact === normalizedLead ? 100 : 0;
-              if (score === 0 && lead.telefones_adicionais) {
-                for (const tel of lead.telefones_adicionais) {
-                  const normalizedTel = tel.replace(/\D/g, '').slice(-9);
-                  if (normalizedContact === normalizedTel) { score = 95; break; }
-                  if (normalizedContact.slice(-8) === normalizedTel.slice(-8)) { score = Math.max(score, 85); }
-                }
-              }
-              if (score === 0 && normalizedContact.slice(-8) === normalizedLead.slice(-8)) score = 90;
-              foundLead = { ...lead, score };
-            }
-          }
+      const { data: foundId } = await supabase.rpc('find_lead_by_phone', { p_phone: phoneE164 });
+      if (!foundId) return null;
+
+      const { data: lead } = await supabase
+        .from('leads')
+        .select('id, nome, phone_e164, telefones_adicionais, email, uf, especialidade')
+        .eq('id', foundId)
+        .maybeSingle();
+
+      if (!lead) return null;
+
+      // Calculate similarity score
+      const normalizedContact = phoneE164.replace(/\D/g, '').slice(-9);
+      const normalizedLead = (lead.phone_e164 || '').replace(/\D/g, '').slice(-9);
+      let score = normalizedContact === normalizedLead ? 100 : 0;
+      if (score === 0 && lead.telefones_adicionais) {
+        for (const tel of lead.telefones_adicionais) {
+          const normalizedTel = tel.replace(/\D/g, '').slice(-9);
+          if (normalizedContact === normalizedTel) { score = 95; break; }
+          if (normalizedContact.slice(-8) === normalizedTel.slice(-8)) { score = Math.max(score, 85); }
         }
       }
+      if (score === 0 && normalizedContact.slice(-8) === normalizedLead.slice(-8)) score = 90;
 
-      // Fallback: search by name (especially for LID contacts)
-      if (!foundLead && contactName && contactName.length >= 3) {
-        const firstName = contactName.split(' ')[0];
-        if (firstName.length >= 3) {
-          const { data: nameMatches } = await supabase
-            .from('leads')
-            .select('id, nome, phone_e164, telefones_adicionais, email, uf, especialidade')
-            .ilike('nome', `${firstName}%`)
-            .limit(20);
-          
-          if (nameMatches && nameMatches.length > 0) {
-            // Score by name similarity
-            const contactLower = contactName.toLowerCase().trim();
-            const scored = nameMatches.map(lead => {
-              const leadLower = (lead.nome || '').toLowerCase().trim();
-              let score = 0;
-              if (contactLower === leadLower) score = 100;
-              else if (leadLower.startsWith(contactLower) || contactLower.startsWith(leadLower)) score = 85;
-              else {
-                const leadFirst = leadLower.split(' ')[0];
-                const contactFirst = contactLower.split(' ')[0];
-                if (leadFirst === contactFirst && leadFirst.length >= 3) score = 70;
-              }
-              return { ...lead, score };
-            }).filter(l => l.score >= 70);
-
-            if (scored.length > 0) {
-              scored.sort((a, b) => b.score - a.score);
-              // If only one strong match, use it; if multiple, pick the best
-              foundLead = scored[0];
-            }
-          }
-        }
-      }
-
-      return foundLead;
+      return { ...lead, score };
     },
-    enabled: !!conversaId && (!!leadFromJoin?.id || !!contactPhone || !!contactName),
+    enabled: !!conversaId && (!!leadFromJoin?.id || (!!contactPhone && !isLidContact)),
     staleTime: 60_000,
   });
 
-  // Show auto-match dialog when a lead is found but not yet linked
+  // For real phone matches: show auto-match confirmation modal
+  // For LID contacts: auto-open the manual link dialog (which has smart suggestions by name)
   useEffect(() => {
-    if (
-      linkedLead?.id && 
-      linkedLead?.score && 
-      !conversa?.lead_id && 
-      conversaId &&
-      autoMatchDismissedFor !== conversaId
-    ) {
+    if (!conversaId || conversa?.lead_id || autoMatchDismissedFor === conversaId) return;
+
+    // Real phone match found → show auto-match modal
+    if (linkedLead?.id && linkedLead?.score) {
       const phoneDisplay = normalizeToE164(contactPhone) || contactPhone || '';
       setPendingContactPhone(phoneDisplay);
       setPendingContactName(contactName || 'Contato');
       setAutoMatchLead(linkedLead);
       setAutoMatchDialogOpen(true);
+      return;
     }
-  }, [linkedLead, conversa?.lead_id, conversaId, autoMatchDismissedFor]);
+
+    // LID contact without linked lead → auto-open manual link dialog
+    if (isLidContact && contactName && contactName.length >= 2) {
+      setPendingContactPhone(contactPhone || '');
+      setPendingContactName(contactName);
+      setLeadLinkDialogOpen(true);
+    }
+  }, [linkedLead, conversa?.lead_id, conversaId, autoMatchDismissedFor, isLidContact]);
 
   // Reset dismissed state when conversation changes
   const prevConversaIdRef = useRef<string | null>(null);
