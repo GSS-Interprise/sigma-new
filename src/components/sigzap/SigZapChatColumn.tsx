@@ -1024,7 +1024,7 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
       const phoneE164 = normalizeToE164(phoneToUse);
       
       if (!phoneE164) {
-        toast.error(`Número de telefone inválido: ${contactPhone}`);
+        toast.error(`Número de telefone inválido: ${phoneToUse}`);
         setIsCheckingLead(false);
         return;
       }
@@ -1047,7 +1047,7 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
       } else {
         // Lead doesn't exist with exact match - open dialog to link or create
         setPendingContactPhone(phoneE164);
-        setPendingContactName(contactName);
+        setPendingContactName(contactNameLocal);
         setLeadLinkDialogOpen(true);
       }
     } catch (err: any) {
