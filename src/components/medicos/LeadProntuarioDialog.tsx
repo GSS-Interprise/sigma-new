@@ -41,6 +41,7 @@ import { BlacklistSection } from "./BlacklistSection";
 import { BloqueioTemporarioSection } from "./BloqueioTemporarioSection";
 import { LeadEtiquetasDropdown } from "./LeadEtiquetasDropdown";
 import { PhoneEmailArrayFields } from "@/components/leads/PhoneEmailArrayFields";
+import { useLeadHistoricoUnreadCount } from "@/hooks/useLeadHistoricoVisualizacoes";
 
 export interface LeadProntuarioDialogProps {
   open: boolean;
