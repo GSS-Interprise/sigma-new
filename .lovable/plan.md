@@ -1,41 +1,36 @@
 
 
-## Plano: Restringir visualização de "quem viu" a admins/líderes
+## Plano: Corrigir exibição de telefone LID + melhorar busca automática de lead
 
-### Resumo
-- O **badge de notificação** na aba Histórico continua funcionando para **todos** os usuários
-- O **"quem visualizou" (read receipts com CheckCheck)** nos cards só aparece para **admins e líderes**
-- A lógica de marcar como visto após 2s e limpar badge permanece igual para todos
+### Problemas identificados
 
-### Alterações
+1. **Header mostra LID como telefone** — O campo `contact_phone` contém `97676213370883` (LID do WhatsApp), não um número real. Quando o contato é LID, deveria mostrar o telefone do lead vinculado ou esconder o número falso.
 
-#### 1. Migração SQL — Restringir SELECT da tabela `lead_historico_visualizacoes`
-Trocar a policy atual (todos authenticated podem ler tudo) por uma que permita:
-- Cada usuário ler **seus próprios** registros (necessário para o cálculo do badge)
-- Admins e líderes lerem **todos** os registros (necessário para ver quem visualizou)
+2. **Modal não reaparece ao voltar na conversa** — O `useEffect` na linha 311-331 faz `setAutoMatchDialogOpen(false)` ao trocar de conversa, mas quando volta, o `linkedLead` já está em cache e o effect não dispara de novo.
 
-```sql
-DROP POLICY "Authenticated users can view visualizacoes" ON public.lead_historico_visualizacoes;
+3. **Push name já é o `contact_name`** — O webhook já salva o `pushName` do WhatsApp como `contact_name` na tabela `sigzap_contacts`. Não existe coluna separada. O matching por nome já usa `contact_name`.
 
-CREATE POLICY "Users read own or admin/leader reads all"
-ON public.lead_historico_visualizacoes
-FOR SELECT TO authenticated
-USING (
-  auth.uid() = user_id
-  OR public.is_admin(auth.uid())
-  OR public.is_leader(auth.uid())
-);
-```
+4. **Matching por nome fraco** — "Jaime" com 1 parte de nome dá match em qualquer "Jaime" no banco, mesmo com sobrenome diferente. Precisa priorizar resultados onde mais partes do nome coincidem.
 
-#### 2. UI — Condicionar exibição dos read receipts
-No `LeadHistoricoAnotacoesSection.tsx`:
-- Importar `usePermissions`
-- Extrair `isAdmin` e `isLeader`
-- Envolver o bloco de read receipts (linhas ~918-938) em `if (isAdmin || isLeader)`
-- O fetch de `visualizacoes` completo só precisa rodar para admin/líder; para outros usuários, pular a query (pois o RLS já filtra, mas evita request desnecessário)
+### Alterações planejadas
 
-#### 3. Escopo
-- 1 migração SQL (drop + create policy)
-- 1 arquivo editado (`LeadHistoricoAnotacoesSection.tsx`)
-- Hook `useLeadHistoricoUnreadCount` não muda (já lê só os próprios registros do usuário)
+**Arquivo: `src/components/sigzap/SigZapChatColumn.tsx`**
+
+1. **Header — esconder LID, mostrar telefone real do lead**
+   - Na linha 1421-1423, quando `isLidContact` for true, mostrar o telefone do lead vinculado (`linkedLead?.phone_e164` ou `leadFromJoin?.phone_e164`) ou "Contato LID" em vez do número LID cru.
+
+2. **Fix modal não reaparecendo**
+   - No `useEffect` linha 311-331 (troca de conversa), NÃO fazer `setAutoMatchDialogOpen(false)` — deixar o estado ser controlado apenas pelo effect que detecta `linkedLead` (linha 239-248).
+   - Adicionar `conversaId` como dependência forte no effect do auto-match para re-disparar ao voltar.
+
+3. **Melhorar scoring de nome**
+   - Quando o contato tem apenas 1 parte de nome (ex: "Jaime"), exigir score mínimo mais alto ou buscar por match exato de primeiro nome.
+   - Penalizar resultados onde o sobrenome do lead não bate com nenhuma parte do nome do contato.
+   - Se só tem 1 parte de nome e múltiplos resultados com score igual, não abrir o modal automático — abrir o dialog manual de vinculação para o usuário escolher.
+
+### Resultado esperado
+
+- Contatos LID mostram "Contato LID" ou o telefone real do lead vinculado no header
+- Modal de auto-match reaparece toda vez que selecionar conversa sem lead vinculado
+- Nomes com 1 parte (ex: "Jaime") não fazem match errado com leads de sobrenome diferente
 
