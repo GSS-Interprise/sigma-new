@@ -1458,9 +1458,16 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
                 <Phone className="h-3 w-3 text-muted-foreground" />
                 <span className="text-xs text-muted-foreground truncate">
                   {isLidContact
-                    ? (linkedLead?.phone_e164 || leadFromJoin?.phone_e164 || 'Contato LID')
+                    ? (leadFromJoin?.phone_e164 || linkedLead?.phone_e164 || 'Contato LID')
                     : contact?.contact_phone}
                 </span>
+                {/* Show lead phone alongside if different from contact phone */}
+                {!isLidContact && (leadFromJoin?.phone_e164 || linkedLead?.phone_e164) && 
+                 (leadFromJoin?.phone_e164 || linkedLead?.phone_e164) !== contact?.contact_phone && (
+                  <span className="text-xs text-muted-foreground truncate">
+                    · {leadFromJoin?.phone_e164 || linkedLead?.phone_e164}
+                  </span>
+                )}
                 {instance?.name && (
                   <Badge variant="outline" className="text-[10px] h-4 px-1">
                     {instance.name}
