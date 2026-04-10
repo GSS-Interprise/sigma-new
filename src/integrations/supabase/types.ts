@@ -3327,6 +3327,13 @@ export type Database = {
             referencedRelation: "leads"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "disparos_contatos_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_leads_duplicados"
+            referencedColumns: ["id"]
+          },
         ]
       }
       disparos_historico_contatos: {
@@ -3732,6 +3739,13 @@ export type Database = {
             referencedRelation: "leads"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "email_contatos_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_leads_duplicados"
+            referencedColumns: ["id"]
+          },
         ]
       }
       email_interacoes: {
@@ -3795,6 +3809,13 @@ export type Database = {
             columns: ["lead_id"]
             isOneToOne: false
             referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_interacoes_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_leads_duplicados"
             referencedColumns: ["id"]
           },
           {
@@ -4872,6 +4893,13 @@ export type Database = {
             referencedRelation: "leads"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "import_leads_failed_queue_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_leads_duplicados"
+            referencedColumns: ["id"]
+          },
         ]
       }
       instance_proxy_settings: {
@@ -5011,6 +5039,13 @@ export type Database = {
             referencedRelation: "leads"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "lead_anexos_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_leads_duplicados"
+            referencedColumns: ["id"]
+          },
         ]
       }
       lead_anotacoes: {
@@ -5059,6 +5094,13 @@ export type Database = {
             columns: ["lead_id"]
             isOneToOne: false
             referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_anotacoes_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_leads_duplicados"
             referencedColumns: ["id"]
           },
         ]
@@ -5142,6 +5184,13 @@ export type Database = {
             columns: ["lead_id"]
             isOneToOne: false
             referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_historico_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_leads_duplicados"
             referencedColumns: ["id"]
           },
           {
@@ -5486,6 +5535,13 @@ export type Database = {
             columns: ["lead_id"]
             isOneToOne: false
             referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_bloqueio_temporario_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_leads_duplicados"
             referencedColumns: ["id"]
           },
         ]
@@ -7251,6 +7307,13 @@ export type Database = {
             referencedRelation: "leads"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "medicos_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_leads_duplicados"
+            referencedColumns: ["id"]
+          },
         ]
       }
       mensagens: {
@@ -7702,6 +7765,13 @@ export type Database = {
             columns: ["lead_id"]
             isOneToOne: false
             referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "proposta_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_leads_duplicados"
             referencedColumns: ["id"]
           },
           {
@@ -8740,6 +8810,13 @@ export type Database = {
             referencedRelation: "leads"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "regiao_interesse_leads_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_leads_duplicados"
+            referencedColumns: ["id"]
+          },
         ]
       }
       relacionamento_medico: {
@@ -9013,6 +9090,13 @@ export type Database = {
             columns: ["lead_id"]
             isOneToOne: false
             referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sigzap_conversations_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_leads_duplicados"
             referencedColumns: ["id"]
           },
         ]
@@ -9729,7 +9813,37 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      vw_leads_duplicados: {
+        Row: {
+          chaves_match: string[] | null
+          cidade: string | null
+          cpf: string | null
+          created_at: string | null
+          crm: string | null
+          email: string | null
+          especialidade: string | null
+          id: string | null
+          motivos: string | null
+          nome: string | null
+          phone_e164: string | null
+          phone_normalizado: string | null
+          qtd_anexos: number | null
+          qtd_anotacoes: number | null
+          qtd_disparos: number | null
+          qtd_email_contatos: number | null
+          qtd_email_interacoes: number | null
+          qtd_historico: number | null
+          qtd_medicos: number | null
+          qtd_propostas: number | null
+          rqe: string | null
+          status: string | null
+          tem_cpf: boolean | null
+          total_registros_filhos: number | null
+          uf: string | null
+          updated_at: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       calcular_status_resposta_atividade: {
