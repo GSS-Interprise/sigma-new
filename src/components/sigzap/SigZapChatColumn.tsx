@@ -323,8 +323,6 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
       });
       // Clear message input
       setMensagem("");
-      // Reset auto-match dismissed state
-      setAutoMatchDismissedFor(null);
       setAutoMatchDialogOpen(false);
       setAutoMatchLead(null);
       
@@ -1100,7 +1098,7 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
   };
 
   const handleAutoMatchReject = () => {
-    setAutoMatchDismissedFor(conversaId);
+    // Just close - modal will reappear next time this conversation is selected
     setAutoMatchLead(null);
   };
 
