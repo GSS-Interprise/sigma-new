@@ -99,7 +99,7 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
   const [pendingContactName, setPendingContactName] = useState("");
   const [autoMatchDialogOpen, setAutoMatchDialogOpen] = useState(false);
   const [autoMatchLead, setAutoMatchLead] = useState<any>(null);
-  const [autoMatchDismissedFor, setAutoMatchDismissedFor] = useState<string | null>(null);
+  
   const [fetchingHistory, setFetchingHistory] = useState(false);
   const [historyPage, setHistoryPage] = useState(1);
   const [historyHasMore, setHistoryHasMore] = useState(true);
@@ -156,6 +156,8 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
   const contactJid = (conversa?.contact as any)?.contact_jid || '';
   const isLidContact = contactJid.includes('@lid') || (contactPhone && contactPhone.length > 15);
   const leadFromJoin = conversa?.lead as any;
+  const hasLinkedLead = !!conversa?.lead_id || !!leadFromJoin?.id;
+
   const { data: linkedLead } = useQuery({
     queryKey: ['sigzap-linked-lead', conversa?.lead_id, contactPhone, contactName, isLidContact],
     queryFn: async () => {
@@ -190,39 +192,52 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
         }
       }
 
-      // 2) LID or phone not found → fast name search (exact first name, limit 10)
+      // 2) LID or phone not found → name search using ALL name parts
       if (contactName && contactName.length >= 3) {
-        const firstName = contactName.trim().split(' ')[0];
-        if (firstName.length < 3) return null;
+        const nameParts = contactName.trim().split(/\s+/).filter(p => p.length >= 3);
+        if (nameParts.length === 0) return null;
+
+        // Build OR conditions: each name part as ilike filter
+        // Search leads matching first name AND try to match more parts
+        const firstName = nameParts[0];
         const { data: matches } = await supabase
           .from('leads')
           .select('id, nome, phone_e164, telefones_adicionais, email, uf, especialidade')
-          .ilike('nome', `${firstName}%`)
-          .limit(10);
+          .ilike('nome', `%${firstName}%`)
+          .limit(20);
+
         if (matches && matches.length > 0) {
-          const cl = contactName.toLowerCase().trim();
+          const contactParts = nameParts.map(p => p.toLowerCase());
           const scored = matches.map(lead => {
-            const ll = (lead.nome || '').toLowerCase().trim();
-            let score = 0;
-            if (cl === ll) score = 100;
-            else if (ll.startsWith(cl) || cl.startsWith(ll)) score = 85;
-            else if (ll.split(' ')[0] === cl.split(' ')[0]) score = 70;
+            const leadParts = (lead.nome || '').toLowerCase().trim().split(/\s+/);
+            // Count how many contact name parts appear in lead name
+            let partsMatched = 0;
+            for (const cp of contactParts) {
+              if (leadParts.some(lp => lp === cp || lp.startsWith(cp) || cp.startsWith(lp))) {
+                partsMatched++;
+              }
+            }
+            // Score based on proportion of parts matched
+            const score = contactParts.length > 0
+              ? Math.round((partsMatched / contactParts.length) * 100)
+              : 0;
             return { ...lead, score };
-          }).filter(l => l.score >= 70).sort((a, b) => b.score - a.score);
-          if (scored.length === 1) return scored[0]; // single match → use it
-          if (scored.length > 1) return scored[0]; // multiple → best match
+          }).filter(l => l.score >= 60).sort((a, b) => b.score - a.score);
+
+          if (scored.length > 0) return scored[0];
         }
       }
 
       return null;
     },
-    enabled: !!conversaId && (!!leadFromJoin?.id || !!contactPhone || (!!contactName && contactName.length >= 3)),
-    staleTime: 60_000,
+    enabled: !!conversaId && !hasLinkedLead && (!!contactPhone || (!!contactName && contactName.length >= 3)),
+    staleTime: 0, // Always re-run when switching conversations
   });
 
   // Show auto-match confirmation modal when lead found but not yet linked
+  // This is "chato" on purpose — forces user to link or dismiss every time
   useEffect(() => {
-    if (!conversaId || conversa?.lead_id || autoMatchDismissedFor === conversaId) return;
+    if (!conversaId || hasLinkedLead) return;
     if (linkedLead?.id && linkedLead?.score) {
       const phoneDisplay = normalizeToE164(contactPhone) || contactPhone || '';
       setPendingContactPhone(phoneDisplay);
@@ -230,7 +245,7 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
       setAutoMatchLead(linkedLead);
       setAutoMatchDialogOpen(true);
     }
-  }, [linkedLead, conversa?.lead_id, conversaId, autoMatchDismissedFor]);
+  }, [linkedLead, hasLinkedLead, conversaId]);
 
   // Reset dismissed state when conversation changes
   const prevConversaIdRef = useRef<string | null>(null);
@@ -308,8 +323,6 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
       });
       // Clear message input
       setMensagem("");
-      // Reset auto-match dismissed state
-      setAutoMatchDismissedFor(null);
       setAutoMatchDialogOpen(false);
       setAutoMatchLead(null);
       
@@ -1085,7 +1098,7 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
   };
 
   const handleAutoMatchReject = () => {
-    setAutoMatchDismissedFor(conversaId);
+    // Just close - modal will reappear next time this conversation is selected
     setAutoMatchLead(null);
   };
 
