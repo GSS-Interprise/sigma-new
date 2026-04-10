@@ -1,7 +1,7 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { sanitizeHtml } from "@/lib/sanitizeHtml";
+import { sanitizeHtml as sanitizeExternalHtml } from "@/lib/sanitizeHtml";
 import { Button } from "./button";
 import { 
   Bold, 

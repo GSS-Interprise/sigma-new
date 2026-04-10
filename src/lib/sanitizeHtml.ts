@@ -28,6 +28,19 @@ export function sanitizeHtml(html: string): string {
     });
   });
 
+  // Clean up Google Sheets tables: keep structure but remove junk styles
+  doc.querySelectorAll('table').forEach((table) => {
+    table.style.cssText = 'border-collapse: collapse; width: 100%; margin: 8px 0;';
+    table.querySelectorAll('td, th').forEach((cell) => {
+      const htmlCell = cell as HTMLElement;
+      htmlCell.style.cssText = 'border: 1px solid #d1d5db; padding: 4px 8px; text-align: left;';
+    });
+    table.querySelectorAll('tr').forEach((row) => {
+      (row as HTMLElement).removeAttribute('style');
+    });
+    table.querySelectorAll('col, colgroup').forEach((el) => el.remove());
+  });
+
   // Dangerous CSS properties to strip from inline styles
   const dangerousProps = [
     'position',
@@ -36,10 +49,6 @@ export function sanitizeHtml(html: string): string {
     'left',
     'right',
     'bottom',
-    'min-width',
-    'min-height',
-    'max-width',
-    'max-height',
     'resize',
     'cursor',
     '-webkit-user-modify',
