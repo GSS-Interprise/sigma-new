@@ -50,13 +50,6 @@ const getEvolutionErrorMessage = (result: any) => {
   return JSON.stringify(result ?? {});
 };
 
-const shouldRetryMediaWithAlternateFormat = (status: number, result: any) => {
-  if (status < 400) return false;
-
-  const errorMessage = getEvolutionErrorMessage(result);
-  return errorMessage.includes('Owned media must be a url or base64') ||
-    errorMessage.includes('Media upload failed on all hosts');
-};
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -205,7 +198,7 @@ serve(async (req) => {
 
     let evolutionEndpoint: string;
     let evolutionBody: any;
-    let evolutionBodyVariants: any[] | null = null;
+    let httpMethod = 'POST';
     let httpMethod = 'POST';
 
     // Handle different actions
@@ -307,63 +300,99 @@ serve(async (req) => {
         if (mediaType && (mediaUrl || mediaBase64)) {
           // Mensagem com mídia
           evolutionEndpoint = `${evolutionUrl}/message/sendMedia/${encodeURIComponent(instanceName)}`;
-          const baseEvolutionBody: any = {
-            number,
-            mediatype: mediaType,
-            mimetype: mediaMimeType,
-            caption: mediaCaption || '',
-            fileName: mediaFilename,
-          };
-
-          if (quotedMessageId) {
-            baseEvolutionBody.quoted = { key: { id: quotedMessageId } };
-          }
-
-          // Build ordered list of media variants to try:
-          // 1. Public URL first (lightweight, avoids /tmp issues on Evolution API)
-          // 2. Raw base64 as fallback
-          const mediaAttempts: string[] = [];
-
-          if (mediaUrl) {
-            mediaAttempts.push(mediaUrl);
-          }
-
-          // Prepare base64 fallback
+          
+          // Strategy: upload media to Supabase Storage and send public URL to Evolution API
+          let publicMediaUrl: string | null = null;
+          const fileName = mediaFilename || `media_${Date.now()}`;
+          const filePath = `media-temp/${Date.now()}-${fileName}`;
+          
           if (mediaBase64) {
-            mediaAttempts.push(sanitizeBase64Media(mediaBase64));
+            // Convert base64 to Uint8Array and upload to Storage
+            const cleanBase64 = sanitizeBase64Media(mediaBase64);
+            const binaryString = atob(cleanBase64);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+              bytes[i] = binaryString.charCodeAt(i);
+            }
+            
+            console.log('📤 Uploading base64 media to Supabase Storage:', filePath);
+            const { error: uploadError } = await supabase.storage
+              .from('sigzap-media')
+              .upload(filePath, bytes, {
+                contentType: mediaMimeType || 'application/octet-stream',
+                upsert: true
+              });
+            
+            if (uploadError) {
+              console.error('❌ Erro ao fazer upload para Storage:', uploadError);
+              return new Response(JSON.stringify({ error: 'Falha ao fazer upload da mídia', details: uploadError }), {
+                status: 500,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              });
+            }
+            
+            const { data: { publicUrl } } = supabase.storage
+              .from('sigzap-media')
+              .getPublicUrl(filePath);
+            publicMediaUrl = publicUrl;
+            console.log('✅ Mídia uploaded, URL pública:', publicMediaUrl);
+            
           } else if (mediaUrl) {
-            // Download and convert to base64 as fallback
+            // Download media, upload to Storage, use public URL
             try {
-              console.log('⬇️ Baixando mídia para fallback base64:', mediaUrl);
+              console.log('⬇️ Baixando mídia para re-upload:', mediaUrl);
               const mediaResponse = await fetch(mediaUrl);
               if (mediaResponse.ok) {
                 const arrayBuffer = await mediaResponse.arrayBuffer();
-                const uint8Array = new Uint8Array(arrayBuffer);
-                let binary = '';
-                for (let i = 0; i < uint8Array.length; i++) {
-                  binary += String.fromCharCode(uint8Array[i]);
+                const fileBuffer = new Uint8Array(arrayBuffer);
+                
+                console.log('📤 Re-uploading media to Supabase Storage:', filePath);
+                const { error: uploadError } = await supabase.storage
+                  .from('sigzap-media')
+                  .upload(filePath, fileBuffer, {
+                    contentType: mediaMimeType || mediaResponse.headers.get('content-type') || 'application/octet-stream',
+                    upsert: true
+                  });
+                
+                if (uploadError) {
+                  console.warn('⚠️ Upload para Storage falhou, usando URL original:', uploadError);
+                  publicMediaUrl = mediaUrl;
+                } else {
+                  const { data: { publicUrl } } = supabase.storage
+                    .from('sigzap-media')
+                    .getPublicUrl(filePath);
+                  publicMediaUrl = publicUrl;
+                  console.log('✅ Mídia re-uploaded, URL pública:', publicMediaUrl);
                 }
-                const b64 = btoa(binary);
-                console.log('✅ Mídia convertida para base64, tamanho:', b64.length);
-                mediaAttempts.push(b64);
+              } else {
+                console.warn('⚠️ Download falhou, usando URL original');
+                publicMediaUrl = mediaUrl;
               }
             } catch (downloadErr) {
-              console.warn('⚠️ Falha ao converter mídia para base64:', downloadErr);
+              console.warn('⚠️ Falha no download, usando URL original:', downloadErr);
+              publicMediaUrl = mediaUrl;
             }
           }
-
-          if (mediaAttempts.length === 0) {
+          
+          if (!publicMediaUrl) {
             return new Response(JSON.stringify({ error: 'Nenhuma mídia disponível para envio' }), {
               status: 400,
               headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             });
           }
+          
+          evolutionBody = {
+            number,
+            mediatype: mediaType,
+            mimetype: mediaMimeType,
+            caption: mediaCaption || '',
+            fileName: mediaFilename,
+            media: publicMediaUrl, // Always send public URL, never base64
+          };
 
-          evolutionBodyVariants = mediaAttempts.map((media) => ({
-            ...baseEvolutionBody,
-            media,
-          }));
-          evolutionBody = evolutionBodyVariants[0];
+          if (quotedMessageId) {
+            evolutionBody.quoted = { key: { id: quotedMessageId } };
+          }
         } else {
           // Mensagem de texto
           evolutionEndpoint = `${evolutionUrl}/message/sendText/${encodeURIComponent(instanceName)}`;
@@ -379,54 +408,28 @@ serve(async (req) => {
         break;
     }
 
-    const attemptBodies = evolutionBodyVariants?.length ? evolutionBodyVariants : [evolutionBody];
-    let evolutionResponse: Response | null = null;
-    let evolutionResult: any = null;
-    let requestedPayload = attemptBodies[0];
+    console.log(`📡 Chamando Evolution API (${httpMethod}):`, evolutionEndpoint);
+    console.log('📦 Payload:', JSON.stringify(evolutionBody, null, 2));
 
-    for (let index = 0; index < attemptBodies.length; index++) {
-      requestedPayload = attemptBodies[index];
+    const evolutionResponse = await fetch(evolutionEndpoint, {
+      method: httpMethod,
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': evolutionKey
+      },
+      body: JSON.stringify(evolutionBody)
+    });
 
-      console.log(`📡 Chamando Evolution API (${httpMethod}) tentativa ${index + 1}/${attemptBodies.length}:`, evolutionEndpoint);
-      console.log('📦 Payload:', JSON.stringify(requestedPayload, null, 2));
-
-      evolutionResponse = await fetch(evolutionEndpoint, {
-        method: httpMethod,
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': evolutionKey
-        },
-        body: JSON.stringify(requestedPayload)
-      });
-
-      const rawEvolutionResult = await evolutionResponse.text();
-      try {
-        evolutionResult = rawEvolutionResult ? JSON.parse(rawEvolutionResult) : null;
-      } catch {
-        evolutionResult = { raw: rawEvolutionResult };
-      }
-
-      console.log('📩 Resposta Evolution:', JSON.stringify(evolutionResult, null, 2));
-
-      if (evolutionResponse.ok) {
-        break;
-      }
-
-      const shouldRetry =
-        index < attemptBodies.length - 1 &&
-        shouldRetryMediaWithAlternateFormat(evolutionResponse.status, evolutionResult);
-
-      if (shouldRetry) {
-        console.warn(`⚠️ Falha na tentativa ${index + 1}; tentando fallback de mídia...`);
-        continue;
-      }
-
-      break;
+    const rawEvolutionResult = await evolutionResponse.text();
+    let evolutionResult: any;
+    try {
+      evolutionResult = rawEvolutionResult ? JSON.parse(rawEvolutionResult) : null;
+    } catch {
+      evolutionResult = { raw: rawEvolutionResult };
     }
 
-    if (!evolutionResponse) {
-      throw new Error('Falha ao executar requisição para Evolution API');
-    }
+    console.log('📩 Resposta Evolution:', JSON.stringify(evolutionResult, null, 2));
+
 
     if (!evolutionResponse.ok) {
       console.error('❌ Erro da Evolution API:', evolutionResult);
@@ -434,7 +437,7 @@ serve(async (req) => {
         error: 'Erro ao processar ação',
         details: evolutionResult,
         requestedUrl: evolutionEndpoint,
-        payload: requestedPayload,
+        payload: evolutionBody,
       }), {
         status: evolutionResponse.status,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
