@@ -105,8 +105,65 @@ serve(async (req) => {
       });
     }
 
-    // Formatar número (remover @s.whatsapp.net se presente)
-    const number = contactJid.replace('@s.whatsapp.net', '').replace('@g.us', '');
+    // Resolve real phone number for LID contacts
+    let number = contactJid.replace('@s.whatsapp.net', '').replace('@g.us', '');
+    
+    if (contactJid.includes('@lid')) {
+      console.log('🔍 Contato LID detectado, buscando número real...');
+      
+      // Try to get real JID from remoteJidAlt in a recent message raw_payload
+      const { data: recentMsg } = await supabase
+        .from('sigzap_messages')
+        .select('raw_payload')
+        .eq('conversation_id', conversationId || '')
+        .not('raw_payload', 'is', null)
+        .order('sent_at', { ascending: false })
+        .limit(10);
+      
+      let realJid: string | null = null;
+      if (recentMsg) {
+        for (const msg of recentMsg) {
+          const alt = (msg.raw_payload as any)?.key?.remoteJidAlt;
+          if (alt && alt.includes('@s.whatsapp.net')) {
+            realJid = alt;
+            break;
+          }
+        }
+      }
+      
+      if (realJid) {
+        number = realJid.replace('@s.whatsapp.net', '');
+        console.log('✅ Número real encontrado via remoteJidAlt:', number);
+      } else {
+        // Fallback: try contact phone from sigzap_contacts
+        if (conversationId) {
+          const { data: conv } = await supabase
+            .from('sigzap_conversations')
+            .select('contact:sigzap_contacts(contact_phone), lead:leads!sigzap_conversations_lead_id_fkey(phone_e164)')
+            .eq('id', conversationId)
+            .single();
+          
+          const leadPhone = (conv?.lead as any)?.phone_e164;
+          const contactPhone = (conv?.contact as any)?.contact_phone;
+          
+          if (leadPhone) {
+            number = leadPhone.replace('+', '');
+            console.log('✅ Número real do lead vinculado:', number);
+          } else if (contactPhone && contactPhone.length <= 15) {
+            number = contactPhone.replace(/\D/g, '');
+            console.log('✅ Número real do contato:', number);
+          } else {
+            console.error('❌ Não foi possível resolver número real para contato LID');
+            return new Response(JSON.stringify({ 
+              error: 'Não foi possível enviar: contato LID sem número real identificado. Vincule um lead primeiro.' 
+            }), {
+              status: 400,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            });
+          }
+        }
+      }
+    }
 
     let evolutionEndpoint: string;
     let evolutionBody: any;
