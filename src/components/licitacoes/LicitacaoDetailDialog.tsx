@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { renderMarkdown } from "@/components/ui/markdown-textarea";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
+import { sanitizeHtml } from "@/lib/sanitizeHtml";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
