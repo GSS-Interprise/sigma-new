@@ -8,10 +8,15 @@ import {
 } from "@/components/ui/select";
 import { Card } from "@/components/ui/card";
 
+interface EspOption {
+  id: string;
+  nome: string;
+}
+
 interface FiltroDisparosProps {
   especialidade: string;
   estado: string;
-  especialidades: string[];
+  especialidades: EspOption[];
   estados: string[];
   onEspecialidadeChange: (value: string) => void;
   onEstadoChange: (value: string) => void;
@@ -39,8 +44,8 @@ export function FiltroDisparos({
             </SelectTrigger>
             <SelectContent className="bg-background z-50">
               {especialidades.map((esp) => (
-                <SelectItem key={esp} value={esp}>
-                  {esp}
+                <SelectItem key={esp.id} value={esp.id}>
+                  {esp.nome}
                 </SelectItem>
               ))}
             </SelectContent>

@@ -27,12 +27,24 @@ import {
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Search, ShieldAlert, ShieldOff, AlertTriangle, Loader2, X, Shield } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Search, ShieldAlert, ShieldOff, AlertTriangle, Loader2, X, Shield, Ban, Crown, ThumbsDown } from "lucide-react";
+
+const CATEGORIAS = [
+  { value: 'proibido', label: 'Proibido', desc: 'Nunca contatar (corpo clínico, opt-out)', icon: Ban, color: 'bg-red-500/10 text-red-700 border-red-400/40' },
+  { value: 'protegido', label: 'Protegido/VIP', desc: 'Só contato personalizado (presidente CRM, gestor)', icon: Crown, color: 'bg-amber-500/10 text-amber-700 border-amber-400/40' },
+  { value: 'desinteresse', label: 'Desinteresse', desc: 'Disse que não tem interesse', icon: ThumbsDown, color: 'bg-slate-500/10 text-slate-700 border-slate-400/40' },
+  { value: 'opt_out', label: 'Opt-out (LGPD)', desc: 'Pediu explicitamente para não ser contatado', icon: ShieldAlert, color: 'bg-purple-500/10 text-purple-700 border-purple-400/40' },
+  { value: 'temporario', label: 'Temporário', desc: 'Pausa técnica/operacional', icon: Shield, color: 'bg-blue-500/10 text-blue-700 border-blue-400/40' },
+] as const;
+
+type Categoria = typeof CATEGORIAS[number]['value'];
 
 type BloqueadoLead = {
   id: string;
   lead_id: string;
   motivo: string;
+  categoria: Categoria;
   created_at: string;
   created_by: string | null;
   nome: string;
@@ -61,6 +73,8 @@ export function AbaBloqueioTemporario() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedLead, setSelectedLead] = useState<SearchLead | null>(null);
   const [motivo, setMotivo] = useState("");
+  const [categoria, setCategoria] = useState<Categoria>("temporario");
+  const [filtroCategoria, setFiltroCategoria] = useState<string>("_all");
   const [showBloquearDialog, setShowBloquearDialog] = useState(false);
   const [desbloquearId, setDesbloquearId] = useState<string | null>(null);
   const { user } = useAuth();
@@ -72,7 +86,7 @@ export function AbaBloqueioTemporario() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("leads_bloqueio_temporario")
-        .select("id, lead_id, motivo, created_at, created_by")
+        .select("id, lead_id, motivo, categoria, created_at, created_by")
         .is("removed_at", null)
         .order("created_at", { ascending: false });
 
@@ -96,6 +110,7 @@ export function AbaBloqueioTemporario() {
             id: b.id,
             lead_id: b.lead_id,
             motivo: b.motivo,
+            categoria: (b as any).categoria || 'temporario',
             created_at: b.created_at,
             created_by: b.created_by,
             nome: lead.nome,
@@ -178,6 +193,7 @@ export function AbaBloqueioTemporario() {
       const { error } = await supabase.from("leads_bloqueio_temporario").insert({
         lead_id: selectedLead.id,
         motivo: motivo.trim(),
+        categoria,
         created_by: user?.id,
       });
       if (error) throw error;
@@ -186,8 +202,10 @@ export function AbaBloqueioTemporario() {
       queryClient.invalidateQueries({ queryKey: ["bloqueios-temporarios"] });
       queryClient.invalidateQueries({ queryKey: ["leads-search-bloqueio", searchTerm] });
       queryClient.invalidateQueries({ queryKey: ["bloqueio-temporario-entry", selectedLead?.id] });
-      toast.success("Lead bloqueado temporariamente");
+      const catLabel = CATEGORIAS.find(c => c.value === categoria)?.label || 'Bloqueado';
+      toast.success(`Lead marcado como ${catLabel}`);
       setMotivo("");
+      setCategoria("temporario");
       setShowBloquearDialog(false);
       setSelectedLead(null);
       doSearch();
@@ -224,6 +242,12 @@ export function AbaBloqueioTemporario() {
   };
 
   const showingSearch = searchTerm.length >= 2;
+
+  const bloqueadosFiltrados = filtroCategoria === "_all"
+    ? bloqueados
+    : bloqueados.filter(b => b.categoria === filtroCategoria);
+
+  const getCategoriaInfo = (cat: string) => CATEGORIAS.find(c => c.value === cat) || CATEGORIAS[4]; // default temporario
 
   return (
     <div className="flex flex-col gap-6">
@@ -362,10 +386,23 @@ export function AbaBloqueioTemporario() {
           <div className="flex items-center gap-2">
             <ShieldAlert className="h-4 w-4 text-destructive" />
             <h2 className="font-semibold text-sm">Leads com bloqueio ativo</h2>
+            <Badge variant="secondary" className="text-xs">
+              {isLoadingBloqueados ? "..." : bloqueadosFiltrados.length} bloqueado(s)
+            </Badge>
           </div>
-          <Badge variant="secondary" className="text-xs">
-            {isLoadingBloqueados ? "..." : bloqueados.length} bloqueado(s)
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Select value={filtroCategoria} onValueChange={setFiltroCategoria}>
+              <SelectTrigger className="h-8 w-[180px] text-xs">
+                <SelectValue placeholder="Filtrar por tipo" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_all">Todos os tipos</SelectItem>
+                {CATEGORIAS.map((cat) => (
+                  <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         {isLoadingBloqueados ? (
@@ -390,8 +427,8 @@ export function AbaBloqueioTemporario() {
             <TableHeader>
               <TableRow className="bg-muted/20">
                 <TableHead className="font-semibold pl-5">Nome</TableHead>
+                <TableHead className="font-semibold">Tipo</TableHead>
                 <TableHead className="font-semibold">CPF</TableHead>
-                <TableHead className="font-semibold">Status</TableHead>
                 <TableHead className="font-semibold">UF</TableHead>
                 <TableHead className="font-semibold">Motivo</TableHead>
                 <TableHead className="font-semibold">Bloqueado em</TableHead>
@@ -399,13 +436,19 @@ export function AbaBloqueioTemporario() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {bloqueados.map((b) => (
+              {bloqueadosFiltrados.map((b) => {
+                const catInfo = getCategoriaInfo(b.categoria);
+                const CatIcon = catInfo.icon;
+                return (
                 <TableRow key={b.id} className="hover:bg-muted/20">
                   <TableCell className="font-medium pl-5">{b.nome}</TableCell>
-                  <TableCell className="text-muted-foreground text-sm font-mono">{b.cpf || "—"}</TableCell>
                   <TableCell>
-                    <Badge variant="outline" className="text-xs">{b.status}</Badge>
+                    <Badge variant="outline" className={`text-xs gap-1 ${catInfo.color}`}>
+                      <CatIcon className="h-3 w-3" />
+                      {catInfo.label}
+                    </Badge>
                   </TableCell>
+                  <TableCell className="text-muted-foreground text-sm font-mono">{b.cpf || "—"}</TableCell>
                   <TableCell className="text-muted-foreground text-sm">{b.uf || "—"}</TableCell>
                   <TableCell className="text-sm max-w-[220px]">
                     <span className="line-clamp-2 text-muted-foreground" title={b.motivo}>{b.motivo}</span>
@@ -426,7 +469,8 @@ export function AbaBloqueioTemporario() {
                     </Button>
                   </TableCell>
                 </TableRow>
-              ))}
+                );
+              })}
             </TableBody>
           </Table>
         )}
@@ -445,14 +489,34 @@ export function AbaBloqueioTemporario() {
               na seleção de disparos. O status real do lead não será alterado.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <div className="space-y-2 py-2">
-            <label className="text-sm font-medium">Motivo do bloqueio *</label>
-            <Textarea
-              value={motivo}
-              onChange={(e) => setMotivo(e.target.value)}
-              placeholder="Descreva o motivo do bloqueio temporário..."
-              rows={3}
-            />
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Tipo de bloqueio *</label>
+              <Select value={categoria} onValueChange={(v) => setCategoria(v as Categoria)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {CATEGORIAS.map((cat) => (
+                    <SelectItem key={cat.value} value={cat.value}>
+                      <div className="flex flex-col">
+                        <span className="font-medium">{cat.label}</span>
+                        <span className="text-xs text-muted-foreground">{cat.desc}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Motivo / observação *</label>
+              <Textarea
+                value={motivo}
+                onChange={(e) => setMotivo(e.target.value)}
+                placeholder="Descreva o motivo..."
+                rows={3}
+              />
+            </div>
           </div>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => { setMotivo(""); setSelectedLead(null); }}>

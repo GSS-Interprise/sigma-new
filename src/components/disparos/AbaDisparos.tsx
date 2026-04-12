@@ -16,7 +16,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Send, Calendar, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Textarea } from "@/components/ui/textarea";
-import { useEspecialidadesNomes } from "@/hooks/useEspecialidades";
+import { useEspecialidades } from "@/hooks/useEspecialidades";
 
 export function AbaDisparos() {
   const [tipoDisparo, setTipoDisparo] = useState("whatsapp");
@@ -33,7 +33,7 @@ export function AbaDisparos() {
   const [horaAgendamento, setHoraAgendamento] = useState("");
   const queryClient = useQueryClient();
   
-  const { data: especialidades = [] } = useEspecialidadesNomes();
+  const { data: especialidades = [] } = useEspecialidades();
 
   useEffect(() => {
     const saved = localStorage.getItem("disparos-draft");
@@ -84,29 +84,36 @@ export function AbaDisparos() {
       
       const { data: blacklist } = await supabase.from('blacklist').select('phone_e164');
       const blacklistedPhones = new Set(blacklist?.map(b => b.phone_e164) || []);
-      
+
+      // Buscar leads com bloqueio temporário ativo
+      const { data: bloqueados } = await supabase
+        .from('leads_bloqueio_temporario')
+        .select('lead_id')
+        .is('removed_at', null);
+      const bloqueadoIds = new Set(bloqueados?.map(b => b.lead_id) || []);
+
       // Buscar histórico de disparos recentes (últimos 7 dias)
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-      
+
       const { data: recentDisparos } = await supabase
         .from('disparos_historico_contatos')
         .select('email, telefone')
         .gte('ultimo_disparo', sevenDaysAgo.toISOString());
-      
+
       const recentEmails = new Set(recentDisparos?.filter(d => d.email).map(d => d.email) || []);
       const recentPhones = new Set(recentDisparos?.filter(d => d.telefone).map(d => d.telefone) || []);
-      
+
       // Buscar leads - incluir Novo, Qualificado e Em Contato (excluir quem já respondeu e convertidos)
       let leadsQuery = supabase
         .from('leads')
-        .select('phone_e164, nome, especialidade, uf, email')
+        .select('id, phone_e164, nome, especialidade, especialidade_id, uf, email')
         .in('status', ['Novo', 'Qualificado', 'Em Contato'])
-        .neq('status', 'Convertido'); // Leads convertidos não recebem disparos
-      
-      // No banco, leads.especialidade é string simples, não array
+        .neq('status', 'Convertido');
+
+      // Filtrar por especialidade_id (normalizado) em vez de texto livre
       if (especialidade) {
-        leadsQuery = leadsQuery.eq('especialidade', especialidade);
+        leadsQuery = leadsQuery.eq('especialidade_id', especialidade);
       }
       if (estado) {
         leadsQuery = leadsQuery.eq('uf', estado);
@@ -114,18 +121,18 @@ export function AbaDisparos() {
       
       const { data: leadsData } = await leadsQuery;
       leadsData?.forEach((lead) => {
-        if (!blacklistedPhones.has(lead.phone_e164)) {
-          // Verificar se não recebeu disparo recentemente
-          const isRecentlyContacted = lead.email ? recentEmails.has(lead.email) : recentPhones.has(lead.phone_e164);
-          
-          allContacts.push({
-            nome: lead.nome,
-            telefone: lead.phone_e164,
-            email: lead.email,
-            bloqueado: isRecentlyContacted,
-            motivo_bloqueio: isRecentlyContacted ? 'Recebeu mensagem nos últimos 7 dias' : null
-          });
-        }
+        if (blacklistedPhones.has(lead.phone_e164)) return;
+        if (bloqueadoIds.has(lead.id)) return; // Respeitar bloqueio temporário
+
+        const isRecentlyContacted = lead.email ? recentEmails.has(lead.email) : recentPhones.has(lead.phone_e164);
+
+        allContacts.push({
+          nome: lead.nome,
+          telefone: lead.phone_e164,
+          email: lead.email,
+          bloqueado: isRecentlyContacted,
+          motivo_bloqueio: isRecentlyContacted ? 'Recebeu mensagem nos últimos 7 dias' : null
+        });
       });
       
       // Buscar médicos
