@@ -208,9 +208,13 @@ export function LeadDialog({ open, onOpenChange, lead }: LeadDialogProps) {
         }
       }
 
+      // Resolver especialidade_id a partir do nome selecionado
+      const espSelecionada = especialidades.find(e => e.nome === values.especialidade);
+
       const payload: any = {
         nome: values.nome,
         especialidade: values.especialidade || null,
+        especialidade_id: espSelecionada?.id || null,
         crm: values.crm || null,
         rqe: values.rqe || null,
         phone_e164: phoneE164,
@@ -262,6 +266,14 @@ export function LeadDialog({ open, onOpenChange, lead }: LeadDialogProps) {
         if (camposAlterados.length > 0) {
           await registrarEdicaoLead(lead.id, dadosAntigos, dadosNovos, camposAlterados);
         }
+
+        // Popular junction table se especialidade mudou
+        if (espSelecionada && camposAlterados.includes('especialidade')) {
+          await supabase.from('lead_especialidades').upsert(
+            { lead_id: lead.id, especialidade_id: espSelecionada.id, fonte: 'manual' },
+            { onConflict: 'lead_id,especialidade_id' }
+          );
+        }
       } else {
         const { data, error } = await supabase
           .from('leads')
@@ -272,6 +284,14 @@ export function LeadDialog({ open, onOpenChange, lead }: LeadDialogProps) {
 
         if (data) {
           await registrarCriacaoLead(data.id, payload);
+
+          // Popular junction table
+          if (espSelecionada) {
+            await supabase.from('lead_especialidades').upsert(
+              { lead_id: data.id, especialidade_id: espSelecionada.id, fonte: 'manual' },
+              { onConflict: 'lead_id,especialidade_id' }
+            );
+          }
         }
       }
     },

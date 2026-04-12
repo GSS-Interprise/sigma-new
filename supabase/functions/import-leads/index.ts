@@ -403,6 +403,14 @@ async function processImport(
       );
     }
 
+    // Popular junction table de especialidades
+    if (especialidadeId) {
+      await supabase.from("lead_especialidades").upsert(
+        { lead_id: updated.id, especialidade_id: especialidadeId, fonte: "import" },
+        { onConflict: "lead_id,especialidade_id" }
+      ).then(r => { if (r.error) console.warn("[import-leads] junction upsert:", r.error.message); });
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -459,6 +467,14 @@ async function processImport(
         );
       }
       throw createError;
+    }
+
+    // Popular junction table de especialidades
+    if (especialidadeId) {
+      await supabase.from("lead_especialidades").upsert(
+        { lead_id: created.id, especialidade_id: especialidadeId, fonte: "import" },
+        { onConflict: "lead_id,especialidade_id" }
+      ).then(r => { if (r.error) console.warn("[import-leads] junction upsert:", r.error.message); });
     }
 
     return new Response(

@@ -226,6 +226,14 @@ serve(async (req) => {
       throw updateError;
     }
 
+    // Popular junction table se especialidade_id foi atualizado
+    if (update.especialidade_id) {
+      await supabase.from("lead_especialidades").upsert(
+        { lead_id: id, especialidade_id: update.especialidade_id, fonte: "enrich" },
+        { onConflict: "lead_id,especialidade_id" }
+      ).then(r => { if (r.error) console.warn("[enrich-lead] junction upsert:", r.error.message); });
+    }
+
     console.log(`[enrich-lead] Lead ${id} enriched. Status: ${resolved_status}. Fields: ${fields_updated.join(", ")}`);
 
     return new Response(
