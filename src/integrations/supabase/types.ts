@@ -4638,18 +4638,24 @@ export type Database = {
       }
       especialidades: {
         Row: {
+          aliases: string[] | null
+          area: string | null
           ativo: boolean
           created_at: string
           id: string
           nome: string
         }
         Insert: {
+          aliases?: string[] | null
+          area?: string | null
           ativo?: boolean
           created_at?: string
           id?: string
           nome: string
         }
         Update: {
+          aliases?: string[] | null
+          area?: string | null
           ativo?: boolean
           created_at?: string
           id?: string
@@ -5150,6 +5156,55 @@ export type Database = {
           },
         ]
       }
+      lead_especialidades: {
+        Row: {
+          created_at: string | null
+          especialidade_id: string
+          fonte: string | null
+          id: string
+          lead_id: string
+          rqe: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          especialidade_id: string
+          fonte?: string | null
+          id?: string
+          lead_id: string
+          rqe?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          especialidade_id?: string
+          fonte?: string | null
+          id?: string
+          lead_id?: string
+          rqe?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_especialidades_especialidade_id_fkey"
+            columns: ["especialidade_id"]
+            isOneToOne: false
+            referencedRelation: "especialidades"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_especialidades_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_especialidades_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_leads_duplicados"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lead_historico: {
         Row: {
           contrato_id: string | null
@@ -5367,6 +5422,36 @@ export type Database = {
         }
         Relationships: []
       }
+      lead_merge_log: {
+        Row: {
+          executado_em: string | null
+          id: number
+          lead_id_anterior: string
+          lead_id_novo: string
+          merge_batch: string | null
+          registro_id: string
+          tabela: string
+        }
+        Insert: {
+          executado_em?: string | null
+          id?: number
+          lead_id_anterior: string
+          lead_id_novo: string
+          merge_batch?: string | null
+          registro_id: string
+          tabela: string
+        }
+        Update: {
+          executado_em?: string | null
+          id?: number
+          lead_id_anterior?: string
+          lead_id_novo?: string
+          merge_batch?: string | null
+          registro_id?: string
+          tabela?: string
+        }
+        Relationships: []
+      }
       leads: {
         Row: {
           agencia: string | null
@@ -5403,6 +5488,9 @@ export type Database = {
           id: string
           licitacao_origem_id: string | null
           local_prestacao_servico: string | null
+          merge_reason: string | null
+          merged_at: string | null
+          merged_into_id: string | null
           migrado_de_medico_em: string | null
           migrado_de_medico_id: string | null
           modalidade_contrato: string | null
@@ -5462,6 +5550,9 @@ export type Database = {
           id?: string
           licitacao_origem_id?: string | null
           local_prestacao_servico?: string | null
+          merge_reason?: string | null
+          merged_at?: string | null
+          merged_into_id?: string | null
           migrado_de_medico_em?: string | null
           migrado_de_medico_id?: string | null
           modalidade_contrato?: string | null
@@ -5521,6 +5612,9 @@ export type Database = {
           id?: string
           licitacao_origem_id?: string | null
           local_prestacao_servico?: string | null
+          merge_reason?: string | null
+          merged_at?: string | null
+          merged_into_id?: string | null
           migrado_de_medico_em?: string | null
           migrado_de_medico_id?: string | null
           modalidade_contrato?: string | null
@@ -5568,6 +5662,20 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "leads_merged_into_id_fkey"
+            columns: ["merged_into_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_merged_into_id_fkey"
+            columns: ["merged_into_id"]
+            isOneToOne: false
+            referencedRelation: "vw_leads_duplicados"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "leads_servico_origem_id_fkey"
             columns: ["servico_origem_id"]
             isOneToOne: false
@@ -5576,8 +5684,189 @@ export type Database = {
           },
         ]
       }
+      leads_backup_predup: {
+        Row: {
+          agencia: string | null
+          api_enrich_last_attempt: string | null
+          api_enrich_source: string | null
+          api_enrich_status: string | null
+          arquivo_id: string | null
+          banco: string | null
+          canal_conversao: string | null
+          cep: string | null
+          chave_pix: string | null
+          chave_unica: string | null
+          cidade: string | null
+          cnpj: string | null
+          conta_corrente: string | null
+          contrato_origem_id: string | null
+          convertido_por: string | null
+          cpf: string | null
+          created_at: string | null
+          crm: string | null
+          data_conversao: string | null
+          data_formatura: string | null
+          data_inicio_contrato: string | null
+          data_nascimento: string | null
+          email: string | null
+          emails_adicionais: string[] | null
+          endereco: string | null
+          especialidade: string | null
+          especialidade_id: string | null
+          especialidades: string[] | null
+          especialidades_crua: string | null
+          especificacoes_contrato: string | null
+          estado_civil: string | null
+          id: string | null
+          licitacao_origem_id: string | null
+          local_prestacao_servico: string | null
+          migrado_de_medico_em: string | null
+          migrado_de_medico_id: string | null
+          modalidade_contrato: string | null
+          nacionalidade: string | null
+          naturalidade: string | null
+          nome: string | null
+          observacoes: string | null
+          origem: string | null
+          phone_e164: string | null
+          rg: string | null
+          rqe: string | null
+          servico_origem_id: string | null
+          status: string | null
+          status_contrato: string | null
+          status_medico: string | null
+          tags: string[] | null
+          telefones_adicionais: string[] | null
+          uf: string | null
+          ultimo_disparo_em: string | null
+          unidades_vinculadas: string[] | null
+          updated_at: string | null
+          valor_contrato: number | null
+          whatsapp_phones: string[] | null
+        }
+        Insert: {
+          agencia?: string | null
+          api_enrich_last_attempt?: string | null
+          api_enrich_source?: string | null
+          api_enrich_status?: string | null
+          arquivo_id?: string | null
+          banco?: string | null
+          canal_conversao?: string | null
+          cep?: string | null
+          chave_pix?: string | null
+          chave_unica?: string | null
+          cidade?: string | null
+          cnpj?: string | null
+          conta_corrente?: string | null
+          contrato_origem_id?: string | null
+          convertido_por?: string | null
+          cpf?: string | null
+          created_at?: string | null
+          crm?: string | null
+          data_conversao?: string | null
+          data_formatura?: string | null
+          data_inicio_contrato?: string | null
+          data_nascimento?: string | null
+          email?: string | null
+          emails_adicionais?: string[] | null
+          endereco?: string | null
+          especialidade?: string | null
+          especialidade_id?: string | null
+          especialidades?: string[] | null
+          especialidades_crua?: string | null
+          especificacoes_contrato?: string | null
+          estado_civil?: string | null
+          id?: string | null
+          licitacao_origem_id?: string | null
+          local_prestacao_servico?: string | null
+          migrado_de_medico_em?: string | null
+          migrado_de_medico_id?: string | null
+          modalidade_contrato?: string | null
+          nacionalidade?: string | null
+          naturalidade?: string | null
+          nome?: string | null
+          observacoes?: string | null
+          origem?: string | null
+          phone_e164?: string | null
+          rg?: string | null
+          rqe?: string | null
+          servico_origem_id?: string | null
+          status?: string | null
+          status_contrato?: string | null
+          status_medico?: string | null
+          tags?: string[] | null
+          telefones_adicionais?: string[] | null
+          uf?: string | null
+          ultimo_disparo_em?: string | null
+          unidades_vinculadas?: string[] | null
+          updated_at?: string | null
+          valor_contrato?: number | null
+          whatsapp_phones?: string[] | null
+        }
+        Update: {
+          agencia?: string | null
+          api_enrich_last_attempt?: string | null
+          api_enrich_source?: string | null
+          api_enrich_status?: string | null
+          arquivo_id?: string | null
+          banco?: string | null
+          canal_conversao?: string | null
+          cep?: string | null
+          chave_pix?: string | null
+          chave_unica?: string | null
+          cidade?: string | null
+          cnpj?: string | null
+          conta_corrente?: string | null
+          contrato_origem_id?: string | null
+          convertido_por?: string | null
+          cpf?: string | null
+          created_at?: string | null
+          crm?: string | null
+          data_conversao?: string | null
+          data_formatura?: string | null
+          data_inicio_contrato?: string | null
+          data_nascimento?: string | null
+          email?: string | null
+          emails_adicionais?: string[] | null
+          endereco?: string | null
+          especialidade?: string | null
+          especialidade_id?: string | null
+          especialidades?: string[] | null
+          especialidades_crua?: string | null
+          especificacoes_contrato?: string | null
+          estado_civil?: string | null
+          id?: string | null
+          licitacao_origem_id?: string | null
+          local_prestacao_servico?: string | null
+          migrado_de_medico_em?: string | null
+          migrado_de_medico_id?: string | null
+          modalidade_contrato?: string | null
+          nacionalidade?: string | null
+          naturalidade?: string | null
+          nome?: string | null
+          observacoes?: string | null
+          origem?: string | null
+          phone_e164?: string | null
+          rg?: string | null
+          rqe?: string | null
+          servico_origem_id?: string | null
+          status?: string | null
+          status_contrato?: string | null
+          status_medico?: string | null
+          tags?: string[] | null
+          telefones_adicionais?: string[] | null
+          uf?: string | null
+          ultimo_disparo_em?: string | null
+          unidades_vinculadas?: string[] | null
+          updated_at?: string | null
+          valor_contrato?: number | null
+          whatsapp_phones?: string[] | null
+        }
+        Relationships: []
+      }
       leads_bloqueio_temporario: {
         Row: {
+          categoria: string | null
           created_at: string
           created_by: string | null
           id: string
@@ -5587,6 +5876,7 @@ export type Database = {
           removed_by: string | null
         }
         Insert: {
+          categoria?: string | null
           created_at?: string
           created_by?: string | null
           id?: string
@@ -5596,6 +5886,7 @@ export type Database = {
           removed_by?: string | null
         }
         Update: {
+          categoria?: string | null
           created_at?: string
           created_by?: string | null
           id?: string
@@ -7447,6 +7738,51 @@ export type Database = {
           id?: string
           menu_item?: string
           role?: Database["public"]["Enums"]["app_role"]
+        }
+        Relationships: []
+      }
+      merge_plan: {
+        Row: {
+          canonical_filhos: number | null
+          canonical_id: string
+          canonical_tem_cpf: boolean | null
+          cluster_id: number
+          cluster_size: number | null
+          duplicate_ids: string[]
+          duplicates_filhos: number | null
+          match_key: string
+          match_type: string
+          notes: string | null
+          processed_at: string | null
+          status: string | null
+        }
+        Insert: {
+          canonical_filhos?: number | null
+          canonical_id: string
+          canonical_tem_cpf?: boolean | null
+          cluster_id?: number
+          cluster_size?: number | null
+          duplicate_ids: string[]
+          duplicates_filhos?: number | null
+          match_key: string
+          match_type: string
+          notes?: string | null
+          processed_at?: string | null
+          status?: string | null
+        }
+        Update: {
+          canonical_filhos?: number | null
+          canonical_id?: string
+          canonical_tem_cpf?: boolean | null
+          cluster_id?: number
+          cluster_size?: number | null
+          duplicate_ids?: string[]
+          duplicates_filhos?: number | null
+          match_key?: string
+          match_type?: string
+          notes?: string | null
+          processed_at?: string | null
+          status?: string | null
         }
         Relationships: []
       }
@@ -9939,6 +10275,27 @@ export type Database = {
         }
         Returns: string
       }
+      lookup_especialidade: { Args: { p_texto: string }; Returns: string }
+      merge_lead_cluster: {
+        Args: {
+          p_batch_tag?: string
+          p_canonical_id: string
+          p_duplicate_id: string
+        }
+        Returns: Json
+      }
+      nome_is_subset: {
+        Args: { p_nome1: string; p_nome2: string }
+        Returns: boolean
+      }
+      nome_palavras: { Args: { p_nome: string }; Returns: string[] }
+      nome_palavras_comuns: {
+        Args: { p_nome1: string; p_nome2: string }
+        Returns: number
+      }
+      norm_crm: { Args: { p: string }; Returns: string }
+      norm_nome: { Args: { p_nome: string }; Returns: string }
+      norm_phone: { Args: { p: string }; Returns: string }
       processar_disparos_agendados: { Args: never; Returns: undefined }
       release_licitacao_lock: {
         Args: { p_licitacao_id: string }
@@ -9953,6 +10310,7 @@ export type Database = {
         }
         Returns: Json
       }
+      unaccent: { Args: { "": string }; Returns: string }
       validate_api_token: { Args: { _token: string }; Returns: string }
       validate_escala_api_token: { Args: { _token: string }; Returns: string }
     }
