@@ -28,6 +28,9 @@ BEGIN
     RAISE EXCEPTION 'Canonical and duplicate cannot be the same';
   END IF;
 
+  -- 0. Free the duplicate's chave_unica (trigger skips recalc because cpf/nome/data_nascimento unchanged)
+  UPDATE leads SET chave_unica = NULL WHERE id = p_duplicate_id;
+
   -- 1. Merge scalar fields (only fill NULLs in canonical)
   UPDATE leads SET
     cpf              = COALESCE(cpf, v_duplicate.cpf),
