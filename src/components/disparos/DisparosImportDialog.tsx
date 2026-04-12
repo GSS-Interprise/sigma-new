@@ -10,6 +10,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Users, Loader2, Search, Filter, CheckSquare, Square, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { normalizeToDigitsOnly } from "@/lib/phoneUtils";
+import { useEspecialidades } from "@/hooks/useEspecialidades";
 
 
 // Limite máximo de leads por campanha (deve bater com LIMITE_POR_DISPARO no backend)
@@ -30,14 +31,17 @@ interface Lead {
   nome: string;
   phone_e164: string | null;
   especialidade: string | null;
+  especialidade_id: string | null;
   uf: string | null;
   cidade: string | null;
+  especialidades_ref?: { nome: string } | null;
 }
 
 export function DisparosImportDialog({ open, onOpenChange, campanhaId, propostaId, totalContatosAtual = 0, onSuccess }: DisparosImportDialogProps) {
   const [busca, setBusca] = useState("");
   const [buscaDebounced, setBuscaDebounced] = useState("");
-  const [especialidadeFiltro, setEspecialidadeFiltro] = useState<string>("_all");
+  const [especialidadeFiltro, setEspecialidadeFiltro] = useState<string>("_all"); // agora é especialidade_id
+  const { data: especialidadesDB } = useEspecialidades();
   const [ufFiltro, setUfFiltro] = useState<string>("_all");
   const [cidadeFiltro, setCidadeFiltro] = useState<string>("_all");
   const [leadsSelecionados, setLeadsSelecionados] = useState<Set<string>>(new Set());
@@ -183,93 +187,41 @@ export function DisparosImportDialog({ open, onOpenChange, campanhaId, propostaI
     gcTime: 0,
   });
 
-  // Buscar especialidades, UFs e cidades distintas que existem em leads
-  // Supabase tem limite de 1000 registros por query, precisa paginar
+  // Buscar UFs e cidades distintas que existem em leads
+  // Especialidades vêm da tabela normalizada (useEspecialidades hook)
   const { data: filterOptions, isLoading: isLoadingFilters } = useQuery({
-    queryKey: ["leads-distinct-filters-paginated-v2"],
+    queryKey: ["leads-distinct-filters-uf-cidade"],
     queryFn: async () => {
-      console.log("🔄 Buscando filtros com paginação...");
-      
       const pageSize = 1000;
-      
-      // Função para buscar especialidades paginadas
-      const fetchEspecialidades = async () => {
+
+      const fetchField = async (field: string) => {
         const allData: string[] = [];
-        let page = 0;
+        let pg = 0;
         let hasMore = true;
         while (hasMore) {
           const { data } = await supabase
             .from("leads")
-            .select("especialidade")
-            .not("especialidade", "is", null)
-            .range(page * pageSize, (page + 1) * pageSize - 1);
+            .select(field)
+            .not(field, "is", null)
+            .range(pg * pageSize, (pg + 1) * pageSize - 1);
           if (data && data.length > 0) {
-            data.forEach((row) => { if (row.especialidade) allData.push(row.especialidade); });
-            console.log(`📦 especialidade: página ${page + 1}, ${data.length} registros`);
+            data.forEach((row: any) => { if (row[field]) allData.push(row[field]); });
             hasMore = data.length === pageSize;
-            page++;
+            pg++;
           } else { hasMore = false; }
         }
         return allData;
       };
 
-      // Função para buscar UFs paginados
-      const fetchUfs = async () => {
-        const allData: string[] = [];
-        let page = 0;
-        let hasMore = true;
-        while (hasMore) {
-          const { data } = await supabase
-            .from("leads")
-            .select("uf")
-            .not("uf", "is", null)
-            .range(page * pageSize, (page + 1) * pageSize - 1);
-          if (data && data.length > 0) {
-            data.forEach((row) => { if (row.uf) allData.push(row.uf); });
-            console.log(`📦 uf: página ${page + 1}, ${data.length} registros`);
-            hasMore = data.length === pageSize;
-            page++;
-          } else { hasMore = false; }
-        }
-        return allData;
-      };
-
-      // Função para buscar cidades paginadas
-      const fetchCidades = async () => {
-        const allData: string[] = [];
-        let page = 0;
-        let hasMore = true;
-        while (hasMore) {
-          const { data } = await supabase
-            .from("leads")
-            .select("cidade")
-            .not("cidade", "is", null)
-            .range(page * pageSize, (page + 1) * pageSize - 1);
-          if (data && data.length > 0) {
-            data.forEach((row) => { if (row.cidade) allData.push(row.cidade); });
-            console.log(`📦 cidade: página ${page + 1}, ${data.length} registros`);
-            hasMore = data.length === pageSize;
-            page++;
-          } else { hasMore = false; }
-        }
-        return allData;
-      };
-
-      const [espData, ufData, cidadeData] = await Promise.all([
-        fetchEspecialidades(),
-        fetchUfs(),
-        fetchCidades(),
+      const [ufData, cidadeData] = await Promise.all([
+        fetchField("uf"),
+        fetchField("cidade"),
       ]);
 
-      console.log("📦 Total registros:", { esp: espData.length, uf: ufData.length, cidade: cidadeData.length });
-
-      const especialidades = [...new Set(espData.map(e => e.trim()).filter(Boolean))].sort();
       const ufs = [...new Set(ufData.map(u => u.trim().toUpperCase()).filter(Boolean))].sort();
       const cidades = [...new Set(cidadeData.map(c => c.trim()).filter(Boolean))].sort();
 
-      console.log("📊 Filtros únicos:", { especialidades: especialidades.length, especialidadesList: especialidades, ufs: ufs.length, cidades: cidades.length });
-
-      return { especialidades, ufs, cidades };
+      return { ufs, cidades };
     },
     enabled: open,
     staleTime: 300000,
@@ -281,7 +233,7 @@ export function DisparosImportDialog({ open, onOpenChange, campanhaId, propostaI
     queryFn: async () => {
       let query = supabase
         .from("leads")
-        .select("id, nome, phone_e164, especialidade, uf, cidade", { count: "exact" })
+        .select("id, nome, phone_e164, especialidade, especialidade_id, uf, cidade, especialidades_ref:especialidades!leads_especialidade_id_fkey(nome)", { count: "exact" })
         .not("phone_e164", "is", null)
         .neq("status", "Convertido")
         .order("nome");
@@ -291,7 +243,7 @@ export function DisparosImportDialog({ open, onOpenChange, campanhaId, propostaI
         query = query.or(`nome.ilike.%${buscaDebounced}%,phone_e164.ilike.%${buscaDebounced}%`);
       }
       if (especialidadeFiltro !== "_all") {
-        query = query.ilike("especialidade", especialidadeFiltro);
+        query = query.eq("especialidade_id", especialidadeFiltro);
       }
       if (ufFiltro !== "_all") {
         query = query.ilike("uf", ufFiltro);
@@ -348,7 +300,7 @@ export function DisparosImportDialog({ open, onOpenChange, campanhaId, propostaI
   const temFiltroAtivo = busca || especialidadeFiltro !== "_all" || ufFiltro !== "_all" || cidadeFiltro !== "_all";
 
   // Usar opções de filtro do cache
-  const especialidades = filterOptions?.especialidades || [];
+  const especialidades = especialidadesDB || [];
   const ufs = filterOptions?.ufs || [];
   const cidades = filterOptions?.cidades || [];
 
@@ -481,8 +433,8 @@ export function DisparosImportDialog({ open, onOpenChange, campanhaId, propostaI
               <SelectContent>
                 <SelectItem value="_all">Todas Especialidades</SelectItem>
                 {especialidades.map((esp) => (
-                  <SelectItem key={esp} value={esp!}>
-                    {esp}
+                  <SelectItem key={esp.id} value={esp.id}>
+                    {esp.nome}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -579,7 +531,7 @@ export function DisparosImportDialog({ open, onOpenChange, campanhaId, propostaI
                     <p className="font-medium truncate">{lead.nome}</p>
                     <p className="text-sm text-muted-foreground">
                       {lead.phone_e164}
-                      {lead.especialidade && ` • ${lead.especialidade}`}
+                      {((lead as any).especialidades_ref?.nome || lead.especialidade) && ` • ${(lead as any).especialidades_ref?.nome || lead.especialidade}`}
                       {lead.cidade && lead.uf ? ` • ${lead.cidade}/${lead.uf}` : lead.uf && ` • ${lead.uf}`}
                     </p>
                   </div>
