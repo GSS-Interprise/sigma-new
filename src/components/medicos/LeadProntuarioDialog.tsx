@@ -639,6 +639,7 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
     mutationFn: async () => {
       if (!lead) throw new Error('Lead não encontrado');
       if (!motivoConversao.trim()) throw new Error('O motivo da conversão é obrigatório');
+      if (!jusImageFile) throw new Error('A imagem de validação JUS é obrigatória');
 
       const { data: { user } } = await supabase.auth.getUser();
 
