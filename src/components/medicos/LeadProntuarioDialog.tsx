@@ -139,6 +139,43 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
     }
   }, []);
 
+  // JUS image handlers
+  const handleJusImageSelect = useCallback((file: File) => {
+    if (!file.type.startsWith('image/')) {
+      toast.error('Apenas imagens são permitidas');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('Imagem deve ter no máximo 10MB');
+      return;
+    }
+    setJusImageFile(file);
+    const reader = new FileReader();
+    reader.onload = (e) => setJusImagePreview(e.target?.result as string);
+    reader.readAsDataURL(file);
+  }, []);
+
+  const handleJusPaste = useCallback((e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of Array.from(items)) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (file) handleJusImageSelect(file);
+        return;
+      }
+    }
+  }, [handleJusImageSelect]);
+
+  const handleJusDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files?.[0];
+    if (file && file.type.startsWith('image/')) {
+      handleJusImageSelect(file);
+    }
+  }, [handleJusImageSelect]);
+
   // Fetch lead data with related info
   const { data: lead, isLoading: loadingLead } = useQuery({
     queryKey: ['lead-prontuario', leadId],
