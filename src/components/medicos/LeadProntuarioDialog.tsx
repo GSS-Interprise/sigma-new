@@ -119,6 +119,11 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
   // Canal de Conversão state (para BI de tipo de conversão)
   const [canalConversao, setCanalConversao] = useState<string>('');
   
+  // Validação JUS - imagem obrigatória para conversão
+  const [jusImageFile, setJusImageFile] = useState<File | null>(null);
+  const [jusImagePreview, setJusImagePreview] = useState<string | null>(null);
+  const jusFileInputRef = useRef<HTMLInputElement>(null);
+  
   // Check if we're on acompanhamento context
   const isOnAcompanhamentoPage = location.pathname.includes('/disparos/acompanhamento');
 
