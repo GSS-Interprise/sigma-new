@@ -231,6 +231,22 @@ export function LeadTimelineSection({ leadId }: LeadTimelineSectionProps) {
                   )}
                 </div>
 
+                {/* JUS verification image preview */}
+                {evento.metadados && typeof evento.metadados === 'object' && (evento.metadados as any).arquivo_url && (
+                  <div className="mt-2 pt-2 border-t">
+                    <p className="text-xs text-muted-foreground mb-1 font-medium">
+                      📎 {(evento.metadados as any).tipo || 'Anexo'}
+                    </p>
+                    <a href={(evento.metadados as any).arquivo_url} target="_blank" rel="noopener noreferrer">
+                      <img
+                        src={(evento.metadados as any).arquivo_url}
+                        alt={(evento.metadados as any).tipo || 'Anexo'}
+                        className="max-h-[200px] rounded-md border object-contain cursor-pointer hover:opacity-80 transition-opacity"
+                      />
+                    </a>
+                  </div>
+                )}
+
                 {/* User info */}
                 {evento.usuario_nome && (
                   <p className="text-xs text-muted-foreground mt-2 pt-2 border-t">
