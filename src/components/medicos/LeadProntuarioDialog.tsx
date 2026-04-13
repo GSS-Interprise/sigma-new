@@ -2665,6 +2665,75 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                                   />
                                 </div>
 
+                                {/* Validação JUS - Upload obrigatório */}
+                                <div>
+                                  <label className="text-sm font-medium text-foreground mb-2 block">
+                                    Validação de verificação de processo no JUS <span className="text-red-500">*</span>
+                                  </label>
+                                  <div
+                                    className={`relative rounded-lg border-2 border-dashed p-4 text-center cursor-pointer transition-colors ${
+                                      jusImagePreview 
+                                        ? 'border-green-500/50 bg-green-500/5' 
+                                        : 'border-muted-foreground/30 hover:border-primary/50 hover:bg-muted/30'
+                                    }`}
+                                    onPaste={handleJusPaste}
+                                    onDrop={handleJusDrop}
+                                    onDragOver={(e) => e.preventDefault()}
+                                    onClick={() => !jusImagePreview && jusFileInputRef.current?.click()}
+                                    tabIndex={0}
+                                  >
+                                    <input
+                                      ref={jusFileInputRef}
+                                      type="file"
+                                      accept="image/*"
+                                      className="hidden"
+                                      onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) handleJusImageSelect(file);
+                                      }}
+                                    />
+                                    {jusImagePreview ? (
+                                      <div className="space-y-3">
+                                        <img
+                                          src={jusImagePreview}
+                                          alt="Validação JUS"
+                                          className="max-h-[200px] mx-auto rounded-md border object-contain"
+                                        />
+                                        <div className="flex items-center justify-center gap-2">
+                                          <CheckCircle2 className="h-4 w-4 text-green-600" />
+                                          <span className="text-sm text-green-600 font-medium">
+                                            {jusImageFile?.name}
+                                          </span>
+                                          <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-7 text-xs text-destructive hover:text-destructive"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setJusImageFile(null);
+                                              setJusImagePreview(null);
+                                              if (jusFileInputRef.current) jusFileInputRef.current.value = '';
+                                            }}
+                                          >
+                                            Remover
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className="py-4 space-y-2">
+                                        <FileSignature className="h-8 w-8 mx-auto text-muted-foreground/50" />
+                                        <p className="text-sm text-muted-foreground">
+                                          <span className="font-medium text-foreground">Clique para selecionar</span>, arraste ou <span className="font-medium text-foreground">cole (Ctrl+V)</span> um print
+                                        </p>
+                                        <p className="text-xs text-muted-foreground">
+                                          Imagem da consulta de processos no JUS (PNG, JPG, até 10MB)
+                                        </p>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+
                                 <div className="flex gap-2 justify-end">
                                   <Button 
                                     variant="outline"
@@ -2672,13 +2741,15 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                                       setShowConversaoForm(false);
                                       setMotivoConversao('');
                                       setCanalConversao('');
+                                      setJusImageFile(null);
+                                      setJusImagePreview(null);
                                     }}
                                   >
                                     Cancelar
                                   </Button>
                                   <Button 
                                     onClick={() => convertToMedicoMutation.mutate()}
-                                    disabled={convertToMedicoMutation.isPending || !motivoConversao.trim() || !canalConversao}
+                                    disabled={convertToMedicoMutation.isPending || !motivoConversao.trim() || !canalConversao || !jusImageFile}
                                     className="gap-2"
                                   >
                                     <ArrowRight className="h-4 w-4" />
