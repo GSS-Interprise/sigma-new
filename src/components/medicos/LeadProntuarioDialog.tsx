@@ -811,6 +811,8 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
       queryClient.invalidateQueries({ queryKey: ['medicos-kanban-cards'] });
       setMotivoConversao('');
       setShowConversaoForm(false);
+      setJusImageFile(null);
+      setJusImagePreview(null);
       toast.success('Lead convertido em médico com sucesso!');
     },
     onError: (error: any) => {
