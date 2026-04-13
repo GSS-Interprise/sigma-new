@@ -62,22 +62,17 @@ serve(async (req) => {
   }
 
   try {
-    // ========== EXTRACT ID FROM URL PATH OR BODY ==========
-    // Supports both:
-    //   PATCH /enrich-lead/{id}   ← preferred (id from URL)
-    //   PATCH /enrich-lead        ← legacy (id from body)
     const url = new URL(req.url);
     const pathParts = url.pathname.split("/").filter(Boolean);
     const urlId = pathParts[pathParts.length - 1];
-    // urlId will be "enrich-lead" if no path param was given
     const pathId = (urlId && urlId !== "enrich-lead") ? urlId : null;
 
     const payload = await req.json();
-    const { id: bodyId, api_enrich_status, api_enrich_source, telefones, emails, ...rest } = payload;
+    const { id: bodyId, api_enrich_status, api_enrich_source, telefones, emails, pipeline: payloadPipeline, ...rest } = payload;
 
     const id = pathId ?? bodyId;
+    const pipeline = payloadPipeline || "enrich_v1";
 
-    // ========== VALIDATE REQUIRED FIELDS ==========
     if (!id) {
       return new Response(
         JSON.stringify({ error: "Missing required field: id (pass as URL path /enrich-lead/{id} or in the request body)" }),
@@ -85,12 +80,10 @@ serve(async (req) => {
       );
     }
 
-    // Map display labels → internal DB values
     const statusMap: Record<string, string> = {
       "enriquecido": "concluido",
       "non-encontrado": "erro",
       "pendente": "pendente",
-      // Also accept internal values directly for backwards compat
       "concluido": "concluido",
       "alimentado": "alimentado",
       "erro": "erro",
@@ -105,7 +98,7 @@ serve(async (req) => {
 
     const resolved_status = statusMap[api_enrich_status];
 
-    // ========== FETCH CURRENT LEAD (by PK — O(1)) ==========
+    // ========== FETCH CURRENT LEAD ==========
     const { data: lead, error: fetchError } = await supabase
       .from("leads")
       .select("id, crm, rqe, especialidade_id, data_nascimento, data_formatura, cidade, uf, email, emails_adicionais, endereco, cep, phone_e164, telefones_adicionais")
@@ -119,8 +112,9 @@ serve(async (req) => {
       );
     }
 
-    // ========== BUILD UPDATE PAYLOAD ==========
+    // ========== BUILD LEAD UPDATE PAYLOAD ==========
     const update: Record<string, unknown> = {
+      // Keep backward compat — still write to leads columns
       api_enrich_status: resolved_status,
       api_enrich_source: api_enrich_source ?? null,
       api_enrich_last_attempt: new Date().toISOString(),
@@ -129,20 +123,13 @@ serve(async (req) => {
     const fields_updated: string[] = ["api_enrich_status", "api_enrich_last_attempt"];
     if (api_enrich_source) fields_updated.push("api_enrich_source");
 
-    // If status is "erro", skip data enrichment
-    // "concluido" and "alimentado" both apply enrichment
     if (resolved_status === "concluido" || resolved_status === "alimentado") {
-
-      // ---- Never Overwrite Non-Null for enrichable fields ----
       for (const field of ENRICHABLE_FIELDS) {
         const incoming = rest[field as string];
         const current = (lead as Record<string, unknown>)[field];
-
-        // Only fill if incoming has a value AND current is null/empty
         if (incoming !== undefined && incoming !== null && incoming !== "") {
           const isEmpty = current === null || current === undefined || current === "";
           if (isEmpty) {
-            // Convert DD/MM/YYYY → YYYY-MM-DD for data_nascimento
             let valueToStore = incoming;
             if (field === "data_nascimento" && typeof incoming === "string") {
               valueToStore = parseDateBR(incoming) ?? incoming;
@@ -153,7 +140,6 @@ serve(async (req) => {
         }
       }
 
-      // ---- Always overwrite fields (e.g. crm) ----
       for (const field of OVERWRITE_FIELDS) {
         const incoming = rest[field as string];
         if (incoming !== undefined && incoming !== null && incoming !== "") {
@@ -162,17 +148,12 @@ serve(async (req) => {
         }
       }
 
-      // ---- Telefones: merge without duplicates ----
       if (Array.isArray(telefones) && telefones.length > 0) {
         const currentAdditional: string[] = lead.telefones_adicionais ?? [];
         const currentPrimary = lead.phone_e164 ?? "";
-
         const allExisting = new Set<string>(
-          [currentPrimary, ...currentAdditional]
-            .map((t) => t.replace(/\D/g, ""))
-            .filter(Boolean)
+          [currentPrimary, ...currentAdditional].map((t) => t.replace(/\D/g, "")).filter(Boolean)
         );
-
         const newPhones: string[] = [];
         for (const t of telefones) {
           const digits = String(t).replace(/\D/g, "");
@@ -181,24 +162,18 @@ serve(async (req) => {
             newPhones.push(t);
           }
         }
-
         if (newPhones.length > 0) {
           update["telefones_adicionais"] = [...currentAdditional, ...newPhones];
           fields_updated.push("telefones_adicionais");
         }
       }
 
-      // ---- Emails: merge without duplicates ----
       if (Array.isArray(emails) && emails.length > 0) {
         const currentEmailsAdicionais: string[] = lead.emails_adicionais ?? [];
         const currentEmailPrimary = lead.email ?? "";
-
         const allExistingEmails = new Set<string>(
-          [currentEmailPrimary, ...currentEmailsAdicionais]
-            .map((e) => e.trim().toLowerCase())
-            .filter(Boolean)
+          [currentEmailPrimary, ...currentEmailsAdicionais].map((e) => e.trim().toLowerCase()).filter(Boolean)
         );
-
         const newEmails: string[] = [];
         for (const e of emails) {
           const normalized = String(e).trim().toLowerCase();
@@ -207,7 +182,6 @@ serve(async (req) => {
             newEmails.push(String(e).trim());
           }
         }
-
         if (newEmails.length > 0) {
           update["emails_adicionais"] = [...currentEmailsAdicionais, ...newEmails];
           fields_updated.push("emails_adicionais");
@@ -215,7 +189,7 @@ serve(async (req) => {
       }
     }
 
-    // ========== APPLY UPDATE ==========
+    // ========== APPLY LEAD UPDATE ==========
     const { error: updateError } = await supabase
       .from("leads")
       .update(update)
@@ -226,7 +200,28 @@ serve(async (req) => {
       throw updateError;
     }
 
-    // Popular junction table se especialidade_id foi atualizado
+    // ========== UPDATE lead_enrichments TABLE ==========
+    const now = new Date().toISOString();
+    const enrichmentData: Record<string, unknown> = {
+      lead_id: id,
+      pipeline,
+      status: resolved_status,
+      source: api_enrich_source ?? null,
+      last_attempt_at: now,
+      completed_at: (resolved_status === "concluido" || resolved_status === "alimentado") ? now : null,
+      error_message: resolved_status === "erro" ? (rest.error_message || "non-encontrado") : null,
+      result_data: (resolved_status === "concluido" || resolved_status === "alimentado") ? rest : null,
+    };
+
+    const { error: enrichUpsertError } = await supabase
+      .from("lead_enrichments")
+      .upsert(enrichmentData, { onConflict: "lead_id,pipeline" });
+
+    if (enrichUpsertError) {
+      console.warn("[enrich-lead] lead_enrichments upsert error:", enrichUpsertError.message);
+    }
+
+    // Junction table
     if (update.especialidade_id) {
       await supabase.from("lead_especialidades").upsert(
         { lead_id: id, especialidade_id: update.especialidade_id, fonte: "enrich" },
@@ -234,13 +229,14 @@ serve(async (req) => {
       ).then(r => { if (r.error) console.warn("[enrich-lead] junction upsert:", r.error.message); });
     }
 
-    console.log(`[enrich-lead] Lead ${id} enriched. Status: ${resolved_status}. Fields: ${fields_updated.join(", ")}`);
+    console.log(`[enrich-lead] Lead ${id} enriched. Status: ${resolved_status}. Pipeline: ${pipeline}. Fields: ${fields_updated.join(", ")}`);
 
     return new Response(
       JSON.stringify({
         success: true,
         action: "enriched",
         lead_id: id,
+        pipeline,
         api_enrich_status: resolved_status,
         fields_updated,
       }),
