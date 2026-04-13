@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -93,6 +94,7 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
   // Conversão Lead -> Médico state
   const [motivoConversao, setMotivoConversao] = useState('');
   const [showConversaoForm, setShowConversaoForm] = useState(false);
+  const [showConversaoConfirmDialog, setShowConversaoConfirmDialog] = useState(false);
   
   // Checkboxes obrigatórios para conversão Lead -> Médico (igual ao padrão Corpo Clínico)
   const [checkLeadDadosCompletos, setCheckLeadDadosCompletos] = useState(false);
@@ -2748,13 +2750,52 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                                     Cancelar
                                   </Button>
                                   <Button 
-                                    onClick={() => convertToMedicoMutation.mutate()}
+                                    onClick={() => setShowConversaoConfirmDialog(true)}
                                     disabled={convertToMedicoMutation.isPending || !motivoConversao.trim() || !canalConversao || !jusImageFile}
                                     className="gap-2"
                                   >
                                     <ArrowRight className="h-4 w-4" />
                                     {convertToMedicoMutation.isPending ? 'Convertendo...' : 'Confirmar Conversão'}
                                   </Button>
+
+                                  {/* Modal de confirmação de responsabilidade */}
+                                  <AlertDialog open={showConversaoConfirmDialog} onOpenChange={setShowConversaoConfirmDialog}>
+                                    <AlertDialogContent>
+                                      <AlertDialogHeader>
+                                        <AlertDialogTitle className="flex items-center gap-2 text-amber-600">
+                                          <AlertTriangle className="h-5 w-5" />
+                                          Confirmação de Responsabilidade
+                                        </AlertDialogTitle>
+                                        <AlertDialogDescription asChild>
+                                          <div className="space-y-3 pt-2">
+                                            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4">
+                                              <p className="text-sm font-medium text-amber-700 dark:text-amber-400 leading-relaxed">
+                                                Ao confirmar esta conversão, você declara que é responsável pela veracidade e integridade de todos os dados informados.
+                                              </p>
+                                            </div>
+                                            <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+                                              <p className="text-sm text-destructive leading-relaxed">
+                                                <strong>Atenção:</strong> Você poderá ser contactado(a) para esclarecimento de possíveis incoerências nos dados cadastrados. Certifique-se de que todas as informações estão corretas antes de prosseguir.
+                                              </p>
+                                            </div>
+                                          </div>
+                                        </AlertDialogDescription>
+                                      </AlertDialogHeader>
+                                      <AlertDialogFooter>
+                                        <AlertDialogCancel>Voltar e Revisar</AlertDialogCancel>
+                                        <AlertDialogAction
+                                          onClick={() => {
+                                            setShowConversaoConfirmDialog(false);
+                                            convertToMedicoMutation.mutate();
+                                          }}
+                                          className="bg-primary hover:bg-primary/90 gap-2"
+                                        >
+                                          <CheckCircle2 className="h-4 w-4" />
+                                          Estou ciente, confirmar conversão
+                                        </AlertDialogAction>
+                                      </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                  </AlertDialog>
                                 </div>
                               </div>
                             )
