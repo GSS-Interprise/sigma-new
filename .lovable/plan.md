@@ -1,36 +1,51 @@
 
 
-## Plano: Corrigir exibição de telefone LID + melhorar busca automática de lead
+## Plano: Criar tabela `lead_enrichments` e migrar dados existentes
 
-### Problemas identificados
+### Estrutura proposta
 
-1. **Header mostra LID como telefone** — O campo `contact_phone` contém `97676213370883` (LID do WhatsApp), não um número real. Quando o contato é LID, deveria mostrar o telefone do lead vinculado ou esconder o número falso.
+```sql
+CREATE TABLE lead_enrichments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  lead_id UUID NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+  pipeline TEXT NOT NULL,          -- ex: 'enrich_v1', 'alimentacao_v2', 'validacao_telefone'
+  status TEXT NOT NULL DEFAULT 'pendente',  -- pendente, em_processamento, concluido, alimentado, erro
+  source TEXT,                     -- fonte dos dados (API externa, planilha, etc.)
+  attempt_count INT DEFAULT 0,
+  last_attempt_at TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ,
+  result_data JSONB,              -- dados retornados pelo pipeline (flexível)
+  error_message TEXT,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  
+  UNIQUE (lead_id, pipeline)      -- 1 registro por lead por pipeline
+);
 
-2. **Modal não reaparece ao voltar na conversa** — O `useEffect` na linha 311-331 faz `setAutoMatchDialogOpen(false)` ao trocar de conversa, mas quando volta, o `linkedLead` já está em cache e o effect não dispara de novo.
+CREATE INDEX idx_lead_enrichments_status ON lead_enrichments(pipeline, status, last_attempt_at);
+CREATE INDEX idx_lead_enrichments_lead ON lead_enrichments(lead_id);
+```
 
-3. **Push name já é o `contact_name`** — O webhook já salva o `pushName` do WhatsApp como `contact_name` na tabela `sigzap_contacts`. Não existe coluna separada. O matching por nome já usa `contact_name`.
+### Passos de implementação
 
-4. **Matching por nome fraco** — "Jaime" com 1 parte de nome dá match em qualquer "Jaime" no banco, mesmo com sobrenome diferente. Precisa priorizar resultados onde mais partes do nome coincidem.
+1. **Criar a tabela `lead_enrichments`** via migration com a estrutura acima, incluindo trigger de `updated_at` e RLS.
 
-### Alterações planejadas
+2. **Migrar dados existentes** — INSERT INTO `lead_enrichments` a partir das colunas atuais de `leads` (pipeline = `'enrich_v1'`), preservando status/source/last_attempt.
 
-**Arquivo: `src/components/sigzap/SigZapChatColumn.tsx`**
+3. **Atualizar Edge Functions** (`get-pending-leads`, `query-leads-for-enrich`, `enrich-lead`) para ler/escrever na nova tabela em vez das colunas `api_enrich_*` da tabela leads.
 
-1. **Header — esconder LID, mostrar telefone real do lead**
-   - Na linha 1421-1423, quando `isLidContact` for true, mostrar o telefone do lead vinculado (`linkedLead?.phone_e164` ou `leadFromJoin?.phone_e164`) ou "Contato LID" em vez do número LID cru.
+4. **Atualizar o frontend** — `useLeadsPaginated.ts` (filtro de enrichStatus) e componentes que mostram status de enriquecimento passam a fazer JOIN ou subquery na `lead_enrichments`.
 
-2. **Fix modal não reaparecendo**
-   - No `useEffect` linha 311-331 (troca de conversa), NÃO fazer `setAutoMatchDialogOpen(false)` — deixar o estado ser controlado apenas pelo effect que detecta `linkedLead` (linha 239-248).
-   - Adicionar `conversaId` como dependência forte no effect do auto-match para re-disparar ao voltar.
+5. **Remover colunas legadas** — após validação, dropar `api_enrich_status`, `api_enrich_last_attempt`, `api_enrich_source` da tabela leads (pode ser feito numa fase posterior para segurança).
 
-3. **Melhorar scoring de nome**
-   - Quando o contato tem apenas 1 parte de nome (ex: "Jaime"), exigir score mínimo mais alto ou buscar por match exato de primeiro nome.
-   - Penalizar resultados onde o sobrenome do lead não bate com nenhuma parte do nome do contato.
-   - Se só tem 1 parte de nome e múltiplos resultados com score igual, não abrir o modal automático — abrir o dialog manual de vinculação para o usuário escolher.
+### Benefícios concretos
 
-### Resultado esperado
+- **Queries de listagem** (a mais usada, 50 leads por página): não carregam dados de enriquecimento desnecessariamente.
+- **Novos pipelines**: basta inserir rows com `pipeline = 'novo_nome'`, zero migrations de schema.
+- **Histórico**: `result_data` JSONB armazena o que cada pipeline retornou, auditável.
+- **N8N**: o endpoint `get-pending-leads` filtra por `pipeline + status` na tabela menor e indexada.
 
-- Contatos LID mostram "Contato LID" ou o telefone real do lead vinculado no header
-- Modal de auto-match reaparece toda vez que selecionar conversa sem lead vinculado
-- Nomes com 1 parte (ex: "Jaime") não fazem match errado com leads de sobrenome diferente
+### Sobre o N8N
+
+O workflow que você mostrou (`get-pending-leads` com limit=500) continuará funcionando — apenas o endpoint interno muda para consultar `lead_enrichments` em vez de `leads.api_enrich_status`. A URL e autenticação ficam iguais.
 
