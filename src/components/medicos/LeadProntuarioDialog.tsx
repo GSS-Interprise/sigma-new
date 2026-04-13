@@ -119,6 +119,11 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
   // Canal de Conversão state (para BI de tipo de conversão)
   const [canalConversao, setCanalConversao] = useState<string>('');
   
+  // Validação JUS - imagem obrigatória para conversão
+  const [jusImageFile, setJusImageFile] = useState<File | null>(null);
+  const [jusImagePreview, setJusImagePreview] = useState<string | null>(null);
+  const jusFileInputRef = useRef<HTMLInputElement>(null);
+  
   // Check if we're on acompanhamento context
   const isOnAcompanhamentoPage = location.pathname.includes('/disparos/acompanhamento');
 
@@ -133,6 +138,43 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
       textarea.style.height = `${textarea.scrollHeight}px`;
     }
   }, []);
+
+  // JUS image handlers
+  const handleJusImageSelect = useCallback((file: File) => {
+    if (!file.type.startsWith('image/')) {
+      toast.error('Apenas imagens são permitidas');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('Imagem deve ter no máximo 10MB');
+      return;
+    }
+    setJusImageFile(file);
+    const reader = new FileReader();
+    reader.onload = (e) => setJusImagePreview(e.target?.result as string);
+    reader.readAsDataURL(file);
+  }, []);
+
+  const handleJusPaste = useCallback((e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of Array.from(items)) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (file) handleJusImageSelect(file);
+        return;
+      }
+    }
+  }, [handleJusImageSelect]);
+
+  const handleJusDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files?.[0];
+    if (file && file.type.startsWith('image/')) {
+      handleJusImageSelect(file);
+    }
+  }, [handleJusImageSelect]);
 
   // Fetch lead data with related info
   const { data: lead, isLoading: loadingLead } = useQuery({
@@ -597,6 +639,7 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
     mutationFn: async () => {
       if (!lead) throw new Error('Lead não encontrado');
       if (!motivoConversao.trim()) throw new Error('O motivo da conversão é obrigatório');
+      if (!jusImageFile) throw new Error('A imagem de validação JUS é obrigatória');
 
       const { data: { user } } = await supabase.auth.getUser();
 
@@ -715,6 +758,47 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
         }
       });
 
+      // Upload JUS verification image
+      const fileExt = jusImageFile.name.split('.').pop() || 'png';
+      const filePath = `${lead.id}/jus-verificacao-${Date.now()}.${fileExt}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from('lead-anexos')
+        .upload(filePath, jusImageFile, {
+          contentType: jusImageFile.type,
+          upsert: false,
+        });
+      
+      if (uploadError) {
+        console.error('Erro ao fazer upload da imagem JUS:', uploadError);
+        // Não bloqueia conversão, mas loga
+      } else {
+        const { data: { publicUrl } } = supabase.storage
+          .from('lead-anexos')
+          .getPublicUrl(filePath);
+        
+        // Salvar como anexo do lead
+        await supabase.from('lead_anexos').insert({
+          lead_id: lead.id,
+          arquivo_nome: `Validação JUS - ${lead.nome}.${fileExt}`,
+          arquivo_url: publicUrl,
+          arquivo_tipo: jusImageFile.type,
+          arquivo_tamanho: jusImageFile.size,
+          usuario_id: user?.id || null,
+          usuario_nome: user?.user_metadata?.nome_completo || user?.email || null,
+        });
+
+        // Registrar no histórico
+        await supabase.from('lead_historico').insert({
+          lead_id: lead.id,
+          tipo_evento: 'documentacao_recebida' as const,
+          descricao_resumida: 'Validação de verificação de processo no JUS anexada na conversão para médico',
+          usuario_id: user?.id || null,
+          usuario_nome: user?.user_metadata?.nome_completo || user?.email || null,
+          metadados: { arquivo_url: publicUrl, tipo: 'Validação JUS' },
+        });
+      }
+
       return medicoId;
     },
     onSuccess: () => {
@@ -727,6 +811,8 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
       queryClient.invalidateQueries({ queryKey: ['medicos-kanban-cards'] });
       setMotivoConversao('');
       setShowConversaoForm(false);
+      setJusImageFile(null);
+      setJusImagePreview(null);
       toast.success('Lead convertido em médico com sucesso!');
     },
     onError: (error: any) => {
@@ -2579,6 +2665,75 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                                   />
                                 </div>
 
+                                {/* Validação JUS - Upload obrigatório */}
+                                <div>
+                                  <label className="text-sm font-medium text-foreground mb-2 block">
+                                    Validação de verificação de processo no JUS <span className="text-red-500">*</span>
+                                  </label>
+                                  <div
+                                    className={`relative rounded-lg border-2 border-dashed p-4 text-center cursor-pointer transition-colors ${
+                                      jusImagePreview 
+                                        ? 'border-green-500/50 bg-green-500/5' 
+                                        : 'border-muted-foreground/30 hover:border-primary/50 hover:bg-muted/30'
+                                    }`}
+                                    onPaste={handleJusPaste}
+                                    onDrop={handleJusDrop}
+                                    onDragOver={(e) => e.preventDefault()}
+                                    onClick={() => !jusImagePreview && jusFileInputRef.current?.click()}
+                                    tabIndex={0}
+                                  >
+                                    <input
+                                      ref={jusFileInputRef}
+                                      type="file"
+                                      accept="image/*"
+                                      className="hidden"
+                                      onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) handleJusImageSelect(file);
+                                      }}
+                                    />
+                                    {jusImagePreview ? (
+                                      <div className="space-y-3">
+                                        <img
+                                          src={jusImagePreview}
+                                          alt="Validação JUS"
+                                          className="max-h-[200px] mx-auto rounded-md border object-contain"
+                                        />
+                                        <div className="flex items-center justify-center gap-2">
+                                          <CheckCircle2 className="h-4 w-4 text-green-600" />
+                                          <span className="text-sm text-green-600 font-medium">
+                                            {jusImageFile?.name}
+                                          </span>
+                                          <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-7 text-xs text-destructive hover:text-destructive"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setJusImageFile(null);
+                                              setJusImagePreview(null);
+                                              if (jusFileInputRef.current) jusFileInputRef.current.value = '';
+                                            }}
+                                          >
+                                            Remover
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className="py-4 space-y-2">
+                                        <FileSignature className="h-8 w-8 mx-auto text-muted-foreground/50" />
+                                        <p className="text-sm text-muted-foreground">
+                                          <span className="font-medium text-foreground">Clique para selecionar</span>, arraste ou <span className="font-medium text-foreground">cole (Ctrl+V)</span> um print
+                                        </p>
+                                        <p className="text-xs text-muted-foreground">
+                                          Imagem da consulta de processos no JUS (PNG, JPG, até 10MB)
+                                        </p>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+
                                 <div className="flex gap-2 justify-end">
                                   <Button 
                                     variant="outline"
@@ -2586,13 +2741,15 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                                       setShowConversaoForm(false);
                                       setMotivoConversao('');
                                       setCanalConversao('');
+                                      setJusImageFile(null);
+                                      setJusImagePreview(null);
                                     }}
                                   >
                                     Cancelar
                                   </Button>
                                   <Button 
                                     onClick={() => convertToMedicoMutation.mutate()}
-                                    disabled={convertToMedicoMutation.isPending || !motivoConversao.trim() || !canalConversao}
+                                    disabled={convertToMedicoMutation.isPending || !motivoConversao.trim() || !canalConversao || !jusImageFile}
                                     className="gap-2"
                                   >
                                     <ArrowRight className="h-4 w-4" />
