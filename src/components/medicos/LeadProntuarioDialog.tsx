@@ -93,6 +93,7 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
   // Conversão Lead -> Médico state
   const [motivoConversao, setMotivoConversao] = useState('');
   const [showConversaoForm, setShowConversaoForm] = useState(false);
+  const [showConversaoConfirmDialog, setShowConversaoConfirmDialog] = useState(false);
   
   // Checkboxes obrigatórios para conversão Lead -> Médico (igual ao padrão Corpo Clínico)
   const [checkLeadDadosCompletos, setCheckLeadDadosCompletos] = useState(false);
