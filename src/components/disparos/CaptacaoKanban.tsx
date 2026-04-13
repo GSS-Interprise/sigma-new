@@ -35,7 +35,11 @@ interface TagConfig {
   cor_id: string;
 }
 
-export function CaptacaoKanban() {
+interface CaptacaoKanbanProps {
+  searchTerm?: string;
+}
+
+export function CaptacaoKanban({ searchTerm = "" }: CaptacaoKanbanProps) {
   const queryClient = useQueryClient();
   const [draggedLead, setDraggedLead] = useState<string | null>(null);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
@@ -163,7 +167,18 @@ export function CaptacaoKanban() {
   };
 
   const getLeadsByStatus = (statusId: string) => {
-    return leads.filter((lead) => lead.status === statusId);
+    return leads.filter((lead) => {
+      if (lead.status !== statusId) return false;
+      if (!searchTerm.trim()) return true;
+      const term = searchTerm.toLowerCase();
+      return (
+        lead.nome?.toLowerCase().includes(term) ||
+        lead.phone_e164?.toLowerCase().includes(term) ||
+        lead.cpf?.toLowerCase().includes(term) ||
+        lead.email?.toLowerCase().includes(term) ||
+        lead.especialidade?.toLowerCase().includes(term)
+      );
+    });
   };
 
   const handleViewDetails = (lead: Lead) => {
