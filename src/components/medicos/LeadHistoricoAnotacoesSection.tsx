@@ -813,6 +813,20 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
                       </div>
                     )}
 
+                    {/* JUS verification image for conversão */}
+                    {entry.tipo === 'conversao' && entry.metadados && typeof entry.metadados === 'object' && (entry.metadados as any).dados_conversao?.jus_verificacao_url && (
+                      <div className="mt-2 pt-2 border-t">
+                        <p className="text-xs text-muted-foreground mb-1 font-medium">📎 Validação JUS</p>
+                        <a href={(entry.metadados as any).dados_conversao.jus_verificacao_url} target="_blank" rel="noopener noreferrer">
+                          <img
+                            src={(entry.metadados as any).dados_conversao.jus_verificacao_url}
+                            alt="Validação JUS"
+                            className="max-h-[200px] rounded-md border object-contain cursor-pointer hover:opacity-80 transition-opacity"
+                          />
+                        </a>
+                      </div>
+                    )}
+
                     {/* Metadados (for desconversão) */}
                     {entry.tipo === 'desconversao' && entry.metadados && (
                       <div className="mt-2 pt-2 border-t text-xs text-muted-foreground">
