@@ -178,6 +178,25 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
     }
   }, [handleJusImageSelect]);
 
+  // Global paste listener for JUS image when conversion form is open
+  useEffect(() => {
+    if (!showConversaoForm) return;
+    const handleGlobalPaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const item of Array.from(items)) {
+        if (item.type.startsWith('image/')) {
+          e.preventDefault();
+          const file = item.getAsFile();
+          if (file) handleJusImageSelect(file);
+          return;
+        }
+      }
+    };
+    document.addEventListener('paste', handleGlobalPaste);
+    return () => document.removeEventListener('paste', handleGlobalPaste);
+  }, [showConversaoForm, handleJusImageSelect]);
+
   // Fetch lead data with related info
   const { data: lead, isLoading: loadingLead } = useQuery({
     queryKey: ['lead-prontuario', leadId],
