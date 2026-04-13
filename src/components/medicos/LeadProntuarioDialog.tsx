@@ -780,21 +780,22 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
         // Salvar como anexo do lead
         await supabase.from('lead_anexos').insert({
           lead_id: lead.id,
-          arquivo_nome: `Validação JUS - ${lead.nome}`,
+          arquivo_nome: `Validação JUS - ${lead.nome}.${fileExt}`,
           arquivo_url: publicUrl,
-          tipo_documento: 'Validação JUS',
-          uploaded_by: user?.id || null,
-          uploaded_by_nome: user?.user_metadata?.nome_completo || user?.email || null,
+          arquivo_tipo: jusImageFile.type,
+          arquivo_tamanho: jusImageFile.size,
+          usuario_id: user?.id || null,
+          usuario_nome: user?.user_metadata?.nome_completo || user?.email || null,
         });
 
         // Registrar no histórico
         await supabase.from('lead_historico').insert({
           lead_id: lead.id,
-          tipo_evento: 'documento_anexado',
-          descricao: 'Validação de verificação de processo no JUS anexada na conversão para médico',
+          tipo_evento: 'documentacao_recebida' as const,
+          descricao_resumida: 'Validação de verificação de processo no JUS anexada na conversão para médico',
           usuario_id: user?.id || null,
           usuario_nome: user?.user_metadata?.nome_completo || user?.email || null,
-          dados_novos: { arquivo_url: publicUrl, tipo: 'Validação JUS' },
+          metadados: { arquivo_url: publicUrl, tipo: 'Validação JUS' },
         });
       }
 
