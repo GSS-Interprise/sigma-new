@@ -769,17 +769,8 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
       
       if (leadError) throw leadError;
 
-      await registrarConversaoMedico(lead.id, medicoId, {
-        motivo_conversao: motivoConversao.trim(),
-        dados_lead: {
-          nome: lead.nome,
-          especialidade: lead.especialidade,
-          telefone: lead.phone_e164,
-          email: lead.email
-        }
-      });
-
-      // Upload JUS verification image
+      // Upload JUS verification image first so we can include URL in conversion event
+      let jusPublicUrl: string | null = null;
       const fileExt = jusImageFile.name.split('.').pop() || 'png';
       const filePath = `${lead.id}/jus-verificacao-${Date.now()}.${fileExt}`;
       
@@ -792,11 +783,11 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
       
       if (uploadError) {
         console.error('Erro ao fazer upload da imagem JUS:', uploadError);
-        // Não bloqueia conversão, mas loga
       } else {
         const { data: { publicUrl } } = supabase.storage
           .from('lead-anexos')
           .getPublicUrl(filePath);
+        jusPublicUrl = publicUrl;
         
         // Salvar como anexo do lead
         await supabase.from('lead_anexos').insert({
@@ -808,17 +799,18 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
           usuario_id: user?.id || null,
           usuario_nome: user?.user_metadata?.nome_completo || user?.email || null,
         });
-
-        // Registrar no histórico
-        await supabase.from('lead_historico').insert({
-          lead_id: lead.id,
-          tipo_evento: 'documentacao_recebida' as const,
-          descricao_resumida: 'Validação de verificação de processo no JUS anexada na conversão para médico',
-          usuario_id: user?.id || null,
-          usuario_nome: user?.user_metadata?.nome_completo || user?.email || null,
-          metadados: { arquivo_url: publicUrl, tipo: 'Validação JUS' },
-        });
       }
+
+      await registrarConversaoMedico(lead.id, medicoId, {
+        motivo_conversao: motivoConversao.trim(),
+        dados_lead: {
+          nome: lead.nome,
+          especialidade: lead.especialidade,
+          telefone: lead.phone_e164,
+          email: lead.email
+        },
+        jus_verificacao_url: jusPublicUrl,
+      });
 
       return medicoId;
     },
