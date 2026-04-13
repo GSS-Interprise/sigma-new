@@ -5,7 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useKanbanColumns } from "@/hooks/useKanbanColumns";
-import { User, Mail, Phone, FileText, Calendar, CreditCard, Loader2, Settings, UserCheck, RefreshCw } from "lucide-react";
+import { User, Mail, Phone, FileText, Calendar, CreditCard, Loader2, Settings, UserCheck, RefreshCw, Search } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { useState, useEffect } from "react";
@@ -35,11 +36,8 @@ interface TagConfig {
   cor_id: string;
 }
 
-interface CaptacaoKanbanProps {
-  searchTerm?: string;
-}
-
-export function CaptacaoKanban({ searchTerm = "" }: CaptacaoKanbanProps) {
+export function CaptacaoKanban() {
+  const [searchTerm, setSearchTerm] = useState("");
   const queryClient = useQueryClient();
   const [draggedLead, setDraggedLead] = useState<string | null>(null);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
