@@ -828,8 +828,10 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
       queryClient.invalidateQueries({ queryKey: ['lead-prontuario', leadId] });
       queryClient.invalidateQueries({ queryKey: ['lead-medico-vinculo', leadId] });
       queryClient.invalidateQueries({ queryKey: ['lead-historico', leadId] });
+      queryClient.invalidateQueries({ queryKey: ['leads-acompanhamento'] });
       queryClient.invalidateQueries({ queryKey: ['corpo-clinico'] });
       queryClient.invalidateQueries({ queryKey: ['medicos-kanban-cards'] });
+      queryClient.invalidateQueries({ queryKey: ['medico-kanban-cards'] });
       setMotivoConversao('');
       setShowConversaoForm(false);
       setJusImageFile(null);
