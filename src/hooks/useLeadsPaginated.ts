@@ -57,7 +57,7 @@ export function useLeadsPaginated({
 
       let query = supabase
         .from('leads')
-        .select('*, especialidades_ref:especialidades!leads_especialidade_id_fkey(id, nome)', { count: 'exact' });
+        .select('*, especialidades_ref:especialidades!leads_especialidade_id_fkey(id, nome), lead_enrichments(*)', { count: 'exact' });
 
       // Aplicar filtro de busca
       if (searchTerm.trim().length >= 2) {

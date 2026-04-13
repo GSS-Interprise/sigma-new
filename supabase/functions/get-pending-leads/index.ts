@@ -46,13 +46,14 @@ serve(async (req) => {
   try {
     const url = new URL(req.url);
     const limit = Math.min(parseInt(url.searchParams.get("limit") || "100"), 500);
+    const pipeline = url.searchParams.get("pipeline") || "enrich_v1";
 
-    const { data: leads, error: queryError } = await supabase
-      .from("leads")
-      .select(
-        "id, cpf, nome, crm, rqe, data_nascimento, cidade, uf, phone_e164, telefones_adicionais, email, emails_adicionais, especialidade_id, origem, status, created_at, api_enrich_status, api_enrich_last_attempt, api_enrich_source"
-      )
-      .eq("api_enrich_status", "pendente")
+    // Query lead_enrichments for pending leads, then join lead data
+    const { data: enrichments, error: queryError } = await supabase
+      .from("lead_enrichments")
+      .select("lead_id, pipeline, status, source, last_attempt_at")
+      .eq("pipeline", pipeline)
+      .eq("status", "pendente")
       .order("created_at", { ascending: true })
       .limit(limit);
 
@@ -61,8 +62,39 @@ serve(async (req) => {
       throw queryError;
     }
 
+    if (!enrichments || enrichments.length === 0) {
+      return new Response(
+        JSON.stringify({ leads: [], total: 0 }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const leadIds = enrichments.map((e: any) => e.lead_id);
+
+    const { data: leads, error: leadsError } = await supabase
+      .from("leads")
+      .select("id, cpf, nome, crm, rqe, data_nascimento, cidade, uf, phone_e164, telefones_adicionais, email, emails_adicionais, especialidade_id, origem, status, created_at")
+      .in("id", leadIds);
+
+    if (leadsError) {
+      console.error("[get-pending-leads] Leads query error:", leadsError);
+      throw leadsError;
+    }
+
+    // Merge enrichment info into lead objects
+    const enrichMap = new Map(enrichments.map((e: any) => [e.lead_id, e]));
+    const mergedLeads = (leads || []).map((lead: any) => {
+      const enrich = enrichMap.get(lead.id);
+      return {
+        ...lead,
+        api_enrich_status: enrich?.status ?? null,
+        api_enrich_last_attempt: enrich?.last_attempt_at ?? null,
+        api_enrich_source: enrich?.source ?? null,
+      };
+    });
+
     return new Response(
-      JSON.stringify({ leads: leads ?? [], total: leads?.length ?? 0 }),
+      JSON.stringify({ leads: mergedLeads, total: mergedLeads.length }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error: any) {

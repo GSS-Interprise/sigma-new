@@ -620,7 +620,9 @@ export function LeadsTab() {
                             <Badge variant="outline" className={getStatusColor(lead.status || '', false)}>
                               {lead.status || 'Novo'}
                             </Badge>
-                            <EnrichStatusBadge status={(lead as any).api_enrich_status} />
+                            <EnrichStatusBadge status={
+                              (lead as any).lead_enrichments?.[0]?.status || (lead as any).api_enrich_status
+                            } />
                           </>
                         )}
                       </div>

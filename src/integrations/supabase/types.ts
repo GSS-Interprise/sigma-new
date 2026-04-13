@@ -5156,6 +5156,66 @@ export type Database = {
           },
         ]
       }
+      lead_enrichments: {
+        Row: {
+          attempt_count: number | null
+          completed_at: string | null
+          created_at: string | null
+          error_message: string | null
+          id: string
+          last_attempt_at: string | null
+          lead_id: string
+          pipeline: string
+          result_data: Json | null
+          source: string | null
+          status: string
+          updated_at: string | null
+        }
+        Insert: {
+          attempt_count?: number | null
+          completed_at?: string | null
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          last_attempt_at?: string | null
+          lead_id: string
+          pipeline: string
+          result_data?: Json | null
+          source?: string | null
+          status?: string
+          updated_at?: string | null
+        }
+        Update: {
+          attempt_count?: number | null
+          completed_at?: string | null
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          last_attempt_at?: string | null
+          lead_id?: string
+          pipeline?: string
+          result_data?: Json | null
+          source?: string | null
+          status?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_enrichments_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_enrichments_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_leads_duplicados"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lead_especialidades: {
         Row: {
           created_at: string | null
