@@ -758,6 +758,46 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
         }
       });
 
+      // Upload JUS verification image
+      const fileExt = jusImageFile.name.split('.').pop() || 'png';
+      const filePath = `${lead.id}/jus-verificacao-${Date.now()}.${fileExt}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from('lead-anexos')
+        .upload(filePath, jusImageFile, {
+          contentType: jusImageFile.type,
+          upsert: false,
+        });
+      
+      if (uploadError) {
+        console.error('Erro ao fazer upload da imagem JUS:', uploadError);
+        // Não bloqueia conversão, mas loga
+      } else {
+        const { data: { publicUrl } } = supabase.storage
+          .from('lead-anexos')
+          .getPublicUrl(filePath);
+        
+        // Salvar como anexo do lead
+        await supabase.from('lead_anexos').insert({
+          lead_id: lead.id,
+          arquivo_nome: `Validação JUS - ${lead.nome}`,
+          arquivo_url: publicUrl,
+          tipo_documento: 'Validação JUS',
+          uploaded_by: user?.id || null,
+          uploaded_by_nome: user?.user_metadata?.nome_completo || user?.email || null,
+        });
+
+        // Registrar no histórico
+        await supabase.from('lead_historico').insert({
+          lead_id: lead.id,
+          tipo_evento: 'documento_anexado',
+          descricao: 'Validação de verificação de processo no JUS anexada na conversão para médico',
+          usuario_id: user?.id || null,
+          usuario_nome: user?.user_metadata?.nome_completo || user?.email || null,
+          dados_novos: { arquivo_url: publicUrl, tipo: 'Validação JUS' },
+        });
+      }
+
       return medicoId;
     },
     onSuccess: () => {
