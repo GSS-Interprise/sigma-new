@@ -200,7 +200,7 @@ export function CaptacaoKanban() {
           <Input
             placeholder="Buscar por nome, telefone, CPF..."
             value={searchTerm}
-            onChange={(e) => onSearchChange?.(e.target.value)}
+            onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-9 h-9"
           />
         </div>
