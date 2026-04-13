@@ -196,27 +196,38 @@ export function CaptacaoKanban({ searchTerm = "" }: CaptacaoKanbanProps) {
 
   return (
     <>
-      <div className="flex justify-end mb-2 gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            queryClient.invalidateQueries({ queryKey: ["acompanhamento-leads"] });
-            queryClient.invalidateQueries({ queryKey: ["kanban-columns", "disparos"] });
-            toast.success("Kanban atualizado");
-          }}
-        >
-          <RefreshCw className="h-4 w-4 mr-2" />
-          Atualizar Kanban
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setStatusManagerOpen(true)}
-        >
-          <Settings className="h-4 w-4 mr-2" />
-          Gerenciar Colunas
-        </Button>
+      <div className="flex items-center justify-between mb-2 gap-2">
+        <div className="relative w-72">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar por nome, telefone, CPF..."
+            value={searchTerm}
+            onChange={(e) => onSearchChange?.(e.target.value)}
+            className="pl-9 h-9"
+          />
+        </div>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              queryClient.invalidateQueries({ queryKey: ["acompanhamento-leads"] });
+              queryClient.invalidateQueries({ queryKey: ["kanban-columns", "disparos"] });
+              toast.success("Kanban atualizado");
+            }}
+          >
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Atualizar Kanban
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setStatusManagerOpen(true)}
+          >
+            <Settings className="h-4 w-4 mr-2" />
+            Gerenciar Colunas
+          </Button>
+        </div>
       </div>
 
       <div className="flex gap-4 overflow-x-auto pb-2 h-[calc(100vh-220px)]">
