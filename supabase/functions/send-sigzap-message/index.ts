@@ -199,7 +199,6 @@ serve(async (req) => {
     let evolutionEndpoint: string;
     let evolutionBody: any;
     let httpMethod = 'POST';
-    let httpMethod = 'POST';
 
     // Handle different actions
     switch (action) {
@@ -338,39 +337,43 @@ serve(async (req) => {
             console.log('✅ Mídia uploaded, URL pública:', publicMediaUrl);
             
           } else if (mediaUrl) {
-            // Download media, upload to Storage, use public URL
-            try {
-              console.log('⬇️ Baixando mídia para re-upload:', mediaUrl);
-              const mediaResponse = await fetch(mediaUrl);
-              if (mediaResponse.ok) {
-                const arrayBuffer = await mediaResponse.arrayBuffer();
-                const fileBuffer = new Uint8Array(arrayBuffer);
-                
-                console.log('📤 Re-uploading media to Supabase Storage:', filePath);
-                const { error: uploadError } = await supabase.storage
-                  .from('sigzap-media')
-                  .upload(filePath, fileBuffer, {
-                    contentType: mediaMimeType || mediaResponse.headers.get('content-type') || 'application/octet-stream',
-                    upsert: true
-                  });
-                
-                if (uploadError) {
-                  console.warn('⚠️ Upload para Storage falhou, usando URL original:', uploadError);
-                  publicMediaUrl = mediaUrl;
-                } else {
-                  const { data: { publicUrl } } = supabase.storage
+            // Se já é URL do Supabase Storage, usa diretamente
+            if (mediaUrl.includes('supabase.co/storage')) {
+              console.log('✅ URL já é do Supabase Storage, usando diretamente:', mediaUrl);
+              publicMediaUrl = mediaUrl;
+            } else {
+              // URL externa — baixa e faz re-upload
+              try {
+                console.log('⬇️ Baixando mídia externa para re-upload:', mediaUrl);
+                const mediaResponse = await fetch(mediaUrl);
+                if (mediaResponse.ok) {
+                  const arrayBuffer = await mediaResponse.arrayBuffer();
+                  const fileBuffer = new Uint8Array(arrayBuffer);
+                  
+                  const { error: uploadError } = await supabase.storage
                     .from('sigzap-media')
-                    .getPublicUrl(filePath);
-                  publicMediaUrl = publicUrl;
-                  console.log('✅ Mídia re-uploaded, URL pública:', publicMediaUrl);
+                    .upload(filePath, fileBuffer, {
+                      contentType: mediaMimeType || mediaResponse.headers.get('content-type') || 'application/octet-stream',
+                      upsert: true
+                    });
+                  
+                  if (uploadError) {
+                    console.warn('⚠️ Upload falhou, usando URL original:', uploadError);
+                    publicMediaUrl = mediaUrl;
+                  } else {
+                    const { data: { publicUrl } } = supabase.storage
+                      .from('sigzap-media')
+                      .getPublicUrl(filePath);
+                    publicMediaUrl = publicUrl;
+                    console.log('✅ Mídia re-uploaded, URL pública:', publicMediaUrl);
+                  }
+                } else {
+                  publicMediaUrl = mediaUrl;
                 }
-              } else {
-                console.warn('⚠️ Download falhou, usando URL original');
+              } catch (downloadErr) {
+                console.warn('⚠️ Falha no download, usando URL original:', downloadErr);
                 publicMediaUrl = mediaUrl;
               }
-            } catch (downloadErr) {
-              console.warn('⚠️ Falha no download, usando URL original:', downloadErr);
-              publicMediaUrl = mediaUrl;
             }
           }
           
