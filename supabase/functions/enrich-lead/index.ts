@@ -183,15 +183,17 @@ serve(async (req) => {
       }
     }
 
-    // ========== APPLY LEAD UPDATE ==========
-    const { error: updateError } = await supabase
-      .from("leads")
-      .update(update)
-      .eq("id", id);
+    // ========== APPLY LEAD UPDATE (only if there are field changes) ==========
+    if (Object.keys(update).length > 0) {
+      const { error: updateError } = await supabase
+        .from("leads")
+        .update(update)
+        .eq("id", id);
 
-    if (updateError) {
-      console.error("[enrich-lead] Update error:", updateError);
-      throw updateError;
+      if (updateError) {
+        console.error("[enrich-lead] Update error:", updateError);
+        throw updateError;
+      }
     }
 
     // ========== UPDATE lead_enrichments TABLE ==========
