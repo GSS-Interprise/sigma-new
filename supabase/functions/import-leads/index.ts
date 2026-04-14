@@ -90,8 +90,6 @@ interface ImportLeadPayload {
   tags?: string[];
   observacoes?: string;
   source?: string;
-  api_enrich_status?: string;
-  api_enrich_source?: string;
   crm?: string;
   rqe?: string;
   // Formato legado
@@ -468,6 +466,19 @@ async function processImport(
         { onConflict: "lead_id,especialidade_id" }
       ).then(r => { if (r.error) console.warn("[import-leads] junction upsert:", r.error.message); });
     }
+
+    // Inserir status de enriquecimento na tabela lead_enrichments
+    const enrichStatusToInsert = enrichStatus || "pendente";
+    await supabase.from("lead_enrichments").upsert(
+      {
+        lead_id: created.id,
+        pipeline: "enrich_v1",
+        status: enrichStatusToInsert,
+        source: enrichSource,
+        last_attempt_at: now,
+      },
+      { onConflict: "lead_id,pipeline" }
+    ).then(r => { if (r.error) console.warn("[import-leads] lead_enrichments upsert:", r.error.message); });
 
     return new Response(
       JSON.stringify({
