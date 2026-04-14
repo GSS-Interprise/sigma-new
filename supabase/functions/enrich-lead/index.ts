@@ -113,15 +113,9 @@ serve(async (req) => {
     }
 
     // ========== BUILD LEAD UPDATE PAYLOAD ==========
-    const update: Record<string, unknown> = {
-      // Keep backward compat — still write to leads columns
-      api_enrich_status: resolved_status,
-      api_enrich_source: api_enrich_source ?? null,
-      api_enrich_last_attempt: new Date().toISOString(),
-    };
+    const update: Record<string, unknown> = {};
 
-    const fields_updated: string[] = ["api_enrich_status", "api_enrich_last_attempt"];
-    if (api_enrich_source) fields_updated.push("api_enrich_source");
+    const fields_updated: string[] = [];
 
     if (resolved_status === "concluido" || resolved_status === "alimentado") {
       for (const field of ENRICHABLE_FIELDS) {
@@ -189,15 +183,17 @@ serve(async (req) => {
       }
     }
 
-    // ========== APPLY LEAD UPDATE ==========
-    const { error: updateError } = await supabase
-      .from("leads")
-      .update(update)
-      .eq("id", id);
+    // ========== APPLY LEAD UPDATE (only if there are field changes) ==========
+    if (Object.keys(update).length > 0) {
+      const { error: updateError } = await supabase
+        .from("leads")
+        .update(update)
+        .eq("id", id);
 
-    if (updateError) {
-      console.error("[enrich-lead] Update error:", updateError);
-      throw updateError;
+      if (updateError) {
+        console.error("[enrich-lead] Update error:", updateError);
+        throw updateError;
+      }
     }
 
     // ========== UPDATE lead_enrichments TABLE ==========
@@ -237,7 +233,7 @@ serve(async (req) => {
         action: "enriched",
         lead_id: id,
         pipeline,
-        api_enrich_status: resolved_status,
+        enrich_status: resolved_status,
         fields_updated,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }

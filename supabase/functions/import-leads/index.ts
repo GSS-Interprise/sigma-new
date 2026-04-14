@@ -90,8 +90,6 @@ interface ImportLeadPayload {
   tags?: string[];
   observacoes?: string;
   source?: string;
-  api_enrich_status?: string;
-  api_enrich_source?: string;
   crm?: string;
   rqe?: string;
   // Formato legado
@@ -210,7 +208,7 @@ async function processImport(
 
     const { data: existingLeads, error: searchError } = await supabase
       .from("leads")
-      .select("id, nome, cpf, phone_e164, telefones_adicionais, email, tags, observacoes, especialidade_id, cidade, uf, origem, status, api_enrich_status")
+      .select("id, nome, cpf, phone_e164, telefones_adicionais, email, tags, observacoes, especialidade_id, cidade, uf, origem, status")
       .or(orFilter)
       .limit(1);
 
@@ -232,7 +230,7 @@ async function processImport(
 
     const { data: existingLeads, error: searchError } = await supabase
       .from("leads")
-      .select("id, nome, cnpj, phone_e164, telefones_adicionais, email, tags, observacoes, especialidade_id, cidade, uf, origem, status, api_enrich_status")
+      .select("id, nome, cnpj, phone_e164, telefones_adicionais, email, tags, observacoes, especialidade_id, cidade, uf, origem, status")
       .or(orFilter)
       .limit(1);
 
@@ -250,7 +248,7 @@ async function processImport(
     if (!existingLead) {
       const { data: nameMatches } = await supabase
         .from("leads")
-        .select("id, nome, cnpj, phone_e164, telefones_adicionais, email, tags, observacoes, especialidade_id, cidade, uf, origem, status, api_enrich_status")
+        .select("id, nome, cnpj, phone_e164, telefones_adicionais, email, tags, observacoes, especialidade_id, cidade, uf, origem, status")
         .ilike("nome", nome)
         .limit(1);
 
@@ -321,14 +319,9 @@ async function processImport(
   if (payload.crm) leadData.crm = payload.crm;
   if (payload.rqe) leadData.rqe = payload.rqe;
 
-  // Enriquecimento API
-  const validEnrichStatuses = ["pendente", "em_processamento", "concluido", "erro"];
-  if (payload.api_enrich_status && validEnrichStatuses.includes(payload.api_enrich_status)) {
-    leadData.api_enrich_status = payload.api_enrich_status;
-  }
-  if (payload.api_enrich_source) {
-    leadData.api_enrich_source = payload.api_enrich_source;
-  }
+  // Enriquecimento API — agora salvo em lead_enrichments (não mais na tabela leads)
+  const enrichStatus = payload.api_enrich_status || null;
+  const enrichSource = payload.api_enrich_source || null;
 
   // Merge de telefones
   if (phonesE164.length > 0 && existingLead) {
@@ -428,9 +421,6 @@ async function processImport(
     leadData.status = "Novo";
     leadData.origem = payload.source || "API Import";
     leadData.created_at = now;
-    if (!leadData.api_enrich_status) {
-      leadData.api_enrich_status = "pendente";
-    }
 
     // Verificar conflito de phone_e164 antes de inserir
     if (leadData.phone_e164) {
@@ -476,6 +466,19 @@ async function processImport(
         { onConflict: "lead_id,especialidade_id" }
       ).then(r => { if (r.error) console.warn("[import-leads] junction upsert:", r.error.message); });
     }
+
+    // Inserir status de enriquecimento na tabela lead_enrichments
+    const enrichStatusToInsert = enrichStatus || "pendente";
+    await supabase.from("lead_enrichments").upsert(
+      {
+        lead_id: created.id,
+        pipeline: "enrich_v1",
+        status: enrichStatusToInsert,
+        source: enrichSource,
+        last_attempt_at: now,
+      },
+      { onConflict: "lead_id,pipeline" }
+    ).then(r => { if (r.error) console.warn("[import-leads] lead_enrichments upsert:", r.error.message); });
 
     return new Response(
       JSON.stringify({

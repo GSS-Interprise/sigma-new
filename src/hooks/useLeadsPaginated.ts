@@ -111,17 +111,9 @@ export function useLeadsPaginated({
       if (anoFormaturaMin) {
         query = query.gte('data_formatura', `${anoFormaturaMin}-01-01`);
       }
-      if (enrichStatus) {
-        if (enrichStatus === 'enriquecido') {
-          query = query.in('api_enrich_status', ['concluido', 'alimentado']);
-        } else if (enrichStatus === 'erro') {
-          query = query.eq('api_enrich_status', 'erro');
-        } else if (enrichStatus === 'pendente') {
-          query = query.eq('api_enrich_status', 'pendente');
-        } else if (enrichStatus === 'sem') {
-          query = query.is('api_enrich_status', null);
-        }
-      }
+      // Filtro de enriquecimento agora usa a tabela lead_enrichments (join já incluído no select)
+      // O filtro por enrichStatus é aplicado client-side via lead_enrichments[0].status
+      // TODO: Para filtro server-side, usar inner join ou RPC
 
       if (sortField && sortDirection) {
         query = query.order(sortField, { ascending: sortDirection === 'asc' });
