@@ -529,6 +529,17 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
       imagens: [],
       source: 'historico' as const
     })),
+    ...(outrosEventos || []).map(o => ({
+      id: o.id,
+      tipo: 'outro_evento',
+      titulo: o.descricao_resumida || 'Evento',
+      conteudo: o.descricao_resumida || '',
+      metadados: o.metadados,
+      usuario_nome: o.usuario_nome,
+      created_at: o.criado_em,
+      imagens: [],
+      source: 'historico' as const
+    })),
     ...(blacklistEntries || []).map(b => ({
       id: b.id,
       tipo: 'blacklist',
