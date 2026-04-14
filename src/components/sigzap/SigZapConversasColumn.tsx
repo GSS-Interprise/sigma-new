@@ -332,6 +332,13 @@ export function SigZapConversasColumn({
     if (conversa.unread_count > 0) {
       markAsReadMutation.mutate(conversa.id);
     }
+
+    // Sync photo on click if missing
+    const contact = conversa.contact as any;
+    if (contact?.id && !contact?.profile_picture_url && !attemptedPhotoSyncContactIdsRef.current.has(contact.id)) {
+      attemptedPhotoSyncContactIdsRef.current.add(contact.id);
+      syncPhotosMutation.mutate({ contactIds: [contact.id], silent: true });
+    }
   };
 
   // Subscribe to realtime updates

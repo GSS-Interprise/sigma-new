@@ -24,6 +24,7 @@ import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
 import { normalizeToDigitsOnly, normalizeToE164 } from "@/lib/phoneUtils";
 import { sigzapNormalizePhoneKey } from "@/lib/sigzapPhoneKey";
+import { sigzapNormalizePhoneKey } from "@/lib/sigzapPhoneKey";
 import { SigZapConversaContextMenu } from "./SigZapConversaContextMenu";
 
 interface SigZapMinhasConversasColumnProps {
@@ -49,6 +50,25 @@ export function SigZapMinhasConversasColumn({
   const [showNewInput, setShowNewInput] = useState(false);
   const [novoNumero, setNovoNumero] = useState("");
   const [novaInstanciaId, setNovaInstanciaId] = useState<string>("");
+  const attemptedPhotoSyncContactIdsRef = useRef<Set<string>>(new Set());
+
+  // Mutation to sync contact photos on demand
+  const syncPhotosMutation = useMutation({
+    mutationFn: async ({ contactIds }: { contactIds: string[] }) => {
+      const { data, error } = await supabase.functions.invoke('sync-contact-photos', {
+        body: { contact_ids: contactIds, limit: contactIds.length }
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sigzap-minhas-conversas'] });
+      queryClient.invalidateQueries({ queryKey: ['sigzap-conversations'] });
+    },
+    onError: (_error, variables) => {
+      variables.contactIds.forEach(id => attemptedPhotoSyncContactIdsRef.current.delete(id));
+    },
+  });
 
   // Fetch instances for the new conversation selector (exclude deleted)
   const { data: instances } = useQuery({
@@ -204,6 +224,14 @@ export function SigZapMinhasConversasColumn({
     onSelectConversa(conversaId);
     if (unreadCount > 0) {
       markAsReadMutation.mutate(conversaId);
+    }
+
+    // Sync photo on click if missing
+    const conversa = minhasConversas?.find(c => c.id === conversaId);
+    const contact = conversa?.contact as any;
+    if (contact?.id && !contact?.profile_picture_url && !attemptedPhotoSyncContactIdsRef.current.has(contact.id)) {
+      attemptedPhotoSyncContactIdsRef.current.add(contact.id);
+      syncPhotosMutation.mutate({ contactIds: [contact.id] });
     }
   };
 
