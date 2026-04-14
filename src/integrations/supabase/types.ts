@@ -10352,6 +10352,8 @@ export type Database = {
         Args: { p_licitacao_id: string }
         Returns: undefined
       }
+      show_limit: { Args: never; Returns: number }
+      show_trgm: { Args: { "": string }; Returns: string[] }
       try_acquire_licitacao_lock: {
         Args: {
           p_licitacao_id: string
