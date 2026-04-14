@@ -247,6 +247,26 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
 
   const linkedLead = leadMatchResult?.mode === 'auto-silent' ? leadMatchResult.lead : null;
 
+  // Check if contact phone is blacklisted
+  const phoneForBlacklist = resolvedDisplayPhone 
+    ? normalizeToE164(resolvedDisplayPhone) 
+    : (!isLidContact ? normalizeToE164(contactPhone) : null);
+  
+  const { data: isBlacklisted } = useQuery({
+    queryKey: ['sigzap-blacklist-check', phoneForBlacklist],
+    queryFn: async () => {
+      if (!phoneForBlacklist) return false;
+      const { count, error } = await supabase
+        .from('blacklist')
+        .select('id', { count: 'exact', head: true })
+        .eq('phone_e164', phoneForBlacklist);
+      if (error) return false;
+      return (count || 0) > 0;
+    },
+    enabled: !!phoneForBlacklist,
+    staleTime: 60 * 1000,
+  });
+
   // Show auto-match confirmation modal when lead found but not yet linked
   // Auto-silent: link automatically without confirmation for disparo matches
   // Manual: open the manual search dialog for everything else
