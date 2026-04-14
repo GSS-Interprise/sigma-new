@@ -14,7 +14,7 @@ import { toast } from "sonner";
 import { 
   Send, Loader2, User, RefreshCw, MessageCircle, 
   Phone, FileText, UserCheck, Image, Video, Mic, FileIcon,
-  CheckCheck, Check, Clock, Paperclip, History, X
+  CheckCheck, Check, Clock, Paperclip, History, X, Ban
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -246,6 +246,26 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
   });
 
   const linkedLead = leadMatchResult?.mode === 'auto-silent' ? leadMatchResult.lead : null;
+
+  // Check if contact phone is blacklisted
+  const phoneForBlacklist = resolvedDisplayPhone 
+    ? normalizeToE164(resolvedDisplayPhone) 
+    : (!isLidContact ? normalizeToE164(contactPhone) : null);
+  
+  const { data: isBlacklisted } = useQuery({
+    queryKey: ['sigzap-blacklist-check', phoneForBlacklist],
+    queryFn: async () => {
+      if (!phoneForBlacklist) return false;
+      const { count, error } = await supabase
+        .from('blacklist')
+        .select('id', { count: 'exact', head: true })
+        .eq('phone_e164', phoneForBlacklist);
+      if (error) return false;
+      return (count || 0) > 0;
+    },
+    enabled: !!phoneForBlacklist,
+    staleTime: 60 * 1000,
+  });
 
   // Show auto-match confirmation modal when lead found but not yet linked
   // Auto-silent: link automatically without confirmation for disparo matches
@@ -1735,7 +1755,12 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
 
       {/* Footer: Input */}
       <div className="p-3 border-t bg-muted/10">
-        {conversa ? (
+        {isBlacklisted ? (
+          <div className="flex items-center gap-2 justify-center py-2 px-4 bg-destructive/10 rounded-lg border border-destructive/30">
+            <Ban className="h-4 w-4 text-destructive" />
+            <span className="text-sm font-medium text-destructive">Este contato está na blacklist — envio bloqueado</span>
+          </div>
+        ) : conversa ? (
           <div className="flex gap-2 items-end">
             {/* Hidden file input - now accepts multiple */}
             <input

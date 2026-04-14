@@ -14,7 +14,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   PlusCircle, Image, X, Trash2, AlertTriangle, Ban, 
-  Undo2, StickyNote, Calendar, User, Loader2, Send, FileText, MessageCircle, CheckCheck, Eye
+  Undo2, StickyNote, Calendar, User, Loader2, Send, FileText, MessageCircle, CheckCheck, Eye, UserX
 } from "lucide-react";
 import {
   AlertDialog,
@@ -70,7 +70,7 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
         .from('lead_historico')
         .select('*')
         .eq('lead_id', leadId)
-        .in('tipo_evento', ['desconvertido_para_lead', 'convertido_em_medico'])
+        .in('tipo_evento', ['desconvertido_para_lead', 'convertido_em_medico', 'outro'])
         .order('criado_em', { ascending: false });
       
       if (error) throw error;
@@ -81,6 +81,7 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
 
   const desconversoes = eventosHistorico?.filter(e => e.tipo_evento === 'desconvertido_para_lead') || [];
   const conversoes = eventosHistorico?.filter(e => e.tipo_evento === 'convertido_em_medico') || [];
+  const outrosEventos = eventosHistorico?.filter(e => e.tipo_evento === 'outro') || [];
 
   // Fetch blacklist entries by phone
   const { data: blacklistEntries } = useQuery({
@@ -461,6 +462,7 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
       case 'disparo': return <Send className="h-4 w-4" />;
       case 'proposta': return <FileText className="h-4 w-4" />;
       case 'conversa': return <MessageCircle className="h-4 w-4" />;
+      case 'outro_evento': return <UserX className="h-4 w-4" />;
       default: return <StickyNote className="h-4 w-4" />;
     }
   };
@@ -474,6 +476,7 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
       case 'disparo': return 'bg-blue-500';
       case 'proposta': return 'bg-indigo-500';
       case 'conversa': return 'bg-green-500';
+      case 'outro_evento': return 'bg-rose-500';
       default: return 'bg-primary';
     }
   };
@@ -487,6 +490,7 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
       case 'disparo': return 'Disparo';
       case 'proposta': return 'Proposta';
       case 'conversa': return 'Conversa WhatsApp';
+      case 'outro_evento': return 'Alerta';
       default: return 'Anotação';
     }
   };
@@ -525,6 +529,17 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
       metadados: c.metadados,
       usuario_nome: c.usuario_nome,
       created_at: c.criado_em,
+      imagens: [],
+      source: 'historico' as const
+    })),
+    ...(outrosEventos || []).map(o => ({
+      id: o.id,
+      tipo: 'outro_evento',
+      titulo: o.descricao_resumida || 'Evento',
+      conteudo: o.descricao_resumida || '',
+      metadados: o.metadados,
+      usuario_nome: o.usuario_nome,
+      created_at: o.criado_em,
       imagens: [],
       source: 'historico' as const
     })),
@@ -761,6 +776,7 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
                           <Badge variant="outline" className={
                             entry.tipo === 'blacklist' ? 'border-red-500 text-red-500' :
                             entry.tipo === 'desconversao' ? 'border-amber-500 text-amber-500' :
+                            entry.tipo === 'outro_evento' ? 'border-rose-500 text-rose-500' :
                             ''
                           }>
                             {getTipoLabel(entry.tipo)}
