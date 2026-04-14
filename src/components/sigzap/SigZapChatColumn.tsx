@@ -409,7 +409,7 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
           filter: `conversation_id=eq.${conversaId}`
         },
         () => {
-          refetch();
+          queryClient.invalidateQueries({ queryKey: ['sigzap-messages', conversaId] });
         }
       )
       .subscribe();
@@ -417,7 +417,7 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [conversaId, refetch]);
+  }, [conversaId, queryClient]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
