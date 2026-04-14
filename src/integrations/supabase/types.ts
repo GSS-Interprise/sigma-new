@@ -5515,9 +5515,6 @@ export type Database = {
       leads: {
         Row: {
           agencia: string | null
-          api_enrich_last_attempt: string | null
-          api_enrich_source: string | null
-          api_enrich_status: string | null
           arquivo_id: string | null
           banco: string | null
           canal_conversao: string | null
@@ -5577,9 +5574,6 @@ export type Database = {
         }
         Insert: {
           agencia?: string | null
-          api_enrich_last_attempt?: string | null
-          api_enrich_source?: string | null
-          api_enrich_status?: string | null
           arquivo_id?: string | null
           banco?: string | null
           canal_conversao?: string | null
@@ -5639,9 +5633,6 @@ export type Database = {
         }
         Update: {
           agencia?: string | null
-          api_enrich_last_attempt?: string | null
-          api_enrich_source?: string | null
-          api_enrich_status?: string | null
           arquivo_id?: string | null
           banco?: string | null
           canal_conversao?: string | null
