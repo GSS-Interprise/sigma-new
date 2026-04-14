@@ -776,6 +776,7 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
                           <Badge variant="outline" className={
                             entry.tipo === 'blacklist' ? 'border-red-500 text-red-500' :
                             entry.tipo === 'desconversao' ? 'border-amber-500 text-amber-500' :
+                            entry.tipo === 'outro_evento' ? 'border-rose-500 text-rose-500' :
                             ''
                           }>
                             {getTipoLabel(entry.tipo)}
