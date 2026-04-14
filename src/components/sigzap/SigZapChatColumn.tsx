@@ -14,7 +14,7 @@ import { toast } from "sonner";
 import { 
   Send, Loader2, User, RefreshCw, MessageCircle, 
   Phone, FileText, UserCheck, Image, Video, Mic, FileIcon,
-  CheckCheck, Check, Clock, Paperclip, History
+  CheckCheck, Check, Clock, Paperclip, History, X
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -1433,9 +1433,18 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
       <div className="p-3 border-b bg-muted/30 h-12 flex items-center">
         <div className="flex items-center justify-between w-full">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-              <User className="h-5 w-5 text-primary" />
-            </div>
+            {contact?.profile_picture_url ? (
+              <img
+                src={contact.profile_picture_url}
+                alt={contact.contact_name || ''}
+                className="h-10 w-10 rounded-full object-cover flex-shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
+                onClick={() => setPhotoModalUrl(contact.profile_picture_url)}
+              />
+            ) : (
+              <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                <User className="h-5 w-5 text-primary" />
+              </div>
+            )}
             <div className="min-w-0">
               <h3 className="font-semibold text-sm truncate">
                 {loadingConversa ? <Skeleton className="h-4 w-32" /> : contact?.contact_name || contact?.contact_phone}
