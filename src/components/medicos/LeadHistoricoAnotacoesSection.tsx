@@ -14,7 +14,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   PlusCircle, Image, X, Trash2, AlertTriangle, Ban, 
-  Undo2, StickyNote, Calendar, User, Loader2, Send, FileText, MessageCircle, CheckCheck, Eye
+  Undo2, StickyNote, Calendar, User, Loader2, Send, FileText, MessageCircle, CheckCheck, Eye, UserX
 } from "lucide-react";
 import {
   AlertDialog,
@@ -462,6 +462,7 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
       case 'disparo': return <Send className="h-4 w-4" />;
       case 'proposta': return <FileText className="h-4 w-4" />;
       case 'conversa': return <MessageCircle className="h-4 w-4" />;
+      case 'outro_evento': return <UserX className="h-4 w-4" />;
       default: return <StickyNote className="h-4 w-4" />;
     }
   };
@@ -475,6 +476,7 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
       case 'disparo': return 'bg-blue-500';
       case 'proposta': return 'bg-indigo-500';
       case 'conversa': return 'bg-green-500';
+      case 'outro_evento': return 'bg-rose-500';
       default: return 'bg-primary';
     }
   };
@@ -488,6 +490,7 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
       case 'disparo': return 'Disparo';
       case 'proposta': return 'Proposta';
       case 'conversa': return 'Conversa WhatsApp';
+      case 'outro_evento': return 'Alerta';
       default: return 'Anotação';
     }
   };
