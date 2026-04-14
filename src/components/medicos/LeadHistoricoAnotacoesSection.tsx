@@ -70,7 +70,7 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
         .from('lead_historico')
         .select('*')
         .eq('lead_id', leadId)
-        .in('tipo_evento', ['desconvertido_para_lead', 'convertido_em_medico'])
+        .in('tipo_evento', ['desconvertido_para_lead', 'convertido_em_medico', 'outro'])
         .order('criado_em', { ascending: false });
       
       if (error) throw error;
