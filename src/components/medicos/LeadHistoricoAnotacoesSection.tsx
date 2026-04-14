@@ -81,6 +81,7 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
 
   const desconversoes = eventosHistorico?.filter(e => e.tipo_evento === 'desconvertido_para_lead') || [];
   const conversoes = eventosHistorico?.filter(e => e.tipo_evento === 'convertido_em_medico') || [];
+  const outrosEventos = eventosHistorico?.filter(e => e.tipo_evento === 'outro') || [];
 
   // Fetch blacklist entries by phone
   const { data: blacklistEntries } = useQuery({
