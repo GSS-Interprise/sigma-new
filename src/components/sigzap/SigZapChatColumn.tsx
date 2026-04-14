@@ -1084,10 +1084,21 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
   const handleLinkToExistingLead = async (leadId: string) => {
     // Update the lead's phone if needed
     if (pendingContactPhone) {
+      // Fetch first kanban status for 'leads' module (skip 'Novo')
+      const { data: kanbanStatuses } = await supabase
+        .from('kanban_status_config')
+        .select('status_id')
+        .eq('modulo', 'leads')
+        .eq('ativo', true)
+        .order('ordem');
+
+      const acompanhamentoStatus = kanbanStatuses?.find(s => s.status_id !== 'Novo')?.status_id || 'Acompanhamento';
+
       await supabase
         .from('leads')
         .update({ 
           phone_e164: pendingContactPhone,
+          status: acompanhamentoStatus,
           updated_at: new Date().toISOString()
         })
         .eq('id', leadId);
@@ -1100,7 +1111,7 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
           .eq('id', conversaId);
       }
       
-      toast.success("Contato vinculado ao lead");
+      toast.success("Contato vinculado ao lead e movido para Acompanhamento");
       queryClient.invalidateQueries({ queryKey: ['leads'] });
       queryClient.invalidateQueries({ queryKey: ['sigzap-chat-conversa', conversaId] });
     }
@@ -1112,23 +1123,41 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
 
   const handleCreateNewLead = async () => {
     try {
+      // Fetch first kanban status for 'leads' module (skip 'Novo')
+      const { data: kanbanStatuses } = await supabase
+        .from('kanban_status_config')
+        .select('status_id')
+        .eq('modulo', 'leads')
+        .eq('ativo', true)
+        .order('ordem');
+
+      const acompanhamentoStatus = kanbanStatuses?.find(s => s.status_id !== 'Novo')?.status_id || 'Acompanhamento';
+
       const { data: newLead, error: insertError } = await supabase
         .from('leads')
         .insert({
           nome: pendingContactName,
           phone_e164: pendingContactPhone,
           origem: 'SigZap',
-          status: 'Novo',
+          status: acompanhamentoStatus,
         })
         .select('id')
         .single();
       
       if (insertError) throw insertError;
       
+      // Link conversation to new lead
+      if (conversaId) {
+        await supabase
+          .from('sigzap_conversations')
+          .update({ lead_id: newLead.id })
+          .eq('id', conversaId);
+      }
+
       setSelectedLeadId(newLead.id);
       setIsNewLead(false);
       setProntuarioOpen(true);
-      toast.success("Novo lead criado");
+      toast.success("Novo lead criado e movido para Acompanhamento");
       queryClient.invalidateQueries({ queryKey: ['leads'] });
     } catch (err: any) {
       console.error('Erro ao criar lead:', err);
