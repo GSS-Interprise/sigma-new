@@ -1755,7 +1755,12 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
 
       {/* Footer: Input */}
       <div className="p-3 border-t bg-muted/10">
-        {conversa ? (
+        {isBlacklisted ? (
+          <div className="flex items-center gap-2 justify-center py-2 px-4 bg-destructive/10 rounded-lg border border-destructive/30">
+            <Ban className="h-4 w-4 text-destructive" />
+            <span className="text-sm font-medium text-destructive">Este contato está na blacklist — envio bloqueado</span>
+          </div>
+        ) : conversa ? (
           <div className="flex gap-2 items-end">
             {/* Hidden file input - now accepts multiple */}
             <input
