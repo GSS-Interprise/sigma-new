@@ -23,17 +23,21 @@ serve(async (req) => {
     // Parse request body for optional filters
     let instanceId: string | null = null;
     let limit = 50;
+    let contactIds: string[] = [];
     
     try {
       const body = await req.json();
       instanceId = body.instance_id || null;
       limit = body.limit || 50;
+      contactIds = Array.isArray(body.contact_ids)
+        ? body.contact_ids.filter((id: unknown): id is string => typeof id === 'string' && id.length > 0)
+        : [];
     } catch {
       // No body provided, use defaults
     }
 
     console.log('🔄 Iniciando sincronização de fotos de contatos...');
-    console.log(`   Instance filter: ${instanceId || 'todas'}, Limit: ${limit}`);
+    console.log(`   Instance filter: ${instanceId || 'todas'}, Contact IDs: ${contactIds.length || 0}, Limit: ${limit}`);
 
     // Fetch contacts without profile pictures (null or empty string)
     let query = supabase
@@ -46,10 +50,15 @@ serve(async (req) => {
         instance_id,
         instance:sigzap_instances(id, name)
       `)
-      .or('profile_picture_url.is.null,profile_picture_url.eq.')
       .limit(limit);
 
-    if (instanceId) {
+    query = query.or('profile_picture_url.is.null,profile_picture_url.eq.');
+
+    if (contactIds.length > 0) {
+      query = query.in('id', contactIds);
+    }
+
+    if (instanceId && contactIds.length === 0) {
       query = query.eq('instance_id', instanceId);
     }
 
