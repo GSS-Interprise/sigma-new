@@ -101,6 +101,7 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
   const [autoMatchLead, setAutoMatchLead] = useState<any>(null);
   
   const [fetchingHistory, setFetchingHistory] = useState(false);
+  const [photoModalUrl, setPhotoModalUrl] = useState<string | null>(null);
   const [historyPage, setHistoryPage] = useState(1);
   const [historyHasMore, setHistoryHasMore] = useState(true);
   
@@ -1857,6 +1858,19 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
         leadId={selectedLeadId}
         isNewLead={isNewLead}
       />
+
+      {/* Photo Modal */}
+      <Dialog open={!!photoModalUrl} onOpenChange={() => setPhotoModalUrl(null)}>
+        <DialogContent className="max-w-md p-0 bg-transparent border-none shadow-none flex items-center justify-center">
+          {photoModalUrl && (
+            <img
+              src={photoModalUrl}
+              alt="Foto do contato"
+              className="max-w-full max-h-[80vh] rounded-lg object-contain"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
