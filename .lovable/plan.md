@@ -1,51 +1,51 @@
 
 
-## Plano: Criar tabela `lead_enrichments` e migrar dados existentes
+## Plano: Completar migração e remover colunas legadas
 
-### Estrutura proposta
+### Diagnóstico
+
+- 115.739 leads têm `api_enrich_status` preenchido na tabela `leads`
+- 2.729 leads (todos `pendente`) não existem em `lead_enrichments` — foram inseridos após a migration inicial
+- As colunas `api_enrich_*` na tabela `leads` são agora redundantes
+
+### Passos
+
+1. **Migration SQL** — uma única migration que:
+   - Insere os 2.729 leads faltantes em `lead_enrichments` (mesmo INSERT com `ON CONFLICT DO NOTHING`)
+   - Remove as 3 colunas legadas: `api_enrich_status`, `api_enrich_last_attempt`, `api_enrich_source` da tabela `leads`
+
+2. **Atualizar Edge Function `enrich-lead`** — remover o trecho que ainda escreve nas colunas `api_enrich_*` da tabela `leads` (backward compatibility que não é mais necessária)
+
+3. **Atualizar Edge Function `import-leads`** — verificar se ela seta `api_enrich_status` ao inserir leads; se sim, trocar para inserir em `lead_enrichments`
+
+4. **Atualizar frontend** — remover qualquer referência a `api_enrich_status` / `api_enrich_last_attempt` / `api_enrich_source` nos componentes e hooks (fallbacks que leem da tabela `leads`)
+
+5. **Atualizar types.ts** — remover os campos das interfaces do Supabase
+
+### Detalhes técnicos
 
 ```sql
-CREATE TABLE lead_enrichments (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  lead_id UUID NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
-  pipeline TEXT NOT NULL,          -- ex: 'enrich_v1', 'alimentacao_v2', 'validacao_telefone'
-  status TEXT NOT NULL DEFAULT 'pendente',  -- pendente, em_processamento, concluido, alimentado, erro
-  source TEXT,                     -- fonte dos dados (API externa, planilha, etc.)
-  attempt_count INT DEFAULT 0,
-  last_attempt_at TIMESTAMPTZ,
-  completed_at TIMESTAMPTZ,
-  result_data JSONB,              -- dados retornados pelo pipeline (flexível)
-  error_message TEXT,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now(),
-  
-  UNIQUE (lead_id, pipeline)      -- 1 registro por lead por pipeline
-);
+-- Migrar leads faltantes
+INSERT INTO public.lead_enrichments (lead_id, pipeline, status, source, last_attempt_at)
+SELECT id, 'enrich_v1', COALESCE(api_enrich_status, 'pendente'), api_enrich_source, api_enrich_last_attempt
+FROM public.leads
+WHERE id NOT IN (SELECT lead_id FROM lead_enrichments WHERE pipeline = 'enrich_v1')
+  AND api_enrich_status IS NOT NULL
+ON CONFLICT (lead_id, pipeline) DO NOTHING;
 
-CREATE INDEX idx_lead_enrichments_status ON lead_enrichments(pipeline, status, last_attempt_at);
-CREATE INDEX idx_lead_enrichments_lead ON lead_enrichments(lead_id);
+-- Dropar colunas legadas
+ALTER TABLE public.leads DROP COLUMN IF EXISTS api_enrich_status;
+ALTER TABLE public.leads DROP COLUMN IF EXISTS api_enrich_last_attempt;
+ALTER TABLE public.leads DROP COLUMN IF EXISTS api_enrich_source;
 ```
 
-### Passos de implementação
+### Arquivos afetados
 
-1. **Criar a tabela `lead_enrichments`** via migration com a estrutura acima, incluindo trigger de `updated_at` e RLS.
-
-2. **Migrar dados existentes** — INSERT INTO `lead_enrichments` a partir das colunas atuais de `leads` (pipeline = `'enrich_v1'`), preservando status/source/last_attempt.
-
-3. **Atualizar Edge Functions** (`get-pending-leads`, `query-leads-for-enrich`, `enrich-lead`) para ler/escrever na nova tabela em vez das colunas `api_enrich_*` da tabela leads.
-
-4. **Atualizar o frontend** — `useLeadsPaginated.ts` (filtro de enrichStatus) e componentes que mostram status de enriquecimento passam a fazer JOIN ou subquery na `lead_enrichments`.
-
-5. **Remover colunas legadas** — após validação, dropar `api_enrich_status`, `api_enrich_last_attempt`, `api_enrich_source` da tabela leads (pode ser feito numa fase posterior para segurança).
-
-### Benefícios concretos
-
-- **Queries de listagem** (a mais usada, 50 leads por página): não carregam dados de enriquecimento desnecessariamente.
-- **Novos pipelines**: basta inserir rows com `pipeline = 'novo_nome'`, zero migrations de schema.
-- **Histórico**: `result_data` JSONB armazena o que cada pipeline retornou, auditável.
-- **N8N**: o endpoint `get-pending-leads` filtra por `pipeline + status` na tabela menor e indexada.
-
-### Sobre o N8N
-
-O workflow que você mostrou (`get-pending-leads` com limit=500) continuará funcionando — apenas o endpoint interno muda para consultar `lead_enrichments` em vez de `leads.api_enrich_status`. A URL e autenticação ficam iguais.
+- Nova migration SQL
+- `supabase/functions/enrich-lead/index.ts` — remover writes nas colunas legadas
+- `supabase/functions/import-leads/index.ts` — inserir em `lead_enrichments` em vez de setar `api_enrich_status`
+- `src/hooks/useLeadsPaginated.ts` — remover fallbacks
+- `src/components/medicos/LeadsTab.tsx` — remover referências legadas
+- `src/components/medicos/LeadProntuarioDialog.tsx` — remover referências legadas
+- `src/integrations/supabase/types.ts` — remover campos
 
