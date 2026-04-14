@@ -107,6 +107,12 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const realtimeChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const realtimeChannelInstanceIdRef = useRef(
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : Math.random().toString(36).slice(2)
+  );
   const queryClient = useQueryClient();
   const { user } = useAuth();
   // Fetch conversation details
@@ -396,10 +402,15 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
 
   // Subscribe to realtime updates
   useEffect(() => {
+    if (realtimeChannelRef.current) {
+      supabase.removeChannel(realtimeChannelRef.current);
+      realtimeChannelRef.current = null;
+    }
+
     if (!conversaId) return;
-    
+
     const channel = supabase
-      .channel(`sigzap-messages-${conversaId}`)
+      .channel(`sigzap-messages-${conversaId}-${realtimeChannelInstanceIdRef.current}`)
       .on(
         'postgres_changes',
         {
@@ -414,7 +425,12 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
       )
       .subscribe();
 
+    realtimeChannelRef.current = channel;
+
     return () => {
+      if (realtimeChannelRef.current === channel) {
+        realtimeChannelRef.current = null;
+      }
       supabase.removeChannel(channel);
     };
   }, [conversaId, queryClient]);
