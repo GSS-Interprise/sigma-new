@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { User, RefreshCw, Inbox, Unlock, Plus, Loader2, Send, X, MessageCircle, Wifi, WifiOff, AlertCircle } from "lucide-react";
+import { User, RefreshCw, Inbox, Unlock, Plus, Loader2, Send, X, MessageCircle, Wifi, WifiOff, AlertCircle, UserX } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -768,6 +768,12 @@ key={conversa.id}
                             <Badge className={cn("text-[10px] h-5 gap-1", selectedConversaId === conversa.id ? "bg-white/20 text-white" : "bg-emerald-600 text-white border-emerald-600")}>
                               <MessageCircle className="h-3 w-3" />
                               {msgCount}
+                            </Badge>
+                          )}
+                          {conversa.not_the_doctor && (
+                            <Badge variant="outline" className={cn("text-[10px] h-5 gap-0.5", selectedConversaId === conversa.id ? "border-white/40 text-white bg-white/20" : "border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-700 dark:bg-rose-950 dark:text-rose-300")}>
+                              <UserX className="h-3 w-3" />
+                              Não é o médico
                             </Badge>
                           )}
                         </div>

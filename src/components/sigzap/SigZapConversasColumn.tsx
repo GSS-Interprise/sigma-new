@@ -9,7 +9,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Search, RefreshCw, User, Wifi, MessageCircle, Camera, Loader2, ChevronDown } from "lucide-react";
+import { Search, RefreshCw, User, Wifi, MessageCircle, Camera, Loader2, ChevronDown, UserX } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -541,6 +541,12 @@ export function SigZapConversasColumn({
                 <Badge className={cn("text-[10px] h-5 gap-1", isSelected ? "bg-white/20 text-white" : "bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700")}>
                   <MessageCircle className="h-3 w-3" />
                   {msgCount}
+                </Badge>
+              )}
+              {conversa.not_the_doctor && (
+                <Badge variant="outline" className={cn("text-[10px] h-5 gap-0.5", isSelected ? "border-white/40 text-white bg-white/20" : "border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-700 dark:bg-rose-950 dark:text-rose-300")}>
+                  <UserX className="h-3 w-3" />
+                  Não é o médico
                 </Badge>
               )}
             </div>
