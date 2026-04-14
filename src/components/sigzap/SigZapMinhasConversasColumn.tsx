@@ -24,7 +24,6 @@ import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
 import { normalizeToDigitsOnly, normalizeToE164 } from "@/lib/phoneUtils";
 import { sigzapNormalizePhoneKey } from "@/lib/sigzapPhoneKey";
-import { sigzapNormalizePhoneKey } from "@/lib/sigzapPhoneKey";
 import { SigZapConversaContextMenu } from "./SigZapConversaContextMenu";
 
 interface SigZapMinhasConversasColumnProps {
