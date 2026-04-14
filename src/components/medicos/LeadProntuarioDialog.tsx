@@ -1479,7 +1479,7 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                             {lead?.status}
                           </Badge>
                           {(() => {
-                            const enrichStatus = (lead as any)?.lead_enrichments?.[0]?.status || (lead as any)?.api_enrich_status;
+                            const enrichStatus = (lead as any)?.lead_enrichments?.[0]?.status;
                             if (!enrichStatus) return null;
                             if (enrichStatus === 'pendente') return (
                               <Badge variant="outline" className="text-xs bg-slate-500 text-white border-slate-600">Pendente</Badge>

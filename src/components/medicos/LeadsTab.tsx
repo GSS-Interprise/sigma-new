@@ -621,7 +621,7 @@ export function LeadsTab() {
                               {lead.status || 'Novo'}
                             </Badge>
                             <EnrichStatusBadge status={
-                              (lead as any).lead_enrichments?.[0]?.status || (lead as any).api_enrich_status
+                              (lead as any).lead_enrichments?.[0]?.status
                             } />
                           </>
                         )}
