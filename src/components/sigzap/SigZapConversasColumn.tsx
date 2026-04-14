@@ -41,6 +41,7 @@ export function SigZapConversasColumn({
   const [searchTerm, setSearchTerm] = useState("");
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const attemptedPhotoSyncContactIdsRef = useRef<Set<string>>(new Set());
 
   // Fetch current user profile name
   const { data: meuPerfil } = useQuery({
@@ -176,21 +177,79 @@ export function SigZapConversasColumn({
 
   // Mutation to sync contact photos
   const syncPhotosMutation = useMutation({
-    mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke('sync-contact-photos', {
-        body: { limit: 50 }
-      });
-      if (error) throw error;
-      return data;
+    mutationFn: async ({
+      contactIds,
+      instanceIds,
+      silent,
+    }: {
+      contactIds?: string[];
+      instanceIds?: string[];
+      silent?: boolean;
+    } = {}) => {
+      const uniqueContactIds = [...new Set((contactIds || []).filter(Boolean))];
+      const uniqueInstanceIds = [...new Set((instanceIds || []).filter(Boolean))];
+
+      if (uniqueContactIds.length > 0) {
+        const { data, error } = await supabase.functions.invoke('sync-contact-photos', {
+          body: {
+            contact_ids: uniqueContactIds,
+            limit: uniqueContactIds.length,
+          }
+        });
+
+        if (error) throw error;
+        return { ...data, silent };
+      }
+
+      if (uniqueInstanceIds.length === 0) {
+        const { data, error } = await supabase.functions.invoke('sync-contact-photos', {
+          body: { limit: 50 }
+        });
+
+        if (error) throw error;
+        return { ...data, silent };
+      }
+
+      const results = await Promise.all(uniqueInstanceIds.map(async (instanceId) => {
+        const { data, error } = await supabase.functions.invoke('sync-contact-photos', {
+          body: {
+            instance_id: instanceId,
+            limit: 100,
+          }
+        });
+
+        if (error) throw error;
+        return data;
+      }));
+
+      return results.reduce(
+        (acc, result) => ({
+          synced: acc.synced + (result?.synced || 0),
+          errors: acc.errors + (result?.errors || 0),
+          total: acc.total + (result?.total || 0),
+          silent,
+        }),
+        { synced: 0, errors: 0, total: 0, silent }
+      );
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['sigzap-conversations'] });
       queryClient.invalidateQueries({ queryKey: ['sigzap-minhas-conversas'] });
-      toast.success(`Fotos sincronizadas: ${data.synced || 0} atualizadas`);
+
+      if (!data?.silent) {
+        toast.success(`Fotos sincronizadas: ${data.synced || 0} atualizadas`);
+      }
     },
-    onError: (error) => {
+    onError: (error, variables) => {
       console.error('Error syncing photos:', error);
-      toast.error('Erro ao sincronizar fotos');
+
+      if (variables?.contactIds?.length) {
+        variables.contactIds.forEach((contactId) => attemptedPhotoSyncContactIdsRef.current.delete(contactId));
+      }
+
+      if (!variables?.silent) {
+        toast.error('Erro ao sincronizar fotos');
+      }
     },
   });
 
@@ -299,6 +358,31 @@ export function SigZapConversasColumn({
       supabase.removeChannel(channel);
     };
   }, []);
+
+  useEffect(() => {
+    if (!conversas?.length || syncPhotosMutation.isPending) return;
+
+    const missingContactIds = Array.from(
+      new Set(
+        conversas
+          .filter((conversa) => {
+            const contact = conversa.contact as any;
+            return !!contact?.id && !contact?.profile_picture_url && !attemptedPhotoSyncContactIdsRef.current.has(contact.id);
+          })
+          .map((conversa) => (conversa.contact as any)?.id)
+          .filter(Boolean)
+      )
+    );
+
+    if (missingContactIds.length === 0) return;
+
+    missingContactIds.forEach((contactId) => attemptedPhotoSyncContactIdsRef.current.add(contactId));
+
+    syncPhotosMutation.mutate({
+      contactIds: missingContactIds,
+      silent: true,
+    });
+  }, [conversas, syncPhotosMutation]);
 
   // Filter conversations by search term, exclude those assigned to current user (they show in "Minhas Conversas")
   const filteredConversas = conversas?.filter(c => {
@@ -473,7 +557,7 @@ export function SigZapConversasColumn({
             variant="ghost" 
             size="icon" 
             className="h-6 w-6" 
-            onClick={() => syncPhotosMutation.mutate()}
+            onClick={() => syncPhotosMutation.mutate({ instanceIds: selectedInstanceIds })}
             disabled={syncPhotosMutation.isPending}
             title="Sincronizar fotos de contatos"
           >
