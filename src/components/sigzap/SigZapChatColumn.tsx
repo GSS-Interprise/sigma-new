@@ -1131,6 +1131,7 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
       toast.success("Contato vinculado ao lead e movido para Acompanhamento");
       queryClient.invalidateQueries({ queryKey: ['leads'] });
       queryClient.invalidateQueries({ queryKey: ['sigzap-chat-conversa', conversaId] });
+      queryClient.invalidateQueries({ queryKey: ['sigzap-lead-exists'] });
     }
     
     setSelectedLeadId(leadId);
@@ -1176,6 +1177,7 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
       setProntuarioOpen(true);
       toast.success("Novo lead criado e movido para Acompanhamento");
       queryClient.invalidateQueries({ queryKey: ['leads'] });
+      queryClient.invalidateQueries({ queryKey: ['sigzap-lead-exists'] });
     } catch (err: any) {
       console.error('Erro ao criar lead:', err);
       toast.error(err.message || "Erro ao criar lead");
