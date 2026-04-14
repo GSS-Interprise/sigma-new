@@ -9448,6 +9448,9 @@ export type Database = {
           last_message_at: string | null
           last_message_text: string | null
           lead_id: string | null
+          not_the_doctor: boolean
+          not_the_doctor_at: string | null
+          not_the_doctor_by: string | null
           status: string | null
           unread_count: number | null
           updated_at: string | null
@@ -9462,6 +9465,9 @@ export type Database = {
           last_message_at?: string | null
           last_message_text?: string | null
           lead_id?: string | null
+          not_the_doctor?: boolean
+          not_the_doctor_at?: string | null
+          not_the_doctor_by?: string | null
           status?: string | null
           unread_count?: number | null
           updated_at?: string | null
@@ -9476,6 +9482,9 @@ export type Database = {
           last_message_at?: string | null
           last_message_text?: string | null
           lead_id?: string | null
+          not_the_doctor?: boolean
+          not_the_doctor_at?: string | null
+          not_the_doctor_by?: string | null
           status?: string | null
           unread_count?: number | null
           updated_at?: string | null

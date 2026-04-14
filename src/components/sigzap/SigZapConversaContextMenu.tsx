@@ -10,10 +10,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { MoreVertical, Pin, Ban, EyeOff, Loader2, ArrowRightLeft, MapPin } from "lucide-react";
+import { MoreVertical, Pin, Ban, EyeOff, Loader2, ArrowRightLeft, MapPin, UserX } from "lucide-react";
 import { toast } from "sonner";
 import { RegiaoInteresseDialog } from "@/components/disparos/RegiaoInteresseDialog";
 import { normalizeToE164 } from "@/lib/phoneUtils";
+import { registrarHistoricoLead } from "@/lib/leadHistoryLogger";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -44,6 +45,7 @@ export function SigZapConversaContextMenu({
   const queryClient = useQueryClient();
   const [confirmInactivate, setConfirmInactivate] = useState(false);
   const [confirmBlacklist, setConfirmBlacklist] = useState(false);
+  const [confirmNotDoctor, setConfirmNotDoctor] = useState(false);
   const [blacklistReason, setBlacklistReason] = useState("");
   const [showRegiaoDialog, setShowRegiaoDialog] = useState(false);
   const [regiaoLeadId, setRegiaoLeadId] = useState<string | undefined>();
@@ -54,15 +56,101 @@ export function SigZapConversaContextMenu({
   const { data: leadExists } = useQuery({
     queryKey: ['sigzap-lead-exists', phoneE164],
     queryFn: async () => {
-      if (!phoneE164) return false;
-      const { count, error } = await supabase
+      if (!phoneE164) return null;
+      const { data, error } = await supabase
         .from('leads')
-        .select('id', { count: 'exact', head: true })
-        .eq('phone_e164', phoneE164);
-      if (error) return false;
-      return (count || 0) > 0;
+        .select('id')
+        .eq('phone_e164', phoneE164)
+        .maybeSingle();
+      if (error) return null;
+      return data;
     },
     enabled: !!phoneE164,
+  });
+
+  // "Não é o médico" mutation
+  const notDoctorMutation = useMutation({
+    mutationFn: async () => {
+      if (!user?.id) throw new Error('Usuário não autenticado');
+
+      // 1. Mark conversation
+      const { error: convError } = await supabase
+        .from('sigzap_conversations')
+        .update({
+          not_the_doctor: true,
+          not_the_doctor_at: new Date().toISOString(),
+          not_the_doctor_by: user.id,
+          updated_at: new Date().toISOString(),
+        } as any)
+        .eq('id', conversaId);
+
+      if (convError) throw convError;
+
+      // 2. If lead exists, disable the phone and log history
+      if (leadExists?.id && phoneE164) {
+        // Remove phone from lead (set to null to "disable")
+        const { data: leadData } = await supabase
+          .from('leads')
+          .select('phone_e164, telefones_adicionais')
+          .eq('id', leadExists.id)
+          .single();
+
+        if (leadData) {
+          const updates: any = {};
+          
+          if (leadData.phone_e164 === phoneE164) {
+            updates.phone_e164 = null;
+          }
+          
+          if (leadData.telefones_adicionais?.includes(phoneE164)) {
+            updates.telefones_adicionais = leadData.telefones_adicionais.filter(
+              (t: string) => t !== phoneE164
+            );
+          }
+
+          if (Object.keys(updates).length > 0) {
+            updates.updated_at = new Date().toISOString();
+            await supabase
+              .from('leads')
+              .update(updates)
+              .eq('id', leadExists.id);
+          }
+        }
+
+        // Log in lead history
+        await registrarHistoricoLead({
+          leadId: leadExists.id,
+          tipoEvento: 'outro',
+          descricaoResumida: `Número ${contactPhone} marcado como "Não é o médico" via SigZap`,
+          metadados: {
+            telefone_desabilitado: phoneE164,
+            conversa_id: conversaId,
+            instancia: instanceName,
+          },
+        });
+      }
+
+      // 3. Insert system message in conversation
+      await supabase.from('sigzap_messages').insert({
+        conversation_id: conversaId,
+        from_me: true,
+        message_text: `⚠️ Marcado como "Não é o médico" — telefone desabilitado do prontuário`,
+        message_type: 'system',
+        message_status: 'delivered',
+        sent_at: new Date().toISOString(),
+        sent_by_user_id: user.id,
+      });
+    },
+    onSuccess: () => {
+      toast.success('Conversa marcada como "Não é o médico"');
+      queryClient.invalidateQueries({ queryKey: ['sigzap-conversations'] });
+      queryClient.invalidateQueries({ queryKey: ['sigzap-minhas-conversas'] });
+      queryClient.invalidateQueries({ queryKey: ['sigzap-lead-exists'] });
+    },
+    onError: (error) => {
+      console.error('Not doctor error:', error);
+      toast.error('Erro ao marcar conversa');
+    },
   });
 
   // Send to blacklist mutation
@@ -157,40 +245,39 @@ export function SigZapConversaContextMenu({
           </DropdownMenuItem>
 
           <DropdownMenuItem
-            disabled={!leadExists}
+            disabled={!leadExists?.id}
             onClick={() => {
               if (!phoneE164) return;
-              supabase
-                .from('leads')
-                .select('id')
-                .eq('phone_e164', phoneE164)
-                .maybeSingle()
-                .then(({ data }) => {
-                  if (data) {
-                    setRegiaoLeadId(data.id);
-                    setShowRegiaoDialog(true);
-                  }
-                });
+              setRegiaoLeadId(leadExists?.id);
+              setShowRegiaoDialog(true);
             }}
-            className={!leadExists ? "opacity-50" : ""}
+            className={!leadExists?.id ? "opacity-50" : ""}
           >
             <MapPin className="h-4 w-4 mr-2" />
             Banco de Interesse
-            {!leadExists && (
+            {!leadExists?.id && (
               <span className="ml-auto text-[10px] text-muted-foreground">sem lead</span>
             )}
           </DropdownMenuItem>
 
           <DropdownMenuItem
-            disabled={!leadExists}
+            disabled={!leadExists?.id}
             onClick={() => setConfirmBlacklist(true)}
-            className={!leadExists ? "opacity-50" : ""}
+            className={!leadExists?.id ? "opacity-50" : ""}
           >
             <Ban className="h-4 w-4 mr-2" />
             Enviar p/ Blacklist
-            {!leadExists && (
+            {!leadExists?.id && (
               <span className="ml-auto text-[10px] text-muted-foreground">sem lead</span>
             )}
+          </DropdownMenuItem>
+
+          <DropdownMenuItem
+            onClick={() => setConfirmNotDoctor(true)}
+            className="text-rose-600 focus:text-rose-600"
+          >
+            <UserX className="h-4 w-4 mr-2" />
+            Não é o médico
           </DropdownMenuItem>
 
           <DropdownMenuSeparator />
@@ -251,6 +338,40 @@ export function SigZapConversaContextMenu({
       />
 
       {/* Confirm Inactivate Dialog */}
+      {/* Confirm "Não é o médico" Dialog */}
+      <AlertDialog open={confirmNotDoctor} onOpenChange={setConfirmNotDoctor}>
+        <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Marcar como "Não é o médico"?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  O número <strong>{contactPhone}</strong> ({contactName || 'Sem nome'}) será desabilitado do prontuário do médico.
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Um registro será adicionado ao histórico do lead e a conversa receberá um selo visual.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => notDoctorMutation.mutate()}
+              disabled={notDoctorMutation.isPending}
+              className="bg-rose-600 text-white hover:bg-rose-700"
+            >
+              {notDoctorMutation.isPending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <UserX className="h-4 w-4 mr-2" />
+              )}
+              Confirmar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <AlertDialog open={confirmInactivate} onOpenChange={setConfirmInactivate}>
         <AlertDialogContent onClick={(e) => e.stopPropagation()}>
           <AlertDialogHeader>
