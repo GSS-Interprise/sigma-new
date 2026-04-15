@@ -22,6 +22,15 @@ const ENRICHABLE_FIELDS = [
 // Fields that are ALWAYS overwritten when provided (even if already filled)
 const OVERWRITE_FIELDS = ["crm", "nome"] as const;
 
+// Pipeline → enrich column mapping + validity
+const PIPELINE_CONFIG: Record<string, { enrichCol: string; lastAttemptCol: string; expiresCol: string; validityMonths: number }> = {
+  "enrich_v1":            { enrichCol: "enrich_one",   lastAttemptCol: "last_attempt_at_one",   expiresCol: "expires_at_one",   validityMonths: 12 },
+  "enrich_residentes":    { enrichCol: "enrich_two",   lastAttemptCol: "last_attempt_at_two",   expiresCol: "expires_at_two",   validityMonths: 6 },
+  "enrich_lemit":         { enrichCol: "enrich_three", lastAttemptCol: "last_attempt_at_three", expiresCol: "expires_at_three", validityMonths: 6 },
+  "enrich_lifeshub":      { enrichCol: "enrich_four",  lastAttemptCol: "last_attempt_at_four",  expiresCol: "expires_at_four",  validityMonths: 6 },
+  "enrich_especialidade": { enrichCol: "enrich_five",  lastAttemptCol: "last_attempt_at_five",  expiresCol: "expires_at_five",  validityMonths: 6 },
+};
+
 type EnrichableField = typeof ENRICHABLE_FIELDS[number];
 
 serve(async (req) => {
@@ -181,6 +190,18 @@ serve(async (req) => {
           fields_updated.push("emails_adicionais");
         }
       }
+    }
+
+    // ========== SET ENRICH COLUMNS ON LEADS TABLE ==========
+    const pipelineCfg = PIPELINE_CONFIG[pipeline];
+    if (pipelineCfg && (resolved_status === "concluido" || resolved_status === "alimentado")) {
+      const expiresAt = new Date(Date.now() + pipelineCfg.validityMonths * 30 * 24 * 60 * 60 * 1000).toISOString();
+      update[pipelineCfg.enrichCol] = true;
+      update[pipelineCfg.lastAttemptCol] = now;
+      update[pipelineCfg.expiresCol] = expiresAt;
+    } else if (pipelineCfg) {
+      // Failed attempt — update last_attempt but don't mark as enriched
+      update[pipelineCfg.lastAttemptCol] = now;
     }
 
     // ========== APPLY LEAD UPDATE (only if there are field changes) ==========

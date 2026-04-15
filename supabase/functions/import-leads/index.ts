@@ -480,6 +480,17 @@ async function processImport(
       { onConflict: "lead_id,pipeline" }
     ).then(r => { if (r.error) console.warn("[import-leads] lead_enrichments upsert:", r.error.message); });
 
+    // Set enrich_one on leads table if already enriched
+    if (enrichStatusToInsert === "concluido" || enrichStatusToInsert === "alimentado") {
+      const expiresAt = new Date(Date.now() + 12 * 30 * 24 * 60 * 60 * 1000).toISOString();
+      await supabase.from("leads").update({
+        enrich_one: true,
+        last_attempt_at_one: now,
+        expires_at_one: expiresAt,
+      }).eq("id", created.id)
+      .then(r => { if (r.error) console.warn("[import-leads] enrich_one update:", r.error.message); });
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
