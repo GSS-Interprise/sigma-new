@@ -34,6 +34,8 @@ import bmpIcon from "@/assets/file-icons/bmp.png";
 import { Input } from "@/components/ui/input";
 import { FormLabel } from "@/components/ui/form";
 import { Checkbox } from "@/components/ui/checkbox";
+import { EnviarResumoEmailModal } from "./EnviarResumoEmailModal";
+import { Mail } from "lucide-react";
 
 const formatCNPJ = (value: string) => {
   const numbers = value.replace(/\D/g, '');
@@ -182,6 +184,7 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
   const [documentos, setDocumentos] = useState<File[]>([]);
   const [documentosExistentes, setDocumentosExistentes] = useState<any[]>([]);
   const [usuariosEmail, setUsuariosEmail] = useState<string[]>([]);
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
   const [anexoParaExcluir, setAnexoParaExcluir] = useState<any>(null);
   const [activeTab, setActiveTab] = useState("cadastro");
   const [isLoadingData, setIsLoadingData] = useState(false);
@@ -1093,24 +1096,7 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
         }
       }
 
-      // 7. Enviar email
-      if (usuariosEmail.length > 0) {
-        const valorTotal = itensContrato.reduce((sum, item) => sum + (item.valor_item * (item.quantidade || 1)), 0);
-        
-        await supabase.functions.invoke('send-contract-email', {
-          body: {
-            emails: usuariosEmail,
-            contratoData: {
-              cliente_nome: values.nome_fantasia,
-              tipos_servico: values.tipo_servico,
-              status_assinatura: values.assinado,
-              valor_total: valorTotal,
-              data_vigencia: values.data_inicio,
-              contrato_id: contratoId,
-            },
-          },
-        });
-      }
+      // Email é enviado separadamente via modal
 
       return { contratoId };
     },
@@ -1780,30 +1766,7 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
               )}
             </div>
 
-            {/* Seleção de usuários para email */}
-            <div className="space-y-3 pt-4 border-t">
-              <FormLabel>Enviar Resumo por E-mail para:</FormLabel>
-              <div className="grid grid-cols-2 gap-2">
-                {usuarios?.map((usuario) => (
-                  <div key={usuario.email} className="flex items-center space-x-2">
-                    <Checkbox
-                      id={usuario.email}
-                      checked={usuariosEmail.includes(usuario.email)}
-                      onCheckedChange={(checked) => {
-                        if (checked) {
-                          setUsuariosEmail([...usuariosEmail, usuario.email]);
-                        } else {
-                          setUsuariosEmail(usuariosEmail.filter(e => e !== usuario.email));
-                        }
-                      }}
-                    />
-                    <label htmlFor={usuario.email} className="text-sm">
-                      {usuario.nome_completo} ({usuario.email})
-                    </label>
-                  </div>
-                ))}
-              </div>
-            </div>
+            {/* Botão enviar resumo por email - apenas para contratos existentes */}
 
             <div className="flex justify-end gap-2 pt-4 border-t sticky bottom-0 bg-background">
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
