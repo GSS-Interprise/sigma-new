@@ -7,7 +7,6 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -20,15 +19,14 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Parse request body for optional filters
     let instanceId: string | null = null;
-    let limit = 50;
+    let limit = 10; // Reduced default to avoid timeout
     let contactIds: string[] = [];
     
     try {
       const body = await req.json();
       instanceId = body.instance_id || null;
-      limit = body.limit || 50;
+      limit = Math.min(body.limit || 10, 15); // Cap at 15 to stay under 150s
       contactIds = Array.isArray(body.contact_ids)
         ? body.contact_ids.filter((id: unknown): id is string => typeof id === 'string' && id.length > 0)
         : [];
@@ -36,167 +34,117 @@ serve(async (req) => {
       // No body provided, use defaults
     }
 
-    console.log('🔄 Iniciando sincronização de fotos de contatos...');
-    console.log(`   Instance filter: ${instanceId || 'todas'}, Contact IDs: ${contactIds.length || 0}, Limit: ${limit}`);
+    console.log(`🔄 Sync fotos: instance=${instanceId || 'todas'}, ids=${contactIds.length}, limit=${limit}`);
 
-    // Fetch contacts without profile pictures (null or empty string)
     let query = supabase
       .from('sigzap_contacts')
-      .select(`
-        id,
-        contact_jid,
-        contact_phone,
-        contact_name,
-        instance_id,
-        instance:sigzap_instances(id, name)
-      `)
+      .select(`id, contact_jid, contact_phone, contact_name, instance_id, instance:sigzap_instances(id, name)`)
+      .or('profile_picture_url.is.null,profile_picture_url.eq.')
       .limit(limit);
-
-    query = query.or('profile_picture_url.is.null,profile_picture_url.eq.');
 
     if (contactIds.length > 0) {
       query = query.in('id', contactIds);
-    }
-
-    if (instanceId && contactIds.length === 0) {
+    } else if (instanceId) {
       query = query.eq('instance_id', instanceId);
     }
 
     const { data: contacts, error: contactsError } = await query;
 
-    if (contactsError) {
-      console.error('❌ Erro ao buscar contatos:', contactsError);
-      throw contactsError;
-    }
+    if (contactsError) throw contactsError;
 
     if (!contacts || contacts.length === 0) {
-      console.log('✅ Nenhum contato sem foto encontrado');
-      return new Response(JSON.stringify({ 
-        success: true, 
-        message: 'Nenhum contato sem foto encontrado',
-        synced: 0 
-      }), {
+      return new Response(JSON.stringify({ success: true, message: 'Nenhum contato sem foto', synced: 0 }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    console.log(`📷 Encontrados ${contacts.length} contatos sem foto`);
+    console.log(`📷 ${contacts.length} contatos sem foto`);
 
     let syncedCount = 0;
     let errorCount = 0;
     const results: { contact: string; success: boolean; error?: string }[] = [];
 
-    // Group contacts by instance for efficient API calls
+    // Group by instance
     const contactsByInstance = new Map<string, typeof contacts>();
-    
     for (const contact of contacts) {
       const instance = contact.instance as any;
       if (!instance?.name) continue;
-      
-      const instanceName = instance.name;
-      if (!contactsByInstance.has(instanceName)) {
-        contactsByInstance.set(instanceName, []);
-      }
-      contactsByInstance.get(instanceName)!.push(contact);
+      const name = instance.name;
+      if (!contactsByInstance.has(name)) contactsByInstance.set(name, []);
+      contactsByInstance.get(name)!.push(contact);
     }
 
-    // Process each instance
     for (const [instanceName, instanceContacts] of contactsByInstance) {
-      console.log(`\n🔄 Processando instância: ${instanceName} (${instanceContacts.length} contatos)`);
-      
-      for (const contact of instanceContacts) {
-        try {
-          // Extract phone number from JID (remove @s.whatsapp.net)
-          const phone = contact.contact_phone || contact.contact_jid?.replace('@s.whatsapp.net', '').replace('@c.us', '');
-          
-          if (!phone) {
-            console.log(`⚠️ Contato sem telefone: ${contact.id}`);
-            continue;
-          }
+      // Process contacts in parallel batches of 3
+      for (let i = 0; i < instanceContacts.length; i += 3) {
+        const batch = instanceContacts.slice(i, i + 3);
+        const promises = batch.map(async (contact) => {
+          try {
+            const phone = contact.contact_phone || contact.contact_jid?.replace('@s.whatsapp.net', '').replace('@c.us', '');
+            if (!phone) return;
 
-          // Call Evolution API to fetch profile picture
-          const apiUrl = `${evolutionUrl}/chat/fetchProfilePictureUrl/${instanceName}`;
-          console.log(`   📥 Buscando foto para ${phone}...`);
-          
-          const response = await fetch(apiUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'apikey': evolutionApiKey,
-            },
-            body: JSON.stringify({ number: phone }),
-          });
+            const response = await fetch(`${evolutionUrl}/chat/fetchProfilePictureUrl/${instanceName}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'apikey': evolutionApiKey },
+              body: JSON.stringify({ number: phone }),
+            });
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            console.log(`   ⚠️ Erro API (${response.status}): ${errorText.substring(0, 100)}`);
-            results.push({ contact: phone, success: false, error: `API error: ${response.status}` });
-            errorCount++;
-            continue;
-          }
+            if (!response.ok) {
+              const errorText = await response.text();
+              results.push({ contact: phone, success: false, error: `API ${response.status}` });
+              errorCount++;
+              return;
+            }
 
-          const data = await response.json();
-          const profilePictureUrl = data.profilePictureUrl || data.wpiUrl?.eurl || data.imgUrl;
+            const data = await response.json();
+            const profilePictureUrl = data.profilePictureUrl || data.wpiUrl?.eurl || data.imgUrl;
 
-          if (!profilePictureUrl) {
-            console.log(`   ⚠️ Contato ${phone} não tem foto de perfil`);
-            // Update with empty string to avoid retrying
-            await supabase
-              .from('sigzap_contacts')
-              .update({ profile_picture_url: '', updated_at: new Date().toISOString() })
+            if (!profilePictureUrl) {
+              await supabase.from('sigzap_contacts')
+                .update({ profile_picture_url: '', updated_at: new Date().toISOString() })
+                .eq('id', contact.id);
+              results.push({ contact: phone, success: false, error: 'No profile picture' });
+              return;
+            }
+
+            const { error: updateError } = await supabase.from('sigzap_contacts')
+              .update({ profile_picture_url: profilePictureUrl, updated_at: new Date().toISOString() })
               .eq('id', contact.id);
-            results.push({ contact: phone, success: false, error: 'No profile picture' });
-            continue;
-          }
 
-          // Update contact with profile picture
-          const { error: updateError } = await supabase
-            .from('sigzap_contacts')
-            .update({ 
-              profile_picture_url: profilePictureUrl,
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', contact.id);
-
-          if (updateError) {
-            console.error(`   ❌ Erro ao atualizar contato ${phone}:`, updateError);
-            results.push({ contact: phone, success: false, error: updateError.message });
+            if (updateError) {
+              results.push({ contact: phone, success: false, error: updateError.message });
+              errorCount++;
+            } else {
+              results.push({ contact: phone, success: true });
+              syncedCount++;
+            }
+          } catch (err) {
+            results.push({ contact: contact.contact_phone || contact.id, success: false, error: String(err) });
             errorCount++;
-          } else {
-            console.log(`   ✅ Foto atualizada para ${contact.contact_name || phone}`);
-            results.push({ contact: phone, success: true });
-            syncedCount++;
           }
+        });
 
-          // Small delay to avoid rate limiting
-          await new Promise(resolve => setTimeout(resolve, 200));
-          
-        } catch (err) {
-          console.error(`   ❌ Erro ao processar contato:`, err);
-          results.push({ contact: contact.contact_phone || contact.id, success: false, error: String(err) });
-          errorCount++;
-        }
+        await Promise.all(promises);
       }
     }
 
-    console.log(`\n📊 Sincronização concluída: ${syncedCount} atualizados, ${errorCount} erros`);
+    console.log(`📊 Concluído: ${syncedCount} ok, ${errorCount} erros`);
 
-    return new Response(JSON.stringify({ 
-      success: true, 
-      message: `Sincronização concluída`,
+    return new Response(JSON.stringify({
+      success: true,
       synced: syncedCount,
       errors: errorCount,
       total: contacts.length,
-      results: results.slice(0, 20) // Limit results in response
+      results: results.slice(0, 20),
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
   } catch (error) {
-    console.error('❌ Erro na sincronização de fotos:', error);
-    return new Response(JSON.stringify({ 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Erro desconhecido' 
+    console.error('❌ Erro sync fotos:', error);
+    return new Response(JSON.stringify({
+      success: false,
+      error: error instanceof Error ? error.message : 'Erro desconhecido',
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
