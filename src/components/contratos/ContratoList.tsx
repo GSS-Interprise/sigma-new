@@ -9,6 +9,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { useToast } from "@/components/ui/use-toast";
 import { useState, useMemo } from "react";
 import { ContratoFileViewerDialog } from "./ContratoFileViewerDialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 import pdfIcon from "@/assets/file-icons/pdf.png";
 import docIcon from "@/assets/file-icons/doc.png";
