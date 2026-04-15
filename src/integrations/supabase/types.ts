@@ -5161,11 +5161,14 @@ export type Database = {
           attempt_count: number | null
           completed_at: string | null
           created_at: string | null
+          enriched_at: string | null
           error_message: string | null
+          expires_at: string | null
           id: string
           last_attempt_at: string | null
           lead_id: string
           pipeline: string
+          pipeline_version: string | null
           result_data: Json | null
           source: string | null
           status: string
@@ -5175,11 +5178,14 @@ export type Database = {
           attempt_count?: number | null
           completed_at?: string | null
           created_at?: string | null
+          enriched_at?: string | null
           error_message?: string | null
+          expires_at?: string | null
           id?: string
           last_attempt_at?: string | null
           lead_id: string
           pipeline: string
+          pipeline_version?: string | null
           result_data?: Json | null
           source?: string | null
           status?: string
@@ -5189,11 +5195,14 @@ export type Database = {
           attempt_count?: number | null
           completed_at?: string | null
           created_at?: string | null
+          enriched_at?: string | null
           error_message?: string | null
+          expires_at?: string | null
           id?: string
           last_attempt_at?: string | null
           lead_id?: string
           pipeline?: string
+          pipeline_version?: string | null
           result_data?: Json | null
           source?: string | null
           status?: string
