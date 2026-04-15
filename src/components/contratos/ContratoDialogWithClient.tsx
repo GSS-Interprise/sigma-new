@@ -1769,6 +1769,13 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
             {/* Botão enviar resumo por email - apenas para contratos existentes */}
 
             <div className="flex justify-end gap-2 pt-4 border-t sticky bottom-0 bg-background">
+              {contrato && (
+                <Button type="button" variant="secondary" onClick={() => setEmailModalOpen(true)}>
+                  <Mail className="h-4 w-4 mr-2" />
+                  Enviar resumo por e-mail
+                </Button>
+              )}
+              <div className="flex-1" />
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 {isViewMode ? 'Fechar' : 'Cancelar'}
               </Button>
