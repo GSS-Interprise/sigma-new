@@ -1904,6 +1904,24 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {contrato && (
+        <EnviarResumoEmailModal
+          open={emailModalOpen}
+          onOpenChange={setEmailModalOpen}
+          contratoId={contrato.id}
+          clienteNome={form.getValues('nome_fantasia')}
+          tiposServico={form.getValues('tipo_servico') || []}
+          statusAssinatura={form.getValues('assinado')}
+          valorTotal={itensContrato.reduce((sum, item) => sum + (item.valor_item * (item.quantidade || 1)), 0)}
+          dataInicio={form.getValues('data_inicio')?.toISOString?.() || ''}
+          codigoContrato={form.getValues('codigo_contrato')}
+          objetoContrato={form.getValues('objeto_contrato')}
+          prazoMeses={form.getValues('prazo_meses')}
+          condicaoPagamento={form.getValues('condicao_pagamento')}
+          documentosExistentes={documentosExistentes}
+        />
+      )}
     </>
   );
 }
