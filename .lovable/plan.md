@@ -1,62 +1,41 @@
 
+# Reestruturação: Colunas de Alimentação na Tabela `leads`
 
-# Reestruturação da tabela `lead_enrichments`
+## Abordagem
 
-## Situação atual
+Cada linha de alimentação tem 3 colunas diretas na tabela `leads`:
+- `enrich_X` (boolean, default false) — alimentado?
+- `last_attempt_at_X` (timestamptz) — última tentativa
+- `expires_at_X` (timestamptz) — validade dos dados
 
-A tabela já suporta múltiplas linhas por lead via unique constraint `(lead_id, pipeline)`. Hoje só existe o pipeline `enrich_v1` com ~122k registros. A estrutura base está ok, mas faltam colunas para controlar **quando o enriquecimento foi realizado** e **quando os dados ficam desatualizados**.
+## Linhas de alimentação
 
-## Pipelines planejados
+| Linha | Colunas | Pipeline | Validade |
+|-------|---------|----------|----------|
+| 1 | enrich_one, last_attempt_at_one, expires_at_one | enrich_v1 (Import-leads/Tiago) | 12 meses |
+| 2 | enrich_two, last_attempt_at_two, expires_at_two | enrich_residentes | 6 meses |
+| 3 | enrich_three, last_attempt_at_three, expires_at_three | enrich_lemit | 6 meses |
+| 4 | enrich_four, last_attempt_at_four, expires_at_four | enrich_lifeshub | 6 meses |
+| 5 | enrich_five, last_attempt_at_five, expires_at_five | enrich_especialidade | 6 meses |
 
-| Pipeline | Descrição | Status atual |
-|----------|-----------|-------------|
-| `enrich_v1` | Linha 1 — import-leads (Tiago) | Em uso |
-| `enrich_residentes` | Linha 2 — Residentes | Em construção |
-| `enrich_lemit` | Lemit | Futuro |
-| `enrich_lifeshub` | Lifeshub ByName | Futuro |
-
-## Alterações no banco
-
-Adicionar 2 colunas a `lead_enrichments`:
-
-1. **`enriched_at`** (`timestamptz`, nullable) — Data/hora em que o enriquecimento foi efetivamente concluído com sucesso (diferente de `completed_at` que marca fim do processamento; esta marca quando os dados foram de fato aplicados ao lead).
-
-2. **`expires_at`** (`timestamptz`, nullable) — Data de desatualização/expiração dos dados. Cada pipeline pode definir sua validade (ex: 6 meses para Lifeshub, 1 ano para residentes).
-
-Também criar uma coluna de metadados do pipeline:
-
-3. **`pipeline_version`** (`text`, nullable, default `'1.0'`) — Versão do pipeline, útil para rastrear mudanças futuras nos processos de enriquecimento.
-
-### SQL da migração
+## Queries simplificadas
 
 ```sql
-ALTER TABLE lead_enrichments 
-  ADD COLUMN IF NOT EXISTS enriched_at timestamptz,
-  ADD COLUMN IF NOT EXISTS expires_at timestamptz,
-  ADD COLUMN IF NOT EXISTS pipeline_version text DEFAULT '1.0';
+-- Buscar leads não alimentados pela Linha 1
+SELECT * FROM leads WHERE enrich_one = false AND merged_into_id IS NULL;
 
--- Preencher enriched_at para registros já concluídos
-UPDATE lead_enrichments 
-SET enriched_at = completed_at 
-WHERE status = 'concluido' AND enriched_at IS NULL;
-
--- Index para queries de expiração
-CREATE INDEX IF NOT EXISTS idx_lead_enrichments_expiry 
-ON lead_enrichments (pipeline, expires_at) 
-WHERE expires_at IS NOT NULL;
-
-COMMENT ON COLUMN lead_enrichments.enriched_at IS 'Data em que os dados de enriquecimento foram aplicados ao lead';
-COMMENT ON COLUMN lead_enrichments.expires_at IS 'Data de expiração/desatualização dos dados enriquecidos';
-COMMENT ON COLUMN lead_enrichments.pipeline_version IS 'Versão do pipeline de enriquecimento';
+-- Buscar leads não alimentados pela Linha 2
+SELECT * FROM leads WHERE enrich_two = false AND merged_into_id IS NULL;
 ```
 
-## Impacto no código
+## Tabela `lead_enrichments`
 
-- **Nenhuma quebra**: As colunas são nullable, o código existente continua funcionando.
-- **Edge functions** (`enrich-lead`, `import-leads`): Quando marcarem `status = 'concluido'`, devem também setar `enriched_at = now()` e `expires_at` conforme a validade do pipeline.
-- **UI (LeadsTab)**: Futuramente as insígnias de enriquecimento poderão consultar `enriched_at` e `expires_at` para mostrar status visual (válido, expirado, pendente) por pipeline.
+Mantida como log/auditoria (result_data, error_message, tentativas). As colunas boolean na `leads` são o "estado atual" para buscas rápidas.
 
-## Resumo
+## Edge functions atualizadas
 
-Apenas uma migração com 3 novas colunas + backfill + índice. Sem alteração de código obrigatória nesta etapa — preparação para os pipelines futuros.
+- `enrich-lead` — seta enrich_X = true + expires_at ao concluir
+- `query-leads-for-enrich` — busca direto em `leads` WHERE enrich_X = false
+- `import-leads` — seta enrich_one quando import já traz status concluído
 
+## Status: ✅ Implementado
