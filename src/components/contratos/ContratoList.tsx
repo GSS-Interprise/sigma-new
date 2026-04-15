@@ -601,6 +601,31 @@ export function ContratoList({ contratos, isLoading, onEdit, onView, onDelete }:
         </TableBody>
       </Table>
     </div>
+
+    <AlertDialog open={!!deleteConfirmId} onOpenChange={(open) => !open && setDeleteConfirmId(null)}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
+          <AlertDialogDescription>
+            Tem certeza que deseja excluir este contrato? Esta ação não pode ser desfeita.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+          <AlertDialogAction
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            onClick={() => {
+              if (deleteConfirmId) {
+                onDelete(deleteConfirmId);
+                setDeleteConfirmId(null);
+              }
+            }}
+          >
+            Excluir
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
     </>
   );
 }
