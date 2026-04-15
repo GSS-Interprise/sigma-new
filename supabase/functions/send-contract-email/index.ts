@@ -1,8 +1,8 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
+import { Resend } from "https://esm.sh/resend@4.0.0";
 
-const gmailUser = Deno.env.get("GMAIL_USER");
-const gmailPassword = Deno.env.get("GMAIL_APP_PASSWORD");
+const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
+const resendFromEmail = "Sistema SIGMA <bi@gestaoservicosaude.com.br>";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -22,7 +22,6 @@ interface ContratoEmailRequest {
 }
 
 const handler = async (req: Request): Promise<Response> => {
-  // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -36,30 +35,21 @@ const handler = async (req: Request): Promise<Response> => {
     if (!emails || emails.length === 0) {
       return new Response(
         JSON.stringify({ success: true, message: "Nenhum email para enviar" }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            ...corsHeaders,
-          },
-        }
+        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
 
-    // Formatar data
     const dataFormatada = new Date(contratoData.data_vigencia).toLocaleDateString("pt-BR", {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
     });
 
-    // Formatar valor
     const valorFormatado = new Intl.NumberFormat("pt-BR", {
       style: "currency",
       currency: "BRL",
     }).format(contratoData.valor_total);
 
-    // Criar HTML do email
     const emailHtml = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <h2 style="color: #2563eb;">Resumo de Contrato Cadastrado</h2>
@@ -100,65 +90,36 @@ const handler = async (req: Request): Promise<Response> => {
       </div>
     `;
 
-    // Configurar cliente SMTP
-    const client = new SMTPClient({
-      connection: {
-        hostname: "smtp.gmail.com",
-        port: 465,
-        tls: true,
-        auth: {
-          username: gmailUser!,
-          password: gmailPassword!,
-        },
-      },
-    });
-
-    // Enviar email para cada destinatário
+    let sentCount = 0;
     for (const email of emails) {
       try {
         console.log("Enviando email para:", email);
-        
-        await client.send({
-          from: gmailUser!,
+        await resend.emails.send({
+          from: resendFromEmail,
           to: email,
-          replyTo: gmailUser!,
           subject: `Resumo de Contrato - ${contratoData.cliente_nome}`,
           html: emailHtml,
         });
-
+        sentCount++;
         console.log("Email enviado com sucesso para:", email);
-      } catch (emailError) {
-        console.error(`Erro ao enviar email para ${email}:`, emailError);
+      } catch (emailError: any) {
+        console.error(`Erro ao enviar email para ${email}:`, emailError?.message || emailError);
       }
     }
-
-    await client.close();
 
     return new Response(
       JSON.stringify({
         success: true,
         message: "Emails enviados com sucesso",
-        emailsSent: emails.length,
+        emailsSent: sentCount,
       }),
-      {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json",
-          ...corsHeaders,
-        },
-      }
+      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
   } catch (error: any) {
     console.error("Erro ao enviar emails:", error);
     return new Response(
-      JSON.stringify({
-        success: false,
-        error: error.message,
-      }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json", ...corsHeaders },
-      }
+      JSON.stringify({ success: false, error: error.message }),
+      { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
   }
 };
