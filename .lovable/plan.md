@@ -1,24 +1,38 @@
 
 
-# Mudar `column` e `limit` de body para query parameters
+# Endpoint POST para `lead_especialidades`
 
-## Mudança
+## O que será criado
 
-Trocar a leitura de `column` e `limit` do body JSON para **query parameters da URL**, para facilitar o uso no n8n via HTTP Request node.
+Nova Edge Function `manage-lead-especialidades` que recebe um array de `{ lead_id, especialidade_id }` e insere na junction table `lead_especialidades`. Usa `ON CONFLICT DO NOTHING` para não duplicar.
 
-## Alteração no arquivo
+## Arquivo
 
-**`supabase/functions/query-leads-by-enrich/index.ts`**:
-- Extrair `column` e `limit` da URL: `new URL(req.url).searchParams`
-- Remover `await req.json()` — não precisa mais de body
-- Aceitar também GET (além de POST), já que não tem body
+**`supabase/functions/manage-lead-especialidades/index.ts`** (novo)
 
-## Uso no n8n
+## Lógica
+
+1. Valida Bearer token — aceita exclusivamente `Enriquecedor-leads`
+2. Lê body como array: `[{ "lead_id": "uuid", "especialidade_id": "uuid" }, ...]`
+3. Valida que cada item tem `lead_id` e `especialidade_id` como strings UUID
+4. Faz `upsert` na tabela `lead_especialidades` com `onConflict: 'lead_id,especialidade_id'` e `ignoreDuplicates: true`
+5. Retorna quantidade inserida e eventuais erros
+
+## Exemplo de uso no n8n
 
 ```
-POST https://zupsbgtoeoixfokzkjro.supabase.co/functions/v1/query-leads-by-enrich?column=enrich_five&limit=500
+POST https://zupsbgtoeoixfokzkjro.supabase.co/functions/v1/manage-lead-especialidades
 Authorization: Bearer <token>
+Content-Type: application/json
+
+[
+  { "lead_id": "aaa-...", "especialidade_id": "bbb-..." },
+  { "lead_id": "aaa-...", "especialidade_id": "ccc-..." }
+]
 ```
 
-Sem body necessário.
+Resposta:
+```json
+{ "inserted": 2, "total_received": 2 }
+```
 
