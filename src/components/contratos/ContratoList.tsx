@@ -9,6 +9,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { useToast } from "@/components/ui/use-toast";
 import { useState, useMemo } from "react";
 import { ContratoFileViewerDialog } from "./ContratoFileViewerDialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 import pdfIcon from "@/assets/file-icons/pdf.png";
 import docIcon from "@/assets/file-icons/doc.png";
@@ -41,6 +42,7 @@ export function ContratoList({ contratos, isLoading, onEdit, onView, onDelete }:
   const [clienteFilter, setClienteFilter] = useState<string | null>(null);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerFile, setViewerFile] = useState<{ url: string; name: string } | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const openFileViewer = async (url: string, name: string) => {
     const extension = name?.split('.').pop()?.toLowerCase() || '';
@@ -584,7 +586,7 @@ export function ContratoList({ contratos, isLoading, onEdit, onView, onDelete }:
                         size="icon"
                         onClick={(e) => {
                           e.stopPropagation();
-                          onDelete(contrato.id);
+                          setDeleteConfirmId(contrato.id);
                         }}
                         title="Deletar"
                       >
@@ -599,6 +601,31 @@ export function ContratoList({ contratos, isLoading, onEdit, onView, onDelete }:
         </TableBody>
       </Table>
     </div>
+
+    <AlertDialog open={!!deleteConfirmId} onOpenChange={(open) => !open && setDeleteConfirmId(null)}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
+          <AlertDialogDescription>
+            Tem certeza que deseja excluir este contrato? Esta ação não pode ser desfeita.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+          <AlertDialogAction
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            onClick={() => {
+              if (deleteConfirmId) {
+                onDelete(deleteConfirmId);
+                setDeleteConfirmId(null);
+              }
+            }}
+          >
+            Excluir
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
     </>
   );
 }
