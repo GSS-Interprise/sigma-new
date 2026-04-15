@@ -9396,6 +9396,51 @@ export type Database = {
           },
         ]
       }
+      sigma_email_log: {
+        Row: {
+          assunto: string
+          created_at: string
+          destinatario_email: string
+          destinatario_nome: string | null
+          enviado_por_id: string | null
+          enviado_por_nome: string | null
+          erro: string | null
+          id: string
+          metadata: Json | null
+          modulo: string
+          referencia_id: string | null
+          status: string
+        }
+        Insert: {
+          assunto: string
+          created_at?: string
+          destinatario_email: string
+          destinatario_nome?: string | null
+          enviado_por_id?: string | null
+          enviado_por_nome?: string | null
+          erro?: string | null
+          id?: string
+          metadata?: Json | null
+          modulo: string
+          referencia_id?: string | null
+          status?: string
+        }
+        Update: {
+          assunto?: string
+          created_at?: string
+          destinatario_email?: string
+          destinatario_nome?: string | null
+          enviado_por_id?: string | null
+          enviado_por_nome?: string | null
+          erro?: string | null
+          id?: string
+          metadata?: Json | null
+          modulo?: string
+          referencia_id?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
       sigzap_contacts: {
         Row: {
           contact_jid: string
