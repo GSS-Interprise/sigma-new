@@ -45,9 +45,13 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
-    const { emails, contratoData }: ContratoEmailRequest = await req.json();
+    const { emails, contratoData, remetente_email, remetente_nome }: ContratoEmailRequest = await req.json();
 
-    console.log("Enviando resumo de contrato para:", emails);
+    const fromEmail = remetente_email 
+      ? `${remetente_nome || 'Sistema SIGMA'} <${remetente_email}>`
+      : "Sistema SIGMA <bi@gestaoservicosaude.com.br>";
+
+    console.log("Enviando resumo de contrato de:", fromEmail, "para:", emails);
 
     if (!emails || emails.length === 0) {
       return new Response(
