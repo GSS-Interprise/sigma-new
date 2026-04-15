@@ -36,23 +36,43 @@ serve(async (req) => {
 
     console.log(`🔄 Sync fotos: instance=${instanceId || 'todas'}, ids=${contactIds.length}, limit=${limit}`);
 
-    let query = supabase
-      .from('sigzap_contacts')
-      .select(`id, contact_jid, contact_phone, contact_name, instance_id, instance:sigzap_instances(id, name)`)
-      .or('profile_picture_url.is.null,profile_picture_url.eq.')
-      .limit(limit);
+    let contacts: any[] = [];
 
     if (contactIds.length > 0) {
-      query = query.in('id', contactIds);
-    } else if (instanceId) {
-      query = query.eq('instance_id', instanceId);
+      // Process contact IDs in batches of 50 to avoid URL length limits
+      const batchSize = 50;
+      const idsToProcess = contactIds.slice(0, limit * 10); // Cap total IDs
+      for (let i = 0; i < idsToProcess.length; i += batchSize) {
+        const batch = idsToProcess.slice(i, i + batchSize);
+        const { data, error } = await supabase
+          .from('sigzap_contacts')
+          .select(`id, contact_jid, contact_phone, contact_name, instance_id, instance:sigzap_instances(id, name)`)
+          .or('profile_picture_url.is.null,profile_picture_url.eq.')
+          .in('id', batch)
+          .limit(limit - contacts.length);
+
+        if (error) throw error;
+        if (data) contacts.push(...data);
+        if (contacts.length >= limit) break;
+      }
+      contacts = contacts.slice(0, limit);
+    } else {
+      let query = supabase
+        .from('sigzap_contacts')
+        .select(`id, contact_jid, contact_phone, contact_name, instance_id, instance:sigzap_instances(id, name)`)
+        .or('profile_picture_url.is.null,profile_picture_url.eq.')
+        .limit(limit);
+
+      if (instanceId) {
+        query = query.eq('instance_id', instanceId);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      contacts = data || [];
     }
 
-    const { data: contacts, error: contactsError } = await query;
-
-    if (contactsError) throw contactsError;
-
-    if (!contacts || contacts.length === 0) {
+    if (contacts.length === 0) {
       return new Response(JSON.stringify({ success: true, message: 'Nenhum contato sem foto', synced: 0 }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
