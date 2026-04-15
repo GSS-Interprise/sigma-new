@@ -185,15 +185,27 @@ const handler = async (req: Request): Promise<Response> => {
     // Enviar email para o solicitante usando Resend
     console.log("Enviando email para:", solicitanteEmail);
     
+    const subjectSolicitante = `[#${ticketNumero}] Ticket criado - ${tipo === "software" ? "Software" : "Hardware"}`;
     await resend.emails.send({
       from: resendFromEmail,
       to: solicitanteEmail,
-      subject: `[#${ticketNumero}] Ticket criado - ${tipo === "software" ? "Software" : "Hardware"}`,
+      subject: subjectSolicitante,
       html: emailSolicitanteHtml,
       attachments: attachments.length > 0 ? attachments : undefined,
     });
 
     console.log("Email sent to requester:", solicitanteEmail);
+
+    // Log no sigma_email_log
+    await supabase.from('sigma_email_log').insert({
+      modulo: 'suporte',
+      referencia_id: ticketId || ticketNumero,
+      destinatario_nome: solicitanteNome,
+      destinatario_email: solicitanteEmail,
+      assunto: subjectSolicitante,
+      status: 'enviado',
+      metadata: { ticket_numero: ticketNumero, tipo, destino },
+    });
 
     // Se for ticket externo, enviar também para o fornecedor
     if (destino === "externo" && fornecedorExterno) {
@@ -264,17 +276,29 @@ const handler = async (req: Request): Promise<Response> => {
           </div>
         `;
 
+        const subjectFornecedor = `[#${ticketNumero}] Novo Ticket – ${tipo === "software" ? "Software" : "Hardware"} – Externo`;
         console.log("Enviando email para fornecedor:", destinatario);
         
         await resend.emails.send({
           from: resendFromEmail,
           to: destinatario,
-          subject: `[#${ticketNumero}] Novo Ticket – ${tipo === "software" ? "Software" : "Hardware"} – Externo`,
+          subject: subjectFornecedor,
           html: emailFornecedorHtml,
           attachments: attachments.length > 0 ? attachments : undefined,
         });
 
         console.log("Email sent to supplier:", destinatario);
+
+        // Log fornecedor no sigma_email_log
+        await supabase.from('sigma_email_log').insert({
+          modulo: 'suporte',
+          referencia_id: ticketId || ticketNumero,
+          destinatario_nome: nomeDestinatario,
+          destinatario_email: destinatario,
+          assunto: subjectFornecedor,
+          status: 'enviado',
+          metadata: { ticket_numero: ticketNumero, tipo, destino, fornecedor: fornecedorExterno },
+        });
       }
     }
 

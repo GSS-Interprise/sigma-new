@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { Resend } from "https://esm.sh/resend@4.0.0";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.58.0";
 
 const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
 const resendFromEmail = "Sistema SIGMA <bi@gestaoservicosaude.com.br>";
@@ -90,20 +91,45 @@ const handler = async (req: Request): Promise<Response> => {
       </div>
     `;
 
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
     let sentCount = 0;
+    const subjectContrato = `Resumo de Contrato - ${contratoData.cliente_nome}`;
     for (const email of emails) {
       try {
         console.log("Enviando email para:", email);
         await resend.emails.send({
           from: resendFromEmail,
           to: email,
-          subject: `Resumo de Contrato - ${contratoData.cliente_nome}`,
+          subject: subjectContrato,
           html: emailHtml,
         });
         sentCount++;
         console.log("Email enviado com sucesso para:", email);
+
+        // Log no sigma_email_log
+        await supabase.from('sigma_email_log').insert({
+          modulo: 'contratos',
+          referencia_id: contratoData.contrato_id,
+          destinatario_email: email,
+          assunto: subjectContrato,
+          status: 'enviado',
+          metadata: { cliente: contratoData.cliente_nome, valor: contratoData.valor_total },
+        });
       } catch (emailError: any) {
         console.error(`Erro ao enviar email para ${email}:`, emailError?.message || emailError);
+        
+        await supabase.from('sigma_email_log').insert({
+          modulo: 'contratos',
+          referencia_id: contratoData.contrato_id,
+          destinatario_email: email,
+          assunto: subjectContrato,
+          status: 'falha',
+          erro: emailError?.message || 'Erro desconhecido',
+          metadata: { cliente: contratoData.cliente_nome },
+        });
       }
     }
 
