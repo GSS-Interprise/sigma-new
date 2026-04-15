@@ -22,16 +22,16 @@ const ENRICHABLE_FIELDS = [
 // Fields that are ALWAYS overwritten when provided (even if already filled)
 const OVERWRITE_FIELDS = ["crm", "nome"] as const;
 
-// Pipeline → enrich column mapping + validity
-const PIPELINE_CONFIG: Record<string, { enrichCol: string; lastAttemptCol: string; expiresCol: string; validityMonths: number }> = {
-  "enrich_v1":            { enrichCol: "enrich_one",   lastAttemptCol: "last_attempt_at_one",   expiresCol: "expires_at_one",   validityMonths: 12 },
-  "enrich_residentes":    { enrichCol: "enrich_two",   lastAttemptCol: "last_attempt_at_two",   expiresCol: "expires_at_two",   validityMonths: 6 },
-  "enrich_lemit":         { enrichCol: "enrich_three", lastAttemptCol: "last_attempt_at_three", expiresCol: "expires_at_three", validityMonths: 6 },
-  "enrich_lifeshub":      { enrichCol: "enrich_four",  lastAttemptCol: "last_attempt_at_four",  expiresCol: "expires_at_four",  validityMonths: 6 },
-  "enrich_especialidade": { enrichCol: "enrich_five",  lastAttemptCol: "last_attempt_at_five",  expiresCol: "expires_at_five",  validityMonths: 6 },
+// Pipeline → validity in months
+const PIPELINE_VALIDITY: Record<string, number> = {
+  "enrich_v1": 12,
+  "enrich_residentes": 6,
+  "enrich_lemit": 6,
+  "enrich_lifeshub": 6,
+  "enrich_especialidade": 6,
 };
 
-type EnrichableField = typeof ENRICHABLE_FIELDS[number];
+const VALID_PIPELINES = Object.keys(PIPELINE_VALIDITY);
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -89,6 +89,13 @@ serve(async (req) => {
       );
     }
 
+    if (!VALID_PIPELINES.includes(pipeline)) {
+      return new Response(
+        JSON.stringify({ error: `Unknown pipeline: ${pipeline}. Valid: ${VALID_PIPELINES.join(", ")}` }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const statusMap: Record<string, string> = {
       "enriquecido": "concluido",
       "non-encontrado": "erro",
@@ -106,6 +113,7 @@ serve(async (req) => {
     }
 
     const resolved_status = statusMap[api_enrich_status];
+    const now = new Date().toISOString();
 
     // ========== FETCH CURRENT LEAD ==========
     const { data: lead, error: fetchError } = await supabase
@@ -123,7 +131,6 @@ serve(async (req) => {
 
     // ========== BUILD LEAD UPDATE PAYLOAD ==========
     const update: Record<string, unknown> = {};
-
     const fields_updated: string[] = [];
 
     if (resolved_status === "concluido" || resolved_status === "alimentado") {
@@ -192,18 +199,6 @@ serve(async (req) => {
       }
     }
 
-    // ========== SET ENRICH COLUMNS ON LEADS TABLE ==========
-    const pipelineCfg = PIPELINE_CONFIG[pipeline];
-    if (pipelineCfg && (resolved_status === "concluido" || resolved_status === "alimentado")) {
-      const expiresAt = new Date(Date.now() + pipelineCfg.validityMonths * 30 * 24 * 60 * 60 * 1000).toISOString();
-      update[pipelineCfg.enrichCol] = true;
-      update[pipelineCfg.lastAttemptCol] = now;
-      update[pipelineCfg.expiresCol] = expiresAt;
-    } else if (pipelineCfg) {
-      // Failed attempt — update last_attempt but don't mark as enriched
-      update[pipelineCfg.lastAttemptCol] = now;
-    }
-
     // ========== APPLY LEAD UPDATE (only if there are field changes) ==========
     if (Object.keys(update).length > 0) {
       const { error: updateError } = await supabase
@@ -218,16 +213,22 @@ serve(async (req) => {
     }
 
     // ========== UPDATE lead_enrichments TABLE ==========
-    const now = new Date().toISOString();
+    const isSuccess = resolved_status === "concluido" || resolved_status === "alimentado";
+    const validityMonths = PIPELINE_VALIDITY[pipeline] || 6;
+    const expiresAt = isSuccess
+      ? new Date(Date.now() + validityMonths * 30 * 24 * 60 * 60 * 1000).toISOString()
+      : null;
+
     const enrichmentData: Record<string, unknown> = {
       lead_id: id,
       pipeline,
       status: resolved_status,
       source: api_enrich_source ?? null,
       last_attempt_at: now,
-      completed_at: (resolved_status === "concluido" || resolved_status === "alimentado") ? now : null,
+      completed_at: isSuccess ? now : null,
+      expires_at: expiresAt,
       error_message: resolved_status === "erro" ? (rest.error_message || "non-encontrado") : null,
-      result_data: (resolved_status === "concluido" || resolved_status === "alimentado") ? rest : null,
+      result_data: isSuccess ? rest : null,
     };
 
     const { error: enrichUpsertError } = await supabase
