@@ -15,6 +15,8 @@ interface Anexo {
 }
 
 interface ContratoEmailRequest {
+  remetente_email?: string;
+  remetente_nome?: string;
   emails: string[];
   contratoData: {
     cliente_nome: string;
