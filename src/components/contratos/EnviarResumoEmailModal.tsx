@@ -1,11 +1,13 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Mail, Loader2 } from "lucide-react";
+import { Mail, Loader2, Search, Paperclip, Send, Users } from "lucide-react";
 
 interface EnviarResumoEmailModalProps {
   open: boolean;
@@ -40,6 +42,7 @@ export function EnviarResumoEmailModal({
 }: EnviarResumoEmailModalProps) {
   const [selectedEmails, setSelectedEmails] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
+  const [search, setSearch] = useState("");
 
   const { data: usuarios } = useQuery({
     queryKey: ['usuarios-email-resumo-contrato'],
@@ -59,6 +62,15 @@ export function EnviarResumoEmailModal({
       return data || [];
     },
   });
+
+  const filteredUsuarios = useMemo(() => {
+    if (!usuarios) return [];
+    if (!search.trim()) return usuarios;
+    const q = search.toLowerCase();
+    return usuarios.filter(
+      u => u.nome_completo?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q)
+    );
+  }, [usuarios, search]);
 
   const handleSend = async () => {
     if (selectedEmails.length === 0) {
@@ -94,6 +106,7 @@ export function EnviarResumoEmailModal({
 
       toast.success(`Resumo enviado para ${selectedEmails.length} destinatário(s)`);
       setSelectedEmails([]);
+      setSearch("");
       onOpenChange(false);
     } catch (err: any) {
       console.error('Erro ao enviar email:', err);
@@ -104,81 +117,150 @@ export function EnviarResumoEmailModal({
   };
 
   const toggleAll = () => {
-    if (!usuarios) return;
-    if (selectedEmails.length === usuarios.length) {
-      setSelectedEmails([]);
+    if (!filteredUsuarios.length) return;
+    const allFilteredSelected = filteredUsuarios.every(u => selectedEmails.includes(u.email));
+    if (allFilteredSelected) {
+      setSelectedEmails(prev => prev.filter(e => !filteredUsuarios.some(u => u.email === e)));
     } else {
-      setSelectedEmails(usuarios.map(u => u.email));
+      setSelectedEmails(prev => [...new Set([...prev, ...filteredUsuarios.map(u => u.email)])]);
     }
   };
 
+  const allFilteredSelected = filteredUsuarios.length > 0 && filteredUsuarios.every(u => selectedEmails.includes(u.email));
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Mail className="h-5 w-5 text-primary" />
-            Enviar Resumo por E-mail
-          </DialogTitle>
-          <DialogDescription>
-            Selecione os destinatários que receberão o resumo do contrato <strong>{codigoContrato}</strong> do cliente <strong>{clienteNome}</strong>.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-3 max-h-[350px] overflow-y-auto">
-          <div className="flex items-center space-x-2 pb-2 border-b">
-            <Checkbox
-              id="select-all"
-              checked={!!usuarios?.length && selectedEmails.length === usuarios.length}
-              onCheckedChange={toggleAll}
-            />
-            <label htmlFor="select-all" className="text-sm font-medium cursor-pointer">
-              Selecionar todos
-            </label>
-          </div>
-
-          {usuarios?.map((usuario) => (
-            <div key={usuario.email} className="flex items-center space-x-2">
-              <Checkbox
-                id={`resumo-${usuario.email}`}
-                checked={selectedEmails.includes(usuario.email)}
-                onCheckedChange={(checked) => {
-                  if (checked) {
-                    setSelectedEmails(prev => [...prev, usuario.email]);
-                  } else {
-                    setSelectedEmails(prev => prev.filter(e => e !== usuario.email));
-                  }
-                }}
-              />
-              <label htmlFor={`resumo-${usuario.email}`} className="text-sm cursor-pointer">
-                {usuario.nome_completo} <span className="text-muted-foreground">({usuario.email})</span>
-              </label>
-            </div>
-          ))}
-
-          {(!usuarios || usuarios.length === 0) && (
-            <p className="text-sm text-muted-foreground text-center py-4">Nenhum usuário disponível.</p>
-          )}
+      <DialogContent className="max-w-lg p-0 gap-0 overflow-hidden rounded-xl">
+        {/* Header com gradiente */}
+        <div className="bg-gradient-to-r from-primary/10 via-primary/5 to-transparent px-6 pt-6 pb-4">
+          <DialogHeader className="space-y-1.5">
+            <DialogTitle className="flex items-center gap-2.5 text-lg">
+              <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/15 text-primary">
+                <Mail className="h-4.5 w-4.5" />
+              </div>
+              Enviar Resumo por E-mail
+            </DialogTitle>
+            <DialogDescription className="text-sm leading-relaxed">
+              Contrato <Badge variant="secondary" className="font-mono text-xs mx-0.5">{codigoContrato}</Badge> · {clienteNome}
+            </DialogDescription>
+          </DialogHeader>
         </div>
 
+        {/* Barra de busca */}
+        <div className="px-6 py-3 border-b bg-muted/30">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por nome ou e-mail..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9 h-9 bg-background border-border/60 focus-visible:ring-primary/30"
+            />
+          </div>
+        </div>
+
+        {/* Lista de destinatários */}
+        <div className="px-6 py-3">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Users className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                Destinatários ({filteredUsuarios.length})
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={toggleAll}
+              className="text-xs text-primary hover:text-primary/80 font-medium transition-colors"
+            >
+              {allFilteredSelected ? 'Desmarcar todos' : 'Selecionar todos'}
+            </button>
+          </div>
+
+          <div className="space-y-0.5 max-h-[280px] overflow-y-auto -mx-2 px-2 scrollbar-thin">
+            {filteredUsuarios.map((usuario) => {
+              const isSelected = selectedEmails.includes(usuario.email);
+              return (
+                <label
+                  key={usuario.email}
+                  htmlFor={`resumo-${usuario.email}`}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all duration-150
+                    ${isSelected
+                      ? 'bg-primary/8 border border-primary/20'
+                      : 'hover:bg-muted/50 border border-transparent'
+                    }`}
+                >
+                  <Checkbox
+                    id={`resumo-${usuario.email}`}
+                    checked={isSelected}
+                    onCheckedChange={(checked) => {
+                      if (checked) {
+                        setSelectedEmails(prev => [...prev, usuario.email]);
+                      } else {
+                        setSelectedEmails(prev => prev.filter(e => e !== usuario.email));
+                      }
+                    }}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium truncate">{usuario.nome_completo}</p>
+                    <p className="text-xs text-muted-foreground truncate">{usuario.email}</p>
+                  </div>
+                </label>
+              );
+            })}
+
+            {filteredUsuarios.length === 0 && (
+              <div className="text-center py-8">
+                <Search className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
+                <p className="text-sm text-muted-foreground">
+                  {search ? 'Nenhum resultado encontrado' : 'Nenhum usuário disponível'}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Anexos */}
         {documentosExistentes && documentosExistentes.length > 0 && (
-          <div className="pt-2 border-t">
-            <p className="text-xs text-muted-foreground mb-1">Anexos incluídos no e-mail:</p>
-            <ul className="text-xs space-y-0.5">
+          <div className="px-6 py-3 border-t bg-muted/20">
+            <div className="flex items-center gap-2 mb-2">
+              <Paperclip className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                Anexos ({documentosExistentes.length})
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
               {documentosExistentes.map((doc, i) => (
-                <li key={i} className="text-foreground">📎 {doc.arquivo_nome}</li>
+                <Badge key={i} variant="outline" className="text-xs font-normal py-1 gap-1.5">
+                  <Paperclip className="h-3 w-3" />
+                  {doc.arquivo_nome}
+                </Badge>
               ))}
-            </ul>
+            </div>
           </div>
         )}
 
-        <div className="flex justify-end gap-2 pt-2 border-t">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={sending}>
-            Cancelar
-          </Button>
-          <Button onClick={handleSend} disabled={sending || selectedEmails.length === 0}>
-            {sending ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Enviando...</> : `Enviar para ${selectedEmails.length}`}
-          </Button>
+        {/* Footer */}
+        <div className="flex items-center justify-between gap-3 px-6 py-4 border-t bg-muted/10">
+          {selectedEmails.length > 0 ? (
+            <p className="text-xs text-muted-foreground">
+              <span className="font-semibold text-foreground">{selectedEmails.length}</span> destinatário(s) selecionado(s)
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">Selecione os destinatários</p>
+          )}
+          <div className="flex gap-2">
+            <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)} disabled={sending}>
+              Cancelar
+            </Button>
+            <Button size="sm" onClick={handleSend} disabled={sending || selectedEmails.length === 0} className="gap-2">
+              {sending ? (
+                <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Enviando...</>
+              ) : (
+                <><Send className="h-3.5 w-3.5" /> Enviar</>
+              )}
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
