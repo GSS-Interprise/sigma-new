@@ -128,10 +128,6 @@ export function EnviarResumoEmailModal({
             data_termino: dataTermino,
             qtd_aditivos: qtdAditivos || 0,
             valor_estimado: valorEstimado,
-            anexos: documentosExistentes?.map(d => ({
-              nome: d.arquivo_nome,
-              url: d.arquivo_url,
-            })) || [],
           },
         },
       });
@@ -254,25 +250,6 @@ export function EnviarResumoEmailModal({
           </div>
         </div>
 
-        {/* Anexos */}
-        {documentosExistentes && documentosExistentes.length > 0 && (
-          <div className="px-6 py-3 border-t bg-muted/20">
-            <div className="flex items-center gap-2 mb-2">
-              <Paperclip className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                Anexos ({documentosExistentes.length})
-              </span>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {documentosExistentes.map((doc, i) => (
-                <Badge key={i} variant="outline" className="text-xs font-normal py-1 gap-1.5">
-                  <Paperclip className="h-3 w-3" />
-                  {doc.arquivo_nome}
-                </Badge>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* Footer */}
         <div className="flex items-center justify-between gap-3 px-6 py-4 border-t bg-muted/10">
