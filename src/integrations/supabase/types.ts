@@ -5161,13 +5161,27 @@ export type Database = {
           attempt_count: number | null
           completed_at: string | null
           created_at: string | null
+          enrich_five: boolean
+          enrich_four: boolean
+          enrich_one: boolean
+          enrich_three: boolean
+          enrich_two: boolean
           enriched_at: string | null
           error_message: string | null
           expires_at: string | null
+          expires_at_five: string | null
+          expires_at_four: string | null
+          expires_at_one: string | null
+          expires_at_three: string | null
+          expires_at_two: string | null
           id: string
           last_attempt_at: string | null
+          last_attempt_at_five: string | null
+          last_attempt_at_four: string | null
+          last_attempt_at_one: string | null
+          last_attempt_at_three: string | null
+          last_attempt_at_two: string | null
           lead_id: string
-          pipeline: string
           pipeline_version: string | null
           result_data: Json | null
           source: string | null
@@ -5178,13 +5192,27 @@ export type Database = {
           attempt_count?: number | null
           completed_at?: string | null
           created_at?: string | null
+          enrich_five?: boolean
+          enrich_four?: boolean
+          enrich_one?: boolean
+          enrich_three?: boolean
+          enrich_two?: boolean
           enriched_at?: string | null
           error_message?: string | null
           expires_at?: string | null
+          expires_at_five?: string | null
+          expires_at_four?: string | null
+          expires_at_one?: string | null
+          expires_at_three?: string | null
+          expires_at_two?: string | null
           id?: string
           last_attempt_at?: string | null
+          last_attempt_at_five?: string | null
+          last_attempt_at_four?: string | null
+          last_attempt_at_one?: string | null
+          last_attempt_at_three?: string | null
+          last_attempt_at_two?: string | null
           lead_id: string
-          pipeline: string
           pipeline_version?: string | null
           result_data?: Json | null
           source?: string | null
@@ -5195,13 +5223,27 @@ export type Database = {
           attempt_count?: number | null
           completed_at?: string | null
           created_at?: string | null
+          enrich_five?: boolean
+          enrich_four?: boolean
+          enrich_one?: boolean
+          enrich_three?: boolean
+          enrich_two?: boolean
           enriched_at?: string | null
           error_message?: string | null
           expires_at?: string | null
+          expires_at_five?: string | null
+          expires_at_four?: string | null
+          expires_at_one?: string | null
+          expires_at_three?: string | null
+          expires_at_two?: string | null
           id?: string
           last_attempt_at?: string | null
+          last_attempt_at_five?: string | null
+          last_attempt_at_four?: string | null
+          last_attempt_at_one?: string | null
+          last_attempt_at_three?: string | null
+          last_attempt_at_two?: string | null
           lead_id?: string
-          pipeline?: string
           pipeline_version?: string | null
           result_data?: Json | null
           source?: string | null
@@ -5212,14 +5254,14 @@ export type Database = {
           {
             foreignKeyName: "lead_enrichments_lead_id_fkey"
             columns: ["lead_id"]
-            isOneToOne: false
+            isOneToOne: true
             referencedRelation: "leads"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "lead_enrichments_lead_id_fkey"
             columns: ["lead_id"]
-            isOneToOne: false
+            isOneToOne: true
             referencedRelation: "vw_leads_duplicados"
             referencedColumns: ["id"]
           },
