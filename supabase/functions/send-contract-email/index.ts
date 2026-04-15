@@ -3,7 +3,6 @@ import { Resend } from "https://esm.sh/resend@4.0.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.58.0";
 
 const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
-const resendFromEmail = "Sistema SIGMA <bi@gestaoservicosaude.com.br>";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -16,6 +15,8 @@ interface Anexo {
 }
 
 interface ContratoEmailRequest {
+  remetente_email?: string;
+  remetente_nome?: string;
   emails: string[];
   contratoData: {
     cliente_nome: string;
@@ -44,9 +45,13 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
-    const { emails, contratoData }: ContratoEmailRequest = await req.json();
+    const { emails, contratoData, remetente_email, remetente_nome }: ContratoEmailRequest = await req.json();
 
-    console.log("Enviando resumo de contrato para:", emails);
+    const fromEmail = remetente_email 
+      ? `${remetente_nome || 'Sistema SIGMA'} <${remetente_email}>`
+      : "Sistema SIGMA <bi@gestaoservicosaude.com.br>";
+
+    console.log("Enviando resumo de contrato de:", fromEmail, "para:", emails);
 
     if (!emails || emails.length === 0) {
       return new Response(
@@ -160,7 +165,7 @@ const handler = async (req: Request): Promise<Response> => {
     for (const email of emails) {
       try {
         await resend.emails.send({
-          from: resendFromEmail,
+          from: fromEmail,
           to: email,
           subject: subjectContrato,
           html: emailHtml,

@@ -92,8 +92,18 @@ export function EnviarResumoEmailModal({
 
     setSending(true);
     try {
+      // Buscar email e nome do usuário logado para usar como remetente
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('nome_completo, email')
+        .eq('id', user?.id || '')
+        .maybeSingle();
+
       const { error } = await supabase.functions.invoke('send-contract-email', {
         body: {
+          remetente_email: profileData?.email || user?.email,
+          remetente_nome: profileData?.nome_completo || 'Sistema SIGMA',
           emails: selectedEmails,
           contratoData: {
             cliente_nome: clienteNome,
