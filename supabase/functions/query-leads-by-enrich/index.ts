@@ -14,14 +14,20 @@ const VALID_COLUMNS = [
   "enrich_five",
 ];
 
+const VALID_LEAD_FIELDS = [
+  "cpf", "nome", "crm", "rqe", "data_nascimento", "cidade", "uf",
+  "phone_e164", "email", "especialidade_id", "origem", "created_at",
+  "merged_into_id",
+];
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
-  if (req.method !== "POST" && req.method !== "GET") {
+  if (req.method !== "POST") {
     return new Response(
-      JSON.stringify({ error: "Method not allowed. Use GET or POST." }),
+      JSON.stringify({ error: "Method not allowed. Use POST." }),
       { status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
@@ -40,7 +46,6 @@ serve(async (req) => {
   const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const supabase = createClient(supabaseUrl, supabaseKey);
 
-  // Validate token and ensure it's specifically the "Enriquecedor-leads" token
   const { data: tokenRow, error: tokenError } = await supabase
     .from("api_tokens")
     .select("id, nome")
@@ -62,28 +67,41 @@ serve(async (req) => {
     );
   }
 
-  // Update last_used_at
   await supabase
     .from("api_tokens")
     .update({ last_used_at: new Date().toISOString() })
     .eq("id", tokenRow.id);
 
   try {
-    const url = new URL(req.url);
-    const column = url.searchParams.get("column");
-    const limit = Math.min(parseInt(url.searchParams.get("limit") || "500"), 10000);
+    // Read from POST body
+    const body = await req.json().catch(() => ({}));
+    const column = body.column;
+    const limit = Math.min(parseInt(body.limit || "500"), 10000);
+    const notNullFields: string[] = Array.isArray(body.not_null_fields) ? body.not_null_fields : [];
 
     if (!column || !VALID_COLUMNS.includes(column)) {
       return new Response(
         JSON.stringify({
-          error: `Invalid column. Valid: ${VALID_COLUMNS.join(", ")}`,
+          error: `Invalid or missing 'column'. Valid: ${VALID_COLUMNS.join(", ")}`,
         }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Query leads where the specified enrich column = false
-    const { data: leads, error: queryError } = await supabase
+    // Validate not_null_fields
+    for (const field of notNullFields) {
+      if (!VALID_LEAD_FIELDS.includes(field)) {
+        return new Response(
+          JSON.stringify({
+            error: `Invalid field in not_null_fields: '${field}'. Valid: ${VALID_LEAD_FIELDS.join(", ")}`,
+          }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
+    // Build query
+    let query = supabase
       .from("leads")
       .select(`
         id, cpf, nome, crm, rqe, data_nascimento, cidade, uf,
@@ -91,19 +109,25 @@ serve(async (req) => {
         lead_enrichments!inner(${column})
       `)
       .eq(`lead_enrichments.${column}`, false)
-      .is("merged_into_id", null)
-      .order("created_at", { ascending: true })
-      .limit(limit);
+      .is("merged_into_id", null);
+
+    // Apply not_null filters
+    for (const field of notNullFields) {
+      query = query.not(field, "is", null);
+    }
+
+    query = query.order("created_at", { ascending: true }).limit(limit);
+
+    const { data: leads, error: queryError } = await query;
 
     if (queryError) {
       console.error("[query-leads-by-enrich] Query error:", queryError);
       throw queryError;
     }
 
-    // Strip the join object from the response, return flat lead data
     const cleanLeads = (leads || []).map(({ lead_enrichments, ...lead }: any) => lead);
 
-    console.log(`[query-leads-by-enrich] Returning ${cleanLeads.length} leads where ${column} = false`);
+    console.log(`[query-leads-by-enrich] Returning ${cleanLeads.length} leads where ${column} = false, not_null: [${notNullFields.join(",")}]`);
 
     return new Response(
       JSON.stringify({ leads: cleanLeads, total: cleanLeads.length, column }),
