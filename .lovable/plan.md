@@ -1,51 +1,62 @@
 
 
-## Plano: Completar migração e remover colunas legadas
+# Reestruturação da tabela `lead_enrichments`
 
-### Diagnóstico
+## Situação atual
 
-- 115.739 leads têm `api_enrich_status` preenchido na tabela `leads`
-- 2.729 leads (todos `pendente`) não existem em `lead_enrichments` — foram inseridos após a migration inicial
-- As colunas `api_enrich_*` na tabela `leads` são agora redundantes
+A tabela já suporta múltiplas linhas por lead via unique constraint `(lead_id, pipeline)`. Hoje só existe o pipeline `enrich_v1` com ~122k registros. A estrutura base está ok, mas faltam colunas para controlar **quando o enriquecimento foi realizado** e **quando os dados ficam desatualizados**.
 
-### Passos
+## Pipelines planejados
 
-1. **Migration SQL** — uma única migration que:
-   - Insere os 2.729 leads faltantes em `lead_enrichments` (mesmo INSERT com `ON CONFLICT DO NOTHING`)
-   - Remove as 3 colunas legadas: `api_enrich_status`, `api_enrich_last_attempt`, `api_enrich_source` da tabela `leads`
+| Pipeline | Descrição | Status atual |
+|----------|-----------|-------------|
+| `enrich_v1` | Linha 1 — import-leads (Tiago) | Em uso |
+| `enrich_residentes` | Linha 2 — Residentes | Em construção |
+| `enrich_lemit` | Lemit | Futuro |
+| `enrich_lifeshub` | Lifeshub ByName | Futuro |
 
-2. **Atualizar Edge Function `enrich-lead`** — remover o trecho que ainda escreve nas colunas `api_enrich_*` da tabela `leads` (backward compatibility que não é mais necessária)
+## Alterações no banco
 
-3. **Atualizar Edge Function `import-leads`** — verificar se ela seta `api_enrich_status` ao inserir leads; se sim, trocar para inserir em `lead_enrichments`
+Adicionar 2 colunas a `lead_enrichments`:
 
-4. **Atualizar frontend** — remover qualquer referência a `api_enrich_status` / `api_enrich_last_attempt` / `api_enrich_source` nos componentes e hooks (fallbacks que leem da tabela `leads`)
+1. **`enriched_at`** (`timestamptz`, nullable) — Data/hora em que o enriquecimento foi efetivamente concluído com sucesso (diferente de `completed_at` que marca fim do processamento; esta marca quando os dados foram de fato aplicados ao lead).
 
-5. **Atualizar types.ts** — remover os campos das interfaces do Supabase
+2. **`expires_at`** (`timestamptz`, nullable) — Data de desatualização/expiração dos dados. Cada pipeline pode definir sua validade (ex: 6 meses para Lifeshub, 1 ano para residentes).
 
-### Detalhes técnicos
+Também criar uma coluna de metadados do pipeline:
+
+3. **`pipeline_version`** (`text`, nullable, default `'1.0'`) — Versão do pipeline, útil para rastrear mudanças futuras nos processos de enriquecimento.
+
+### SQL da migração
 
 ```sql
--- Migrar leads faltantes
-INSERT INTO public.lead_enrichments (lead_id, pipeline, status, source, last_attempt_at)
-SELECT id, 'enrich_v1', COALESCE(api_enrich_status, 'pendente'), api_enrich_source, api_enrich_last_attempt
-FROM public.leads
-WHERE id NOT IN (SELECT lead_id FROM lead_enrichments WHERE pipeline = 'enrich_v1')
-  AND api_enrich_status IS NOT NULL
-ON CONFLICT (lead_id, pipeline) DO NOTHING;
+ALTER TABLE lead_enrichments 
+  ADD COLUMN IF NOT EXISTS enriched_at timestamptz,
+  ADD COLUMN IF NOT EXISTS expires_at timestamptz,
+  ADD COLUMN IF NOT EXISTS pipeline_version text DEFAULT '1.0';
 
--- Dropar colunas legadas
-ALTER TABLE public.leads DROP COLUMN IF EXISTS api_enrich_status;
-ALTER TABLE public.leads DROP COLUMN IF EXISTS api_enrich_last_attempt;
-ALTER TABLE public.leads DROP COLUMN IF EXISTS api_enrich_source;
+-- Preencher enriched_at para registros já concluídos
+UPDATE lead_enrichments 
+SET enriched_at = completed_at 
+WHERE status = 'concluido' AND enriched_at IS NULL;
+
+-- Index para queries de expiração
+CREATE INDEX IF NOT EXISTS idx_lead_enrichments_expiry 
+ON lead_enrichments (pipeline, expires_at) 
+WHERE expires_at IS NOT NULL;
+
+COMMENT ON COLUMN lead_enrichments.enriched_at IS 'Data em que os dados de enriquecimento foram aplicados ao lead';
+COMMENT ON COLUMN lead_enrichments.expires_at IS 'Data de expiração/desatualização dos dados enriquecidos';
+COMMENT ON COLUMN lead_enrichments.pipeline_version IS 'Versão do pipeline de enriquecimento';
 ```
 
-### Arquivos afetados
+## Impacto no código
 
-- Nova migration SQL
-- `supabase/functions/enrich-lead/index.ts` — remover writes nas colunas legadas
-- `supabase/functions/import-leads/index.ts` — inserir em `lead_enrichments` em vez de setar `api_enrich_status`
-- `src/hooks/useLeadsPaginated.ts` — remover fallbacks
-- `src/components/medicos/LeadsTab.tsx` — remover referências legadas
-- `src/components/medicos/LeadProntuarioDialog.tsx` — remover referências legadas
-- `src/integrations/supabase/types.ts` — remover campos
+- **Nenhuma quebra**: As colunas são nullable, o código existente continua funcionando.
+- **Edge functions** (`enrich-lead`, `import-leads`): Quando marcarem `status = 'concluido'`, devem também setar `enriched_at = now()` e `expires_at` conforme a validade do pipeline.
+- **UI (LeadsTab)**: Futuramente as insígnias de enriquecimento poderão consultar `enriched_at` e `expires_at` para mostrar status visual (válido, expirado, pendente) por pipeline.
+
+## Resumo
+
+Apenas uma migração com 3 novas colunas + backfill + índice. Sem alteração de código obrigatória nesta etapa — preparação para os pipelines futuros.
 
