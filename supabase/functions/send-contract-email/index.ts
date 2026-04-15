@@ -79,16 +79,7 @@ const handler = async (req: Request): Promise<Response> => {
     const valorTotalFormatado = formatCurrency(contratoData.valor_total);
     const valorEstimadoFormatado = formatCurrency(contratoData.valor_estimado);
 
-    const anexosHtml = contratoData.anexos && contratoData.anexos.length > 0
-      ? `
-        <div style="background-color: #f9fafb; padding: 16px; border-radius: 8px; margin: 16px 0;">
-          <h3 style="margin-top: 0; color: #374151; font-size: 14px;">📎 Anexos do Contrato (${contratoData.anexos.length})</h3>
-          <ul style="margin: 0; padding-left: 20px;">
-            ${contratoData.anexos.map(a => `<li style="padding: 4px 0;"><a href="${a.url}" style="color: #2563eb; text-decoration: underline;" target="_blank">${a.nome}</a></li>`).join('')}
-          </ul>
-        </div>
-      `
-      : '';
+    const anexosHtml = '';
 
     const row = (label: string, value: string | undefined | null) => {
       if (!value) return '';
