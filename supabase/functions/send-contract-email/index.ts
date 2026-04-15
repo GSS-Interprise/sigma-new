@@ -3,7 +3,6 @@ import { Resend } from "https://esm.sh/resend@4.0.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.58.0";
 
 const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
-const resendFromEmail = "Sistema SIGMA <bi@gestaoservicosaude.com.br>";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
