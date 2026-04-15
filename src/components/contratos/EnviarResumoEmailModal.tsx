@@ -63,7 +63,7 @@ export function EnviarResumoEmailModal({
       const { data: roleData, error: roleError } = await supabase
         .from('user_roles')
         .select('user_id')
-        .in('role', ['admin', 'gestor_contratos']);
+        .in('role', ['admin', 'gestor_contratos', 'diretoria']);
 
       if (roleError) throw roleError;
       if (!roleData || roleData.length === 0) return [];
