@@ -68,7 +68,7 @@ export function EnviarResumoEmailModal({
           user_roles!inner(role)
         `)
         .eq('status', 'ativo')
-        .in('user_roles.role', ['admin', 'gestor_contratos'] as string[]);
+        .in('user_roles.role' as any, ['admin', 'gestor_contratos']);
 
       if (error) throw error;
       return data || [];
