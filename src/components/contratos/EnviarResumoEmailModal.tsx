@@ -60,15 +60,21 @@ export function EnviarResumoEmailModal({
     queryKey: ['usuarios-email-resumo-contrato'],
     enabled: open,
     queryFn: async () => {
+      const { data: roleData, error: roleError } = await supabase
+        .from('user_roles')
+        .select('user_id')
+        .in('role', ['admin', 'gestor_contratos']);
+
+      if (roleError) throw roleError;
+      if (!roleData || roleData.length === 0) return [];
+
+      const userIds = [...new Set(roleData.map(r => r.user_id))];
+
       const { data, error } = await supabase
         .from('profiles')
-        .select(`
-          email, 
-          nome_completo,
-          user_roles!inner(role)
-        `)
+        .select('email, nome_completo')
         .eq('status', 'ativo')
-        .in('user_roles.role' as any, ['admin', 'gestor_contratos']);
+        .in('id', userIds);
 
       if (error) throw error;
       return data || [];
