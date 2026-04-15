@@ -165,7 +165,7 @@ const handler = async (req: Request): Promise<Response> => {
     for (const email of emails) {
       try {
         await resend.emails.send({
-          from: resendFromEmail,
+          from: fromEmail,
           to: email,
           subject: subjectContrato,
           html: emailHtml,
