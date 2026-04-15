@@ -19,9 +19,9 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  if (req.method !== "POST") {
+  if (req.method !== "POST" && req.method !== "GET") {
     return new Response(
-      JSON.stringify({ error: "Method not allowed. Use POST." }),
+      JSON.stringify({ error: "Method not allowed. Use GET or POST." }),
       { status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
@@ -69,9 +69,9 @@ serve(async (req) => {
     .eq("id", tokenRow.id);
 
   try {
-    const body = await req.json();
-    const column = body.column;
-    const limit = Math.min(parseInt(body.limit || "500"), 10000);
+    const url = new URL(req.url);
+    const column = url.searchParams.get("column");
+    const limit = Math.min(parseInt(url.searchParams.get("limit") || "500"), 10000);
 
     if (!column || !VALID_COLUMNS.includes(column)) {
       return new Response(
