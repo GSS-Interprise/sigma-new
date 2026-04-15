@@ -23,6 +23,12 @@ interface EnviarResumoEmailModalProps {
   prazoMeses?: number;
   condicaoPagamento?: string;
   documentosExistentes?: { arquivo_nome: string; arquivo_url: string }[];
+  cnpj?: string;
+  nomeUnidade?: string;
+  endereco?: string;
+  dataTermino?: string;
+  qtdAditivos?: number;
+  valorEstimado?: number;
 }
 
 export function EnviarResumoEmailModal({
@@ -39,6 +45,12 @@ export function EnviarResumoEmailModal({
   prazoMeses,
   condicaoPagamento,
   documentosExistentes,
+  cnpj,
+  nomeUnidade,
+  endereco,
+  dataTermino,
+  qtdAditivos,
+  valorEstimado,
 }: EnviarResumoEmailModalProps) {
   const [selectedEmails, setSelectedEmails] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
@@ -94,6 +106,12 @@ export function EnviarResumoEmailModal({
             objeto_contrato: objetoContrato,
             prazo_meses: prazoMeses,
             condicao_pagamento: condicaoPagamento,
+            cnpj: cnpj,
+            nome_unidade: nomeUnidade,
+            endereco: endereco,
+            data_termino: dataTermino,
+            qtd_aditivos: qtdAditivos || 0,
+            valor_estimado: valorEstimado,
             anexos: documentosExistentes?.map(d => ({
               nome: d.arquivo_nome,
               url: d.arquivo_url,
