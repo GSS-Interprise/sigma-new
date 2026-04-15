@@ -6,8 +6,24 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Valid pipeline names
-const VALID_PIPELINES = ["enrich_v1", "enrich_residentes", "enrich_lemit", "enrich_lifeshub", "enrich_especialidade"];
+// Pipeline → coluna enrich_*
+const PIPELINE_COLUMN: Record<string, string> = {
+  enrich_v1: "enrich_one",
+  enrich_residentes: "enrich_two",
+  enrich_lemit: "enrich_three",
+  enrich_lifeshub: "enrich_four",
+  enrich_especialidade: "enrich_five",
+};
+
+const PIPELINE_ATTEMPT_COLUMN: Record<string, string> = {
+  enrich_v1: "last_attempt_at_one",
+  enrich_residentes: "last_attempt_at_two",
+  enrich_lemit: "last_attempt_at_three",
+  enrich_lifeshub: "last_attempt_at_four",
+  enrich_especialidade: "last_attempt_at_five",
+};
+
+const VALID_PIPELINES = Object.keys(PIPELINE_COLUMN);
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -53,48 +69,77 @@ serve(async (req) => {
 
     if (!VALID_PIPELINES.includes(pipeline)) {
       return new Response(
-        JSON.stringify({ error: `Unknown pipeline: ${pipeline}` }),
+        JSON.stringify({ error: `Unknown pipeline: ${pipeline}. Valid: ${VALID_PIPELINES.join(", ")}` }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
+    const enrichCol = PIPELINE_COLUMN[pipeline];
+    const attemptCol = PIPELINE_ATTEMPT_COLUMN[pipeline];
+
     // ========== QUERY: leads NOT yet enriched for this pipeline ==========
-    // Uses RPC or raw query via lead_enrichments LEFT JOIN
-    // Strategy: get lead IDs that already have a completed enrichment for this pipeline,
-    // then fetch leads NOT in that set.
-    const { data: enrichedIds, error: enrichedError } = await supabase
-      .from("lead_enrichments")
-      .select("lead_id")
-      .eq("pipeline", pipeline)
-      .in("status", ["concluido", "alimentado"]);
+    // Uses RPC to do a LEFT JOIN and filter on the specific boolean column
+    const { data: leads, error: queryError } = await supabase
+      .rpc("query_leads_not_enriched", {
+        p_enrich_column: enrichCol,
+        p_limit: limit,
+      });
 
-    if (enrichedError) {
-      console.error("[query-leads-for-enrich] Enriched IDs query error:", enrichedError);
-      throw enrichedError;
+    // Fallback: if RPC doesn't exist, use direct query approach
+    if (queryError && queryError.message?.includes("query_leads_not_enriched")) {
+      console.warn("[query-leads-for-enrich] RPC not found, using direct query fallback");
+      
+      // Direct approach: get leads where lead_enrichments row doesn't exist or enrich_X = false
+      const { data: enrichedLeadIds, error: enrichedError } = await supabase
+        .from("lead_enrichments")
+        .select("lead_id")
+        .eq(enrichCol, true);
+
+      if (enrichedError) {
+        console.error("[query-leads-for-enrich] Enriched query error:", enrichedError);
+        throw enrichedError;
+      }
+
+      const excludeIds = (enrichedLeadIds || []).map((r: any) => r.lead_id);
+
+      let query = supabase
+        .from("leads")
+        .select("id, cpf, nome, crm, rqe, data_nascimento, cidade, uf, phone_e164, email, especialidade_id, origem, created_at")
+        .is("merged_into_id", null)
+        .order("created_at", { ascending: true })
+        .limit(limit);
+
+      if (excludeIds.length > 0 && excludeIds.length <= 5000) {
+        query = query.not("id", "in", `(${excludeIds.join(",")})`);
+      }
+
+      const { data: fallbackLeads, error: fallbackError } = await query;
+      if (fallbackError) throw fallbackError;
+
+      if (!fallbackLeads || fallbackLeads.length === 0) {
+        return new Response(
+          JSON.stringify({ leads: [], total: 0, message: "No leads pending enrichment." }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Mark last_attempt_at for this pipeline
+      const now = new Date().toISOString();
+      for (const lead of fallbackLeads) {
+        await supabase
+          .from("lead_enrichments")
+          .upsert(
+            { lead_id: lead.id, [attemptCol]: now },
+            { onConflict: "lead_id" }
+          )
+          .then(r => { if (r.error) console.warn("[query-leads-for-enrich] upsert:", r.error.message); });
+      }
+
+      return new Response(
+        JSON.stringify({ leads: fallbackLeads, total: fallbackLeads.length }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
-
-    const excludeIds = (enrichedIds || []).map((r: any) => r.lead_id);
-
-    // Build query for leads not yet enriched
-    let query = supabase
-      .from("leads")
-      .select("id, cpf, nome, crm, rqe, data_nascimento, cidade, uf, phone_e164, email, especialidade_id, origem, created_at")
-      .is("merged_into_id", null)
-      .order("created_at", { ascending: true })
-      .limit(limit);
-
-    // Exclude already-enriched leads (Supabase doesn't support NOT IN directly for large sets)
-    // For large exclude sets, we use a different approach with .not()
-    if (excludeIds.length > 0 && excludeIds.length <= 5000) {
-      // Use filter for manageable sets
-      query = query.not("id", "in", `(${excludeIds.join(",")})`);
-    }
-    // For very large sets (>5000), we still fetch and filter, but log a warning
-    if (excludeIds.length > 5000) {
-      console.warn(`[query-leads-for-enrich] Large exclude set: ${excludeIds.length} IDs. Consider using a DB function.`);
-    }
-
-    const { data: leads, error: queryError } = await query;
 
     if (queryError) {
       console.error("[query-leads-for-enrich] Query error:", queryError);
@@ -108,23 +153,19 @@ serve(async (req) => {
       );
     }
 
-    // ========== MARK last_attempt_at in lead_enrichments ==========
-    const leadIds = leads.map((l: any) => l.id);
+    // ========== MARK last_attempt_at for this pipeline ==========
     const now = new Date().toISOString();
-
-    for (const leadId of leadIds) {
+    for (const lead of leads) {
       await supabase
         .from("lead_enrichments")
-        .upsert({
-          lead_id: leadId,
-          pipeline,
-          status: "em_processamento",
-          last_attempt_at: now,
-        }, { onConflict: "lead_id,pipeline" })
-        .then(r => { if (r.error) console.warn("[query-leads-for-enrich] enrichment upsert:", r.error.message); });
+        .upsert(
+          { lead_id: lead.id, [attemptCol]: now },
+          { onConflict: "lead_id" }
+        )
+        .then(r => { if (r.error) console.warn("[query-leads-for-enrich] upsert:", r.error.message); });
     }
 
-    console.log(`[query-leads-for-enrich] Returning ${leads.length} leads for enrichment (pipeline: ${pipeline}).`);
+    console.log(`[query-leads-for-enrich] Returning ${leads.length} leads for enrichment (pipeline: ${pipeline}, column: ${enrichCol}).`);
 
     return new Response(
       JSON.stringify({ leads, total: leads.length }),
