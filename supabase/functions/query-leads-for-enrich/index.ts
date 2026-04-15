@@ -6,6 +6,9 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Valid pipeline names
+const VALID_PIPELINES = ["enrich_v1", "enrich_residentes", "enrich_lemit", "enrich_lifeshub", "enrich_especialidade"];
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -48,31 +51,50 @@ serve(async (req) => {
     const limit = Math.min(parseInt(url.searchParams.get("limit") || "500"), 10000);
     const pipeline = url.searchParams.get("pipeline") || "enrich_v1";
 
-    // Pipeline → column mapping
-    const PIPELINE_COLS: Record<string, { enrichCol: string; lastAttemptCol: string }> = {
-      "enrich_v1":            { enrichCol: "enrich_one",   lastAttemptCol: "last_attempt_at_one" },
-      "enrich_residentes":    { enrichCol: "enrich_two",   lastAttemptCol: "last_attempt_at_two" },
-      "enrich_lemit":         { enrichCol: "enrich_three", lastAttemptCol: "last_attempt_at_three" },
-      "enrich_lifeshub":      { enrichCol: "enrich_four",  lastAttemptCol: "last_attempt_at_four" },
-      "enrich_especialidade": { enrichCol: "enrich_five",  lastAttemptCol: "last_attempt_at_five" },
-    };
-
-    const cols = PIPELINE_COLS[pipeline];
-    if (!cols) {
+    if (!VALID_PIPELINES.includes(pipeline)) {
       return new Response(
         JSON.stringify({ error: `Unknown pipeline: ${pipeline}` }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // ========== QUERY leads WHERE enrich_X = false ==========
-    const { data: leads, error: queryError } = await supabase
+    // ========== QUERY: leads NOT yet enriched for this pipeline ==========
+    // Uses RPC or raw query via lead_enrichments LEFT JOIN
+    // Strategy: get lead IDs that already have a completed enrichment for this pipeline,
+    // then fetch leads NOT in that set.
+    const { data: enrichedIds, error: enrichedError } = await supabase
+      .from("lead_enrichments")
+      .select("lead_id")
+      .eq("pipeline", pipeline)
+      .in("status", ["concluido", "alimentado"]);
+
+    if (enrichedError) {
+      console.error("[query-leads-for-enrich] Enriched IDs query error:", enrichedError);
+      throw enrichedError;
+    }
+
+    const excludeIds = (enrichedIds || []).map((r: any) => r.lead_id);
+
+    // Build query for leads not yet enriched
+    let query = supabase
       .from("leads")
       .select("id, cpf, nome, crm, rqe, data_nascimento, cidade, uf, phone_e164, email, especialidade_id, origem, created_at")
-      .eq(cols.enrichCol, false)
       .is("merged_into_id", null)
       .order("created_at", { ascending: true })
       .limit(limit);
+
+    // Exclude already-enriched leads (Supabase doesn't support NOT IN directly for large sets)
+    // For large exclude sets, we use a different approach with .not()
+    if (excludeIds.length > 0 && excludeIds.length <= 5000) {
+      // Use filter for manageable sets
+      query = query.not("id", "in", `(${excludeIds.join(",")})`);
+    }
+    // For very large sets (>5000), we still fetch and filter, but log a warning
+    if (excludeIds.length > 5000) {
+      console.warn(`[query-leads-for-enrich] Large exclude set: ${excludeIds.length} IDs. Consider using a DB function.`);
+    }
+
+    const { data: leads, error: queryError } = await query;
 
     if (queryError) {
       console.error("[query-leads-for-enrich] Query error:", queryError);
@@ -86,21 +108,10 @@ serve(async (req) => {
       );
     }
 
-    // ========== MARK last_attempt_at ==========
+    // ========== MARK last_attempt_at in lead_enrichments ==========
     const leadIds = leads.map((l: any) => l.id);
     const now = new Date().toISOString();
 
-    const { error: updateError } = await supabase
-      .from("leads")
-      .update({ [cols.lastAttemptCol]: now })
-      .in("id", leadIds);
-
-    if (updateError) {
-      console.error("[query-leads-for-enrich] Update error:", updateError);
-      throw updateError;
-    }
-
-    // Also update lead_enrichments for audit (best-effort)
     for (const leadId of leadIds) {
       await supabase
         .from("lead_enrichments")

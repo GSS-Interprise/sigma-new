@@ -5545,28 +5545,13 @@ export type Database = {
           email: string | null
           emails_adicionais: string[] | null
           endereco: string | null
-          enrich_five: boolean
-          enrich_four: boolean
-          enrich_one: boolean
-          enrich_three: boolean
-          enrich_two: boolean
           especialidade: string | null
           especialidade_id: string | null
           especialidades: string[] | null
           especialidades_crua: string | null
           especificacoes_contrato: string | null
           estado_civil: string | null
-          expires_at_five: string | null
-          expires_at_four: string | null
-          expires_at_one: string | null
-          expires_at_three: string | null
-          expires_at_two: string | null
           id: string
-          last_attempt_at_five: string | null
-          last_attempt_at_four: string | null
-          last_attempt_at_one: string | null
-          last_attempt_at_three: string | null
-          last_attempt_at_two: string | null
           licitacao_origem_id: string | null
           local_prestacao_servico: string | null
           merge_reason: string | null
@@ -5619,28 +5604,13 @@ export type Database = {
           email?: string | null
           emails_adicionais?: string[] | null
           endereco?: string | null
-          enrich_five?: boolean
-          enrich_four?: boolean
-          enrich_one?: boolean
-          enrich_three?: boolean
-          enrich_two?: boolean
           especialidade?: string | null
           especialidade_id?: string | null
           especialidades?: string[] | null
           especialidades_crua?: string | null
           especificacoes_contrato?: string | null
           estado_civil?: string | null
-          expires_at_five?: string | null
-          expires_at_four?: string | null
-          expires_at_one?: string | null
-          expires_at_three?: string | null
-          expires_at_two?: string | null
           id?: string
-          last_attempt_at_five?: string | null
-          last_attempt_at_four?: string | null
-          last_attempt_at_one?: string | null
-          last_attempt_at_three?: string | null
-          last_attempt_at_two?: string | null
           licitacao_origem_id?: string | null
           local_prestacao_servico?: string | null
           merge_reason?: string | null
@@ -5693,28 +5663,13 @@ export type Database = {
           email?: string | null
           emails_adicionais?: string[] | null
           endereco?: string | null
-          enrich_five?: boolean
-          enrich_four?: boolean
-          enrich_one?: boolean
-          enrich_three?: boolean
-          enrich_two?: boolean
           especialidade?: string | null
           especialidade_id?: string | null
           especialidades?: string[] | null
           especialidades_crua?: string | null
           especificacoes_contrato?: string | null
           estado_civil?: string | null
-          expires_at_five?: string | null
-          expires_at_four?: string | null
-          expires_at_one?: string | null
-          expires_at_three?: string | null
-          expires_at_two?: string | null
           id?: string
-          last_attempt_at_five?: string | null
-          last_attempt_at_four?: string | null
-          last_attempt_at_one?: string | null
-          last_attempt_at_three?: string | null
-          last_attempt_at_two?: string | null
           licitacao_origem_id?: string | null
           local_prestacao_servico?: string | null
           merge_reason?: string | null
