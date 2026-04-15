@@ -1,47 +1,49 @@
 
-# Reestruturação: Alimentação via Tabela `lead_enrichments`
+# Reestruturação: Colunas por Linha de Alimentação em `lead_enrichments`
 
-## Abordagem
+## Conceito
 
-Cada linha de alimentação é uma **row na tabela `lead_enrichments`** com `(lead_id, pipeline)` como chave única.
+Cada lead tem **uma única row** em `lead_enrichments` com 15 colunas (3 por pipeline).
+Busca simples: `SELECT enrich_three FROM lead_enrichments WHERE lead_id = 'uuid'`.
 
-## Tabela `lead_enrichments`
+## Tabela `lead_enrichments` — Colunas por Pipeline
+
+| Pipeline | Coluna boolean | Coluna attempt | Coluna expires | Validade |
+|----------|---------------|----------------|----------------|----------|
+| enrich_v1 (Tiago) | enrich_one | last_attempt_at_one | expires_at_one | 4 anos (48 meses) |
+| enrich_residentes | enrich_two | last_attempt_at_two | expires_at_two | sem validade |
+| enrich_lemit | enrich_three | last_attempt_at_three | expires_at_three | 4 anos (48 meses) |
+| enrich_lifeshub | enrich_four | last_attempt_at_four | expires_at_four | 4 anos (48 meses) |
+| enrich_especialidade | enrich_five | last_attempt_at_five | expires_at_five | sem validade |
+
+## Colunas gerais (mantidas para log)
 
 | Coluna | Tipo | Descrição |
 |--------|------|-----------|
-| lead_id | uuid FK | Referência ao lead |
-| pipeline | text | Nome do pipeline (chave única com lead_id) |
-| status | text | pendente, em_processamento, concluido, alimentado, erro |
-| last_attempt_at | timestamptz | Última tentativa |
-| completed_at | timestamptz | Quando foi concluído |
-| expires_at | timestamptz | Validade dos dados |
+| lead_id | uuid FK UNIQUE | Referência ao lead (uma row por lead) |
+| status | text | Último status geral |
+| source | text | Fonte do último enriquecimento |
+| completed_at | timestamptz | Último completed |
 | result_data | jsonb | Dados retornados |
 | error_message | text | Mensagem de erro |
-
-## Pipelines
-
-| Pipeline | Descrição | Validade |
-|----------|-----------|----------|
-| enrich_v1 | Import-leads (Tiago) | 12 meses |
-| enrich_residentes | Residentes | 6 meses |
-| enrich_lemit | Lemit | 6 meses |
-| enrich_lifeshub | Lifeshub | 6 meses |
-| enrich_especialidade | Especialidade | 6 meses |
 
 ## Queries
 
 ```sql
--- Leads NÃO alimentados pelo pipeline X
+-- Lead já alimentado pelo pipeline lemit?
+SELECT enrich_three FROM lead_enrichments WHERE lead_id = 'uuid';
+
+-- Leads NÃO alimentados pelo pipeline lemit
 SELECT l.* FROM leads l
-LEFT JOIN lead_enrichments le ON le.lead_id = l.id AND le.pipeline = 'enrich_v1'
-WHERE (le.id IS NULL OR le.status NOT IN ('concluido', 'alimentado'))
+LEFT JOIN lead_enrichments le ON le.lead_id = l.id
+WHERE (le.id IS NULL OR le.enrich_three = false)
   AND l.merged_into_id IS NULL;
 ```
 
 ## Edge functions
 
-- `enrich-lead` — upsert em lead_enrichments com status + expires_at
-- `query-leads-for-enrich` — busca leads sem enrichment concluído para o pipeline
-- `import-leads` — cria row em lead_enrichments ao importar
+- `enrich-lead` — upsert na coluna específica (enrich_one, etc.) + expires_at
+- `query-leads-for-enrich` — busca leads onde enrich_X = false
+- `import-leads` — cria row em lead_enrichments com enrich_one ao importar
 
-## Status: ✅ Implementado (v2 — colunas removidas de leads)
+## Status: ✅ Implementado (v3 — colunas por pipeline, sem coluna pipeline)

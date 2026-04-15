@@ -22,16 +22,41 @@ const ENRICHABLE_FIELDS = [
 // Fields that are ALWAYS overwritten when provided (even if already filled)
 const OVERWRITE_FIELDS = ["crm", "nome"] as const;
 
-// Pipeline → validity in months
-const PIPELINE_VALIDITY: Record<string, number> = {
-  "enrich_v1": 12,
-  "enrich_residentes": 6,
-  "enrich_lemit": 6,
-  "enrich_lifeshub": 6,
-  "enrich_especialidade": 6,
+// Pipeline → column mapping
+const PIPELINE_ENRICH_COL: Record<string, string> = {
+  enrich_v1: "enrich_one",
+  enrich_residentes: "enrich_two",
+  enrich_lemit: "enrich_three",
+  enrich_lifeshub: "enrich_four",
+  enrich_especialidade: "enrich_five",
 };
 
-const VALID_PIPELINES = Object.keys(PIPELINE_VALIDITY);
+const PIPELINE_ATTEMPT_COL: Record<string, string> = {
+  enrich_v1: "last_attempt_at_one",
+  enrich_residentes: "last_attempt_at_two",
+  enrich_lemit: "last_attempt_at_three",
+  enrich_lifeshub: "last_attempt_at_four",
+  enrich_especialidade: "last_attempt_at_five",
+};
+
+const PIPELINE_EXPIRES_COL: Record<string, string> = {
+  enrich_v1: "expires_at_one",
+  enrich_residentes: "expires_at_two",
+  enrich_lemit: "expires_at_three",
+  enrich_lifeshub: "expires_at_four",
+  enrich_especialidade: "expires_at_five",
+};
+
+// Pipeline → validity in months (null = no expiration)
+const PIPELINE_VALIDITY: Record<string, number | null> = {
+  enrich_v1: 48,
+  enrich_residentes: null,
+  enrich_lemit: 48,
+  enrich_lifeshub: 48,
+  enrich_especialidade: null,
+};
+
+const VALID_PIPELINES = Object.keys(PIPELINE_ENRICH_COL);
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -212,28 +237,33 @@ serve(async (req) => {
       }
     }
 
-    // ========== UPDATE lead_enrichments TABLE ==========
+    // ========== UPDATE lead_enrichments TABLE (column-based) ==========
     const isSuccess = resolved_status === "concluido" || resolved_status === "alimentado";
-    const validityMonths = PIPELINE_VALIDITY[pipeline] || 6;
-    const expiresAt = isSuccess
+    const enrichCol = PIPELINE_ENRICH_COL[pipeline];
+    const attemptCol = PIPELINE_ATTEMPT_COL[pipeline];
+    const expiresCol = PIPELINE_EXPIRES_COL[pipeline];
+    const validityMonths = PIPELINE_VALIDITY[pipeline];
+
+    const expiresAt = isSuccess && validityMonths !== null
       ? new Date(Date.now() + validityMonths * 30 * 24 * 60 * 60 * 1000).toISOString()
       : null;
 
     const enrichmentData: Record<string, unknown> = {
       lead_id: id,
-      pipeline,
+      [enrichCol]: isSuccess,
+      [attemptCol]: now,
+      [expiresCol]: expiresAt,
+      // Keep general columns for logging
       status: resolved_status,
       source: api_enrich_source ?? null,
-      last_attempt_at: now,
       completed_at: isSuccess ? now : null,
-      expires_at: expiresAt,
       error_message: resolved_status === "erro" ? (rest.error_message || "non-encontrado") : null,
       result_data: isSuccess ? rest : null,
     };
 
     const { error: enrichUpsertError } = await supabase
       .from("lead_enrichments")
-      .upsert(enrichmentData, { onConflict: "lead_id,pipeline" });
+      .upsert(enrichmentData, { onConflict: "lead_id" });
 
     if (enrichUpsertError) {
       console.warn("[enrich-lead] lead_enrichments upsert error:", enrichUpsertError.message);
@@ -247,7 +277,7 @@ serve(async (req) => {
       ).then(r => { if (r.error) console.warn("[enrich-lead] junction upsert:", r.error.message); });
     }
 
-    console.log(`[enrich-lead] Lead ${id} enriched. Status: ${resolved_status}. Pipeline: ${pipeline}. Fields: ${fields_updated.join(", ")}`);
+    console.log(`[enrich-lead] Lead ${id} enriched. Status: ${resolved_status}. Pipeline: ${pipeline} (${enrichCol}). Fields: ${fields_updated.join(", ")}`);
 
     return new Response(
       JSON.stringify({
@@ -255,6 +285,7 @@ serve(async (req) => {
         action: "enriched",
         lead_id: id,
         pipeline,
+        enrich_column: enrichCol,
         enrich_status: resolved_status,
         fields_updated,
       }),

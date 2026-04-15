@@ -467,35 +467,25 @@ async function processImport(
       ).then(r => { if (r.error) console.warn("[import-leads] junction upsert:", r.error.message); });
     }
 
-    // Inserir status de enriquecimento na tabela lead_enrichments
+    // Inserir row em lead_enrichments (uma row por lead, colunas por pipeline)
     const enrichStatusToInsert = enrichStatus || "pendente";
+    const isEnriched = enrichStatusToInsert === "concluido" || enrichStatusToInsert === "alimentado";
+    const expiresAtOne = isEnriched
+      ? new Date(Date.now() + 48 * 30 * 24 * 60 * 60 * 1000).toISOString()
+      : null;
+
     await supabase.from("lead_enrichments").upsert(
       {
         lead_id: created.id,
-        pipeline: "enrich_v1",
+        enrich_one: isEnriched,
+        last_attempt_at_one: now,
+        expires_at_one: expiresAtOne,
         status: enrichStatusToInsert,
         source: enrichSource,
-        last_attempt_at: now,
+        completed_at: isEnriched ? now : null,
       },
-      { onConflict: "lead_id,pipeline" }
+      { onConflict: "lead_id" }
     ).then(r => { if (r.error) console.warn("[import-leads] lead_enrichments upsert:", r.error.message); });
-
-    // If already enriched, update lead_enrichments with completed_at and expires_at
-    if (enrichStatusToInsert === "concluido" || enrichStatusToInsert === "alimentado") {
-      const expiresAt = new Date(Date.now() + 12 * 30 * 24 * 60 * 60 * 1000).toISOString();
-      await supabase.from("lead_enrichments").upsert(
-        {
-          lead_id: created.id,
-          pipeline: "enrich_v1",
-          status: enrichStatusToInsert,
-          source: enrichSource,
-          last_attempt_at: now,
-          completed_at: now,
-          expires_at: expiresAt,
-        },
-        { onConflict: "lead_id,pipeline" }
-      ).then(r => { if (r.error) console.warn("[import-leads] lead_enrichments completed upsert:", r.error.message); });
-    }
 
     return new Response(
       JSON.stringify({
