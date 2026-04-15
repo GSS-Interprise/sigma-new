@@ -1920,6 +1920,12 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
           prazoMeses={form.getValues('prazo_meses')}
           condicaoPagamento={form.getValues('condicao_pagamento')}
           documentosExistentes={documentosExistentes}
+          cnpj={form.getValues('cnpj')}
+          nomeUnidade={form.getValues('nome_unidade')}
+          endereco={form.getValues('endereco')}
+          dataTermino={form.getValues('data_termino')?.toISOString?.() || ''}
+          qtdAditivos={aditivos.length}
+          valorEstimado={form.getValues('valor_estimado')}
         />
       )}
     </>
