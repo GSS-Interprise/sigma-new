@@ -7,7 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Mail, Loader2, Search, Paperclip, Send, Users } from "lucide-react";
+import { Mail, Loader2, Search, Send, Users } from "lucide-react";
 
 interface EnviarResumoEmailModalProps {
   open: boolean;
