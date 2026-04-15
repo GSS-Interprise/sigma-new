@@ -586,7 +586,7 @@ export function ContratoList({ contratos, isLoading, onEdit, onView, onDelete }:
                         size="icon"
                         onClick={(e) => {
                           e.stopPropagation();
-                          onDelete(contrato.id);
+                          setDeleteConfirmId(contrato.id);
                         }}
                         title="Deletar"
                       >
