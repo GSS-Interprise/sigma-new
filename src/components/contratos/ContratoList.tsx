@@ -42,6 +42,7 @@ export function ContratoList({ contratos, isLoading, onEdit, onView, onDelete }:
   const [clienteFilter, setClienteFilter] = useState<string | null>(null);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerFile, setViewerFile] = useState<{ url: string; name: string } | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const openFileViewer = async (url: string, name: string) => {
     const extension = name?.split('.').pop()?.toLowerCase() || '';
