@@ -6,12 +6,12 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const VALID_COLUMNS: Record<string, { attempt: string; expires: string; validity: number | null }> = {
+const VALID_COLUMNS: Record<string, { attempt: string; expires: string; validity: number }> = {
   enrich_one:   { attempt: "last_attempt_at_one",   expires: "expires_at_one",   validity: 48 },
-  enrich_two:   { attempt: "last_attempt_at_two",   expires: "expires_at_two",   validity: null },
+  enrich_two:   { attempt: "last_attempt_at_two",   expires: "expires_at_two",   validity: 48 },
   enrich_three: { attempt: "last_attempt_at_three", expires: "expires_at_three", validity: 48 },
   enrich_four:  { attempt: "last_attempt_at_four",  expires: "expires_at_four",  validity: 48 },
-  enrich_five:  { attempt: "last_attempt_at_five",  expires: "expires_at_five",  validity: null },
+  enrich_five:  { attempt: "last_attempt_at_five",  expires: "expires_at_five",  validity: 48 },
 };
 
 serve(async (req) => {
@@ -90,11 +90,13 @@ serve(async (req) => {
       );
     }
 
-    const now = new Date().toISOString();
+    // Horário do Brasil (UTC-3)
+    const brNow = new Date(Date.now() - 3 * 60 * 60 * 1000);
+    const now = brNow.toISOString();
     const meta = VALID_COLUMNS[column];
 
-    const expiresAt = status && meta.validity !== null
-      ? new Date(Date.now() + meta.validity * 30 * 24 * 60 * 60 * 1000).toISOString()
+    const expiresAt = status
+      ? new Date(brNow.getTime() + meta.validity * 30 * 24 * 60 * 60 * 1000).toISOString()
       : null;
 
     const upsertData: Record<string, unknown> = {
