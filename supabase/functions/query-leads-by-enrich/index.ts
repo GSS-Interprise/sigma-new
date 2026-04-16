@@ -111,9 +111,10 @@ serve(async (req) => {
       .eq(`lead_enrichments.${column}`, false)
       .is("merged_into_id", null);
 
-    // Apply not_null filters
-    for (const field of notNullFields) {
-      query = query.not(field, "is", null);
+    // Apply not_null filters with OR logic (at least one must be non-null)
+    if (notNullFields.length > 0) {
+      const orExpr = notNullFields.map((f) => `${f}.not.is.null`).join(",");
+      query = query.or(orExpr);
     }
 
     query = query.order("created_at", { ascending: true }).limit(limit);
