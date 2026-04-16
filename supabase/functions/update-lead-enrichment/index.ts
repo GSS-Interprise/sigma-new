@@ -6,12 +6,12 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const VALID_COLUMNS: Record<string, { attempt: string; expires: string; validity: number }> = {
+const VALID_COLUMNS: Record<string, { attempt: string; expires: string; validity: number | null }> = {
   enrich_one:   { attempt: "last_attempt_at_one",   expires: "expires_at_one",   validity: 48 },
-  enrich_two:   { attempt: "last_attempt_at_two",   expires: "expires_at_two",   validity: 48 },
+  enrich_two:   { attempt: "last_attempt_at_two",   expires: "expires_at_two",   validity: null },
   enrich_three: { attempt: "last_attempt_at_three", expires: "expires_at_three", validity: 48 },
   enrich_four:  { attempt: "last_attempt_at_four",  expires: "expires_at_four",  validity: 48 },
-  enrich_five:  { attempt: "last_attempt_at_five",  expires: "expires_at_five",  validity: 48 },
+  enrich_five:  { attempt: "last_attempt_at_five",  expires: "expires_at_five",  validity: null },
 };
 
 serve(async (req) => {
@@ -95,7 +95,7 @@ serve(async (req) => {
     const now = brNow.toISOString();
     const meta = VALID_COLUMNS[column];
 
-    const expiresAt = status
+    const expiresAt = status && meta.validity !== null
       ? new Date(brNow.getTime() + meta.validity * 30 * 24 * 60 * 60 * 1000).toISOString()
       : null;
 
