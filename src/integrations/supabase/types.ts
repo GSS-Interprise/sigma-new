@@ -10431,7 +10431,13 @@ export type Database = {
         }
         Returns: string
       }
-      lookup_especialidade: { Args: { p_texto: string }; Returns: string }
+      lookup_especialidade:
+        | { Args: { p_texto: string }; Returns: string }
+        | { Args: { p_lead_id?: string; p_texto: string }; Returns: string }
+      lookup_especialidades2: {
+        Args: { p_especialidade_id: string; p_lead_id: string }
+        Returns: string
+      }
       merge_lead_cluster: {
         Args: {
           p_batch_tag?: string
