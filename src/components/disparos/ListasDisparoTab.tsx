@@ -94,8 +94,8 @@ export function ListasDisparoTab() {
                 if (lista.filtro_cidades?.length) filtros.push(`Cidades: ${lista.filtro_cidades.length}`);
                 if (lista.filtro_especialidades?.length) filtros.push(`Esp: ${lista.filtro_especialidades.length}`);
                 return (
-                  <>
-                    <TableRow key={lista.id} className="cursor-pointer" onClick={() => setExpanded(isOpen ? null : lista.id)}>
+                  <FragmentRow key={lista.id}>
+                    <TableRow className="cursor-pointer" onClick={() => setExpanded(isOpen ? null : lista.id)}>
                       <TableCell>
                         {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                       </TableCell>
