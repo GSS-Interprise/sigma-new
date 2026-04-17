@@ -52,6 +52,10 @@ export default function DisparosLeads() {
               <LeadsTab />
             </TabsContent>
 
+            <TabsContent value="listas" className="flex-1 min-h-0 overflow-auto mt-0 pt-4 px-4 pb-6 data-[state=inactive]:hidden">
+              <ListasDisparoTab />
+            </TabsContent>
+
             {/* Abas com scroll normal */}
             <TabsContent value="imports" className="flex-1 min-h-0 overflow-auto mt-0 pt-4 px-4 pb-6 data-[state=inactive]:hidden">
               <LeadImportHistoryTab />
