@@ -1012,6 +1012,19 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Edit conversão (admin only) */}
+      {editConversaoEntry && (
+        <EditConversaoDialog
+          open={!!editConversaoEntry}
+          onOpenChange={(o) => !o && setEditConversaoEntry(null)}
+          historicoId={editConversaoEntry.id}
+          leadId={leadId}
+          initialDescricao={editConversaoEntry.conteudo || ''}
+          initialImagemUrl={editConversaoEntry.metadados?.dados_conversao?.jus_verificacao_url || null}
+          metadados={editConversaoEntry.metadados}
+        />
+      )}
     </div>
   );
 }
