@@ -118,14 +118,6 @@ export function ListaDisparoFormDialog({ open, onOpenChange, lista }: Props) {
             </Select>
           </div>
 
-          <div className="flex items-center justify-between rounded-md border p-3">
-            <div>
-              <Label>Excluir contatos da blacklist</Label>
-              <p className="text-xs text-muted-foreground">Recomendado deixar ativo</p>
-            </div>
-            <Switch checked={excluirBl} onCheckedChange={setExcluirBl} />
-          </div>
-
           {(modo === "dinamica" || modo === "mista") && (
             <div className="space-y-4 rounded-md border p-3">
               <p className="text-sm font-medium">Filtros dinâmicos</p>
