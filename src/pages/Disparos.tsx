@@ -1,5 +1,5 @@
 import { AppLayout } from "@/components/layout/AppLayout";
-import { InstrucoesRespostas } from "@/components/disparos/InstrucoesRespostas";
+
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Send, Mail, LayoutDashboard, Users, Ban, MessageCircle, Settings, FileText, ShieldCheck, MapPin, Eye, Wrench, GraduationCap, Megaphone, Megaphone as CampaignIcon } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -97,7 +97,6 @@ export default function Disparos() {
   return (
     <AppLayout headerActions={headerActions}>
       <div className="p-4 space-y-6">
-        <InstrucoesRespostas />
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {visibleModules.map((module) => {
