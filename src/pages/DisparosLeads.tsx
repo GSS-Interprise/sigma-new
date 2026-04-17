@@ -3,9 +3,10 @@ import { LeadsTab } from "@/components/medicos/LeadsTab";
 import { LeadImportHistoryTab } from "@/components/medicos/LeadImportHistoryTab";
 import { ImportMonitorTab } from "@/components/medicos/ImportMonitorTab";
 import { AbaBloqueioTemporario } from "@/components/disparos/AbaBloqueioTemporario";
+import { ListasDisparoTab } from "@/components/disparos/ListasDisparoTab";
 import { CaptacaoProtectedRoute } from "@/components/auth/CaptacaoProtectedRoute";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Users, FileUp, Activity, ShieldAlert } from "lucide-react";
+import { Users, FileUp, Activity, ShieldAlert, ListChecks } from "lucide-react";
 
 export default function DisparosLeads() {
   const headerActions = (
@@ -26,6 +27,10 @@ export default function DisparosLeads() {
                 <TabsTrigger value="leads" className="gap-2">
                   <Users className="h-4 w-4" />
                   Leads
+                </TabsTrigger>
+                <TabsTrigger value="listas" className="gap-2">
+                  <ListChecks className="h-4 w-4" />
+                  Lista para disparo
                 </TabsTrigger>
                 <TabsTrigger value="imports" className="gap-2">
                   <FileUp className="h-4 w-4" />
