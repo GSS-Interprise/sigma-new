@@ -807,6 +807,20 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
                             <Trash2 className="h-3 w-3" />
                           </Button>
                         )}
+                        {entry.tipo === 'conversao' && isAdmin && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-primary"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditConversaoEntry(entry);
+                            }}
+                            title="Editar conversão"
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </Button>
+                        )}
                       </div>
                     </div>
 
