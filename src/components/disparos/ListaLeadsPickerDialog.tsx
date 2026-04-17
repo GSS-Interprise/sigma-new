@@ -137,27 +137,52 @@ export function ListaLeadsPickerDialog({ open, onOpenChange, listaId, listaNome 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
-        <DialogHeader>
-          <DialogTitle>Adicionar leads à lista: {listaNome}</DialogTitle>
+      <DialogContent className="max-w-6xl w-[95vw] max-h-[92vh] flex flex-col p-0 gap-0 overflow-hidden">
+        {/* Header com gradiente primary */}
+        <DialogHeader className="px-6 py-4 border-b bg-gradient-to-r from-primary/10 via-primary/5 to-transparent">
+          <DialogTitle className="text-xl flex items-center gap-2">
+            <Users className="h-5 w-5 text-primary" />
+            Adicionar leads à <span className="text-primary">{listaNome}</span>
+          </DialogTitle>
+          <p className="text-xs text-muted-foreground">
+            Use os filtros acumulativos para selecionar contatos por especialidade, região e ano de formatura.
+          </p>
         </DialogHeader>
 
-        <div className="space-y-3 flex-1 min-h-0 flex flex-col overflow-hidden">
-          {/* Busca + filtros */}
-          <div className="space-y-3">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                className="pl-10"
-                placeholder="Buscar por nome, telefone, especialidade..."
-                value={busca}
-                onChange={(e) => setBusca(e.target.value)}
-              />
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden p-6 gap-4">
+          {/* Busca */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              className="pl-10 h-11 text-sm"
+              placeholder="Buscar por nome, telefone, especialidade..."
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+            />
+          </div>
+
+          {/* Filtros */}
+          <div className="rounded-lg border border-primary/20 bg-gradient-to-br from-primary/5 to-muted/30 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <Label className="text-xs font-semibold uppercase tracking-wide text-primary flex items-center gap-1.5">
+                <Filter className="h-3.5 w-3.5" />
+                Filtros acumulativos
+              </Label>
+              {filtrosAtivos > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={limparFiltros}
+                  className="h-7 text-xs gap-1 text-muted-foreground hover:text-destructive"
+                >
+                  <X className="h-3 w-3" /> Limpar {filtrosAtivos}
+                </Button>
+              )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3 p-3 rounded-md border bg-muted/30">
-              <div className="space-y-1">
-                <Label className="text-xs flex items-center gap-1"><Filter className="h-3 w-3" />Especialidade</Label>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Especialidade</Label>
                 <SearchableSelect
                   placeholder="Todas"
                   searchPlaceholder="Buscar especialidade..."
@@ -169,8 +194,8 @@ export function ListaLeadsPickerDialog({ open, onOpenChange, listaId, listaNome 
                 />
               </div>
 
-              <div className="space-y-1">
-                <Label className="text-xs">UF</Label>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">UF</Label>
                 <SearchableSelect
                   placeholder="Todas"
                   searchPlaceholder="Buscar UF..."
@@ -182,8 +207,8 @@ export function ListaLeadsPickerDialog({ open, onOpenChange, listaId, listaNome 
                 />
               </div>
 
-              <div className="space-y-1">
-                <Label className="text-xs">Cidade (contém)</Label>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Cidade (contém)</Label>
                 <Input
                   placeholder="Ex.: Florianópolis"
                   value={cidade}
@@ -191,13 +216,13 @@ export function ListaLeadsPickerDialog({ open, onOpenChange, listaId, listaNome 
                 />
               </div>
 
-              <div className="space-y-1">
-                <Label className="text-xs">Ano de formatura</Label>
-                <div className="flex gap-1">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Ano de formatura</Label>
+                <div className="flex gap-2">
                   <Select value={anoMode} onValueChange={(v) => setAnoMode(v as AnoMode)}>
-                    <SelectTrigger className="w-[90px]"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="w-[110px] shrink-0"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="min">A partir</SelectItem>
+                      <SelectItem value="min">A partir de</SelectItem>
                       <SelectItem value="exato">Exato</SelectItem>
                     </SelectContent>
                   </Select>
@@ -214,41 +239,50 @@ export function ListaLeadsPickerDialog({ open, onOpenChange, listaId, listaNome 
             </div>
           </div>
 
-          <div className="flex items-center justify-between text-sm flex-wrap gap-2">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-muted-foreground">
-                {filtrados.length} disponíveis · {selecionados.size} selecionados
-              </span>
-              {isFetching && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
-              {filtrosAtivos > 0 && (
-                <Badge variant="secondary" className="gap-1 cursor-pointer" onClick={limparFiltros}>
-                  {filtrosAtivos} filtro(s) <X className="h-3 w-3" />
-                </Badge>
-              )}
+          {/* Resumo + ação selecionar todos */}
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-3 text-sm flex-wrap">
+              <Badge variant="outline" className="gap-1.5 border-primary/30 bg-primary/5 text-foreground">
+                <span className="font-semibold text-primary">{filtrados.length}</span> disponíveis
+              </Badge>
+              <Badge variant="outline" className="gap-1.5 border-primary/30 bg-primary/10 text-foreground">
+                <span className="font-semibold text-primary">{selecionados.size}</span> selecionados
+              </Badge>
+              {isFetching && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
             </div>
-            <Button variant="outline" size="sm" onClick={toggleAll} disabled={filtrados.length === 0}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={toggleAll}
+              disabled={filtrados.length === 0}
+              className="border-primary/30 text-primary hover:bg-primary/10"
+            >
               {selecionados.size === filtrados.length && filtrados.length > 0 ? "Desmarcar todos" : "Selecionar todos"}
             </Button>
           </div>
 
-          <ScrollArea className="flex-1 min-h-0 rounded-md border">
+          {/* Lista de leads */}
+          <ScrollArea className="flex-1 min-h-0 rounded-lg border bg-card">
             {isLoading ? (
-              <div className="flex items-center justify-center h-32">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              <div className="flex flex-col items-center justify-center gap-2 h-40">
+                <Loader2 className="h-7 w-7 animate-spin text-primary" />
+                <span className="text-xs text-muted-foreground">Carregando leads...</span>
               </div>
             ) : filtrados.length === 0 ? (
-              <div className="text-center py-12 text-sm text-muted-foreground">
+              <div className="text-center py-16 text-sm text-muted-foreground">
                 Nenhum lead disponível com os filtros atuais
               </div>
             ) : (
               <div className="divide-y">
                 {filtrados.map((l: any) => {
                   const checked = selecionados.has(l.id);
-                  const ano = l.data_formatura ? new Date(l.data_formatura).getFullYear() : null;
+                  const anoForm = l.data_formatura ? new Date(l.data_formatura).getFullYear() : null;
                   return (
                     <label
                       key={l.id}
-                      className="flex items-center gap-3 p-3 hover:bg-muted/50 cursor-pointer"
+                      className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${
+                        checked ? "bg-primary/5 hover:bg-primary/10" : "hover:bg-muted/50"
+                      }`}
                     >
                       <Checkbox
                         checked={checked}
@@ -259,10 +293,12 @@ export function ListaLeadsPickerDialog({ open, onOpenChange, listaId, listaNome 
                         }}
                       />
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium truncate">{l.nome}</p>
-                        <p className="text-xs text-muted-foreground truncate">
-                          {l.phone_e164} · {l.especialidade || "-"} · {l.cidade || "-"}/{l.uf || "-"}
-                          {ano ? ` · Form. ${ano}` : ""}
+                        <p className="font-medium truncate text-sm">{l.nome}</p>
+                        <p className="text-xs text-muted-foreground truncate mt-0.5">
+                          <span className="font-mono">{l.phone_e164}</span>
+                          {" · "}{l.especialidade || "-"}
+                          {" · "}{l.cidade || "-"}/{l.uf || "-"}
+                          {anoForm ? ` · Form. ${anoForm}` : ""}
                         </p>
                       </div>
                     </label>
@@ -273,13 +309,22 @@ export function ListaLeadsPickerDialog({ open, onOpenChange, listaId, listaNome 
           </ScrollArea>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="px-6 py-4 border-t bg-muted/30">
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button onClick={handleAdd} disabled={selecionados.size === 0 || add.isPending}>
-            {add.isPending ? "Adicionando..." : `Adicionar ${selecionados.size}`}
+          <Button
+            onClick={handleAdd}
+            disabled={selecionados.size === 0 || add.isPending}
+            className="min-w-[140px]"
+          >
+            {add.isPending ? (
+              <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Adicionando...</>
+            ) : (
+              `Adicionar ${selecionados.size}`
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
+
