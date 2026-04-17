@@ -8409,6 +8409,11 @@ export type Database = {
           id_proposta: string | null
           lead_id: string | null
           licitacao_id: string | null
+          mensagem_email: string | null
+          mensagem_instagram: string | null
+          mensagem_linkedin: string | null
+          mensagem_tiktok: string | null
+          mensagem_whatsapp: string | null
           nome: string | null
           numero_proposta: number | null
           observacoes: string | null
@@ -8433,6 +8438,11 @@ export type Database = {
           id_proposta?: string | null
           lead_id?: string | null
           licitacao_id?: string | null
+          mensagem_email?: string | null
+          mensagem_instagram?: string | null
+          mensagem_linkedin?: string | null
+          mensagem_tiktok?: string | null
+          mensagem_whatsapp?: string | null
           nome?: string | null
           numero_proposta?: number | null
           observacoes?: string | null
@@ -8457,6 +8467,11 @@ export type Database = {
           id_proposta?: string | null
           lead_id?: string | null
           licitacao_id?: string | null
+          mensagem_email?: string | null
+          mensagem_instagram?: string | null
+          mensagem_linkedin?: string | null
+          mensagem_tiktok?: string | null
+          mensagem_whatsapp?: string | null
           nome?: string | null
           numero_proposta?: number | null
           observacoes?: string | null

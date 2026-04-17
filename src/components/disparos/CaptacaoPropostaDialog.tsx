@@ -11,7 +11,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Table,
   TableBody,
@@ -20,16 +19,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { toast } from "sonner";
-import { Loader2, FileText, DollarSign, Plus, Trash2, MessageSquare, Mail } from "lucide-react";
+import { Loader2, FileText, DollarSign, Plus, Trash2, Info } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
+import { MensagensCanaisTabs, type CanalKey, type MensagensCanaisValues } from "./MensagensCanaisTabs";
+import { usePermissions } from "@/hooks/usePermissions";
 
 interface CaptacaoPropostaDialogProps {
   open: boolean;
@@ -64,12 +58,22 @@ export function CaptacaoPropostaDialog({
   onSuccess,
 }: CaptacaoPropostaDialogProps) {
   const queryClient = useQueryClient();
+  const { isAdmin } = usePermissions();
   const [itensValores, setItensValores] = useState<ItemValor[]>([]);
   const [itensCustom, setItensCustom] = useState<ItemValor[]>([]);
   const [novoItemNome, setNovoItemNome] = useState("");
-  const [observacoes, setObservacoes] = useState("");
   const [nomeDestino, setNomeDestino] = useState("");
-  const [tipoDisparo, setTipoDisparo] = useState<"zap" | "email">("zap");
+  const [mensagens, setMensagens] = useState<MensagensCanaisValues>({
+    whatsapp: "",
+    email: "",
+    instagram: "",
+    linkedin: "",
+    tiktok: "",
+  });
+
+  const handleMensagemChange = (canal: CanalKey, valor: string) => {
+    setMensagens((prev) => ({ ...prev, [canal]: valor }));
+  };
 
   // Fetch itens do contrato
   const { data: contratoItens, isLoading: loadingItens } = useQuery({
@@ -116,16 +120,24 @@ export function CaptacaoPropostaDialog({
       }
 
       // Criar proposta vinculada ao contrato
+      const propostaPayload: Record<string, unknown> = {
+        contrato_id: contratoId,
+        status: "geral",
+        valor: 0,
+        descricao: `Proposta de Captação - ${nomeDestino || contratoNome || "Contrato"}`,
+      };
+
+      if (isAdmin) {
+        propostaPayload.mensagem_whatsapp = mensagens.whatsapp || null;
+        propostaPayload.mensagem_email = mensagens.email || null;
+        propostaPayload.mensagem_instagram = mensagens.instagram || null;
+        propostaPayload.mensagem_linkedin = mensagens.linkedin || null;
+        propostaPayload.mensagem_tiktok = mensagens.tiktok || null;
+      }
+
       const { data: proposta, error: propostaError } = await supabase
         .from("proposta")
-        .insert({
-          contrato_id: contratoId,
-          status: "geral",
-          valor: 0,
-          observacoes: observacoes || null,
-          descricao: `Proposta de Captação - ${nomeDestino || contratoNome || "Contrato"}`,
-          tipo_disparo: tipoDisparo,
-        })
+        .insert(propostaPayload as any)
         .select()
         .single();
 
@@ -167,9 +179,8 @@ export function CaptacaoPropostaDialog({
     setItensValores([]);
     setItensCustom([]);
     setNovoItemNome("");
-    setObservacoes("");
     setNomeDestino("");
-    setTipoDisparo("zap");
+    setMensagens({ whatsapp: "", email: "", instagram: "", linkedin: "", tiktok: "" });
     onOpenChange(false);
   };
 
@@ -239,35 +250,17 @@ export function CaptacaoPropostaDialog({
         </DialogHeader>
 
         <div className="space-y-6 py-4">
-          {/* Tipo de Disparo */}
-          <div className="space-y-2">
-            <Label>Tipo de Disparo</Label>
-            <Select value={tipoDisparo} onValueChange={(value: "zap" | "email") => setTipoDisparo(value)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="zap">
-                  <div className="flex items-center gap-2">
-                    <MessageSquare className="h-4 w-4 text-green-600" />
-                    <span>WhatsApp</span>
-                  </div>
-                </SelectItem>
-                <SelectItem value="email">
-                  <div className="flex items-center gap-2">
-                    <Mail className="h-4 w-4 text-blue-600" />
-                    <span>E-mail</span>
-                  </div>
-                </SelectItem>
-              </SelectContent>
-            </Select>
+          {/* Aviso de vínculo via Campanhas */}
+          <div className="flex items-start gap-2 rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
+            <Info className="h-4 w-4 mt-0.5 shrink-0" />
+            <span>O vínculo de propostas a leads agora é feito exclusivamente via <strong>Campanhas</strong>.</span>
           </div>
 
           {/* Nome/Destino da proposta */}
           <div className="space-y-2">
-            <Label>Nome do Destinatário / Descrição</Label>
+            <Label>Nome / Descrição da proposta</Label>
             <Input
-              placeholder="Ex: Dr. João Silva, Hospital X..."
+              placeholder="Ex: Proposta Cardiologia HSP..."
               value={nomeDestino}
               onChange={(e) => setNomeDestino(e.target.value)}
             />
@@ -381,14 +374,13 @@ export function CaptacaoPropostaDialog({
             </p>
           </div>
 
-          {/* Mensagem que será enviada */}
+          {/* Mensagens por canal */}
           <div className="space-y-2">
-            <Label>Mensagem que será enviada</Label>
-            <Textarea
-              placeholder="Mensagem que será enviada ao médico..."
-              value={observacoes}
-              onChange={(e) => setObservacoes(e.target.value)}
-              rows={3}
+            <Label>Mensagens por canal</Label>
+            <MensagensCanaisTabs
+              values={mensagens}
+              onChange={handleMensagemChange}
+              readOnly={!isAdmin}
             />
           </div>
         </div>
