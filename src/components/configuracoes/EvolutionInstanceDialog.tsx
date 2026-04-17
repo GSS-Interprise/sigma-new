@@ -2,6 +2,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, RefreshCw, CheckCircle, XCircle } from "lucide-react";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -13,7 +14,7 @@ interface EvolutionInstanceDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreated: (instanceName: string) => void;
-  tipo?: "disparos" | "trafego_pago";
+  defaultTipo?: "disparos" | "trafego_pago";
 }
 
 const INSTANCE_COLORS = [
@@ -29,10 +30,11 @@ const INSTANCE_COLORS = [
 
 type DialogStep = "form" | "qrcode";
 
-export function EvolutionInstanceDialog({ open, onOpenChange, onCreated, tipo = "disparos" }: EvolutionInstanceDialogProps) {
+export function EvolutionInstanceDialog({ open, onOpenChange, onCreated, defaultTipo }: EvolutionInstanceDialogProps) {
   const [instanceName, setInstanceName] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [selectedColor, setSelectedColor] = useState(INSTANCE_COLORS[0].value);
+  const [tipoInstancia, setTipoInstancia] = useState<"disparos" | "trafego_pago" | "">(defaultTipo || "");
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState<DialogStep>("form");
   
@@ -63,6 +65,7 @@ export function EvolutionInstanceDialog({ open, onOpenChange, onCreated, tipo = 
     setInstanceName("");
     setPhoneNumber("");
     setSelectedColor(INSTANCE_COLORS[0].value);
+    setTipoInstancia(defaultTipo || "");
     setStep("form");
     setQrCode(null);
     setPairingCode(null);
@@ -83,6 +86,11 @@ export function EvolutionInstanceDialog({ open, onOpenChange, onCreated, tipo = 
 
     if (!trimmedName) {
       toast.error("Nome da instância é obrigatório");
+      return;
+    }
+
+    if (!tipoInstancia) {
+      toast.error("Selecione o tipo da instância");
       return;
     }
 
@@ -160,7 +168,7 @@ export function EvolutionInstanceDialog({ open, onOpenChange, onCreated, tipo = 
             connection_state: "close",
             engine: "baileys",
             status: "ativo",
-            tipo_instancia: tipo,
+            tipo_instancia: tipoInstancia,
             behavior_config: { color: selectedColor },
           })
           .eq("id", existingChip.id);
@@ -186,7 +194,7 @@ export function EvolutionInstanceDialog({ open, onOpenChange, onCreated, tipo = 
           connection_state: "close",
           engine: "baileys",
           status: "ativo",
-          tipo_instancia: tipo,
+          tipo_instancia: tipoInstancia,
           behavior_config: { color: selectedColor },
           created_by: user?.id || null,
           created_by_name: creatorName,
@@ -353,7 +361,7 @@ export function EvolutionInstanceDialog({ open, onOpenChange, onCreated, tipo = 
         <DialogHeader>
           <DialogTitle>
             {step === "form"
-              ? `Nova Instância — ${tipo === "trafego_pago" ? "Tráfego Pago" : "WhatsApp de Disparos"}`
+              ? "Nova Instância"
               : `Conectar - ${createdInstanceName}`}
           </DialogTitle>
         </DialogHeader>
@@ -361,6 +369,19 @@ export function EvolutionInstanceDialog({ open, onOpenChange, onCreated, tipo = 
         {step === "form" ? (
           <>
             <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>Tipo da Instância *</Label>
+                <Select value={tipoInstancia} onValueChange={(v) => setTipoInstancia(v as "disparos" | "trafego_pago")}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o tipo..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="disparos">WhatsApp de Disparos</SelectItem>
+                    <SelectItem value="trafego_pago">Tráfego Pago</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div className="space-y-2">
                 <Label htmlFor="instanceName">Nome da Instância *</Label>
                 <Input
