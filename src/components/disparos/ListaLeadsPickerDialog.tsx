@@ -9,7 +9,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { Search, Loader2, Filter, X } from "lucide-react";
+import { Search, Loader2, Filter, X, Users } from "lucide-react";
 import { useAddLeadsToLista } from "@/hooks/useDisparoListas";
 import { useLeadsFilterCounts } from "@/hooks/useLeadsPaginated";
 import { Badge } from "@/components/ui/badge";
