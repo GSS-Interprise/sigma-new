@@ -106,18 +106,6 @@ export function ListaDisparoFormDialog({ open, onOpenChange, lista }: Props) {
             <Textarea value={descricao} onChange={(e) => setDescricao(e.target.value)} rows={2} />
           </div>
 
-          <div className="space-y-2">
-            <Label>Modo da lista</Label>
-            <Select value={modo} onValueChange={(v) => setModo(v as any)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="manual">Manual (escolher leads um a um)</SelectItem>
-                <SelectItem value="dinamica">Dinâmica (filtros aplicados em tempo real)</SelectItem>
-                <SelectItem value="mista">Mista (manual + filtros)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
           {(modo === "dinamica" || modo === "mista") && (
             <div className="space-y-4 rounded-md border p-3">
               <p className="text-sm font-medium">Filtros dinâmicos</p>
