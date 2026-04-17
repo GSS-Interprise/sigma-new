@@ -3193,6 +3193,103 @@ export type Database = {
           },
         ]
       }
+      disparo_lista_itens: {
+        Row: {
+          added_by: string | null
+          created_at: string
+          id: string
+          lead_id: string
+          lista_id: string
+        }
+        Insert: {
+          added_by?: string | null
+          created_at?: string
+          id?: string
+          lead_id: string
+          lista_id: string
+        }
+        Update: {
+          added_by?: string | null
+          created_at?: string
+          id?: string
+          lead_id?: string
+          lista_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "disparo_lista_itens_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "disparo_lista_itens_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_leads_duplicados"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "disparo_lista_itens_lista_id_fkey"
+            columns: ["lista_id"]
+            isOneToOne: false
+            referencedRelation: "disparo_listas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      disparo_listas: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          created_by_nome: string | null
+          descricao: string | null
+          excluir_blacklist: boolean
+          filtro_cidades: string[] | null
+          filtro_especialidades: string[] | null
+          filtro_status: string[] | null
+          filtro_ufs: string[] | null
+          id: string
+          modo: string
+          nome: string
+          total_estimado: number | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          created_by_nome?: string | null
+          descricao?: string | null
+          excluir_blacklist?: boolean
+          filtro_cidades?: string[] | null
+          filtro_especialidades?: string[] | null
+          filtro_status?: string[] | null
+          filtro_ufs?: string[] | null
+          id?: string
+          modo?: string
+          nome: string
+          total_estimado?: number | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          created_by_nome?: string | null
+          descricao?: string | null
+          excluir_blacklist?: boolean
+          filtro_cidades?: string[] | null
+          filtro_especialidades?: string[] | null
+          filtro_status?: string[] | null
+          filtro_ufs?: string[] | null
+          id?: string
+          modo?: string
+          nome?: string
+          total_estimado?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       disparos_anotacoes: {
         Row: {
           cliente_id: string
