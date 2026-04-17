@@ -26,7 +26,11 @@ export function useCampanhaPropostas(campanhaId?: string) {
         .select("*, proposta:proposta_id(id, id_proposta, descricao, observacoes), lista:lista_id(id, nome, modo, total_estimado)")
         .eq("campanha_id", campanhaId!)
         .order("created_at", { ascending: false });
-      if (error) throw error;
+      if (error) {
+        console.error("[useCampanhaPropostas] erro:", error);
+        throw error;
+      }
+      console.log("[useCampanhaPropostas] campanhaId=", campanhaId, "rows=", data?.length);
       return data || [];
     },
   });
