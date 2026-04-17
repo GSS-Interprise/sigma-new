@@ -30,19 +30,19 @@ type AnoMode = "min" | "exato";
 // Aplica filtros comuns à query Supabase
 function applyFilters(q: any, opts: {
   debounced: string;
-  especialidade: string;
-  uf: string;
+  especialidades: string[];
+  ufs: string[];
   cidade: string;
   ano: string;
   anoMode: AnoMode;
 }) {
-  const { debounced, especialidade, uf, cidade, ano, anoMode } = opts;
+  const { debounced, especialidades, ufs, cidade, ano, anoMode } = opts;
   q = q.not("phone_e164", "is", null).is("merged_into_id", null);
   if (debounced.trim()) {
     q = q.or(`nome.ilike.%${debounced}%,phone_e164.ilike.%${debounced}%,especialidade.ilike.%${debounced}%`);
   }
-  if (especialidade) q = q.eq("especialidade_id", especialidade);
-  if (uf) q = q.ilike("uf", uf);
+  if (especialidades.length > 0) q = q.in("especialidade_id", especialidades);
+  if (ufs.length > 0) q = q.in("uf", ufs.map((u) => u.toUpperCase()));
   if (cidade.trim()) q = q.ilike("cidade", `%${cidade.trim()}%`);
   if (ano && /^\d{4}$/.test(ano)) {
     if (anoMode === "min") q = q.gte("data_formatura", `${ano}-01-01`);
