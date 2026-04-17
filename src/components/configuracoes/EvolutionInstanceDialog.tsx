@@ -29,7 +29,7 @@ const INSTANCE_COLORS = [
 
 type DialogStep = "form" | "qrcode";
 
-export function EvolutionInstanceDialog({ open, onOpenChange, onCreated }: EvolutionInstanceDialogProps) {
+export function EvolutionInstanceDialog({ open, onOpenChange, onCreated, tipo = "disparos" }: EvolutionInstanceDialogProps) {
   const [instanceName, setInstanceName] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [selectedColor, setSelectedColor] = useState(INSTANCE_COLORS[0].value);
