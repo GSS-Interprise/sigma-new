@@ -206,8 +206,14 @@ export function CaptacaoPropostaDetailDialog({
 
   const startEditing = () => {
     setEditStatus(proposta?.status || "geral");
-    setEditObservacoes(proposta?.observacoes || "");
     setEditDescricao(proposta?.descricao || "");
+    setEditMensagens({
+      whatsapp: (proposta as any)?.mensagem_whatsapp || "",
+      email: (proposta as any)?.mensagem_email || "",
+      instagram: (proposta as any)?.mensagem_instagram || "",
+      linkedin: (proposta as any)?.mensagem_linkedin || "",
+      tiktok: (proposta as any)?.mensagem_tiktok || "",
+    });
     // Se não tem itens na proposta mas tem do contrato, marcar como novos para serem inseridos
     if (itens.length === 0 && contratoItens.length > 0) {
       setEditItens(contratoItens.map(i => ({ ...i, id: `new-${Date.now()}-${Math.random()}`, quantidade: i.quantidade || 1, isNew: true })));
@@ -476,29 +482,36 @@ export function CaptacaoPropostaDetailDialog({
                 )}
               </div>
 
-              {/* Mensagem */}
-              {isEditing ? (
-                <>
-                  <Separator />
-                  <div>
-                    <h3 className="font-semibold mb-2">Mensagem que será enviada</h3>
-                    <Textarea
-                      rows={3}
-                      placeholder="Observações / mensagem..."
-                      value={editObservacoes}
-                      onChange={(e) => setEditObservacoes(e.target.value)}
-                    />
-                  </div>
-                </>
-              ) : proposta?.observacoes ? (
-                <>
-                  <Separator />
-                  <div>
-                    <h3 className="font-semibold mb-2">Mensagem que será enviada</h3>
-                    <p className="text-sm text-muted-foreground">{proposta.observacoes}</p>
-                  </div>
-                </>
-              ) : null}
+              {/* Mensagens por canal */}
+              <Separator />
+              <div>
+                <h3 className="font-semibold mb-2 flex items-center gap-2">
+                  Mensagens por canal
+                </h3>
+                {isEditing ? (
+                  <MensagensCanaisTabs
+                    values={editMensagens}
+                    onChange={handleMensagemChange}
+                    readOnly={!isAdmin}
+                  />
+                ) : (
+                  <MensagensCanaisTabs
+                    values={{
+                      whatsapp: (proposta as any)?.mensagem_whatsapp || "",
+                      email: (proposta as any)?.mensagem_email || "",
+                      instagram: (proposta as any)?.mensagem_instagram || "",
+                      linkedin: (proposta as any)?.mensagem_linkedin || "",
+                      tiktok: (proposta as any)?.mensagem_tiktok || "",
+                    }}
+                    onChange={() => {}}
+                    readOnly
+                  />
+                )}
+                <p className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
+                  <Info className="h-3 w-3" />
+                  Vínculos de propostas a leads agora são feitos via Campanhas.
+                </p>
+              </div>
 
               {/* Data de criação */}
               <div className="text-xs text-muted-foreground text-right">
