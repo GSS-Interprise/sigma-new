@@ -696,6 +696,13 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
             onChange={(e) => setConteudo(e.target.value)}
             rows={4}
           />
+
+          <div className="space-y-1">
+            <p className="text-xs text-muted-foreground">
+              Marcar pessoas (elas receberão notificação)
+            </p>
+            <UsuarioMultiSelect value={mencionados} onChange={setMencionados} />
+          </div>
           
           {/* Image previews */}
           {imagensPreview.length > 0 && (
