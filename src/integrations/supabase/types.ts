@@ -1798,6 +1798,7 @@ export type Database = {
           provedor: string | null
           proxy_config: Json | null
           status: string
+          tipo_instancia: string
           updated_at: string | null
           webhook_url: string | null
         }
@@ -1819,6 +1820,7 @@ export type Database = {
           provedor?: string | null
           proxy_config?: Json | null
           status?: string
+          tipo_instancia?: string
           updated_at?: string | null
           webhook_url?: string | null
         }
@@ -1840,6 +1842,7 @@ export type Database = {
           provedor?: string | null
           proxy_config?: Json | null
           status?: string
+          tipo_instancia?: string
           updated_at?: string | null
           webhook_url?: string | null
         }

@@ -118,11 +118,12 @@ export function PhoneEmailArrayFields({
     setCheckingAll(true);
 
     try {
-      // Buscar TODAS as instâncias conectadas
+      // Buscar TODAS as instâncias conectadas (apenas tipo "disparos" — tráfego pago não inicia conversas)
       const { data: instances } = await supabase
         .from("sigzap_instances")
-        .select("name")
-        .eq("status", "connected");
+        .select("name, chips!inner(tipo_instancia)")
+        .eq("status", "connected")
+        .eq("chips.tipo_instancia", "disparos");
 
       if (!instances || instances.length === 0) {
         toast.error("Nenhuma instância WhatsApp conectada para verificação.");

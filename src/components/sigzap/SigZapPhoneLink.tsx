@@ -90,11 +90,12 @@ function SigZapPhonePopover({ phone, isFromMe, currentInstanceId }: PhonePopover
         }
       }
 
-      // 2. Contact not in DB — check via Evolution API
+      // 2. Contact not in DB — check via Evolution API (apenas instâncias de "disparos")
       const { data: activeInstance } = await supabase
         .from("sigzap_instances")
-        .select("name")
+        .select("name, chips!inner(tipo_instancia)")
         .eq("status", "connected")
+        .eq("chips.tipo_instancia", "disparos")
         .limit(1)
         .maybeSingle();
 
@@ -161,8 +162,9 @@ function SigZapPhonePopover({ phone, isFromMe, currentInstanceId }: PhonePopover
       if (!instId) {
         const { data: inst } = await supabase
           .from("sigzap_instances")
-          .select("id")
+          .select("id, chips!inner(tipo_instancia)")
           .eq("status", "connected")
+          .eq("chips.tipo_instancia", "disparos")
           .limit(1)
           .maybeSingle();
         instId = inst?.id || null;

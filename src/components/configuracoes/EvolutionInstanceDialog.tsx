@@ -13,6 +13,7 @@ interface EvolutionInstanceDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreated: (instanceName: string) => void;
+  tipo?: "disparos" | "trafego_pago";
 }
 
 const INSTANCE_COLORS = [
@@ -28,7 +29,7 @@ const INSTANCE_COLORS = [
 
 type DialogStep = "form" | "qrcode";
 
-export function EvolutionInstanceDialog({ open, onOpenChange, onCreated }: EvolutionInstanceDialogProps) {
+export function EvolutionInstanceDialog({ open, onOpenChange, onCreated, tipo = "disparos" }: EvolutionInstanceDialogProps) {
   const [instanceName, setInstanceName] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [selectedColor, setSelectedColor] = useState(INSTANCE_COLORS[0].value);
@@ -159,6 +160,7 @@ export function EvolutionInstanceDialog({ open, onOpenChange, onCreated }: Evolu
             connection_state: "close",
             engine: "baileys",
             status: "ativo",
+            tipo_instancia: tipo,
             behavior_config: { color: selectedColor },
           })
           .eq("id", existingChip.id);
@@ -184,6 +186,7 @@ export function EvolutionInstanceDialog({ open, onOpenChange, onCreated }: Evolu
           connection_state: "close",
           engine: "baileys",
           status: "ativo",
+          tipo_instancia: tipo,
           behavior_config: { color: selectedColor },
           created_by: user?.id || null,
           created_by_name: creatorName,
@@ -349,7 +352,9 @@ export function EvolutionInstanceDialog({ open, onOpenChange, onCreated }: Evolu
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>
-            {step === "form" ? "Nova Instância WhatsApp" : `Conectar - ${createdInstanceName}`}
+            {step === "form"
+              ? `Nova Instância — ${tipo === "trafego_pago" ? "Tráfego Pago" : "WhatsApp de Disparos"}`
+              : `Conectar - ${createdInstanceName}`}
           </DialogTitle>
         </DialogHeader>
 

@@ -51,12 +51,19 @@ interface ChipInstance {
   status: string;
   limite_diario: number | null;
   provedor: string | null;
+  tipo_instancia: string | null;
   created_at: string | null;
   created_by: string | null;
   created_by_name: string | null;
 }
 
-export function InstanciaConfigTab() {
+export type TipoInstancia = "disparos" | "trafego_pago";
+
+interface InstanciaConfigTabProps {
+  tipo?: TipoInstancia;
+}
+
+export function InstanciaConfigTab({ tipo = "disparos" }: InstanciaConfigTabProps) {
   const [qrDialogOpen, setQrDialogOpen] = useState(false);
   const [newInstanceDialogOpen, setNewInstanceDialogOpen] = useState(false);
   const [adminConfigOpen, setAdminConfigOpen] = useState(false);
@@ -70,14 +77,15 @@ export function InstanciaConfigTab() {
   const queryClient = useQueryClient();
   const { isAdmin, isLoadingRoles } = usePermissions();
 
-  // Fetch local instances - only active ones by default
+  // Fetch local instances - filter by tipo (disparos or trafego_pago)
   const { data: instancias = [], isLoading } = useQuery({
-    queryKey: ["instancias-whatsapp"],
+    queryKey: ["instancias-whatsapp", tipo],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("chips")
         .select("*")
         .eq("status", "ativo")
+        .eq("tipo_instancia", tipo)
         .order("created_at", { ascending: false });
       if (error) throw error;
       return (data || []) as ChipInstance[];
@@ -87,7 +95,7 @@ export function InstanciaConfigTab() {
   // Realtime subscription for chips table
   useEffect(() => {
     const channel = supabase
-      .channel('chips-realtime')
+      .channel(`chips-realtime-${tipo}`)
       .on(
         'postgres_changes',
         {
@@ -96,7 +104,7 @@ export function InstanciaConfigTab() {
           table: 'chips'
         },
         () => {
-          queryClient.invalidateQueries({ queryKey: ["instancias-whatsapp"] });
+          queryClient.invalidateQueries({ queryKey: ["instancias-whatsapp", tipo] });
         }
       )
       .subscribe();
@@ -104,7 +112,7 @@ export function InstanciaConfigTab() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [queryClient]);
+  }, [queryClient, tipo]);
 
   // Apply global webhook configuration to an instance
   const applyGlobalWebhook = async (instance: ChipInstance) => {
@@ -446,8 +454,14 @@ export function InstanciaConfigTab() {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold">Configuração de Instâncias</h2>
-          <p className="text-muted-foreground">Gerencie suas instâncias WhatsApp (Evolution API)</p>
+          <h2 className="text-2xl font-bold">
+            {tipo === "trafego_pago" ? "Tráfego Pago" : "WhatsApp de Disparos"}
+          </h2>
+          <p className="text-muted-foreground">
+            {tipo === "trafego_pago"
+              ? "Instâncias dedicadas a receber mensagens de campanhas de tráfego pago. Não participam de disparos nem iniciam novas conversas no SigZap."
+              : "Instâncias usadas para disparos em massa e início de conversas no SigZap."}
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <Button 
@@ -661,6 +675,7 @@ export function InstanciaConfigTab() {
         open={newInstanceDialogOpen}
         onOpenChange={setNewInstanceDialogOpen}
         onCreated={handleInstanceCreated}
+        tipo={tipo}
       />
 
 
