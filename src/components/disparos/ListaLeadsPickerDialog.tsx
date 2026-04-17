@@ -283,26 +283,40 @@ export function ListaLeadsPickerDialog({ open, onOpenChange, listaId, listaNome 
             </div>
           </div>
 
-          {/* Resumo + ação selecionar todos */}
+          {/* Resumo + ações */}
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-3 text-sm flex-wrap">
               <Badge variant="outline" className="gap-1.5 border-primary/30 bg-primary/5 text-foreground">
-                <span className="font-semibold text-primary">{filtrados.length}</span> disponíveis
+                <span className="font-semibold text-primary">{totalCount.toLocaleString("pt-BR")}</span> encontrados
               </Badge>
               <Badge variant="outline" className="gap-1.5 border-primary/30 bg-primary/10 text-foreground">
-                <span className="font-semibold text-primary">{selecionados.size}</span> selecionados
+                <span className="font-semibold text-primary">{selecionados.size.toLocaleString("pt-BR")}</span> selecionados
               </Badge>
-              {isFetching && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+              {(isFetching || selectingAll) && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={toggleAll}
-              disabled={filtrados.length === 0}
-              className="border-primary/30 text-primary hover:bg-primary/10"
-            >
-              {selecionados.size === filtrados.length && filtrados.length > 0 ? "Desmarcar todos" : "Selecionar todos"}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={togglePagina}
+                disabled={filtrados.length === 0}
+              >
+                {todosDaPaginaSelecionados ? "Desmarcar página" : "Selecionar página"}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={selecionarTodosFiltrados}
+                disabled={totalCount === 0 || selectingAll}
+                className="border-primary/40 text-primary hover:bg-primary/10"
+              >
+                {selectingAll ? (
+                  <><Loader2 className="h-3 w-3 animate-spin mr-1" /> Selecionando...</>
+                ) : (
+                  `Selecionar todos (${totalCount.toLocaleString("pt-BR")})`
+                )}
+              </Button>
+            </div>
           </div>
 
           {/* Lista de leads */}
@@ -351,6 +365,48 @@ export function ListaLeadsPickerDialog({ open, onOpenChange, listaId, listaNome 
               </div>
             )}
           </ScrollArea>
+
+          {/* Paginação */}
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>
+              Página <span className="font-semibold text-foreground">{page + 1}</span> de{" "}
+              <span className="font-semibold text-foreground">{totalPages.toLocaleString("pt-BR")}</span>
+            </span>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(0)}
+                disabled={page === 0 || isFetching}
+              >
+                « Primeira
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+                disabled={page === 0 || isFetching}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                disabled={page >= totalPages - 1 || isFetching}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(totalPages - 1)}
+                disabled={page >= totalPages - 1 || isFetching}
+              >
+                Última »
+              </Button>
+            </div>
+          </div>
         </div>
 
         <DialogFooter className="px-6 py-4 border-t bg-muted/30">
