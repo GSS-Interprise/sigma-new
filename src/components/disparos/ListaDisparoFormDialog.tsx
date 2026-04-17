@@ -106,7 +106,7 @@ export function ListaDisparoFormDialog({ open, onOpenChange, lista }: Props) {
             <Textarea value={descricao} onChange={(e) => setDescricao(e.target.value)} rows={2} />
           </div>
 
-          {(modo === "dinamica" || modo === "mista") && (
+          {true && (
             <div className="space-y-4 rounded-md border p-3">
               <p className="text-sm font-medium">Filtros dinâmicos</p>
 
