@@ -14,8 +14,9 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   PlusCircle, Image, X, Trash2, AlertTriangle, Ban, 
-  Undo2, StickyNote, Calendar, User, Loader2, Send, FileText, MessageCircle, CheckCheck, Eye, UserX
+  Undo2, StickyNote, Calendar, User, Loader2, Send, FileText, MessageCircle, CheckCheck, Eye, UserX, Pencil
 } from "lucide-react";
+import { EditConversaoDialog } from "./EditConversaoDialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -45,6 +46,7 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
   const [imagensPreview, setImagensPreview] = useState<{ file: File; preview: string }[]>([]);
   const [uploading, setUploading] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [editConversaoEntry, setEditConversaoEntry] = useState<any | null>(null);
 
   // Fetch anotações
   const { data: anotacoes, isLoading: loadingAnotacoes } = useQuery({
@@ -805,6 +807,20 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
                             <Trash2 className="h-3 w-3" />
                           </Button>
                         )}
+                        {entry.tipo === 'conversao' && isAdmin && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-primary"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditConversaoEntry(entry);
+                            }}
+                            title="Editar conversão"
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </Button>
+                        )}
                       </div>
                     </div>
 
@@ -996,6 +1012,19 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Edit conversão (admin only) */}
+      {editConversaoEntry && (
+        <EditConversaoDialog
+          open={!!editConversaoEntry}
+          onOpenChange={(o) => !o && setEditConversaoEntry(null)}
+          historicoId={editConversaoEntry.id}
+          leadId={leadId}
+          initialDescricao={editConversaoEntry.conteudo || ''}
+          initialImagemUrl={editConversaoEntry.metadados?.dados_conversao?.jus_verificacao_url || null}
+          metadados={editConversaoEntry.metadados}
+        />
+      )}
     </div>
   );
 }
