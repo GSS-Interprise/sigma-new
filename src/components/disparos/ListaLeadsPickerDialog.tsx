@@ -21,10 +21,35 @@ interface Props {
   listaNome: string;
 }
 
-const PAGE_SIZE = 500;
-const MAX_FETCH = 10000;
+const PAGE_SIZE = 50;
+const SELECT_ALL_CHUNK = 1000;
+const SELECT_ALL_MAX = 50000;
 
 type AnoMode = "min" | "exato";
+
+// Aplica filtros comuns à query Supabase
+function applyFilters(q: any, opts: {
+  debounced: string;
+  especialidade: string;
+  uf: string;
+  cidade: string;
+  ano: string;
+  anoMode: AnoMode;
+}) {
+  const { debounced, especialidade, uf, cidade, ano, anoMode } = opts;
+  q = q.not("phone_e164", "is", null).is("merged_into_id", null);
+  if (debounced.trim()) {
+    q = q.or(`nome.ilike.%${debounced}%,phone_e164.ilike.%${debounced}%,especialidade.ilike.%${debounced}%`);
+  }
+  if (especialidade) q = q.eq("especialidade_id", especialidade);
+  if (uf) q = q.ilike("uf", uf);
+  if (cidade.trim()) q = q.ilike("cidade", `%${cidade.trim()}%`);
+  if (ano && /^\d{4}$/.test(ano)) {
+    if (anoMode === "min") q = q.gte("data_formatura", `${ano}-01-01`);
+    else q = q.gte("data_formatura", `${ano}-01-01`).lte("data_formatura", `${ano}-12-31`);
+  }
+  return q;
+}
 
 export function ListaLeadsPickerDialog({ open, onOpenChange, listaId, listaNome }: Props) {
   const [busca, setBusca] = useState("");
@@ -34,7 +59,9 @@ export function ListaLeadsPickerDialog({ open, onOpenChange, listaId, listaNome 
   const [cidade, setCidade] = useState<string>("");
   const [ano, setAno] = useState<string>("");
   const [anoMode, setAnoMode] = useState<AnoMode>("min");
+  const [page, setPage] = useState(0);
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
+  const [selectingAll, setSelectingAll] = useState(false);
   const add = useAddLeadsToLista();
   const { data: filterMeta } = useLeadsFilterCounts(open);
 
@@ -43,12 +70,15 @@ export function ListaLeadsPickerDialog({ open, onOpenChange, listaId, listaNome 
     return () => clearTimeout(t);
   }, [busca]);
 
+  // Reset página ao mudar filtros
+  useEffect(() => { setPage(0); }, [debounced, especialidade, uf, cidade, ano, anoMode]);
+
   useEffect(() => {
     if (!open) {
       setSelecionados(new Set());
       setBusca(""); setDebounced("");
       setEspecialidade(""); setUf(""); setCidade(""); setAno("");
-      setAnoMode("min");
+      setAnoMode("min"); setPage(0);
     }
   }, [open]);
 
@@ -73,54 +103,67 @@ export function ListaLeadsPickerDialog({ open, onOpenChange, listaId, listaNome 
     enabled: open,
   });
 
-  const queryKey = ["leads-picker-v2", debounced, especialidade, uf, cidade, ano, anoMode];
+  const filtersOpts = { debounced, especialidade, uf, cidade, ano, anoMode };
 
-  const { data: leads, isLoading, isFetching } = useQuery({
-    queryKey,
+  const { data: pageData, isLoading, isFetching } = useQuery({
+    queryKey: ["leads-picker-page", page, debounced, especialidade, uf, cidade, ano, anoMode],
     queryFn: async () => {
-      const all: any[] = [];
-      let from = 0;
-      while (from < MAX_FETCH) {
-        let q = supabase
-          .from("leads")
-          .select("id, nome, phone_e164, especialidade, especialidade_id, uf, cidade, data_formatura")
-          .not("phone_e164", "is", null)
-          .is("merged_into_id", null)
-          .range(from, from + PAGE_SIZE - 1);
-
-        if (debounced.trim()) {
-          q = q.or(`nome.ilike.%${debounced}%,phone_e164.ilike.%${debounced}%,especialidade.ilike.%${debounced}%`);
-        }
-        if (especialidade) q = q.eq("especialidade_id", especialidade);
-        if (uf) q = q.ilike("uf", uf);
-        if (cidade.trim()) q = q.ilike("cidade", `%${cidade.trim()}%`);
-        if (ano && /^\d{4}$/.test(ano)) {
-          if (anoMode === "min") {
-            q = q.gte("data_formatura", `${ano}-01-01`);
-          } else {
-            q = q.gte("data_formatura", `${ano}-01-01`).lte("data_formatura", `${ano}-12-31`);
-          }
-        }
-
-        const { data, error } = await q;
-        if (error) throw error;
-        all.push(...(data || []));
-        if (!data || data.length < PAGE_SIZE) break;
-        from += PAGE_SIZE;
-      }
-      return all;
+      const from = page * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+      let q: any = supabase
+        .from("leads")
+        .select("id, nome, phone_e164, especialidade, especialidade_id, uf, cidade, data_formatura", { count: "exact" });
+      q = applyFilters(q, filtersOpts).range(from, to).order("nome", { ascending: true });
+      const { data, error, count } = await q;
+      if (error) throw error;
+      return { leads: data || [], totalCount: count || 0 };
     },
     enabled: open,
+    placeholderData: (prev) => prev,
   });
 
+  const leadsPagina = pageData?.leads || [];
+  const totalCount = pageData?.totalCount || 0;
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
   const filtrados = useMemo(
-    () => (leads || []).filter((l: any) => !jaNaLista?.has(l.id)),
-    [leads, jaNaLista]
+    () => leadsPagina.filter((l: any) => !jaNaLista?.has(l.id)),
+    [leadsPagina, jaNaLista]
   );
 
-  const toggleAll = () => {
-    if (selecionados.size === filtrados.length) setSelecionados(new Set());
-    else setSelecionados(new Set(filtrados.map((l: any) => l.id)));
+  const todosDaPaginaSelecionados =
+    filtrados.length > 0 && filtrados.every((l: any) => selecionados.has(l.id));
+
+  const togglePagina = () => {
+    const next = new Set(selecionados);
+    if (todosDaPaginaSelecionados) {
+      filtrados.forEach((l: any) => next.delete(l.id));
+    } else {
+      filtrados.forEach((l: any) => next.add(l.id));
+    }
+    setSelecionados(next);
+  };
+
+  // Seleciona TODOS os IDs (todas as páginas) buscando em chunks
+  const selecionarTodosFiltrados = async () => {
+    setSelectingAll(true);
+    try {
+      const next = new Set(selecionados);
+      let from = 0;
+      while (from < SELECT_ALL_MAX) {
+        let q: any = supabase.from("leads").select("id");
+        q = applyFilters(q, filtersOpts).range(from, from + SELECT_ALL_CHUNK - 1);
+        const { data, error } = await q;
+        if (error) throw error;
+        (data || []).forEach((l: any) => {
+          if (!jaNaLista?.has(l.id)) next.add(l.id);
+        });
+        if (!data || data.length < SELECT_ALL_CHUNK) break;
+        from += SELECT_ALL_CHUNK;
+      }
+      setSelecionados(next);
+    } finally {
+      setSelectingAll(false);
+    }
   };
 
   const handleAdd = async () => {
@@ -134,6 +177,7 @@ export function ListaLeadsPickerDialog({ open, onOpenChange, listaId, listaNome 
 
   const filtrosAtivos =
     (especialidade ? 1 : 0) + (uf ? 1 : 0) + (cidade ? 1 : 0) + (ano ? 1 : 0) + (busca ? 1 : 0);
+
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
