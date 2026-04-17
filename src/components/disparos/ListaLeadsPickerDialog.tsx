@@ -226,12 +226,12 @@ export function ListaLeadsPickerDialog({ open, onOpenChange, listaId, listaNome 
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Especialidade</Label>
-                <SearchableSelect
+                <Label className="text-xs text-muted-foreground">Especialidades</Label>
+                <SearchableMultiSelect
                   placeholder="Todas"
                   searchPlaceholder="Buscar especialidade..."
-                  value={especialidade}
-                  onChange={setEspecialidade}
+                  values={especialidades}
+                  onChange={setEspecialidades}
                   options={(filterMeta?.especialidades || [])
                     .filter((e) => e.id && e.nome)
                     .map((e) => ({ value: e.id, label: e.nome }))}
@@ -239,15 +239,15 @@ export function ListaLeadsPickerDialog({ open, onOpenChange, listaId, listaNome 
               </div>
 
               <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">UF</Label>
-                <SearchableSelect
+                <Label className="text-xs text-muted-foreground">UFs</Label>
+                <SearchableMultiSelect
                   placeholder="Todas"
                   searchPlaceholder="Buscar UF..."
-                  value={uf}
-                  onChange={setUf}
+                  values={ufs}
+                  onChange={setUfs}
                   options={(filterMeta?.options.uf || [])
                     .filter((u) => u && u.trim())
-                    .map((u) => ({ value: u, label: u.toUpperCase() }))}
+                    .map((u) => ({ value: u.toUpperCase(), label: u.toUpperCase() }))}
                 />
               </div>
 
