@@ -13,6 +13,7 @@ interface EvolutionInstanceDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreated: (instanceName: string) => void;
+  tipo?: "disparos" | "trafego_pago";
 }
 
 const INSTANCE_COLORS = [
