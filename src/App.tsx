@@ -23,7 +23,7 @@ import DisparosRegiaoInteresse from "./pages/DisparosRegiaoInteresse";
 import DisparosMonitor from "./pages/DisparosMonitor";
 import DisparosResidentes from "./pages/DisparosResidentes";
 import DisparosTrafegoPago from "./pages/DisparosTrafegoPago";
-import DisparosTarefas from "./pages/DisparosTarefas";
+import DisparosCampanhas from "./pages/DisparosCampanhas";
 import Contratos from "./pages/Contratos";
 import RelacionamentoMedico from "./pages/RelacionamentoMedico";
 import Medicos from "./pages/Medicos";
@@ -83,7 +83,8 @@ const App = () => (
             <Route path="/disparos/monitor" element={<ProtectedRoute><PermissionRoute modulo="disparos"><DisparosMonitor /></PermissionRoute></ProtectedRoute>} />
             <Route path="/disparos/residentes" element={<ProtectedRoute><PermissionRoute modulo="disparos"><DisparosResidentes /></PermissionRoute></ProtectedRoute>} />
             <Route path="/disparos/trafego-pago" element={<ProtectedRoute><PermissionRoute modulo="disparos"><DisparosTrafegoPago /></PermissionRoute></ProtectedRoute>} />
-            <Route path="/disparos/tarefas" element={<ProtectedRoute><PermissionRoute modulo="disparos"><DisparosTarefas /></PermissionRoute></ProtectedRoute>} />
+            <Route path="/disparos/campanhas" element={<ProtectedRoute><PermissionRoute modulo="disparos"><DisparosCampanhas /></PermissionRoute></ProtectedRoute>} />
+            <Route path="/disparos/tarefas" element={<ProtectedRoute><PermissionRoute modulo="disparos"><DisparosCampanhas /></PermissionRoute></ProtectedRoute>} />
             <Route path="/marketing" element={<ProtectedRoute><PermissionRoute modulo="marketing"><Marketing /></PermissionRoute></ProtectedRoute>} />
             <Route path="/contratos" element={<ProtectedRoute><PermissionRoute modulo="contratos"><Contratos /></PermissionRoute></ProtectedRoute>} />
             <Route path="/relacionamento-medico" element={<ProtectedRoute><PermissionRoute modulo="relacionamento"><RelacionamentoMedico /></PermissionRoute></ProtectedRoute>} />
