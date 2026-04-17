@@ -49,7 +49,8 @@ export default function DisparosCampanhas() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selecionada, setSelecionada] = useState<string | null>(null);
   const [nome, setNome] = useState("");
-  const [propostaId, setPropostaId] = useState("");
+  const [propostaIds, setPropostaIds] = useState<string[]>([]);
+  const [propostaPickerOpen, setPropostaPickerOpen] = useState(false);
   const qc = useQueryClient();
   const vincular = useVincularProposta();
 
