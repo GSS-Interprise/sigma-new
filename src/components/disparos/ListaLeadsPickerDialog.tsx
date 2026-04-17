@@ -161,7 +161,7 @@ export function ListaLeadsPickerDialog({ open, onOpenChange, listaId, listaNome 
                   <SelectTrigger><SelectValue placeholder="Todas" /></SelectTrigger>
                   <SelectContent className="max-h-72">
                     <SelectItem value="all">Todas</SelectItem>
-                    {(filterMeta?.especialidades || []).map((e) => (
+                    {(filterMeta?.especialidades || []).filter((e) => e.id && e.nome).map((e) => (
                       <SelectItem key={e.id} value={e.id}>{e.nome}</SelectItem>
                     ))}
                   </SelectContent>
@@ -174,7 +174,7 @@ export function ListaLeadsPickerDialog({ open, onOpenChange, listaId, listaNome 
                   <SelectTrigger><SelectValue placeholder="Todas" /></SelectTrigger>
                   <SelectContent className="max-h-72">
                     <SelectItem value="all">Todas</SelectItem>
-                    {(filterMeta?.options.uf || []).map((u) => (
+                    {(filterMeta?.options.uf || []).filter((u) => u && u.trim()).map((u) => (
                       <SelectItem key={u} value={u}>{u.toUpperCase()}</SelectItem>
                     ))}
                   </SelectContent>
