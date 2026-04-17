@@ -146,51 +146,32 @@ export default function DisparosCampanhas() {
                   </DialogHeader>
                   <div className="space-y-3">
                     <div className="space-y-1">
-                      <Label>Nome *</Label>
+                      <Label>Nome da campanha *</Label>
                       <Input
-                        value={form.nome}
-                        onChange={(e) => setForm({ ...form, nome: e.target.value })}
+                        value={nome}
+                        onChange={(e) => setNome(e.target.value)}
                         placeholder="Ex: Captação Pediatria SC"
                       />
                     </div>
                     <div className="space-y-1">
-                      <Label>Canal</Label>
-                      <Select
-                        value={form.canal}
-                        onValueChange={(v) => setForm({ ...form, canal: v })}
-                      >
+                      <Label>Proposta *</Label>
+                      <Select value={propostaId} onValueChange={setPropostaId}>
                         <SelectTrigger>
-                          <SelectValue />
+                          <SelectValue placeholder="Selecione uma proposta existente" />
                         </SelectTrigger>
                         <SelectContent>
-                          {CANAIS.map((c) => (
-                            <SelectItem key={c.value} value={c.value}>
-                              {c.label}
+                          {propostas.map((p: any) => (
+                            <SelectItem key={p.id} value={p.id}>
+                              {p.id_proposta || p.descricao?.replace(/^Proposta de Captação\s*-\s*/i, "") || `Proposta ${p.id.slice(0, 8)}`}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="space-y-1">
-                      <Label>Objetivo</Label>
-                      <Input
-                        value={form.objetivo}
-                        onChange={(e) => setForm({ ...form, objetivo: e.target.value })}
-                        placeholder="Ex: Captar médicos para plantões"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label>Descrição</Label>
-                      <Textarea
-                        value={form.descricao}
-                        onChange={(e) => setForm({ ...form, descricao: e.target.value })}
-                        rows={3}
-                      />
-                    </div>
                     <Button
                       className="w-full"
                       onClick={() => criar.mutate()}
-                      disabled={!form.nome.trim() || criar.isPending}
+                      disabled={!nome.trim() || !propostaId || criar.isPending}
                     >
                       {criar.isPending ? "Criando..." : "Criar campanha"}
                     </Button>
