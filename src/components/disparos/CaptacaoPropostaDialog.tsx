@@ -120,16 +120,24 @@ export function CaptacaoPropostaDialog({
       }
 
       // Criar proposta vinculada ao contrato
+      const propostaPayload: Record<string, unknown> = {
+        contrato_id: contratoId,
+        status: "geral",
+        valor: 0,
+        descricao: `Proposta de Captação - ${nomeDestino || contratoNome || "Contrato"}`,
+      };
+
+      if (isAdmin) {
+        propostaPayload.mensagem_whatsapp = mensagens.whatsapp || null;
+        propostaPayload.mensagem_email = mensagens.email || null;
+        propostaPayload.mensagem_instagram = mensagens.instagram || null;
+        propostaPayload.mensagem_linkedin = mensagens.linkedin || null;
+        propostaPayload.mensagem_tiktok = mensagens.tiktok || null;
+      }
+
       const { data: proposta, error: propostaError } = await supabase
         .from("proposta")
-        .insert({
-          contrato_id: contratoId,
-          status: "geral",
-          valor: 0,
-          observacoes: observacoes || null,
-          descricao: `Proposta de Captação - ${nomeDestino || contratoNome || "Contrato"}`,
-          tipo_disparo: tipoDisparo,
-        })
+        .insert(propostaPayload)
         .select()
         .single();
 
@@ -171,9 +179,8 @@ export function CaptacaoPropostaDialog({
     setItensValores([]);
     setItensCustom([]);
     setNovoItemNome("");
-    setObservacoes("");
     setNomeDestino("");
-    setTipoDisparo("zap");
+    setMensagens({ whatsapp: "", email: "", instagram: "", linkedin: "", tiktok: "" });
     onOpenChange(false);
   };
 
