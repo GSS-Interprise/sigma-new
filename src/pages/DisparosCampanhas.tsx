@@ -94,12 +94,13 @@ export default function DisparosCampanhas() {
         .select()
         .single();
       if (error) throw error;
-      // vincula proposta automaticamente
-      await vincular.mutateAsync({
-        campanha_id: data.id,
-        proposta_id: propostaId,
-        lista_id: null,
-      });
+      for (const pid of propostaIds) {
+        await vincular.mutateAsync({
+          campanha_id: data.id,
+          proposta_id: pid,
+          lista_id: null,
+        });
+      }
       return data;
     },
     onSuccess: () => {
@@ -107,10 +108,21 @@ export default function DisparosCampanhas() {
       toast.success("Campanha criada");
       setDialogOpen(false);
       setNome("");
-      setPropostaId("");
+      setPropostaIds([]);
     },
     onError: (e: any) => toast.error("Erro: " + e.message),
   });
+
+  const togglePropostaId = (id: string) => {
+    setPropostaIds((prev) =>
+      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]
+    );
+  };
+
+  const propostaLabel = (p: any) =>
+    p.id_proposta ||
+    p.descricao?.replace(/^Proposta de Captação\s*-\s*/i, "") ||
+    `Proposta ${p.id.slice(0, 8)}`;
 
   const headerActions = (
     <div>
