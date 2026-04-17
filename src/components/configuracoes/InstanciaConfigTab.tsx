@@ -675,7 +675,7 @@ export function InstanciaConfigTab({ tipo = "disparos" }: InstanciaConfigTabProp
         open={newInstanceDialogOpen}
         onOpenChange={setNewInstanceDialogOpen}
         onCreated={handleInstanceCreated}
-        tipo={tipo}
+        defaultTipo={tipo}
       />
 
 
