@@ -1289,6 +1289,114 @@ export type Database = {
         }
         Relationships: []
       }
+      campanha_proposta_canais: {
+        Row: {
+          campanha_proposta_id: string
+          canal: string
+          concluido_em: string | null
+          created_at: string
+          id: string
+          iniciado_em: string | null
+          metadados: Json
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          campanha_proposta_id: string
+          canal: string
+          concluido_em?: string | null
+          created_at?: string
+          id?: string
+          iniciado_em?: string | null
+          metadados?: Json
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          campanha_proposta_id?: string
+          canal?: string
+          concluido_em?: string | null
+          created_at?: string
+          id?: string
+          iniciado_em?: string | null
+          metadados?: Json
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campanha_proposta_canais_campanha_proposta_id_fkey"
+            columns: ["campanha_proposta_id"]
+            isOneToOne: false
+            referencedRelation: "campanha_propostas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      campanha_propostas: {
+        Row: {
+          campanha_id: string
+          created_at: string
+          created_by: string | null
+          encerrada_em: string | null
+          encerrada_por: string | null
+          id: string
+          lista_id: string | null
+          proposta_id: string
+          status: string
+          updated_at: string
+          webhook_trafego_enviado_at: string | null
+        }
+        Insert: {
+          campanha_id: string
+          created_at?: string
+          created_by?: string | null
+          encerrada_em?: string | null
+          encerrada_por?: string | null
+          id?: string
+          lista_id?: string | null
+          proposta_id: string
+          status?: string
+          updated_at?: string
+          webhook_trafego_enviado_at?: string | null
+        }
+        Update: {
+          campanha_id?: string
+          created_at?: string
+          created_by?: string | null
+          encerrada_em?: string | null
+          encerrada_por?: string | null
+          id?: string
+          lista_id?: string | null
+          proposta_id?: string
+          status?: string
+          updated_at?: string
+          webhook_trafego_enviado_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campanha_propostas_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "campanhas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campanha_propostas_lista_id_fkey"
+            columns: ["lista_id"]
+            isOneToOne: false
+            referencedRelation: "disparo_listas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campanha_propostas_proposta_id_fkey"
+            columns: ["proposta_id"]
+            isOneToOne: false
+            referencedRelation: "proposta"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       campanhas: {
         Row: {
           agendamento_tipo: string | null
@@ -10125,6 +10233,88 @@ export type Database = {
         }
         Relationships: []
       }
+      tarefas_captacao: {
+        Row: {
+          campanha_proposta_id: string | null
+          canal: string | null
+          concluida_em: string | null
+          concluida_por: string | null
+          created_at: string
+          created_by: string | null
+          descricao: string | null
+          id: string
+          lead_id: string | null
+          prazo: string | null
+          prioridade: string
+          responsavel_id: string | null
+          responsavel_nome: string | null
+          status: string
+          tipo: string
+          titulo: string
+          updated_at: string
+        }
+        Insert: {
+          campanha_proposta_id?: string | null
+          canal?: string | null
+          concluida_em?: string | null
+          concluida_por?: string | null
+          created_at?: string
+          created_by?: string | null
+          descricao?: string | null
+          id?: string
+          lead_id?: string | null
+          prazo?: string | null
+          prioridade?: string
+          responsavel_id?: string | null
+          responsavel_nome?: string | null
+          status?: string
+          tipo?: string
+          titulo: string
+          updated_at?: string
+        }
+        Update: {
+          campanha_proposta_id?: string | null
+          canal?: string | null
+          concluida_em?: string | null
+          concluida_por?: string | null
+          created_at?: string
+          created_by?: string | null
+          descricao?: string | null
+          id?: string
+          lead_id?: string | null
+          prazo?: string | null
+          prioridade?: string
+          responsavel_id?: string | null
+          responsavel_nome?: string | null
+          status?: string
+          tipo?: string
+          titulo?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tarefas_captacao_campanha_proposta_id_fkey"
+            columns: ["campanha_proposta_id"]
+            isOneToOne: false
+            referencedRelation: "campanha_propostas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tarefas_captacao_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tarefas_captacao_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_leads_duplicados"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       unidades: {
         Row: {
           cliente_id: string
@@ -10556,6 +10746,7 @@ export type Database = {
       norm_crm: { Args: { p: string }; Returns: string }
       norm_nome: { Args: { p_nome: string }; Returns: string }
       norm_phone: { Args: { p: string }; Returns: string }
+      pode_encerrar_campanha: { Args: { _user_id: string }; Returns: boolean }
       processar_disparos_agendados: { Args: never; Returns: undefined }
       release_licitacao_lock: {
         Args: { p_licitacao_id: string }
