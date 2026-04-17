@@ -77,14 +77,15 @@ export function InstanciaConfigTab({ tipo = "disparos" }: InstanciaConfigTabProp
   const queryClient = useQueryClient();
   const { isAdmin, isLoadingRoles } = usePermissions();
 
-  // Fetch local instances - only active ones by default
+  // Fetch local instances - filter by tipo (disparos or trafego_pago)
   const { data: instancias = [], isLoading } = useQuery({
-    queryKey: ["instancias-whatsapp"],
+    queryKey: ["instancias-whatsapp", tipo],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("chips")
         .select("*")
         .eq("status", "ativo")
+        .eq("tipo_instancia", tipo)
         .order("created_at", { ascending: false });
       if (error) throw error;
       return (data || []) as ChipInstance[];
