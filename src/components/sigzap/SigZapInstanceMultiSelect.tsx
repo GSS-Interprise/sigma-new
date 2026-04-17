@@ -38,13 +38,15 @@ export function SigZapInstanceMultiSelect({
 
   // Fetch instances from sigzap_instances
   // Fetch active (connected + disconnected) instances — small set
+  // Apenas instâncias do tipo "disparos" (tráfego pago não inicia conversas)
   const { data: activeInstances, isLoading: loadingActive } = useQuery({
     queryKey: ['sigzap-instances-active'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('sigzap_instances')
-        .select('*')
+        .select('*, chips!inner(tipo_instancia)')
         .neq('status', 'deleted')
+        .eq('chips.tipo_instancia', 'disparos')
         .order('name', { ascending: true });
       if (error) throw error;
       return data;
