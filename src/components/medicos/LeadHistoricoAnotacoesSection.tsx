@@ -14,8 +14,9 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   PlusCircle, Image, X, Trash2, AlertTriangle, Ban, 
-  Undo2, StickyNote, Calendar, User, Loader2, Send, FileText, MessageCircle, CheckCheck, Eye, UserX
+  Undo2, StickyNote, Calendar, User, Loader2, Send, FileText, MessageCircle, CheckCheck, Eye, UserX, Pencil
 } from "lucide-react";
+import { EditConversaoDialog } from "./EditConversaoDialog";
 import {
   AlertDialog,
   AlertDialogAction,
