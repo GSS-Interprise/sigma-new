@@ -16,6 +16,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { toast } from "sonner";
 import { DisparosContatosPanel } from "./DisparosContatosPanel";
 import { DisparosImportDialog } from "./DisparosImportDialog";
+import { CampanhaPropostasVinculadas } from "./CampanhaPropostasVinculadas";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useCaptacaoPermissions } from "@/hooks/useCaptacaoPermissions";
 
@@ -660,6 +661,11 @@ export function DisparosCampanhasTab() {
                       <p className="text-sm text-foreground whitespace-pre-wrap">{mensagemExibir}</p>
                     </div>
                   )}
+                </div>
+
+                {/* Propostas vinculadas multi-canal */}
+                <div className="mt-4 pt-4 border-t">
+                  <CampanhaPropostasVinculadas campanhaId={campanha.id} />
                 </div>
 
                 {/* Progress bar */}
