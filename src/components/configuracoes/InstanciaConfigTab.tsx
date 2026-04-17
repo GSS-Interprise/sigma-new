@@ -454,8 +454,14 @@ export function InstanciaConfigTab({ tipo = "disparos" }: InstanciaConfigTabProp
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold">Configuração de Instâncias</h2>
-          <p className="text-muted-foreground">Gerencie suas instâncias WhatsApp (Evolution API)</p>
+          <h2 className="text-2xl font-bold">
+            {tipo === "trafego_pago" ? "Tráfego Pago" : "WhatsApp de Disparos"}
+          </h2>
+          <p className="text-muted-foreground">
+            {tipo === "trafego_pago"
+              ? "Instâncias dedicadas a receber mensagens de campanhas de tráfego pago. Não participam de disparos nem iniciam novas conversas no SigZap."
+              : "Instâncias usadas para disparos em massa e início de conversas no SigZap."}
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <Button 
