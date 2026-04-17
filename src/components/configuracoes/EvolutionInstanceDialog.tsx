@@ -352,7 +352,9 @@ export function EvolutionInstanceDialog({ open, onOpenChange, onCreated, tipo = 
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>
-            {step === "form" ? "Nova Instância WhatsApp" : `Conectar - ${createdInstanceName}`}
+            {step === "form"
+              ? `Nova Instância — ${tipo === "trafego_pago" ? "Tráfego Pago" : "WhatsApp de Disparos"}`
+              : `Conectar - ${createdInstanceName}`}
           </DialogTitle>
         </DialogHeader>
 
