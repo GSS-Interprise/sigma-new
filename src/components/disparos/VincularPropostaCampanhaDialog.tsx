@@ -96,7 +96,7 @@ export function VincularPropostaCampanhaDialog({ campanhaId, open, onOpenChange 
               <SelectContent>
                 {listas.map((l) => (
                   <SelectItem key={l.id} value={l.id}>
-                    {l.nome} ({l.modo})
+                    {l.nome}
                   </SelectItem>
                 ))}
               </SelectContent>

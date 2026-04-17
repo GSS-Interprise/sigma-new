@@ -1,0 +1,1 @@
+ALTER TABLE public.disparo_listas DROP COLUMN IF EXISTS modo;

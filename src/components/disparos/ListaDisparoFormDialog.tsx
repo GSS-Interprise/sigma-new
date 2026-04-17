@@ -58,7 +58,6 @@ export function ListaDisparoFormDialog({ open, onOpenChange, lista }: Props) {
     if (open) {
       setNome(lista?.nome || "");
       setDescricao(lista?.descricao || "");
-      setModo((lista?.modo as any) || "manual");
       setExcluirBl(lista?.excluir_blacklist ?? true);
       setUfs(lista?.filtro_ufs || []);
       setCidades(lista?.filtro_cidades || []);
@@ -78,7 +77,6 @@ export function ListaDisparoFormDialog({ open, onOpenChange, lista }: Props) {
       id: lista?.id,
       nome: nome.trim(),
       descricao: descricao.trim() || null,
-      modo,
       excluir_blacklist: excluirBl,
       filtro_ufs: ufs,
       filtro_cidades: cidades,

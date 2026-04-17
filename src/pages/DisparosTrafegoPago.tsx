@@ -78,7 +78,6 @@ export default function DisparosTrafegoPago() {
         lista: {
           id: listaSelecionada.id,
           nome: listaSelecionada.nome,
-          modo: listaSelecionada.modo,
         },
         total: contatos.length,
         contatos: contatos.map((c: any) => ({
@@ -197,9 +196,6 @@ export default function DisparosTrafegoPago() {
                         <div className="flex items-center gap-2">
                           <ListChecks className="h-3 w-3" />
                           {l.nome}
-                          <Badge variant="secondary" className="ml-2 text-[10px]">
-                            {l.modo}
-                          </Badge>
                           {l.total_estimado != null && (
                             <span className="text-xs text-muted-foreground">
                               ~{l.total_estimado}
