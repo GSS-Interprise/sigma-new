@@ -11,7 +11,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Table,
   TableBody,
@@ -20,16 +19,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { toast } from "sonner";
-import { Loader2, FileText, DollarSign, Plus, Trash2, MessageSquare, Mail } from "lucide-react";
+import { Loader2, FileText, DollarSign, Plus, Trash2, Info } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
+import { MensagensCanaisTabs, type CanalKey, type MensagensCanaisValues } from "./MensagensCanaisTabs";
+import { usePermissions } from "@/hooks/usePermissions";
 
 interface CaptacaoPropostaDialogProps {
   open: boolean;
@@ -64,12 +58,22 @@ export function CaptacaoPropostaDialog({
   onSuccess,
 }: CaptacaoPropostaDialogProps) {
   const queryClient = useQueryClient();
+  const { isAdmin } = usePermissions();
   const [itensValores, setItensValores] = useState<ItemValor[]>([]);
   const [itensCustom, setItensCustom] = useState<ItemValor[]>([]);
   const [novoItemNome, setNovoItemNome] = useState("");
-  const [observacoes, setObservacoes] = useState("");
   const [nomeDestino, setNomeDestino] = useState("");
-  const [tipoDisparo, setTipoDisparo] = useState<"zap" | "email">("zap");
+  const [mensagens, setMensagens] = useState<MensagensCanaisValues>({
+    whatsapp: "",
+    email: "",
+    instagram: "",
+    linkedin: "",
+    tiktok: "",
+  });
+
+  const handleMensagemChange = (canal: CanalKey, valor: string) => {
+    setMensagens((prev) => ({ ...prev, [canal]: valor }));
+  };
 
   // Fetch itens do contrato
   const { data: contratoItens, isLoading: loadingItens } = useQuery({
