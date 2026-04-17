@@ -8,19 +8,21 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import {
-  MessageCircle,
-  Megaphone,
-  Mail,
-  Instagram,
-  Phone,
-  Linkedin,
-  Music,
-} from "lucide-react";
+import { Briefcase } from "lucide-react";
 import { SegmentoGenerico } from "./segments/SegmentoGenerico";
 import { SegmentoTrafegoPago } from "./segments/SegmentoTrafegoPago";
 import { EncerrarCampanhaButton } from "./EncerrarCampanhaButton";
 import { Badge } from "@/components/ui/badge";
+import { CampanhaLeadsList } from "./CampanhaLeadsList";
+import {
+  WhatsAppIcon,
+  InstagramIcon,
+  LinkedInIcon,
+  TikTokIcon,
+  GmailIcon,
+  PhoneCallIcon,
+  TrafegoPagoIcon,
+} from "./icons/BrandIcons";
 
 interface Props {
   campanhaPropostaId: string | null;
@@ -30,6 +32,21 @@ interface Props {
 
 const STATUS_FECHADOS = ["Convertido", "Descartado", "Desinteresse", "Bloqueado"];
 
+const ABAS: {
+  value: string;
+  label: string;
+  Icon: React.ComponentType<{ size?: number }>;
+  descricao: string;
+}[] = [
+  { value: "whatsapp", label: "WhatsApp", Icon: WhatsAppIcon, descricao: "Acompanhe disparo via Disparos Zap" },
+  { value: "trafego_pago", label: "Tráfego Pago", Icon: TrafegoPagoIcon, descricao: "Anúncios pagos vinculados à proposta" },
+  { value: "email", label: "Email", Icon: GmailIcon, descricao: "Disparo de email para a lista" },
+  { value: "instagram", label: "Instagram", Icon: InstagramIcon, descricao: "Registro de interações via Instagram" },
+  { value: "ligacao", label: "Ligação", Icon: PhoneCallIcon, descricao: "Follow-up por telefone" },
+  { value: "linkedin", label: "LinkedIn", Icon: LinkedInIcon, descricao: "Prospecção e mensagens via LinkedIn" },
+  { value: "tiktok", label: "TikTok", Icon: TikTokIcon, descricao: "Engajamento e prospecção via TikTok" },
+];
+
 export function CampanhaPropostaModal({ campanhaPropostaId, open, onOpenChange }: Props) {
   const { data: cp } = useQuery({
     queryKey: ["campanha-proposta-detail", campanhaPropostaId],
@@ -38,7 +55,7 @@ export function CampanhaPropostaModal({ campanhaPropostaId, open, onOpenChange }
       const { data, error } = await supabase
         .from("campanha_propostas")
         .select(
-          "*, proposta:proposta_id(id, id_proposta, descricao), lista:lista_id(id, nome, modo, total_estimado)"
+          "*, proposta:proposta_id(id, id_proposta, descricao), lista:lista_id(id, nome, modo, total_estimado), campanha:campanha_id(id, nome)"
         )
         .eq("id", campanhaPropostaId!)
         .maybeSingle();
@@ -47,7 +64,6 @@ export function CampanhaPropostaModal({ campanhaPropostaId, open, onOpenChange }
     },
   });
 
-  // Verifica se todos os leads da lista vinculada estão em status fechado
   const { data: leadStats } = useQuery({
     queryKey: ["campanha-proposta-leads-stats", cp?.lista_id],
     enabled: !!cp?.lista_id,
@@ -67,30 +83,42 @@ export function CampanhaPropostaModal({ campanhaPropostaId, open, onOpenChange }
 
   if (!campanhaPropostaId) return null;
 
+  const propostaLabel =
+    (cp?.proposta as any)?.id_proposta ||
+    (cp?.proposta as any)?.descricao ||
+    "Proposta";
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <div className="flex items-center justify-between gap-4 flex-wrap">
-            <div>
-              <DialogTitle>
-                {(cp?.proposta as any)?.id_proposta ||
-                  (cp?.proposta as any)?.descricao ||
-                  "Proposta"}
-              </DialogTitle>
-              <DialogDescription className="flex items-center gap-2 mt-1">
-                Lista: {(cp?.lista as any)?.nome || "—"}
-                {cp?.status && (
-                  <Badge variant={cp.status === "encerrada" ? "destructive" : "default"}>
-                    {cp.status}
-                  </Badge>
-                )}
-                {leadStats && (
-                  <Badge variant="outline">
-                    {leadStats.fechados}/{leadStats.total} leads fechados
-                  </Badge>
-                )}
-              </DialogDescription>
+      <DialogContent className="max-w-6xl max-h-[92vh] overflow-y-auto">
+        <DialogHeader className="pb-2 border-b">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div className="flex items-start gap-3 min-w-0">
+              <div className="h-11 w-11 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                <Briefcase className="h-5 w-5 text-primary" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
+                  Dossiê de Campanha
+                </div>
+                <DialogTitle className="text-xl truncate">{propostaLabel}</DialogTitle>
+                <DialogDescription className="flex items-center gap-2 mt-1 flex-wrap">
+                  {(cp?.campanha as any)?.nome && (
+                    <span className="text-xs">📣 {(cp?.campanha as any).nome}</span>
+                  )}
+                  <span className="text-xs">📋 {(cp?.lista as any)?.nome || "Sem lista"}</span>
+                  {cp?.status && (
+                    <Badge variant={cp.status === "encerrada" ? "destructive" : "default"}>
+                      {cp.status}
+                    </Badge>
+                  )}
+                  {leadStats && (
+                    <Badge variant="outline" className="text-[10px]">
+                      {leadStats.fechados}/{leadStats.total} leads fechados
+                    </Badge>
+                  )}
+                </DialogDescription>
+              </div>
             </div>
             {cp?.status === "ativa" && (
               <EncerrarCampanhaButton
@@ -102,81 +130,48 @@ export function CampanhaPropostaModal({ campanhaPropostaId, open, onOpenChange }
         </DialogHeader>
 
         <Tabs defaultValue="whatsapp" className="mt-4">
-          <TabsList className="grid grid-cols-7 w-full">
-            <TabsTrigger value="whatsapp">
-              <MessageCircle className="h-4 w-4" />
-            </TabsTrigger>
-            <TabsTrigger value="trafego_pago">
-              <Megaphone className="h-4 w-4" />
-            </TabsTrigger>
-            <TabsTrigger value="email">
-              <Mail className="h-4 w-4" />
-            </TabsTrigger>
-            <TabsTrigger value="instagram">
-              <Instagram className="h-4 w-4" />
-            </TabsTrigger>
-            <TabsTrigger value="ligacao">
-              <Phone className="h-4 w-4" />
-            </TabsTrigger>
-            <TabsTrigger value="linkedin">
-              <Linkedin className="h-4 w-4" />
-            </TabsTrigger>
-            <TabsTrigger value="tiktok">
-              <Music className="h-4 w-4" />
-            </TabsTrigger>
+          <TabsList className="grid grid-cols-7 w-full h-auto p-1">
+            {ABAS.map(({ value, label, Icon }) => (
+              <TabsTrigger
+                key={value}
+                value={value}
+                className="flex flex-col gap-1 py-2 data-[state=active]:bg-background"
+              >
+                <Icon size={20} />
+                <span className="text-[11px] font-medium">{label}</span>
+              </TabsTrigger>
+            ))}
           </TabsList>
 
-          <TabsContent value="whatsapp" className="mt-4">
-            <SegmentoGenerico
-              campanhaPropostaId={campanhaPropostaId}
-              canal="whatsapp"
-              titulo="WhatsApp"
-              descricao="Acompanhe disparo via Disparos Zap"
-            />
-          </TabsContent>
-          <TabsContent value="trafego_pago" className="mt-4">
-            <SegmentoTrafegoPago campanhaPropostaId={campanhaPropostaId} />
-          </TabsContent>
-          <TabsContent value="email" className="mt-4">
-            <SegmentoGenerico
-              campanhaPropostaId={campanhaPropostaId}
-              canal="email"
-              titulo="Email"
-              descricao="Disparo de email para a lista"
-            />
-          </TabsContent>
-          <TabsContent value="instagram" className="mt-4">
-            <SegmentoGenerico
-              campanhaPropostaId={campanhaPropostaId}
-              canal="instagram"
-              titulo="Instagram"
-              descricao="Registro de interações via Instagram"
-            />
-          </TabsContent>
-          <TabsContent value="ligacao" className="mt-4">
-            <SegmentoGenerico
-              campanhaPropostaId={campanhaPropostaId}
-              canal="ligacao"
-              titulo="Ligação"
-              descricao="Follow-up por telefone"
-            />
-          </TabsContent>
-          <TabsContent value="linkedin" className="mt-4">
-            <SegmentoGenerico
-              campanhaPropostaId={campanhaPropostaId}
-              canal="linkedin"
-              titulo="LinkedIn"
-              descricao="Prospecção e mensagens via LinkedIn"
-            />
-          </TabsContent>
-          <TabsContent value="tiktok" className="mt-4">
-            <SegmentoGenerico
-              campanhaPropostaId={campanhaPropostaId}
-              canal="tiktok"
-              titulo="TikTok"
-              descricao="Engajamento e prospecção via TikTok"
-            />
-          </TabsContent>
+          {ABAS.map(({ value, label, Icon, descricao }) => (
+            <TabsContent key={value} value={value} className="mt-4 space-y-4">
+              <div className="flex items-center gap-3 px-1">
+                <Icon size={28} />
+                <div>
+                  <h3 className="font-semibold leading-tight">{label}</h3>
+                  <p className="text-xs text-muted-foreground">{descricao}</p>
+                </div>
+              </div>
+
+              {value === "trafego_pago" ? (
+                <SegmentoTrafegoPago campanhaPropostaId={campanhaPropostaId} />
+              ) : (
+                <SegmentoGenerico
+                  campanhaPropostaId={campanhaPropostaId}
+                  canal={value as any}
+                  titulo={label}
+                  descricao={descricao}
+                />
+              )}
+
+              <div>
+                <div className="flex items-center justify-between mb-2 px-1">
+                  <h4 className="text-sm font-semibold">Leads da campanha</h4>
+                </div>
+                <CampanhaLeadsList listaId={cp?.lista_id} />
+              </div>
+            </TabsContent>
+          ))}
         </Tabs>
       </DialogContent>
     </Dialog>
