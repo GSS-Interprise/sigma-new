@@ -3,7 +3,7 @@ import { InstanciaConfigTab } from "@/components/configuracoes/InstanciaConfigTa
 import { CaptacaoProtectedRoute } from "@/components/auth/CaptacaoProtectedRoute";
 import { WebhookDisparosTab } from "@/components/disparos/WebhookDisparosTab";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Settings, Webhook } from "lucide-react";
+import { Send, Megaphone, Webhook } from "lucide-react";
 import { usePermissions } from "@/hooks/usePermissions";
 
 export default function DisparosConfig() {
@@ -16,7 +16,6 @@ export default function DisparosConfig() {
     </div>
   );
 
-  // Aguardar carregamento das permissões
   if (isLoadingRoles) {
     return (
       <AppLayout headerActions={headerActions}>
@@ -31,11 +30,15 @@ export default function DisparosConfig() {
     <CaptacaoProtectedRoute permission="seigzaps_config">
       <AppLayout headerActions={headerActions}>
         <div className="p-4 space-y-6">
-          <Tabs defaultValue="instancias">
+          <Tabs defaultValue="disparos">
             <TabsList>
-              <TabsTrigger value="instancias" className="gap-2">
-                <Settings className="h-4 w-4" />
-                Instâncias
+              <TabsTrigger value="disparos" className="gap-2">
+                <Send className="h-4 w-4" />
+                WhatsApp de Disparos
+              </TabsTrigger>
+              <TabsTrigger value="trafego_pago" className="gap-2">
+                <Megaphone className="h-4 w-4" />
+                Tráfego Pago
               </TabsTrigger>
               {isAdmin && (
                 <TabsTrigger value="webhook-disparos" className="gap-2">
@@ -44,8 +47,11 @@ export default function DisparosConfig() {
                 </TabsTrigger>
               )}
             </TabsList>
-            <TabsContent value="instancias" className="mt-4">
-              <InstanciaConfigTab />
+            <TabsContent value="disparos" className="mt-4">
+              <InstanciaConfigTab tipo="disparos" />
+            </TabsContent>
+            <TabsContent value="trafego_pago" className="mt-4">
+              <InstanciaConfigTab tipo="trafego_pago" />
             </TabsContent>
             {isAdmin && (
               <TabsContent value="webhook-disparos" className="mt-4">
