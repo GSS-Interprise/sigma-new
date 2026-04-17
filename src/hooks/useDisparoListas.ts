@@ -6,7 +6,6 @@ export interface DisparoLista {
   id: string;
   nome: string;
   descricao: string | null;
-  modo: "manual" | "dinamica" | "mista";
   filtro_ufs: string[];
   filtro_cidades: string[];
   filtro_especialidades: string[];
@@ -22,7 +21,6 @@ export interface DisparoLista {
 export interface DisparoListaInput {
   nome: string;
   descricao?: string | null;
-  modo: "manual" | "dinamica" | "mista";
   filtro_ufs?: string[];
   filtro_cidades?: string[];
   filtro_especialidades?: string[];
@@ -168,44 +166,18 @@ export async function resolverContatosDaLista(lista: DisparoLista) {
   const leadIds = new Set<string>();
   const leadsMap = new Map<string, any>();
 
-  // 1. Itens manuais
-  if (lista.modo === "manual" || lista.modo === "mista") {
-    const { data: itens } = await supabase
-      .from("disparo_lista_itens")
-      .select("leads:lead_id (id, nome, phone_e164, especialidade, uf, cidade, status)")
-      .eq("lista_id", lista.id);
-    (itens || []).forEach((i: any) => {
-      const l = i.leads;
-      if (l?.id && l.phone_e164) {
-        leadIds.add(l.id);
-        leadsMap.set(l.id, l);
-      }
-    });
-  }
-
-  // 2. Filtros dinâmicos
-  if (lista.modo === "dinamica" || lista.modo === "mista") {
-    let q = supabase
-      .from("leads")
-      .select("id, nome, phone_e164, especialidade, uf, cidade, status")
-      .not("phone_e164", "is", null)
-      .is("merged_into_id", null);
-
-    if (lista.filtro_ufs?.length) q = q.in("uf", lista.filtro_ufs);
-    if (lista.filtro_cidades?.length) q = q.in("cidade", lista.filtro_cidades);
-    if (lista.filtro_status?.length) q = q.in("status", lista.filtro_status);
-
-    const { data: leads } = await q.limit(5000);
-    (leads || []).forEach((l: any) => {
-      if (lista.filtro_especialidades?.length) {
-        if (!l.especialidade || !lista.filtro_especialidades.includes(l.especialidade)) return;
-      }
-      if (l.phone_e164) {
-        leadIds.add(l.id);
-        leadsMap.set(l.id, l);
-      }
-    });
-  }
+  // Itens da lista
+  const { data: itens } = await supabase
+    .from("disparo_lista_itens")
+    .select("leads:lead_id (id, nome, phone_e164, especialidade, uf, cidade, status)")
+    .eq("lista_id", lista.id);
+  (itens || []).forEach((i: any) => {
+    const l = i.leads;
+    if (l?.id && l.phone_e164) {
+      leadIds.add(l.id);
+      leadsMap.set(l.id, l);
+    }
+  });
 
   // 3. Excluir blacklist
   if (lista.excluir_blacklist) {
