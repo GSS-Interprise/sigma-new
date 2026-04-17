@@ -137,7 +137,7 @@ export function CaptacaoPropostaDialog({
 
       const { data: proposta, error: propostaError } = await supabase
         .from("proposta")
-        .insert(propostaPayload)
+        .insert(propostaPayload as any)
         .select()
         .single();
 
@@ -250,35 +250,17 @@ export function CaptacaoPropostaDialog({
         </DialogHeader>
 
         <div className="space-y-6 py-4">
-          {/* Tipo de Disparo */}
-          <div className="space-y-2">
-            <Label>Tipo de Disparo</Label>
-            <Select value={tipoDisparo} onValueChange={(value: "zap" | "email") => setTipoDisparo(value)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="zap">
-                  <div className="flex items-center gap-2">
-                    <MessageSquare className="h-4 w-4 text-green-600" />
-                    <span>WhatsApp</span>
-                  </div>
-                </SelectItem>
-                <SelectItem value="email">
-                  <div className="flex items-center gap-2">
-                    <Mail className="h-4 w-4 text-blue-600" />
-                    <span>E-mail</span>
-                  </div>
-                </SelectItem>
-              </SelectContent>
-            </Select>
+          {/* Aviso de vínculo via Campanhas */}
+          <div className="flex items-start gap-2 rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
+            <Info className="h-4 w-4 mt-0.5 shrink-0" />
+            <span>O vínculo de propostas a leads agora é feito exclusivamente via <strong>Campanhas</strong>.</span>
           </div>
 
           {/* Nome/Destino da proposta */}
           <div className="space-y-2">
-            <Label>Nome do Destinatário / Descrição</Label>
+            <Label>Nome / Descrição da proposta</Label>
             <Input
-              placeholder="Ex: Dr. João Silva, Hospital X..."
+              placeholder="Ex: Proposta Cardiologia HSP..."
               value={nomeDestino}
               onChange={(e) => setNomeDestino(e.target.value)}
             />
@@ -392,14 +374,13 @@ export function CaptacaoPropostaDialog({
             </p>
           </div>
 
-          {/* Mensagem que será enviada */}
+          {/* Mensagens por canal */}
           <div className="space-y-2">
-            <Label>Mensagem que será enviada</Label>
-            <Textarea
-              placeholder="Mensagem que será enviada ao médico..."
-              value={observacoes}
-              onChange={(e) => setObservacoes(e.target.value)}
-              rows={3}
+            <Label>Mensagens por canal</Label>
+            <MensagensCanaisTabs
+              values={mensagens}
+              onChange={handleMensagemChange}
+              readOnly={!isAdmin}
             />
           </div>
         </div>
