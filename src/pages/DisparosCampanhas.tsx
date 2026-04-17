@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -26,14 +25,7 @@ import { Megaphone, Plus, Search, Calendar } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { CampanhaPropostasVinculadas } from "@/components/disparos/CampanhaPropostasVinculadas";
-
-const CANAIS = [
-  { value: "whatsapp", label: "WhatsApp" },
-  { value: "email", label: "Email" },
-  { value: "sms", label: "SMS" },
-  { value: "instagram", label: "Instagram" },
-  { value: "multi", label: "Multi-canal" },
-];
+import { useVincularProposta } from "@/hooks/useCampanhaPropostas";
 
 const STATUS_VARIANTS: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
   rascunho: "outline",
@@ -48,13 +40,10 @@ export default function DisparosCampanhas() {
   const [busca, setBusca] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selecionada, setSelecionada] = useState<string | null>(null);
-  const [form, setForm] = useState({
-    nome: "",
-    descricao: "",
-    canal: "multi",
-    objetivo: "",
-  });
+  const [nome, setNome] = useState("");
+  const [propostaId, setPropostaId] = useState("");
   const qc = useQueryClient();
+  const vincular = useVincularProposta();
 
   const { data: campanhas = [], isLoading } = useQuery({
     queryKey: ["campanhas-multicanal", busca],
@@ -70,29 +59,46 @@ export default function DisparosCampanhas() {
     },
   });
 
+  const { data: propostas = [] } = useQuery({
+    queryKey: ["propostas-para-campanha"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("proposta")
+        .select("id, id_proposta, descricao, status")
+        .order("criado_em", { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
   const criar = useMutation({
     mutationFn: async () => {
       const { data: user } = await supabase.auth.getUser();
       const { data, error } = await supabase
         .from("campanhas")
         .insert([{
-          nome: form.nome,
-          descricao: form.descricao || null,
-          canal: form.canal as any,
-          objetivo: form.objetivo || null,
+          nome,
+          canal: "whatsapp" as any,
           status: "rascunho" as any,
           criado_por: user.user?.id,
         }])
         .select()
         .single();
       if (error) throw error;
+      // vincula proposta automaticamente
+      await vincular.mutateAsync({
+        campanha_id: data.id,
+        proposta_id: propostaId,
+        lista_id: null,
+      });
       return data;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["campanhas-multicanal"] });
       toast.success("Campanha criada");
       setDialogOpen(false);
-      setForm({ nome: "", descricao: "", canal: "multi", objetivo: "" });
+      setNome("");
+      setPropostaId("");
     },
     onError: (e: any) => toast.error("Erro: " + e.message),
   });
@@ -140,51 +146,32 @@ export default function DisparosCampanhas() {
                   </DialogHeader>
                   <div className="space-y-3">
                     <div className="space-y-1">
-                      <Label>Nome *</Label>
+                      <Label>Nome da campanha *</Label>
                       <Input
-                        value={form.nome}
-                        onChange={(e) => setForm({ ...form, nome: e.target.value })}
+                        value={nome}
+                        onChange={(e) => setNome(e.target.value)}
                         placeholder="Ex: Captação Pediatria SC"
                       />
                     </div>
                     <div className="space-y-1">
-                      <Label>Canal</Label>
-                      <Select
-                        value={form.canal}
-                        onValueChange={(v) => setForm({ ...form, canal: v })}
-                      >
+                      <Label>Proposta *</Label>
+                      <Select value={propostaId} onValueChange={setPropostaId}>
                         <SelectTrigger>
-                          <SelectValue />
+                          <SelectValue placeholder="Selecione uma proposta existente" />
                         </SelectTrigger>
                         <SelectContent>
-                          {CANAIS.map((c) => (
-                            <SelectItem key={c.value} value={c.value}>
-                              {c.label}
+                          {propostas.map((p: any) => (
+                            <SelectItem key={p.id} value={p.id}>
+                              {p.id_proposta || p.descricao?.replace(/^Proposta de Captação\s*-\s*/i, "") || `Proposta ${p.id.slice(0, 8)}`}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="space-y-1">
-                      <Label>Objetivo</Label>
-                      <Input
-                        value={form.objetivo}
-                        onChange={(e) => setForm({ ...form, objetivo: e.target.value })}
-                        placeholder="Ex: Captar médicos para plantões"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label>Descrição</Label>
-                      <Textarea
-                        value={form.descricao}
-                        onChange={(e) => setForm({ ...form, descricao: e.target.value })}
-                        rows={3}
-                      />
-                    </div>
                     <Button
                       className="w-full"
                       onClick={() => criar.mutate()}
-                      disabled={!form.nome.trim() || criar.isPending}
+                      disabled={!nome.trim() || !propostaId || criar.isPending}
                     >
                       {criar.isPending ? "Criando..." : "Criar campanha"}
                     </Button>
