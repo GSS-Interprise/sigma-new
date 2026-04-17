@@ -51,12 +51,19 @@ interface ChipInstance {
   status: string;
   limite_diario: number | null;
   provedor: string | null;
+  tipo_instancia: string | null;
   created_at: string | null;
   created_by: string | null;
   created_by_name: string | null;
 }
 
-export function InstanciaConfigTab() {
+export type TipoInstancia = "disparos" | "trafego_pago";
+
+interface InstanciaConfigTabProps {
+  tipo?: TipoInstancia;
+}
+
+export function InstanciaConfigTab({ tipo = "disparos" }: InstanciaConfigTabProps) {
   const [qrDialogOpen, setQrDialogOpen] = useState(false);
   const [newInstanceDialogOpen, setNewInstanceDialogOpen] = useState(false);
   const [adminConfigOpen, setAdminConfigOpen] = useState(false);
