@@ -54,8 +54,8 @@ function applyFilters(q: any, opts: {
 export function ListaLeadsPickerDialog({ open, onOpenChange, listaId, listaNome }: Props) {
   const [busca, setBusca] = useState("");
   const [debounced, setDebounced] = useState("");
-  const [especialidade, setEspecialidade] = useState<string>("");
-  const [uf, setUf] = useState<string>("");
+  const [especialidades, setEspecialidades] = useState<string[]>([]);
+  const [ufs, setUfs] = useState<string[]>([]);
   const [cidade, setCidade] = useState<string>("");
   const [ano, setAno] = useState<string>("");
   const [anoMode, setAnoMode] = useState<AnoMode>("min");
