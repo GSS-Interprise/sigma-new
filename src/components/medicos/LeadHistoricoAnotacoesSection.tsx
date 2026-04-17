@@ -468,7 +468,8 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
       await createMutation.mutateAsync({
         titulo: titulo.trim() || undefined,
         conteudo: conteudo.trim(),
-        imagens: uploadedUrls
+        imagens: uploadedUrls,
+        mencionados,
       });
     } catch (error) {
       console.error('Erro ao salvar:', error);
