@@ -153,7 +153,7 @@ export default function DisparosTrafegoPago() {
   );
 
   return (
-    <CaptacaoProtectedRoute>
+    <CaptacaoProtectedRoute permission="disparos_zap">
       <AppLayout headerActions={headerActions}>
         <div className="p-4 md:p-6 space-y-6 max-w-4xl mx-auto">
           <Card>
