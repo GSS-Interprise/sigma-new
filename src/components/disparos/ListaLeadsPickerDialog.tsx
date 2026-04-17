@@ -103,10 +103,10 @@ export function ListaLeadsPickerDialog({ open, onOpenChange, listaId, listaNome 
     enabled: open,
   });
 
-  const filtersOpts = { debounced, especialidade, uf, cidade, ano, anoMode };
+  const filtersOpts = { debounced, especialidades, ufs, cidade, ano, anoMode };
 
   const { data: pageData, isLoading, isFetching } = useQuery({
-    queryKey: ["leads-picker-page", page, debounced, especialidade, uf, cidade, ano, anoMode],
+    queryKey: ["leads-picker-page", page, debounced, especialidades, ufs, cidade, ano, anoMode],
     queryFn: async () => {
       const from = page * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
