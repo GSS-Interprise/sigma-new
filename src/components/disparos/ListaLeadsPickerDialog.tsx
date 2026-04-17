@@ -158,28 +158,28 @@ export function ListaLeadsPickerDialog({ open, onOpenChange, listaId, listaNome 
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3 p-3 rounded-md border bg-muted/30">
               <div className="space-y-1">
                 <Label className="text-xs flex items-center gap-1"><Filter className="h-3 w-3" />Especialidade</Label>
-                <Select value={especialidade || "all"} onValueChange={(v) => setEspecialidade(v === "all" ? "" : v)}>
-                  <SelectTrigger><SelectValue placeholder="Todas" /></SelectTrigger>
-                  <SelectContent className="max-h-72">
-                    <SelectItem value="all">Todas</SelectItem>
-                    {(filterMeta?.especialidades || []).filter((e) => e.id && e.nome).map((e) => (
-                      <SelectItem key={e.id} value={e.id}>{e.nome}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  placeholder="Todas"
+                  searchPlaceholder="Buscar especialidade..."
+                  value={especialidade}
+                  onChange={setEspecialidade}
+                  options={(filterMeta?.especialidades || [])
+                    .filter((e) => e.id && e.nome)
+                    .map((e) => ({ value: e.id, label: e.nome }))}
+                />
               </div>
 
               <div className="space-y-1">
                 <Label className="text-xs">UF</Label>
-                <Select value={uf || "all"} onValueChange={(v) => setUf(v === "all" ? "" : v)}>
-                  <SelectTrigger><SelectValue placeholder="Todas" /></SelectTrigger>
-                  <SelectContent className="max-h-72">
-                    <SelectItem value="all">Todas</SelectItem>
-                    {(filterMeta?.options.uf || []).filter((u) => u && u.trim()).map((u) => (
-                      <SelectItem key={u} value={u}>{u.toUpperCase()}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  placeholder="Todas"
+                  searchPlaceholder="Buscar UF..."
+                  value={uf}
+                  onChange={setUf}
+                  options={(filterMeta?.options.uf || [])
+                    .filter((u) => u && u.trim())
+                    .map((u) => ({ value: u, label: u.toUpperCase() }))}
+                />
               </div>
 
               <div className="space-y-1">
