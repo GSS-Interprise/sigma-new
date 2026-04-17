@@ -172,11 +172,11 @@ export function ListaLeadsPickerDialog({ open, onOpenChange, listaId, listaNome 
   };
 
   const limparFiltros = () => {
-    setEspecialidade(""); setUf(""); setCidade(""); setAno(""); setBusca("");
+    setEspecialidades([]); setUfs([]); setCidade(""); setAno(""); setBusca("");
   };
 
   const filtrosAtivos =
-    (especialidade ? 1 : 0) + (uf ? 1 : 0) + (cidade ? 1 : 0) + (ano ? 1 : 0) + (busca ? 1 : 0);
+    (especialidades.length ? 1 : 0) + (ufs.length ? 1 : 0) + (cidade ? 1 : 0) + (ano ? 1 : 0) + (busca ? 1 : 0);
 
 
   return (
