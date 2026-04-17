@@ -95,7 +95,7 @@ export function InstanciaConfigTab({ tipo = "disparos" }: InstanciaConfigTabProp
   // Realtime subscription for chips table
   useEffect(() => {
     const channel = supabase
-      .channel('chips-realtime')
+      .channel(`chips-realtime-${tipo}`)
       .on(
         'postgres_changes',
         {
@@ -104,7 +104,7 @@ export function InstanciaConfigTab({ tipo = "disparos" }: InstanciaConfigTabProp
           table: 'chips'
         },
         () => {
-          queryClient.invalidateQueries({ queryKey: ["instancias-whatsapp"] });
+          queryClient.invalidateQueries({ queryKey: ["instancias-whatsapp", tipo] });
         }
       )
       .subscribe();
@@ -112,7 +112,7 @@ export function InstanciaConfigTab({ tipo = "disparos" }: InstanciaConfigTabProp
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [queryClient]);
+  }, [queryClient, tipo]);
 
   // Apply global webhook configuration to an instance
   const applyGlobalWebhook = async (instance: ChipInstance) => {
