@@ -160,6 +160,7 @@ export function EvolutionInstanceDialog({ open, onOpenChange, onCreated, tipo = 
             connection_state: "close",
             engine: "baileys",
             status: "ativo",
+            tipo_instancia: tipo,
             behavior_config: { color: selectedColor },
           })
           .eq("id", existingChip.id);
@@ -185,6 +186,7 @@ export function EvolutionInstanceDialog({ open, onOpenChange, onCreated, tipo = 
           connection_state: "close",
           engine: "baileys",
           status: "ativo",
+          tipo_instancia: tipo,
           behavior_config: { color: selectedColor },
           created_by: user?.id || null,
           created_by_name: creatorName,
