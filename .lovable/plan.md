@@ -1,127 +1,110 @@
 
+## Plano: Refatorar Proposta — Mensagens por Canal + Mover Vínculos para Campanhas
 
-## Plano: Campanhas com Propostas Multi-Canal
+### Entendimento
 
-### Modelo conceitual
-```text
-Campanha (1) ──< CampanhaProposta (N) ──> Proposta (1) ──> DisparoLista (1)
-                       │
-                       └──< segmentos (whatsapp | trafego_pago | email | instagram | ligacao | linkedin | tiktok)
+1. **Hoje**: `proposta` tem `tipo_disparo` (WhatsApp/Email) + uma única `mensagem`. O `CaptacaoPropostaDialog` permite escolher o canal e escrever 1 mensagem.
+2. **Mudança pedida**:
+   - Remover o conceito de "tipo de disparo" da proposta.
+   - Adicionar **abas de mensagem por canal**: WhatsApp, Email, Instagram, LinkedIn, TikTok (5 abas).
+   - Cada mensagem pode ser `null`.
+   - **Somente admin** pode editar essas mensagens. Outros usuários veem em modo read-only.
+   - **Vínculo de propostas a leads/disparos não acontece mais aqui** — agora é exclusivamente via Campanhas (`campanha_propostas`).
+
+### Investigação ainda necessária (farei na execução)
+
+- Confirmar colunas atuais em `proposta` (provavelmente `tipo_disparo`, `mensagem`).
+- Identificar todos os lugares que leem `tipo_disparo` / `mensagem` para migrar sem quebrar (LeadPropostasSection, CaptacaoPropostaDetailDialog, CaptacaoPropostasTab, etc).
+- Verificar fluxo de "vincular proposta a lead" para removê-lo do dialog principal.
+
+### Migração de dados (sem perda)
+
+```sql
+ALTER TABLE proposta
+  ADD COLUMN mensagem_whatsapp text,
+  ADD COLUMN mensagem_email     text,
+  ADD COLUMN mensagem_instagram text,
+  ADD COLUMN mensagem_linkedin  text,
+  ADD COLUMN mensagem_tiktok    text;
+
+-- Preserva conteúdo atual baseado no tipo_disparo
+UPDATE proposta SET mensagem_whatsapp = mensagem
+  WHERE LOWER(COALESCE(tipo_disparo,'')) = 'whatsapp' AND mensagem IS NOT NULL;
+UPDATE proposta SET mensagem_email = mensagem
+  WHERE LOWER(COALESCE(tipo_disparo,'')) = 'email'    AND mensagem IS NOT NULL;
+-- Fallback: se tipo_disparo era null mas tinha mensagem, vai pra whatsapp
+UPDATE proposta SET mensagem_whatsapp = mensagem
+  WHERE mensagem_whatsapp IS NULL
+    AND mensagem_email    IS NULL
+    AND mensagem IS NOT NULL;
 ```
-Cada **Proposta vinculada à Campanha** carrega 1 lista de prospecção e abre um modal com 7 abas (uma por canal).
 
----
+`tipo_disparo` e `mensagem` ficam mantidas por enquanto (legado/segurança); marcamos como deprecated e removemos do UI.
 
-### 1. Banco de dados (migration)
+### Edição restrita a admin (RLS)
 
-**a) Nova tabela `campanha_propostas`** (vincula Proposta ↔ Campanha + lista de prospecção)
-- `id`, `campanha_id` (FK `campanhas`), `proposta_id` (FK `proposta`), `lista_id` (FK `disparo_listas`)
-- `status` text (`ativa` | `encerrada`), `created_by`, `created_at`
-- `webhook_trafego_enviado_at` timestamptz (idempotência)
-- UNIQUE (campanha_id, proposta_id)
+Adicionar policy de UPDATE em `proposta` que permite alterar as 5 colunas `mensagem_*` apenas se `is_admin(auth.uid())`. As outras colunas seguem regra atual.
+Mais simples: enforce no front (campos `disabled` quando não-admin) + uma policy UPDATE adicional que exige admin quando qualquer `mensagem_*` mudou — via trigger BEFORE UPDATE que rejeita se non-admin tentar mudar essas colunas.
 
-**b) Nova tabela `campanha_proposta_canais`** (estado por canal/segmento)
-- `id`, `campanha_proposta_id` (FK), `canal` text (`whatsapp|trafego_pago|email|instagram|ligacao|linkedin|tiktok`)
-- `status` text (`pendente|em_andamento|concluido`)
-- `metadados` jsonb (resposta webhook, instância, etc.)
-- UNIQUE (campanha_proposta_id, canal)
+```sql
+CREATE OR REPLACE FUNCTION proposta_protect_mensagens()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+  IF NOT is_admin(auth.uid()) THEN
+    IF NEW.mensagem_whatsapp IS DISTINCT FROM OLD.mensagem_whatsapp
+    OR NEW.mensagem_email    IS DISTINCT FROM OLD.mensagem_email
+    OR NEW.mensagem_instagram IS DISTINCT FROM OLD.mensagem_instagram
+    OR NEW.mensagem_linkedin IS DISTINCT FROM OLD.mensagem_linkedin
+    OR NEW.mensagem_tiktok   IS DISTINCT FROM OLD.mensagem_tiktok THEN
+      RAISE EXCEPTION 'Apenas administradores podem editar mensagens da proposta';
+    END IF;
+  END IF;
+  RETURN NEW;
+END$$;
+CREATE TRIGGER trg_proposta_protect_mensagens
+  BEFORE UPDATE ON proposta FOR EACH ROW
+  EXECUTE FUNCTION proposta_protect_mensagens();
+```
 
-**c) Nova tabela `tarefas_captacao`** (leads abertos / não contatados)
-- `id`, `lead_id` (FK leads), `campanha_proposta_id` (FK), `canal` text
-- `tipo` text (`lead_aberto|follow_up|tentativa_canal`)
-- `status` text (`aberta|em_andamento|concluida|cancelada`)
-- `responsavel_id` (FK profiles, nullable), `prazo` timestamptz
-- `titulo`, `descricao`, `created_at`, `updated_at`, `concluida_em`
+### Mudanças no front
 
-**d) Trigger `auto_send_trafego_pago_on_link`** em `campanha_propostas` (AFTER INSERT)
-- Chama edge function `trafego-pago-auto-dispatch` via `pg_net`
-- Atualiza `webhook_trafego_enviado_at`
+**`CaptacaoPropostaDialog.tsx`** (criação)
+- Remover bloco "Tipo de Disparo" (Select WhatsApp/Email).
+- Substituir o textarea único por um componente `<MensagensCanaisTabs />` com 5 abas (WhatsApp, Email, Instagram, LinkedIn, TikTok), cada uma com Textarea opcional.
+- No `INSERT`, gravar `mensagem_whatsapp`, `mensagem_email`, etc. Não enviar mais `tipo_disparo` nem `mensagem`.
+- Se usuário **não-admin** abrir o dialog de criação: textareas ficam `disabled` com aviso "Somente administradores editam mensagens".
 
-**e) Função `pode_encerrar_campanha(_user_id)`** (SECURITY DEFINER)
-- Retorna `is_admin(_user_id) OR is_captacao_leader(_user_id)`
+**`CaptacaoPropostaDetailDialog.tsx`** (visualização/edição)
+- Substituir o campo único de mensagem pelas mesmas 5 abas.
+- Cada Textarea só editável se `isAdmin && isEditing`.
+- Salvar grava as 5 colunas.
 
-**f) RLS**: select para `has_captacao_permission(uid,'leads')`; insert/update conforme regras; encerramento exige `pode_encerrar_campanha`.
+**Novo componente** `src/components/disparos/MensagensCanaisTabs.tsx`
+- Props: `values`, `onChange`, `readOnly`, ícones de marca (reutiliza `BrandIcons.tsx`).
+- Renderiza Tabs com 5 abas + Textarea.
 
----
+**Remover vínculo proposta↔lead daqui**
+- Em `CaptacaoPropostaDialog` / `CaptacaoPropostaDetailDialog`: remover qualquer botão/ação de "vincular a lead". Adicionar aviso curto: *"Vínculos agora são feitos via Campanhas"*.
+- `LeadPropostasSection` / `VincularPropostaExistenteDialog`: manter apenas leitura das propostas já vinculadas; remover botão "Vincular proposta existente" e "Nova proposta a partir do lead". Mostrar mensagem orientando uso de Campanhas.
 
-### 2. Edge Function: `trafego-pago-auto-dispatch`
+**Onde a mensagem é usada para envio**
+- Buscar usos de `proposta.mensagem` em edge functions/disparos e adaptar para escolher a coluna correta conforme o canal sendo disparado (ex.: tráfego pago/whatsapp usa `mensagem_whatsapp`, email usa `mensagem_email`, etc.). Identificar na execução.
 
-- Recebe `{ campanha_proposta_id }`
-- Resolve contatos via lógica equivalente a `resolverContatosDaLista`
-- Busca webhook de tráfego pago em `config_lista_items` (chave `trafego_pago_webhook_url`)
-- POST com payload (campanha, proposta, lista, contatos)
-- Faz POST paralelo na Evolution API padrão (instância configurada)
-- Atualiza `campanha_proposta_canais` (canal `trafego_pago`) com response/success
-- Para leads não atingidos por nenhum canal → cria registro em `tarefas_captacao` (`tipo='lead_aberto'`)
+### Permissões — uso do hook
+- Usar `usePermissions().isAdmin` (já existente) no front para bloquear edição.
 
----
+### Etapas de execução
 
-### 3. Frontend
+1. Migration: adicionar 5 colunas + copiar dados + trigger de proteção admin.
+2. Criar `MensagensCanaisTabs.tsx`.
+3. Refatorar `CaptacaoPropostaDialog.tsx` (remover tipo de disparo, usar abas, gravar 5 colunas).
+4. Refatorar `CaptacaoPropostaDetailDialog.tsx` (abas + read-only para não-admin).
+5. Remover/ocultar fluxo de vínculo proposta↔lead em `LeadPropostasSection` e dialogs relacionados.
+6. Ajustar edge functions/hooks que enviam mensagens para usar a coluna correta por canal.
+7. Testar criação, edição (admin vs não-admin) e visualização.
 
-**a) `DisparosCampanhasTab.tsx`** — adicionar:
-- Botão **"Vincular Proposta"** (abre `VincularPropostaCampanhaDialog`)
-- Lista de propostas vinculadas (cards) com badge de status + contador de canais ativos
+### Detalhes técnicos relevantes
 
-**b) Novos componentes em `src/components/disparos/`:**
-- `VincularPropostaCampanhaDialog.tsx` — seleciona Proposta + DisparoLista (ou cria nova lista inline)
-- `CampanhaPropostaModal.tsx` — modal grande com `Tabs` (7 segmentos)
-- `segments/` — uma sub-componente por canal:
-  - `SegmentoWhatsApp.tsx` (reutiliza `DisparosContatosPanel`)
-  - `SegmentoTrafegoPago.tsx` (status do envio automático + botão reenviar)
-  - `SegmentoEmail.tsx` (integra com `EmailCampanhasTab`)
-  - `SegmentoInstagram.tsx`, `SegmentoLigacao.tsx`, `SegmentoLinkedin.tsx`, `SegmentoTiktok.tsx` (registro manual + checklist por lead + criação de tarefa)
-- `EncerrarCampanhaButton.tsx` — visível só para admin/líder; valida que todos leads estão em status fechado
-
-**c) Hooks em `src/hooks/`:**
-- `useCampanhaPropostas.ts` (CRUD vínculos)
-- `useCampanhaPropostaCanais.ts` (estado por canal)
-- `useTarefasCaptacao.ts` (lista, conclui, cria)
-
-**d) Nova página `src/pages/DisparosTarefas.tsx`** + rota `/disparos/tarefas`
-- Lista de leads abertos / tarefas pendentes por campanha
-- Filtros: canal, responsável, prazo, status
-- Card no hub `Disparos.tsx` ("Tarefas e Solicitações")
-
-**e) Permissões:**
-- Acesso geral: `disparos_zap` ou `leads`
-- Encerrar campanha: usar `usePermissions().isAdmin || useCaptacaoPermissions().isCaptacaoLeader`
-
----
-
-### 4. Configuração necessária
-
-- Adicionar entrada em `config_lista_items`: `trafego_pago_webhook_url` (UI já tem `WebhookDisparosTab` — adicionar campo equivalente em uma seção "Tráfego Pago")
-- Instância Evolution padrão: configurável via `config_lista_items` chave `trafego_pago_evolution_instance`
-
----
-
-### 5. Fluxo end-to-end
-
-1. Admin cria **Campanha** (já existe).
-2. Clica **"Vincular Proposta"** → escolhe Proposta + Lista → salva.
-3. Trigger dispara edge function → tráfego pago + Evolution recebem a lista.
-4. Modal da Proposta abre com 7 abas; cada aba mostra status/ações do canal.
-5. Leads não atingidos viram **tarefas abertas** em `/disparos/tarefas`.
-6. Quando todos leads da campanha estão em status fechado (`Convertido|Descartado|Desinteresse|Bloqueado`), o botão **"Encerrar Campanha"** é habilitado para admin/líder.
-
----
-
-### Arquivos a criar/editar
-
-**Criar (10):**
-- Migration SQL
-- `supabase/functions/trafego-pago-auto-dispatch/index.ts`
-- `src/components/disparos/VincularPropostaCampanhaDialog.tsx`
-- `src/components/disparos/CampanhaPropostaModal.tsx`
-- `src/components/disparos/segments/Segmento{WhatsApp,TrafegoPago,Email,Instagram,Ligacao,Linkedin,Tiktok}.tsx`
-- `src/components/disparos/EncerrarCampanhaButton.tsx`
-- `src/hooks/useCampanhaPropostas.ts`
-- `src/hooks/useCampanhaPropostaCanais.ts`
-- `src/hooks/useTarefasCaptacao.ts`
-- `src/pages/DisparosTarefas.tsx`
-
-**Editar (3):**
-- `src/components/disparos/DisparosCampanhasTab.tsx` (botão + lista de propostas vinculadas)
-- `src/pages/Disparos.tsx` (novo card "Tarefas")
-- `src/App.tsx` (rota `/disparos/tarefas`)
-
+- Mantemos `tipo_disparo` e `mensagem` no schema temporariamente para não quebrar código legado durante a transição; após validação podemos remover em migration futura.
+- O trigger garante segurança no banco mesmo se UI for burlada.
+- Ícones reutilizam `src/components/disparos/icons/BrandIcons.tsx`.
