@@ -62,8 +62,9 @@ export function useVincularProposta() {
 
       return data;
     },
-    onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: ["campanha-propostas", data.campanha_id] });
+    onSuccess: async (data) => {
+      await qc.invalidateQueries({ queryKey: ["campanha-propostas", data.campanha_id] });
+      await qc.refetchQueries({ queryKey: ["campanha-propostas", data.campanha_id] });
       toast.success("Proposta vinculada à campanha");
     },
     onError: (e: any) => toast.error("Erro: " + e.message),

@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,9 +14,25 @@ interface Props {
 }
 
 export function CampanhaPropostasVinculadas({ campanhaId }: Props) {
+  const qc = useQueryClient();
   const { data: vinculos = [], isLoading } = useCampanhaPropostas(campanhaId);
   const [vincularOpen, setVincularOpen] = useState(false);
   const [cpAberto, setCpAberto] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!campanhaId) return;
+    const channel = supabase
+      .channel(`cp-${campanhaId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "campanha_propostas", filter: `campanha_id=eq.${campanhaId}` },
+        () => qc.invalidateQueries({ queryKey: ["campanha-propostas", campanhaId] })
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [campanhaId, qc]);
 
   return (
     <div className="space-y-3">
