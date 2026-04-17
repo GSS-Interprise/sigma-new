@@ -10851,7 +10851,14 @@ export type Database = {
         | "Pendente"
         | "Em Análise"
         | "Aguardando Retorno"
-      status_campanha: "planejada" | "ativa" | "pausada" | "finalizada"
+      status_campanha:
+        | "planejada"
+        | "ativa"
+        | "pausada"
+        | "finalizada"
+        | "rascunho"
+        | "agendada"
+        | "arquivada"
       status_captacao_board:
         | "prospectar"
         | "analisando"
@@ -11195,7 +11202,15 @@ export const Constants = {
         "Em Análise",
         "Aguardando Retorno",
       ],
-      status_campanha: ["planejada", "ativa", "pausada", "finalizada"],
+      status_campanha: [
+        "planejada",
+        "ativa",
+        "pausada",
+        "finalizada",
+        "rascunho",
+        "agendada",
+        "arquivada",
+      ],
       status_captacao_board: [
         "prospectar",
         "analisando",
