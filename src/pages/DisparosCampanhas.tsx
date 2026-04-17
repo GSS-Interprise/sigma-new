@@ -75,14 +75,14 @@ export default function DisparosCampanhas() {
       const { data: user } = await supabase.auth.getUser();
       const { data, error } = await supabase
         .from("campanhas")
-        .insert({
+        .insert([{
           nome: form.nome,
           descricao: form.descricao || null,
           canal: form.canal as any,
           objetivo: form.objetivo || null,
-          status: "rascunho",
+          status: "rascunho" as any,
           criado_por: user.user?.id,
-        })
+        }])
         .select()
         .single();
       if (error) throw error;
