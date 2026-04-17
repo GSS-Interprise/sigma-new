@@ -71,13 +71,13 @@ export function ListaLeadsPickerDialog({ open, onOpenChange, listaId, listaNome 
   }, [busca]);
 
   // Reset página ao mudar filtros
-  useEffect(() => { setPage(0); }, [debounced, especialidade, uf, cidade, ano, anoMode]);
+  useEffect(() => { setPage(0); }, [debounced, especialidades, ufs, cidade, ano, anoMode]);
 
   useEffect(() => {
     if (!open) {
       setSelecionados(new Set());
       setBusca(""); setDebounced("");
-      setEspecialidade(""); setUf(""); setCidade(""); setAno("");
+      setEspecialidades([]); setUfs([]); setCidade(""); setAno("");
       setAnoMode("min"); setPage(0);
     }
   }, [open]);
