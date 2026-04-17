@@ -1,8 +1,9 @@
-import { Fragment, useState } from "react";
+import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Pencil, Trash2, Users, Send, ChevronDown, ChevronRight } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Plus, Pencil, Trash2, Users, Send } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
@@ -22,24 +23,14 @@ export function ListasDisparoTab() {
   const del = useDeleteDisparoLista();
   const [formOpen, setFormOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [detalhesOpen, setDetalhesOpen] = useState(false);
   const [selecionada, setSelecionada] = useState<DisparoLista | null>(null);
-  const [expanded, setExpanded] = useState<string | null>(null);
 
-  const handleNova = () => {
-    setSelecionada(null);
-    setFormOpen(true);
-  };
-  const handleEditar = (lista: DisparoLista) => {
-    setSelecionada(lista);
-    setFormOpen(true);
-  };
-  const handleAddLeads = (lista: DisparoLista) => {
-    setSelecionada(lista);
-    setPickerOpen(true);
-  };
-  const handleDisparar = (lista: DisparoLista) => {
-    navigate(`/disparos/zap?lista=${lista.id}`);
-  };
+  const handleNova = () => { setSelecionada(null); setFormOpen(true); };
+  const handleEditar = (lista: DisparoLista) => { setSelecionada(lista); setFormOpen(true); };
+  const handleAddLeads = (lista: DisparoLista) => { setSelecionada(lista); setPickerOpen(true); };
+  const handleAbrir = (lista: DisparoLista) => { setSelecionada(lista); setDetalhesOpen(true); };
+  const handleDisparar = (lista: DisparoLista) => navigate(`/disparos/zap?lista=${lista.id}`);
 
   return (
     <div className="space-y-4">
@@ -60,7 +51,6 @@ export function ListasDisparoTab() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-8" />
               <TableHead>Nome</TableHead>
               <TableHead>Criado por</TableHead>
               <TableHead>Data</TableHead>
@@ -69,56 +59,51 @@ export function ListasDisparoTab() {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={5} className="text-center py-8">Carregando...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={4} className="text-center py-8">Carregando...</TableCell></TableRow>
             ) : listas.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
                   Nenhuma lista criada ainda
                 </TableCell>
               </TableRow>
             ) : (
-              listas.map((lista) => {
-                const isOpen = expanded === lista.id;
-                return (
-                  <Fragment key={lista.id}>
-                    <TableRow className="cursor-pointer" onClick={() => setExpanded(isOpen ? null : lista.id)}>
-                      <TableCell>
-                        {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        {lista.nome}
-                        {lista.descricao && <p className="text-xs text-muted-foreground">{lista.descricao}</p>}
-                      </TableCell>
-                      <TableCell>{lista.created_by_nome || "—"}</TableCell>
-                      <TableCell className="text-sm">
-                        {format(new Date(lista.created_at), "dd/MM/yy", { locale: ptBR })}
-                      </TableCell>
-                      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center justify-end gap-1">
-                          <Button variant="ghost" size="icon" title="Adicionar leads" onClick={() => handleAddLeads(lista)}>
-                            <Users className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" title="Disparar" onClick={() => handleDisparar(lista)}>
-                            <Send className="h-4 w-4 text-primary" />
-                          </Button>
-                          <Button variant="ghost" size="icon" title="Editar" onClick={() => handleEditar(lista)}>
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost" size="icon" title="Remover"
-                            onClick={() => {
-                              if (confirm(`Remover a lista "${lista.nome}"?`)) del.mutate(lista.id);
-                            }}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                    {isOpen && <ListaItensRow listaId={lista.id} />}
-                  </Fragment>
-                );
-              })
+              listas.map((lista) => (
+                <TableRow
+                  key={lista.id}
+                  className="cursor-pointer hover:bg-muted/50"
+                  onClick={() => handleAbrir(lista)}
+                >
+                  <TableCell className="font-medium">
+                    {lista.nome}
+                    {lista.descricao && <p className="text-xs text-muted-foreground">{lista.descricao}</p>}
+                  </TableCell>
+                  <TableCell>{lista.created_by_nome || "—"}</TableCell>
+                  <TableCell className="text-sm">
+                    {format(new Date(lista.created_at), "dd/MM/yy", { locale: ptBR })}
+                  </TableCell>
+                  <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-end gap-1">
+                      <Button variant="ghost" size="icon" title="Adicionar leads" onClick={() => handleAddLeads(lista)}>
+                        <Users className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" title="Disparar" onClick={() => handleDisparar(lista)}>
+                        <Send className="h-4 w-4 text-primary" />
+                      </Button>
+                      <Button variant="ghost" size="icon" title="Editar" onClick={() => handleEditar(lista)}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost" size="icon" title="Remover"
+                        onClick={() => {
+                          if (confirm(`Remover a lista "${lista.nome}"?`)) del.mutate(lista.id);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))
             )}
           </TableBody>
         </Table>
@@ -126,52 +111,81 @@ export function ListasDisparoTab() {
 
       <ListaDisparoFormDialog open={formOpen} onOpenChange={setFormOpen} lista={selecionada} />
       {selecionada && (
-        <ListaLeadsPickerDialog
-          open={pickerOpen}
-          onOpenChange={setPickerOpen}
-          listaId={selecionada.id}
-          listaNome={selecionada.nome}
-        />
+        <>
+          <ListaLeadsPickerDialog
+            open={pickerOpen}
+            onOpenChange={setPickerOpen}
+            listaId={selecionada.id}
+            listaNome={selecionada.nome}
+          />
+          <ListaDetalhesDialog
+            open={detalhesOpen}
+            onOpenChange={setDetalhesOpen}
+            lista={selecionada}
+            onAddLeads={() => { setDetalhesOpen(false); setPickerOpen(true); }}
+          />
+        </>
       )}
     </div>
   );
 }
 
-function ListaItensRow({ listaId }: { listaId: string }) {
-  const { data: itens = [], isLoading } = useDisparoListaItens(listaId);
+function ListaDetalhesDialog({
+  open, onOpenChange, lista, onAddLeads,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  lista: DisparoLista;
+  onAddLeads: () => void;
+}) {
+  const { data: itens = [], isLoading } = useDisparoListaItens(open ? lista.id : null);
   const remove = useRemoveLeadFromLista();
 
   return (
-    <TableRow>
-      <TableCell colSpan={5} className="bg-muted/30 p-4">
-        {isLoading ? (
-          <p className="text-sm text-muted-foreground">Carregando leads...</p>
-        ) : itens.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Nenhum lead adicionado. Use "Adicionar leads" para incluir contatos.
-          </p>
-        ) : (
-          <div className="space-y-1 max-h-64 overflow-y-auto">
-            <p className="text-xs font-medium text-muted-foreground mb-2">{itens.length} leads na lista</p>
-            {itens.map((it: any) => (
-              <div key={it.id} className="flex items-center justify-between rounded bg-background px-3 py-2 text-sm">
-                <div>
-                  <span className="font-medium">{it.leads?.nome || "—"}</span>
-                  <span className="text-muted-foreground ml-2">
-                    {it.leads?.phone_e164} · {it.leads?.especialidade || "-"} · {it.leads?.cidade || "-"}/{it.leads?.uf || "-"}
-                  </span>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle>{lista.nome}</DialogTitle>
+        </DialogHeader>
+
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-muted-foreground">
+            {isLoading ? "Carregando..." : `${itens.length} leads na lista`}
+          </span>
+          <Button size="sm" onClick={onAddLeads} className="gap-2">
+            <Plus className="h-4 w-4" /> Adicionar leads
+          </Button>
+        </div>
+
+        <div className="flex-1 min-h-0 overflow-y-auto rounded-md border">
+          {isLoading ? (
+            <p className="p-6 text-sm text-muted-foreground">Carregando leads...</p>
+          ) : itens.length === 0 ? (
+            <p className="p-6 text-sm text-muted-foreground text-center">
+              Nenhum lead adicionado. Use "Adicionar leads" para incluir contatos com filtros.
+            </p>
+          ) : (
+            <div className="divide-y">
+              {itens.map((it: any) => (
+                <div key={it.id} className="flex items-center justify-between px-3 py-2 text-sm hover:bg-muted/50">
+                  <div className="min-w-0">
+                    <p className="font-medium truncate">{it.leads?.nome || "—"}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {it.leads?.phone_e164} · {it.leads?.especialidade || "-"} · {it.leads?.cidade || "-"}/{it.leads?.uf || "-"}
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost" size="icon"
+                    onClick={() => remove.mutate({ itemId: it.id, listaId: lista.id })}
+                  >
+                    <Trash2 className="h-3 w-3 text-destructive" />
+                  </Button>
                 </div>
-                <Button
-                  variant="ghost" size="icon"
-                  onClick={() => remove.mutate({ itemId: it.id, listaId })}
-                >
-                  <Trash2 className="h-3 w-3 text-destructive" />
-                </Button>
-              </div>
-            ))}
-          </div>
-        )}
-      </TableCell>
-    </TableRow>
+              ))}
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
