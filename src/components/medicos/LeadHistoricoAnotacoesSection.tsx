@@ -17,6 +17,7 @@ import {
   Undo2, StickyNote, Calendar, User, Loader2, Send, FileText, MessageCircle, CheckCheck, Eye, UserX, Pencil
 } from "lucide-react";
 import { EditConversaoDialog } from "./EditConversaoDialog";
+import { UsuarioMultiSelect } from "./UsuarioMultiSelect";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -44,6 +45,7 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
   const [titulo, setTitulo] = useState("");
   const [conteudo, setConteudo] = useState("");
   const [imagensPreview, setImagensPreview] = useState<{ file: File; preview: string }[]>([]);
+  const [mencionados, setMencionados] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [editConversaoEntry, setEditConversaoEntry] = useState<any | null>(null);
@@ -318,8 +320,9 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
 
   // Create anotação mutation
   const createMutation = useMutation({
-    mutationFn: async (data: { titulo?: string; conteudo: string; imagens: string[] }) => {
-      const { error } = await supabase
+    mutationFn: async (data: { titulo?: string; conteudo: string; imagens: string[]; mencionados: string[] }) => {
+      const userNome = user?.user_metadata?.nome_completo || user?.email || 'Usuário';
+      const { data: inserted, error } = await supabase
         .from('lead_anotacoes')
         .insert({
           lead_id: leadId,
@@ -327,11 +330,30 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
           titulo: data.titulo || null,
           conteudo: data.conteudo,
           imagens: data.imagens,
+          metadados: data.mencionados.length > 0 ? { mencionados: data.mencionados } : null,
           usuario_id: user?.id,
-          usuario_nome: user?.user_metadata?.nome_completo || user?.email || 'Usuário'
-        });
+          usuario_nome: userNome,
+        })
+        .select('id')
+        .single();
       
       if (error) throw error;
+
+      // Notificar usuários marcados (exceto o autor)
+      const targets = data.mencionados.filter((id) => id !== user?.id);
+      if (targets.length > 0) {
+        const preview = data.conteudo.length > 100 ? data.conteudo.slice(0, 100) + '…' : data.conteudo;
+        const notificacoes = targets.map((uid) => ({
+          user_id: uid,
+          tipo: 'lead_anotacao_mencao',
+          titulo: `${userNome} marcou você em uma anotação`,
+          mensagem: data.titulo ? `${data.titulo}: ${preview}` : preview,
+          link: `/disparos/leads?lead=${leadId}`,
+          referencia_id: inserted?.id ?? null,
+          lida: false,
+        }));
+        await supabase.from('system_notifications').insert(notificacoes);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['lead-anotacoes', leadId] });
@@ -369,6 +391,7 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
     setTitulo("");
     setConteudo("");
     setImagensPreview([]);
+    setMencionados([]);
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -445,7 +468,8 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
       await createMutation.mutateAsync({
         titulo: titulo.trim() || undefined,
         conteudo: conteudo.trim(),
-        imagens: uploadedUrls
+        imagens: uploadedUrls,
+        mencionados,
       });
     } catch (error) {
       console.error('Erro ao salvar:', error);
@@ -672,6 +696,13 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
             onChange={(e) => setConteudo(e.target.value)}
             rows={4}
           />
+
+          <div className="space-y-1">
+            <p className="text-xs text-muted-foreground">
+              Marcar pessoas (elas receberão notificação)
+            </p>
+            <UsuarioMultiSelect value={mencionados} onChange={setMencionados} />
+          </div>
           
           {/* Image previews */}
           {imagensPreview.length > 0 && (
