@@ -46,6 +46,7 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
   const [imagensPreview, setImagensPreview] = useState<{ file: File; preview: string }[]>([]);
   const [uploading, setUploading] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [editConversaoEntry, setEditConversaoEntry] = useState<any | null>(null);
 
   // Fetch anotações
   const { data: anotacoes, isLoading: loadingAnotacoes } = useQuery({
