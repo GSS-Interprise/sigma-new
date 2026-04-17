@@ -8,7 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { SearchableSelect } from "@/components/ui/searchable-select";
+import { SearchableMultiSelect } from "@/components/ui/searchable-multi-select";
 import { Search, Loader2, Filter, X, Users, ChevronLeft, ChevronRight } from "lucide-react";
 import { useAddLeadsToLista } from "@/hooks/useDisparoListas";
 import { useLeadsFilterCounts } from "@/hooks/useLeadsPaginated";
@@ -30,19 +30,19 @@ type AnoMode = "min" | "exato";
 // Aplica filtros comuns à query Supabase
 function applyFilters(q: any, opts: {
   debounced: string;
-  especialidade: string;
-  uf: string;
+  especialidades: string[];
+  ufs: string[];
   cidade: string;
   ano: string;
   anoMode: AnoMode;
 }) {
-  const { debounced, especialidade, uf, cidade, ano, anoMode } = opts;
+  const { debounced, especialidades, ufs, cidade, ano, anoMode } = opts;
   q = q.not("phone_e164", "is", null).is("merged_into_id", null);
   if (debounced.trim()) {
     q = q.or(`nome.ilike.%${debounced}%,phone_e164.ilike.%${debounced}%,especialidade.ilike.%${debounced}%`);
   }
-  if (especialidade) q = q.eq("especialidade_id", especialidade);
-  if (uf) q = q.ilike("uf", uf);
+  if (especialidades.length > 0) q = q.in("especialidade_id", especialidades);
+  if (ufs.length > 0) q = q.in("uf", ufs.map((u) => u.toUpperCase()));
   if (cidade.trim()) q = q.ilike("cidade", `%${cidade.trim()}%`);
   if (ano && /^\d{4}$/.test(ano)) {
     if (anoMode === "min") q = q.gte("data_formatura", `${ano}-01-01`);
@@ -54,8 +54,8 @@ function applyFilters(q: any, opts: {
 export function ListaLeadsPickerDialog({ open, onOpenChange, listaId, listaNome }: Props) {
   const [busca, setBusca] = useState("");
   const [debounced, setDebounced] = useState("");
-  const [especialidade, setEspecialidade] = useState<string>("");
-  const [uf, setUf] = useState<string>("");
+  const [especialidades, setEspecialidades] = useState<string[]>([]);
+  const [ufs, setUfs] = useState<string[]>([]);
   const [cidade, setCidade] = useState<string>("");
   const [ano, setAno] = useState<string>("");
   const [anoMode, setAnoMode] = useState<AnoMode>("min");
@@ -71,13 +71,13 @@ export function ListaLeadsPickerDialog({ open, onOpenChange, listaId, listaNome 
   }, [busca]);
 
   // Reset página ao mudar filtros
-  useEffect(() => { setPage(0); }, [debounced, especialidade, uf, cidade, ano, anoMode]);
+  useEffect(() => { setPage(0); }, [debounced, especialidades, ufs, cidade, ano, anoMode]);
 
   useEffect(() => {
     if (!open) {
       setSelecionados(new Set());
       setBusca(""); setDebounced("");
-      setEspecialidade(""); setUf(""); setCidade(""); setAno("");
+      setEspecialidades([]); setUfs([]); setCidade(""); setAno("");
       setAnoMode("min"); setPage(0);
     }
   }, [open]);
@@ -103,10 +103,10 @@ export function ListaLeadsPickerDialog({ open, onOpenChange, listaId, listaNome 
     enabled: open,
   });
 
-  const filtersOpts = { debounced, especialidade, uf, cidade, ano, anoMode };
+  const filtersOpts = { debounced, especialidades, ufs, cidade, ano, anoMode };
 
   const { data: pageData, isLoading, isFetching } = useQuery({
-    queryKey: ["leads-picker-page", page, debounced, especialidade, uf, cidade, ano, anoMode],
+    queryKey: ["leads-picker-page", page, debounced, especialidades, ufs, cidade, ano, anoMode],
     queryFn: async () => {
       const from = page * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
@@ -172,11 +172,11 @@ export function ListaLeadsPickerDialog({ open, onOpenChange, listaId, listaNome 
   };
 
   const limparFiltros = () => {
-    setEspecialidade(""); setUf(""); setCidade(""); setAno(""); setBusca("");
+    setEspecialidades([]); setUfs([]); setCidade(""); setAno(""); setBusca("");
   };
 
   const filtrosAtivos =
-    (especialidade ? 1 : 0) + (uf ? 1 : 0) + (cidade ? 1 : 0) + (ano ? 1 : 0) + (busca ? 1 : 0);
+    (especialidades.length ? 1 : 0) + (ufs.length ? 1 : 0) + (cidade ? 1 : 0) + (ano ? 1 : 0) + (busca ? 1 : 0);
 
 
   return (
@@ -226,12 +226,12 @@ export function ListaLeadsPickerDialog({ open, onOpenChange, listaId, listaNome 
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Especialidade</Label>
-                <SearchableSelect
+                <Label className="text-xs text-muted-foreground">Especialidades</Label>
+                <SearchableMultiSelect
                   placeholder="Todas"
                   searchPlaceholder="Buscar especialidade..."
-                  value={especialidade}
-                  onChange={setEspecialidade}
+                  values={especialidades}
+                  onChange={setEspecialidades}
                   options={(filterMeta?.especialidades || [])
                     .filter((e) => e.id && e.nome)
                     .map((e) => ({ value: e.id, label: e.nome }))}
@@ -239,15 +239,15 @@ export function ListaLeadsPickerDialog({ open, onOpenChange, listaId, listaNome 
               </div>
 
               <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">UF</Label>
-                <SearchableSelect
+                <Label className="text-xs text-muted-foreground">UFs</Label>
+                <SearchableMultiSelect
                   placeholder="Todas"
                   searchPlaceholder="Buscar UF..."
-                  value={uf}
-                  onChange={setUf}
+                  values={ufs}
+                  onChange={setUfs}
                   options={(filterMeta?.options.uf || [])
                     .filter((u) => u && u.trim())
-                    .map((u) => ({ value: u, label: u.toUpperCase() }))}
+                    .map((u) => ({ value: u.toUpperCase(), label: u.toUpperCase() }))}
                 />
               </div>
 
