@@ -16,8 +16,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FileText, Package, DollarSign, Pencil, Save, X, Plus, Trash2 } from "lucide-react";
+import { FileText, Package, DollarSign, Pencil, Save, X, Plus, Trash2, Info } from "lucide-react";
 import { usePermissions } from "@/hooks/usePermissions";
+import { MensagensCanaisTabs, type CanalKey, type MensagensCanaisValues } from "./MensagensCanaisTabs";
 import { toast } from "sonner";
 
 interface PropostaItem {
@@ -58,10 +59,20 @@ export function CaptacaoPropostaDetailDialog({
   
   const [isEditing, setIsEditing] = useState(false);
   const [editStatus, setEditStatus] = useState<string>("");
-  const [editObservacoes, setEditObservacoes] = useState<string>("");
   const [editDescricao, setEditDescricao] = useState<string>("");
   const [editItens, setEditItens] = useState<EditableItem[]>([]);
   const [novoItemNome, setNovoItemNome] = useState("");
+  const [editMensagens, setEditMensagens] = useState<MensagensCanaisValues>({
+    whatsapp: "",
+    email: "",
+    instagram: "",
+    linkedin: "",
+    tiktok: "",
+  });
+
+  const handleMensagemChange = (canal: CanalKey, valor: string) => {
+    setEditMensagens((prev) => ({ ...prev, [canal]: valor }));
+  };
 
   // Buscar detalhes da proposta
   const { data: proposta, isLoading: loadingProposta } = useQuery({
@@ -118,29 +129,25 @@ export function CaptacaoPropostaDetailDialog({
   const saveMutation = useMutation({
     mutationFn: async () => {
       // Atualizar proposta
+      const updatePayload: Record<string, unknown> = {
+        status: editStatus,
+        descricao: editDescricao || null,
+        atualizado_em: new Date().toISOString(),
+      };
+      if (isAdmin) {
+        updatePayload.mensagem_whatsapp = editMensagens.whatsapp || null;
+        updatePayload.mensagem_email = editMensagens.email || null;
+        updatePayload.mensagem_instagram = editMensagens.instagram || null;
+        updatePayload.mensagem_linkedin = editMensagens.linkedin || null;
+        updatePayload.mensagem_tiktok = editMensagens.tiktok || null;
+      }
+
       const { error: propostaError } = await supabase
         .from("proposta")
-        .update({
-          status: editStatus,
-          observacoes: editObservacoes || null,
-          descricao: editDescricao || null,
-          atualizado_em: new Date().toISOString(),
-        })
+        .update(updatePayload as any)
         .eq("id", propostaId);
 
       if (propostaError) throw propostaError;
-
-      // Atualizar texto_ia nas campanhas vinculadas a esta proposta
-      if (editObservacoes) {
-        const { error: campanhaError } = await supabase
-          .from("disparos_campanhas")
-          .update({ texto_ia: editObservacoes })
-          .eq("proposta_id", propostaId);
-        
-        if (campanhaError) {
-          console.error("Erro ao atualizar campanhas:", campanhaError);
-        }
-      }
 
       // Deletar itens marcados
       const itensParaDeletar = editItens.filter(i => i.toDelete && !i.isNew);
