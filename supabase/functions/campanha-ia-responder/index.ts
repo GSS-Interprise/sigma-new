@@ -156,22 +156,35 @@ serve(async (req) => {
 
     if (evoUrl && evoKey && instance_name) {
       const phoneNumber = phone.replace(/\D/g, "");
+      const sendUrl = `${evoUrl}/message/sendText/${encodeURIComponent(instance_name)}`;
+      console.log(`[ia-responder] 📡 Enviando ${messages.length} msg(s) para ${phoneNumber} via ${instance_name}`);
+      console.log(`[ia-responder] 📡 URL: ${sendUrl}`);
+
       for (let i = 0; i < messages.length; i++) {
-        if (i > 0) await sleep(2000); // 2s entre msgs
+        if (i > 0) await sleep(2000);
         try {
-          await fetch(
-            `${evoUrl}/message/sendText/${encodeURIComponent(instance_name)}`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json", apikey: evoKey },
-              body: JSON.stringify({ number: phoneNumber, text: messages[i] }),
-            }
-          );
-          console.log(`[ia-responder] ✅ Msg ${i + 1} enviada`);
+          const sendResp = await fetch(sendUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", apikey: evoKey },
+            body: JSON.stringify({ number: phoneNumber, text: messages[i] }),
+          });
+
+          const sendRespText = await sendResp.text();
+          if (!sendResp.ok) {
+            console.error(`[ia-responder] ❌ Evolution ${sendResp.status}: ${sendRespText.slice(0, 300)}`);
+          } else {
+            let respData: any = {};
+            try { respData = JSON.parse(sendRespText); } catch {}
+            const jid = respData?.key?.remoteJid || "?";
+            const msgStatus = respData?.status || "?";
+            console.log(`[ia-responder] ✅ Msg ${i + 1} enviada → JID: ${jid} | Status: ${msgStatus}`);
+          }
         } catch (sendErr: any) {
-          console.error(`[ia-responder] ❌ Erro envio msg ${i + 1}:`, sendErr.message);
+          console.error(`[ia-responder] ❌ Erro fetch msg ${i + 1}:`, sendErr.message);
         }
       }
+    } else {
+      console.error(`[ia-responder] ⚠️ Envio impossível: evoUrl=${!!evoUrl} evoKey=${!!evoKey} instance=${instance_name}`);
     }
 
     // ── 8. Atualizar status do lead na campanha ──

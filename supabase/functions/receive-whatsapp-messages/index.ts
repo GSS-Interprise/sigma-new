@@ -903,15 +903,24 @@ serve(async (req) => {
               .maybeSingle();
 
             if (campLeadCheck) {
-              console.log('🤖 Lead em campanha ativa, chamando IA...');
+              const iaPayload = {
+                phone: normalizedPhone.replace('+', ''),
+                message_text: messageText,
+                instance_name: instanceName,
+                message_type: messageType || 'text',
+              };
+              console.log('🤖 Lead em campanha ativa, chamando IA...', JSON.stringify({
+                lead_id: leadId,
+                campanha_id: campLeadCheck.campanha_id,
+                phone: iaPayload.phone,
+                instance: iaPayload.instance_name,
+                msg_preview: messageText?.slice(0, 50),
+              }));
               // Fire-and-forget: não bloqueia o webhook
               supabase.functions.invoke('campanha-ia-responder', {
-                body: {
-                  phone: normalizedPhone.replace('+', ''),
-                  message_text: messageText,
-                  instance_name: instanceName,
-                  message_type: messageType || 'text',
-                },
+                body: iaPayload,
+              }).then((result: any) => {
+                console.log('🤖 IA resultado:', JSON.stringify(result?.data || result?.error || 'sem resposta'));
               }).catch((iaErr: any) => {
                 console.warn('⚠️ Erro ao chamar IA (não-crítico):', iaErr?.message);
               });
