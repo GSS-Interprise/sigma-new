@@ -890,6 +890,36 @@ serve(async (req) => {
         }
 
         console.log('✅ Lead vinculado à conversa:', leadId);
+
+        // 3.6 Auto-routing: se lead está em campanha ativa, chamar IA (non-blocking)
+        if (!isFromMe && messageText) {
+          try {
+            const { data: campLeadCheck } = await supabase
+              .from('campanha_leads')
+              .select('id, campanha_id')
+              .eq('lead_id', leadId)
+              .in('status', ['contatado', 'em_conversa', 'aquecido'])
+              .limit(1)
+              .maybeSingle();
+
+            if (campLeadCheck) {
+              console.log('🤖 Lead em campanha ativa, chamando IA...');
+              // Fire-and-forget: não bloqueia o webhook
+              supabase.functions.invoke('campanha-ia-responder', {
+                body: {
+                  phone: normalizedPhone.replace('+', ''),
+                  message_text: messageText,
+                  instance_name: instanceName,
+                  message_type: messageType || 'text',
+                },
+              }).catch((iaErr: any) => {
+                console.warn('⚠️ Erro ao chamar IA (não-crítico):', iaErr?.message);
+              });
+            }
+          } catch (campCheckErr) {
+            console.warn('⚠️ Erro ao verificar campanha (não-crítico):', campCheckErr);
+          }
+        }
       }
     } catch (leadLinkError) {
       console.warn('⚠️ Erro ao vincular lead (não-crítico):', leadLinkError);
