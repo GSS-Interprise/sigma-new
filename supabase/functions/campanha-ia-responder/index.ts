@@ -217,18 +217,31 @@ serve(async (req) => {
           .select("id, nome_completo, telefone")
           .in("id", responsaveis);
 
+        // Montar resumo da conversa pra o responsável
+        const conversaResumo = (historico || [])
+          .slice(-10)
+          .map((m: any) => `${m.from_me ? "GSS" : "Médico"}: ${m.message_text}`)
+          .join("\n");
+
         for (const p of profiles || []) {
           if (p.telefone) {
             const alertMsg =
-              `🔥 *LEAD QUENTE* 🔥\n\n` +
-              `Médico: ${lead.nome}\n` +
-              `Telefone: ${lead.phone_e164}\n` +
-              `Especialidade: ${lead.especialidade || "N/I"}\n` +
-              `${lead.cidade ? `Cidade: ${lead.cidade}/${lead.uf}` : ""}\n\n` +
-              `${resumo}\n\n` +
-              `Campanha: ${campanha.nome}\n` +
-              `Assuma a conversa no SigZap.`;
+              `🔥 *LEAD QUENTE — AÇÃO NECESSÁRIA* 🔥\n\n` +
+              `*Médico:* ${lead.nome}\n` +
+              `*Telefone:* ${lead.phone_e164}\n` +
+              `*Especialidade:* ${lead.especialidade || "N/I"}\n` +
+              `${lead.cidade ? `*Cidade:* ${lead.cidade}/${lead.uf}\n` : ""}` +
+              `*Campanha:* ${campanha.nome}\n\n` +
+              `*O que aconteceu:*\n${resumo}\n\n` +
+              `*Resumo da conversa:*\n${conversaResumo || "(sem histórico disponível)"}\n\n` +
+              `*Como seguir:*\n` +
+              `1. Abra o SigZap e encontre a conversa com ${lead.nome}\n` +
+              `2. O médico já demonstrou interesse — NÃO comece do zero\n` +
+              `3. Apresente-se: "Oi Dr(a), sou ${p.nome_completo} da GSS"\n` +
+              `4. Vá direto aos detalhes: valores, escala, contrato\n` +
+              `5. Se fechar, converta o lead no Sigma`;
 
+            // Enviar alerta
             try {
               await fetch(
                 `${evoUrl}/message/sendText/${encodeURIComponent(instance_name)}`,
@@ -241,7 +254,23 @@ serve(async (req) => {
                   }),
                 }
               );
-              console.log(`[ia-responder] 📢 Alerta enviado para ${p.nome_completo}`);
+
+              // Enviar segunda mensagem com link direto pro lead
+              await sleep(2000);
+              const sigmaUrl = `https://sigma.gestaoservicosaude.com.br/medicos?lead=${lead.id}`;
+              await fetch(
+                `${evoUrl}/message/sendText/${encodeURIComponent(instance_name)}`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", apikey: evoKey },
+                  body: JSON.stringify({
+                    number: p.telefone.replace(/\D/g, ""),
+                    text: `📋 Abrir lead no Sigma: ${sigmaUrl}`,
+                  }),
+                }
+              );
+
+              console.log(`[ia-responder] 📢 Alerta + resumo enviado para ${p.nome_completo}`);
             } catch {
               console.error(`[ia-responder] Falha ao alertar ${p.nome_completo}`);
             }
