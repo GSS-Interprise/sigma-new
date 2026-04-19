@@ -20,77 +20,105 @@ serve(async (req) => {
       await req.json();
 
     if (!phone || !message_text) throw new Error("phone e message_text obrigatórios");
-
     console.log(`[ia-responder] Mensagem de ${phone}: ${message_text.slice(0, 100)}`);
 
     // ── 1. Identificar lead pelo telefone ──
-    const normalizedPhone = "+" + phone.replace(/\D/g, "");
-    const { data: lead } = await supabase
-      .from("leads")
-      .select("id, nome, phone_e164, especialidade, uf, cidade")
-      .or(`phone_e164.eq.${normalizedPhone},phone_e164.eq.${phone}`)
-      .is("merged_into_id", null)
-      .limit(1)
-      .single();
+    const phoneDigits = phone.replace(/\D/g, "");
+    const phoneVariants = [
+      `+${phoneDigits}`,
+      `+55${phoneDigits}`,
+      phoneDigits,
+    ];
+
+    let lead: any = null;
+    for (const pv of phoneVariants) {
+      const { data } = await supabase
+        .from("leads")
+        .select("id, nome, phone_e164, especialidade, uf, cidade")
+        .eq("phone_e164", pv)
+        .is("merged_into_id", null)
+        .limit(1)
+        .maybeSingle();
+      if (data) { lead = data; break; }
+    }
+
+    // Fallback: LIKE search
+    if (!lead) {
+      const lastDigits = phoneDigits.slice(-8);
+      const { data } = await supabase
+        .from("leads")
+        .select("id, nome, phone_e164, especialidade, uf, cidade")
+        .like("phone_e164", `%${lastDigits}`)
+        .is("merged_into_id", null)
+        .limit(1)
+        .maybeSingle();
+      if (data) lead = data;
+    }
 
     if (!lead) {
       console.log(`[ia-responder] Lead não encontrado para ${phone}`);
       return json({ ok: false, reason: "lead_not_found" });
     }
 
+    console.log(`[ia-responder] Lead encontrado: ${lead.nome} (${lead.id})`);
+
     // ── 2. Buscar campanha ativa desse lead ──
     const { data: campLead } = await supabase
       .from("campanha_leads")
-      .select("id, campanha_id, status, tentativas, campanha:campanha_id(id, nome, briefing_ia, mensagem_inicial, responsaveis)")
+      .select("id, campanha_id, status, tentativas, humano_assumiu, historico_conversa, campanha:campanha_id(id, nome, briefing_ia, mensagem_inicial, responsaveis)")
       .eq("lead_id", lead.id)
       .in("status", ["contatado", "em_conversa", "aquecido"])
       .order("data_ultimo_contato", { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
     if (!campLead) {
-      console.log(`[ia-responder] Lead ${lead.nome} não está em nenhuma campanha ativa`);
+      console.log(`[ia-responder] Lead ${lead.nome} não está em campanha ativa`);
       return json({ ok: false, reason: "not_in_campaign" });
+    }
+
+    // ── 3. Check se humano já assumiu ──
+    if (campLead.humano_assumiu) {
+      console.log(`[ia-responder] Humano já assumiu conversa com ${lead.nome} — IA não responde`);
+      return json({ ok: true, reason: "humano_assumiu", lead_id: lead.id });
     }
 
     const campanha = campLead.campanha as any;
     const briefing = campanha?.briefing_ia || {};
 
-    // ── 3. Buscar histórico de mensagens ──
-    const { data: historico } = await supabase
-      .from("sigzap_messages")
-      .select("message_text, from_me, sent_at")
-      .eq("conversation_id", campLead.id) // may need adjustment
-      .order("sent_at", { ascending: true })
-      .limit(20);
+    // ── 4. Recuperar e atualizar histórico da conversa ──
+    const historico: Array<{role: string, text: string, ts: string}> = campLead.historico_conversa || [];
 
-    // Fallback: buscar por phone no lead_historico
-    const historicoTexto = (historico || [])
-      .map((m: any) => `${m.from_me ? "GSS" : "Médico"}: ${m.message_text}`)
+    // Adicionar mensagem do médico ao histórico
+    historico.push({
+      role: "medico",
+      text: message_text,
+      ts: new Date().toISOString(),
+    });
+
+    // Montar texto do histórico pra IA
+    const historicoTexto = historico
+      .map((m: any) => `${m.role === "medico" ? "Médico" : "GSS"}: ${m.text}`)
       .join("\n");
 
-    // ── 4. Montar prompt dinâmico a partir do briefing ──
+    // ── 5. Montar prompt dinâmico ──
     const prompt = buildPrompt(briefing, lead);
 
-    // ── 5. Chamar IA (OpenAI/Claude) ──
+    // ── 6. Chamar IA ──
     const apiKey = Deno.env.get("OPENAI_API_KEY");
     if (!apiKey) throw new Error("OPENAI_API_KEY não configurada");
 
     const aiMessages = [
-      { role: "system", content: prompt },
+      { role: "system" as const, content: prompt },
+      {
+        role: "user" as const,
+        content: historicoTexto
+          ? `[HISTÓRICO DA CONVERSA]\n${historicoTexto}\n\n[RESPONDA A ÚLTIMA MENSAGEM DO MÉDICO]`
+          : message_text,
+      },
     ];
 
-    if (historicoTexto) {
-      aiMessages.push({
-        role: "user",
-        content: `[HISTÓRICO DA CONVERSA]\n${historicoTexto}\n\n[NOVA MENSAGEM DO MÉDICO]\n${message_text}`,
-      });
-    } else {
-      aiMessages.push({
-        role: "user",
-        content: message_text,
-      });
-    }
+    console.log(`[ia-responder] Chamando OpenAI com ${historico.length} msgs de histórico`);
 
     const aiResponse = await fetch(
       "https://api.openai.com/v1/chat/completions",
@@ -117,7 +145,7 @@ serve(async (req) => {
     const aiResult = await aiResponse.json();
     const rawOutput = aiResult.choices?.[0]?.message?.content || "";
 
-    // ── 6. Parsear saída JSON ──
+    // ── 7. Parsear saída JSON ──
     let parsed: any;
     try {
       const jsonStr = rawOutput
@@ -141,7 +169,16 @@ serve(async (req) => {
     const alertaTipo = parsed.alerta_tipo || "";
     const conversaEncerrada = parsed.conversa_encerrada === true;
 
-    // ── 7. Enviar respostas via Evolution API ──
+    // Adicionar respostas da IA ao histórico
+    for (const msg of messages) {
+      historico.push({
+        role: "gss",
+        text: msg,
+        ts: new Date().toISOString(),
+      });
+    }
+
+    // ── 8. Enviar respostas via Evolution API ──
     const { data: evoConfig } = await supabase
       .from("config_lista_items")
       .select("campo_nome, valor")
@@ -155,10 +192,8 @@ serve(async (req) => {
     )?.valor;
 
     if (evoUrl && evoKey && instance_name) {
-      const phoneNumber = phone.replace(/\D/g, "");
       const sendUrl = `${evoUrl}/message/sendText/${encodeURIComponent(instance_name)}`;
-      console.log(`[ia-responder] 📡 Enviando ${messages.length} msg(s) para ${phoneNumber} via ${instance_name}`);
-      console.log(`[ia-responder] 📡 URL: ${sendUrl}`);
+      console.log(`[ia-responder] 📡 Enviando ${messages.length} msg(s) para ${phone} via ${instance_name}`);
 
       for (let i = 0; i < messages.length; i++) {
         if (i > 0) await sleep(2000);
@@ -166,7 +201,7 @@ serve(async (req) => {
           const sendResp = await fetch(sendUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json", apikey: evoKey },
-            body: JSON.stringify({ number: phoneNumber, text: messages[i] }),
+            body: JSON.stringify({ number: phoneDigits, text: messages[i] }),
           });
 
           const sendRespText = await sendResp.text();
@@ -175,20 +210,16 @@ serve(async (req) => {
           } else {
             let respData: any = {};
             try { respData = JSON.parse(sendRespText); } catch {}
-            const jid = respData?.key?.remoteJid || "?";
-            const msgStatus = respData?.status || "?";
-            console.log(`[ia-responder] ✅ Msg ${i + 1} enviada → JID: ${jid} | Status: ${msgStatus}`);
+            console.log(`[ia-responder] ✅ Msg ${i + 1} enviada → JID: ${respData?.key?.remoteJid || "?"}`);
           }
         } catch (sendErr: any) {
           console.error(`[ia-responder] ❌ Erro fetch msg ${i + 1}:`, sendErr.message);
         }
       }
-    } else {
-      console.error(`[ia-responder] ⚠️ Envio impossível: evoUrl=${!!evoUrl} evoKey=${!!evoKey} instance=${instance_name}`);
     }
 
-    // ── 8. Atualizar status do lead na campanha ──
-    let novoStatus = "em_conversa";
+    // ── 9. Atualizar status e salvar histórico ──
+    let novoStatus = campLead.status;
     if (alertaLead && alertaTipo === "lead_quente") {
       novoStatus = "quente";
     } else if (conversaEncerrada) {
@@ -197,7 +228,16 @@ serve(async (req) => {
       novoStatus = "em_conversa";
     }
 
-    // Só atualiza se mudou
+    // Salvar histórico na campanha_leads
+    await supabase
+      .from("campanha_leads")
+      .update({
+        historico_conversa: historico,
+        data_ultimo_contato: new Date().toISOString(),
+      })
+      .eq("id", campLead.id);
+
+    // Atualizar status se mudou
     if (novoStatus !== campLead.status) {
       await supabase.rpc("atualizar_status_lead_campanha", {
         p_campanha_id: campLead.campanha_id,
@@ -205,90 +245,57 @@ serve(async (req) => {
         p_novo_status: novoStatus,
         p_canal: "whatsapp",
       });
-    } else {
-      // Atualiza data_ultimo_contato
-      await supabase
-        .from("campanha_leads")
-        .update({ data_ultimo_contato: new Date().toISOString() })
-        .eq("id", campLead.id);
     }
 
-    // ── 9. Alerta de lead quente → notificar responsáveis ──
+    // ── 10. Alerta de lead quente → notificar responsável ──
     if (alertaLead && alertaTipo === "lead_quente") {
-      const responsaveis = campanha?.responsaveis || [];
+      const handoffNome = briefing.handoff_nome || "Equipe GSS";
+      const handoffTelefone = briefing.handoff_telefone || "";
       const resumo = parsed.alerta_resumo || "Lead demonstrou interesse real";
 
-      console.log(
-        `[ia-responder] 🔥 LEAD QUENTE: ${lead.nome} (${phone}) - ${resumo}`
-      );
+      console.log(`[ia-responder] 🔥 LEAD QUENTE: ${lead.nome} (${phone}) - ${resumo}`);
 
-      // Notificar cada responsável via WhatsApp
-      if (evoUrl && evoKey && instance_name && responsaveis.length > 0) {
-        // Buscar telefones dos responsáveis
-        const { data: profiles } = await supabase
-          .from("profiles")
-          .select("id, nome_completo, telefone")
-          .in("id", responsaveis);
+      // Montar resumo da conversa
+      const conversaResumo = historico
+        .slice(-12)
+        .map((m: any) => `${m.role === "medico" ? "Médico" : "GSS"}: ${m.text}`)
+        .join("\n");
 
-        // Montar resumo da conversa pra o responsável
-        const conversaResumo = (historico || [])
-          .slice(-10)
-          .map((m: any) => `${m.from_me ? "GSS" : "Médico"}: ${m.message_text}`)
-          .join("\n");
+      if (evoUrl && evoKey && instance_name && handoffTelefone) {
+        const alertMsg =
+          `🔥 *LEAD QUENTE — AÇÃO NECESSÁRIA* 🔥\n\n` +
+          `*Médico:* ${lead.nome}\n` +
+          `*Telefone:* ${lead.phone_e164}\n` +
+          `*Especialidade:* ${lead.especialidade || "N/I"}\n` +
+          `${lead.cidade ? `*Cidade:* ${lead.cidade}/${lead.uf}\n` : ""}` +
+          `*Campanha:* ${campanha.nome}\n\n` +
+          `*O que aconteceu:*\n${resumo}\n\n` +
+          `*Resumo da conversa:*\n${conversaResumo}\n\n` +
+          `*Como seguir:*\n` +
+          `1. Ligue ou mande WhatsApp do SEU número para ${lead.nome}\n` +
+          `2. Telefone do médico: ${lead.phone_e164}\n` +
+          `3. O médico já demonstrou interesse — NÃO comece do zero\n` +
+          `4. Vá direto aos detalhes: valores, escala, contrato\n` +
+          `5. Se fechar, converta o lead no Sigma`;
 
-        for (const p of profiles || []) {
-          if (p.telefone) {
-            const alertMsg =
-              `🔥 *LEAD QUENTE — AÇÃO NECESSÁRIA* 🔥\n\n` +
-              `*Médico:* ${lead.nome}\n` +
-              `*Telefone:* ${lead.phone_e164}\n` +
-              `*Especialidade:* ${lead.especialidade || "N/I"}\n` +
-              `${lead.cidade ? `*Cidade:* ${lead.cidade}/${lead.uf}\n` : ""}` +
-              `*Campanha:* ${campanha.nome}\n\n` +
-              `*O que aconteceu:*\n${resumo}\n\n` +
-              `*Resumo da conversa:*\n${conversaResumo || "(sem histórico disponível)"}\n\n` +
-              `*Como seguir:*\n` +
-              `1. Abra o SigZap e encontre a conversa com ${lead.nome}\n` +
-              `2. O médico já demonstrou interesse — NÃO comece do zero\n` +
-              `3. Apresente-se: "Oi Dr(a), sou ${p.nome_completo} da GSS"\n` +
-              `4. Vá direto aos detalhes: valores, escala, contrato\n` +
-              `5. Se fechar, converta o lead no Sigma`;
+        try {
+          const sendUrl = `${evoUrl}/message/sendText/${encodeURIComponent(instance_name)}`;
 
-            // Enviar alerta
-            try {
-              await fetch(
-                `${evoUrl}/message/sendText/${encodeURIComponent(instance_name)}`,
-                {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json", apikey: evoKey },
-                  body: JSON.stringify({
-                    number: p.telefone.replace(/\D/g, ""),
-                    text: alertMsg,
-                  }),
-                }
-              );
+          await fetch(sendUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", apikey: evoKey },
+            body: JSON.stringify({
+              number: handoffTelefone.replace(/\D/g, ""),
+              text: alertMsg,
+            }),
+          });
 
-              // Enviar segunda mensagem com link direto pro lead
-              await sleep(2000);
-              const sigmaUrl = `https://sigma.gestaoservicosaude.com.br/medicos?lead=${lead.id}`;
-              await fetch(
-                `${evoUrl}/message/sendText/${encodeURIComponent(instance_name)}`,
-                {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json", apikey: evoKey },
-                  body: JSON.stringify({
-                    number: p.telefone.replace(/\D/g, ""),
-                    text: `📋 Abrir lead no Sigma: ${sigmaUrl}`,
-                  }),
-                }
-              );
-
-              console.log(`[ia-responder] 📢 Alerta + resumo enviado para ${p.nome_completo}`);
-            } catch {
-              console.error(`[ia-responder] Falha ao alertar ${p.nome_completo}`);
-            }
-          }
+          console.log(`[ia-responder] 📢 Alerta enviado para ${handoffNome} (${handoffTelefone})`);
+        } catch (alertErr: any) {
+          console.error(`[ia-responder] Falha ao alertar ${handoffNome}:`, alertErr.message);
         }
+      } else {
+        console.warn(`[ia-responder] ⚠️ Sem telefone de handoff configurado no briefing`);
       }
     }
 
@@ -299,6 +306,7 @@ serve(async (req) => {
       status: novoStatus,
       messages_sent: messages.length,
       alerta: alertaLead,
+      historico_length: historico.length,
     });
   } catch (err: any) {
     console.error("[ia-responder] ERRO:", err.message);
@@ -333,7 +341,7 @@ function buildPrompt(briefing: any, lead: any): string {
       .map((o: any) => `Se disser "${o.objecao}": responda "${o.resposta}"`)
       .join("\n  ") || "Sem objeções mapeadas.";
 
-  return `<prompt versao="sigma-prospeccao-dinamica">
+  return `<prompt versao="sigma-prospeccao-v2">
 
 <contexto>
 Você é um representante da GSS Gestão de Serviços de Saúde. Fala como colega de profissão: solto, direto, sem formalidade excessiva. Sem emoji. Sem promessas exageradas. Sem papo de telemarketing. Nunca mencione IA, automação, chatbot, prompt ou assistente virtual.
@@ -350,27 +358,34 @@ Você é um representante da GSS Gestão de Serviços de Saúde. Fala como coleg
   <valor>R$ ${b.valor_min || "?"} a R$ ${b.valor_max || "?"} por ${b.valor_por || "plantão"}</valor>
   ${beneficiosText}
   <handoff_nome>${b.handoff_nome || "equipe GSS"}</handoff_nome>
-  <handoff_telefone>${b.handoff_telefone || ""}</handoff_telefone>
 </oportunidade>
 
 <fluxo_conversa>
+CRÍTICO: Leia TODO o histórico antes de responder. NUNCA repita uma pergunta já respondida.
+Se o médico já disse a especialidade, NÃO pergunte de novo. Avance.
+Um "Sim" como resposta = passo concluído. Registre e avance.
+
 Siga essa ordem. 1 pergunta por vez. Pule o que já estiver respondido.
 
 PASSO 1 — Confirmar perfil:
   Verificar se é da especialidade certa e tem os requisitos.
+  Se já respondeu: avance.
 
 PASSO 2 — Origem e formação:
   De onde é, onde se formou.
+  Se já respondeu: avance.
 
 PASSO 3 — Experiência relevante:
   Já trabalhou em serviço similar?
+  Se já respondeu: avance.
 
 PASSO 4 — Abertura para proposta:
   Teria interesse ou abertura?
+  Se já respondeu: avance.
 
 PASSO 5 — Handoff:
   Quando demonstrar interesse real OU perguntar valores:
-  "Posso passar seu contato pra ${b.handoff_nome || "nossa equipe"}? Vai te passar todos os detalhes."
+  "Posso passar seu contato pra ${b.handoff_nome || "nossa equipe"}? Vai te passar todos os detalhes sobre valores e escala."
   Só após confirmação: "Ótimo, vou passar. Te chamam em breve."
 </fluxo_conversa>
 
@@ -388,6 +403,13 @@ PASSO 5 — Handoff:
   ${objecoesText}
 </regras>
 
+<anti_loop>
+  CRÍTICO: Antes de fazer qualquer pergunta, verifique se ela JÁ FOI FEITA no histórico.
+  Se sim, NÃO repita. Avance para o próximo passo.
+  Se o médico respondeu "Sim" a uma pergunta, o passo está CONCLUÍDO.
+  Nunca faça a mesma pergunta duas vezes.
+</anti_loop>
+
 ${b.info_extra ? `<info_adicional>${b.info_extra}</info_adicional>` : ""}
 
 <saida_json>
@@ -401,8 +423,9 @@ Responda EXCLUSIVAMENTE com JSON válido:
 }
 
 - Máximo 2 mensagens no array.
-- ALERTA_LEAD: true quando lead está quente (interesse real, perguntou valores, quer conversar com responsável).
+- ALERTA_LEAD: true quando lead está quente (interesse real confirmado, pediu handoff, perguntou valores).
 - alerta_tipo: "lead_quente" quando ALERTA_LEAD for true.
+- alerta_resumo: resumo curto do motivo quando ALERTA_LEAD for true.
 - conversa_encerrada: true quando o médico não tem perfil ou recusou definitivamente.
 </saida_json>
 
