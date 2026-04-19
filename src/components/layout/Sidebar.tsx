@@ -20,7 +20,8 @@ import {
   Menu,
   Megaphone,
   Shield,
-  Briefcase
+  Briefcase,
+  Rocket
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -43,6 +44,7 @@ const navigationTop = [
   { name: "Home", href: "/", icon: LayoutDashboard },
   { name: "Licitações", href: "/licitacoes", icon: Gavel },
   { name: "Disparos e Captação", href: "/disparos", icon: Send },
+  { name: "Prospecção", href: "/prospeccao", icon: Rocket },
   { name: "Marketing", href: "/marketing", icon: Megaphone },
   { name: "Clientes e Contratos", href: "/contratos", icon: FileText },
   { name: "Relacionamento Médico", href: "/relacionamento-medico", icon: Activity },
@@ -95,6 +97,7 @@ export function Sidebar() {
               '/workspace': 'workspace',
               '/licitacoes': 'licitacoes',
               '/disparos': 'disparos',
+              '/prospeccao': 'disparos',
               '/marketing': 'marketing',
               '/contratos': 'contratos',
               '/relacionamento-medico': 'relacionamento',

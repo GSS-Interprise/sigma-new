@@ -1289,6 +1289,88 @@ export type Database = {
         }
         Relationships: []
       }
+      campanha_leads: {
+        Row: {
+          campanha_id: string
+          canal_atual: string | null
+          chip_usado_id: string | null
+          conversa_id: string | null
+          created_at: string | null
+          data_primeiro_contato: string | null
+          data_status: string | null
+          data_ultimo_contato: string | null
+          erro_envio: string | null
+          id: string
+          lead_id: string
+          mensagem_enviada: string | null
+          metadados: Json | null
+          status: Database["public"]["Enums"]["status_lead_campanha"]
+          tentativas: number | null
+          updated_at: string | null
+          variation_indices: number[] | null
+        }
+        Insert: {
+          campanha_id: string
+          canal_atual?: string | null
+          chip_usado_id?: string | null
+          conversa_id?: string | null
+          created_at?: string | null
+          data_primeiro_contato?: string | null
+          data_status?: string | null
+          data_ultimo_contato?: string | null
+          erro_envio?: string | null
+          id?: string
+          lead_id: string
+          mensagem_enviada?: string | null
+          metadados?: Json | null
+          status?: Database["public"]["Enums"]["status_lead_campanha"]
+          tentativas?: number | null
+          updated_at?: string | null
+          variation_indices?: number[] | null
+        }
+        Update: {
+          campanha_id?: string
+          canal_atual?: string | null
+          chip_usado_id?: string | null
+          conversa_id?: string | null
+          created_at?: string | null
+          data_primeiro_contato?: string | null
+          data_status?: string | null
+          data_ultimo_contato?: string | null
+          erro_envio?: string | null
+          id?: string
+          lead_id?: string
+          mensagem_enviada?: string | null
+          metadados?: Json | null
+          status?: Database["public"]["Enums"]["status_lead_campanha"]
+          tentativas?: number | null
+          updated_at?: string | null
+          variation_indices?: number[] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campanha_leads_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "campanhas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campanha_leads_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campanha_leads_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_leads_duplicados"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       campanha_proposta_canais: {
         Row: {
           campanha_proposta_id: string
@@ -1402,7 +1484,12 @@ export type Database = {
           agendamento_tipo: string | null
           arquivo_csv_url: string | null
           assunto_email: string | null
+          batch_size: number | null
+          briefing_ia: Json | null
           canal: Database["public"]["Enums"]["canal_campanha"]
+          chip_fallback_id: string | null
+          chip_id: string | null
+          chip_ids: string[] | null
           corpo_html: string | null
           created_at: string | null
           criado_por: string | null
@@ -1410,26 +1497,47 @@ export type Database = {
           data_agendamento: string | null
           data_inicio: string | null
           data_termino: string | null
+          delay_between_batches_max: number | null
+          delay_between_batches_min: number | null
+          delay_max_ms: number | null
+          delay_min_ms: number | null
           descricao: string | null
+          disparos_enviados: number | null
+          disparos_falhas: number | null
           empresas_vinculadas: string[] | null
+          especialidade_id: string | null
           horario_inteligente: boolean | null
           id: string
+          limite_diario_campanha: number | null
           mensagem: string | null
+          mensagem_inicial: string | null
+          next_batch_at: string | null
           nome: string
           objetivo: string | null
           orcamento: number | null
           pecas_url: string[] | null
           publico_alvo: Json | null
+          regiao_cidades: string[] | null
+          regiao_estado: string | null
+          responsaveis: string[] | null
           responsavel_id: string | null
+          rotation_strategy: string | null
           segmento_id: string | null
           setores_vinculados: string[] | null
           status: Database["public"]["Enums"]["status_campanha"]
           tamanho_lote: number | null
+          tipo_campanha: string | null
           total_aberturas: number | null
+          total_aquecido: number | null
           total_cliques: number | null
+          total_contatado: number | null
           total_conversoes: number | null
+          total_convertido: number | null
+          total_em_conversa: number | null
           total_entregues: number | null
           total_enviados: number | null
+          total_frio: number | null
+          total_quente: number | null
           total_respostas: number | null
           updated_at: string | null
           variaveis_dinamicas: string[] | null
@@ -1438,7 +1546,12 @@ export type Database = {
           agendamento_tipo?: string | null
           arquivo_csv_url?: string | null
           assunto_email?: string | null
+          batch_size?: number | null
+          briefing_ia?: Json | null
           canal: Database["public"]["Enums"]["canal_campanha"]
+          chip_fallback_id?: string | null
+          chip_id?: string | null
+          chip_ids?: string[] | null
           corpo_html?: string | null
           created_at?: string | null
           criado_por?: string | null
@@ -1446,26 +1559,47 @@ export type Database = {
           data_agendamento?: string | null
           data_inicio?: string | null
           data_termino?: string | null
+          delay_between_batches_max?: number | null
+          delay_between_batches_min?: number | null
+          delay_max_ms?: number | null
+          delay_min_ms?: number | null
           descricao?: string | null
+          disparos_enviados?: number | null
+          disparos_falhas?: number | null
           empresas_vinculadas?: string[] | null
+          especialidade_id?: string | null
           horario_inteligente?: boolean | null
           id?: string
+          limite_diario_campanha?: number | null
           mensagem?: string | null
+          mensagem_inicial?: string | null
+          next_batch_at?: string | null
           nome: string
           objetivo?: string | null
           orcamento?: number | null
           pecas_url?: string[] | null
           publico_alvo?: Json | null
+          regiao_cidades?: string[] | null
+          regiao_estado?: string | null
+          responsaveis?: string[] | null
           responsavel_id?: string | null
+          rotation_strategy?: string | null
           segmento_id?: string | null
           setores_vinculados?: string[] | null
           status?: Database["public"]["Enums"]["status_campanha"]
           tamanho_lote?: number | null
+          tipo_campanha?: string | null
           total_aberturas?: number | null
+          total_aquecido?: number | null
           total_cliques?: number | null
+          total_contatado?: number | null
           total_conversoes?: number | null
+          total_convertido?: number | null
+          total_em_conversa?: number | null
           total_entregues?: number | null
           total_enviados?: number | null
+          total_frio?: number | null
+          total_quente?: number | null
           total_respostas?: number | null
           updated_at?: string | null
           variaveis_dinamicas?: string[] | null
@@ -1474,7 +1608,12 @@ export type Database = {
           agendamento_tipo?: string | null
           arquivo_csv_url?: string | null
           assunto_email?: string | null
+          batch_size?: number | null
+          briefing_ia?: Json | null
           canal?: Database["public"]["Enums"]["canal_campanha"]
+          chip_fallback_id?: string | null
+          chip_id?: string | null
+          chip_ids?: string[] | null
           corpo_html?: string | null
           created_at?: string | null
           criado_por?: string | null
@@ -1482,31 +1621,74 @@ export type Database = {
           data_agendamento?: string | null
           data_inicio?: string | null
           data_termino?: string | null
+          delay_between_batches_max?: number | null
+          delay_between_batches_min?: number | null
+          delay_max_ms?: number | null
+          delay_min_ms?: number | null
           descricao?: string | null
+          disparos_enviados?: number | null
+          disparos_falhas?: number | null
           empresas_vinculadas?: string[] | null
+          especialidade_id?: string | null
           horario_inteligente?: boolean | null
           id?: string
+          limite_diario_campanha?: number | null
           mensagem?: string | null
+          mensagem_inicial?: string | null
+          next_batch_at?: string | null
           nome?: string
           objetivo?: string | null
           orcamento?: number | null
           pecas_url?: string[] | null
           publico_alvo?: Json | null
+          regiao_cidades?: string[] | null
+          regiao_estado?: string | null
+          responsaveis?: string[] | null
           responsavel_id?: string | null
+          rotation_strategy?: string | null
           segmento_id?: string | null
           setores_vinculados?: string[] | null
           status?: Database["public"]["Enums"]["status_campanha"]
           tamanho_lote?: number | null
+          tipo_campanha?: string | null
           total_aberturas?: number | null
+          total_aquecido?: number | null
           total_cliques?: number | null
+          total_contatado?: number | null
           total_conversoes?: number | null
+          total_convertido?: number | null
+          total_em_conversa?: number | null
           total_entregues?: number | null
           total_enviados?: number | null
+          total_frio?: number | null
+          total_quente?: number | null
           total_respostas?: number | null
           updated_at?: string | null
           variaveis_dinamicas?: string[] | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "campanhas_chip_fallback_id_fkey"
+            columns: ["chip_fallback_id"]
+            isOneToOne: false
+            referencedRelation: "chips"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campanhas_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: false
+            referencedRelation: "chips"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campanhas_especialidade_id_fkey"
+            columns: ["especialidade_id"]
+            isOneToOne: false
+            referencedRelation: "especialidades"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       campanhas_envios: {
         Row: {
@@ -1793,6 +1975,8 @@ export type Database = {
           limite_diario: number | null
           nome: string
           numero: string | null
+          origem_padrao_inbound: string | null
+          pode_disparar: boolean | null
           profile_name: string | null
           profile_picture_url: string | null
           provedor: string | null
@@ -1815,6 +1999,8 @@ export type Database = {
           limite_diario?: number | null
           nome: string
           numero?: string | null
+          origem_padrao_inbound?: string | null
+          pode_disparar?: boolean | null
           profile_name?: string | null
           profile_picture_url?: string | null
           provedor?: string | null
@@ -1837,6 +2023,8 @@ export type Database = {
           limite_diario?: number | null
           nome?: string
           numero?: string | null
+          origem_padrao_inbound?: string | null
+          pode_disparar?: boolean | null
           profile_name?: string | null
           profile_picture_url?: string | null
           provedor?: string | null
@@ -10670,12 +10858,34 @@ export type Database = {
       }
     }
     Functions: {
+      atualizar_status_lead_campanha: {
+        Args: {
+          p_campanha_id: string
+          p_canal?: string
+          p_lead_id: string
+          p_metadados?: Json
+          p_novo_status: Database["public"]["Enums"]["status_lead_campanha"]
+        }
+        Returns: undefined
+      }
       calcular_status_resposta_atividade: {
         Args: { p_respondido_em: string; p_resposta_esperada_ate: string }
         Returns: string
       }
       cleanup_expired_edit_locks: { Args: never; Returns: undefined }
       cleanup_whatsapp_rate_limit: { Args: never; Returns: undefined }
+      exportar_leads_trafego_pago: {
+        Args: { p_campanha_id: string }
+        Returns: {
+          cidade: string
+          email: string
+          especialidade: string
+          lead_id: string
+          nome: string
+          phone: string
+          uf: string
+        }[]
+      }
       find_lead_by_phone: { Args: { p_phone: string }; Returns: string }
       generate_ticket_numero: { Args: never; Returns: string }
       get_leads_especialidade_counts: {
@@ -10766,6 +10976,17 @@ export type Database = {
       release_licitacao_lock: {
         Args: { p_licitacao_id: string }
         Returns: undefined
+      }
+      selecionar_leads_campanha: {
+        Args: { p_campanha_id: string; p_limite?: number }
+        Returns: {
+          cidade: string
+          especialidade_nome: string
+          lead_id: string
+          nome: string
+          phone_e164: string
+          uf: string
+        }[]
       }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
@@ -10898,6 +11119,15 @@ export type Database = {
         | "relacionamento_medico"
       status_documentacao: "pendente" | "em_analise" | "aprovada" | "reprovada"
       status_execucao: "pendente" | "executada" | "cancelada"
+      status_lead_campanha:
+        | "frio"
+        | "contatado"
+        | "em_conversa"
+        | "aquecido"
+        | "quente"
+        | "convertido"
+        | "sem_resposta"
+        | "descartado"
       status_licitacao:
         | "captacao_edital"
         | "edital_analise"
@@ -10978,6 +11208,15 @@ export type Database = {
         | "lead_qualificado"
         | "em_resposta"
         | "lead_descartado"
+        | "export_trafego_pago"
+        | "inbound_whatsapp"
+        | "outbound_whatsapp"
+        | "inbound_email"
+        | "inbound_instagram"
+        | "campanha_status_change"
+        | "campanha_disparo"
+        | "lead_aquecido"
+        | "lead_quente_handoff"
       tipo_impacto_suporte:
         | "sistema"
         | "infraestrutura"
@@ -11252,6 +11491,16 @@ export const Constants = {
       ],
       status_documentacao: ["pendente", "em_analise", "aprovada", "reprovada"],
       status_execucao: ["pendente", "executada", "cancelada"],
+      status_lead_campanha: [
+        "frio",
+        "contatado",
+        "em_conversa",
+        "aquecido",
+        "quente",
+        "convertido",
+        "sem_resposta",
+        "descartado",
+      ],
       status_licitacao: [
         "captacao_edital",
         "edital_analise",
@@ -11337,6 +11586,15 @@ export const Constants = {
         "lead_qualificado",
         "em_resposta",
         "lead_descartado",
+        "export_trafego_pago",
+        "inbound_whatsapp",
+        "outbound_whatsapp",
+        "inbound_email",
+        "inbound_instagram",
+        "campanha_status_change",
+        "campanha_disparo",
+        "lead_aquecido",
+        "lead_quente_handoff",
       ],
       tipo_impacto_suporte: [
         "sistema",
