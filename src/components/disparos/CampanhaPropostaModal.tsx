@@ -55,7 +55,7 @@ export function CampanhaPropostaModal({ campanhaPropostaId, open, onOpenChange }
       const { data, error } = await supabase
         .from("campanha_propostas")
         .select(
-          "*, proposta:proposta_id(id, id_proposta, descricao), lista:lista_id(id, nome, modo, total_estimado), campanha:campanha_id(id, nome)"
+          "*, proposta:proposta_id(id, id_proposta, descricao), lista:lista_id(id, nome, total_estimado), campanha:campanha_id(id, nome)"
         )
         .eq("id", campanhaPropostaId!)
         .maybeSingle();
