@@ -23,7 +23,35 @@ export function useLeadsAContactar(campanhaPropostaId: string | null | undefined
         .eq("campanha_proposta_id", campanhaPropostaId!)
         .eq("status_proposta", "a_contactar");
       if (e1) throw e1;
-      const leadIds = (statusRows || []).map((r: any) => r.lead_id);
+
+      let leadIds = Array.from(
+        new Set((statusRows || []).map((r: any) => r.lead_id).filter(Boolean))
+      ) as string[];
+
+      // Fallback: quando a proposta ainda não materializou status por canal,
+      // usa os leads da lista vinculada e trata todos como "a contactar".
+      if (leadIds.length === 0) {
+        const { data: propostaRow, error: eLista } = await supabase
+          .from("campanha_propostas")
+          .select("lista_id")
+          .eq("id", campanhaPropostaId!)
+          .maybeSingle();
+
+        if (eLista) throw eLista;
+
+        if (propostaRow?.lista_id) {
+          const { data: listaItems, error: eItems } = await supabase
+            .from("disparo_lista_itens")
+            .select("lead_id")
+            .eq("lista_id", propostaRow.lista_id);
+
+          if (eItems) throw eItems;
+          leadIds = Array.from(
+            new Set((listaItems || []).map((item: any) => item.lead_id).filter(Boolean))
+          ) as string[];
+        }
+      }
+
       if (leadIds.length === 0) return [];
 
       // 2. Busca dados dos leads
