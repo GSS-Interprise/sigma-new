@@ -154,20 +154,24 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
   };
   const limparSelecao = () => setSelecionados(new Set());
 
-  const fecharLead = async (leadId: string) => {
+  const encerrarNaProposta = async (leadId: string) => {
+    if (!cascataAtiva) return;
     setFechandoId(leadId);
-    const { error } = await supabase
-      .from("leads")
-      .update({ status: "Convertido" })
-      .eq("id", leadId);
+    const { error } = await (supabase as any).rpc("fechar_lead_canal", {
+      p_campanha_proposta_id: campanhaPropostaId,
+      p_lead_id: leadId,
+      p_canal: canal,
+      p_status_final: "fechado",
+      p_motivo: "Encerrado manualmente nesta proposta",
+    });
     setFechandoId(null);
     if (error) {
-      toast.error("Erro ao fechar lead: " + error.message);
+      toast.error("Erro ao encerrar: " + error.message);
       return;
     }
-    toast.success("Lead marcado como fechado");
-    qc.invalidateQueries({ queryKey: ["campanha-lista-leads", listaId] });
-    qc.invalidateQueries({ queryKey: ["campanha-proposta-leads-stats", listaId] });
+    toast.success("Lead encerrado nesta proposta");
+    qc.invalidateQueries({ queryKey: ["lead-status-proposta", campanhaPropostaId] });
+    qc.invalidateQueries({ queryKey: ["lead-canais", campanhaPropostaId] });
   };
 
   return (
