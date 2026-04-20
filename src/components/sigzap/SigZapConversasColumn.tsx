@@ -416,6 +416,9 @@ export function SigZapConversasColumn({
       return color.replace('hsl(', 'hsla(').replace(')', `, ${alpha})`);
     }
     if (color.startsWith('#')) return `${color}${Math.round(alpha * 255).toString(16).padStart(2, '0')}`;
+    if (color.startsWith('rgb(')) {
+      return color.replace('rgb(', 'rgba(').replace(')', `, ${alpha})`);
+    }
     return color;
   };
 
