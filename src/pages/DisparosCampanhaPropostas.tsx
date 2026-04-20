@@ -77,7 +77,6 @@ export default function DisparosCampanhaPropostas() {
                       {campanha.status}
                     </Badge>
                   )}
-                  {campanha?.canal && <Badge variant="outline">{campanha.canal}</Badge>}
                   {campanha?.objetivo && (
                     <span className="text-xs text-muted-foreground">🎯 {campanha.objetivo}</span>
                   )}
