@@ -1,18 +1,20 @@
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card } from "@/components/ui/card";
-import { Search, User, Phone, MapPin, Loader2 } from "lucide-react";
+import { Search, Loader2, ListChecks, CheckCircle2 } from "lucide-react";
 import { LeadProntuarioDialog } from "@/components/medicos/LeadProntuarioDialog";
+import { toast } from "sonner";
 
 type FiltroStatus = "todos" | "contactar" | "contactado" | "aberto" | "fechado";
 
 interface Props {
   listaId: string | null | undefined;
+  listaNome?: string | null;
   /** Cor do canal (para acento visual) */
   accentClass?: string;
 }
@@ -43,10 +45,12 @@ const FILTROS: { value: FiltroStatus; label: string }[] = [
   { value: "fechado", label: "Fechados" },
 ];
 
-export function CampanhaLeadsList({ listaId }: Props) {
+export function CampanhaLeadsList({ listaId, listaNome }: Props) {
   const [filtro, setFiltro] = useState<FiltroStatus>("todos");
   const [busca, setBusca] = useState("");
   const [leadAberto, setLeadAberto] = useState<string | null>(null);
+  const [fechandoId, setFechandoId] = useState<string | null>(null);
+  const qc = useQueryClient();
 
   const { data: itens = [], isLoading } = useQuery({
     queryKey: ["campanha-lista-leads", listaId],
@@ -55,7 +59,7 @@ export function CampanhaLeadsList({ listaId }: Props) {
       const { data, error } = await supabase
         .from("disparo_lista_itens")
         .select(
-          "id, lead_id, leads:lead_id (id, nome, phone_e164, especialidade, uf, cidade, status)"
+          "id, lead_id, leads:lead_id (id, nome, phone_e164, email, especialidade, uf, cidade, status)"
         )
         .eq("lista_id", listaId!);
       if (error) throw error;
@@ -99,18 +103,48 @@ export function CampanhaLeadsList({ listaId }: Props) {
     );
   }
 
+  const fecharLead = async (leadId: string) => {
+    setFechandoId(leadId);
+    const { error } = await supabase
+      .from("leads")
+      .update({ status: "Convertido" })
+      .eq("id", leadId);
+    setFechandoId(null);
+    if (error) {
+      toast.error("Erro ao fechar lead: " + error.message);
+      return;
+    }
+    toast.success("Lead marcado como fechado");
+    qc.invalidateQueries({ queryKey: ["campanha-lista-leads", listaId] });
+    qc.invalidateQueries({ queryKey: ["campanha-proposta-leads-stats", listaId] });
+  };
+
   return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-2 flex-wrap">
+    <Card className="p-0 overflow-hidden">
+      <div className="flex items-center gap-3 p-3 border-b bg-muted/30 flex-wrap">
+        <div className="flex items-center gap-2 min-w-0">
+          <ListChecks className="h-4 w-4 text-primary shrink-0" />
+          <div className="min-w-0">
+            <div className="text-sm font-semibold truncate">
+              Lista de leads {listaNome ? `– ${listaNome}` : ""}
+            </div>
+            <div className="text-[11px] text-muted-foreground font-mono truncate">
+              id: {listaId}
+            </div>
+          </div>
+        </div>
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
-            placeholder="Buscar lead..."
+            placeholder="Buscar por nome, telefone, email ou especialidade..."
             className="pl-9 h-9"
           />
         </div>
+      </div>
+
+      <div className="flex items-center gap-1 flex-wrap p-2 border-b">
         <div className="flex gap-1 flex-wrap">
           {FILTROS.map((f) => (
             <Button
@@ -134,47 +168,74 @@ export function CampanhaLeadsList({ listaId }: Props) {
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         </div>
       ) : filtrados.length === 0 ? (
-        <Card className="p-6 text-center text-sm text-muted-foreground">
+        <div className="p-6 text-center text-sm text-muted-foreground">
           Nenhum lead encontrado neste filtro.
-        </Card>
+        </div>
       ) : (
-        <ScrollArea className="h-[420px] pr-3">
-          <div className="grid gap-2">
-            {filtrados.map((l: any) => (
-              <Card
-                key={l.id}
-                onClick={() => setLeadAberto(l.id)}
-                className="p-3 cursor-pointer hover:bg-accent/50 transition-colors"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-2 min-w-0 flex-1">
-                    <User className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-                    <div className="min-w-0">
-                      <div className="font-medium text-sm truncate">{l.nome || "Sem nome"}</div>
-                      <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5 flex-wrap">
-                        {l.phone_e164 && (
-                          <span className="flex items-center gap-1">
-                            <Phone className="h-3 w-3" />
-                            {l.phone_e164}
-                          </span>
-                        )}
-                        {(l.cidade || l.uf) && (
-                          <span className="flex items-center gap-1">
-                            <MapPin className="h-3 w-3" />
-                            {[l.cidade, l.uf].filter(Boolean).join(" / ")}
-                          </span>
-                        )}
-                        {l.especialidade && <span>{l.especialidade}</span>}
-                      </div>
-                    </div>
-                  </div>
-                  <Badge variant="outline" className="text-[10px] shrink-0">
-                    {l.status || "Novo"}
-                  </Badge>
-                </div>
-              </Card>
-            ))}
-          </div>
+        <ScrollArea className="h-[440px]">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-muted/50 backdrop-blur z-10">
+              <tr className="text-left text-xs uppercase tracking-wider text-muted-foreground">
+                <th className="px-4 py-2 font-semibold">#</th>
+                <th className="px-4 py-2 font-semibold">Nome</th>
+                <th className="px-4 py-2 font-semibold">Telefone</th>
+                <th className="px-4 py-2 font-semibold">Email</th>
+                <th className="px-4 py-2 font-semibold">Status</th>
+                <th className="px-4 py-2 font-semibold text-right">Ação</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtrados.map((l: any, idx: number) => {
+                const fechado = STATUS_FECHADOS.includes(l.status);
+                return (
+                  <tr
+                    key={l.id}
+                    className="border-t hover:bg-accent/40 transition-colors"
+                  >
+                    <td className="px-4 py-2 text-muted-foreground">{idx + 1}</td>
+                    <td
+                      className="px-4 py-2 font-medium cursor-pointer"
+                      onClick={() => setLeadAberto(l.id)}
+                    >
+                      {l.nome || "Sem nome"}
+                    </td>
+                    <td className="px-4 py-2 text-muted-foreground">
+                      {l.phone_e164 || "—"}
+                    </td>
+                    <td className="px-4 py-2 text-muted-foreground truncate max-w-[200px]">
+                      {l.email || "—"}
+                    </td>
+                    <td className="px-4 py-2">
+                      <Badge variant={fechado ? "secondary" : "outline"} className="text-[10px]">
+                        {l.status || "Novo"}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-2 text-right">
+                      {fechado ? (
+                        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                          <CheckCircle2 className="h-3.5 w-3.5" /> Fechado
+                        </span>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={fechandoId === l.id}
+                          onClick={() => fecharLead(l.id)}
+                          className="h-7"
+                        >
+                          {fechandoId === l.id ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            "Fechar lead"
+                          )}
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </ScrollArea>
       )}
 
@@ -183,6 +244,6 @@ export function CampanhaLeadsList({ listaId }: Props) {
         open={!!leadAberto}
         onOpenChange={(o) => !o && setLeadAberto(null)}
       />
-    </div>
+    </Card>
   );
 }
