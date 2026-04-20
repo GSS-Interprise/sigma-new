@@ -136,24 +136,30 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
     },
   });
 
+  // Aplica o gate da cascata: só leads cujo canal anterior foi finalizado.
+  const itensVisiveis = useMemo(() => {
+    if (!leadsLiberadosPorCascata) return itens;
+    return itens.filter((l: any) => leadsLiberadosPorCascata.has(l.id));
+  }, [itens, leadsLiberadosPorCascata]);
+
   const counts = useMemo(() => {
     const c: Record<FiltroStatus, number> = {
-      todos: itens.length,
+      todos: itensVisiveis.length,
       contactar: 0,
       contactado: 0,
       aberto: 0,
       fechado: 0,
     };
-    for (const l of itens) {
+    for (const l of itensVisiveis) {
       const st = statusMap?.get(l.id)?.status_proposta;
       c[statusToBucket(st)]++;
     }
     return c;
-  }, [itens, statusMap]);
+  }, [itensVisiveis, statusMap]);
 
   const filtrados = useMemo(() => {
     const q = busca.trim().toLowerCase();
-    return itens.filter((l: any) => {
+    return itensVisiveis.filter((l: any) => {
       if (filtro !== "todos") {
         const st = statusMap?.get(l.id)?.status_proposta;
         if (statusToBucket(st) !== filtro) return false;
@@ -164,7 +170,7 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
       }
       return true;
     });
-  }, [itens, filtro, busca, statusMap]);
+  }, [itensVisiveis, filtro, busca, statusMap]);
 
   if (!listaId) {
     return (
