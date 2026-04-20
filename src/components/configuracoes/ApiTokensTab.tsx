@@ -351,6 +351,15 @@ export function ApiTokensTab() {
                           >
                             <Copy className="h-3 w-3" />
                           </Button>
+                         <Button
+                           size="sm"
+                           variant="ghost"
+                           onClick={() => copyToken(`Bearer ${token.token}`)}
+                           title="Copiar como Bearer token"
+                         >
+                           <span className="text-[10px] font-mono">Bearer</span>
+                           <Copy className="h-3 w-3 ml-1" />
+                         </Button>
                         </div>
                       </TableCell>
                       <TableCell>
