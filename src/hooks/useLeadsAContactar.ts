@@ -24,7 +24,9 @@ export function useLeadsAContactar(campanhaPropostaId: string | null | undefined
         .eq("status_proposta", "a_contactar");
       if (e1) throw e1;
 
-      let leadIds = Array.from(new Set((statusRows || []).map((r: any) => r.lead_id)));
+      let leadIds = Array.from(
+        new Set((statusRows || []).map((r: any) => r.lead_id).filter(Boolean))
+      ) as string[];
 
       // Fallback: quando a proposta ainda não materializou status por canal,
       // usa os leads da lista vinculada e trata todos como "a contactar".
@@ -44,7 +46,9 @@ export function useLeadsAContactar(campanhaPropostaId: string | null | undefined
             .eq("lista_id", propostaRow.lista_id);
 
           if (eItems) throw eItems;
-          leadIds = Array.from(new Set((listaItems || []).map((item: any) => item.lead_id)));
+          leadIds = Array.from(
+            new Set((listaItems || []).map((item: any) => item.lead_id).filter(Boolean))
+          ) as string[];
         }
       }
 
