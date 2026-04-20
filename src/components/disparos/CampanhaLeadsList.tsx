@@ -33,37 +33,22 @@ interface Props {
   canal?: CanalCascata;
 }
 
-// Mapeamento de status do lead para os 4 buckets do filtro
-// Baseado nos status reais existentes na tabela `leads` e no kanban_status_config
-const STATUS_FECHADOS = [
-  "Convertido",
-  "Descartado",
-  "Proposta Recusada",
-  "Devolucao_Contratos",
-];
-const STATUS_CONTACTADOS = [
-  "Acompanhamento",
-  "Em Conversa",
-  "Em Resposta",
-  "Qualificado",
-  "Proposta Enviada",
-  "Proposta Aceita",
-];
-const STATUS_CONTACTAR = ["Novo"];
-// "Em aberto" = qualquer lead que não está fechado e já saiu de "Novo"
-const STATUS_ABERTOS = [...STATUS_CONTACTADOS];
-
-function bucketize(status: string | null | undefined): FiltroStatus[] {
-  const s = status || "Novo";
-  const buckets: FiltroStatus[] = [];
-  if (STATUS_FECHADOS.includes(s)) buckets.push("fechado");
-  else {
-    if (STATUS_ABERTOS.includes(s)) buckets.push("aberto");
-    if (STATUS_CONTACTADOS.includes(s)) buckets.push("contactado");
-    if (STATUS_CONTACTAR.includes(s)) buckets.push("contactar");
+function statusToBucket(status: StatusProposta | undefined): FiltroStatus {
+  switch (status) {
+    case "em_aberto": return "aberto";
+    case "contactado": return "contactado";
+    case "fechado_proposta": return "fechado";
+    case "a_contactar":
+    default: return "contactar";
   }
-  return buckets;
 }
+
+const STATUS_LABEL: Record<StatusProposta, string> = {
+  a_contactar: "A contactar",
+  em_aberto: "Em aberto",
+  contactado: "Contactado",
+  fechado_proposta: "Fechado",
+};
 
 const FILTROS: { value: FiltroStatus; label: string }[] = [
   { value: "todos", label: "Todos" },
