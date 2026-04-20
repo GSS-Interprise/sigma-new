@@ -20,10 +20,24 @@ interface Props {
 }
 
 // Mapeamento de status do lead para os 4 buckets do filtro
-const STATUS_FECHADOS = ["Convertido", "Descartado", "Desinteresse", "Bloqueado", "Perdido"];
-const STATUS_CONTACTADOS = ["Em conversa", "Em negociação", "Proposta enviada", "Follow-up"];
-const STATUS_ABERTOS = ["Aberto", "Em conversa", "Em negociação", "Proposta enviada", "Follow-up", "Novo"];
-const STATUS_CONTACTAR = ["Novo", "Sem contato", "A contactar", "Pendente"];
+// Baseado nos status reais existentes na tabela `leads` e no kanban_status_config
+const STATUS_FECHADOS = [
+  "Convertido",
+  "Descartado",
+  "Proposta Recusada",
+  "Devolucao_Contratos",
+];
+const STATUS_CONTACTADOS = [
+  "Acompanhamento",
+  "Em Conversa",
+  "Em Resposta",
+  "Qualificado",
+  "Proposta Enviada",
+  "Proposta Aceita",
+];
+const STATUS_CONTACTAR = ["Novo"];
+// "Em aberto" = qualquer lead que não está fechado e já saiu de "Novo"
+const STATUS_ABERTOS = [...STATUS_CONTACTADOS];
 
 function bucketize(status: string | null | undefined): FiltroStatus[] {
   const s = status || "Novo";
