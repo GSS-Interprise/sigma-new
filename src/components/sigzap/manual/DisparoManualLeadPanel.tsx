@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Phone, Send, Ban, Bookmark, Unlock, Loader2, X, Check } from "lucide-react";
+import { Phone, Send, Ban, Bookmark, Unlock, Loader2, X, Check, MessageCircle, Pencil, BanIcon, RotateCcw, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDisparoManual } from "@/hooks/useDisparoManual";
 import { LiberarLeadDialog } from "@/components/disparos/LiberarLeadDialog";
