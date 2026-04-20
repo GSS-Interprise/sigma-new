@@ -395,31 +395,8 @@ export function DisparoManualLeadPanel({ campanhaPropostaId, leadId }: Props) {
             )}
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="msg" className="text-xs font-semibold uppercase text-muted-foreground">
-              Mensagem (suporta spintax {"{a|b}"} e {"{{nome}}"})
-            </Label>
-            <Textarea
-              id="msg"
-              value={mensagem}
-              onChange={(e) => setMensagem(e.target.value)}
-              placeholder="Olá {{nome}}, {tudo bem|como vai}?"
-              rows={5}
-            />
-          </div>
         </div>
       </ScrollArea>
-
-      <div className="p-3 border-t">
-        <Button className="w-full" onClick={handleSend} disabled={!canSend || disparo.isPending}>
-          {disparo.isPending ? (
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-          ) : (
-            <Send className="h-4 w-4 mr-2" />
-          )}
-          Enviar disparo manual
-        </Button>
-      </div>
 
       {liberarOpen && campanhaPropostaId && lead && (
         <LiberarLeadDialog
