@@ -39,6 +39,8 @@ export function DisparoManualLeadPanel({ campanhaPropostaId, leadId }: Props) {
   const [mensagem, setMensagem] = useState("");
   const [liberarOpen, setLiberarOpen] = useState(false);
   const disparo = useDisparoManual();
+  const [checkingWpp, setCheckingWpp] = useState(false);
+  const [wppStatus, setWppStatus] = useState<Record<string, "has" | "no" | "unchecked">>({});
 
   // Lead
   const { data: lead, isLoading: loadingLead } = useQuery({
