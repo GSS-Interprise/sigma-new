@@ -11751,6 +11751,8 @@ export type Database = {
         | "campanha_disparo"
         | "lead_aquecido"
         | "lead_quente_handoff"
+        | "canal_encerrado"
+        | "campanha_encerrada"
       tipo_impacto_suporte:
         | "sistema"
         | "infraestrutura"
@@ -12129,6 +12131,8 @@ export const Constants = {
         "campanha_disparo",
         "lead_aquecido",
         "lead_quente_handoff",
+        "canal_encerrado",
+        "campanha_encerrada",
       ],
       tipo_impacto_suporte: [
         "sistema",
