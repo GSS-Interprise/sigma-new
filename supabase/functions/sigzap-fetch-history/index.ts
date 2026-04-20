@@ -376,7 +376,7 @@ Deno.serve(async (req) => {
         total: messagesList.length,
         already_existed: existingIds.size,
         page,
-        has_more: messagesList.length === limit,
+        has_more: perCallCounts.some((c) => c === limit),
         profile_updated: profileUpdated,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
