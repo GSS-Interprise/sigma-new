@@ -58,6 +58,26 @@ const FILTROS: { value: FiltroStatus; label: string }[] = [
   { value: "fechado", label: "Fechados" },
 ];
 
+// Cadeia linear pós Fase 1. Cada canal só lista leads quando o canal anterior
+// foi finalizado (status_final ≠ 'aberto') para aquele lead.
+const CANAL_ANTERIOR: Partial<Record<CanalCascata, CanalCascata>> = {
+  email: "trafego_pago",      // Fase 1 (whatsapp + trafego_pago) → email
+  instagram: "email",
+  ligacao: "instagram",
+  linkedin: "ligacao",
+  tiktok: "linkedin",
+};
+
+const CANAL_LABEL: Record<CanalCascata, string> = {
+  whatsapp: "WhatsApp",
+  trafego_pago: "Tráfego Pago",
+  email: "Email",
+  instagram: "Instagram",
+  ligacao: "Ligação",
+  linkedin: "LinkedIn",
+  tiktok: "TikTok",
+};
+
 export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, canal }: Props) {
   const [filtro, setFiltro] = useState<FiltroStatus>("todos");
   const [busca, setBusca] = useState("");
@@ -70,6 +90,20 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
   const { data: canaisRows = [] } = useLeadCanais(cascataAtiva ? campanhaPropostaId : undefined);
   const { data: statusMap } = useLeadStatusProposta(campanhaPropostaId);
   const [liberarLead, setLiberarLead] = useState<{ id: string; nome?: string } | null>(null);
+
+  // Para canais pós Fase 1: leads liberados são aqueles cujo canal anterior
+  // já tem ao menos uma raia finalizada (status_final ≠ 'aberto').
+  const canalAnterior = canal ? CANAL_ANTERIOR[canal] : undefined;
+  const leadsLiberadosPorCascata = useMemo(() => {
+    if (!cascataAtiva || !canalAnterior) return null; // null = sem restrição
+    const set = new Set<string>();
+    for (const r of canaisRows) {
+      if (r.canal === canalAnterior && r.status_final !== "aberto") {
+        set.add(r.lead_id);
+      }
+    }
+    return set;
+  }, [canaisRows, cascataAtiva, canalAnterior]);
 
   // Tempo na raia atual por lead (somente do canal ativo desta aba)
   const tempoPorLead = useMemo(() => {
@@ -102,24 +136,30 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
     },
   });
 
+  // Aplica o gate da cascata: só leads cujo canal anterior foi finalizado.
+  const itensVisiveis = useMemo(() => {
+    if (!leadsLiberadosPorCascata) return itens;
+    return itens.filter((l: any) => leadsLiberadosPorCascata.has(l.id));
+  }, [itens, leadsLiberadosPorCascata]);
+
   const counts = useMemo(() => {
     const c: Record<FiltroStatus, number> = {
-      todos: itens.length,
+      todos: itensVisiveis.length,
       contactar: 0,
       contactado: 0,
       aberto: 0,
       fechado: 0,
     };
-    for (const l of itens) {
+    for (const l of itensVisiveis) {
       const st = statusMap?.get(l.id)?.status_proposta;
       c[statusToBucket(st)]++;
     }
     return c;
-  }, [itens, statusMap]);
+  }, [itensVisiveis, statusMap]);
 
   const filtrados = useMemo(() => {
     const q = busca.trim().toLowerCase();
-    return itens.filter((l: any) => {
+    return itensVisiveis.filter((l: any) => {
       if (filtro !== "todos") {
         const st = statusMap?.get(l.id)?.status_proposta;
         if (statusToBucket(st) !== filtro) return false;
@@ -130,7 +170,7 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
       }
       return true;
     });
-  }, [itens, filtro, busca, statusMap]);
+  }, [itensVisiveis, filtro, busca, statusMap]);
 
   if (!listaId) {
     return (
@@ -254,7 +294,17 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
         </div>
       ) : filtrados.length === 0 ? (
         <div className="p-6 text-center text-sm text-muted-foreground">
-          Nenhum lead encontrado neste filtro.
+          {leadsLiberadosPorCascata && itens.length > 0 && itensVisiveis.length === 0 ? (
+            <>
+              Nenhum lead disponível neste canal ainda.
+              <br />
+              Aguardando finalização do canal anterior
+              {canalAnterior ? <> (<strong>{CANAL_LABEL[canalAnterior]}</strong>)</> : null}
+              {" "}— os leads aparecem aqui automaticamente quando forem encerrados ou transferidos.
+            </>
+          ) : (
+            "Nenhum lead encontrado neste filtro."
+          )}
         </div>
       ) : (
         <ScrollArea className="h-[440px]">
