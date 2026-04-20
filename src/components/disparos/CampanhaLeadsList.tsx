@@ -91,6 +91,20 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
   const { data: statusMap } = useLeadStatusProposta(campanhaPropostaId);
   const [liberarLead, setLiberarLead] = useState<{ id: string; nome?: string } | null>(null);
 
+  // Para canais pós Fase 1: leads liberados são aqueles cujo canal anterior
+  // já tem ao menos uma raia finalizada (status_final ≠ 'aberto').
+  const canalAnterior = canal ? CANAL_ANTERIOR[canal] : undefined;
+  const leadsLiberadosPorCascata = useMemo(() => {
+    if (!cascataAtiva || !canalAnterior) return null; // null = sem restrição
+    const set = new Set<string>();
+    for (const r of canaisRows) {
+      if (r.canal === canalAnterior && r.status_final !== "aberto") {
+        set.add(r.lead_id);
+      }
+    }
+    return set;
+  }, [canaisRows, cascataAtiva, canalAnterior]);
+
   // Tempo na raia atual por lead (somente do canal ativo desta aba)
   const tempoPorLead = useMemo(() => {
     const map = new Map<string, { id: string; segundos: number }>();
