@@ -19,6 +19,16 @@ import { Phone, Send, Ban, Bookmark, Unlock, Loader2, X, Check, MessageCircle, P
 import { cn } from "@/lib/utils";
 import { useDisparoManual } from "@/hooks/useDisparoManual";
 import { LiberarLeadDialog } from "@/components/disparos/LiberarLeadDialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface Props {
   campanhaPropostaId: string | null;
@@ -39,6 +49,8 @@ export function DisparoManualLeadPanel({ campanhaPropostaId, leadId, onOpenChat 
   const [selectedInstance, setSelectedInstance] = useState<string | null>(null);
   const [mensagem, setMensagem] = useState("");
   const [liberarOpen, setLiberarOpen] = useState(false);
+  const [confirmBlacklist, setConfirmBlacklist] = useState(false);
+  const [confirmBanco, setConfirmBanco] = useState(false);
   const disparo = useDisparoManual();
   const [checkingWpp, setCheckingWpp] = useState(false);
   const [wppStatus, setWppStatus] = useState<Record<string, "has" | "no" | "unchecked">>({});
