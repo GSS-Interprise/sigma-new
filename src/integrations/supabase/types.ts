@@ -1478,6 +1478,62 @@ export type Database = {
           },
         ]
       }
+      campanha_proposta_lead_canais: {
+        Row: {
+          campanha_proposta_id: string
+          canal: string
+          created_at: string
+          criado_por: string | null
+          duracao_segundos: number | null
+          entrou_em: string
+          id: string
+          lead_id: string
+          motivo_saida: string | null
+          proximo_canal: string | null
+          saiu_em: string | null
+          status_final: string
+          updated_at: string
+        }
+        Insert: {
+          campanha_proposta_id: string
+          canal: string
+          created_at?: string
+          criado_por?: string | null
+          duracao_segundos?: number | null
+          entrou_em?: string
+          id?: string
+          lead_id: string
+          motivo_saida?: string | null
+          proximo_canal?: string | null
+          saiu_em?: string | null
+          status_final?: string
+          updated_at?: string
+        }
+        Update: {
+          campanha_proposta_id?: string
+          canal?: string
+          created_at?: string
+          criado_por?: string | null
+          duracao_segundos?: number | null
+          entrou_em?: string
+          id?: string
+          lead_id?: string
+          motivo_saida?: string | null
+          proximo_canal?: string | null
+          saiu_em?: string | null
+          status_final?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campanha_proposta_lead_canais_campanha_proposta_id_fkey"
+            columns: ["campanha_proposta_id"]
+            isOneToOne: false
+            referencedRelation: "campanha_propostas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       campanha_propostas: {
         Row: {
           campanha_id: string
@@ -11141,6 +11197,27 @@ export type Database = {
         }
         Relationships: []
       }
+      vw_lead_tempo_por_canal: {
+        Row: {
+          campanha_proposta_id: string | null
+          canal: string | null
+          lead_id: string | null
+          passagens: number | null
+          tem_aberto: boolean | null
+          tempo_total_segundos: number | null
+          ultima_entrada: string | null
+          ultima_saida: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campanha_proposta_lead_canais_campanha_proposta_id_fkey"
+            columns: ["campanha_proposta_id"]
+            isOneToOne: false
+            referencedRelation: "campanha_propostas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       vw_leads_duplicados: {
         Row: {
           chaves_match: string[] | null
@@ -11234,6 +11311,16 @@ export type Database = {
           uf: string
         }[]
       }
+      fechar_lead_canal: {
+        Args: {
+          p_campanha_proposta_id: string
+          p_canal: string
+          p_lead_id: string
+          p_motivo: string
+          p_status_final: string
+        }
+        Returns: undefined
+      }
       find_lead_by_phone: { Args: { p_phone: string }; Returns: string }
       generate_ticket_numero: { Args: never; Returns: string }
       get_leads_especialidade_counts: {
@@ -11325,6 +11412,10 @@ export type Database = {
         Args: { p_licitacao_id: string }
         Returns: undefined
       }
+      seed_fase1_lead_canais: {
+        Args: { p_campanha_proposta_id: string }
+        Returns: number
+      }
       selecionar_leads_campanha: {
         Args: { p_campanha_id: string; p_limite?: number }
         Returns: {
@@ -11338,6 +11429,16 @@ export type Database = {
       }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
+      transferir_lead_canal: {
+        Args: {
+          p_campanha_proposta_id: string
+          p_canal_atual: string
+          p_lead_id: string
+          p_motivo: string
+          p_proximo_canal: string
+        }
+        Returns: string
+      }
       try_acquire_licitacao_lock: {
         Args: {
           p_licitacao_id: string
