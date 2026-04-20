@@ -68,6 +68,8 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
   const qc = useQueryClient();
   const cascataAtiva = !!campanhaPropostaId && !!canal;
   const { data: canaisRows = [] } = useLeadCanais(cascataAtiva ? campanhaPropostaId : undefined);
+  const { data: statusMap } = useLeadStatusProposta(campanhaPropostaId);
+  const [liberarLead, setLiberarLead] = useState<{ id: string; nome?: string } | null>(null);
 
   // Tempo na raia atual por lead (somente do canal ativo desta aba)
   const tempoPorLead = useMemo(() => {
@@ -109,22 +111,26 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
       fechado: 0,
     };
     for (const l of itens) {
-      for (const b of bucketize(l.status)) c[b]++;
+      const st = statusMap?.get(l.id)?.status_proposta;
+      c[statusToBucket(st)]++;
     }
     return c;
-  }, [itens]);
+  }, [itens, statusMap]);
 
   const filtrados = useMemo(() => {
     const q = busca.trim().toLowerCase();
     return itens.filter((l: any) => {
-      if (filtro !== "todos" && !bucketize(l.status).includes(filtro)) return false;
+      if (filtro !== "todos") {
+        const st = statusMap?.get(l.id)?.status_proposta;
+        if (statusToBucket(st) !== filtro) return false;
+      }
       if (q) {
         const hay = `${l.nome ?? ""} ${l.phone_e164 ?? ""} ${l.especialidade ?? ""} ${l.cidade ?? ""}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
     });
-  }, [itens, filtro, busca]);
+  }, [itens, filtro, busca, statusMap]);
 
   if (!listaId) {
     return (
