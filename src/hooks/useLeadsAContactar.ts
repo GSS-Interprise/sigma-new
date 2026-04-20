@@ -22,7 +22,9 @@ export function useLeadsAContactar(campanhaPropostaId: string | null | undefined
         .select("lead_id, status_proposta")
         .eq("campanha_proposta_id", campanhaPropostaId!)
         .eq("status_proposta", "a_contactar");
-      if (e1) throw e1;
+      // A view pode falhar por permissões internas (ex.: lead_liberacoes).
+      // Nesses casos, seguimos com fallback pela lista vinculada à proposta.
+      if (e1 && e1.code !== "42501") throw e1;
 
       let leadIds = Array.from(
         new Set((statusRows || []).map((r: any) => r.lead_id).filter(Boolean))
