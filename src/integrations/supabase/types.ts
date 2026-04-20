@@ -6171,6 +6171,68 @@ export type Database = {
         }
         Relationships: []
       }
+      lead_liberacoes: {
+        Row: {
+          campanha_proposta_id: string
+          created_at: string
+          id: string
+          justificativa: string
+          lead_id: string
+          liberado_por: string | null
+          liberado_por_nome: string | null
+          motivo_anterior: string | null
+        }
+        Insert: {
+          campanha_proposta_id: string
+          created_at?: string
+          id?: string
+          justificativa: string
+          lead_id: string
+          liberado_por?: string | null
+          liberado_por_nome?: string | null
+          motivo_anterior?: string | null
+        }
+        Update: {
+          campanha_proposta_id?: string
+          created_at?: string
+          id?: string
+          justificativa?: string
+          lead_id?: string
+          liberado_por?: string | null
+          liberado_por_nome?: string | null
+          motivo_anterior?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_liberacoes_campanha_proposta_id_fkey"
+            columns: ["campanha_proposta_id"]
+            isOneToOne: false
+            referencedRelation: "campanha_propostas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_liberacoes_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_liberacoes_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_leads_duplicados"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_liberacoes_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_leads_quentes_esperando"
+            referencedColumns: ["lead_id"]
+          },
+        ]
+      }
       lead_merge_log: {
         Row: {
           executado_em: string | null
@@ -11197,6 +11259,20 @@ export type Database = {
         }
         Relationships: []
       }
+      vw_lead_status_por_proposta: {
+        Row: {
+          bloqueado_blacklist: boolean | null
+          bloqueado_janela_7d: boolean | null
+          bloqueado_temp: boolean | null
+          campanha_proposta_id: string | null
+          lead_id: string | null
+          status_proposta: string | null
+          ultima_decisao_em: string | null
+          ultimo_disparo: string | null
+          ultimo_motivo: string | null
+        }
+        Relationships: []
+      }
       vw_lead_tempo_por_canal: {
         Row: {
           campanha_proposta_id: string | null
@@ -11361,6 +11437,15 @@ export type Database = {
       is_setor_leader: {
         Args: { _setor_id: string; _user_id: string }
         Returns: boolean
+      }
+      liberar_lead_proposta: {
+        Args: {
+          p_campanha_proposta_id: string
+          p_justificativa: string
+          p_lead_id: string
+          p_motivo_anterior?: string
+        }
+        Returns: string
       }
       log_auditoria: {
         Args: {
