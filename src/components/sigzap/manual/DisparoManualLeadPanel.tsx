@@ -306,7 +306,18 @@ export function DisparoManualLeadPanel({ campanhaPropostaId, leadId, onOpenChat 
                     </div>
                     {!inativo && (
                       wpp === "has" ? (
-                        <MessageCircle className="h-4 w-4 text-green-500 fill-green-500 flex-shrink-0" />
+                        <button
+                          type="button"
+                          title="Abrir chat WhatsApp"
+                          className="flex-shrink-0 hover:scale-110 transition-transform"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (!selectedInstance) { toast.error("Selecione uma instância primeiro"); return; }
+                            onOpenChat?.(numero, selectedInstance);
+                          }}
+                        >
+                          <MessageCircle className="h-4 w-4 text-green-500 fill-green-500" />
+                        </button>
                       ) : wpp === "no" ? (
                         <MessageCircle className="h-4 w-4 text-muted-foreground/40 flex-shrink-0" />
                       ) : null
