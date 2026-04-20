@@ -7,7 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Search, Loader2, ListChecks, CheckCircle2, ArrowRightCircle, XCircle } from "lucide-react";
+import { Search, Loader2, ListChecks, CheckCircle2, ArrowRightCircle, XCircle, Unlock, Ban, ShieldAlert, Clock } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { LeadProntuarioDialog } from "@/components/medicos/LeadProntuarioDialog";
 import { toast } from "sonner";
 import {
@@ -17,6 +18,8 @@ import {
   tempoNaRaia,
 } from "@/hooks/useLeadCanais";
 import { TransferirCanalDialog } from "./TransferirCanalDialog";
+import { useLeadStatusProposta, StatusProposta } from "@/hooks/useLeadStatusProposta";
+import { LiberarLeadDialog } from "./LiberarLeadDialog";
 
 type FiltroStatus = "todos" | "contactar" | "contactado" | "aberto" | "fechado";
 
