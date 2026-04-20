@@ -23,6 +23,7 @@ import { LiberarLeadDialog } from "@/components/disparos/LiberarLeadDialog";
 interface Props {
   campanhaPropostaId: string | null;
   leadId: string | null;
+  onOpenChat?: (phone: string, instanceId: string) => void;
 }
 
 function isInativo(p: string) {
