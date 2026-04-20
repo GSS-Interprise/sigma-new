@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { CaptacaoProtectedRoute } from "@/components/auth/CaptacaoProtectedRoute";
@@ -53,6 +54,7 @@ export default function DisparosCampanhas() {
   const [propostaPickerOpen, setPropostaPickerOpen] = useState(false);
   const qc = useQueryClient();
   const vincular = useVincularProposta();
+  const navigate = useNavigate();
 
   const { data: campanhas = [], isLoading } = useQuery({
     queryKey: ["campanhas-multicanal", busca],
@@ -292,7 +294,7 @@ export default function DisparosCampanhas() {
                 <Card
                   key={c.id}
                   className="cursor-pointer hover:shadow-md transition-shadow"
-                  onClick={() => setSelecionada(c.id)}
+                  onClick={() => navigate(`/disparos/campanhas/${c.id}/propostas`)}
                 >
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between gap-2">
