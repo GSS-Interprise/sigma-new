@@ -752,26 +752,26 @@ key={conversa.id}
                       )}
                       
                       {/* Badges + Release button */}
-                      <div className="flex items-center justify-between mt-2">
-                        <div className="flex items-center gap-1.5">
+                      <div className="flex items-start justify-between gap-2 mt-2">
+                        <div className="flex items-center gap-1.5 flex-wrap min-w-0 flex-1">
                           {instance?.name && (
-                            <Badge variant="outline" className={cn("text-[10px] h-5", selectedConversaId === conversa.id ? "border-white/40 text-white bg-white/10" : "border-sky-300 bg-sky-50 text-sky-700 dark:border-sky-700 dark:bg-sky-950 dark:text-sky-300")}>
-                              {instance.name}
+                            <Badge variant="outline" className={cn("text-[10px] h-5 max-w-full truncate", selectedConversaId === conversa.id ? "border-white/40 text-white bg-white/10" : "border-sky-600 bg-sky-600 text-white dark:border-sky-500 dark:bg-sky-500 dark:text-white")}>
+                              <span className="truncate">{instance.name}</span>
                             </Badge>
                           )}
-                          <Badge 
-                            className={cn("text-[10px] h-5", selectedConversaId === conversa.id ? "border-white/40 text-white bg-white/20" : "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-300")}
+                          <Badge
+                            className={cn("text-[10px] h-5", selectedConversaId === conversa.id ? "border-white/40 text-white bg-white/20" : "border-emerald-600 bg-emerald-600 text-white dark:border-emerald-500 dark:bg-emerald-500 dark:text-white")}
                           >
                             Atendendo
                           </Badge>
                           {msgCount > 0 && (
-                            <Badge className={cn("text-[10px] h-5 gap-1", selectedConversaId === conversa.id ? "bg-white/20 text-white" : "bg-emerald-600 text-white border-emerald-600")}>
+                            <Badge className={cn("text-[10px] h-5 gap-1", selectedConversaId === conversa.id ? "bg-white/20 text-white" : "bg-emerald-700 text-white border-emerald-700")}>
                               <MessageCircle className="h-3 w-3" />
                               {msgCount}
                             </Badge>
                           )}
                           {conversa.not_the_doctor && (
-                            <Badge variant="outline" className={cn("text-[10px] h-5 gap-0.5", selectedConversaId === conversa.id ? "border-white/40 text-white bg-white/20" : "border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-700 dark:bg-rose-950 dark:text-rose-300")}>
+                            <Badge variant="outline" className={cn("text-[10px] h-5 gap-0.5", selectedConversaId === conversa.id ? "border-white/40 text-white bg-white/20" : "border-rose-600 bg-rose-600 text-white dark:border-rose-500 dark:bg-rose-500 dark:text-white")}>
                               <UserX className="h-3 w-3" />
                               Não é o médico
                             </Badge>
@@ -780,7 +780,7 @@ key={conversa.id}
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                          className="h-6 w-6 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
                           onClick={(e) => {
                             e.stopPropagation();
                             releaseMutation.mutate(conversa.id);
