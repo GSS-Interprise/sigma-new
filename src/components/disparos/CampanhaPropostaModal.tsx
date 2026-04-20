@@ -164,12 +164,10 @@ export function CampanhaPropostaModal({ campanhaPropostaId, open, onOpenChange }
                 />
               )}
 
-              <div>
-                <div className="flex items-center justify-between mb-2 px-1">
-                  <h4 className="text-sm font-semibold">Leads da campanha</h4>
-                </div>
-                <CampanhaLeadsList listaId={cp?.lista_id} />
-              </div>
+              <CampanhaLeadsList
+                listaId={cp?.lista_id}
+                listaNome={(cp?.lista as any)?.nome}
+              />
             </TabsContent>
           ))}
         </Tabs>
