@@ -396,7 +396,10 @@ export function SigZapConversasColumn({
   const filteredConversas = conversas?.filter(c => {
     // Hide conversations assigned to the current user - they appear in column 2
     if (c.assigned_user_id === user?.id) return false;
-    
+
+    // Filter by tab
+    if (filtroAtivo === "nao_lidas" && (c.unread_count || 0) === 0) return false;
+
     const contact = c.contact as any;
     const searchLower = searchTerm.toLowerCase();
     return (
