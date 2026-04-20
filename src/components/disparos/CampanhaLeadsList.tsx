@@ -342,7 +342,7 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
                           {blkTemp && (
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <ShieldAlert className="h-3.5 w-3.5 text-amber-600" />
+                                <ShieldAlert className="h-3.5 w-3.5 text-muted-foreground" />
                               </TooltipTrigger>
                               <TooltipContent>Bloqueio temporário ativo</TooltipContent>
                             </Tooltip>
@@ -350,7 +350,7 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
                           {blkJanela && (
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <Clock className="h-3.5 w-3.5 text-amber-600" />
+                                <Clock className="h-3.5 w-3.5 text-muted-foreground" />
                               </TooltipTrigger>
                               <TooltipContent>
                                 Disparo recente — aguardando janela de 7 dias
