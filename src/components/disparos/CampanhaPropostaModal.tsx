@@ -93,8 +93,8 @@ export function CampanhaPropostaModal({ campanhaPropostaId, open, onOpenChange }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-6xl max-h-[92vh] overflow-y-auto">
-        <DialogHeader className="pb-2 border-b">
+      <DialogContent className="max-w-6xl w-[92vw] h-[92vh] flex flex-col overflow-hidden p-0">
+        <DialogHeader className="pb-2 border-b p-6 pt-6 shrink-0">
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div className="flex items-start gap-3 min-w-0">
               <div className="h-11 w-11 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
@@ -132,8 +132,8 @@ export function CampanhaPropostaModal({ campanhaPropostaId, open, onOpenChange }
           </div>
         </DialogHeader>
 
-        <Tabs defaultValue="cascata" className="mt-4">
-          <TabsList className="grid grid-cols-8 w-full h-auto p-1">
+        <Tabs defaultValue="cascata" className="flex-1 flex flex-col min-h-0 px-6 pb-6">
+          <TabsList className="grid grid-cols-8 w-full h-auto p-1 mt-4 shrink-0">
             {ABAS.map(({ value, label, Icon }) => (
               <TabsTrigger
                 key={value}
@@ -147,7 +147,7 @@ export function CampanhaPropostaModal({ campanhaPropostaId, open, onOpenChange }
           </TabsList>
 
           {ABAS.map(({ value, label, Icon, descricao }) => (
-            <TabsContent key={value} value={value} className="mt-4 space-y-4">
+            <TabsContent key={value} value={value} className="mt-4 space-y-4 flex-1 min-h-0 overflow-y-auto">
               <div className="flex items-center gap-3 px-1">
                 <Icon size={28} />
                 <div>
