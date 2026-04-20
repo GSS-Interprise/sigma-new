@@ -20,13 +20,13 @@ export function useLeadStatusProposta(campanhaPropostaId: string | null | undefi
     queryKey: ["lead-status-proposta", campanhaPropostaId],
     enabled: !!campanhaPropostaId,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("vw_lead_status_por_proposta" as any)
+      const { data, error } = await (supabase as any)
+        .from("vw_lead_status_por_proposta")
         .select("*")
         .eq("campanha_proposta_id", campanhaPropostaId!);
       if (error) throw error;
       const map = new Map<string, LeadStatusPropostaRow>();
-      for (const r of (data || []) as LeadStatusPropostaRow[]) {
+      for (const r of ((data || []) as unknown as LeadStatusPropostaRow[])) {
         map.set(r.lead_id, r);
       }
       return map;
