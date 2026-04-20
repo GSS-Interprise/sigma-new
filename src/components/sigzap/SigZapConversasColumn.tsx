@@ -416,6 +416,9 @@ export function SigZapConversasColumn({
       return color.replace('hsl(', 'hsla(').replace(')', `, ${alpha})`);
     }
     if (color.startsWith('#')) return `${color}${Math.round(alpha * 255).toString(16).padStart(2, '0')}`;
+    if (color.startsWith('rgb(')) {
+      return color.replace('rgb(', 'rgba(').replace(')', `, ${alpha})`);
+    }
     return color;
   };
 
@@ -529,9 +532,9 @@ export function SigZapConversasColumn({
                   variant="outline" 
                   className={cn("text-[10px] h-5 font-semibold", isSelected ? "border-white/40 text-white bg-white/20" : "")}
                   style={!isSelected ? { 
-                    backgroundColor: corCaptador ? toHslWithAlpha(corCaptador, 0.1) : undefined,
-                    color: corCaptador || 'hsl(var(--emerald-700, 160 84% 39%))',
-                    borderColor: corCaptador ? toHslWithAlpha(corCaptador, 0.3) : undefined,
+                    backgroundColor: corCaptador ? toHslWithAlpha(corCaptador, 0.12) : 'hsl(var(--muted))',
+                    color: corCaptador || 'hsl(var(--foreground))',
+                    borderColor: corCaptador ? toHslWithAlpha(corCaptador, 0.4) : 'hsl(var(--border))',
                   } : {}}
                 >
                   {assignedName ? `${assignedName}` : 'Atendendo'}
