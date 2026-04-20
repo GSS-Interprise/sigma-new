@@ -287,22 +287,28 @@ export function DisparoManualLeadPanel({ campanhaPropostaId, leadId }: Props) {
             <Label className="text-xs font-semibold uppercase text-muted-foreground">
               Instância (única)
             </Label>
-            <RadioGroup value={selectedInstance ?? ""} onValueChange={setSelectedInstance}>
-              {(chips || []).length === 0 && (
-                <p className="text-xs text-muted-foreground">Nenhuma instância conectada.</p>
-              )}
-              {(chips || []).map((c: any) => (
-                <div key={c.id} className="flex items-center gap-2 p-2 rounded border text-sm">
-                  <RadioGroupItem value={c.id} id={`inst-${c.id}`} />
-                  <label htmlFor={`inst-${c.id}`} className="flex-1 cursor-pointer">
-                    {c.nome}
-                    <span className="text-xs text-muted-foreground ml-2">
-                      {c.instance_name}
-                    </span>
-                  </label>
-                </div>
-              ))}
-            </RadioGroup>
+            {(chips || []).length === 0 ? (
+              <p className="text-xs text-muted-foreground">Nenhuma instância conectada.</p>
+            ) : (
+              <Select
+                value={selectedInstance ?? ""}
+                onValueChange={setSelectedInstance}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Selecione uma instância" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(chips || []).map((c: any) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      <span className="font-medium">{c.nome}</span>
+                      <span className="text-xs text-muted-foreground ml-2">
+                        {c.instance_name}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
           <div className="space-y-2">
