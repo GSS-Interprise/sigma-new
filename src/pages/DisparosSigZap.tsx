@@ -8,7 +8,7 @@ import { SigZapChatColumn } from "@/components/sigzap/SigZapChatColumn";
 import { SigZapDialog } from "@/components/sigzap/SigZapDialog";
 import { SigZapTransferOverlay } from "@/components/sigzap/SigZapTransferOverlay";
 import { Button } from "@/components/ui/button";
-import { Settings, MessageCircle, Wrench, Loader2 } from "lucide-react";
+import { Settings, MessageCircle, Wrench, Loader2, Send } from "lucide-react";
 import { toast } from "sonner";
 import { CaptacaoProtectedRoute } from "@/components/auth/CaptacaoProtectedRoute";
 
@@ -99,6 +99,15 @@ export default function DisparosSigZap() {
         </div>
       </div>
       <div className="flex items-center gap-2">
+        <Button
+          onClick={() => console.log("Disparo Manual clicked")}
+          variant="outline"
+          size="sm"
+        >
+          <Send className="h-4 w-4 mr-2" />
+          Disparo Manual
+        </Button>
+
         <Button
           onClick={handleFixDuplicates}
           variant="outline"
