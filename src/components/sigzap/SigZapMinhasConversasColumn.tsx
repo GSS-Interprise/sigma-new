@@ -634,7 +634,13 @@ export function SigZapMinhasConversasColumn({
 
       {/* Count + refresh */}
       <div className="flex items-center justify-between px-3 py-2 border-b text-xs text-muted-foreground">
-        <span>{minhasConversas?.length || 0} conversa{(minhasConversas?.length || 0) !== 1 ? 's' : ''}</span>
+        <span>
+          {minhasConversas?.length || 0} conversa{(minhasConversas?.length || 0) !== 1 ? 's' : ''}
+          {(() => {
+            const naoLidos = minhasConversas?.reduce((acc, c: any) => acc + (c.unread_count || 0), 0) || 0;
+            return naoLidos > 0 ? ` · ${naoLidos} não lida${naoLidos !== 1 ? 's' : ''}` : '';
+          })()}
+        </span>
         <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => refetch()}>
           <RefreshCw className="h-3 w-3" />
         </Button>
