@@ -14,6 +14,7 @@ import { SegmentoTrafegoPago } from "./segments/SegmentoTrafegoPago";
 import { EncerrarCampanhaButton } from "./EncerrarCampanhaButton";
 import { Badge } from "@/components/ui/badge";
 import { CampanhaLeadsList } from "./CampanhaLeadsList";
+import { CascataTab } from "./CascataTab";
 import {
   WhatsAppIcon,
   InstagramIcon,
@@ -23,6 +24,7 @@ import {
   PhoneCallIcon,
   TrafegoPagoIcon,
 } from "./icons/BrandIcons";
+import { GitBranch } from "lucide-react";
 
 interface Props {
   campanhaPropostaId: string | null;
@@ -38,6 +40,7 @@ const ABAS: {
   Icon: React.ComponentType<{ size?: number }>;
   descricao: string;
 }[] = [
+  { value: "cascata", label: "Cascata", Icon: (({ size = 20 }: { size?: number }) => <GitBranch size={size} />) as any, descricao: "Visão consolidada do caminho de cada lead pelos canais" },
   { value: "whatsapp", label: "WhatsApp", Icon: WhatsAppIcon, descricao: "Acompanhe disparo via Disparos Zap" },
   { value: "trafego_pago", label: "Tráfego Pago", Icon: TrafegoPagoIcon, descricao: "Anúncios pagos vinculados à proposta" },
   { value: "email", label: "Email", Icon: GmailIcon, descricao: "Disparo de email para a lista" },
@@ -129,8 +132,8 @@ export function CampanhaPropostaModal({ campanhaPropostaId, open, onOpenChange }
           </div>
         </DialogHeader>
 
-        <Tabs defaultValue="whatsapp" className="mt-4">
-          <TabsList className="grid grid-cols-7 w-full h-auto p-1">
+        <Tabs defaultValue="cascata" className="mt-4">
+          <TabsList className="grid grid-cols-8 w-full h-auto p-1">
             {ABAS.map(({ value, label, Icon }) => (
               <TabsTrigger
                 key={value}
@@ -153,6 +156,13 @@ export function CampanhaPropostaModal({ campanhaPropostaId, open, onOpenChange }
                 </div>
               </div>
 
+              {value === "cascata" ? (
+                <CascataTab
+                  campanhaPropostaId={campanhaPropostaId}
+                  listaId={cp?.lista_id}
+                />
+              ) : (
+                <>
               {value === "trafego_pago" && (
                 <SegmentoTrafegoPago campanhaPropostaId={campanhaPropostaId} />
               )}
@@ -160,7 +170,11 @@ export function CampanhaPropostaModal({ campanhaPropostaId, open, onOpenChange }
               <CampanhaLeadsList
                 listaId={cp?.lista_id}
                 listaNome={(cp?.lista as any)?.nome}
+                    campanhaPropostaId={campanhaPropostaId}
+                    canal={value as any}
               />
+                </>
+              )}
             </TabsContent>
           ))}
         </Tabs>
