@@ -33,7 +33,7 @@ function clean(p: string) {
   return p.replace(/^INATIVO:\s*/, "").trim();
 }
 
-export function DisparoManualLeadPanel({ campanhaPropostaId, leadId }: Props) {
+export function DisparoManualLeadPanel({ campanhaPropostaId, leadId, onOpenChat }: Props) {
   const qc = useQueryClient();
   const [selectedPhone, setSelectedPhone] = useState<string | null>(null);
   const [selectedInstance, setSelectedInstance] = useState<string | null>(null);
