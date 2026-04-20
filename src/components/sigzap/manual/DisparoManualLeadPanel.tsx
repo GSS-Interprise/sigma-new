@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Phone, Send, Ban, Bookmark, Unlock, Loader2, X, Check } from "lucide-react";
+import { Phone, Send, Ban, Bookmark, Unlock, Loader2, X, Check, MessageCircle, Pencil, BanIcon, RotateCcw, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDisparoManual } from "@/hooks/useDisparoManual";
 import { LiberarLeadDialog } from "@/components/disparos/LiberarLeadDialog";
@@ -39,6 +39,8 @@ export function DisparoManualLeadPanel({ campanhaPropostaId, leadId }: Props) {
   const [mensagem, setMensagem] = useState("");
   const [liberarOpen, setLiberarOpen] = useState(false);
   const disparo = useDisparoManual();
+  const [checkingWpp, setCheckingWpp] = useState(false);
+  const [wppStatus, setWppStatus] = useState<Record<string, "has" | "no" | "unchecked">>({});
 
   // Lead
   const { data: lead, isLoading: loadingLead } = useQuery({
@@ -168,6 +170,47 @@ export function DisparoManualLeadPanel({ campanhaPropostaId, leadId }: Props) {
     campanhaPropostaId && leadId && selectedPhone && selectedInstance && mensagem.trim()
   );
 
+  const handleCheckWhatsApp = async () => {
+    if (phones.length === 0) return;
+    setCheckingWpp(true);
+    try {
+      const { data: instances } = await supabase
+        .from("sigzap_instances")
+        .select("name, chips!inner(tipo_instancia)")
+        .eq("status", "connected")
+        .eq("chips.tipo_instancia", "disparos");
+      if (!instances || instances.length === 0) {
+        toast.error("Nenhuma instância WhatsApp conectada.");
+        return;
+      }
+      let workingInstance: string | null = null;
+      for (const inst of instances) {
+        try {
+          const { data: testData } = await supabase.functions.invoke("evolution-api-proxy", {
+            body: { action: "checkIsOnWhatsapp", instanceName: inst.name, data: { numbers: ["5511999999999"] } },
+          });
+          const disc = testData?.code === "CONNECTION_CLOSED" || testData?.isBoom || testData?.output?.payload?.message === "Connection Closed";
+          if (!disc) { workingInstance = inst.name; break; }
+        } catch { /* next */ }
+      }
+      if (!workingInstance) { toast.error("Instâncias desconectadas."); return; }
+      const newSt: Record<string, "has" | "no" | "unchecked"> = {};
+      for (const p of phones) {
+        const raw = clean(p);
+        const digits = raw.replace(/\D/g, "");
+        if (!digits) { newSt[raw] = "no"; continue; }
+        const num = digits.startsWith("55") ? digits : `55${digits}`;
+        try {
+          const { data } = await supabase.functions.invoke("evolution-api-proxy", {
+            body: { action: "checkIsOnWhatsapp", instanceName: workingInstance, data: { numbers: [num] } },
+          });
+          newSt[raw] = Array.isArray(data) && data[0]?.exists ? "has" : "no";
+        } catch { newSt[raw] = "no"; }
+      }
+      setWppStatus(newSt);
+    } catch { toast.error("Erro ao verificar WhatsApp"); } finally { setCheckingWpp(false); }
+  };
+
   const handleSend = async () => {
     if (!canSend) return;
     await disparo.mutateAsync({
@@ -202,48 +245,89 @@ export function DisparoManualLeadPanel({ campanhaPropostaId, leadId }: Props) {
       <ScrollArea className="flex-1">
         <div className="p-3 space-y-4">
           {/* Bloco 1: Números */}
-          <div className="space-y-2">
-            <Label className="text-xs font-semibold uppercase text-muted-foreground">
-              Números
-            </Label>
+          <div className="border rounded-lg p-3 bg-muted/20 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+                <Phone className="h-3.5 w-3.5" />
+                Telefones
+              </label>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-6 text-[10px] px-2"
+                onClick={handleCheckWhatsApp}
+                disabled={checkingWpp || phones.length === 0}
+              >
+                {checkingWpp ? (
+                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                ) : (
+                  <MessageCircle className="h-3 w-3 mr-1" />
+                )}
+                Verificar WhatsApp
+              </Button>
+            </div>
+
             {phones.length === 0 && (
               <p className="text-xs text-muted-foreground">Nenhum número cadastrado.</p>
             )}
-            <RadioGroup value={selectedPhone ?? ""} onValueChange={setSelectedPhone}>
+
+            <div className="space-y-1.5">
               {phones.map((p) => {
                 const inativo = isInativo(p);
                 const numero = clean(p);
+                const isSelected = selectedPhone === numero;
+                const wpp = wppStatus[numero];
                 return (
                   <div
                     key={p}
                     className={cn(
-                      "flex items-center gap-2 p-2 rounded border text-sm",
-                      inativo && "opacity-60 bg-muted/40"
+                      "flex items-center gap-1.5 cursor-pointer",
+                      inativo && "opacity-50"
                     )}
+                    onClick={() => !inativo && setSelectedPhone(numero)}
                   >
-                    <RadioGroupItem value={numero} id={`phone-${numero}`} disabled={inativo} />
-                    <Phone className="h-3.5 w-3.5 text-primary" />
-                    <label
-                      htmlFor={`phone-${numero}`}
-                      className={cn("flex-1 cursor-pointer", inativo && "line-through")}
+                    <input
+                      type="radio"
+                      readOnly
+                      checked={isSelected}
+                      disabled={inativo}
+                      className="h-3 w-3 accent-primary flex-shrink-0"
+                    />
+                    <div
+                      className={cn(
+                        "h-7 text-xs flex-1 flex items-center px-2 rounded border bg-background",
+                        isSelected && "ring-1 ring-primary border-primary",
+                        inativo && "line-through text-muted-foreground"
+                      )}
                     >
                       {numero}
-                    </label>
+                    </div>
+                    {!inativo && (
+                      wpp === "has" ? (
+                        <MessageCircle className="h-4 w-4 text-green-500 fill-green-500 flex-shrink-0" />
+                      ) : wpp === "no" ? (
+                        <MessageCircle className="h-4 w-4 text-muted-foreground/40 flex-shrink-0" />
+                      ) : null
+                    )}
                     <Button
-                      size="sm"
+                      type="button"
                       variant="ghost"
-                      className="h-6 px-2 text-xs"
+                      size="icon"
+                      className="h-6 w-6 flex-shrink-0"
+                      title={inativo ? "Reativar número" : "Inativar número"}
                       disabled={toggleInativo.isPending}
-                      onClick={() => toggleInativo.mutate(p)}
-                      title={inativo ? "Reativar" : "Marcar como não é o médico"}
+                      onClick={(e) => { e.stopPropagation(); toggleInativo.mutate(p); }}
                     >
-                      {inativo ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
-                      <span className="ml-1">{inativo ? "Reativar" : "Inativar"}</span>
+                      {inativo
+                        ? <RotateCcw className="h-3 w-3 text-green-600" />
+                        : <BanIcon className="h-3 w-3 text-destructive" />
+                      }
                     </Button>
                   </div>
                 );
               })}
-            </RadioGroup>
+            </div>
           </div>
 
           {/* Bloco 2: Ações rápidas */}
