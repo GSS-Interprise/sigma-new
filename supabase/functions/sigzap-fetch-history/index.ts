@@ -96,54 +96,99 @@ Deno.serve(async (req) => {
     // 3. Call Evolution API findMessages
     console.log(`Fetching messages for instance=${instance.name}, jid=${contact.contact_jid}, page=${page}`);
 
-    const findResponse = await fetch(`${evolutionUrl}/chat/findMessages/${instance.name}`, {
-      method: "POST",
-      headers: {
-        "apikey": evolutionKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        where: {
-          key: {
-            remoteJid: contact.contact_jid,
-          },
-        },
-        limit,
-        page,
-      }),
-    });
+    // Build list of where-clauses to try. WhatsApp modern uses LID for received messages,
+    // so we need to query by both remoteJid AND remoteJidAlt to capture sent + received.
+    const jid = contact.contact_jid as string;
+    const phone = contact.contact_phone as string | null;
+    const isLid = jid.includes("@lid");
+    const phoneJid = phone ? `${phone.replace(/\D/g, "")}@s.whatsapp.net` : null;
 
-    if (!findResponse.ok) {
-      const errorText = await findResponse.text();
-      console.error("Evolution API error:", findResponse.status, errorText);
-      // Return graceful response for missing instances (404) instead of propagating the error
-      if (findResponse.status === 404) {
-        return new Response(
-          JSON.stringify({ imported: 0, total: 0, message: "Instância não encontrada na Evolution API. Pode ter sido removida.", instance_missing: true }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+    const whereClauses: Array<Record<string, any>> = [];
+    if (isLid) {
+      // Contact stored as LID: query by remoteJid (LID) and also by phone via remoteJidAlt
+      whereClauses.push({ key: { remoteJid: jid } });
+      if (phoneJid) {
+        whereClauses.push({ key: { remoteJidAlt: phoneJid } });
+        whereClauses.push({ key: { remoteJid: phoneJid } });
       }
+    } else {
+      // Contact stored as phone JID: query both remoteJid and remoteJidAlt
+      whereClauses.push({ key: { remoteJid: jid } });
+      whereClauses.push({ key: { remoteJidAlt: jid } });
+    }
+
+    const callApi = async (where: Record<string, any>) => {
+      const resp = await fetch(`${evolutionUrl}/chat/findMessages/${instance.name}`, {
+        method: "POST",
+        headers: { "apikey": evolutionKey, "Content-Type": "application/json" },
+        body: JSON.stringify({ where, limit, page }),
+      });
+      return resp;
+    };
+
+    const responses = await Promise.all(whereClauses.map(callApi));
+
+    // If any returned 404, treat as missing instance
+    const has404 = responses.some(r => r.status === 404);
+    if (has404) {
+      // Drain bodies
+      await Promise.all(responses.map(r => r.text().catch(() => "")));
       return new Response(
-        JSON.stringify({ error: `Evolution API retornou ${findResponse.status}`, details: errorText }),
-        { status: findResponse.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ imported: 0, total: 0, message: "Instância não encontrada na Evolution API. Pode ter sido removida.", instance_missing: true }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const apiMessages = await findResponse.json();
-    console.log(`Received ${Array.isArray(apiMessages) ? apiMessages.length : 'non-array'} messages from API`);
-    
-    // Log response structure for debugging
-    if (!Array.isArray(apiMessages)) {
-      console.log(`API response keys: ${JSON.stringify(Object.keys(apiMessages || {}))}`);
-      console.log(`API response preview: ${JSON.stringify(apiMessages).substring(0, 500)}`);
+    // If all failed (non-ok), return error
+    if (responses.every(r => !r.ok)) {
+      const first = responses[0];
+      const errorText = await first.text();
+      console.error("Evolution API error (all queries failed):", first.status, errorText);
+      // Drain rest
+      await Promise.all(responses.slice(1).map(r => r.text().catch(() => "")));
+      return new Response(
+        JSON.stringify({ error: `Evolution API retornou ${first.status}`, details: errorText }),
+        { status: first.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    // Handle both array and object responses from Evolution API
-    const messagesList = Array.isArray(apiMessages) 
-      ? apiMessages 
-      : (apiMessages?.messages?.records || apiMessages?.messages || apiMessages?.records || apiMessages?.data || []);
+    // Parse all successful responses, merge and deduplicate by key.id
+    const allMessages: any[] = [];
+    const perCallCounts: number[] = [];
+    for (let i = 0; i < responses.length; i++) {
+      const r = responses[i];
+      if (!r.ok) {
+        await r.text().catch(() => "");
+        perCallCounts.push(0);
+        continue;
+      }
+      try {
+        const apiMessages = await r.json();
+        const list = Array.isArray(apiMessages)
+          ? apiMessages
+          : (apiMessages?.messages?.records || apiMessages?.messages || apiMessages?.records || apiMessages?.data || []);
+        const safeList = Array.isArray(list) ? list : [];
+        perCallCounts.push(safeList.length);
+        console.log(`Query ${i} (${JSON.stringify(whereClauses[i])}) returned ${safeList.length} messages`);
+        allMessages.push(...safeList);
+      } catch (e) {
+        console.error(`Failed to parse response ${i}:`, e);
+        perCallCounts.push(0);
+      }
+    }
 
-    if (!Array.isArray(messagesList) || messagesList.length === 0) {
+    // Deduplicate by key.id
+    const seen = new Set<string>();
+    const messagesList: any[] = [];
+    for (const msg of allMessages) {
+      const id = msg.key?.id || msg.id;
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      messagesList.push(msg);
+    }
+    console.log(`Total merged: ${allMessages.length}, after dedup: ${messagesList.length}`);
+
+    if (messagesList.length === 0) {
       return new Response(
         JSON.stringify({ imported: 0, total: 0, message: "Nenhuma mensagem encontrada na API" }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
