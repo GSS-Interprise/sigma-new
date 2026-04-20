@@ -153,15 +153,8 @@ export function CampanhaPropostaModal({ campanhaPropostaId, open, onOpenChange }
                 </div>
               </div>
 
-              {value === "trafego_pago" ? (
+              {value === "trafego_pago" && (
                 <SegmentoTrafegoPago campanhaPropostaId={campanhaPropostaId} />
-              ) : (
-                <SegmentoGenerico
-                  campanhaPropostaId={campanhaPropostaId}
-                  canal={value as any}
-                  titulo={label}
-                  descricao={descricao}
-                />
               )}
 
               <CampanhaLeadsList
