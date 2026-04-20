@@ -39,6 +39,7 @@ export function SigZapConversasColumn({
   onTransfer,
 }: SigZapConversasColumnProps) {
   const [searchTerm, setSearchTerm] = useState("");
+  const [filtroAtivo, setFiltroAtivo] = useState<"todas" | "nao_lidas">("todas");
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const attemptedPhotoSyncContactIdsRef = useRef<Set<string>>(new Set());
