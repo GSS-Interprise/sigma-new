@@ -47,6 +47,48 @@ export default function DisparosSigZap() {
     setShowTransferOverlay(true);
   };
 
+  const handleOpenChat = async (phone: string, instanceId: string) => {
+    try {
+      const digits = phone.replace(/\D/g, "");
+      const normalizedPhone = digits.startsWith("55") ? digits : `55${digits}`;
+
+      const { data: chip } = await supabase.from("chips").select("instance_name").eq("id", instanceId).single();
+      if (!chip?.instance_name) { toast.error("Instância não encontrada"); return; }
+
+      const { data: inst } = await supabase.from("sigzap_instances").select("id, name").eq("name", chip.instance_name).single();
+      if (!inst) { toast.error("Instância SigZap não encontrada"); return; }
+
+      const contactJid = `${normalizedPhone}@s.whatsapp.net`;
+      const { data: u } = await supabase.auth.getUser();
+
+      let { data: existingContact } = await supabase.from("sigzap_contacts").select("id").eq("instance_id", inst.id).eq("contact_jid", contactJid).maybeSingle();
+      let contactId: string;
+      if (existingContact) {
+        contactId = existingContact.id;
+      } else {
+        const { data: newContact, error } = await supabase.from("sigzap_contacts").insert({ instance_id: inst.id, contact_jid: contactJid, contact_phone: normalizedPhone }).select("id").single();
+        if (error) throw error;
+        contactId = newContact.id;
+      }
+
+      let { data: existingConv } = await supabase.from("sigzap_conversations").select("id").eq("instance_id", inst.id).eq("contact_id", contactId).maybeSingle();
+      if (existingConv) {
+        await supabase.from("sigzap_conversations").update({ assigned_user_id: u.user?.id, status: "in_progress", lead_id: dmLeadId }).eq("id", existingConv.id);
+        setSelectedConversaId(existingConv.id);
+      } else {
+        const { data: newConv, error } = await supabase.from("sigzap_conversations").insert({ instance_id: inst.id, contact_id: contactId, assigned_user_id: u.user?.id, status: "in_progress", lead_id: dmLeadId }).select("id").single();
+        if (error) throw error;
+        setSelectedConversaId(newConv.id);
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["sigzap-conversations"] });
+      queryClient.invalidateQueries({ queryKey: ["sigzap-chat-conversa"] });
+      queryClient.invalidateQueries({ queryKey: ["sigzap-linked-lead"] });
+    } catch (err: any) {
+      toast.error("Erro ao abrir chat: " + err.message);
+    }
+  };
+
   // Persist instance selection
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(selectedInstanceIds));
