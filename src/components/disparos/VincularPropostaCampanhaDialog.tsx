@@ -48,11 +48,11 @@ export function VincularPropostaCampanhaDialog({ campanhaId, open, onOpenChange 
   const vincular = useVincularProposta();
 
   const handleSubmit = async () => {
-    if (!propostaId) return;
+    if (!propostaId || !listaId) return;
     await vincular.mutateAsync({
       campanha_id: campanhaId,
       proposta_id: propostaId,
-      lista_id: listaId || null,
+      lista_id: listaId,
     });
     setPropostaId("");
     setListaId("");
@@ -88,10 +88,10 @@ export function VincularPropostaCampanhaDialog({ campanhaId, open, onOpenChange 
             </Select>
           </div>
           <div className="space-y-2">
-            <Label>Lista de prospecção</Label>
+            <Label>Lista de prospecção *</Label>
             <Select value={listaId} onValueChange={setListaId}>
               <SelectTrigger>
-                <SelectValue placeholder="Selecione uma lista (opcional)" />
+                <SelectValue placeholder="Selecione a lista de contatos" />
               </SelectTrigger>
               <SelectContent>
                 {listas.map((l) => (
@@ -101,10 +101,13 @@ export function VincularPropostaCampanhaDialog({ campanhaId, open, onOpenChange 
                 ))}
               </SelectContent>
             </Select>
+            <p className="text-xs text-muted-foreground">
+              Os contatos da lista aparecerão dentro do dossiê da campanha.
+            </p>
           </div>
           <Button
             onClick={handleSubmit}
-            disabled={!propostaId || vincular.isPending}
+            disabled={!propostaId || !listaId || vincular.isPending}
             className="w-full"
           >
             {vincular.isPending ? "Vinculando..." : "Vincular e disparar tráfego pago"}
