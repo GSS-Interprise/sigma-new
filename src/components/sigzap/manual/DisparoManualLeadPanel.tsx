@@ -215,7 +215,7 @@ export function DisparoManualLeadPanel({ campanhaPropostaId, leadId }: Props) {
                     )}
                   >
                     <RadioGroupItem value={numero} id={`phone-${numero}`} disabled={inativo} />
-                    <Phone className="h-3.5 w-3.5 text-green-600" />
+                    <Phone className="h-3.5 w-3.5 text-primary" />
                     <label
                       htmlFor={`phone-${numero}`}
                       className={cn("flex-1 cursor-pointer", inativo && "line-through")}
