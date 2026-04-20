@@ -58,6 +58,26 @@ const FILTROS: { value: FiltroStatus; label: string }[] = [
   { value: "fechado", label: "Fechados" },
 ];
 
+// Cadeia linear pós Fase 1. Cada canal só lista leads quando o canal anterior
+// foi finalizado (status_final ≠ 'aberto') para aquele lead.
+const CANAL_ANTERIOR: Partial<Record<CanalCascata, CanalCascata>> = {
+  email: "trafego_pago",      // Fase 1 (whatsapp + trafego_pago) → email
+  instagram: "email",
+  ligacao: "instagram",
+  linkedin: "ligacao",
+  tiktok: "linkedin",
+};
+
+const CANAL_LABEL: Record<CanalCascata, string> = {
+  whatsapp: "WhatsApp",
+  trafego_pago: "Tráfego Pago",
+  email: "Email",
+  instagram: "Instagram",
+  ligacao: "Ligação",
+  linkedin: "LinkedIn",
+  tiktok: "TikTok",
+};
+
 export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, canal }: Props) {
   const [filtro, setFiltro] = useState<FiltroStatus>("todos");
   const [busca, setBusca] = useState("");
