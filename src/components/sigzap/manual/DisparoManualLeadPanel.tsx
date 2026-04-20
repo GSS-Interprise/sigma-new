@@ -170,6 +170,47 @@ export function DisparoManualLeadPanel({ campanhaPropostaId, leadId }: Props) {
     campanhaPropostaId && leadId && selectedPhone && selectedInstance && mensagem.trim()
   );
 
+  const handleCheckWhatsApp = async () => {
+    if (phones.length === 0) return;
+    setCheckingWpp(true);
+    try {
+      const { data: instances } = await supabase
+        .from("sigzap_instances")
+        .select("name, chips!inner(tipo_instancia)")
+        .eq("status", "connected")
+        .eq("chips.tipo_instancia", "disparos");
+      if (!instances || instances.length === 0) {
+        toast.error("Nenhuma instância WhatsApp conectada.");
+        return;
+      }
+      let workingInstance: string | null = null;
+      for (const inst of instances) {
+        try {
+          const { data: testData } = await supabase.functions.invoke("evolution-api-proxy", {
+            body: { action: "checkIsOnWhatsapp", instanceName: inst.name, data: { numbers: ["5511999999999"] } },
+          });
+          const disc = testData?.code === "CONNECTION_CLOSED" || testData?.isBoom || testData?.output?.payload?.message === "Connection Closed";
+          if (!disc) { workingInstance = inst.name; break; }
+        } catch { /* next */ }
+      }
+      if (!workingInstance) { toast.error("Instâncias desconectadas."); return; }
+      const newSt: Record<string, "has" | "no" | "unchecked"> = {};
+      for (const p of phones) {
+        const raw = clean(p);
+        const digits = raw.replace(/\D/g, "");
+        if (!digits) { newSt[raw] = "no"; continue; }
+        const num = digits.startsWith("55") ? digits : `55${digits}`;
+        try {
+          const { data } = await supabase.functions.invoke("evolution-api-proxy", {
+            body: { action: "checkIsOnWhatsapp", instanceName: workingInstance, data: { numbers: [num] } },
+          });
+          newSt[raw] = Array.isArray(data) && data[0]?.exists ? "has" : "no";
+        } catch { newSt[raw] = "no"; }
+      }
+      setWppStatus(newSt);
+    } catch { toast.error("Erro ao verificar WhatsApp"); } finally { setCheckingWpp(false); }
+  };
+
   const handleSend = async () => {
     if (!canSend) return;
     await disparo.mutateAsync({
