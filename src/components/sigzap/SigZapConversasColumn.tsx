@@ -523,7 +523,7 @@ export function SigZapConversasColumn({
             )}
             <div className="flex items-center gap-1.5 mt-2 flex-wrap">
               {instance?.name && (
-                <Badge variant="outline" className={cn("text-[10px] h-5", isSelected ? "border-white/40 text-white bg-white/10" : "border-sky-300 bg-sky-50 text-sky-700 dark:border-sky-700 dark:bg-sky-950 dark:text-sky-300")}>
+                <Badge variant="outline" className={cn("text-[10px] h-5", isSelected ? "border-white/40 text-white bg-white/10" : "border-sky-600 bg-sky-600 text-white dark:border-sky-500 dark:bg-sky-500 dark:text-white")}>
                   {instance.name}
                 </Badge>
               )}
@@ -532,15 +532,15 @@ export function SigZapConversasColumn({
                   variant="outline" 
                   className={cn("text-[10px] h-5 font-semibold", isSelected ? "border-white/40 text-white bg-white/20" : "")}
                   style={!isSelected ? { 
-                    backgroundColor: corCaptador ? toHslWithAlpha(corCaptador, 0.12) : 'hsl(var(--muted))',
-                    color: corCaptador || 'hsl(var(--foreground))',
-                    borderColor: corCaptador ? toHslWithAlpha(corCaptador, 0.4) : 'hsl(var(--border))',
+                    backgroundColor: corCaptador || 'hsl(var(--primary))',
+                    color: 'hsl(var(--primary-foreground))',
+                    borderColor: corCaptador || 'hsl(var(--primary))',
                   } : {}}
                 >
                   {assignedName ? `${assignedName}` : 'Atendendo'}
                 </Badge>
               ) : (
-                <Badge variant="outline" className={cn("text-[10px] h-5", isSelected ? "border-white/40 text-white bg-white/20" : "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-300")}>
+                <Badge variant="outline" className={cn("text-[10px] h-5", isSelected ? "border-white/40 text-white bg-white/20" : "border-amber-500 bg-amber-500 text-white dark:border-amber-500 dark:bg-amber-500 dark:text-white")}>
                   Livre
                 </Badge>
               )}
