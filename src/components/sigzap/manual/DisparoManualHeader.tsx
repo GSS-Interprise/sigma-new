@@ -21,7 +21,7 @@ export function DisparoManualHeader({
       const { data, error } = await supabase
         .from("campanhas")
         .select("id, nome, status")
-        .in("status", ["ativa", "ativo", "rascunho", "agendada"])
+        .in("status", ["ativa", "rascunho", "agendada"])
         .order("created_at", { ascending: false })
         .limit(200);
       if (error) throw error;
