@@ -1,0 +1,1 @@
+GRANT SELECT ON public.vw_lead_status_por_proposta TO authenticated, anon;
