@@ -1,0 +1,338 @@
+import { useState, useMemo, useEffect } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Skeleton } from "@/components/ui/skeleton";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { toast } from "sonner";
+import { Phone, Send, Ban, Bookmark, Unlock, Loader2, X, Check } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useDisparoManual } from "@/hooks/useDisparoManual";
+import { LiberarLeadDialog } from "@/components/disparos/LiberarLeadDialog";
+
+interface Props {
+  campanhaPropostaId: string | null;
+  leadId: string | null;
+}
+
+function isInativo(p: string) {
+  return p?.startsWith("INATIVO:");
+}
+function clean(p: string) {
+  return p.replace(/^INATIVO:\s*/, "").trim();
+}
+
+export function DisparoManualLeadPanel({ campanhaPropostaId, leadId }: Props) {
+  const qc = useQueryClient();
+  const [selectedPhone, setSelectedPhone] = useState<string | null>(null);
+  const [selectedInstance, setSelectedInstance] = useState<string | null>(null);
+  const [mensagem, setMensagem] = useState("");
+  const [liberarOpen, setLiberarOpen] = useState(false);
+  const disparo = useDisparoManual();
+
+  // Lead
+  const { data: lead, isLoading: loadingLead } = useQuery({
+    queryKey: ["dm-lead", leadId],
+    enabled: !!leadId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("leads")
+        .select("id, nome, phone_e164, telefones_adicionais, status")
+        .eq("id", leadId!)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Instâncias conectadas
+  const { data: chips } = useQuery({
+    queryKey: ["dm-chips"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("chips")
+        .select("id, nome, instance_name, status, connection_state")
+        .eq("status", "ativo")
+        .order("nome");
+      if (error) throw error;
+      return (data || []).filter(
+        (c) => c.connection_state === "open" || c.connection_state === "connected"
+      );
+    },
+  });
+
+  // Reset state quando muda lead
+  useEffect(() => {
+    setSelectedPhone(null);
+    setMensagem("");
+  }, [leadId]);
+
+  const phones = useMemo(() => {
+    if (!lead) return [];
+    const arr: string[] = [];
+    if (lead.phone_e164) arr.push(lead.phone_e164);
+    (lead.telefones_adicionais || []).forEach((p: string) => {
+      if (p && !arr.includes(p)) arr.push(p);
+    });
+    return arr;
+  }, [lead]);
+
+  // Auto-select primeiro telefone ativo
+  useEffect(() => {
+    if (!selectedPhone && phones.length > 0) {
+      const ativo = phones.find((p) => !isInativo(p));
+      if (ativo) setSelectedPhone(clean(ativo));
+    }
+  }, [phones, selectedPhone]);
+
+  // Toggle inativo
+  const toggleInativo = useMutation({
+    mutationFn: async (phoneOriginal: string) => {
+      if (!lead) return;
+      const isAtivo = !isInativo(phoneOriginal);
+      const novo = isAtivo ? `INATIVO: ${clean(phoneOriginal)}` : clean(phoneOriginal);
+      // Se for o phone_e164 principal, move para telefones_adicionais com prefixo
+      if (phoneOriginal === lead.phone_e164) {
+        const novosAdic = [novo, ...(lead.telefones_adicionais || [])];
+        await supabase
+          .from("leads")
+          .update({ phone_e164: null, telefones_adicionais: novosAdic })
+          .eq("id", lead.id);
+      } else {
+        const novosAdic = (lead.telefones_adicionais || []).map((p: string) =>
+          p === phoneOriginal ? novo : p
+        );
+        await supabase
+          .from("leads")
+          .update({ telefones_adicionais: novosAdic })
+          .eq("id", lead.id);
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["dm-lead", leadId] });
+      toast.success("Status do número atualizado");
+    },
+    onError: (e: any) => toast.error("Erro: " + e.message),
+  });
+
+  // Blacklist
+  const blacklist = useMutation({
+    mutationFn: async () => {
+      if (!selectedPhone || !lead) throw new Error("Selecione um número");
+      const { data: u } = await supabase.auth.getUser();
+      const { error } = await supabase.from("blacklist").insert({
+        phone_e164: selectedPhone,
+        nome: lead.nome,
+        reason: "Disparo manual SIG Zap",
+        origem: "disparo_manual",
+        created_by: u.user?.id,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => toast.success("Adicionado à blacklist"),
+    onError: (e: any) => toast.error("Erro: " + e.message),
+  });
+
+  // Banco de interesse
+  const bancoInteresse = useMutation({
+    mutationFn: async () => {
+      if (!lead) return;
+      const { data: u } = await supabase.auth.getUser();
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("nome_completo")
+        .eq("id", u.user?.id || "")
+        .maybeSingle();
+      const { error } = await supabase.from("banco_interesse_leads").insert({
+        lead_id: lead.id,
+        encaminhado_por: u.user?.id,
+        encaminhado_por_nome: prof?.nome_completo,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => toast.success("Lead enviado ao banco de interesse"),
+    onError: (e: any) => toast.error("Erro: " + e.message),
+  });
+
+  const canSend = !!(
+    campanhaPropostaId && leadId && selectedPhone && selectedInstance && mensagem.trim()
+  );
+
+  const handleSend = async () => {
+    if (!canSend) return;
+    await disparo.mutateAsync({
+      campanha_proposta_id: campanhaPropostaId!,
+      lead_id: leadId!,
+      phone_e164: selectedPhone!,
+      instance_id: selectedInstance!,
+      mensagem: mensagem.trim(),
+    });
+    setMensagem("");
+  };
+
+  if (!leadId) {
+    return (
+      <div className="border-r flex items-center justify-center h-full bg-card text-center p-6">
+        <div className="text-sm text-muted-foreground">
+          Selecione um lead na coluna ao lado para preparar o disparo.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="border-r flex flex-col h-full bg-card overflow-hidden">
+      <div className="p-3 border-b">
+        <h3 className="font-semibold text-sm">
+          {loadingLead ? <Skeleton className="h-5 w-40" /> : lead?.nome || "Lead"}
+        </h3>
+        <p className="text-xs text-muted-foreground">Detalhes & envio</p>
+      </div>
+
+      <ScrollArea className="flex-1">
+        <div className="p-3 space-y-4">
+          {/* Bloco 1: Números */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase text-muted-foreground">
+              Números
+            </Label>
+            {phones.length === 0 && (
+              <p className="text-xs text-muted-foreground">Nenhum número cadastrado.</p>
+            )}
+            <RadioGroup value={selectedPhone ?? ""} onValueChange={setSelectedPhone}>
+              {phones.map((p) => {
+                const inativo = isInativo(p);
+                const numero = clean(p);
+                return (
+                  <div
+                    key={p}
+                    className={cn(
+                      "flex items-center gap-2 p-2 rounded border text-sm",
+                      inativo && "opacity-60 bg-muted/40"
+                    )}
+                  >
+                    <RadioGroupItem value={numero} id={`phone-${numero}`} disabled={inativo} />
+                    <Phone className="h-3.5 w-3.5 text-primary" />
+                    <label
+                      htmlFor={`phone-${numero}`}
+                      className={cn("flex-1 cursor-pointer", inativo && "line-through")}
+                    >
+                      {numero}
+                    </label>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 px-2 text-xs"
+                      disabled={toggleInativo.isPending}
+                      onClick={() => toggleInativo.mutate(p)}
+                      title={inativo ? "Reativar" : "Marcar como não é o médico"}
+                    >
+                      {inativo ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
+                      <span className="ml-1">{inativo ? "Reativar" : "Inativar"}</span>
+                    </Button>
+                  </div>
+                );
+              })}
+            </RadioGroup>
+          </div>
+
+          {/* Bloco 2: Ações rápidas */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase text-muted-foreground">
+              Ações
+            </Label>
+            <div className="grid grid-cols-3 gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => blacklist.mutate()}
+                disabled={!selectedPhone || blacklist.isPending}
+              >
+                <Ban className="h-3.5 w-3.5 mr-1" />
+                Blacklist
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => bancoInteresse.mutate()}
+                disabled={bancoInteresse.isPending}
+              >
+                <Bookmark className="h-3.5 w-3.5 mr-1" />
+                Banco
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setLiberarOpen(true)}
+                disabled={!campanhaPropostaId}
+              >
+                <Unlock className="h-3.5 w-3.5 mr-1" />
+                Liberar
+              </Button>
+            </div>
+          </div>
+
+          {/* Bloco 3: Envio */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase text-muted-foreground">
+              Instância (única)
+            </Label>
+            <RadioGroup value={selectedInstance ?? ""} onValueChange={setSelectedInstance}>
+              {(chips || []).length === 0 && (
+                <p className="text-xs text-muted-foreground">Nenhuma instância conectada.</p>
+              )}
+              {(chips || []).map((c: any) => (
+                <div key={c.id} className="flex items-center gap-2 p-2 rounded border text-sm">
+                  <RadioGroupItem value={c.id} id={`inst-${c.id}`} />
+                  <label htmlFor={`inst-${c.id}`} className="flex-1 cursor-pointer">
+                    {c.nome}
+                    <span className="text-xs text-muted-foreground ml-2">
+                      {c.instance_name}
+                    </span>
+                  </label>
+                </div>
+              ))}
+            </RadioGroup>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="msg" className="text-xs font-semibold uppercase text-muted-foreground">
+              Mensagem (suporta spintax {"{a|b}"} e {"{{nome}}"})
+            </Label>
+            <Textarea
+              id="msg"
+              value={mensagem}
+              onChange={(e) => setMensagem(e.target.value)}
+              placeholder="Olá {{nome}}, {tudo bem|como vai}?"
+              rows={5}
+            />
+          </div>
+        </div>
+      </ScrollArea>
+
+      <div className="p-3 border-t">
+        <Button className="w-full" onClick={handleSend} disabled={!canSend || disparo.isPending}>
+          {disparo.isPending ? (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : (
+            <Send className="h-4 w-4 mr-2" />
+          )}
+          Enviar disparo manual
+        </Button>
+      </div>
+
+      {liberarOpen && campanhaPropostaId && lead && (
+        <LiberarLeadDialog
+          open={liberarOpen}
+          onOpenChange={setLiberarOpen}
+          leadId={lead.id}
+          leadNome={lead.nome}
+          campanhaPropostaId={campanhaPropostaId}
+        />
+      )}
+    </div>
+  );
+}

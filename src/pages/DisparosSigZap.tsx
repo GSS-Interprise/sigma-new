@@ -11,6 +11,9 @@ import { Button } from "@/components/ui/button";
 import { Settings, MessageCircle, Wrench, Loader2, Send } from "lucide-react";
 import { toast } from "sonner";
 import { CaptacaoProtectedRoute } from "@/components/auth/CaptacaoProtectedRoute";
+import { DisparoManualHeader } from "@/components/sigzap/manual/DisparoManualHeader";
+import { DisparoManualLeadsColumn } from "@/components/sigzap/manual/DisparoManualLeadsColumn";
+import { DisparoManualLeadPanel } from "@/components/sigzap/manual/DisparoManualLeadPanel";
 
 const STORAGE_KEY = 'sigzap-selected-instances';
 
@@ -34,6 +37,10 @@ export default function DisparosSigZap() {
   const [fixingDuplicates, setFixingDuplicates] = useState(false);
   const [draggingConversaId, setDraggingConversaId] = useState<string | null>(null);
   const [showTransferOverlay, setShowTransferOverlay] = useState(false);
+  const [mode, setMode] = useState<"inbox" | "manual">("inbox");
+  const [dmCampanhaId, setDmCampanhaId] = useState<string | null>(null);
+  const [dmPropostaId, setDmPropostaId] = useState<string | null>(null);
+  const [dmLeadId, setDmLeadId] = useState<string | null>(null);
 
   const handleTransfer = (conversaId: string) => {
     setDraggingConversaId(conversaId);
@@ -87,7 +94,7 @@ export default function DisparosSigZap() {
     }
   };
 
-  const headerActions = (
+  const inboxHeaderActions = (
     <div className="flex items-center justify-between w-full">
       <div className="flex items-center gap-3">
         <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -100,7 +107,7 @@ export default function DisparosSigZap() {
       </div>
       <div className="flex items-center gap-2">
         <Button
-          onClick={() => console.log("Disparo Manual clicked")}
+          onClick={() => setMode("manual")}
           variant="outline"
           size="sm"
         >
@@ -131,6 +138,24 @@ export default function DisparosSigZap() {
     </div>
   );
 
+  const manualHeaderActions = (
+    <DisparoManualHeader
+      campanhaId={dmCampanhaId}
+      propostaId={dmPropostaId}
+      onChangeCampanha={setDmCampanhaId}
+      onChangeProposta={(id) => {
+        setDmPropostaId(id);
+        setDmLeadId(null);
+      }}
+      onBack={() => {
+        setMode("inbox");
+        setDmLeadId(null);
+      }}
+    />
+  );
+
+  const headerActions = mode === "manual" ? manualHeaderActions : inboxHeaderActions;
+
   return (
     <CaptacaoProtectedRoute permission="seigzaps_config">
       <AppLayout headerActions={headerActions} hideFooter>
@@ -141,6 +166,21 @@ export default function DisparosSigZap() {
             gridTemplateColumns: '1fr 1fr 2fr',
           }}
         >
+          {mode === "manual" ? (
+            <>
+              <DisparoManualLeadsColumn
+                campanhaPropostaId={dmPropostaId}
+                selectedLeadId={dmLeadId}
+                onSelectLead={setDmLeadId}
+              />
+              <DisparoManualLeadPanel
+                campanhaPropostaId={dmPropostaId}
+                leadId={dmLeadId}
+              />
+              <SigZapChatColumn conversaId={selectedConversaId} />
+            </>
+          ) : (
+            <>
           {/* Coluna 1: Conversas LIVRES */}
           <SigZapConversasColumn
             selectedConversaId={selectedConversaId}
@@ -182,6 +222,8 @@ export default function DisparosSigZap() {
 
           {/* Coluna 3: Chat */}
           <SigZapChatColumn conversaId={selectedConversaId} />
+            </>
+          )}
         </div>
         
         <SigZapTransferOverlay

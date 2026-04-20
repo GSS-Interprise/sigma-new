@@ -3740,6 +3740,98 @@ export type Database = {
         }
         Relationships: []
       }
+      disparo_manual_envios: {
+        Row: {
+          campanha_proposta_id: string
+          conversation_id: string | null
+          created_at: string
+          enviado_por: string | null
+          erro: string | null
+          id: string
+          instance_id: string | null
+          lead_id: string
+          mensagem: string
+          phone_e164: string
+          status: string
+        }
+        Insert: {
+          campanha_proposta_id: string
+          conversation_id?: string | null
+          created_at?: string
+          enviado_por?: string | null
+          erro?: string | null
+          id?: string
+          instance_id?: string | null
+          lead_id: string
+          mensagem: string
+          phone_e164: string
+          status?: string
+        }
+        Update: {
+          campanha_proposta_id?: string
+          conversation_id?: string | null
+          created_at?: string
+          enviado_por?: string | null
+          erro?: string | null
+          id?: string
+          instance_id?: string | null
+          lead_id?: string
+          mensagem?: string
+          phone_e164?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "disparo_manual_envios_campanha_proposta_id_fkey"
+            columns: ["campanha_proposta_id"]
+            isOneToOne: false
+            referencedRelation: "campanha_propostas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "disparo_manual_envios_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "sigzap_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "disparo_manual_envios_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
+            referencedRelation: "chips"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "disparo_manual_envios_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
+            referencedRelation: "vw_chip_performance_7d"
+            referencedColumns: ["chip_id"]
+          },
+          {
+            foreignKeyName: "disparo_manual_envios_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "disparo_manual_envios_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_leads_duplicados"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "disparo_manual_envios_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_leads_quentes_esperando"
+            referencedColumns: ["lead_id"]
+          },
+        ]
+      }
       disparos_anotacoes: {
         Row: {
           cliente_id: string
@@ -11753,6 +11845,7 @@ export type Database = {
         | "lead_quente_handoff"
         | "canal_encerrado"
         | "campanha_encerrada"
+        | "disparo_manual"
       tipo_impacto_suporte:
         | "sistema"
         | "infraestrutura"
@@ -12133,6 +12226,7 @@ export const Constants = {
         "lead_quente_handoff",
         "canal_encerrado",
         "campanha_encerrada",
+        "disparo_manual",
       ],
       tipo_impacto_suporte: [
         "sistema",
