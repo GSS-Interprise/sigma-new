@@ -23,7 +23,7 @@ export function useCampanhaPropostas(campanhaId?: string) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("campanha_propostas")
-        .select("*, proposta:proposta_id(id, id_proposta, descricao, observacoes), lista:lista_id(id, nome, modo, total_estimado)")
+        .select("*, proposta:proposta_id(id, id_proposta, descricao, observacoes), lista:lista_id(id, nome, total_estimado)")
         .eq("campanha_id", campanhaId!)
         .order("created_at", { ascending: false });
       if (error) {
