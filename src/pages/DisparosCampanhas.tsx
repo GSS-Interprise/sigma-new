@@ -311,9 +311,6 @@ export default function DisparosCampanhas() {
                       </Badge>
                     </div>
                     <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
-                      <Badge variant="outline" className="text-xs">
-                        {c.canal}
-                      </Badge>
                       {c.data_inicio && (
                         <span className="flex items-center gap-1">
                           <Calendar className="h-3 w-3" />
