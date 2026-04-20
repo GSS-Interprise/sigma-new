@@ -285,18 +285,26 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
             </thead>
             <tbody>
               {filtrados.map((l: any, idx: number) => {
-                const fechado = STATUS_FECHADOS.includes(l.status);
+                const sRow = statusMap?.get(l.id);
+                const status = sRow?.status_proposta ?? "a_contactar";
+                const fechadoProp = status === "fechado_proposta";
+                const blkBlacklist = !!sRow?.bloqueado_blacklist;
+                const blkTemp = !!sRow?.bloqueado_temp;
+                const blkJanela = !!sRow?.bloqueado_janela_7d;
+                const hardBlock = blkBlacklist || blkTemp;
+                const precisaLiberar = !hardBlock && (fechadoProp || blkJanela);
                 const checked = selecionados.has(l.id);
                 const tempo = tempoPorLead.get(l.id);
                 return (
                   <tr
                     key={l.id}
-                    className="border-t hover:bg-accent/40 transition-colors"
+                    className={`border-t hover:bg-accent/40 transition-colors ${hardBlock ? "opacity-60" : ""}`}
                   >
                     {cascataAtiva && (
                       <td className="px-3 py-2">
                         <Checkbox
                           checked={checked}
+                          disabled={hardBlock || precisaLiberar}
                           onCheckedChange={() => toggleLead(l.id)}
                         />
                       </td>
@@ -315,9 +323,52 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
                       {l.email || "—"}
                     </td>
                     <td className="px-4 py-2">
-                      <Badge variant={fechado ? "secondary" : "outline"} className="text-[10px]">
-                        {l.status || "Novo"}
-                      </Badge>
+                      <TooltipProvider delayDuration={150}>
+                        <div className="flex items-center gap-1 flex-wrap">
+                          <Badge
+                            variant={fechadoProp ? "secondary" : status === "em_aberto" ? "default" : "outline"}
+                            className="text-[10px]"
+                          >
+                            {STATUS_LABEL[status]}
+                          </Badge>
+                          {blkBlacklist && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Ban className="h-3.5 w-3.5 text-destructive" />
+                              </TooltipTrigger>
+                              <TooltipContent>Telefone na blacklist</TooltipContent>
+                            </Tooltip>
+                          )}
+                          {blkTemp && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <ShieldAlert className="h-3.5 w-3.5 text-amber-600" />
+                              </TooltipTrigger>
+                              <TooltipContent>Bloqueio temporário ativo</TooltipContent>
+                            </Tooltip>
+                          )}
+                          {blkJanela && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Clock className="h-3.5 w-3.5 text-amber-600" />
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                Disparo recente — aguardando janela de 7 dias
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
+                          {fechadoProp && sRow?.ultimo_motivo && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <CheckCircle2 className="h-3.5 w-3.5 text-muted-foreground" />
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs">
+                                Motivo: {sRow.ultimo_motivo}
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
+                        </div>
+                      </TooltipProvider>
                     </td>
                     {cascataAtiva && (
                       <td className="px-4 py-2 text-xs text-muted-foreground">
@@ -325,24 +376,33 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
                       </td>
                     )}
                     <td className="px-4 py-2 text-right">
-                      {fechado ? (
-                        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                          <CheckCircle2 className="h-3.5 w-3.5" /> Fechado
-                        </span>
-                      ) : (
+                      {hardBlock ? (
+                        <span className="text-xs text-muted-foreground">Bloqueado</span>
+                      ) : precisaLiberar ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7"
+                          onClick={() => setLiberarLead({ id: l.id, nome: l.nome })}
+                        >
+                          <Unlock className="h-3 w-3 mr-1" /> Liberar lead
+                        </Button>
+                      ) : cascataAtiva ? (
                         <Button
                           size="sm"
                           variant="outline"
                           disabled={fechandoId === l.id}
-                          onClick={() => fecharLead(l.id)}
+                          onClick={() => encerrarNaProposta(l.id)}
                           className="h-7"
                         >
                           {fechandoId === l.id ? (
                             <Loader2 className="h-3 w-3 animate-spin" />
                           ) : (
-                            "Fechar lead"
+                            "Encerrar nesta proposta"
                           )}
                         </Button>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
                       )}
                     </td>
                   </tr>
