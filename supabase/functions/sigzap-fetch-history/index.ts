@@ -218,6 +218,9 @@ Deno.serve(async (req) => {
 
       const fromMe = msg.key?.fromMe === true;
       
+      // Real sender JID: for incoming messages it can be a LID in remoteJid
+      const msgRemoteJid = msg.key?.remoteJid || null;
+
       // Extract message content
       let messageText: string | null = null;
       let messageType = "text";
@@ -296,7 +299,7 @@ Deno.serve(async (req) => {
         conversation_id: conversationId,
         wa_message_id: waId,
         from_me: fromMe,
-        sender_jid: fromMe ? null : contact.contact_jid,
+        sender_jid: fromMe ? null : (msgRemoteJid || contact.contact_jid),
         message_text: messageText,
         message_type: messageType,
         message_status: status,
