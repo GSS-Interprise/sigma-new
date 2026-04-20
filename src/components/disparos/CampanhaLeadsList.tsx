@@ -294,7 +294,17 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
         </div>
       ) : filtrados.length === 0 ? (
         <div className="p-6 text-center text-sm text-muted-foreground">
-          Nenhum lead encontrado neste filtro.
+          {leadsLiberadosPorCascata && itens.length > 0 && itensVisiveis.length === 0 ? (
+            <>
+              Nenhum lead disponível neste canal ainda.
+              <br />
+              Aguardando finalização do canal anterior
+              {canalAnterior ? <> (<strong>{CANAL_LABEL[canalAnterior]}</strong>)</> : null}
+              {" "}— os leads aparecem aqui automaticamente quando forem encerrados ou transferidos.
+            </>
+          ) : (
+            "Nenhum lead encontrado neste filtro."
+          )}
         </div>
       ) : (
         <ScrollArea className="h-[440px]">
