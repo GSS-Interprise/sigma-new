@@ -223,6 +223,7 @@ export default function DisparosSigZap() {
               <DisparoManualLeadPanel
                 campanhaPropostaId={dmPropostaId}
                 leadId={dmLeadId}
+                onOpenChat={handleOpenChat}
               />
               <SigZapChatColumn conversaId={selectedConversaId} />
             </>
