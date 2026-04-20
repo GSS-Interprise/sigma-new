@@ -42,23 +42,25 @@ export default function DisparosSigZap() {
   const [dmPropostaId, setDmPropostaId] = useState<string | null>(null);
   const [dmLeadId, setDmLeadId] = useState<string | null>(null);
 
+  const handleTransfer = (conversaId: string) => {
+    setDraggingConversaId(conversaId);
+    setShowTransferOverlay(true);
+  };
+
   const handleOpenChat = async (phone: string, instanceId: string) => {
     try {
-      // Normalize phone
       const digits = phone.replace(/\D/g, "");
       const normalizedPhone = digits.startsWith("55") ? digits : `55${digits}`;
 
-      // Get instance name
       const { data: chip } = await supabase.from("chips").select("instance_name").eq("id", instanceId).single();
       if (!chip?.instance_name) { toast.error("Instância não encontrada"); return; }
 
-      // Get instance id from sigzap_instances
       const { data: inst } = await supabase.from("sigzap_instances").select("id, name").eq("name", chip.instance_name).single();
       if (!inst) { toast.error("Instância SigZap não encontrada"); return; }
 
       const contactJid = `${normalizedPhone}@s.whatsapp.net`;
+      const { data: u } = await supabase.auth.getUser();
 
-      // Find or create contact
       let { data: existingContact } = await supabase.from("sigzap_contacts").select("id").eq("instance_id", inst.id).eq("contact_jid", contactJid).maybeSingle();
       let contactId: string;
       if (existingContact) {
@@ -69,29 +71,22 @@ export default function DisparosSigZap() {
         contactId = newContact.id;
       }
 
-      // Find or create conversation
       let { data: existingConv } = await supabase.from("sigzap_conversations").select("id").eq("instance_id", inst.id).eq("contact_id", contactId).maybeSingle();
       if (existingConv) {
-        const { data: u } = await supabase.auth.getUser();
-        await supabase.from("sigzap_conversations").update({ assigned_user_id: u.user?.id, status: "in_progress" }).eq("id", existingConv.id);
+        await supabase.from("sigzap_conversations").update({ assigned_user_id: u.user?.id, status: "in_progress", lead_id: dmLeadId }).eq("id", existingConv.id);
         setSelectedConversaId(existingConv.id);
       } else {
-        const { data: u } = await supabase.auth.getUser();
-        const { data: newConv, error } = await supabase.from("sigzap_conversations").insert({ instance_id: inst.id, contact_id: contactId, assigned_user_id: u.user?.id, status: "in_progress" }).select("id").single();
+        const { data: newConv, error } = await supabase.from("sigzap_conversations").insert({ instance_id: inst.id, contact_id: contactId, assigned_user_id: u.user?.id, status: "in_progress", lead_id: dmLeadId }).select("id").single();
         if (error) throw error;
         setSelectedConversaId(newConv.id);
       }
 
       queryClient.invalidateQueries({ queryKey: ["sigzap-conversations"] });
-      toast.success("Chat aberto!");
+      queryClient.invalidateQueries({ queryKey: ["sigzap-chat-conversa"] });
+      queryClient.invalidateQueries({ queryKey: ["sigzap-linked-lead"] });
     } catch (err: any) {
       toast.error("Erro ao abrir chat: " + err.message);
     }
-  };
-
-  const handleTransfer = (conversaId: string) => {
-    setDraggingConversaId(conversaId);
-    setShowTransferOverlay(true);
   };
 
   // Persist instance selection

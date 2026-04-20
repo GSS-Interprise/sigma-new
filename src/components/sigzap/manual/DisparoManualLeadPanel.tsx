@@ -312,8 +312,8 @@ export function DisparoManualLeadPanel({ campanhaPropostaId, leadId, onOpenChat 
                           className="flex-shrink-0 hover:scale-110 transition-transform"
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (selectedInstance && onOpenChat) onOpenChat(numero, selectedInstance);
-                            else if (!selectedInstance) toast.error("Selecione uma instância primeiro");
+                            if (!selectedInstance) { toast.error("Selecione uma instância primeiro"); return; }
+                            onOpenChat?.(numero, selectedInstance);
                           }}
                         >
                           <MessageCircle className="h-4 w-4 text-green-500 fill-green-500" />
