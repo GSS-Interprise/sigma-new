@@ -19,6 +19,16 @@ import { Phone, Send, Ban, Bookmark, Unlock, Loader2, X, Check, MessageCircle, P
 import { cn } from "@/lib/utils";
 import { useDisparoManual } from "@/hooks/useDisparoManual";
 import { LiberarLeadDialog } from "@/components/disparos/LiberarLeadDialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface Props {
   campanhaPropostaId: string | null;
@@ -39,6 +49,8 @@ export function DisparoManualLeadPanel({ campanhaPropostaId, leadId, onOpenChat 
   const [selectedInstance, setSelectedInstance] = useState<string | null>(null);
   const [mensagem, setMensagem] = useState("");
   const [liberarOpen, setLiberarOpen] = useState(false);
+  const [confirmBlacklist, setConfirmBlacklist] = useState(false);
+  const [confirmBanco, setConfirmBanco] = useState(false);
   const disparo = useDisparoManual();
   const [checkingWpp, setCheckingWpp] = useState(false);
   const [wppStatus, setWppStatus] = useState<Record<string, "has" | "no" | "unchecked">>({});
@@ -351,7 +363,7 @@ export function DisparoManualLeadPanel({ campanhaPropostaId, leadId, onOpenChat 
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => blacklist.mutate()}
+                onClick={() => setConfirmBlacklist(true)}
                 disabled={!selectedPhone || blacklist.isPending}
               >
                 <Ban className="h-3.5 w-3.5 mr-1" />
@@ -360,7 +372,7 @@ export function DisparoManualLeadPanel({ campanhaPropostaId, leadId, onOpenChat 
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => bancoInteresse.mutate()}
+                onClick={() => setConfirmBanco(true)}
                 disabled={bancoInteresse.isPending}
               >
                 <Bookmark className="h-3.5 w-3.5 mr-1" />
@@ -419,6 +431,40 @@ export function DisparoManualLeadPanel({ campanhaPropostaId, leadId, onOpenChat 
           campanhaPropostaId={campanhaPropostaId}
         />
       )}
+
+      <AlertDialog open={confirmBlacklist} onOpenChange={setConfirmBlacklist}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Adicionar à Blacklist?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O número {selectedPhone} será adicionado à blacklist e não receberá mais disparos. Esta ação pode ser revertida manualmente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={() => blacklist.mutate()}>
+              Confirmar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={confirmBanco} onOpenChange={setConfirmBanco}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Enviar ao Banco de Interesse?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O lead {lead?.nome} será marcado como banco de interesse para contato futuro.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={() => bancoInteresse.mutate()}>
+              Confirmar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
