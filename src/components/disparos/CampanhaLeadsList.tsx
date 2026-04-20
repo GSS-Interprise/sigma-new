@@ -430,6 +430,21 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
           onDone={limparSelecao}
         />
       )}
+
+      {cascataAtiva && liberarLead && (
+        <LiberarLeadDialog
+          open={!!liberarLead}
+          onOpenChange={(o) => !o && setLiberarLead(null)}
+          leadId={liberarLead.id}
+          leadNome={liberarLead.nome}
+          campanhaPropostaId={campanhaPropostaId!}
+          motivoAnterior={statusMap?.get(liberarLead.id)?.ultimo_motivo}
+          ultimaDecisaoEm={statusMap?.get(liberarLead.id)?.ultima_decisao_em}
+          ultimoDisparo={statusMap?.get(liberarLead.id)?.ultimo_disparo}
+          bloqueioJanela7d={!!statusMap?.get(liberarLead.id)?.bloqueado_janela_7d}
+          fechadoProposta={statusMap?.get(liberarLead.id)?.status_proposta === "fechado_proposta"}
+        />
+      )}
     </Card>
   );
 }
