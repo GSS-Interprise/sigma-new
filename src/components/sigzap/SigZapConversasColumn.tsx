@@ -613,9 +613,33 @@ export function SigZapConversasColumn({
         </div>
       </div>
 
-      {/* Conversations count */}
-      <div className="flex items-center justify-between px-3 py-2 border-b text-xs text-muted-foreground">
-        <span>{filteredConversas.length} conversa{filteredConversas.length !== 1 ? 's' : ''}</span>
+      {/* WhatsApp-style filter tabs */}
+      <div className="flex items-center gap-2 px-3 py-2 border-b">
+        <button
+          onClick={() => setFiltroAtivo("todas")}
+          className={cn(
+            "text-xs font-medium px-3 py-1 rounded-full transition-colors",
+            filtroAtivo === "todas"
+              ? "bg-primary/15 text-primary"
+              : "bg-muted/50 text-muted-foreground hover:bg-muted"
+          )}
+        >
+          Todas
+        </button>
+        <button
+          onClick={() => setFiltroAtivo("nao_lidas")}
+          className={cn(
+            "text-xs font-medium px-3 py-1 rounded-full transition-colors",
+            filtroAtivo === "nao_lidas"
+              ? "bg-primary/15 text-primary"
+              : "bg-muted/50 text-muted-foreground hover:bg-muted"
+          )}
+        >
+          Não lidas
+        </button>
+        <span className="ml-auto text-xs text-muted-foreground">
+          {filteredConversas.length}
+        </span>
       </div>
 
       {/* Conversations List */}
