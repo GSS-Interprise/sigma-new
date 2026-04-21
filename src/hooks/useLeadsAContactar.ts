@@ -82,6 +82,33 @@ export function useLeadsAContactar(campanhaPropostaId: string | null | undefined
         }
       }
 
+      // 3b. Fallback: também marca como contactado quando existir QUALQUER mensagem
+      // enviada por nós (from_me=true) em conversas SIG Zap vinculadas ao lead.
+      // Cobre o caso em que o usuário enviou direto pelo input do chat.
+      const { data: convs } = await (supabase as any)
+        .from("sigzap_conversations")
+        .select("id, lead_id")
+        .in("lead_id", leadIds);
+      const convIdToLead = new Map<string, string>();
+      for (const c of convs || []) convIdToLead.set(c.id, c.lead_id);
+      const convIds = Array.from(convIdToLead.keys());
+      if (convIds.length > 0) {
+        const { data: msgs } = await (supabase as any)
+          .from("sigzap_messages")
+          .select("conversation_id, sent_at, created_at, from_me")
+          .in("conversation_id", convIds)
+          .eq("from_me", true);
+        for (const m of msgs || []) {
+          const lid = convIdToLead.get(m.conversation_id);
+          if (!lid) continue;
+          const ts = m.sent_at || m.created_at;
+          const prev = contactMap.get(lid);
+          if (!prev || (ts && new Date(ts) > new Date(prev))) {
+            contactMap.set(lid, ts);
+          }
+        }
+      }
+
       return (leads || []).map((l: any) => ({
         lead_id: l.id,
         nome: l.nome,
