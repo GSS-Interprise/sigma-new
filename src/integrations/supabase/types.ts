@@ -1102,50 +1102,86 @@ export type Database = {
       banco_interesse_leads: {
         Row: {
           cidades: string[] | null
+          confianca_score: number | null
           created_at: string
+          dias_preferidos: string[] | null
+          disponibilidade_plantoes_mes: number | null
           encaminhado_por: string | null
           encaminhado_por_nome: string | null
+          especialidades_interesse: string[] | null
+          extracao_fonte: string | null
           id: string
           lead_id: string
+          modalidade_preferida: string[] | null
+          observacoes_ia: string | null
+          periodo_preferido: string | null
+          tipo_contratacao_preferida: string[] | null
           ufs: string[] | null
+          ultima_extracao_em: string | null
+          valor_minimo_aceitavel: number | null
+          valor_minimo_unidade: string | null
         }
         Insert: {
           cidades?: string[] | null
+          confianca_score?: number | null
           created_at?: string
+          dias_preferidos?: string[] | null
+          disponibilidade_plantoes_mes?: number | null
           encaminhado_por?: string | null
           encaminhado_por_nome?: string | null
+          especialidades_interesse?: string[] | null
+          extracao_fonte?: string | null
           id?: string
           lead_id: string
+          modalidade_preferida?: string[] | null
+          observacoes_ia?: string | null
+          periodo_preferido?: string | null
+          tipo_contratacao_preferida?: string[] | null
           ufs?: string[] | null
+          ultima_extracao_em?: string | null
+          valor_minimo_aceitavel?: number | null
+          valor_minimo_unidade?: string | null
         }
         Update: {
           cidades?: string[] | null
+          confianca_score?: number | null
           created_at?: string
+          dias_preferidos?: string[] | null
+          disponibilidade_plantoes_mes?: number | null
           encaminhado_por?: string | null
           encaminhado_por_nome?: string | null
+          especialidades_interesse?: string[] | null
+          extracao_fonte?: string | null
           id?: string
           lead_id?: string
+          modalidade_preferida?: string[] | null
+          observacoes_ia?: string | null
+          periodo_preferido?: string | null
+          tipo_contratacao_preferida?: string[] | null
           ufs?: string[] | null
+          ultima_extracao_em?: string | null
+          valor_minimo_aceitavel?: number | null
+          valor_minimo_unidade?: string | null
         }
         Relationships: [
           {
             foreignKeyName: "regiao_interesse_leads_lead_id_fkey"
             columns: ["lead_id"]
-            isOneToOne: false
+            isOneToOne: true
             referencedRelation: "leads"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "regiao_interesse_leads_lead_id_fkey"
             columns: ["lead_id"]
-            isOneToOne: false
+            isOneToOne: true
             referencedRelation: "vw_leads_duplicados"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "regiao_interesse_leads_lead_id_fkey"
             columns: ["lead_id"]
-            isOneToOne: false
+            isOneToOne: true
             referencedRelation: "vw_leads_quentes_esperando"
             referencedColumns: ["lead_id"]
           },
@@ -1296,6 +1332,165 @@ export type Database = {
         }
         Relationships: []
       }
+      cadencia_passos: {
+        Row: {
+          canal: string
+          dia_offset: number
+          id: string
+          is_breakup: boolean
+          is_inicial: boolean
+          mensagem_template: string | null
+          objetivo: string | null
+          ordem: number
+          subject_template: string | null
+          template_id: string
+        }
+        Insert: {
+          canal: string
+          dia_offset: number
+          id?: string
+          is_breakup?: boolean
+          is_inicial?: boolean
+          mensagem_template?: string | null
+          objetivo?: string | null
+          ordem: number
+          subject_template?: string | null
+          template_id: string
+        }
+        Update: {
+          canal?: string
+          dia_offset?: number
+          id?: string
+          is_breakup?: boolean
+          is_inicial?: boolean
+          mensagem_template?: string | null
+          objetivo?: string | null
+          ordem?: number
+          subject_template?: string | null
+          template_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cadencia_passos_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "cadencia_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cadencia_templates: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          descricao: string | null
+          id: string
+          is_default: boolean
+          nome: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          descricao?: string | null
+          id?: string
+          is_default?: boolean
+          nome: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          descricao?: string | null
+          id?: string
+          is_default?: boolean
+          nome?: string
+        }
+        Relationships: []
+      }
+      campanha_lead_touches: {
+        Row: {
+          campanha_lead_id: string
+          canal: string
+          chip_usado_id: string | null
+          contato_usado_id: string | null
+          conteudo_enviado: string | null
+          erro_detalhe: string | null
+          executado_em: string
+          id: string
+          ordem: number | null
+          passo_id: string | null
+          resultado: string | null
+        }
+        Insert: {
+          campanha_lead_id: string
+          canal: string
+          chip_usado_id?: string | null
+          contato_usado_id?: string | null
+          conteudo_enviado?: string | null
+          erro_detalhe?: string | null
+          executado_em?: string
+          id?: string
+          ordem?: number | null
+          passo_id?: string | null
+          resultado?: string | null
+        }
+        Update: {
+          campanha_lead_id?: string
+          canal?: string
+          chip_usado_id?: string | null
+          contato_usado_id?: string | null
+          conteudo_enviado?: string | null
+          erro_detalhe?: string | null
+          executado_em?: string
+          id?: string
+          ordem?: number | null
+          passo_id?: string | null
+          resultado?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campanha_lead_touches_campanha_lead_id_fkey"
+            columns: ["campanha_lead_id"]
+            isOneToOne: false
+            referencedRelation: "campanha_leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campanha_lead_touches_campanha_lead_id_fkey"
+            columns: ["campanha_lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_leads_quentes_esperando"
+            referencedColumns: ["campanha_lead_id"]
+          },
+          {
+            foreignKeyName: "campanha_lead_touches_chip_usado_id_fkey"
+            columns: ["chip_usado_id"]
+            isOneToOne: false
+            referencedRelation: "chips"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campanha_lead_touches_chip_usado_id_fkey"
+            columns: ["chip_usado_id"]
+            isOneToOne: false
+            referencedRelation: "vw_chip_performance_7d"
+            referencedColumns: ["chip_id"]
+          },
+          {
+            foreignKeyName: "campanha_lead_touches_contato_usado_id_fkey"
+            columns: ["contato_usado_id"]
+            isOneToOne: false
+            referencedRelation: "lead_contatos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campanha_lead_touches_passo_id_fkey"
+            columns: ["passo_id"]
+            isOneToOne: false
+            referencedRelation: "cadencia_passos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       campanha_leads: {
         Row: {
           campanha_id: string
@@ -1313,8 +1508,11 @@ export type Database = {
           lead_id: string
           mensagem_enviada: string | null
           metadados: Json | null
+          proximo_passo_id: string | null
+          proximo_touch_em: string | null
           status: Database["public"]["Enums"]["status_lead_campanha"]
           tentativas: number | null
+          touches_executados: number
           updated_at: string | null
           variation_indices: number[] | null
         }
@@ -1334,8 +1532,11 @@ export type Database = {
           lead_id: string
           mensagem_enviada?: string | null
           metadados?: Json | null
+          proximo_passo_id?: string | null
+          proximo_touch_em?: string | null
           status?: Database["public"]["Enums"]["status_lead_campanha"]
           tentativas?: number | null
+          touches_executados?: number
           updated_at?: string | null
           variation_indices?: number[] | null
         }
@@ -1355,8 +1556,11 @@ export type Database = {
           lead_id?: string
           mensagem_enviada?: string | null
           metadados?: Json | null
+          proximo_passo_id?: string | null
+          proximo_touch_em?: string | null
           status?: Database["public"]["Enums"]["status_lead_campanha"]
           tentativas?: number | null
+          touches_executados?: number
           updated_at?: string | null
           variation_indices?: number[] | null
         }
@@ -1395,6 +1599,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "vw_leads_quentes_esperando"
             referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "campanha_leads_proximo_passo_id_fkey"
+            columns: ["proximo_passo_id"]
+            isOneToOne: false
+            referencedRelation: "cadencia_passos"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -1612,6 +1823,8 @@ export type Database = {
           assunto_email: string | null
           batch_size: number | null
           briefing_ia: Json | null
+          cadencia_ativa: boolean
+          cadencia_template_id: string | null
           canal: Database["public"]["Enums"]["canal_campanha"]
           chip_fallback_id: string | null
           chip_id: string | null
@@ -1674,6 +1887,8 @@ export type Database = {
           assunto_email?: string | null
           batch_size?: number | null
           briefing_ia?: Json | null
+          cadencia_ativa?: boolean
+          cadencia_template_id?: string | null
           canal: Database["public"]["Enums"]["canal_campanha"]
           chip_fallback_id?: string | null
           chip_id?: string | null
@@ -1736,6 +1951,8 @@ export type Database = {
           assunto_email?: string | null
           batch_size?: number | null
           briefing_ia?: Json | null
+          cadencia_ativa?: boolean
+          cadencia_template_id?: string | null
           canal?: Database["public"]["Enums"]["canal_campanha"]
           chip_fallback_id?: string | null
           chip_id?: string | null
@@ -1793,6 +2010,13 @@ export type Database = {
           variaveis_dinamicas?: string[] | null
         }
         Relationships: [
+          {
+            foreignKeyName: "campanhas_cadencia_template_id_fkey"
+            columns: ["cadencia_template_id"]
+            isOneToOne: false
+            referencedRelation: "cadencia_templates"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "campanhas_chip_fallback_id_fkey"
             columns: ["chip_fallback_id"]
@@ -5865,6 +6089,73 @@ export type Database = {
           },
         ]
       }
+      lead_contatos: {
+        Row: {
+          ativo: boolean
+          created_at: string
+          id: string
+          instance_detectada: string | null
+          is_primary: boolean
+          lead_id: string
+          origem: string | null
+          primeiro_contato_em: string | null
+          tipo: string
+          ultimo_contato_em: string | null
+          valor: string
+          verified: boolean
+        }
+        Insert: {
+          ativo?: boolean
+          created_at?: string
+          id?: string
+          instance_detectada?: string | null
+          is_primary?: boolean
+          lead_id: string
+          origem?: string | null
+          primeiro_contato_em?: string | null
+          tipo: string
+          ultimo_contato_em?: string | null
+          valor: string
+          verified?: boolean
+        }
+        Update: {
+          ativo?: boolean
+          created_at?: string
+          id?: string
+          instance_detectada?: string | null
+          is_primary?: boolean
+          lead_id?: string
+          origem?: string | null
+          primeiro_contato_em?: string | null
+          tipo?: string
+          ultimo_contato_em?: string | null
+          valor?: string
+          verified?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_contatos_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_contatos_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_leads_duplicados"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_contatos_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_leads_quentes_esperando"
+            referencedColumns: ["lead_id"]
+          },
+        ]
+      }
       lead_enrichments: {
         Row: {
           attempt_count: number | null
@@ -6365,10 +6656,17 @@ export type Database = {
           chave_pix: string | null
           chave_unica: string | null
           cidade: string | null
+          classificacao: string
+          classificacao_em: string | null
+          classificacao_motivo: string | null
+          classificacao_por: string | null
           cnpj: string | null
+          consent_fonte: string | null
+          consent_registrado_em: string | null
           conta_corrente: string | null
           contrato_origem_id: string | null
           convertido_por: string | null
+          cooldown_ate: string | null
           cpf: string | null
           created_at: string | null
           crm: string | null
@@ -6398,6 +6696,10 @@ export type Database = {
           naturalidade: string | null
           nome: string
           observacoes: string | null
+          opt_out: boolean
+          opt_out_canal: string | null
+          opt_out_em: string | null
+          opt_out_motivo: string | null
           origem: string | null
           phone_e164: string | null
           rg: string | null
@@ -6424,10 +6726,17 @@ export type Database = {
           chave_pix?: string | null
           chave_unica?: string | null
           cidade?: string | null
+          classificacao?: string
+          classificacao_em?: string | null
+          classificacao_motivo?: string | null
+          classificacao_por?: string | null
           cnpj?: string | null
+          consent_fonte?: string | null
+          consent_registrado_em?: string | null
           conta_corrente?: string | null
           contrato_origem_id?: string | null
           convertido_por?: string | null
+          cooldown_ate?: string | null
           cpf?: string | null
           created_at?: string | null
           crm?: string | null
@@ -6457,6 +6766,10 @@ export type Database = {
           naturalidade?: string | null
           nome: string
           observacoes?: string | null
+          opt_out?: boolean
+          opt_out_canal?: string | null
+          opt_out_em?: string | null
+          opt_out_motivo?: string | null
           origem?: string | null
           phone_e164?: string | null
           rg?: string | null
@@ -6483,10 +6796,17 @@ export type Database = {
           chave_pix?: string | null
           chave_unica?: string | null
           cidade?: string | null
+          classificacao?: string
+          classificacao_em?: string | null
+          classificacao_motivo?: string | null
+          classificacao_por?: string | null
           cnpj?: string | null
+          consent_fonte?: string | null
+          consent_registrado_em?: string | null
           conta_corrente?: string | null
           contrato_origem_id?: string | null
           convertido_por?: string | null
+          cooldown_ate?: string | null
           cpf?: string | null
           created_at?: string | null
           crm?: string | null
@@ -6516,6 +6836,10 @@ export type Database = {
           naturalidade?: string | null
           nome?: string
           observacoes?: string | null
+          opt_out?: boolean
+          opt_out_canal?: string | null
+          opt_out_em?: string | null
+          opt_out_motivo?: string | null
           origem?: string | null
           phone_e164?: string | null
           rg?: string | null
@@ -11386,6 +11710,19 @@ export type Database = {
           },
         ]
       }
+      vw_lead_timeline: {
+        Row: {
+          canal: string | null
+          conteudo: string | null
+          lead_id: string | null
+          metadados: Json | null
+          operador: string | null
+          origem: string | null
+          tipo: string | null
+          ts: string | null
+        }
+        Relationships: []
+      }
       vw_leads_duplicados: {
         Row: {
           chaves_match: string[] | null
@@ -11490,6 +11827,7 @@ export type Database = {
         Returns: undefined
       }
       find_lead_by_phone: { Args: { p_phone: string }; Returns: string }
+      find_lead_by_phone_fuzzy: { Args: { p_phone: string }; Returns: string }
       generate_ticket_numero: { Args: never; Returns: string }
       get_leads_especialidade_counts: {
         Args: never
@@ -11628,6 +11966,10 @@ export type Database = {
       unaccent: { Args: { "": string }; Returns: string }
       validate_api_token: { Args: { _token: string }; Returns: string }
       validate_escala_api_token: { Args: { _token: string }; Returns: string }
+      vincular_contato_novo: {
+        Args: { p_instance: string; p_lead_id: string; p_phone: string }
+        Returns: string
+      }
     }
     Enums: {
       app_role:
@@ -11846,6 +12188,14 @@ export type Database = {
         | "canal_encerrado"
         | "campanha_encerrada"
         | "disparo_manual"
+        | "opt_out_lgpd"
+        | "classificacao_alterada"
+        | "cooldown_alterado"
+        | "contato_vinculado"
+        | "perfil_extraido"
+        | "email_enviado"
+        | "email_falhou"
+        | "email_respondido"
       tipo_impacto_suporte:
         | "sistema"
         | "infraestrutura"
@@ -12227,6 +12577,14 @@ export const Constants = {
         "canal_encerrado",
         "campanha_encerrada",
         "disparo_manual",
+        "opt_out_lgpd",
+        "classificacao_alterada",
+        "cooldown_alterado",
+        "contato_vinculado",
+        "perfil_extraido",
+        "email_enviado",
+        "email_falhou",
+        "email_respondido",
       ],
       tipo_impacto_suporte: [
         "sistema",

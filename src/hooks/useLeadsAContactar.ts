@@ -9,6 +9,8 @@ export interface LeadAContactar {
   especialidade: string | null;
   uf: string | null;
   cidade: string | null;
+  contactado: boolean;
+  ultimo_contato_em: string | null;
 }
 
 export function useLeadsAContactar(campanhaPropostaId: string | null | undefined) {
@@ -64,6 +66,22 @@ export function useLeadsAContactar(campanhaPropostaId: string | null | undefined
         .is("merged_into_id", null);
       if (e2) throw e2;
 
+      // 3. Busca envios manuais já realizados nesta proposta para marcar como "contactado"
+      const { data: envios } = await (supabase as any)
+        .from("disparo_manual_envios")
+        .select("lead_id, created_at, status")
+        .eq("campanha_proposta_id", campanhaPropostaId!)
+        .in("lead_id", leadIds);
+
+      const contactMap = new Map<string, string>();
+      for (const e of envios || []) {
+        if (e.status && e.status !== "enviado") continue;
+        const prev = contactMap.get(e.lead_id);
+        if (!prev || new Date(e.created_at) > new Date(prev)) {
+          contactMap.set(e.lead_id, e.created_at);
+        }
+      }
+
       return (leads || []).map((l: any) => ({
         lead_id: l.id,
         nome: l.nome,
@@ -72,6 +90,8 @@ export function useLeadsAContactar(campanhaPropostaId: string | null | undefined
         especialidade: l.especialidade,
         uf: l.uf,
         cidade: l.cidade,
+        contactado: contactMap.has(l.id),
+        ultimo_contato_em: contactMap.get(l.id) ?? null,
       }));
     },
   });
