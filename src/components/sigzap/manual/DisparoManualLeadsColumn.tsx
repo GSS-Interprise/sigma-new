@@ -48,7 +48,7 @@ export function DisparoManualLeadsColumn({ campanhaPropostaId, selectedLeadId, o
         <div className="flex gap-1 overflow-x-auto -mx-1 px-1 pb-1">
           {([
             { key: "todos", label: "Todos" },
-            { key: "nao_contactados", label: "Não contactados" },
+            { key: "nao_contactados", label: "Não lidos" },
             { key: "contactados", label: "Contactados" },
           ] as { key: FiltroTipo; label: string }[]).map((f) => (
             <button
