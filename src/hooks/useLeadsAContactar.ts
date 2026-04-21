@@ -9,6 +9,8 @@ export interface LeadAContactar {
   especialidade: string | null;
   uf: string | null;
   cidade: string | null;
+  contactado: boolean;
+  ultimo_contato_em: string | null;
 }
 
 export function useLeadsAContactar(campanhaPropostaId: string | null | undefined) {
