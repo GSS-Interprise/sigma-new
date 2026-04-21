@@ -88,7 +88,7 @@ export function Sidebar() {
         </div>
       </SidebarHeader>
       
-      <SidebarContent className={cn(!open && "overflow-hidden")}>
+      <SidebarContent>
         <SidebarMenu className={cn("space-y-1 py-4", open ? "px-2" : "px-1")}>
           {navigationTop.map((item) => {
             // Mapear href para módulo de permissão
