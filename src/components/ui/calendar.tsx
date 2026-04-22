@@ -41,8 +41,26 @@ function Calendar({
     if (controlledMonth) return controlledMonth;
     const selected = (props as any).selected;
     if (selected instanceof Date) return selected;
+    if (selected?.from instanceof Date) return selected.from;
     return new Date();
   });
+
+  React.useEffect(() => {
+    if (controlledMonth) {
+      setInternalMonth(controlledMonth);
+      return;
+    }
+
+    const selected = (props as any).selected;
+    if (selected instanceof Date) {
+      setInternalMonth(selected);
+      return;
+    }
+
+    if (selected?.from instanceof Date) {
+      setInternalMonth(selected.from);
+    }
+  }, [controlledMonth, props]);
 
   const currentMonth = controlledMonth || internalMonth;
   const currentYear = currentMonth.getFullYear();
@@ -126,7 +144,7 @@ function Calendar({
   };
 
   // Fixed container dimensions for consistent sizing
-  const containerClass = "w-[280px] min-h-[300px] p-3 pointer-events-auto bg-popover";
+  const containerClass = "w-[280px] min-h-[300px] p-3 pointer-events-auto";
 
   // Render months grid (3 cols x 4 rows = 12)
   if (viewMode === "months") {
