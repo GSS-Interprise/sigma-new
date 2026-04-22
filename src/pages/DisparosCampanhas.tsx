@@ -207,11 +207,11 @@ export default function DisparosCampanhas() {
   return (
     <CaptacaoProtectedRoute permission="disparos_zap">
       <AppLayout headerActions={headerActions}>
-        <div className="p-4 md:p-6 max-w-6xl mx-auto space-y-4">
+        <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6">
           {/* Toolbar: busca + nova campanha */}
           <Card>
             <CardContent className="p-4 flex items-center justify-between gap-3 flex-wrap">
-              <div className="relative flex-1 min-w-[240px] max-w-md">
+              <div className="relative flex-1 min-w-[240px]">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Buscar campanha..."
@@ -264,28 +264,33 @@ export default function DisparosCampanhas() {
               Nenhuma campanha encontrada. Clique em "Nova campanha" para começar.
             </Card>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {campanhas.map((c) => (
                 <Card
                   key={c.id}
-                  className="cursor-pointer hover:shadow-md transition-shadow"
+                  className="cursor-pointer hover:shadow-lg hover:border-primary/40 transition-all group"
                   onClick={() => navigate(`/disparos/campanhas/${c.id}/propostas`)}
                 >
-                  <CardContent className="p-4">
+                  <CardContent className="p-5 min-h-[180px] flex flex-col">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
-                        <h3 className="font-semibold truncate">{c.nome}</h3>
+                        <div className="flex items-center gap-2 mb-1">
+                          <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0 group-hover:bg-primary/20 transition-colors">
+                            <Megaphone className="h-4 w-4 text-primary" />
+                          </div>
+                          <h3 className="font-semibold text-base truncate">{c.nome}</h3>
+                        </div>
                         {c.objetivo && (
-                          <p className="text-xs text-muted-foreground truncate">
+                          <p className="text-sm text-muted-foreground line-clamp-2 mt-1">
                             {c.objetivo}
                           </p>
                         )}
                       </div>
-                      <Badge variant={STATUS_VARIANTS[c.status] || "outline"}>
+                      <Badge variant={STATUS_VARIANTS[c.status] || "outline"} className="shrink-0">
                         {c.status}
                       </Badge>
                     </div>
-                    <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
+                    <div className="flex items-center gap-3 mt-3 text-xs text-muted-foreground">
                       {c.data_inicio && (
                         <span className="flex items-center gap-1">
                           <Calendar className="h-3 w-3" />
@@ -293,8 +298,9 @@ export default function DisparosCampanhas() {
                         </span>
                       )}
                     </div>
+                    <div className="flex-1" />
                     {isAdmin && (
-                      <div className="flex items-center gap-2 mt-3 pt-3 border-t" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center gap-2 mt-4 pt-3 border-t" onClick={(e) => e.stopPropagation()}>
                         {c.status !== "finalizada" && c.status !== "arquivada" && (
                           <Button
                             variant="outline"
