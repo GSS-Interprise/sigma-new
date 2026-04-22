@@ -204,12 +204,30 @@ serve(async (req) => {
       });
     }
 
+    // Sincroniza com a fila do disparo em massa: marca como ENVIADO
+    // qualquer registro pendente desse lead nessa proposta para evitar
+    // que o n8n busque o mesmo lead novamente.
+    try {
+      const { error: syncErr } = await supabase
+        .from("disparos_contatos")
+        .update({ status: "4-ENVIADO", updated_at: new Date().toISOString() })
+        .eq("campanha_proposta_id", campanha_proposta_id)
+        .eq("lead_id", lead_id)
+        .in("status", ["1-ENVIAR", "2-REENVIAR", "3-TRATANDO"]);
+      if (syncErr) {
+        console.warn("[send-disparo-manual] falha ao sincronizar disparos_contatos:", syncErr);
+      }
+    } catch (e) {
+      console.warn("[send-disparo-manual] erro inesperado ao sincronizar disparos_contatos:", e);
+    }
+
     // Histórico do lead
     await supabase.from("lead_historico").insert({
       lead_id,
       tipo_evento: "disparo_manual",
       descricao_resumida: "Disparo manual enviado via SIG Zap",
       metadados: {
+        origem: "manual",
         campanha_proposta_id,
         instance_id,
         phone_e164: contactPhone,
