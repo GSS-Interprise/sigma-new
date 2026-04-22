@@ -133,6 +133,7 @@ export function DisparosNovoDialog({ open, onOpenChange }: Props) {
     mutationFn: async () => {
       if (!campanhaId) throw new Error("Selecione uma campanha");
       if (!propostaId) throw new Error("Selecione uma proposta");
+      if (!chipId) throw new Error("Selecione o chip que enviará as mensagens");
       const { data, error } = await supabase.rpc("gerar_disparo_zap", {
         p_campanha_proposta_id: propostaId,
         p_chip_id: chipId || null,
@@ -149,7 +150,7 @@ export function DisparosNovoDialog({ open, onOpenChange }: Props) {
     onError: (e: any) => toast.error(e.message || "Erro ao criar disparo"),
   });
 
-  const podeEnviar = !!campanhaId && !!propostaId && !criarMutation.isPending;
+  const podeEnviar = !!campanhaId && !!propostaId && !!chipId && !criarMutation.isPending;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -242,10 +243,12 @@ export function DisparosNovoDialog({ open, onOpenChange }: Props) {
 
           {/* Chip */}
           <div className="space-y-2">
-            <Label>Chip / Instância (opcional)</Label>
+            <Label>
+              Chip / Instância <span className="text-destructive">*</span>
+            </Label>
             <Select value={chipId} onValueChange={setChipId}>
               <SelectTrigger>
-                <SelectValue placeholder="Sem chip selecionado" />
+                <SelectValue placeholder="Selecione o chip que enviará as mensagens" />
               </SelectTrigger>
               <SelectContent>
                 {chips.map((chip: any) => {
@@ -260,7 +263,7 @@ export function DisparosNovoDialog({ open, onOpenChange }: Props) {
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              Status de envio (1-ENVIAR…06-BLOQUEADOR) e fallback de chip seguem o fluxo atual.
+              O chip selecionado define a instância usada pelo n8n. Status (1-ENVIAR…06-BLOQUEADOR) e fallback continuam iguais.
             </p>
           </div>
         </div>
