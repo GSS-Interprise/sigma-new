@@ -52,7 +52,6 @@ export function DisparoManualLeadPanel({ campanhaPropostaId, leadId, onOpenChat 
   const [confirmBlacklist, setConfirmBlacklist] = useState(false);
   const [confirmBanco, setConfirmBanco] = useState(false);
   const disparo = useDisparoManual();
-  const [checkingWpp, setCheckingWpp] = useState(false);
   const [wppStatus, setWppStatus] = useState<Record<string, "has" | "no" | "unchecked">>({});
 
   // Lead
