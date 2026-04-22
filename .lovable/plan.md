@@ -1,74 +1,52 @@
 
 
-## Problema
+## Regra: lead aberto não pode estar em duas propostas da mesma campanha
 
-O cronômetro mostra **105d 12h** porque o lead tem uma raia antiga (de campanha/proposta encerrada) que nunca foi fechada. Quando ele entra numa **nova proposta** com o mesmo número, o sistema pega a raia antiga em vez de abrir uma nova janela de contato isolada para a proposta atual.
-
-Exemplo real: lead participou da campanha Chapecó com o número A → foi fechado por falta de interesse → semanas depois entra em outra proposta da mesma campanha (ou outra) com o mesmo número → conversa do WhatsApp já existe → trigger não abre nova raia porque acha que "já tem uma aberta" ou pega o tempo desde a primeira mensagem histórica.
-
-## Conceito: janela de contato por (lead × proposta)
-
-Cada vínculo `(lead, campanha_proposta)` tem sua própria janela de raia, **independente** de conversas antigas no WhatsApp. O cronômetro de tempo na raia mede **a janela atual desta proposta**, não o tempo absoluto desde a primeira mensagem do número.
-
-Regras:
-
-1. **Abertura da janela** = momento em que o lead é vinculado à proposta (`campanha_proposta_leads.created_at`) OU quando uma mensagem outbound é enviada após o vínculo, **o que vier primeiro relevante para esta proposta**.
-2. **Fechamento da janela** acontece em 4 situações:
-   - Operador clica **"Encerrar"** → `status_final = 'encerrado'`
-   - Operador clica **"Próxima fase"** → `status_final = 'transferido'` (abre raia do próximo canal)
-   - **Proposta é encerrada** (`campanha_propostas.status = 'encerrada'`) → fecha automaticamente todas as raias abertas dessa proposta como `status_final = 'proposta_encerrada'`
-   - **Campanha é encerrada** → fecha em cascata todas as raias das propostas dessa campanha
-3. **Reabertura em nova proposta**: quando o mesmo lead é vinculado a uma nova `campanha_proposta`, abre-se uma raia NOVA, isolada, com `entrou_em = now()`. A trigger de mensagem outbound deve filtrar por `campanha_proposta_id` específico, não pelo lead globalmente.
-
-## Causa raiz do bug atual
-
-A trigger `trg_sigzap_outbound_marca_contactado` hoje:
-- Olha todas as `campanha_propostas ativas` que contêm o lead
-- Insere raia se "não existe raia aberta WhatsApp" para aquele `(lead, proposta)`
-- **Problema**: a query do frontend (`useLeadCanais`) pega a raia mais antiga aberta do lead, ignorando a proposta — então mostra 105d de uma proposta antiga que nunca foi fechada quando o lead aparece numa nova.
-
-E também: ao **vincular o lead a uma proposta nova**, nenhuma raia é aberta. Só abre quando manda mensagem. Se o operador abrir o dossiê antes de mandar mensagem, vê resíduo de proposta antiga.
+Um lead pode participar de **várias campanhas ao mesmo tempo** (ex.: campanha de Generalista + campanha de Pediatra), mas dentro de **uma única campanha** ele só pode estar vinculado a **uma proposta ativa por vez**. Para colocá-lo em outra proposta da mesma campanha, é preciso primeiro encerrar o vínculo atual.
 
 ## O que vai mudar
 
-### 1. Migration SQL
+### 1. Migration SQL — bloqueio no banco
 
-**a) Trigger no vínculo do lead à proposta** (`campanha_proposta_leads AFTER INSERT`):
-- Abrir uma raia inicial "a contactar" em `campanha_proposta_lead_canais` para o canal inicial da cascata da proposta (geralmente WhatsApp), com `entrou_em = now()`, `status_final = NULL`. Ou deixar sem raia até a primeira mensagem — escolher uma das duas para consistência. **Decisão**: deixar SEM raia até o primeiro envio (evita poluir métrica). O frontend já trata "sem raia" como "A contactar" e mostra `—` no cronômetro.
+**a) Função de validação** `valida_lead_unico_por_campanha()`:
+- Antes de inserir um vínculo em `campanha_proposta_leads`, verifica se o lead já tem outro vínculo ativo (lead aberto = sem `removido_em` E proposta com `status != 'encerrada'`) em outra `campanha_proposta` da **mesma campanha**.
+- Se já existir, lança erro: `Lead já está ativo em outra proposta desta campanha (proposta X). Encerre o vínculo atual antes de adicioná-lo aqui.`
 
-**b) Corrigir `trg_sigzap_outbound_marca_contactado`**:
-- A query atual não está restrita corretamente por proposta. Garantir que cada `(lead, proposta_ativa)` que NÃO TEM raia aberta para o WhatsApp recebe uma raia nova com `entrou_em = now()`. Ignorar raias de propostas encerradas.
-- Idempotência: já existir raia aberta para `(lead, proposta, canal=whatsapp)` → não recriar.
+**b) Trigger BEFORE INSERT** em `campanha_proposta_leads` chamando essa função.
 
-**c) Trigger no encerramento da proposta** (`campanha_propostas AFTER UPDATE WHEN status muda para 'encerrada'`):
-- Fechar todas as raias abertas (`status_final IS NULL`) de `campanha_proposta_lead_canais` daquela proposta com `status_final = 'proposta_encerrada'`, `saiu_em = now()`, `motivo_saida = 'proposta_encerrada'`.
+**c) Índice parcial único** para reforçar a regra a nível de banco:
+- `CREATE UNIQUE INDEX ON campanha_proposta_leads (campanha_id_da_proposta, lead_id) WHERE removido_em IS NULL` — usando uma coluna gerada ou via expressão com subquery não funciona direto, então a garantia fica via trigger + cleanup. (Mantemos só a trigger; índice exigiria desnormalizar `campanha_id`.)
 
-**d) Trigger no encerramento da campanha** (`campanhas AFTER UPDATE WHEN status muda para 'encerrada'/'concluida'`):
-- Para cada `campanha_proposta` ativa daquela campanha, marcar como encerrada (cascata vai disparar a trigger do item c).
+**d) Backfill — diagnóstico**:
+- `SELECT` listando casos atuais de leads duplicados na mesma campanha (sem corrigir automaticamente, só relatar). O operador decide qual manter via UI.
 
-**e) Backfill imediato**:
-- Fechar todas as raias `(status_final IS NULL)` cuja proposta está com `status = 'encerrada'` → marcar `status_final = 'proposta_encerrada'`, `saiu_em = encerrada_em da proposta`.
-- Para o lead atual mostrando 105d: identificar a raia órfã, fechá-la, e se ele está vinculado a uma proposta ativa sem raia aberta, abrir uma nova com `entrou_em = now()`.
+### 2. Frontend — feedback claro ao operador
 
-### 2. Backend (`useLeadCanais` hook)
+**a) `useAdicionarLeadsCampanha` / fluxos de vínculo de leads à proposta**:
+- Capturar o erro da trigger e mostrar toast amigável: *"Lead João Silva já está ativo na proposta Y desta campanha. Encerre antes de mover."*
 
-- Garantir que a query de "raia atual" filtra por `campanha_proposta_id` específico (parâmetro do dossiê) e por `status_final IS NULL`. Verificar que o componente pai já passa o `campanhaPropostaId` correto.
-- Se hoje a query usa só `lead_id`, restringir.
+**b) Dialog "Vincular leads à proposta"** (no fluxo de adicionar leads à `campanha_proposta`):
+- Antes do envio, fazer um `SELECT` prévio que marca quais leads do lote já estão ativos em outra proposta da mesma campanha. Mostrar essa lista em um aviso amarelo: *"3 leads serão ignorados porque já estão ativos em outras propostas desta campanha."*
+- Permitir ao operador clicar em **"Ver propostas em conflito"** para abrir mini-lista com link.
 
-### 3. Sem mudanças visuais
+**c) Botão "Mover para outra proposta"** na linha do lead em `CampanhaLeadsList`:
+- Atalho que: encerra o vínculo atual (`status_final = 'movido'`) + insere em proposta destino selecionada via dropdown. Tudo em uma transação RPC.
 
-A coluna "Tempo na raia" continua igual; só vai mostrar o tempo correto da janela atual da proposta.
+### 3. Sem mudança em campanhas diferentes
+
+A regra só vale dentro da mesma campanha. Lead pode aparecer em N campanhas distintas sem restrição.
 
 ## Arquivos alterados
 
-- nova migration SQL (4 triggers + backfill)
-- `src/hooks/useLeadCanais.ts` — confirmar/corrigir filtro por `campanha_proposta_id`
-- (opcional) `src/components/disparos/CampanhaLeadsList.tsx` — confirmar que passa `campanha_proposta_id` no hook
+- nova migration SQL (função + trigger + query de diagnóstico)
+- `src/hooks/useCampanhaLeads.ts` — tratar erro da trigger
+- `src/components/disparos/VincularPropostaCampanhaDialog.tsx` ou dialog equivalente de vinculação de leads — pré-validação visual
+- `src/components/disparos/CampanhaLeadsList.tsx` — novo botão "Mover para outra proposta"
+- nova RPC `mover_lead_entre_propostas(lead_id, proposta_origem, proposta_destino)`
 
 ## Resultado
 
-- Lead vinculado a proposta nova → raia começa do zero quando o operador manda a primeira mensagem (ou já fica em "A contactar" mostrando `—`).
-- Encerrar proposta/campanha → todas as raias abertas dessa proposta/campanha fecham automaticamente.
-- Mesmo lead voltando em nova proposta → janela isolada, cronômetro correto.
-- Bug do "105d 12h" sumirá após o backfill.
+- Tentativa de duplicar lead na mesma campanha → bloqueada com mensagem clara.
+- Lead pode estar em campanhas diferentes simultaneamente sem problema.
+- Operador tem caminho explícito para mover o lead entre propostas da mesma campanha.
 
