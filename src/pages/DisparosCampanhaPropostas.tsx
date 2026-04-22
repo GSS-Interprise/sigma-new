@@ -29,6 +29,7 @@ export default function DisparosCampanhaPropostas() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [vincularOpen, setVincularOpen] = useState(false);
+  const [listaOpen, setListaOpen] = useState(false);
   const [cpAberto, setCpAberto] = useState<string | null>(null);
 
   const { data: campanha } = useQuery({
@@ -46,6 +47,8 @@ export default function DisparosCampanhaPropostas() {
   });
 
   const { data: vinculos = [], isLoading } = useCampanhaPropostas(id);
+  const { data: listasVinc = [], isLoading: isLoadingListas } = useCampanhaListas(id);
+  const removerLista = useRemoverListaCampanha();
 
   const totalPropostas = vinculos.length;
   const ativas = vinculos.filter((v: any) => v.status === "ativa").length;
@@ -85,10 +88,16 @@ export default function DisparosCampanhaPropostas() {
                 </div>
               </div>
             </div>
-            <Button onClick={() => setVincularOpen(true)}>
-              <Plus className="h-4 w-4 mr-1" />
-              Vincular proposta
-            </Button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button variant="outline" onClick={() => setListaOpen(true)}>
+                <Users className="h-4 w-4 mr-1" />
+                Adicionar lista de disparo
+              </Button>
+              <Button onClick={() => setVincularOpen(true)}>
+                <FileText className="h-4 w-4 mr-1" />
+                Vincular proposta
+              </Button>
+            </div>
           </div>
 
           {/* Métricas */}
