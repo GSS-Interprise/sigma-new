@@ -115,6 +115,35 @@ export function useFecharLeadsCanal() {
   });
 }
 
+export function useEnviarProximaFase() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      campanhaPropostaId: string;
+      leadId: string;
+      canalAtual: CanalCascata;
+      motivo?: string;
+    }) => {
+      const { data, error } = await (supabase as any).rpc("enviar_lead_proxima_fase", {
+        p_campanha_proposta_id: input.campanhaPropostaId,
+        p_lead_id: input.leadId,
+        p_canal_atual: input.canalAtual,
+        p_motivo: input.motivo ?? "Avançado para próxima fase",
+      });
+      if (error) throw error;
+      return data as string;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["lead-canais"] });
+      qc.invalidateQueries({ queryKey: ["lead-status-proposta"] });
+      qc.invalidateQueries({ queryKey: ["campanha-lista-leads"] });
+      qc.invalidateQueries({ queryKey: ["acompanhamento-leads"] });
+      toast.success("Lead enviado para a próxima fase");
+    },
+    onError: (e: any) => toast.error("Erro: " + e.message),
+  });
+}
+
 export function formatDuracao(segundos: number | null | undefined): string {
   if (!segundos || segundos <= 0) return "—";
   const dias = Math.floor(segundos / 86400);
