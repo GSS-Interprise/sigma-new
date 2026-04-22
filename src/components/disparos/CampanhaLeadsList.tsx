@@ -185,6 +185,18 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
     });
   }, [itensVisiveis, filtro, busca, statusMap]);
 
+  const totalPaginas = Math.max(1, Math.ceil(filtrados.length / PAGE_SIZE_UI));
+  const paginaAtual = Math.min(pagina, totalPaginas);
+  const filtradosPagina = useMemo(() => {
+    const inicio = (paginaAtual - 1) * PAGE_SIZE_UI;
+    return filtrados.slice(inicio, inicio + PAGE_SIZE_UI);
+  }, [filtrados, paginaAtual]);
+
+  // Reset de página ao mudar filtro/busca/lista
+  useMemo(() => {
+    setPagina(1);
+  }, [filtro, busca, listaId]);
+
   if (!listaId) {
     return (
       <Card className="p-6 text-center text-sm text-muted-foreground">
