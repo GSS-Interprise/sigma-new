@@ -11683,6 +11683,7 @@ export type Database = {
           campanha_proposta_id: string | null
           lead_id: string | null
           status_proposta: string | null
+          tem_raia_aberta: boolean | null
           ultima_decisao_em: string | null
           ultimo_disparo: string | null
           ultimo_motivo: string | null
