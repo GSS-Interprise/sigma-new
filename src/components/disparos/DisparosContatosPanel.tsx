@@ -53,8 +53,12 @@ interface Contato {
 }
 
 interface DisparosContatosPanelProps {
-  campanha: Campanha;
-  onBack: () => void;
+  campanha?: Campanha;
+  onBack?: () => void;
+  /** Quando informado, filtra contatos por campanha_proposta_id ao invés de campanha_id. */
+  campanhaPropostaId?: string;
+  /** Esconde o cabeçalho com botão "voltar" — útil ao embutir em outra view. */
+  embedded?: boolean;
 }
 
 type StatusCfg = {
@@ -101,21 +105,28 @@ const statusConfig: Record<string, StatusCfg> = {
   },
 };
 
-export function DisparosContatosPanel({ campanha, onBack }: DisparosContatosPanelProps) {
+export function DisparosContatosPanel({ campanha, onBack, campanhaPropostaId, embedded }: DisparosContatosPanelProps) {
   const [filtroStatus, setFiltroStatus] = useState<string>("todos");
   const [busca, setBusca] = useState("");
   const queryClient = useQueryClient();
   const { isAdmin } = usePermissions();
+  const filterByProposta = !!campanhaPropostaId;
+  const queryKeyId = filterByProposta ? `cp:${campanhaPropostaId}` : `c:${campanha?.id}`;
 
   // Buscar contatos
   const { data: contatos = [], isLoading, refetch } = useQuery({
-    queryKey: ["disparos-contatos", campanha.id, filtroStatus],
+    queryKey: ["disparos-contatos", queryKeyId, filtroStatus],
+    enabled: filterByProposta || !!campanha?.id,
     queryFn: async () => {
       let query = supabase
         .from("disparos_contatos")
         .select("*")
-        .eq("campanha_id", campanha.id)
         .order("created_at", { ascending: true });
+      if (filterByProposta) {
+        query = query.eq("campanha_proposta_id", campanhaPropostaId!);
+      } else if (campanha?.id) {
+        query = query.eq("campanha_id", campanha.id);
+      }
 
       if (filtroStatus !== "todos") {
         query = query.eq("status", filtroStatus);
@@ -129,18 +140,21 @@ export function DisparosContatosPanel({ campanha, onBack }: DisparosContatosPane
 
   // Realtime subscription
   useEffect(() => {
+    if (!filterByProposta && !campanha?.id) return;
     const channel = supabase
-      .channel(`disparos_contatos_${campanha.id}`)
+      .channel(`disparos_contatos_${queryKeyId}`)
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
           table: "disparos_contatos",
-          filter: `campanha_id=eq.${campanha.id}`,
+          filter: filterByProposta
+            ? `campanha_proposta_id=eq.${campanhaPropostaId}`
+            : `campanha_id=eq.${campanha!.id}`,
         },
         () => {
-          queryClient.invalidateQueries({ queryKey: ["disparos-contatos", campanha.id] });
+          queryClient.invalidateQueries({ queryKey: ["disparos-contatos", queryKeyId] });
           queryClient.invalidateQueries({ queryKey: ["disparos-campanhas"] });
         }
       )
@@ -149,7 +163,7 @@ export function DisparosContatosPanel({ campanha, onBack }: DisparosContatosPane
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [campanha.id, queryClient]);
+  }, [campanha?.id, campanhaPropostaId, filterByProposta, queryClient, queryKeyId]);
 
   const contatosFiltrados = contatos.filter((c) => {
     if (!busca) return true;
