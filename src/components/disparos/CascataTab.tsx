@@ -123,6 +123,18 @@ export function CascataTab({ campanhaPropostaId, listaId }: Props) {
     return filtradas;
   }, [leads, porLead, busca, canalFilter, sortKey]);
 
+  useEffect(() => {
+    setPagina(1);
+  }, [busca, canalFilter, sortKey, leads.length]);
+
+  const totalPaginas = Math.max(1, Math.ceil(linhas.length / PAGE_SIZE_UI));
+  const paginaAtual = Math.min(pagina, totalPaginas);
+  const inicio = (paginaAtual - 1) * PAGE_SIZE_UI;
+  const linhasPagina = useMemo(
+    () => linhas.slice(inicio, inicio + PAGE_SIZE_UI),
+    [linhas, inicio]
+  );
+
   const canaisDisponiveis = useMemo(() => {
     const set = new Set<CanalCascata>();
     for (const c of canais) set.add(c.canal);
