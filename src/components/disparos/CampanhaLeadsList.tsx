@@ -334,6 +334,7 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
                 const sRow = statusMap?.get(l.id);
                 const status = sRow?.status_proposta ?? "a_contactar";
                 const fechadoProp = status === "fechado_proposta";
+                const temRaia = !!sRow?.tem_raia_aberta;
                 const blkBlacklist = !!sRow?.bloqueado_blacklist;
                 const blkTemp = !!sRow?.bloqueado_temp;
                 const blkJanela = !!sRow?.bloqueado_janela_7d;
@@ -344,10 +345,10 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
                 return (
                   <tr
                     key={l.id}
-                    className={`border-t hover:bg-accent/40 transition-colors ${hardBlock ? "opacity-60" : ""}`}
+                    className={`border-t hover:bg-accent/40 transition-colors text-[13px] ${hardBlock ? "opacity-60" : ""}`}
                   >
                     {cascataAtiva && (
-                      <td className="px-3 py-2">
+                      <td className="px-2 py-1.5">
                         <Checkbox
                           checked={checked}
                           disabled={hardBlock || precisaLiberar}
@@ -355,28 +356,42 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
                         />
                       </td>
                     )}
-                    <td className="px-4 py-2 text-muted-foreground">{idx + 1}</td>
+                    <td className="px-2 py-1.5 text-muted-foreground text-xs">{idx + 1}</td>
                     <td
-                      className="px-4 py-2 font-medium cursor-pointer"
+                      className="px-3 py-1.5 font-medium cursor-pointer hover:text-primary"
                       onClick={() => setLeadAberto(l.id)}
                     >
                       {l.nome || "Sem nome"}
                     </td>
-                    <td className="px-4 py-2 text-muted-foreground">
+                    <td className="px-3 py-1.5 text-muted-foreground text-xs whitespace-nowrap">
                       {l.phone_e164 || "—"}
                     </td>
-                    <td className="px-4 py-2 text-muted-foreground truncate max-w-[200px]">
+                    <td className="px-3 py-1.5 text-muted-foreground text-xs truncate max-w-[180px]">
                       {l.email || "—"}
                     </td>
-                    <td className="px-4 py-2">
+                    <td className="px-3 py-1.5">
                       <TooltipProvider delayDuration={150}>
-                        <div className="flex items-center gap-1 flex-wrap">
+                        <div className="flex items-center gap-1">
                           <Badge
-                            variant={fechadoProp ? "secondary" : status === "em_aberto" ? "default" : "outline"}
-                            className="text-[10px]"
+                            variant={
+                              fechadoProp
+                                ? "secondary"
+                                : status === "contactado"
+                                ? "default"
+                                : "outline"
+                            }
+                            className="text-[10px] whitespace-nowrap px-1.5 py-0 h-5"
                           >
                             {STATUS_LABEL[status]}
                           </Badge>
+                          {temRaia && !fechadoProp && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500" />
+                              </TooltipTrigger>
+                              <TooltipContent>Aberto na raia — ação pendente</TooltipContent>
+                            </Tooltip>
+                          )}
                           {blkBlacklist && (
                             <Tooltip>
                               <TooltipTrigger asChild>
@@ -417,64 +432,75 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
                       </TooltipProvider>
                     </td>
                     {cascataAtiva && (
-                      <td className="px-4 py-2 text-xs text-muted-foreground">
+                      <td className="px-3 py-1.5 text-xs text-muted-foreground whitespace-nowrap">
                         <TempoRaia entrouEm={tempo?.entrouEm} />
                       </td>
                     )}
-                    <td className="px-4 py-2 text-right">
+                    <td className="px-3 py-1.5 text-right">
                       {hardBlock ? (
                         <span className="text-xs text-muted-foreground">Bloqueado</span>
                       ) : precisaLiberar ? (
                         <Button
                           size="sm"
                           variant="outline"
-                          className="h-7"
+                          className="h-7 px-2"
                           onClick={() => setLiberarLead({ id: l.id, nome: l.nome })}
                         >
-                          <Unlock className="h-3 w-3 mr-1" /> Liberar lead
+                          <Unlock className="h-3 w-3 xl:mr-1" />
+                          <span className="hidden xl:inline">Liberar</span>
                         </Button>
                       ) : cascataAtiva ? (
-                        <div className="flex items-center justify-end gap-1.5">
+                        <div className="flex items-center justify-end gap-1">
                           {tempo && canal !== "tiktok" && (
-                            <Button
-                              size="sm"
-                              variant="default"
-                              className="h-7"
-                              disabled={proximaFase.isPending}
-                              onClick={() =>
-                                proximaFase.mutate({
-                                  campanhaPropostaId: campanhaPropostaId!,
-                                  leadId: l.id,
-                                  canalAtual: canal!,
-                                })
-                              }
-                            >
-                              {proximaFase.isPending ? (
-                                <Loader2 className="h-3 w-3 animate-spin" />
-                              ) : (
-                                <>
-                                  <ArrowRightCircle className="h-3 w-3 mr-1" />
-                                  Próxima fase
-                                </>
-                              )}
-                            </Button>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  size="sm"
+                                  variant="default"
+                                  className="h-7 px-2"
+                                  disabled={proximaFase.isPending}
+                                  onClick={() =>
+                                    proximaFase.mutate({
+                                      campanhaPropostaId: campanhaPropostaId!,
+                                      leadId: l.id,
+                                      canalAtual: canal!,
+                                    })
+                                  }
+                                >
+                                  {proximaFase.isPending ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <>
+                                      <ArrowRightCircle className="h-3 w-3 xl:mr-1" />
+                                      <span className="hidden xl:inline">Próxima fase</span>
+                                    </>
+                                  )}
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent className="xl:hidden">Próxima fase</TooltipContent>
+                            </Tooltip>
                           )}
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={fechandoId === l.id}
-                            onClick={() => encerrarNaProposta(l.id)}
-                            className="h-7"
-                          >
-                            {fechandoId === l.id ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : (
-                              <>
-                                <XCircle className="h-3 w-3 mr-1" />
-                                Encerrar
-                              </>
-                            )}
-                          </Button>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={fechandoId === l.id}
+                                onClick={() => encerrarNaProposta(l.id)}
+                                className="h-7 px-2"
+                              >
+                                {fechandoId === l.id ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <>
+                                    <XCircle className="h-3 w-3 xl:mr-1" />
+                                    <span className="hidden xl:inline">Encerrar</span>
+                                  </>
+                                )}
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent className="xl:hidden">Encerrar nesta proposta</TooltipContent>
+                          </Tooltip>
                         </div>
                       ) : (
                         <span className="text-xs text-muted-foreground">—</span>
