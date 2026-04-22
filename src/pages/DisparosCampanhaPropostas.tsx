@@ -6,10 +6,9 @@ import { CaptacaoProtectedRoute } from "@/components/auth/CaptacaoProtectedRoute
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Plus, ExternalLink, Megaphone, Users, FileText, Trash2 } from "lucide-react";
+import { ArrowLeft, ExternalLink, Megaphone, Users, FileText } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCampanhaPropostas } from "@/hooks/useCampanhaPropostas";
-import { useCampanhaListas, useRemoverListaCampanha } from "@/hooks/useCampanhaListas";
 import { VincularPropostaCampanhaDialog } from "@/components/disparos/VincularPropostaCampanhaDialog";
 import { AdicionarListaCampanhaDialog } from "@/components/disparos/AdicionarListaCampanhaDialog";
 import { CampanhaPropostaModal } from "@/components/disparos/CampanhaPropostaModal";
@@ -47,8 +46,6 @@ export default function DisparosCampanhaPropostas() {
   });
 
   const { data: vinculos = [], isLoading } = useCampanhaPropostas(id);
-  const { data: listasVinc = [], isLoading: isLoadingListas } = useCampanhaListas(id);
-  const removerLista = useRemoverListaCampanha();
 
   const totalPropostas = vinculos.length;
   const ativas = vinculos.filter((v: any) => v.status === "ativa").length;
@@ -91,7 +88,7 @@ export default function DisparosCampanhaPropostas() {
             <div className="flex items-center gap-2 flex-wrap">
               <Button variant="outline" onClick={() => setListaOpen(true)}>
                 <Users className="h-4 w-4 mr-1" />
-                Adicionar lista de disparo
+                Vincular lista à proposta
               </Button>
               <Button onClick={() => setVincularOpen(true)}>
                 <FileText className="h-4 w-4 mr-1" />
