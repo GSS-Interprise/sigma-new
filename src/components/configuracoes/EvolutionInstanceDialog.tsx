@@ -407,13 +407,18 @@ export function EvolutionInstanceDialog({ open, onOpenChange, onCreated, default
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="phoneNumber">Número do Telefone</Label>
+                <Label htmlFor="phoneNumber">Número do Telefone *</Label>
                 <Input
                   id="phoneNumber"
                   value={phoneNumber}
                   onChange={(e) => setPhoneNumber(e.target.value)}
-                  placeholder="5511999999999"
+                  placeholder="5547999758708"
+                  inputMode="numeric"
+                  maxLength={13}
                 />
+                <p className="text-xs text-muted-foreground">
+                  Formato: DDI (55) + DDD + 9 + número. Ex: 5547999758708
+                </p>
               </div>
 
               <div className="space-y-2">
