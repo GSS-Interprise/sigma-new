@@ -30,12 +30,38 @@ const tooltipStyle = {
   color: "#e2e8f0",
   boxShadow: "0 0 20px rgba(34,211,238,0.15)",
 };
+const tooltipItemStyle = { color: "#e2e8f0" };
+const tooltipLabelStyle = { color: "#94a3b8", fontSize: 11, marginBottom: 4 };
 
 function startOfMonthsAgo(n: number) {
   const d = new Date();
   d.setMonth(d.getMonth() - n);
   d.setDate(1);
   return d.toISOString().slice(0, 10);
+}
+
+// Busca paginada em chunks de 1000 (limite default do Supabase)
+async function fetchAllChunks<T = any>(
+  table: string,
+  select: string,
+  applyFilters: (q: any) => any,
+  chunkSize = 1000,
+  maxRows = 50000
+): Promise<T[]> {
+  const all: T[] = [];
+  let from = 0;
+  while (from < maxRows) {
+    const to = from + chunkSize - 1;
+    let q: any = (supabase as any).from(table).select(select).range(from, to);
+    q = applyFilters(q);
+    const { data, error } = await q;
+    if (error) throw error;
+    const rows = (data ?? []) as T[];
+    all.push(...rows);
+    if (rows.length < chunkSize) break;
+    from += chunkSize;
+  }
+  return all;
 }
 
 function KPI({ icon: Icon, label, value, sub, color = NEON.cyan }: any) {
@@ -132,13 +158,13 @@ export function AbaProspec() {
   const { data: disparosManuais, isLoading: ldm } = useQuery({
     queryKey: ["bi-prospec-manuais", dataInicio, dataFim],
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from("disparo_manual_envios")
-        .select("created_at,status")
-        .gte("created_at", `${dataInicio}T00:00:00`)
-        .lte("created_at", `${dataFim}T23:59:59`);
-      if (error) throw error;
-      return (data ?? []) as any[];
+      return await fetchAllChunks<any>(
+        "disparo_manual_envios",
+        "created_at,status",
+        (q) => q
+          .gte("created_at", `${dataInicio}T00:00:00`)
+          .lte("created_at", `${dataFim}T23:59:59`)
+      );
     },
   });
 
@@ -146,14 +172,13 @@ export function AbaProspec() {
   const { data: disparosMassa, isLoading: ldz } = useQuery({
     queryKey: ["bi-prospec-massa", dataInicio, dataFim],
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from("disparos_contatos")
-        .select("data_envio,status,campanha_id,created_at")
-        .gte("created_at", `${dataInicio}T00:00:00`)
-        .lte("created_at", `${dataFim}T23:59:59`)
-        .limit(20000);
-      if (error) throw error;
-      return (data ?? []) as any[];
+      return await fetchAllChunks<any>(
+        "disparos_contatos",
+        "data_envio,status,campanha_id,created_at",
+        (q) => q
+          .gte("created_at", `${dataInicio}T00:00:00`)
+          .lte("created_at", `${dataFim}T23:59:59`)
+      );
     },
   });
 
@@ -339,20 +364,41 @@ export function AbaProspec() {
             </PanelCard>
 
             <PanelCard title="Mix por tipo" description="Distribuição no período" accent={NEON.magenta}>
-              <ResponsiveContainer width="100%" height={260}>
-                <PieChart>
-                  <Pie data={resumoTipos} dataKey="total" nameKey="tipo" innerRadius={55} outerRadius={95} paddingAngle={3} stroke="#020617" strokeWidth={2}>
-                    {resumoTipos.map((_r, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                  </Pie>
-                  <RechartsTooltip contentStyle={tooltipStyle} />
-                  <Legend wrapperStyle={{ color: "#cbd5e1", fontSize: 12 }} />
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="text-center -mt-32 pointer-events-none">
-                <div className="text-3xl font-bold" style={{ color: "#f1f5f9", textShadow: `0 0 10px ${NEON.magenta}66` }}>
-                  {totalGeralDisparos.toLocaleString()}
+              <div className="relative">
+                <ResponsiveContainer width="100%" height={260}>
+                  <PieChart>
+                    <Pie
+                      data={resumoTipos}
+                      dataKey="total"
+                      nameKey="tipo"
+                      innerRadius={60}
+                      outerRadius={95}
+                      paddingAngle={3}
+                      stroke="#020617"
+                      strokeWidth={2}
+                    >
+                      {resumoTipos.map((_r, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                    </Pie>
+                    <RechartsTooltip
+                      contentStyle={tooltipStyle}
+                      itemStyle={tooltipItemStyle}
+                      labelStyle={tooltipLabelStyle}
+                      formatter={(v: any, n: any) => [Number(v).toLocaleString(), n]}
+                    />
+                    <Legend wrapperStyle={{ color: "#cbd5e1", fontSize: 12 }} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div
+                  className="absolute inset-x-0 top-1/2 -translate-y-[60%] text-center pointer-events-none"
+                >
+                  <div
+                    className="text-3xl font-bold"
+                    style={{ color: "#f1f5f9", textShadow: `0 0 10px ${NEON.magenta}66` }}
+                  >
+                    {totalGeralDisparos.toLocaleString()}
+                  </div>
+                  <div className="text-[10px] uppercase tracking-widest" style={{ color: "#94a3b8" }}>total</div>
                 </div>
-                <div className="text-[10px] uppercase tracking-widest" style={{ color: "#64748b" }}>total</div>
               </div>
             </PanelCard>
           </div>
