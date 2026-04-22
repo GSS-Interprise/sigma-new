@@ -68,6 +68,12 @@ export function FiltroPeriodo({
       : undefined
   );
 
+  useEffect(() => {
+    if (dataInicio && dataFim) {
+      setRange({ from: new Date(dataInicio), to: new Date(dataFim) });
+    }
+  }, [dataInicio, dataFim]);
+
   // Inicializa com o mês atual se nada estiver setado
   useEffect(() => {
     if (!dataInicio || !dataFim) {
@@ -119,13 +125,16 @@ export function FiltroPeriodo({
     ? "w-auto p-0 z-50 bg-slate-950 border-cyan-500/40 text-slate-100 shadow-[0_0_20px_rgba(34,211,238,0.2)]"
     : "w-auto p-0 bg-popover z-50";
   const selectContentCls = isDark
-    ? "z-50 bg-slate-950 border-cyan-500/40 text-slate-100 shadow-[0_0_20px_rgba(34,211,238,0.2)]"
+    ? "z-50 bg-slate-950 border-cyan-500/40 text-slate-100 shadow-[0_0_20px_rgba(34,211,238,0.2)] [&_[data-radix-select-viewport]]:p-2"
     : "bg-popover z-50";
+  const selectItemCls = isDark
+    ? "rounded-md text-slate-200 focus:bg-cyan-500/15 focus:text-cyan-200 data-[state=checked]:bg-cyan-500/10 data-[state=checked]:text-cyan-300"
+    : "";
   const buttonCls = isDark
     ? "w-full justify-start text-left font-normal bg-slate-900/80 border-cyan-500/30 text-slate-100 hover:bg-slate-900 hover:text-cyan-300 hover:border-cyan-400/60"
     : cn("w-full justify-start text-left font-normal", !dataInicio && "text-muted-foreground");
   const calendarCls = isDark
-    ? "p-3 pointer-events-auto [&_.rdp-day]:text-slate-200 [&_.rdp-day_selected]:bg-cyan-500 [&_.rdp-day_selected]:text-slate-950 [&_.rdp-day:hover:not([disabled])]:bg-cyan-500/20 [&_.rdp-head_cell]:text-cyan-400 [&_.rdp-caption_label]:text-slate-100 [&_.rdp-nav_button]:text-slate-100 [&_.rdp-nav_button:hover]:bg-cyan-500/20 [&_.rdp-day_today]:text-cyan-300 [&_.rdp-day_range_middle]:bg-cyan-500/20 [&_.rdp-day_range_middle]:text-slate-100"
+    ? "rounded-lg border border-cyan-500/30 bg-slate-950 text-slate-100 p-3 shadow-[0_0_24px_rgba(34,211,238,0.15)] pointer-events-auto [&_.rdp-head_cell]:text-cyan-300 [&_.rdp-day]:text-slate-200 [&_.rdp-day:hover:not([disabled])]:bg-cyan-500/15 [&_.rdp-day:hover:not([disabled])]:text-cyan-100 [&_.rdp-day_selected]:bg-cyan-500 [&_.rdp-day_selected]:text-slate-950 [&_.rdp-day_range_middle]:bg-cyan-500/20 [&_.rdp-day_range_middle]:text-slate-100 [&_.rdp-day_today]:border [&_.rdp-day_today]:border-cyan-400/60 [&_.rdp-day_today]:text-cyan-200 [&_button]:text-slate-100 [&_button:hover]:bg-cyan-500/15 [&_button:hover]:text-cyan-100 [&_button:disabled]:opacity-30"
     : "p-3 pointer-events-auto";
 
   return (
@@ -141,13 +150,13 @@ export function FiltroPeriodo({
               <SelectValue placeholder="Selecione o período" />
             </SelectTrigger>
             <SelectContent className={selectContentCls}>
-              <SelectItem value="atual">Mês atual</SelectItem>
+                <SelectItem value="atual" className={selectItemCls}>Mês atual</SelectItem>
               {presets.ultimos8.map((m) => (
-                <SelectItem key={m.value} value={m.value}>
+                  <SelectItem key={m.value} value={m.value} className={selectItemCls}>
                   {m.label.charAt(0).toUpperCase() + m.label.slice(1)}
                 </SelectItem>
               ))}
-              <SelectItem value="personalizado">Por período (calendário)</SelectItem>
+                <SelectItem value="personalizado" className={selectItemCls}>Por período (calendário)</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -161,6 +170,7 @@ export function FiltroPeriodo({
             <Popover open={rangeOpen} onOpenChange={setRangeOpen}>
               <PopoverTrigger asChild>
                 <Button
+                  type="button"
                   variant="outline"
                   className={buttonCls}
                 >

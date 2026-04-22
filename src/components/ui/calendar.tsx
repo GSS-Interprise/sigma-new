@@ -32,6 +32,7 @@ function Calendar({
   onMonthChange,
   ...props 
 }: CalendarProps) {
+  const selectedValue = (props as any).selected;
   const [viewMode, setViewMode] = React.useState<ViewMode>("days");
   const [decadeStart, setDecadeStart] = React.useState<number>(() => {
     const year = controlledMonth?.getFullYear() || new Date().getFullYear();
@@ -39,10 +40,26 @@ function Calendar({
   });
   const [internalMonth, setInternalMonth] = React.useState<Date>(() => {
     if (controlledMonth) return controlledMonth;
-    const selected = (props as any).selected;
-    if (selected instanceof Date) return selected;
+    if (selectedValue instanceof Date) return selectedValue;
+    if (selectedValue?.from instanceof Date) return selectedValue.from;
     return new Date();
   });
+
+  React.useEffect(() => {
+    if (controlledMonth) {
+      setInternalMonth(controlledMonth);
+      return;
+    }
+
+    if (selectedValue instanceof Date) {
+      setInternalMonth(selectedValue);
+      return;
+    }
+
+    if (selectedValue?.from instanceof Date) {
+      setInternalMonth(selectedValue.from);
+    }
+  }, [controlledMonth, selectedValue]);
 
   const currentMonth = controlledMonth || internalMonth;
   const currentYear = currentMonth.getFullYear();
@@ -126,7 +143,7 @@ function Calendar({
   };
 
   // Fixed container dimensions for consistent sizing
-  const containerClass = "w-[280px] min-h-[300px] p-3 pointer-events-auto bg-popover";
+  const containerClass = "w-[280px] min-h-[300px] p-3 pointer-events-auto";
 
   // Render months grid (3 cols x 4 rows = 12)
   if (viewMode === "months") {
