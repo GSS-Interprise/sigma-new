@@ -1,4 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
+import { useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
 export type StatusProposta = "a_contactar" | "contactado" | "fechado_proposta";
@@ -17,9 +18,33 @@ export interface LeadStatusPropostaRow {
 }
 
 export function useLeadStatusProposta(campanhaPropostaId: string | null | undefined) {
+  const qc = useQueryClient();
+
+  useEffect(() => {
+    if (!campanhaPropostaId) return;
+    const channel = supabase
+      .channel(`lead-status-proposta-${campanhaPropostaId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "campanha_proposta_lead_canais", filter: `campanha_proposta_id=eq.${campanhaPropostaId}` },
+        () => qc.invalidateQueries({ queryKey: ["lead-status-proposta", campanhaPropostaId] }),
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "disparos_contatos", filter: `campanha_proposta_id=eq.${campanhaPropostaId}` },
+        () => qc.invalidateQueries({ queryKey: ["lead-status-proposta", campanhaPropostaId] }),
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [campanhaPropostaId, qc]);
+
   return useQuery({
     queryKey: ["lead-status-proposta", campanhaPropostaId],
     enabled: !!campanhaPropostaId,
+    refetchOnWindowFocus: true,
+    staleTime: 0,
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("vw_lead_status_por_proposta")
