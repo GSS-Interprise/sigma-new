@@ -377,10 +377,6 @@ export function DisparosCampanhasTab() {
                   )}
                 </div>
 
-                <div className="mt-4 pt-4 border-t">
-                  <CampanhaPropostasVinculadas campanhaId={campanha.id} />
-                </div>
-
                 {campanha.total_contatos > 0 && (
                   <div className="mt-3">
                     <div className="h-2 bg-muted rounded-full overflow-hidden">
