@@ -109,6 +109,23 @@ export function useLeadsAContactar(campanhaPropostaId: string | null | undefined
         }
       }
 
+      // 3c. Sincroniza com a fila do disparo em massa: leads que o n8n já
+      // pegou (3-TRATANDO) ou enviou (4-ENVIADO) também contam como contactado,
+      // mesmo que ainda não exista mensagem em sigzap_messages.
+      const { data: filaRows } = await (supabase as any)
+        .from("disparos_contatos")
+        .select("lead_id, updated_at, status")
+        .eq("campanha_proposta_id", campanhaPropostaId!)
+        .in("lead_id", leadIds)
+        .in("status", ["3-TRATANDO", "4-ENVIADO"]);
+      for (const r of filaRows || []) {
+        const ts = r.updated_at;
+        const prev = contactMap.get(r.lead_id);
+        if (!prev || (ts && new Date(ts) > new Date(prev))) {
+          contactMap.set(r.lead_id, ts);
+        }
+      }
+
       return (leads || []).map((l: any) => ({
         lead_id: l.id,
         nome: l.nome,
