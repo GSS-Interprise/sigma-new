@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { TrafegoPagoFunilRelatorio } from "./TrafegoPagoFunilRelatorio";
 
 interface Props {
   campanhaPropostaId: string;
@@ -98,6 +99,8 @@ export function SegmentoTrafegoPago({ campanhaPropostaId }: Props) {
   };
 
   return (
+    <div className="space-y-4">
+    <TrafegoPagoFunilRelatorio campanhaPropostaId={campanhaPropostaId} />
     <Card>
       <CardHeader>
         <CardTitle className="text-lg flex items-center gap-2">
@@ -166,5 +169,6 @@ export function SegmentoTrafegoPago({ campanhaPropostaId }: Props) {
         )}
       </CardContent>
     </Card>
+    </div>
   );
 }
