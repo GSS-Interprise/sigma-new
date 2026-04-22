@@ -432,6 +432,7 @@ export function DisparosContatosPanel({ campanha, onBack, campanhaPropostaId, em
             </AlertDialog>
           )}
           
+          {campanha?.id && (
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button 
@@ -483,6 +484,7 @@ export function DisparosContatosPanel({ campanha, onBack, campanhaPropostaId, em
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
+          )}
         </div>
       </div>
 
