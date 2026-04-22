@@ -58,13 +58,24 @@ export function useLeadsAContactar(campanhaPropostaId: string | null | undefined
 
       if (leadIds.length === 0) return [];
 
-      // 2. Busca dados dos leads
-      const { data: leads, error: e2 } = await supabase
-        .from("leads")
-        .select("id, nome, phone_e164, telefones_adicionais, especialidade, uf, cidade")
-        .in("id", leadIds)
-        .is("merged_into_id", null);
-      if (e2) throw e2;
+      // 2. Busca dados dos leads em lotes (URL fica gigante com milhares de UUIDs)
+      const chunk = <T,>(arr: T[], size: number): T[][] => {
+        const out: T[][] = [];
+        for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+        return out;
+      };
+      const leadIdChunks = chunk(leadIds, 200);
+      const leadsAcc: any[] = [];
+      for (const ids of leadIdChunks) {
+        const { data: page, error: e2 } = await supabase
+          .from("leads")
+          .select("id, nome, phone_e164, telefones_adicionais, especialidade, uf, cidade")
+          .in("id", ids)
+          .is("merged_into_id", null);
+        if (e2) throw e2;
+        if (page) leadsAcc.push(...page);
+      }
+      const leads = leadsAcc;
 
       // 3. Busca envios manuais já realizados nesta proposta para marcar como "contactado"
       const { data: envios } = await (supabase as any)
