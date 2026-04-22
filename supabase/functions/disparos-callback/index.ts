@@ -118,18 +118,21 @@ Deno.serve(async (req) => {
             }
 
             // Histórico: telefone sem WhatsApp
-            await supabase
+            const { error: histNoZapErr } = await supabase
               .from('lead_historico')
               .insert({
                 lead_id: leadIdNoZap,
                 tipo_evento: 'telefone_sem_whatsapp',
-                descricao: `Telefone marcado como sem WhatsApp via callback NoZap (campanha ${contato.campanha_id})`,
-                dados_novos: {
+                descricao_resumida: `Telefone marcado como sem WhatsApp via callback NoZap (campanha ${contato.campanha_id})`,
+                metadados: {
                   contato_id,
                   campanha_id: contato.campanha_id,
                   telefones_inativados: phonesToInactivate,
                 }
               });
+            if (histNoZapErr) {
+              console.warn('[disparos-callback] Erro ao inserir lead_historico (NoZap):', histNoZapErr);
+            }
           }
         } catch (nozapErr) {
           console.warn('[disparos-callback] Erro ao processar NoZap (não-crítico):', nozapErr);
