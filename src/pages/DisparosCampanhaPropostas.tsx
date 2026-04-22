@@ -145,7 +145,7 @@ export default function DisparosCampanhaPropostas() {
                           </div>
                           <div className="text-xs text-muted-foreground truncate">
                             Lista: {v.lista?.nome || "—"}
-                            {v.lista?.total_estimado != null && ` • ${v.lista.total_estimado} leads`}
+                            {` • ${v.lista_leads_count ?? 0} leads`}
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
