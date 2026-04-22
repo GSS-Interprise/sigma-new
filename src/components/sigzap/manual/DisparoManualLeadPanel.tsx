@@ -390,35 +390,6 @@ export function DisparoManualLeadPanel({ campanhaPropostaId, leadId, onOpenChat 
             </div>
           </div>
 
-          {/* Bloco 3: Envio */}
-          <div className="space-y-2">
-            <Label className="text-xs font-semibold uppercase text-muted-foreground">
-              Instância (única)
-            </Label>
-            {(chips || []).length === 0 ? (
-              <p className="text-xs text-muted-foreground">Nenhuma instância conectada.</p>
-            ) : (
-              <Select
-                value={selectedInstance ?? ""}
-                onValueChange={setSelectedInstance}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Selecione uma instância" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(chips || []).map((c: any) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      <span className="font-medium">{c.nome}</span>
-                      <span className="text-xs text-muted-foreground ml-2">
-                        {c.instance_name}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          </div>
-
         </div>
       </ScrollArea>
 
