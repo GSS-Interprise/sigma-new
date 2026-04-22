@@ -126,11 +126,22 @@ export function DisparoManualLeadPanel({ campanhaPropostaId, leadId, onOpenChat 
 
   // Auto-select primeiro telefone ativo
   useEffect(() => {
+    if (travado && primeiroEnvio?.phone_e164) {
+      setSelectedPhone(primeiroEnvio.phone_e164);
+      return;
+    }
     if (!selectedPhone && phones.length > 0) {
       const ativo = phones.find((p) => !isInativo(p));
       if (ativo) setSelectedPhone(clean(ativo));
     }
-  }, [phones, selectedPhone]);
+  }, [phones, selectedPhone, travado, primeiroEnvio]);
+
+  // Trava instância para não-admin quando lead já foi contactado
+  useEffect(() => {
+    if (travado && primeiroEnvio?.instance_id) {
+      setSelectedInstance(primeiroEnvio.instance_id);
+    }
+  }, [travado, primeiroEnvio]);
 
   // Toggle inativo
   const toggleInativo = useMutation({
