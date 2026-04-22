@@ -1,74 +1,58 @@
 
 
-## Ajuste ao plano: incluir disparo em massa
+## Plano (em português)
 
-Adiciono o **disparo em massa** (campanhas automáticas) à mesma regra: qualquer mensagem enviada vinculada a um lead conta como contactado e abre a raia.
+Quando uma mensagem for enviada para um lead — não importa de onde (painel manual, chat do SIG Zap ou disparo em massa) — o lead automaticamente:
 
-## Regra única de "Contactado"
+1. Vira **"Contactado"** na proposta
+2. Aparece no **Kanban de Acompanhamento** (coluna "Contatados")
+3. Começa a contar **tempo na raia** (cronômetro ao vivo)
+4. Ganha dois botões: **"Encerrar"** e **"Próxima fase"**
 
-Toda mensagem outbound (`from_me=true`) inserida em `sigzap_messages` cuja conversa tenha `lead_id` vinculado dispara o mesmo fluxo, independente da origem:
+## O que vai mudar
 
-| Origem | Como vincula o lead à conversa |
-|---|---|
-| Painel manual (`send-disparo-manual`) | Já faz upsert em `sigzap_conversations` com `lead_id` antes de enviar |
-| Input do chat SIG Zap | Conversa já existe com `lead_id` (ou ficará null e a trigger ignora) |
-| Disparo em massa (`campanha-disparo-processor`) | **NOVO**: precisa criar/atualizar `sigzap_conversations` com `lead_id` antes/depois do envio para a trigger funcionar |
+### 1. Banco de dados (migration)
 
-## O que muda
+- **Gatilho automático** na tabela de mensagens: toda vez que uma mensagem sai (`from_me=true`) e a conversa tem lead vinculado:
+  - Abre a "raia" do WhatsApp nas propostas ativas desse lead (cronômetro inicia)
+  - Marca `leads.status = 'Contatados'` (se ainda estava "Novo")
+  - Registra no histórico do lead
+- **Função nova** `enviar_lead_proxima_fase`: fecha a raia atual como "transferido" e abre a do próximo canal da cascata da proposta
+- **Backfill**: leads que você já contactou (Ewerton, Bruna) serão corrigidos automaticamente
 
-### 1. Trigger única em `sigzap_messages` (cobre as 3 origens)
+### 2. Disparo em massa (`campanha-disparo-processor`)
 
-`AFTER INSERT WHEN from_me=true`:
-- Se `conv.lead_id IS NULL` → sai (sem vínculo, sem ação).
-- Se já existe outra mensagem `from_me=true` anterior na mesma `conversation_id` → sai (idempotente).
-- Para cada `campanha_proposta` ativa contendo o lead, se NÃO existe raia WhatsApp aberta:
-  - INSERT em `campanha_proposta_lead_canais` com `entrou_em=now()`, `status_final=NULL` → lead vira "Contactado" e cronômetro inicia.
-- `UPDATE leads SET status='Contatados'` se status atual `IN ('Novo', NULL)` → aparece no Kanban Acompanhamento.
-- INSERT em `lead_historico` (`tipo_evento='mensagem_enviada'`, metadados com origem inferida do contexto da conversa).
-
-### 2. `campanha-disparo-processor` (disparo em massa)
-
-Hoje envia direto pela Evolution API e atualiza counters da campanha, **mas não persiste em `sigzap_conversations` / `sigzap_messages`**. Ajuste:
-
-- Antes/depois de cada envio bem-sucedido, fazer upsert de:
-  - `sigzap_contacts` (instance + jid)
-  - `sigzap_conversations` com `lead_id = lead.id`
-  - `sigzap_messages` com `from_me=true`, `wa_message_id` retornado pela Evolution
-- A trigger automaticamente fecha a raia "a contactar" e move pro Kanban Acompanhamento.
-
-Vantagem extra: o lead disparado em massa passa a ter conversa visível no SIG Zap, podendo ser respondido pelo operador.
+Hoje envia direto pela Evolution API mas não registra a conversa no SIG Zap. Vou ajustar para gravar `sigzap_conversations` + `sigzap_messages` com o `lead_id` — assim o gatilho dispara também para envios em massa, e o lead fica visível no inbox do SIG Zap para ser respondido.
 
 ### 3. Painel manual (`send-disparo-manual`)
 
-Remover a chamada `fechar_lead_canal(... 'respondeu')` do final. Quem fecha/abre raia agora é a trigger (apenas abre, não fecha — fechar é decisão do operador via "Encerrar"/"Próxima fase" do plano anterior).
+Remover o fechamento prematuro da raia (hoje fecha como "respondeu" no momento do envio). Quem fecha a raia agora é o operador, via os dois botões.
 
-### 4. Frontend — invalidações
+### 4. Lista de leads da proposta (`CampanhaLeadsList`)
 
-- `useDisparoManual` e hook do chat SIG Zap: invalidar `["acompanhamento-leads"]`, `["lead-status-proposta"]`, `["lead-canais"]`, `["leads-a-contactar"]`.
+- Coluna **"Tempo na raia"** com cronômetro ao vivo (atualiza a cada segundo enquanto a raia está aberta)
+  - Lead "A contactar" → mostra `—`
+  - Lead "Contactado" → cronômetro rodando
+  - Lead fechado → tempo congelado
+- Dois botões na linha do lead contactado:
+  - 🟢 **Próxima fase** — passa para o próximo canal da cascata
+  - 🔴 **Encerrar** — fecha o lead nessa proposta
 
-### 5. Backfill (uma vez)
+### 5. Frontend — atualização instantânea
 
-Para toda `sigzap_conversations` com `lead_id IS NOT NULL` que tenha mensagem `from_me=true`:
-- Se lead em proposta ativa sem raia WhatsApp aberta → criar raia aberta com `entrou_em = timestamp da primeira outbound`.
-- Promover `leads.status='Contatados'` se ainda `Novo`.
-
-## Combina com plano anterior dos 2 botões
-
-Esse fluxo apenas **abre** a raia. O fechamento continua sendo decisão manual:
-- **Encerrar** → fecha como `encerrado`.
-- **Próxima fase** → fecha como `transferido` e abre raia do próximo canal.
+Após qualquer envio, atualizar automaticamente: lista de leads da proposta, Kanban de Acompanhamento e badge de status.
 
 ## Arquivos alterados
 
-- nova migration SQL: trigger `trg_sigzap_outbound_after_insert` + RPC `enviar_lead_proxima_fase` + backfill
-- `supabase/functions/send-disparo-manual/index.ts` — remover fechamento de raia
-- `supabase/functions/campanha-disparo-processor/index.ts` — persistir conversa/mensagem após envio
-- `src/components/disparos/CampanhaLeadsList.tsx` — coluna tempo ao vivo + botões "Encerrar" e "Próxima fase"
-- `src/components/disparos/TempoRaia.tsx` (novo) — cronômetro
-- `src/hooks/useLeadCanais.ts` — `useEnviarProximaFase`
-- `src/hooks/useDisparoManual.ts` + hook do chat SIG Zap — invalidações
+- Nova migration SQL (gatilho + função nova + backfill)
+- `supabase/functions/send-disparo-manual/index.ts`
+- `supabase/functions/campanha-disparo-processor/index.ts`
+- `src/components/disparos/CampanhaLeadsList.tsx`
+- `src/components/disparos/TempoRaia.tsx` (novo, cronômetro ao vivo)
+- `src/hooks/useLeadCanais.ts` (novo hook `useEnviarProximaFase`)
+- `src/hooks/useDisparoManual.ts` + hook do chat SIG Zap (invalidações)
 
-## Resultado
+## Resultado final
 
-Qualquer mensagem enviada vinculada a um lead (manual, chat ou massa) → lead vira "Contactado", aparece no Kanban Acompanhamento, cronômetro de raia inicia, operador decide depois entre Encerrar ou Próxima fase.
+Você envia mensagem (de qualquer lugar) → lead vira "Contactado" → aparece no Kanban → cronômetro começa → você decide depois entre **Encerrar** ou mandar para a **Próxima fase**.
 
