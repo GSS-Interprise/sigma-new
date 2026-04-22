@@ -107,7 +107,7 @@ export default function DisparosCampanhas() {
         .insert([{
           nome,
           canal: "whatsapp" as any,
-          status: "rascunho" as any,
+          status: "ativa" as any,
           criado_por: user.user?.id,
         }])
         .select()
