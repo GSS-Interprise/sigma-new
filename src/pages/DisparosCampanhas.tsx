@@ -239,101 +239,14 @@ export default function DisparosCampanhas() {
                         onChange={(e) => setNome(e.target.value)}
                         placeholder="Ex: Captação Pediatria SC"
                       />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>Propostas vinculadas *</Label>
-                      <Popover open={propostaPickerOpen} onOpenChange={setPropostaPickerOpen}>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="outline"
-                            role="combobox"
-                            className="w-full justify-between font-normal h-auto min-h-10 py-2"
-                          >
-                            <div className="flex flex-wrap gap-1 flex-1 text-left">
-                              {propostaIds.length === 0 ? (
-                                <span className="text-muted-foreground">
-                                  Selecione uma ou mais propostas
-                                </span>
-                              ) : (
-                                propostas
-                                  .filter((p: any) => propostaIds.includes(p.id))
-                                  .map((p: any) => (
-                                    <Badge
-                                      key={p.id}
-                                      variant="secondary"
-                                      className="gap-1 pr-1"
-                                    >
-                                      <FileText className="h-3 w-3" />
-                                      <span className="max-w-[180px] truncate">
-                                        {propostaLabel(p)}
-                                      </span>
-                                      <span
-                                        role="button"
-                                        tabIndex={0}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          togglePropostaId(p.id);
-                                        }}
-                                        className="ml-0.5 rounded hover:bg-muted-foreground/20 p-0.5"
-                                      >
-                                        <X className="h-3 w-3" />
-                                      </span>
-                                    </Badge>
-                                  ))
-                              )}
-                            </div>
-                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
-                          <Command>
-                            <CommandInput placeholder="Buscar proposta..." />
-                            <CommandList className="max-h-64 overflow-y-auto">
-                              <CommandEmpty>Nenhuma proposta encontrada.</CommandEmpty>
-                              <CommandGroup>
-                                {propostas.map((p: any) => {
-                                    const checked = propostaIds.includes(p.id);
-                                    return (
-                                      <CommandItem
-                                        key={p.id}
-                                        value={`${p.id_proposta ?? ""} ${p.descricao ?? ""} ${p.id}`}
-                                        onSelect={() => togglePropostaId(p.id)}
-                                        className="cursor-pointer"
-                                      >
-                                        <Check
-                                          className={cn(
-                                            "mr-2 h-4 w-4",
-                                            checked ? "opacity-100" : "opacity-0"
-                                          )}
-                                        />
-                                        <div className="flex flex-col min-w-0">
-                                          <span className="truncate font-medium">
-                                            {propostaLabel(p)}
-                                          </span>
-                                          {p.descricao && p.id_proposta && (
-                                            <span className="text-xs text-muted-foreground truncate">
-                                              {p.descricao}
-                                            </span>
-                                          )}
-                                        </div>
-                                      </CommandItem>
-                                    );
-                                  })}
-                              </CommandGroup>
-                            </CommandList>
-                          </Command>
-                        </PopoverContent>
-                      </Popover>
-                      {propostaIds.length > 0 && (
-                        <p className="text-xs text-muted-foreground">
-                          {propostaIds.length} proposta{propostaIds.length > 1 ? "s" : ""} selecionada{propostaIds.length > 1 ? "s" : ""}
-                        </p>
-                      )}
+                      <p className="text-xs text-muted-foreground">
+                        Você poderá vincular propostas após criar a campanha.
+                      </p>
                     </div>
                     <Button
                       className="w-full"
                       onClick={() => criar.mutate()}
-                      disabled={!nome.trim() || propostaIds.length === 0 || criar.isPending}
+                      disabled={!nome.trim() || criar.isPending}
                     >
                       {criar.isPending ? "Criando..." : "Criar campanha"}
                     </Button>
