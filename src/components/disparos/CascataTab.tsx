@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -39,22 +39,35 @@ const CANAL_LABEL: Record<CanalCascata, string> = {
 type SortKey = "tempo_desc" | "tempo_asc" | "nome_asc" | "nome_desc";
 type CanalFilter = "todos" | CanalCascata | "sem_canal";
 
+const PAGE_SIZE_UI = 300;
+const CHUNK_DB = 1000;
+
 export function CascataTab({ campanhaPropostaId, listaId }: Props) {
   const { data: canais = [], isLoading } = useLeadCanais(campanhaPropostaId);
   const [busca, setBusca] = useState("");
   const [canalFilter, setCanalFilter] = useState<CanalFilter>("todos");
   const [sortKey, setSortKey] = useState<SortKey>("tempo_desc");
+  const [pagina, setPagina] = useState(1);
 
   const { data: leads = [] } = useQuery({
     queryKey: ["cascata-leads-info", listaId],
     enabled: !!listaId,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("disparo_lista_itens")
-        .select("lead_id, leads:lead_id(id, nome, phone_e164, status)")
-        .eq("lista_id", listaId!);
-      if (error) throw error;
-      return (data || []).map((i: any) => i.leads).filter(Boolean);
+      const todos: any[] = [];
+      let offset = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from("disparo_lista_itens")
+          .select("lead_id, leads:lead_id(id, nome, phone_e164, status)")
+          .eq("lista_id", listaId!)
+          .range(offset, offset + CHUNK_DB - 1);
+        if (error) throw error;
+        const lote = (data || []).map((i: any) => i.leads).filter(Boolean);
+        todos.push(...lote);
+        if ((data || []).length < CHUNK_DB) break;
+        offset += CHUNK_DB;
+      }
+      return todos;
     },
   });
 
