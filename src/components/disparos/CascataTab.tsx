@@ -163,7 +163,7 @@ export function CascataTab({ campanhaPropostaId, listaId }: Props) {
         <GitBranch className="h-4 w-4 text-primary" />
         <div className="text-sm font-semibold">Cascata por lead</div>
         <span className="text-xs text-muted-foreground ml-auto">
-          {linhas.length} de {leads.length} lead(s)
+          {linhas.length} de {leads.length} lead(s) · pág. {paginaAtual}/{totalPaginas}
         </span>
       </div>
       <div className="flex flex-wrap items-center gap-2 p-3 border-b bg-background">
