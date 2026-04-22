@@ -1474,7 +1474,14 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
             )}
             <div className="min-w-0">
               <h3 className="font-semibold text-sm truncate">
-                {loadingConversa ? <Skeleton className="h-4 w-32" /> : contact?.contact_name || contact?.contact_phone}
+                {loadingConversa ? (
+                  <Skeleton className="h-4 w-32" />
+                ) : (
+                  leadFromJoin?.nome ||
+                  linkedLead?.nome ||
+                  contact?.contact_name ||
+                  contact?.contact_phone
+                )}
               </h3>
               <div className="flex items-center gap-2 mt-0.5">
                 <Phone className="h-3 w-3 text-muted-foreground" />
