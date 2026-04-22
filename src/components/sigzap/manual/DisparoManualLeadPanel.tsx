@@ -245,29 +245,41 @@ export function DisparoManualLeadPanel({ campanhaPropostaId, leadId, onOpenChat 
 
       <ScrollArea className="flex-1">
         <div className="p-3 space-y-4">
-          {/* Bloco 1: Números */}
-          <div className="border rounded-lg p-3 bg-muted/20 space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
-                <Phone className="h-3.5 w-3.5" />
-                Telefones
-              </label>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-6 text-[10px] px-2"
-                onClick={handleCheckWhatsApp}
-                disabled={checkingWpp || phones.length === 0}
+          {/* Bloco 1: Instância */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase text-muted-foreground">
+              Instância (única)
+            </Label>
+            {(chips || []).length === 0 ? (
+              <p className="text-xs text-muted-foreground">Nenhuma instância conectada.</p>
+            ) : (
+              <Select
+                value={selectedInstance ?? ""}
+                onValueChange={setSelectedInstance}
               >
-                {checkingWpp ? (
-                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                ) : (
-                  <MessageCircle className="h-3 w-3 mr-1" />
-                )}
-                Verificar WhatsApp
-              </Button>
-            </div>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Selecione uma instância" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(chips || []).map((c: any) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      <span className="font-medium">{c.nome}</span>
+                      <span className="text-xs text-muted-foreground ml-2">
+                        {c.instance_name}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+
+          {/* Bloco 2: Telefones */}
+          <div className="border rounded-lg p-3 bg-muted/20 space-y-2">
+            <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+              <Phone className="h-3.5 w-3.5" />
+              Telefones
+            </label>
 
             {phones.length === 0 && (
               <p className="text-xs text-muted-foreground">Nenhum número cadastrado.</p>
