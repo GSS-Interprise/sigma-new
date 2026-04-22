@@ -36,13 +36,23 @@ export function useLeadCanais(campanhaPropostaId?: string | null) {
     queryKey: ["lead-canais", campanhaPropostaId],
     enabled: !!campanhaPropostaId,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("campanha_proposta_lead_canais")
-        .select("*")
-        .eq("campanha_proposta_id", campanhaPropostaId!)
-        .order("entrou_em", { ascending: true });
-      if (error) throw error;
-      return (data || []) as LeadCanalRow[];
+      const CHUNK = 1000;
+      const todas: LeadCanalRow[] = [];
+      let offset = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from("campanha_proposta_lead_canais")
+          .select("*")
+          .eq("campanha_proposta_id", campanhaPropostaId!)
+          .order("entrou_em", { ascending: true })
+          .range(offset, offset + CHUNK - 1);
+        if (error) throw error;
+        const lote = (data || []) as LeadCanalRow[];
+        todas.push(...lote);
+        if (lote.length < CHUNK) break;
+        offset += CHUNK;
+      }
+      return todas;
     },
   });
 }
