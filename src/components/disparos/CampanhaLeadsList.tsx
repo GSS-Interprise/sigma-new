@@ -439,19 +439,48 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
                           <Unlock className="h-3 w-3 mr-1" /> Liberar lead
                         </Button>
                       ) : cascataAtiva ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={fechandoId === l.id}
-                          onClick={() => encerrarNaProposta(l.id)}
-                          className="h-7"
-                        >
-                          {fechandoId === l.id ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            "Encerrar nesta proposta"
+                        <div className="flex items-center justify-end gap-1.5">
+                          {tempo && canal !== "tiktok" && (
+                            <Button
+                              size="sm"
+                              variant="default"
+                              className="h-7"
+                              disabled={proximaFase.isPending}
+                              onClick={() =>
+                                proximaFase.mutate({
+                                  campanhaPropostaId: campanhaPropostaId!,
+                                  leadId: l.id,
+                                  canalAtual: canal!,
+                                })
+                              }
+                            >
+                              {proximaFase.isPending ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <>
+                                  <ArrowRightCircle className="h-3 w-3 mr-1" />
+                                  Próxima fase
+                                </>
+                              )}
+                            </Button>
                           )}
-                        </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={fechandoId === l.id}
+                            onClick={() => encerrarNaProposta(l.id)}
+                            className="h-7"
+                          >
+                            {fechandoId === l.id ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <>
+                                <XCircle className="h-3 w-3 mr-1" />
+                                Encerrar
+                              </>
+                            )}
+                          </Button>
+                        </div>
                       ) : (
                         <span className="text-xs text-muted-foreground">—</span>
                       )}
