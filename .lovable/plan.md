@@ -1,52 +1,73 @@
 
 
-## Regra: lead aberto não pode estar em duas propostas da mesma campanha
+## Problema
 
-Um lead pode participar de **várias campanhas ao mesmo tempo** (ex.: campanha de Generalista + campanha de Pediatra), mas dentro de **uma única campanha** ele só pode estar vinculado a **uma proposta ativa por vez**. Para colocá-lo em outra proposta da mesma campanha, é preciso primeiro encerrar o vínculo atual.
+No dossiê da proposta, leads que já foram contactados (têm raia aberta, mensagem enviada, etc.) aparecem como **"A contactar"** — quando deveriam aparecer como **"Contactado"**.
 
-## O que vai mudar
+A confusão é que existem dois conceitos diferentes que estavam misturados:
 
-### 1. Migration SQL — bloqueio no banco
+- **Contactado** = situação do lead (já recebeu mensagem, foi chamado). É o que aparece na coluna "Status".
+- **Em aberto / Aberto na raia** = situação operacional (precisa fechar ou mandar para próxima fase). É o que controla os botões de ação.
 
-**a) Função de validação** `valida_lead_unico_por_campanha()`:
-- Antes de inserir um vínculo em `campanha_proposta_leads`, verifica se o lead já tem outro vínculo ativo (lead aberto = sem `removido_em` E proposta com `status != 'encerrada'`) em outra `campanha_proposta` da **mesma campanha**.
-- Se já existir, lança erro: `Lead já está ativo em outra proposta desta campanha (proposta X). Encerre o vínculo atual antes de adicioná-lo aqui.`
+Hoje a view `vw_lead_status_por_proposta` está retornando `'em_aberto'` quando o lead tem raia aberta, e o frontend trata isso como categoria separada de "Contactado". Resultado: o operador vê "A contactar" em alguém que já recebeu mensagem.
 
-**b) Trigger BEFORE INSERT** em `campanha_proposta_leads` chamando essa função.
+## Regra correta
 
-**c) Índice parcial único** para reforçar a regra a nível de banco:
-- `CREATE UNIQUE INDEX ON campanha_proposta_leads (campanha_id_da_proposta, lead_id) WHERE removido_em IS NULL` — usando uma coluna gerada ou via expressão com subquery não funciona direto, então a garantia fica via trigger + cleanup. (Mantemos só a trigger; índice exigiria desnormalizar `campanha_id`.)
+Um lead com raia aberta É um lead contactado. "Aberto" é só o estado operacional (tem ação pendente). O status de relacionamento é sempre **Contactado** assim que houve qualquer envio/raia.
 
-**d) Backfill — diagnóstico**:
-- `SELECT` listando casos atuais de leads duplicados na mesma campanha (sem corrigir automaticamente, só relatar). O operador decide qual manter via UI.
+| Situação                                    | Status mostrado | Ações disponíveis        |
+|---------------------------------------------|-----------------|--------------------------|
+| Sem raia, sem envio                         | A contactar     | (enviar mensagem)        |
+| Tem raia aberta OU mensagem enviada         | **Contactado**  | Encerrar, Próxima fase   |
+| Raia fechada como `encerrado`/`movido` etc  | Fechado         | (nenhuma)                |
 
-### 2. Frontend — feedback claro ao operador
+## O que muda
 
-**a) `useAdicionarLeadsCampanha` / fluxos de vínculo de leads à proposta**:
-- Capturar o erro da trigger e mostrar toast amigável: *"Lead João Silva já está ativo na proposta Y desta campanha. Encerre antes de mover."*
+### 1. Banco — corrigir `vw_lead_status_por_proposta`
 
-**b) Dialog "Vincular leads à proposta"** (no fluxo de adicionar leads à `campanha_proposta`):
-- Antes do envio, fazer um `SELECT` prévio que marca quais leads do lote já estão ativos em outra proposta da mesma campanha. Mostrar essa lista em um aviso amarelo: *"3 leads serão ignorados porque já estão ativos em outras propostas desta campanha."*
-- Permitir ao operador clicar em **"Ver propostas em conflito"** para abrir mini-lista com link.
+Recriar a view para que o `CASE` retorne:
+- `'fechado_proposta'` se todas as raias estão fechadas com status final
+- `'contactado'` se há raia aberta OU houve mensagem outbound registrada
+- `'a_contactar'` apenas quando não há raia nem envio
 
-**c) Botão "Mover para outra proposta"** na linha do lead em `CampanhaLeadsList`:
-- Atalho que: encerra o vínculo atual (`status_final = 'movido'`) + insere em proposta destino selecionada via dropdown. Tudo em uma transação RPC.
+Ou seja, eliminar o estado intermediário `'em_aberto'` da view — ele vira `'contactado'`.
 
-### 3. Sem mudança em campanhas diferentes
+### 2. Frontend — `useLeadStatusProposta.ts`
 
-A regra só vale dentro da mesma campanha. Lead pode aparecer em N campanhas distintas sem restrição.
+Remover `'em_aberto'` do tipo `StatusProposta`. Manter só:
+- `'a_contactar'`
+- `'contactado'`
+- `'fechado_proposta'`
+
+### 3. Frontend — `CampanhaLeadsList.tsx`
+
+**a) Coluna Status**: vai mostrar "Contactado" automaticamente para qualquer lead com raia aberta (a fonte é a view corrigida).
+
+**b) Lógica das ações** (botões Encerrar / Próxima fase): continua baseada em `tem raia aberta` (campo separado da view, ex: `bloqueado_*` ou nova flag `tem_raia_aberta`). Status visual e disponibilidade de ação ficam desacoplados.
+
+**c) Otimização visual da lista** (pedido anterior reforçado):
+- Reduzir altura da linha: `py-2` em vez de `py-4`, fonte do nome 14px, telefone/email 13px.
+- Status badge menor: remover quebra de linha "A / contactar", usar `whitespace-nowrap` + `text-xs`.
+- Botões de ação com ícone-only em telas <1280px (tooltip no hover) e label visível em telas maiores.
+- Coluna "#" com largura fixa estreita (40px).
+- Selecionar (checkbox) com largura fixa 32px.
+- Diminuir padding lateral das células de `px-4` para `px-3`.
+- Resultado: cabe ~50% mais leads na mesma altura de tela.
+
+### 4. Filtros de topo
+
+A pílula "Em aberto" vira **"Contactados em aberto"** (subset de Contactado com raia aberta) — ou some se preferir simplificar. Decisão: manter como subfiltro visual, contagem usando flag `tem_raia_aberta` da view, mas o badge de status na linha sempre diz "Contactado".
 
 ## Arquivos alterados
 
-- nova migration SQL (função + trigger + query de diagnóstico)
-- `src/hooks/useCampanhaLeads.ts` — tratar erro da trigger
-- `src/components/disparos/VincularPropostaCampanhaDialog.tsx` ou dialog equivalente de vinculação de leads — pré-validação visual
-- `src/components/disparos/CampanhaLeadsList.tsx` — novo botão "Mover para outra proposta"
-- nova RPC `mover_lead_entre_propostas(lead_id, proposta_origem, proposta_destino)`
+- nova migration SQL — recriar `vw_lead_status_por_proposta` com `tem_raia_aberta` como coluna separada e status consolidando "contactado"
+- `src/hooks/useLeadStatusProposta.ts` — atualizar tipo `StatusProposta` e expor `tem_raia_aberta`
+- `src/components/disparos/CampanhaLeadsList.tsx` — coluna Status usa novo valor; layout compactado; lógica de filtros ajustada
+- `src/integrations/supabase/types.ts` — regenerado automaticamente
 
 ## Resultado
 
-- Tentativa de duplicar lead na mesma campanha → bloqueada com mensagem clara.
-- Lead pode estar em campanhas diferentes simultaneamente sem problema.
-- Operador tem caminho explícito para mover o lead entre propostas da mesma campanha.
+- Lead que recebeu mensagem aparece como **Contactado** em todo lugar (dossiê, kanban, métricas).
+- Botões "Encerrar" e "Próxima fase" continuam aparecendo só quando tem raia aberta.
+- Lista mais compacta e visual, foco em ação rápida.
 
