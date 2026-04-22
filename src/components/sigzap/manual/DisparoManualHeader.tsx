@@ -40,7 +40,10 @@ export function DisparoManualHeader({
         .eq("status", "ativa")
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return data || [];
+      // Excluir propostas personalizadas — mostrar apenas propostas gerais
+      return (data || []).filter(
+        (p: any) => !/personalizada/i.test(p.proposta?.descricao || "")
+      );
     },
   });
 
