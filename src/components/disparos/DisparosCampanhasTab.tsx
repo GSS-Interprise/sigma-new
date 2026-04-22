@@ -334,6 +334,31 @@ export function DisparosCampanhasTab() {
                   </div>
 
                   <div className="flex items-center gap-2">
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={() => dispararMutation.mutate(campanha.id)}
+                      disabled={dispararMutation.isPending || !campanha.ativo || campanha.total_contatos === 0}
+                      title="Disparar agora (envia lote ao n8n)"
+                    >
+                      <Rocket className="h-4 w-4 mr-1" />
+                      Disparar
+                    </Button>
+                    <Button
+                      variant={campanha.status === "agendado" ? "secondary" : "outline"}
+                      size="sm"
+                      onClick={() =>
+                        agendarMutation.mutate({
+                          id: campanha.id,
+                          agendar: campanha.status !== "agendado",
+                        })
+                      }
+                      disabled={agendarMutation.isPending}
+                      title={campanha.status === "agendado" ? "Remover agendamento" : "Agendar"}
+                    >
+                      <Clock className="h-4 w-4 mr-1" />
+                      {campanha.status === "agendado" ? "Agendado" : "Agendar"}
+                    </Button>
                     <Button variant="outline" size="sm" onClick={() => setSelectedCampanha(campanha)}>
                       <Eye className="h-4 w-4 mr-1" />Ver
                     </Button>
