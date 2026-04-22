@@ -227,9 +227,9 @@ export default function DisparosSigZap() {
       <AppLayout headerActions={headerActions} hideFooter>
         {/* Container principal - 3 colunas */}
         <div 
-          className="grid bg-card overflow-hidden flex-1"
+          className="grid bg-card overflow-hidden flex-1 min-h-0"
           style={{ 
-            gridTemplateColumns: '1fr 1fr 2fr',
+            gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) minmax(0, 2fr)',
           }}
         >
           {mode === "manual" ? (

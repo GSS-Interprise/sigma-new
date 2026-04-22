@@ -36,7 +36,7 @@ export function DisparoManualLeadsColumn({ campanhaPropostaId, selectedLeadId, o
   }, [leads, filtro]);
 
   return (
-    <div className="border-r flex flex-col h-full bg-card">
+    <div className="border-r flex flex-col h-full min-h-0 min-w-0 overflow-hidden bg-card">
       <div className="p-3 border-b space-y-2">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold text-sm flex items-center gap-2">
@@ -68,7 +68,7 @@ export function DisparoManualLeadsColumn({ campanhaPropostaId, selectedLeadId, o
         </div>
       </div>
 
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 min-h-0">
         <div className="p-2 space-y-1">
           {!campanhaPropostaId && (
             <p className="text-xs text-muted-foreground p-4 text-center">
