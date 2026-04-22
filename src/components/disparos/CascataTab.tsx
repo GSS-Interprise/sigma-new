@@ -138,8 +138,59 @@ export function CascataTab({ campanhaPropostaId, listaId }: Props) {
         <GitBranch className="h-4 w-4 text-primary" />
         <div className="text-sm font-semibold">Cascata por lead</div>
         <span className="text-xs text-muted-foreground ml-auto">
-          {leads.length} lead(s)
+          {linhas.length} de {leads.length} lead(s)
         </span>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 p-3 border-b bg-background">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <Input
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder="Buscar nome ou telefone..."
+            className="pl-7 h-8 text-xs"
+          />
+        </div>
+        <Select value={canalFilter} onValueChange={(v) => setCanalFilter(v as CanalFilter)}>
+          <SelectTrigger className="h-8 text-xs w-[160px]">
+            <SelectValue placeholder="Canal atual" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="todos">Todos canais</SelectItem>
+            <SelectItem value="sem_canal">Sem canal ativo</SelectItem>
+            {canaisDisponiveis.map((c) => (
+              <SelectItem key={c} value={c}>
+                {CANAL_LABEL[c]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={sortKey} onValueChange={(v) => setSortKey(v as SortKey)}>
+          <SelectTrigger className="h-8 text-xs w-[180px]">
+            <ArrowUpDown className="h-3 w-3 mr-1" />
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="tempo_desc">Mais tempo na raia</SelectItem>
+            <SelectItem value="tempo_asc">Menos tempo na raia</SelectItem>
+            <SelectItem value="nome_asc">Nome (A-Z)</SelectItem>
+            <SelectItem value="nome_desc">Nome (Z-A)</SelectItem>
+          </SelectContent>
+        </Select>
+        {(busca || canalFilter !== "todos" || sortKey !== "tempo_desc") && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 text-xs"
+            onClick={() => {
+              setBusca("");
+              setCanalFilter("todos");
+              setSortKey("tempo_desc");
+            }}
+          >
+            Limpar
+          </Button>
+        )}
       </div>
       <ScrollArea className="h-[500px]">
         <table className="w-full text-sm">
@@ -153,9 +204,7 @@ export function CascataTab({ campanhaPropostaId, listaId }: Props) {
             </tr>
           </thead>
           <tbody>
-            {leads.map((lead: any) => {
-              const passagens = porLead.get(lead.id) || [];
-              const ativa = passagens.find((p) => p.status_final === "aberto");
+            {linhas.map(({ lead, passagens, ativa }) => {
               const ultimaTransfer = [...passagens]
                 .reverse()
                 .find((p) => p.motivo_saida);
