@@ -1,10 +1,19 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, GitBranch } from "lucide-react";
+import { Loader2, GitBranch, Search, ArrowUpDown } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 import {
   useLeadCanais,
   formatDuracao,
@@ -26,6 +35,9 @@ const CANAL_LABEL: Record<CanalCascata, string> = {
   linkedin: "LinkedIn",
   tiktok: "TikTok",
 };
+
+type SortKey = "tempo_desc" | "tempo_asc" | "nome_asc" | "nome_desc";
+type CanalFilter = "todos" | CanalCascata | "sem_canal";
 
 export function CascataTab({ campanhaPropostaId, listaId }: Props) {
   const { data: canais = [], isLoading } = useLeadCanais(campanhaPropostaId);
