@@ -214,8 +214,17 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
     });
   };
   const toggleTodos = () => {
-    if (selecionados.size === filtrados.length) setSelecionados(new Set());
-    else setSelecionados(new Set(filtrados.map((l: any) => l.id)));
+    const idsPagina = filtradosPagina.map((l: any) => l.id);
+    const todosNaPagina = idsPagina.every((id) => selecionados.has(id));
+    setSelecionados((prev) => {
+      const next = new Set(prev);
+      if (todosNaPagina) {
+        for (const id of idsPagina) next.delete(id);
+      } else {
+        for (const id of idsPagina) next.add(id);
+      }
+      return next;
+    });
   };
   const limparSelecao = () => setSelecionados(new Set());
 
@@ -340,8 +349,8 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
                   <th className="px-2 py-1.5 w-8">
                     <Checkbox
                       checked={
-                        filtrados.length > 0 &&
-                        selecionados.size === filtrados.length
+                        filtradosPagina.length > 0 &&
+                        filtradosPagina.every((l: any) => selecionados.has(l.id))
                       }
                       onCheckedChange={toggleTodos}
                     />
@@ -359,7 +368,8 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
               </tr>
             </thead>
             <tbody>
-              {filtrados.map((l: any, idx: number) => {
+              {filtradosPagina.map((l: any, idxNaPagina: number) => {
+                const idx = (paginaAtual - 1) * PAGE_SIZE_UI + idxNaPagina;
                 const sRow = statusMap?.get(l.id);
                 const status = sRow?.status_proposta ?? "a_contactar";
                 const fechadoProp = status === "fechado_proposta";
