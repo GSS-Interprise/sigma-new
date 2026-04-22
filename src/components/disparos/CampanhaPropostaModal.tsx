@@ -169,11 +169,11 @@ export function CampanhaPropostaModal({ campanhaPropostaId, open, onOpenChange }
               }
 
               return (
-                <div key={idx} className="flex flex-col rounded-md overflow-hidden border-2 border-primary">
+                <div key={idx} className="flex flex-col rounded-md overflow-hidden border-2 border-primary flex-1 min-w-fit">
                   <div className="bg-primary text-primary-foreground text-xs font-bold tracking-wider px-4 py-1 text-center">
                     {grupo.fase}
                   </div>
-                  <div className="p-2 flex gap-1 bg-background flex-1">
+                  <div className="p-2 flex gap-1 bg-background flex-1 justify-around">
                     {triggers.map(({ value, label, Icon }) => (
                       <TabsTrigger key={value} value={value} className={TRIGGER_CLASS}>
                         <Icon size={20} />
