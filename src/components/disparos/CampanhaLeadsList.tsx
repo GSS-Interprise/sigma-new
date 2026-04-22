@@ -387,7 +387,7 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
                           {temRaia && !fechadoProp && (
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500" />
+                                <span className="inline-block h-1.5 w-1.5 rounded-full bg-primary" />
                               </TooltipTrigger>
                               <TooltipContent>Aberto na raia — ação pendente</TooltipContent>
                             </Tooltip>
