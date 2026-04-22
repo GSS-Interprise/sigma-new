@@ -58,7 +58,7 @@ export function DisparosNovoDialog({ open, onOpenChange }: Props) {
       if (!campanhaId) return [];
       const { data, error } = await supabase
         .from("campanha_propostas")
-        .select("id, status, lista_id, proposta:proposta_id (id, codigo_proposta, observacoes)")
+        .select("id, status, lista_id, proposta:proposta_id (id, nome, numero_proposta, observacoes)")
         .eq("campanha_id", campanhaId)
         .eq("status", "ativa")
         .order("created_at", { ascending: false });
