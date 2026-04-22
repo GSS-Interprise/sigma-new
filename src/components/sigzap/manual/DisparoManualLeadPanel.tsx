@@ -54,6 +54,28 @@ export function DisparoManualLeadPanel({ campanhaPropostaId, leadId, onOpenChat 
   const [confirmBanco, setConfirmBanco] = useState(false);
   const disparo = useDisparoManual();
   const [wppStatus, setWppStatus] = useState<Record<string, "has" | "no" | "unchecked">>({});
+  const { isAdmin } = usePermissions();
+
+  // Primeiro disparo manual já enviado (trava instância e telefone para não-admin)
+  const { data: primeiroEnvio } = useQuery({
+    queryKey: ["dm-primeiro-envio", campanhaPropostaId, leadId],
+    enabled: !!campanhaPropostaId && !!leadId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("disparo_manual_envios")
+        .select("instance_id, phone_e164, created_at")
+        .eq("campanha_proposta_id", campanhaPropostaId!)
+        .eq("lead_id", leadId!)
+        .eq("status", "enviado")
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data as { instance_id: string; phone_e164: string } | null;
+    },
+  });
+
+  const travado = !!primeiroEnvio && !isAdmin;
 
   // Lead
   const { data: lead, isLoading: loadingLead } = useQuery({
