@@ -82,7 +82,7 @@ Deno.serve(async (req) => {
         try {
           const { data: contatoFull } = await supabase
             .from('disparos_contatos')
-            .select('lead_id, telefone_e164')
+            .select('lead_id, telefone_e164, campanha_proposta_id')
             .eq('id', contato_id)
             .single();
 
@@ -126,6 +126,24 @@ Deno.serve(async (req) => {
               console.log('[disparos-callback] Lead já em status:', leadData?.status, '- não rebaixado');
             }
 
+            // Marcar lead como "contactado por envio em massa":
+            // 1) Insere no histórico de contatos (faz a vw_lead_status_por_proposta passar para 'contactado'
+            //    e impede que o lead seja redisparado pela automação).
+            try {
+              const phoneForHist = contatoFull?.telefone_e164 || null;
+              if (phoneForHist) {
+                await supabase
+                  .from('disparos_historico_contatos')
+                  .insert({
+                    telefone: phoneForHist,
+                    ultima_campanha: contato.campanha_id,
+                    ultimo_disparo: new Date().toISOString(),
+                  });
+              }
+            } catch (histErr) {
+              console.warn('[disparos-callback] Erro ao registrar disparos_historico_contatos:', histErr);
+            }
+
             // Registrar no histórico
             await supabase
               .from('lead_historico')
@@ -135,6 +153,26 @@ Deno.serve(async (req) => {
                 descricao: `Disparo confirmado como enviado (campanha ${contato.campanha_id})`,
                 dados_novos: { contato_id, campanha_id: contato.campanha_id, status: '4-ENVIADO' }
               });
+
+            // Histórico extra: marca como contactado por envio em massa (mesma semântica do botão manual)
+            try {
+              await supabase
+                .from('lead_historico')
+                .insert({
+                  lead_id: leadId,
+                  tipo_evento: 'contactado_envio_massa',
+                  descricao: 'Lead contactado automaticamente via envio em massa (WhatsApp)',
+                  dados_novos: {
+                    contato_id,
+                    campanha_id: contato.campanha_id,
+                    campanha_proposta_id: contatoFull?.campanha_proposta_id ?? null,
+                    canal: 'whatsapp',
+                    origem: 'envio_em_massa',
+                  }
+                });
+            } catch (hErr) {
+              console.warn('[disparos-callback] Erro ao registrar contactado_envio_massa:', hErr);
+            }
 
             // Vincular lead à conversa do SigZap automaticamente
             try {
