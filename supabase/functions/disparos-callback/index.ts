@@ -77,6 +77,66 @@ Deno.serve(async (req) => {
 
       if (status === '4-ENVIADO') {
         updateData.data_envio = new Date().toISOString();
+      }
+
+      // 5-NOZAP: marca o telefone como inativo no lead (não tem WhatsApp).
+      // NÃO marca como contactado — em nova execução, gerar_disparo_zap usa o próximo número do lead.
+      if (status === '5-NOZAP') {
+        try {
+          const { data: contatoNoZap } = await supabase
+            .from('disparos_contatos')
+            .select('lead_id, telefone_e164, telefone_original')
+            .eq('id', contato_id)
+            .single();
+
+          let leadIdNoZap = contatoNoZap?.lead_id;
+          if (!leadIdNoZap && contatoNoZap?.telefone_e164) {
+            const { data: foundLeadId } = await supabase.rpc('find_lead_by_phone', { p_phone: contatoNoZap.telefone_e164 });
+            if (foundLeadId) leadIdNoZap = foundLeadId;
+          }
+
+          if (leadIdNoZap) {
+            const phonesToInactivate = [contatoNoZap?.telefone_e164, contatoNoZap?.telefone_original]
+              .filter((p): p is string => !!p);
+
+            if (phonesToInactivate.length > 0) {
+              const { data: leadRow } = await supabase
+                .from('leads')
+                .select('telefones_inativos')
+                .eq('id', leadIdNoZap)
+                .single();
+
+              const atual: string[] = (leadRow as any)?.telefones_inativos || [];
+              const novo = Array.from(new Set([...atual, ...phonesToInactivate]));
+
+              await supabase
+                .from('leads')
+                .update({ telefones_inativos: novo, updated_at: new Date().toISOString() })
+                .eq('id', leadIdNoZap);
+
+              console.log('[disparos-callback] Telefones marcados como inativos (NoZap):', phonesToInactivate, 'lead:', leadIdNoZap);
+            }
+
+            // Histórico: telefone sem WhatsApp
+            await supabase
+              .from('lead_historico')
+              .insert({
+                lead_id: leadIdNoZap,
+                tipo_evento: 'telefone_sem_whatsapp',
+                descricao: `Telefone marcado como sem WhatsApp via callback NoZap (campanha ${contato.campanha_id})`,
+                dados_novos: {
+                  contato_id,
+                  campanha_id: contato.campanha_id,
+                  telefones_inativados: phonesToInactivate,
+                }
+              });
+          }
+        } catch (nozapErr) {
+          console.warn('[disparos-callback] Erro ao processar NoZap (não-crítico):', nozapErr);
+        }
+      }
+
+      if (status === '4-ENVIADO') {
 
         // Vincular lead ao Acompanhamento quando disparo é confirmado
         try {

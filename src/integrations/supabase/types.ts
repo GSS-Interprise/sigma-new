@@ -6747,6 +6747,7 @@ export type Database = {
           status_medico: string | null
           tags: string[] | null
           telefones_adicionais: string[] | null
+          telefones_inativos: string[]
           uf: string | null
           ultimo_disparo_em: string | null
           unidades_vinculadas: string[] | null
@@ -6817,6 +6818,7 @@ export type Database = {
           status_medico?: string | null
           tags?: string[] | null
           telefones_adicionais?: string[] | null
+          telefones_inativos?: string[]
           uf?: string | null
           ultimo_disparo_em?: string | null
           unidades_vinculadas?: string[] | null
@@ -6887,6 +6889,7 @@ export type Database = {
           status_medico?: string | null
           tags?: string[] | null
           telefones_adicionais?: string[] | null
+          telefones_inativos?: string[]
           uf?: string | null
           ultimo_disparo_em?: string | null
           unidades_vinculadas?: string[] | null
