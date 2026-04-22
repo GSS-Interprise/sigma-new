@@ -229,7 +229,7 @@ export function CascataTab({ campanhaPropostaId, listaId }: Props) {
             </tr>
           </thead>
           <tbody>
-            {linhas.map(({ lead, passagens, ativa }) => {
+            {linhasPagina.map(({ lead, passagens, ativa }) => {
               const ultimaTransfer = [...passagens]
                 .reverse()
                 .find((p) => p.motivo_saida);
