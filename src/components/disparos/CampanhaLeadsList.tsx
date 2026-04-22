@@ -303,7 +303,7 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
           )}
         </div>
       ) : (
-        <ScrollArea className="h-[440px]">
+        <div className="h-[440px] overflow-y-auto">
           <table className="w-full text-sm">
             <thead className="sticky top-0 bg-muted/50 backdrop-blur z-10">
               <tr className="text-left text-xs uppercase tracking-wider text-muted-foreground">
@@ -501,7 +501,7 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
               })}
             </tbody>
           </table>
-        </ScrollArea>
+        </div>
       )}
 
       <LeadProntuarioDialog
