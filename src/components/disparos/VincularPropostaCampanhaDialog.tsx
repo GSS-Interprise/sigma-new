@@ -17,9 +17,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useDisparoListas } from "@/hooks/useDisparoListas";
 import { useVincularProposta } from "@/hooks/useCampanhaPropostas";
-import { Link2 } from "lucide-react";
+import { FileText } from "lucide-react";
 
 interface Props {
   campanhaId: string;
@@ -29,7 +28,6 @@ interface Props {
 
 export function VincularPropostaCampanhaDialog({ campanhaId, open, onOpenChange }: Props) {
   const [propostaId, setPropostaId] = useState("");
-  const [listaId, setListaId] = useState("");
 
   const { data: propostas = [] } = useQuery({
     queryKey: ["propostas-todas-vinculo"],
@@ -46,18 +44,16 @@ export function VincularPropostaCampanhaDialog({ campanhaId, open, onOpenChange 
     },
   });
 
-  const { data: listas = [] } = useDisparoListas();
   const vincular = useVincularProposta();
 
   const handleSubmit = async () => {
-    if (!propostaId || !listaId) return;
+    if (!propostaId) return;
     await vincular.mutateAsync({
       campanha_id: campanhaId,
       proposta_id: propostaId,
-      lista_id: listaId,
+      lista_id: null,
     });
     setPropostaId("");
-    setListaId("");
     onOpenChange(false);
   };
 
@@ -66,11 +62,11 @@ export function VincularPropostaCampanhaDialog({ campanhaId, open, onOpenChange 
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Link2 className="h-5 w-5" />
+            <FileText className="h-5 w-5" />
             Vincular proposta à campanha
           </DialogTitle>
           <DialogDescription>
-            Ao vincular, a lista é enviada automaticamente para o tráfego pago.
+            Selecione a proposta geral que será associada a esta campanha.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
@@ -89,30 +85,12 @@ export function VincularPropostaCampanhaDialog({ campanhaId, open, onOpenChange 
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-2">
-            <Label>Lista de prospecção *</Label>
-            <Select value={listaId} onValueChange={setListaId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione a lista de contatos" />
-              </SelectTrigger>
-              <SelectContent>
-                {listas.map((l) => (
-                  <SelectItem key={l.id} value={l.id}>
-                    {l.nome}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">
-              Os contatos da lista aparecerão dentro do dossiê da campanha.
-            </p>
-          </div>
           <Button
             onClick={handleSubmit}
-            disabled={!propostaId || !listaId || vincular.isPending}
+            disabled={!propostaId || vincular.isPending}
             className="w-full"
           >
-            {vincular.isPending ? "Vinculando..." : "Vincular e disparar tráfego pago"}
+            {vincular.isPending ? "Vinculando..." : "Vincular proposta"}
           </Button>
         </div>
       </DialogContent>
