@@ -33,19 +33,14 @@ interface Props {
   canal?: CanalCascata;
 }
 
-function statusToBucket(status: StatusProposta | undefined): FiltroStatus {
-  switch (status) {
-    case "em_aberto": return "aberto";
-    case "contactado": return "contactado";
-    case "fechado_proposta": return "fechado";
-    case "a_contactar":
-    default: return "contactar";
-  }
+function statusToBucket(status: StatusProposta | undefined, temRaiaAberta?: boolean): FiltroStatus {
+  if (status === "fechado_proposta") return "fechado";
+  if (status === "contactado") return temRaiaAberta ? "aberto" : "contactado";
+  return "contactar";
 }
 
 const STATUS_LABEL: Record<StatusProposta, string> = {
   a_contactar: "A contactar",
-  em_aberto: "Em aberto",
   contactado: "Contactado",
   fechado_proposta: "Fechado",
 };
@@ -54,7 +49,7 @@ const FILTROS: { value: FiltroStatus; label: string }[] = [
   { value: "todos", label: "Todos" },
   { value: "contactar", label: "A contactar" },
   { value: "contactado", label: "Contactados" },
-  { value: "aberto", label: "Em aberto" },
+  { value: "aberto", label: "Em aberto na raia" },
   { value: "fechado", label: "Fechados" },
 ];
 
