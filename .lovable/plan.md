@@ -1,47 +1,56 @@
 
 
-## Tornar chip obrigatório + marcar lead como "contactado em massa" ao enviar
+## Sincronizar disparo manual ↔ disparo em massa (Zap)
 
-Três ajustes pequenos e focados:
+Hoje os dois fluxos não conversam: o n8n pode buscar um lead que já foi contactado manualmente, e um envio manual não é refletido na fila de massa. A view `vw_lead_status_por_proposta` cobre parcialmente, mas a tabela `disparos_contatos` (fila do n8n) não é atualizada nos dois sentidos.
 
-### 1. Chip / Instância obrigatório no `DisparosNovoDialog`
+### O que vamos garantir
 
-Em `src/components/disparos/DisparosNovoDialog.tsx`:
-- Mudar label "Chip / Instância (opcional)" → **"Chip / Instância *"**.
-- Adicionar `<span className="text-destructive">*</span>`.
-- Atualizar `podeEnviar`: incluir `&& !!chipId`.
-- Mensagem de erro/placeholder mais clara ("Selecione o chip que enviará as mensagens").
-- Remover linha de ajuda atual e substituir por: "O chip selecionado define a instância usada pelo n8n. Status (1-ENVIAR…06-BLOQUEADOR) e fallback continuam iguais."
+1. **Manual → Massa**: ao enviar manual com sucesso, qualquer `disparos_contatos` pendente daquele lead/proposta vira `4-ENVIADO` (não vai mais para o n8n).
+2. **Massa "tratando" → Manual**: leads com `disparos_contatos.status = '3-TRATANDO'` ou `'4-ENVIADO'` aparecem como **contactado** na lista "a contactar" do manual (já tem fallback parcial via `disparo_manual_envios` e `sigzap_messages`, falta cobrir o caso em que o n8n pegou mas ainda não voltou callback).
+3. **Idempotência**: `gerar_disparo_zap` já ignora leads com status pendente. Sem mudança.
 
-### 2. Lista de contatos do disparo: já está correto
+### Mudanças
 
-Conferido — `gerar_disparo_zap` já usa `vw_lead_status_por_proposta` filtrando `status_proposta = 'a_contactar'`. Leads já contactados manualmente em qualquer raia (whatsapp/email/etc.) ficam fora automaticamente. **Sem mudanças necessárias.**
+**A. Edge `send-disparo-manual`** (após `disparo_manual_envios` insert com `status='enviado'`):
+```ts
+await supabase.from('disparos_contatos')
+  .update({ status: '4-ENVIADO', updated_at: nowIso })
+  .eq('campanha_proposta_id', campanha_proposta_id)
+  .eq('lead_id', lead_id)
+  .in('status', ['1-ENVIAR','2-REENVIAR','3-TRATANDO']);
+```
+Marca como enviado para tirar da fila do n8n. Adiciona evento `lead_historico` com tag `origem: 'manual'` (já existe, só completar metadados).
 
-O endpoint `disparos-zap-pendentes` também já respeita o limite global de **120 leads/dia por instância** e filtra apenas status `1-ENVIAR` / `2-REENVIAR`. **Sem mudanças.**
+**B. Hook `useLeadsAContactar.ts`**: incluir uma quarta fonte de "contactado":
+- Buscar `disparos_contatos` da proposta com status em `('3-TRATANDO','4-ENVIADO')` para os `leadIds` e mesclar no `contactMap` (timestamp = `updated_at`).
 
-### 3. Marcar lead como "contactado por envio em massa" no callback `4-ENVIADO`
+Isso resolve o cenário "n8n já pegou os 120, ainda não enviou callback" — esses leads não aparecem mais como "a contactar" no painel manual.
 
-Em `supabase/functions/disparos-callback/index.ts`, dentro do bloco `if (status === '4-ENVIADO')` (após resolver `leadId` por fallback de telefone, igual ao que já existe):
+**C. View `vw_lead_status_por_proposta` (opcional, recomendado)**: garantir que considera `disparos_contatos.status IN ('3-TRATANDO','4-ENVIADO')` como `contactado`. Vou inspecionar a definição atual; se já cobre, não mexo. Se não, migration ajusta para que toda a UI (Kanban, status, etc.) fique consistente.
 
-Buscar a `campanha_proposta_id` do `disparos_contatos` e registrar atendimento na raia WhatsApp da proposta — mesmo efeito de quando alguém clica "marcar como contactado" manualmente na aba WhatsApp do dossiê.
+**D. Callback `disparos-callback` (status `4-ENVIADO`)**: já marca em `lead_raia_status`/`lead_historico`. Adicionar registro espelho em `disparo_manual_envios`? **Não** — manteremos `disparo_manual_envios` exclusivo do manual; a fonte cruzada será `disparos_contatos` lida pelo hook.
 
-Implementação:
-- Ler `campanha_proposta_id` junto com `lead_id` e `telefone_e164` do `disparos_contatos`.
-- Se houver `leadId` + `campanha_proposta_id`, fazer `upsert` em `lead_raia_status` (ou tabela equivalente usada pela `vw_lead_status_por_proposta`) com:
-  - `lead_id`, `campanha_proposta_id`, `raia = 'whatsapp'`
-  - `status = 'contactado'`
-  - `origem = 'envio_em_massa'` (ou flag `automatico = true`)
-  - `data_contato = now()`
-- Garantir idempotência (`onConflict` no par `lead_id, campanha_proposta_id, raia`).
-- Manter **toda** a lógica atual: `Acompanhamento`, `lead_historico`, vínculo SigZap, `has_whatsapp = true`.
-- Adicionar uma entrada extra em `lead_historico`: `tipo_evento: 'contactado_envio_massa'`.
+### Fluxo final
 
-Antes de implementar, verifico (no modo default) qual é a tabela exata que registra o "contatado" por raia (`lead_raia_status` / `proposta_lead_status` / equivalente) lendo a definição da `vw_lead_status_por_proposta`, e uso a mesma mecânica que o botão manual de "marcar como contactado" usa hoje. Isso garante que o lead saia de `a_contactar` na próxima rodada do `gerar_disparo_zap` e não seja redisparado.
+```text
+Manual envia ──┐
+               ├──► disparo_manual_envios (insert)
+               ├──► disparos_contatos UPDATE → 4-ENVIADO   (NOVO)
+               └──► sigzap_messages
 
-### Resultado
+n8n GET ──────► disparos_contatos UPDATE → 3-TRATANDO
+n8n callback ─► disparos_contatos UPDATE → 4-ENVIADO
+                    │
+                    └──► useLeadsAContactar lê 3-TRATANDO + 4-ENVIADO
+                         e marca lead como "contactado"  (NOVO)
+```
 
-- **Chip obrigatório** ao criar disparo Zap.
-- Lista alimentada apenas com leads `a_contactar` (já era o caso) → sem reenvios para quem foi contactado manualmente.
-- GET continua entregando até 120 leads/dia/instância para o n8n.
-- Após `sendMessage` → callback `4-ENVIADO` → lead marcado como **contactado por envio em massa** na raia WhatsApp da proposta + status `Acompanhamento` + histórico, exatamente como acontece num contato manual.
+### Arquivos editados
+
+- `supabase/functions/send-disparo-manual/index.ts` — update em `disparos_contatos` após sucesso.
+- `src/hooks/useLeadsAContactar.ts` — adicionar leitura de `disparos_contatos` ao `contactMap`.
+- (Condicional) Migration ajustando `vw_lead_status_por_proposta` se a definição atual ignorar `3-TRATANDO`.
+
+Sem novas tabelas, sem novas colunas. Apenas sincronização entre o que já existe.
 
