@@ -422,7 +422,7 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
                     </td>
                     {cascataAtiva && (
                       <td className="px-4 py-2 text-xs text-muted-foreground">
-                        {tempo ? formatDuracao(tempo.segundos) : "—"}
+                        <TempoRaia entrouEm={tempo?.entrouEm} />
                       </td>
                     )}
                     <td className="px-4 py-2 text-right">
