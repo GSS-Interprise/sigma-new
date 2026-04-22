@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
@@ -193,7 +193,7 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
   }, [filtrados, paginaAtual]);
 
   // Reset de página ao mudar filtro/busca/lista
-  useMemo(() => {
+  useEffect(() => {
     setPagina(1);
   }, [filtro, busca, listaId]);
 
