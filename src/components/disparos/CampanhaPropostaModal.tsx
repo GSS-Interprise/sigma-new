@@ -51,6 +51,18 @@ const ABAS: {
   { value: "tiktok", label: "TikTok", Icon: TikTokIcon, descricao: "Engajamento e prospecção via TikTok" },
 ];
 
+const GRUPOS: { fase: string | null; abas: string[] }[] = [
+  { fase: null, abas: ["cascata"] },
+  { fase: "FASE 1", abas: ["whatsapp", "trafego_pago"] },
+  { fase: "FASE 2", abas: ["email", "instagram", "ligacao", "linkedin", "tiktok"] },
+];
+
+const TRIGGER_CLASS =
+  "flex flex-col gap-1 py-2 px-2 min-w-[88px] rounded-md transition-all " +
+  "text-muted-foreground hover:text-foreground hover:bg-muted/40 " +
+  "data-[state=active]:bg-primary/10 data-[state=active]:text-foreground " +
+  "data-[state=active]:ring-2 data-[state=active]:ring-primary data-[state=active]:shadow-sm";
+
 export function CampanhaPropostaModal({ campanhaPropostaId, open, onOpenChange }: Props) {
   const { data: cp } = useQuery({
     queryKey: ["campanha-proposta-detail", campanhaPropostaId],
@@ -134,17 +146,44 @@ export function CampanhaPropostaModal({ campanhaPropostaId, open, onOpenChange }
         </DialogHeader>
 
         <Tabs defaultValue="cascata" className="flex-1 flex flex-col min-h-0 px-6 pb-6">
-          <TabsList className="grid grid-cols-8 w-full h-auto p-1 mt-4 shrink-0">
-            {ABAS.map(({ value, label, Icon }) => (
-              <TabsTrigger
-                key={value}
-                value={value}
-                className="flex flex-col gap-1 py-2 data-[state=active]:bg-background"
-              >
-                <Icon size={20} />
-                <span className="text-[11px] font-medium">{label}</span>
-              </TabsTrigger>
-            ))}
+          <TabsList className="bg-transparent p-0 h-auto w-full mt-4 shrink-0 flex flex-wrap gap-3 items-stretch justify-start">
+            {GRUPOS.map((grupo, idx) => {
+              const triggers = grupo.abas
+                .map((v) => ABAS.find((a) => a.value === v)!)
+                .filter(Boolean);
+
+              if (!grupo.fase) {
+                return (
+                  <div
+                    key={idx}
+                    className="border border-border rounded-md p-2 flex gap-1 bg-background"
+                  >
+                    {triggers.map(({ value, label, Icon }) => (
+                      <TabsTrigger key={value} value={value} className={TRIGGER_CLASS}>
+                        <Icon size={20} />
+                        <span className="text-[11px] font-medium">{label}</span>
+                      </TabsTrigger>
+                    ))}
+                  </div>
+                );
+              }
+
+              return (
+                <div key={idx} className="flex flex-col rounded-md overflow-hidden border-2 border-primary">
+                  <div className="bg-primary text-primary-foreground text-xs font-bold tracking-wider px-4 py-1 text-center">
+                    {grupo.fase}
+                  </div>
+                  <div className="p-2 flex gap-1 bg-background flex-1">
+                    {triggers.map(({ value, label, Icon }) => (
+                      <TabsTrigger key={value} value={value} className={TRIGGER_CLASS}>
+                        <Icon size={20} />
+                        <span className="text-[11px] font-medium">{label}</span>
+                      </TabsTrigger>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </TabsList>
 
           {ABAS.map(({ value, label, Icon, descricao }) => (
