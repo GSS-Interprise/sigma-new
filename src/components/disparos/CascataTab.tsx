@@ -41,6 +41,9 @@ type CanalFilter = "todos" | CanalCascata | "sem_canal";
 
 export function CascataTab({ campanhaPropostaId, listaId }: Props) {
   const { data: canais = [], isLoading } = useLeadCanais(campanhaPropostaId);
+  const [busca, setBusca] = useState("");
+  const [canalFilter, setCanalFilter] = useState<CanalFilter>("todos");
+  const [sortKey, setSortKey] = useState<SortKey>("tempo_desc");
 
   const { data: leads = [] } = useQuery({
     queryKey: ["cascata-leads-info", listaId],
@@ -63,6 +66,54 @@ export function CascataTab({ campanhaPropostaId, listaId }: Props) {
       map.set(c.lead_id, arr);
     }
     return map;
+  }, [canais]);
+
+  const linhas = useMemo(() => {
+    const agora = Date.now();
+    const enriquecidas = (leads as any[]).map((lead) => {
+      const passagens = porLead.get(lead.id) || [];
+      const ativa = passagens.find((p) => p.status_final === "aberto");
+      const tempo = ativa
+        ? Math.max(0, Math.floor((agora - new Date(ativa.entrou_em).getTime()) / 1000))
+        : -1;
+      return { lead, passagens, ativa, tempo };
+    });
+
+    const termo = busca.trim().toLowerCase();
+    const filtradas = enriquecidas.filter(({ lead, ativa }) => {
+      if (canalFilter === "sem_canal" && ativa) return false;
+      if (canalFilter !== "todos" && canalFilter !== "sem_canal") {
+        if (!ativa || ativa.canal !== canalFilter) return false;
+      }
+      if (!termo) return true;
+      const nome = (lead.nome || "").toLowerCase();
+      const tel = (lead.phone_e164 || "").toLowerCase();
+      return nome.includes(termo) || tel.includes(termo);
+    });
+
+    filtradas.sort((a, b) => {
+      switch (sortKey) {
+        case "tempo_desc":
+          return b.tempo - a.tempo;
+        case "tempo_asc": {
+          const av = a.tempo < 0 ? Number.POSITIVE_INFINITY : a.tempo;
+          const bv = b.tempo < 0 ? Number.POSITIVE_INFINITY : b.tempo;
+          return av - bv;
+        }
+        case "nome_asc":
+          return (a.lead.nome || "").localeCompare(b.lead.nome || "");
+        case "nome_desc":
+          return (b.lead.nome || "").localeCompare(a.lead.nome || "");
+      }
+    });
+
+    return filtradas;
+  }, [leads, porLead, busca, canalFilter, sortKey]);
+
+  const canaisDisponiveis = useMemo(() => {
+    const set = new Set<CanalCascata>();
+    for (const c of canais) set.add(c.canal);
+    return Array.from(set);
   }, [canais]);
 
   if (isLoading) {
