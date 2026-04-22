@@ -73,7 +73,8 @@ const CANAL_LABEL: Record<CanalCascata, string> = {
   tiktok: "TikTok",
 };
 
-const PAGE_SIZE = 1000;
+const PAGE_SIZE = 300;
+const PAGE_SIZE_UI = 300;
 
 async function carregarTodosItensLista(listaId: string) {
   let from = 0;
@@ -106,6 +107,7 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
   const [fechandoId, setFechandoId] = useState<string | null>(null);
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
   const [dialogModo, setDialogModo] = useState<"transferir" | "fechar" | null>(null);
+  const [pagina, setPagina] = useState(1);
   const qc = useQueryClient();
   const cascataAtiva = !!campanhaPropostaId && !!canal;
   const { data: canaisRows = [] } = useLeadCanais(cascataAtiva ? campanhaPropostaId : undefined);
