@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Webhook, Save, Copy, Check, ExternalLink, Loader2 } from "lucide-react";
+import { Webhook, Save, Copy, Check, ExternalLink, Loader2, Download } from "lucide-react";
 import { toast } from "sonner";
 
 export function WebhookDisparosTab() {
@@ -62,6 +62,7 @@ export function WebhookDisparosTab() {
   // URL base do projeto
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
   const callbackUrl = `${supabaseUrl}/functions/v1/disparos-callback`;
+  const pendentesUrl = `${supabaseUrl}/functions/v1/disparos-zap-pendentes`;
 
   const copyToClipboard = async (url: string, id: string) => {
     await navigator.clipboard.writeText(url);
@@ -72,15 +73,84 @@ export function WebhookDisparosTab() {
 
   return (
     <div className="space-y-6">
-      {/* Card principal - Webhook n8n */}
+      {/* Card principal - GET endpoint para n8n consumir */}
       <Card className="border-primary/30">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Webhook className="h-5 w-5 text-primary" />
-            Webhook n8n (Recebe a lista do Sigma)
+            <Download className="h-5 w-5 text-primary" />
+            Endpoint GET (n8n consome a fila)
           </CardTitle>
           <CardDescription>
-            Configure a URL do webhook do n8n que receberá a lista de contatos quando uma campanha for iniciada
+            O n8n agenda um GET periódico neste endpoint. Cada chamada retorna os contatos pendentes (status 1-ENVIAR/2-REENVIAR), marcando-os como 3-TRATANDO no Sigma.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>URL</Label>
+            <div className="flex gap-2">
+              <Input value={pendentesUrl} readOnly className="font-mono text-sm bg-muted" />
+              <Button variant="outline" size="icon" onClick={() => copyToClipboard(pendentesUrl, "pendentes")}>
+                {copied === "pendentes" ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+              </Button>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Autenticação</Label>
+            <p className="text-xs text-muted-foreground">
+              Envie no header <code className="bg-muted px-1 rounded">x-api-key</code> com o valor do secret <strong>DISPAROS_ZAP_API_KEY</strong> configurado no Supabase.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Query params (opcionais)</Label>
+            <ul className="text-xs text-muted-foreground list-disc pl-5 space-y-1">
+              <li><code className="bg-muted px-1 rounded">instancia</code> — filtra por uma instância específica</li>
+              <li><code className="bg-muted px-1 rounded">limite</code> — número de contatos por chamada (default 50, máx 200)</li>
+              <li><code className="bg-muted px-1 rounded">campanha_proposta_id</code> — restringe a uma proposta específica</li>
+            </ul>
+          </div>
+
+          <div className="bg-primary/5 border border-primary/20 p-3 rounded-lg">
+            <p className="text-xs font-medium mb-2 text-primary">Exemplo curl</p>
+            <pre className="text-xs overflow-x-auto">{`curl -H "x-api-key: SEU_TOKEN" \\
+  "${pendentesUrl}?limite=20"`}</pre>
+          </div>
+
+          <div className="bg-primary/5 border border-primary/20 p-3 rounded-lg">
+            <p className="text-xs font-medium mb-2 text-primary">Resposta</p>
+            <pre className="text-xs overflow-x-auto">{`{
+  "contatos": [
+    {
+      "numero": 1,
+      "id": "uuid-contato",
+      "campanha_id": "uuid-campanha-disparo",
+      "campanha_proposta_id": "uuid-campanha-proposta",
+      "NOME": "Dr. João Silva",
+      "TELEFONE": "5547999998888",
+      "TELEFONE_ORIGINAL": "47999998888",
+      "ID_PROPOSTA": "uuid-proposta",
+      "TEXTO_IA": "Mensagem...",
+      "INSTANCIA": "nome-instancia",
+      "RESPONSAVEL": "Nome",
+      "tentativas": 1
+    }
+  ],
+  "total_pendentes": 1
+}`}</pre>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Card legado - Webhook n8n (push) */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Webhook className="h-5 w-5 text-primary" />
+            Webhook n8n (legado — push do Sigma)
+          </CardTitle>
+          <CardDescription>
+            Mantido para compatibilidade. O fluxo recomendado é o GET acima — neste o Sigma envia ativamente, mas não é mais usado pelo novo modelo.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

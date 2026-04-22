@@ -15,6 +15,7 @@ import { EncerrarCampanhaButton } from "./EncerrarCampanhaButton";
 import { Badge } from "@/components/ui/badge";
 import { CampanhaLeadsList } from "./CampanhaLeadsList";
 import { CascataTab } from "./CascataTab";
+import { ZapTab } from "./ZapTab";
 import {
   WhatsAppIcon,
   InstagramIcon,
