@@ -107,13 +107,13 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
 
   // Tempo na raia atual por lead (somente do canal ativo desta aba)
   const tempoPorLead = useMemo(() => {
-    const map = new Map<string, { id: string; segundos: number }>();
+    const map = new Map<string, { id: string; entrouEm: string }>();
     if (!cascataAtiva) return map;
     for (const r of canaisRows) {
       if (r.canal !== canal || r.status_final !== "aberto") continue;
       map.set(r.lead_id, {
         id: r.id,
-        segundos: tempoNaRaia(r.entrou_em, null),
+        entrouEm: r.entrou_em,
       });
     }
     return map;
