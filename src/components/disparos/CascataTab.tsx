@@ -335,6 +335,11 @@ export function CascataTab({ campanhaPropostaId, listaId }: Props) {
           </div>
         </div>
       )}
+      <LeadProntuarioDialog
+        open={!!prontuarioLeadId}
+        onOpenChange={(o) => !o && setProntuarioLeadId(null)}
+        leadId={prontuarioLeadId}
+      />
     </Card>
   );
 }
