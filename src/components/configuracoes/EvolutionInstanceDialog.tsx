@@ -83,14 +83,28 @@ export function EvolutionInstanceDialog({ open, onOpenChange, onCreated, default
 
   const handleCreate = async () => {
     const trimmedName = instanceName.trim();
+    const trimmedPhone = phoneNumber.trim().replace(/\D/g, "");
+
+    if (!tipoInstancia) {
+      toast.error("Selecione o tipo da instância");
+      return;
+    }
 
     if (!trimmedName) {
       toast.error("Nome da instância é obrigatório");
       return;
     }
 
-    if (!tipoInstancia) {
-      toast.error("Selecione o tipo da instância");
+    if (!trimmedPhone) {
+      toast.error("Número do telefone é obrigatório");
+      return;
+    }
+
+    // Formato esperado: DDI (2) + DDD (2) + 9 + 8 dígitos = 13 dígitos. Ex: 5547999758708
+    if (!/^55\d{2}9\d{8}$/.test(trimmedPhone)) {
+      toast.error(
+        "Número inválido. Use o formato DDI + DDD + 9 + número (ex: 5547999758708)"
+      );
       return;
     }
 
@@ -133,7 +147,7 @@ export function EvolutionInstanceDialog({ open, onOpenChange, onCreated, default
         integration: "WHATSAPP-BAILEYS",
       };
 
-      if (phoneNumber) payload.number = phoneNumber;
+      payload.number = trimmedPhone;
 
       console.log("Creating instance with payload:", payload);
 
@@ -150,7 +164,7 @@ export function EvolutionInstanceDialog({ open, onOpenChange, onCreated, default
       // Save to local database with color
       // Use instance name as fallback for numero to avoid unique constraint violation on empty strings
       const instanceId = (data as any)?.instance?.instanceId || (data as any)?.instanceId || null;
-      const numeroValue = phoneNumber || `temp_${trimmedName}_${Date.now()}`;
+      const numeroValue = trimmedPhone;
       
       // First, check if instance already exists and update it (in case it was marked as inativo)
       const { data: existingChip } = await supabase
