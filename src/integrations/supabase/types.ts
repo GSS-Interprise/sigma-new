@@ -1733,6 +1733,13 @@ export type Database = {
             referencedRelation: "campanha_propostas"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "campanha_proposta_canais_campanha_proposta_id_fkey"
+            columns: ["campanha_proposta_id"]
+            isOneToOne: false
+            referencedRelation: "vw_trafego_pago_funil"
+            referencedColumns: ["campanha_proposta_id"]
+          },
         ]
       }
       campanha_proposta_lead_canais: {
@@ -1788,6 +1795,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "campanha_propostas"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campanha_proposta_lead_canais_campanha_proposta_id_fkey"
+            columns: ["campanha_proposta_id"]
+            isOneToOne: false
+            referencedRelation: "vw_trafego_pago_funil"
+            referencedColumns: ["campanha_proposta_id"]
           },
         ]
       }
@@ -2389,6 +2403,7 @@ export type Database = {
           id: string
           instance_id: string | null
           instance_name: string | null
+          is_trafego_pago: boolean
           limite_diario: number | null
           nome: string
           numero: string | null
@@ -2413,6 +2428,7 @@ export type Database = {
           id?: string
           instance_id?: string | null
           instance_name?: string | null
+          is_trafego_pago?: boolean
           limite_diario?: number | null
           nome: string
           numero?: string | null
@@ -2437,6 +2453,7 @@ export type Database = {
           id?: string
           instance_id?: string | null
           instance_name?: string | null
+          is_trafego_pago?: boolean
           limite_diario?: number | null
           nome?: string
           numero?: string | null
@@ -4059,6 +4076,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "disparo_manual_envios_campanha_proposta_id_fkey"
+            columns: ["campanha_proposta_id"]
+            isOneToOne: false
+            referencedRelation: "vw_trafego_pago_funil"
+            referencedColumns: ["campanha_proposta_id"]
+          },
+          {
             foreignKeyName: "disparo_manual_envios_conversation_id_fkey"
             columns: ["conversation_id"]
             isOneToOne: false
@@ -4236,6 +4260,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "disparos_campanhas_campanha_proposta_id_fkey"
+            columns: ["campanha_proposta_id"]
+            isOneToOne: false
+            referencedRelation: "vw_trafego_pago_funil"
+            referencedColumns: ["campanha_proposta_id"]
+          },
+          {
             foreignKeyName: "disparos_campanhas_chip_id_fkey"
             columns: ["chip_id"]
             isOneToOne: false
@@ -4317,6 +4348,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "campanha_propostas"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "disparos_contatos_campanha_proposta_id_fkey"
+            columns: ["campanha_proposta_id"]
+            isOneToOne: false
+            referencedRelation: "vw_trafego_pago_funil"
+            referencedColumns: ["campanha_proposta_id"]
           },
           {
             foreignKeyName: "disparos_contatos_lead_id_fkey"
@@ -6677,6 +6715,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "lead_liberacoes_campanha_proposta_id_fkey"
+            columns: ["campanha_proposta_id"]
+            isOneToOne: false
+            referencedRelation: "vw_trafego_pago_funil"
+            referencedColumns: ["campanha_proposta_id"]
+          },
+          {
             foreignKeyName: "lead_liberacoes_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
@@ -6767,6 +6812,7 @@ export type Database = {
           especificacoes_contrato: string | null
           estado_civil: string | null
           id: string
+          is_trafego_pago: boolean
           licitacao_origem_id: string | null
           local_prestacao_servico: string | null
           merge_reason: string | null
@@ -6794,6 +6840,10 @@ export type Database = {
           tags: string[] | null
           telefones_adicionais: string[] | null
           telefones_inativos: string[]
+          trafego_pago_campanha_proposta_id: string | null
+          trafego_pago_enviado_at: string | null
+          trafego_pago_instancia: string | null
+          trafego_pago_origem: Json | null
           uf: string | null
           ultimo_disparo_em: string | null
           unidades_vinculadas: string[] | null
@@ -6838,6 +6888,7 @@ export type Database = {
           especificacoes_contrato?: string | null
           estado_civil?: string | null
           id?: string
+          is_trafego_pago?: boolean
           licitacao_origem_id?: string | null
           local_prestacao_servico?: string | null
           merge_reason?: string | null
@@ -6865,6 +6916,10 @@ export type Database = {
           tags?: string[] | null
           telefones_adicionais?: string[] | null
           telefones_inativos?: string[]
+          trafego_pago_campanha_proposta_id?: string | null
+          trafego_pago_enviado_at?: string | null
+          trafego_pago_instancia?: string | null
+          trafego_pago_origem?: Json | null
           uf?: string | null
           ultimo_disparo_em?: string | null
           unidades_vinculadas?: string[] | null
@@ -6909,6 +6964,7 @@ export type Database = {
           especificacoes_contrato?: string | null
           estado_civil?: string | null
           id?: string
+          is_trafego_pago?: boolean
           licitacao_origem_id?: string | null
           local_prestacao_servico?: string | null
           merge_reason?: string | null
@@ -6936,6 +6992,10 @@ export type Database = {
           tags?: string[] | null
           telefones_adicionais?: string[] | null
           telefones_inativos?: string[]
+          trafego_pago_campanha_proposta_id?: string | null
+          trafego_pago_enviado_at?: string | null
+          trafego_pago_instancia?: string | null
+          trafego_pago_origem?: Json | null
           uf?: string | null
           ultimo_disparo_em?: string | null
           unidades_vinculadas?: string[] | null
@@ -10955,6 +11015,7 @@ export type Database = {
           created_at: string | null
           id: string
           instance_uuid: string | null
+          is_trafego_pago: boolean
           name: string
           phone_number: string | null
           profile_name: string | null
@@ -10967,6 +11028,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           instance_uuid?: string | null
+          is_trafego_pago?: boolean
           name: string
           phone_number?: string | null
           profile_name?: string | null
@@ -10979,6 +11041,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           instance_uuid?: string | null
+          is_trafego_pago?: boolean
           name?: string
           phone_number?: string | null
           profile_name?: string | null
@@ -11396,6 +11459,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "tarefas_captacao_campanha_proposta_id_fkey"
+            columns: ["campanha_proposta_id"]
+            isOneToOne: false
+            referencedRelation: "vw_trafego_pago_funil"
+            referencedColumns: ["campanha_proposta_id"]
+          },
+          {
             foreignKeyName: "tarefas_captacao_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
@@ -11411,6 +11481,162 @@ export type Database = {
           },
           {
             foreignKeyName: "tarefas_captacao_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_leads_quentes_esperando"
+            referencedColumns: ["lead_id"]
+          },
+        ]
+      }
+      trafego_pago_conversoes: {
+        Row: {
+          campanha_id: string | null
+          campanha_proposta_id: string | null
+          conversation_id: string | null
+          created_at: string
+          detalhes: Json | null
+          evento: string
+          id: string
+          instancia: string | null
+          lead_id: string
+          ocorreu_em: string
+          proposta_id: string | null
+        }
+        Insert: {
+          campanha_id?: string | null
+          campanha_proposta_id?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          detalhes?: Json | null
+          evento: string
+          id?: string
+          instancia?: string | null
+          lead_id: string
+          ocorreu_em?: string
+          proposta_id?: string | null
+        }
+        Update: {
+          campanha_id?: string | null
+          campanha_proposta_id?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          detalhes?: Json | null
+          evento?: string
+          id?: string
+          instancia?: string | null
+          lead_id?: string
+          ocorreu_em?: string
+          proposta_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trafego_pago_conversoes_campanha_proposta_id_fkey"
+            columns: ["campanha_proposta_id"]
+            isOneToOne: false
+            referencedRelation: "campanha_propostas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trafego_pago_conversoes_campanha_proposta_id_fkey"
+            columns: ["campanha_proposta_id"]
+            isOneToOne: false
+            referencedRelation: "vw_trafego_pago_funil"
+            referencedColumns: ["campanha_proposta_id"]
+          },
+          {
+            foreignKeyName: "trafego_pago_conversoes_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trafego_pago_conversoes_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_leads_duplicados"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trafego_pago_conversoes_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_leads_quentes_esperando"
+            referencedColumns: ["lead_id"]
+          },
+        ]
+      }
+      trafego_pago_envios: {
+        Row: {
+          arquivo_nome: string | null
+          campanha_id: string | null
+          campanha_proposta_id: string
+          enviado_em: string
+          enviado_por: string | null
+          id: string
+          instancia: string | null
+          lead_id: string
+          metadados: Json | null
+          proposta_id: string | null
+          telefone_enviado: string | null
+        }
+        Insert: {
+          arquivo_nome?: string | null
+          campanha_id?: string | null
+          campanha_proposta_id: string
+          enviado_em?: string
+          enviado_por?: string | null
+          id?: string
+          instancia?: string | null
+          lead_id: string
+          metadados?: Json | null
+          proposta_id?: string | null
+          telefone_enviado?: string | null
+        }
+        Update: {
+          arquivo_nome?: string | null
+          campanha_id?: string | null
+          campanha_proposta_id?: string
+          enviado_em?: string
+          enviado_por?: string | null
+          id?: string
+          instancia?: string | null
+          lead_id?: string
+          metadados?: Json | null
+          proposta_id?: string | null
+          telefone_enviado?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trafego_pago_envios_campanha_proposta_id_fkey"
+            columns: ["campanha_proposta_id"]
+            isOneToOne: false
+            referencedRelation: "campanha_propostas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trafego_pago_envios_campanha_proposta_id_fkey"
+            columns: ["campanha_proposta_id"]
+            isOneToOne: false
+            referencedRelation: "vw_trafego_pago_funil"
+            referencedColumns: ["campanha_proposta_id"]
+          },
+          {
+            foreignKeyName: "trafego_pago_envios_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trafego_pago_envios_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_leads_duplicados"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trafego_pago_envios_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
             referencedRelation: "vw_leads_quentes_esperando"
@@ -11795,6 +12021,13 @@ export type Database = {
             referencedRelation: "campanha_propostas"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "campanha_proposta_lead_canais_campanha_proposta_id_fkey"
+            columns: ["campanha_proposta_id"]
+            isOneToOne: false
+            referencedRelation: "vw_trafego_pago_funil"
+            referencedColumns: ["campanha_proposta_id"]
+          },
         ]
       }
       vw_lead_timeline: {
@@ -11870,6 +12103,46 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "vw_campanha_metricas"
             referencedColumns: ["campanha_id"]
+          },
+        ]
+      }
+      vw_trafego_pago_funil: {
+        Row: {
+          campanha_id: string | null
+          campanha_nome: string | null
+          campanha_proposta_id: string | null
+          primeiro_envio: string | null
+          proposta_codigo: string | null
+          proposta_descricao: string | null
+          proposta_id: string | null
+          total_aceitaram: number | null
+          total_convertidos: number | null
+          total_em_conversa: number | null
+          total_enviados: number | null
+          total_responderam: number | null
+          ultimo_envio: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campanha_propostas_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "campanhas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campanha_propostas_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "vw_campanha_metricas"
+            referencedColumns: ["campanha_id"]
+          },
+          {
+            foreignKeyName: "campanha_propostas_proposta_id_fkey"
+            columns: ["proposta_id"]
+            isOneToOne: false
+            referencedRelation: "proposta"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -11961,6 +12234,10 @@ export type Database = {
       is_captacao_leader: { Args: { _user_id: string }; Returns: boolean }
       is_channel_participant: {
         Args: { _canal_id: string; _user_id: string }
+        Returns: boolean
+      }
+      is_instancia_trafego_pago: {
+        Args: { p_instance_name: string }
         Returns: boolean
       }
       is_leader: { Args: { _user_id: string }; Returns: boolean }
