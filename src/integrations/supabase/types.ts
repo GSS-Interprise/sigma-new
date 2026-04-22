@@ -4100,6 +4100,8 @@ export type Database = {
       disparos_campanhas: {
         Row: {
           ativo: boolean
+          campanha_id: string | null
+          campanha_proposta_id: string | null
           chip_id: string | null
           created_at: string | null
           enviados: number | null
@@ -4121,6 +4123,8 @@ export type Database = {
         }
         Insert: {
           ativo?: boolean
+          campanha_id?: string | null
+          campanha_proposta_id?: string | null
           chip_id?: string | null
           created_at?: string | null
           enviados?: number | null
@@ -4142,6 +4146,8 @@ export type Database = {
         }
         Update: {
           ativo?: boolean
+          campanha_id?: string | null
+          campanha_proposta_id?: string | null
           chip_id?: string | null
           created_at?: string | null
           enviados?: number | null
@@ -4163,6 +4169,27 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "disparos_campanhas_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "campanhas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "disparos_campanhas_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "vw_campanha_metricas"
+            referencedColumns: ["campanha_id"]
+          },
+          {
+            foreignKeyName: "disparos_campanhas_campanha_proposta_id_fkey"
+            columns: ["campanha_proposta_id"]
+            isOneToOne: false
+            referencedRelation: "campanha_propostas"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "disparos_campanhas_chip_id_fkey"
             columns: ["chip_id"]
             isOneToOne: false
@@ -4181,6 +4208,7 @@ export type Database = {
       disparos_contatos: {
         Row: {
           campanha_id: string | null
+          campanha_proposta_id: string | null
           created_at: string | null
           data_envio: string | null
           data_reenvio: string | null
@@ -4197,6 +4225,7 @@ export type Database = {
         }
         Insert: {
           campanha_id?: string | null
+          campanha_proposta_id?: string | null
           created_at?: string | null
           data_envio?: string | null
           data_reenvio?: string | null
@@ -4213,6 +4242,7 @@ export type Database = {
         }
         Update: {
           campanha_id?: string | null
+          campanha_proposta_id?: string | null
           created_at?: string | null
           data_envio?: string | null
           data_reenvio?: string | null
@@ -4233,6 +4263,13 @@ export type Database = {
             columns: ["campanha_id"]
             isOneToOne: false
             referencedRelation: "disparos_campanhas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "disparos_contatos_campanha_proposta_id_fkey"
+            columns: ["campanha_proposta_id"]
+            isOneToOne: false
+            referencedRelation: "campanha_propostas"
             referencedColumns: ["id"]
           },
           {
@@ -11839,6 +11876,10 @@ export type Database = {
       find_lead_by_phone: { Args: { p_phone: string }; Returns: string }
       find_lead_by_phone_fuzzy: { Args: { p_phone: string }; Returns: string }
       generate_ticket_numero: { Args: never; Returns: string }
+      gerar_disparo_zap: {
+        Args: { p_campanha_proposta_id: string; p_chip_id?: string }
+        Returns: Json
+      }
       get_leads_especialidade_counts: {
         Args: never
         Returns: {
