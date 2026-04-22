@@ -118,18 +118,21 @@ Deno.serve(async (req) => {
             }
 
             // Histórico: telefone sem WhatsApp
-            await supabase
+            const { error: histNoZapErr } = await supabase
               .from('lead_historico')
               .insert({
                 lead_id: leadIdNoZap,
                 tipo_evento: 'telefone_sem_whatsapp',
-                descricao: `Telefone marcado como sem WhatsApp via callback NoZap (campanha ${contato.campanha_id})`,
-                dados_novos: {
+                descricao_resumida: `Telefone marcado como sem WhatsApp via callback NoZap (campanha ${contato.campanha_id})`,
+                metadados: {
                   contato_id,
                   campanha_id: contato.campanha_id,
                   telefones_inativados: phonesToInactivate,
                 }
               });
+            if (histNoZapErr) {
+              console.warn('[disparos-callback] Erro ao inserir lead_historico (NoZap):', histNoZapErr);
+            }
           }
         } catch (nozapErr) {
           console.warn('[disparos-callback] Erro ao processar NoZap (não-crítico):', nozapErr);
@@ -210,8 +213,8 @@ Deno.serve(async (req) => {
               .insert({
                 lead_id: leadId,
                 tipo_evento: 'disparo_enviado',
-                descricao: `Disparo confirmado como enviado (campanha ${contato.campanha_id})`,
-                dados_novos: { contato_id, campanha_id: contato.campanha_id, status: '4-ENVIADO' }
+                descricao_resumida: `Disparo confirmado como enviado (campanha ${contato.campanha_id})`,
+                metadados: { contato_id, campanha_id: contato.campanha_id, status: '4-ENVIADO' }
               });
 
             // Histórico extra: marca como contactado por envio em massa (mesma semântica do botão manual)
@@ -221,8 +224,8 @@ Deno.serve(async (req) => {
                 .insert({
                   lead_id: leadId,
                   tipo_evento: 'contactado_envio_massa',
-                  descricao: 'Lead contactado automaticamente via envio em massa (WhatsApp)',
-                  dados_novos: {
+                  descricao_resumida: 'Lead contactado automaticamente via envio em massa (WhatsApp)',
+                  metadados: {
                     contato_id,
                     campanha_id: contato.campanha_id,
                     campanha_proposta_id: contatoFull?.campanha_proposta_id ?? null,
