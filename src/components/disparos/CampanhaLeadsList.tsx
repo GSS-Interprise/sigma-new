@@ -543,6 +543,44 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
         </div>
       )}
 
+      {filtrados.length > 0 && (
+        <div className="flex items-center justify-between gap-2 p-2 border-t bg-muted/20 text-xs text-muted-foreground flex-wrap">
+          <span>
+            Mostrando{" "}
+            <strong className="text-foreground">
+              {(paginaAtual - 1) * PAGE_SIZE_UI + 1}
+              {"–"}
+              {Math.min(paginaAtual * PAGE_SIZE_UI, filtrados.length)}
+            </strong>{" "}
+            de <strong className="text-foreground">{filtrados.length}</strong> leads
+          </span>
+          <div className="flex items-center gap-1">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 px-2"
+              disabled={paginaAtual <= 1}
+              onClick={() => setPagina((p) => Math.max(1, p - 1))}
+            >
+              Anterior
+            </Button>
+            <span className="px-2">
+              Página <strong className="text-foreground">{paginaAtual}</strong> de{" "}
+              <strong className="text-foreground">{totalPaginas}</strong>
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 px-2"
+              disabled={paginaAtual >= totalPaginas}
+              onClick={() => setPagina((p) => Math.min(totalPaginas, p + 1))}
+            >
+              Próxima
+            </Button>
+          </div>
+        </div>
+      )}
+
       <LeadProntuarioDialog
         leadId={leadAberto}
         open={!!leadAberto}
