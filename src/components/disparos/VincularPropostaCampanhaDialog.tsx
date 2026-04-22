@@ -40,7 +40,9 @@ export function VincularPropostaCampanhaDialog({ campanhaId, open, onOpenChange 
         .order("criado_em", { ascending: false })
         .limit(500);
       if (error) throw error;
-      return data || [];
+      return (data || []).filter(
+        (p: any) => p.status === "geral" && !/personalizada/i.test(p.descricao || "")
+      );
     },
   });
 
