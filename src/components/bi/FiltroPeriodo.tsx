@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { format, startOfMonth, endOfMonth, subMonths } from "date-fns";
+import { endOfMonth, format, isValid, parseISO, startOfMonth, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import type { DateRange } from "react-day-picker";
@@ -31,6 +31,20 @@ interface FiltroPeriodoProps {
 }
 
 const fmt = (d: Date) => format(d, "yyyy-MM-dd");
+
+const parseDateValue = (value: string) => {
+  const parsed = parseISO(value);
+  return isValid(parsed) ? parsed : new Date(value);
+};
+
+const createRangeFromValues = (inicio?: string, fim?: string): DateRange | undefined => {
+  if (!inicio && !fim) return undefined;
+
+  const from = inicio ? parseDateValue(inicio) : undefined;
+  const to = fim ? parseDateValue(fim) : undefined;
+
+  return from || to ? { from, to } : undefined;
+};
 
 function buildPresets() {
   const hoje = new Date();
@@ -62,15 +76,13 @@ export function FiltroPeriodo({
   const presets = useMemo(buildPresets, []);
   const [modo, setModo] = useState<string>("atual");
   const [rangeOpen, setRangeOpen] = useState(false);
-  const [range, setRange] = useState<DateRange | undefined>(
-    dataInicio && dataFim
-      ? { from: new Date(dataInicio), to: new Date(dataFim) }
-      : undefined
+  const [range, setRange] = useState<DateRange | undefined>(() =>
+    createRangeFromValues(dataInicio, dataFim)
   );
 
   useEffect(() => {
     if (dataInicio && dataFim) {
-      setRange({ from: new Date(dataInicio), to: new Date(dataFim) });
+      setRange(createRangeFromValues(dataInicio, dataFim));
     }
   }, [dataInicio, dataFim]);
 
@@ -86,13 +98,16 @@ export function FiltroPeriodo({
   const handleModo = (value: string) => {
     setModo(value);
     if (value === "atual") {
+      setRange({ from: presets.atual.inicio, to: presets.atual.fim });
       onDataInicioChange(fmt(presets.atual.inicio));
       onDataFimChange(fmt(presets.atual.fim));
     } else if (value === "personalizado") {
+      setRange(createRangeFromValues(dataInicio, dataFim));
       setRangeOpen(true);
     } else {
       const m = presets.ultimos8.find((x) => x.value === value);
       if (m) {
+        setRange({ from: m.inicio, to: m.fim });
         onDataInicioChange(fmt(m.inicio));
         onDataFimChange(fmt(m.fim));
       }
@@ -101,44 +116,59 @@ export function FiltroPeriodo({
 
   const handleRange = (r: DateRange | undefined) => {
     setRange(r);
-    if (r?.from) onDataInicioChange(fmt(r.from));
-    if (r?.to) {
+
+    if (r?.from && r?.to) {
+      onDataInicioChange(fmt(r.from));
       onDataFimChange(fmt(r.to));
       setRangeOpen(false);
     }
   };
 
   const labelPersonalizado =
-    dataInicio && dataFim
-      ? `${format(new Date(dataInicio), "dd/MM/yyyy")} → ${format(new Date(dataFim), "dd/MM/yyyy")}`
-      : "Selecionar período";
+    range?.from && range?.to
+      ? `${format(range.from, "dd/MM/yyyy")} → ${format(range.to, "dd/MM/yyyy")}`
+      : range?.from
+        ? `${format(range.from, "dd/MM/yyyy")} → selecionar final`
+        : "Selecionar período";
 
   const isDark = theme === "dark-neon";
+  const themeVars = isDark
+    ? ({
+        "--fp-surface": "222 47% 10%",
+        "--fp-surface-elevated": "222 47% 8%",
+        "--fp-border": "188 95% 43%",
+        "--fp-foreground": "210 40% 96%",
+        "--fp-muted": "215 20% 74%",
+        "--fp-accent": "188 95% 43%",
+      } as CSSProperties)
+    : undefined;
   const cardCls = isDark
-    ? "p-4 border-cyan-500/30 bg-slate-950/70 backdrop-blur-sm"
+    ? "p-4 border-[hsl(var(--fp-border)/0.24)] bg-[hsl(var(--fp-surface)/0.76)] text-[hsl(var(--fp-foreground))] shadow-[0_0_24px_hsl(var(--fp-border)/0.12)] backdrop-blur-sm"
     : "p-4";
-  const labelCls = isDark ? "flex items-center gap-2 mb-2 text-slate-300" : "flex items-center gap-2 mb-2";
+  const labelCls = isDark
+    ? "mb-2 flex items-center gap-2 text-[hsl(var(--fp-muted))]"
+    : "mb-2 flex items-center gap-2";
   const triggerCls = isDark
-    ? "bg-slate-900/80 border-cyan-500/30 text-slate-100 hover:border-cyan-400/60"
+    ? "border-[hsl(var(--fp-border)/0.22)] bg-[hsl(var(--fp-surface-elevated)/0.96)] text-[hsl(var(--fp-foreground))] hover:border-[hsl(var(--fp-border)/0.5)] focus:ring-[hsl(var(--fp-accent)/0.35)]"
     : "";
   const popoverCls = isDark
-    ? "w-auto p-0 z-50 bg-slate-950 border-cyan-500/40 text-slate-100 shadow-[0_0_20px_rgba(34,211,238,0.2)]"
+    ? "z-50 w-auto border-[hsl(var(--fp-border)/0.24)] bg-[hsl(var(--fp-surface)/0.98)] p-0 text-[hsl(var(--fp-foreground))] shadow-[0_0_24px_hsl(var(--fp-border)/0.15)]"
     : "w-auto p-0 bg-popover z-50";
   const selectContentCls = isDark
-    ? "z-50 bg-slate-950 border-cyan-500/40 text-slate-100 shadow-[0_0_20px_rgba(34,211,238,0.2)] [&_[data-radix-select-viewport]]:p-2"
+    ? "z-50 border-[hsl(var(--fp-border)/0.24)] bg-[hsl(var(--fp-surface)/0.98)] text-[hsl(var(--fp-foreground))] shadow-[0_0_24px_hsl(var(--fp-border)/0.15)] [&_[data-radix-select-viewport]]:p-2"
     : "bg-popover z-50";
   const selectItemCls = isDark
-    ? "rounded-md text-slate-200 focus:bg-cyan-500/15 focus:text-cyan-200 data-[state=checked]:bg-cyan-500/10 data-[state=checked]:text-cyan-300"
+    ? "rounded-md text-[hsl(var(--fp-foreground))] focus:bg-[hsl(var(--fp-accent)/0.14)] focus:text-[hsl(var(--fp-foreground))] data-[state=checked]:bg-[hsl(var(--fp-accent)/0.12)] data-[state=checked]:text-[hsl(var(--fp-foreground))]"
     : "";
   const buttonCls = isDark
-    ? "w-full justify-start text-left font-normal bg-slate-900/80 border-cyan-500/30 text-slate-100 hover:bg-slate-900 hover:text-cyan-300 hover:border-cyan-400/60"
+    ? "w-full justify-start border-[hsl(var(--fp-border)/0.22)] bg-[hsl(var(--fp-surface-elevated)/0.96)] text-left font-normal text-[hsl(var(--fp-foreground))] hover:border-[hsl(var(--fp-border)/0.5)] hover:bg-[hsl(var(--fp-surface-elevated))] hover:text-[hsl(var(--fp-foreground))]"
     : cn("w-full justify-start text-left font-normal", !dataInicio && "text-muted-foreground");
   const calendarCls = isDark
-    ? "rounded-lg border border-cyan-500/30 bg-slate-950 text-slate-100 p-3 shadow-[0_0_24px_rgba(34,211,238,0.15)] pointer-events-auto [&_.rdp-head_cell]:text-cyan-300 [&_.rdp-day]:text-slate-200 [&_.rdp-day:hover:not([disabled])]:bg-cyan-500/15 [&_.rdp-day:hover:not([disabled])]:text-cyan-100 [&_.rdp-day_selected]:bg-cyan-500 [&_.rdp-day_selected]:text-slate-950 [&_.rdp-day_range_middle]:bg-cyan-500/20 [&_.rdp-day_range_middle]:text-slate-100 [&_.rdp-day_today]:border [&_.rdp-day_today]:border-cyan-400/60 [&_.rdp-day_today]:text-cyan-200 [&_button]:text-slate-100 [&_button:hover]:bg-cyan-500/15 [&_button:hover]:text-cyan-100 [&_button:disabled]:opacity-30"
+    ? "pointer-events-auto rounded-md border border-[hsl(var(--fp-border)/0.24)] bg-[hsl(var(--fp-surface)/0.98)] p-3 text-[hsl(var(--fp-foreground))] shadow-[0_0_24px_hsl(var(--fp-border)/0.12)] [&_.rdp-head_cell]:text-[hsl(var(--fp-muted))] [&_.rdp-button:hover:not([disabled]):not([aria-selected=true])]:bg-[hsl(var(--fp-accent)/0.14)] [&_.rdp-button:hover:not([disabled]):not([aria-selected=true])]:text-[hsl(var(--fp-foreground))] [&_.rdp-day]:text-[hsl(var(--fp-foreground))] [&_.rdp-day_range_middle]:bg-[hsl(var(--fp-accent)/0.16)] [&_.rdp-day_range_middle]:text-[hsl(var(--fp-foreground))] [&_.rdp-day_selected]:bg-[hsl(var(--fp-accent))] [&_.rdp-day_selected]:text-[hsl(var(--fp-surface))] [&_.rdp-day_today]:border [&_.rdp-day_today]:border-[hsl(var(--fp-border)/0.6)] [&_.rdp-day_today]:text-[hsl(var(--fp-foreground))] [&_button]:text-[hsl(var(--fp-foreground))] [&_button:disabled]:opacity-30"
     : "p-3 pointer-events-auto";
 
   return (
-    <Card className={cardCls}>
+    <Card className={cardCls} style={themeVars}>
       <div className="flex flex-wrap gap-4 items-end">
         <div className="flex-1 min-w-[240px]">
           <Label className={labelCls}>
