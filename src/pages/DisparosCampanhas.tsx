@@ -288,11 +288,10 @@ export default function DisparosCampanhas() {
                         <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
                           <Command>
                             <CommandInput placeholder="Buscar proposta..." />
-                            <CommandList>
+                            <CommandList className="max-h-64 overflow-y-auto">
                               <CommandEmpty>Nenhuma proposta encontrada.</CommandEmpty>
                               <CommandGroup>
-                                <ScrollArea className="h-64">
-                                  {propostas.map((p: any) => {
+                                {propostas.map((p: any) => {
                                     const checked = propostaIds.includes(p.id);
                                     return (
                                       <CommandItem
@@ -320,7 +319,6 @@ export default function DisparosCampanhas() {
                                       </CommandItem>
                                     );
                                   })}
-                                </ScrollArea>
                               </CommandGroup>
                             </CommandList>
                           </Command>
