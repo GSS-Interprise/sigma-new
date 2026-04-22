@@ -20,6 +20,7 @@ import {
   tempoNaRaia,
   CanalCascata,
 } from "@/hooks/useLeadCanais";
+import { LeadProntuarioDialog } from "@/components/medicos/LeadProntuarioDialog";
 
 interface Props {
   campanhaPropostaId: string;
@@ -48,6 +49,7 @@ export function CascataTab({ campanhaPropostaId, listaId }: Props) {
   const [canalFilter, setCanalFilter] = useState<CanalFilter>("todos");
   const [sortKey, setSortKey] = useState<SortKey>("tempo_desc");
   const [pagina, setPagina] = useState(1);
+  const [prontuarioLeadId, setProntuarioLeadId] = useState<string | null>(null);
 
   const { data: leads = [] } = useQuery({
     queryKey: ["cascata-leads-info", listaId],
@@ -243,9 +245,19 @@ export function CascataTab({ campanhaPropostaId, listaId }: Props) {
                   </td>
                   <td className="px-4 py-2">
                     {ativa ? (
-                      <Badge variant="default" className="text-[10px]">
-                        {CANAL_LABEL[ativa.canal]}
-                      </Badge>
+                      <button
+                        type="button"
+                        onClick={() => setProntuarioLeadId(lead.id)}
+                        className="inline-flex"
+                        title="Abrir prontuário do lead"
+                      >
+                        <Badge
+                          variant="default"
+                          className="text-[10px] cursor-pointer hover:opacity-80 transition-opacity"
+                        >
+                          {CANAL_LABEL[ativa.canal]}
+                        </Badge>
+                      </button>
                     ) : (
                       <span className="text-xs text-muted-foreground">
                         Sem canal ativo
@@ -323,6 +335,11 @@ export function CascataTab({ campanhaPropostaId, listaId }: Props) {
           </div>
         </div>
       )}
+      <LeadProntuarioDialog
+        open={!!prontuarioLeadId}
+        onOpenChange={(o) => !o && setProntuarioLeadId(null)}
+        leadId={prontuarioLeadId}
+      />
     </Card>
   );
 }
