@@ -12158,6 +12158,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      backfill_cascata_contactados: {
+        Args: { _campanha_proposta_id: string }
+        Returns: number
+      }
       calcular_status_resposta_atividade: {
         Args: { p_respondido_em: string; p_resposta_esperada_ate: string }
         Returns: string
