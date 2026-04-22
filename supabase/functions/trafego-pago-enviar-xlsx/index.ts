@@ -85,6 +85,63 @@ Deno.serve(async (req) => {
 
     const filename = `trafego_pago_${body.campanha_proposta_id}_${Date.now()}.xlsx`;
 
+    // Carrega contexto da campanha_proposta para pegar campanha_id e proposta_id
+    const { data: cpFull } = await supabase
+      .from("campanha_propostas")
+      .select("id, campanha_id, proposta_id")
+      .eq("id", body.campanha_proposta_id)
+      .maybeSingle();
+
+    const nowIso = new Date().toISOString();
+
+    // Marca leads como tráfego pago + grava histórico de envio + evento de conversão
+    const leadIds = body.leads.map((l) => l.id);
+    if (leadIds.length > 0) {
+      // 1. Marca leads
+      await supabase
+        .from("leads")
+        .update({
+          is_trafego_pago: true,
+          trafego_pago_enviado_at: nowIso,
+          trafego_pago_campanha_proposta_id: body.campanha_proposta_id,
+          trafego_pago_instancia: evolutionInstance ?? null,
+          trafego_pago_origem: {
+            detectado_em: nowIso,
+            fonte: "envio_xlsx",
+            instancia: evolutionInstance ?? null,
+            campanha_proposta_id: body.campanha_proposta_id,
+          },
+        })
+        .in("id", leadIds);
+
+      // 2. Histórico de envios
+      const enviosRows = body.leads.map((l) => ({
+        lead_id: l.id,
+        campanha_proposta_id: body.campanha_proposta_id,
+        campanha_id: cpFull?.campanha_id ?? null,
+        proposta_id: cpFull?.proposta_id ?? null,
+        instancia: evolutionInstance ?? null,
+        telefone_enviado: l.telefone ?? null,
+        arquivo_nome: filename,
+        enviado_em: nowIso,
+        metadados: { especialidade: l.especialidade ?? null, uf: l.uf ?? null },
+      }));
+      await supabase.from("trafego_pago_envios").insert(enviosRows);
+
+      // 3. Evento de conversão "enviado"
+      const conversoesRows = body.leads.map((l) => ({
+        lead_id: l.id,
+        campanha_proposta_id: body.campanha_proposta_id,
+        campanha_id: cpFull?.campanha_id ?? null,
+        proposta_id: cpFull?.proposta_id ?? null,
+        instancia: evolutionInstance ?? null,
+        evento: "enviado",
+        ocorreu_em: nowIso,
+        detalhes: { phone: l.telefone, arquivo: filename },
+      }));
+      await supabase.from("trafego_pago_conversoes").insert(conversoesRows);
+    }
+
     const payload = {
       campanha_proposta_id: body.campanha_proposta_id,
       campanha: (cp?.campanha as any)?.nome ?? null,
