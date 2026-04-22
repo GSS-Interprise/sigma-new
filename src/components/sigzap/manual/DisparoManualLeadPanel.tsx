@@ -290,6 +290,7 @@ export function DisparoManualLeadPanel({ campanhaPropostaId, leadId, onOpenChat 
               <Select
                 value={selectedInstance ?? ""}
                 onValueChange={setSelectedInstance}
+                disabled={travado}
               >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Selecione uma instância" />
@@ -305,6 +306,11 @@ export function DisparoManualLeadPanel({ campanhaPropostaId, leadId, onOpenChat 
                   ))}
                 </SelectContent>
               </Select>
+            )}
+            {travado && (
+              <p className="text-[11px] text-muted-foreground italic">
+                Lead já contactado — instância e número travados. Apenas administradores podem alterar.
+              </p>
             )}
           </div>
 
