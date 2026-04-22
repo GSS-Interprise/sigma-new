@@ -22,13 +22,13 @@ export function TrafegoPagoFunilRelatorio({ campanhaPropostaId }: Props) {
   const { data, isLoading } = useQuery({
     queryKey: ["trafego-pago-funil", campanhaPropostaId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("vw_trafego_pago_funil" as any)
+      const { data, error } = await (supabase as any)
+        .from("vw_trafego_pago_funil")
         .select("*")
         .eq("campanha_proposta_id", campanhaPropostaId)
         .maybeSingle();
       if (error) throw error;
-      return data as FunilRow | null;
+      return (data as FunilRow | null) ?? null;
     },
     refetchInterval: 30000,
   });
