@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -39,22 +39,35 @@ const CANAL_LABEL: Record<CanalCascata, string> = {
 type SortKey = "tempo_desc" | "tempo_asc" | "nome_asc" | "nome_desc";
 type CanalFilter = "todos" | CanalCascata | "sem_canal";
 
+const PAGE_SIZE_UI = 300;
+const CHUNK_DB = 1000;
+
 export function CascataTab({ campanhaPropostaId, listaId }: Props) {
   const { data: canais = [], isLoading } = useLeadCanais(campanhaPropostaId);
   const [busca, setBusca] = useState("");
   const [canalFilter, setCanalFilter] = useState<CanalFilter>("todos");
   const [sortKey, setSortKey] = useState<SortKey>("tempo_desc");
+  const [pagina, setPagina] = useState(1);
 
   const { data: leads = [] } = useQuery({
     queryKey: ["cascata-leads-info", listaId],
     enabled: !!listaId,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("disparo_lista_itens")
-        .select("lead_id, leads:lead_id(id, nome, phone_e164, status)")
-        .eq("lista_id", listaId!);
-      if (error) throw error;
-      return (data || []).map((i: any) => i.leads).filter(Boolean);
+      const todos: any[] = [];
+      let offset = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from("disparo_lista_itens")
+          .select("lead_id, leads:lead_id(id, nome, phone_e164, status)")
+          .eq("lista_id", listaId!)
+          .range(offset, offset + CHUNK_DB - 1);
+        if (error) throw error;
+        const lote = (data || []).map((i: any) => i.leads).filter(Boolean);
+        todos.push(...lote);
+        if ((data || []).length < CHUNK_DB) break;
+        offset += CHUNK_DB;
+      }
+      return todos;
     },
   });
 
@@ -110,6 +123,18 @@ export function CascataTab({ campanhaPropostaId, listaId }: Props) {
     return filtradas;
   }, [leads, porLead, busca, canalFilter, sortKey]);
 
+  useEffect(() => {
+    setPagina(1);
+  }, [busca, canalFilter, sortKey, leads.length]);
+
+  const totalPaginas = Math.max(1, Math.ceil(linhas.length / PAGE_SIZE_UI));
+  const paginaAtual = Math.min(pagina, totalPaginas);
+  const inicio = (paginaAtual - 1) * PAGE_SIZE_UI;
+  const linhasPagina = useMemo(
+    () => linhas.slice(inicio, inicio + PAGE_SIZE_UI),
+    [linhas, inicio]
+  );
+
   const canaisDisponiveis = useMemo(() => {
     const set = new Set<CanalCascata>();
     for (const c of canais) set.add(c.canal);
@@ -138,7 +163,7 @@ export function CascataTab({ campanhaPropostaId, listaId }: Props) {
         <GitBranch className="h-4 w-4 text-primary" />
         <div className="text-sm font-semibold">Cascata por lead</div>
         <span className="text-xs text-muted-foreground ml-auto">
-          {linhas.length} de {leads.length} lead(s)
+          {linhas.length} de {leads.length} lead(s) · pág. {paginaAtual}/{totalPaginas}
         </span>
       </div>
       <div className="flex flex-wrap items-center gap-2 p-3 border-b bg-background">
@@ -204,7 +229,7 @@ export function CascataTab({ campanhaPropostaId, listaId }: Props) {
             </tr>
           </thead>
           <tbody>
-            {linhas.map(({ lead, passagens, ativa }) => {
+            {linhasPagina.map(({ lead, passagens, ativa }) => {
               const ultimaTransfer = [...passagens]
                 .reverse()
                 .find((p) => p.motivo_saida);
@@ -268,6 +293,36 @@ export function CascataTab({ campanhaPropostaId, listaId }: Props) {
           </tbody>
         </table>
       </ScrollArea>
+      {linhas.length > PAGE_SIZE_UI && (
+        <div className="flex items-center justify-between gap-2 p-3 border-t bg-muted/30 text-xs">
+          <span className="text-muted-foreground">
+            Mostrando {inicio + 1}–{Math.min(inicio + PAGE_SIZE_UI, linhas.length)} de {linhas.length}
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs"
+              disabled={paginaAtual <= 1}
+              onClick={() => setPagina((p) => Math.max(1, p - 1))}
+            >
+              Anterior
+            </Button>
+            <span className="text-muted-foreground">
+              {paginaAtual} / {totalPaginas}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs"
+              disabled={paginaAtual >= totalPaginas}
+              onClick={() => setPagina((p) => Math.min(totalPaginas, p + 1))}
+            >
+              Próxima
+            </Button>
+          </div>
+        </div>
+      )}
     </Card>
   );
 }
