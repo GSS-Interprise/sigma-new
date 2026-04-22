@@ -14,12 +14,12 @@ import { toast } from "sonner";
 import {
   CanalCascata,
   useLeadCanais,
-  formatDuracao,
-  tempoNaRaia,
+  useEnviarProximaFase,
 } from "@/hooks/useLeadCanais";
 import { TransferirCanalDialog } from "./TransferirCanalDialog";
 import { useLeadStatusProposta, StatusProposta } from "@/hooks/useLeadStatusProposta";
 import { LiberarLeadDialog } from "./LiberarLeadDialog";
+import { TempoRaia } from "./TempoRaia";
 
 type FiltroStatus = "todos" | "contactar" | "contactado" | "aberto" | "fechado";
 
