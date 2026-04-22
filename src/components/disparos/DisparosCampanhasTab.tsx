@@ -186,6 +186,39 @@ export function DisparosCampanhasTab() {
     onError: (error: Error) => toast.error(error.message),
   });
 
+  const dispararMutation = useMutation({
+    mutationFn: async (campanhaId: string) => {
+      const { data, error } = await supabase.functions.invoke("disparos-webhook", {
+        body: { acao: "iniciar", campanha_id: campanhaId },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["disparos-campanhas"] });
+      toast.success("Disparo iniciado.");
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const agendarMutation = useMutation({
+    mutationFn: async ({ id, agendar }: { id: string; agendar: boolean }) => {
+      const novoStatus = agendar ? "agendado" : "pendente";
+      const { error } = await supabase
+        .from("disparos_campanhas")
+        .update({ status: novoStatus, updated_at: new Date().toISOString() })
+        .eq("id", id);
+      if (error) throw error;
+      return { agendar };
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["disparos-campanhas"] });
+      toast.success(data.agendar ? "Disparo agendado." : "Agendamento removido.");
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
   if (selectedCampanha) {
     return <DisparosContatosPanel campanha={selectedCampanha} onBack={() => setSelectedCampanha(null)} />;
   }
