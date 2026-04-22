@@ -67,6 +67,8 @@ export default function DisparosCampanhas() {
   const qc = useQueryClient();
   const vincular = useVincularProposta();
   const navigate = useNavigate();
+  const { isAdmin } = usePermissions();
+  const [confirmAcao, setConfirmAcao] = useState<{ id: string; nome: string; tipo: "finalizar" | "deletar" } | null>(null);
 
   const { data: campanhas = [], isLoading } = useQuery({
     queryKey: ["campanhas-multicanal", busca],
@@ -125,6 +127,53 @@ export default function DisparosCampanhas() {
       setPropostaIds([]);
     },
     onError: (e: any) => toast.error("Erro: " + e.message),
+  });
+
+  const finalizarCampanha = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from("campanhas")
+        .update({ status: "concluida" as any, data_termino: new Date().toISOString() })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["campanhas-multicanal"] });
+      toast.success("Campanha finalizada");
+      setConfirmAcao(null);
+    },
+    onError: (e: any) => toast.error("Erro ao finalizar: " + e.message),
+  });
+
+  const deletarCampanha = useMutation({
+    mutationFn: async (id: string) => {
+      // Limpa dependências antes de deletar
+      const { data: cps } = await supabase
+        .from("campanha_propostas")
+        .select("id")
+        .eq("campanha_id", id);
+      const cpIds = (cps || []).map((c) => c.id);
+      if (cpIds.length) {
+        await supabase.from("campanha_proposta_canais").delete().in("campanha_proposta_id", cpIds);
+        await supabase.from("campanha_proposta_lead_canais").delete().in("campanha_proposta_id", cpIds);
+        await supabase.from("campanha_propostas").delete().eq("campanha_id", id);
+      }
+      await supabase.from("campanhas_envios").delete().eq("campanha_id", id);
+      const { data: cls } = await supabase.from("campanha_leads").select("id").eq("campanha_id", id);
+      const clIds = (cls || []).map((c) => c.id);
+      if (clIds.length) {
+        await supabase.from("campanha_lead_touches").delete().in("campanha_lead_id", clIds);
+        await supabase.from("campanha_leads").delete().eq("campanha_id", id);
+      }
+      const { error } = await supabase.from("campanhas").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["campanhas-multicanal"] });
+      toast.success("Campanha deletada");
+      setConfirmAcao(null);
+    },
+    onError: (e: any) => toast.error("Erro ao deletar: " + e.message),
   });
 
   const togglePropostaId = (id: string) => {
