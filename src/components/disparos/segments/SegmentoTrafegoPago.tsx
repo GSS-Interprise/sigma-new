@@ -1,118 +1,169 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Megaphone, RefreshCw, CheckCircle2, XCircle, Loader2 } from "lucide-react";
-import { useCampanhaPropostaCanais } from "@/hooks/useCampanhaPropostaCanais";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Megaphone, Send, Loader2, FileSpreadsheet } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 interface Props {
   campanhaPropostaId: string;
 }
 
+interface LeadRow {
+  id: string;
+  nome: string | null;
+  phone_e164: string | null;
+  email: string | null;
+  especialidade: string | null;
+  uf: string | null;
+  cidade: string | null;
+}
+
 export function SegmentoTrafegoPago({ campanhaPropostaId }: Props) {
-  const { data: canais = [], isLoading, refetch } = useCampanhaPropostaCanais(campanhaPropostaId);
-  const [reenviando, setReenviando] = useState(false);
+  const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
+  const [enviando, setEnviando] = useState(false);
 
-  const registro = canais.find((c) => c.canal === "trafego_pago");
-
-  const reenviar = async () => {
-    setReenviando(true);
-    try {
-      // Limpa idempotência
-      await supabase
+  const { data: leads = [], isLoading } = useQuery({
+    queryKey: ["trafego-pago-leads", campanhaPropostaId],
+    queryFn: async () => {
+      const { data: cp, error: cpErr } = await supabase
         .from("campanha_propostas")
-        .update({ webhook_trafego_enviado_at: null })
-        .eq("id", campanhaPropostaId);
-      const { error } = await supabase.functions.invoke("trafego-pago-auto-dispatch", {
-        body: { campanha_proposta_id: campanhaPropostaId },
+        .select("lista_id")
+        .eq("id", campanhaPropostaId)
+        .maybeSingle();
+      if (cpErr) throw cpErr;
+      if (!cp?.lista_id) return [] as LeadRow[];
+      const { data, error } = await supabase
+        .from("disparo_lista_itens")
+        .select("leads:lead_id(id, nome, phone_e164, email, especialidade, uf, cidade)")
+        .eq("lista_id", cp.lista_id);
+      if (error) throw error;
+      const map = new Map<string, LeadRow>();
+      (data || []).forEach((i: any) => {
+        const l = i.leads;
+        if (l?.id) map.set(l.id, l);
+      });
+      return Array.from(map.values());
+    },
+  });
+
+  const todosSelecionados = useMemo(
+    () => leads.length > 0 && selecionados.size === leads.length,
+    [leads, selecionados]
+  );
+
+  const toggleTodos = () => {
+    if (todosSelecionados) setSelecionados(new Set());
+    else setSelecionados(new Set(leads.map((l) => l.id)));
+  };
+
+  const toggleUm = (id: string) => {
+    setSelecionados((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const enviar = async () => {
+    const payload = leads
+      .filter((l) => selecionados.has(l.id))
+      .map((l) => ({
+        id: l.id,
+        nome: l.nome,
+        telefone: l.phone_e164,
+        email: l.email,
+        especialidade: l.especialidade,
+        uf: l.uf,
+        cidade: l.cidade,
+      }));
+    if (!payload.length) return;
+    setEnviando(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("trafego-pago-enviar-xlsx", {
+        body: { campanha_proposta_id: campanhaPropostaId, leads: payload },
       });
       if (error) throw error;
-      toast.success("Reenvio disparado");
-      await refetch();
+      if (!data?.success) throw new Error("Webhook retornou erro");
+      toast.success(`XLSX enviado com ${payload.length} leads`);
+      setSelecionados(new Set());
     } catch (e: any) {
       toast.error("Erro: " + e.message);
     } finally {
-      setReenviando(false);
+      setEnviando(false);
     }
   };
-
-  if (isLoading) return <Loader2 className="h-5 w-5 animate-spin" />;
-
-  const meta = registro?.metadados || {};
 
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Megaphone className="h-5 w-5" />
-              Tráfego Pago
-            </CardTitle>
-            <CardDescription>
-              Envio automático para webhook + Evolution API
-            </CardDescription>
-          </div>
-          {registro && (
-            <Badge
-              variant={
-                registro.status === "concluido"
-                  ? "default"
-                  : registro.status === "falha"
-                  ? "destructive"
-                  : "outline"
-              }
-            >
-              {registro.status === "concluido" && <CheckCircle2 className="h-3 w-3 mr-1" />}
-              {registro.status === "falha" && <XCircle className="h-3 w-3 mr-1" />}
-              {registro.status}
-            </Badge>
-          )}
-        </div>
+        <CardTitle className="text-lg flex items-center gap-2">
+          <Megaphone className="h-5 w-5" />
+          Tráfego Pago
+        </CardTitle>
+        <CardDescription>
+          Selecione os leads e envie como XLSX para o webhook
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="grid md:grid-cols-2 gap-3 text-sm">
-          <div>
-            <span className="text-muted-foreground">Total contatos:</span>{" "}
-            <strong>{meta.total ?? "—"}</strong>
+        {isLoading ? (
+          <div className="flex justify-center py-6">
+            <Loader2 className="h-5 w-5 animate-spin" />
           </div>
-          <div>
-            <span className="text-muted-foreground">Iniciado:</span>{" "}
-            {registro?.iniciado_em
-              ? new Date(registro.iniciado_em).toLocaleString("pt-BR")
-              : "—"}
-          </div>
-          <div>
-            <span className="text-muted-foreground">Concluído:</span>{" "}
-            {registro?.concluido_em
-              ? new Date(registro.concluido_em).toLocaleString("pt-BR")
-              : "—"}
-          </div>
-          <div>
-            <span className="text-muted-foreground">HTTP webhook:</span>{" "}
-            <strong>{meta.webhook?.status ?? "—"}</strong>
-          </div>
-        </div>
-        {meta.aviso && (
-          <div className="text-xs text-destructive bg-destructive/10 p-2 rounded">
-            {meta.aviso}
-          </div>
+        ) : leads.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-4 text-center">
+            Nenhum lead disponível. Vincule uma lista a esta proposta.
+          </p>
+        ) : (
+          <>
+            <div className="flex items-center justify-between text-sm">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <Checkbox checked={todosSelecionados} onCheckedChange={toggleTodos} />
+                <span>Selecionar todos ({leads.length})</span>
+              </label>
+              <span className="text-muted-foreground">
+                {selecionados.size} selecionado(s)
+              </span>
+            </div>
+            <div className="border rounded max-h-80 overflow-auto divide-y">
+              {leads.map((l) => (
+                <label
+                  key={l.id}
+                  className="flex items-center gap-3 px-3 py-2 hover:bg-muted/50 cursor-pointer text-sm"
+                >
+                  <Checkbox
+                    checked={selecionados.has(l.id)}
+                    onCheckedChange={() => toggleUm(l.id)}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium truncate">{l.nome || "—"}</div>
+                    <div className="text-xs text-muted-foreground truncate">
+                      {l.phone_e164 || "sem telefone"}
+                      {l.especialidade ? ` · ${l.especialidade}` : ""}
+                      {l.uf ? ` · ${l.uf}` : ""}
+                    </div>
+                  </div>
+                </label>
+              ))}
+            </div>
+            {selecionados.size > 0 && (
+              <Button onClick={enviar} disabled={enviando} className="w-full" size="sm">
+                {enviando ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <>
+                    <FileSpreadsheet className="h-4 w-4 mr-2" />
+                    <Send className="h-4 w-4 mr-2" />
+                  </>
+                )}
+                Enviar {selecionados.size} lead(s) como XLSX
+              </Button>
+            )}
+          </>
         )}
-        {meta.webhook?.body && (
-          <pre className="text-xs bg-muted p-2 rounded overflow-auto max-h-40">
-            {meta.webhook.body}
-          </pre>
-        )}
-        <Button onClick={reenviar} disabled={reenviando} size="sm" variant="outline">
-          {reenviando ? (
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-          ) : (
-            <RefreshCw className="h-4 w-4 mr-2" />
-          )}
-          Reenviar para tráfego pago
-        </Button>
       </CardContent>
     </Card>
   );
