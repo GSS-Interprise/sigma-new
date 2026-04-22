@@ -30,12 +30,38 @@ const tooltipStyle = {
   color: "#e2e8f0",
   boxShadow: "0 0 20px rgba(34,211,238,0.15)",
 };
+const tooltipItemStyle = { color: "#e2e8f0" };
+const tooltipLabelStyle = { color: "#94a3b8", fontSize: 11, marginBottom: 4 };
 
 function startOfMonthsAgo(n: number) {
   const d = new Date();
   d.setMonth(d.getMonth() - n);
   d.setDate(1);
   return d.toISOString().slice(0, 10);
+}
+
+// Busca paginada em chunks de 1000 (limite default do Supabase)
+async function fetchAllChunks<T = any>(
+  table: string,
+  select: string,
+  applyFilters: (q: any) => any,
+  chunkSize = 1000,
+  maxRows = 50000
+): Promise<T[]> {
+  const all: T[] = [];
+  let from = 0;
+  while (from < maxRows) {
+    const to = from + chunkSize - 1;
+    let q: any = (supabase as any).from(table).select(select).range(from, to);
+    q = applyFilters(q);
+    const { data, error } = await q;
+    if (error) throw error;
+    const rows = (data ?? []) as T[];
+    all.push(...rows);
+    if (rows.length < chunkSize) break;
+    from += chunkSize;
+  }
+  return all;
 }
 
 function KPI({ icon: Icon, label, value, sub, color = NEON.cyan }: any) {
