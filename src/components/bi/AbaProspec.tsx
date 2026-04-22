@@ -158,13 +158,13 @@ export function AbaProspec() {
   const { data: disparosManuais, isLoading: ldm } = useQuery({
     queryKey: ["bi-prospec-manuais", dataInicio, dataFim],
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from("disparo_manual_envios")
-        .select("created_at,status")
-        .gte("created_at", `${dataInicio}T00:00:00`)
-        .lte("created_at", `${dataFim}T23:59:59`);
-      if (error) throw error;
-      return (data ?? []) as any[];
+      return await fetchAllChunks<any>(
+        "disparo_manual_envios",
+        "created_at,status",
+        (q) => q
+          .gte("created_at", `${dataInicio}T00:00:00`)
+          .lte("created_at", `${dataFim}T23:59:59`)
+      );
     },
   });
 
@@ -172,14 +172,13 @@ export function AbaProspec() {
   const { data: disparosMassa, isLoading: ldz } = useQuery({
     queryKey: ["bi-prospec-massa", dataInicio, dataFim],
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from("disparos_contatos")
-        .select("data_envio,status,campanha_id,created_at")
-        .gte("created_at", `${dataInicio}T00:00:00`)
-        .lte("created_at", `${dataFim}T23:59:59`)
-        .limit(20000);
-      if (error) throw error;
-      return (data ?? []) as any[];
+      return await fetchAllChunks<any>(
+        "disparos_contatos",
+        "data_envio,status,campanha_id,created_at",
+        (q) => q
+          .gte("created_at", `${dataInicio}T00:00:00`)
+          .lte("created_at", `${dataFim}T23:59:59`)
+      );
     },
   });
 
