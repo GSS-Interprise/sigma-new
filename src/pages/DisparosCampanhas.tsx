@@ -133,7 +133,7 @@ export default function DisparosCampanhas() {
     mutationFn: async (id: string) => {
       const { error } = await supabase
         .from("campanhas")
-        .update({ status: "concluida" as any, data_termino: new Date().toISOString() })
+        .update({ status: "finalizada" as any, data_termino: new Date().toISOString() })
         .eq("id", id);
       if (error) throw error;
     },
@@ -381,7 +381,7 @@ export default function DisparosCampanhas() {
                     </div>
                     {isAdmin && (
                       <div className="flex items-center gap-2 mt-3 pt-3 border-t" onClick={(e) => e.stopPropagation()}>
-                        {c.status !== "concluida" && (
+                        {c.status !== "finalizada" && c.status !== "arquivada" && (
                           <Button
                             variant="outline"
                             size="sm"
