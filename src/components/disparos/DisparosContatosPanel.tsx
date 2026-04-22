@@ -189,17 +189,18 @@ export function DisparosContatosPanel({ campanha, onBack, campanhaPropostaId, em
 
       if (error) throw error;
 
-      // Atualizar total de contatos na campanha
-      await supabase
-        .from("disparos_campanhas")
-        .update({ 
-          total_contatos: Math.max(0, (campanha.total_contatos || 0) - 1),
-          updated_at: new Date().toISOString()
-        })
-        .eq("id", campanha.id);
+      if (campanha?.id) {
+        await supabase
+          .from("disparos_campanhas")
+          .update({
+            total_contatos: Math.max(0, (campanha.total_contatos || 0) - 1),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", campanha.id);
+      }
 
       toast.success("Contato deletado com sucesso");
-      queryClient.invalidateQueries({ queryKey: ["disparos-contatos", campanha.id] });
+      queryClient.invalidateQueries({ queryKey: ["disparos-contatos", queryKeyId] });
       queryClient.invalidateQueries({ queryKey: ["disparos-campanhas"] });
     } catch (error) {
       console.error("Erro ao deletar contato:", error);
@@ -216,7 +217,7 @@ export function DisparosContatosPanel({ campanha, onBack, campanhaPropostaId, em
         .eq("id", contatoId);
       if (error) throw error;
       toast.success(`Status alterado para ${novoStatus}`);
-      queryClient.invalidateQueries({ queryKey: ["disparos-contatos", campanha.id] });
+      queryClient.invalidateQueries({ queryKey: ["disparos-contatos", queryKeyId] });
       queryClient.invalidateQueries({ queryKey: ["disparos-campanhas"] });
     } catch (error) {
       console.error("Erro ao alterar status:", error);
@@ -227,6 +228,7 @@ export function DisparosContatosPanel({ campanha, onBack, campanhaPropostaId, em
   // Mutation para concluir disparo e liberar leads pendentes
   const concluirDisparoMutation = useMutation({
     mutationFn: async () => {
+      if (!campanha?.id) throw new Error("Disparo não disponível");
       // 1. Primeiro, mudar status "3-TRATANDO" para "1-ENVIAR"
       const leadsTratando = contatos.filter((c) => c.status === "3-TRATANDO");
       if (leadsTratando.length > 0) {
@@ -280,10 +282,10 @@ export function DisparosContatosPanel({ campanha, onBack, campanhaPropostaId, em
       } else {
         toast.success("Disparo concluído!");
       }
-      queryClient.invalidateQueries({ queryKey: ["disparos-contatos", campanha.id] });
+      queryClient.invalidateQueries({ queryKey: ["disparos-contatos", queryKeyId] });
       queryClient.invalidateQueries({ queryKey: ["disparos-campanhas"] });
       queryClient.invalidateQueries({ queryKey: ["disparos-instancias-em-uso"] });
-      onBack();
+      onBack?.();
     },
     onError: (error) => {
       console.error("Erro ao concluir disparo:", error);
@@ -294,18 +296,19 @@ export function DisparosContatosPanel({ campanha, onBack, campanhaPropostaId, em
   // [ADMIN] Mutation: resetar 3-TRATANDO → 1-ENVIAR
   const resetTratandoMutation = useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase
+      let q = supabase
         .from("disparos_contatos")
         .update({ status: "1-ENVIAR" })
-        .eq("campanha_id", campanha.id)
-        .eq("status", "3-TRATANDO")
-        .select("id");
+        .eq("status", "3-TRATANDO");
+      if (filterByProposta) q = q.eq("campanha_proposta_id", campanhaPropostaId!);
+      else if (campanha?.id) q = q.eq("campanha_id", campanha.id);
+      const { data, error } = await q.select("id");
       if (error) throw error;
       return data?.length ?? 0;
     },
     onSuccess: (qtd) => {
       toast.success(`${qtd} lead(s) resetados para 1-ENVIAR!`);
-      queryClient.invalidateQueries({ queryKey: ["disparos-contatos", campanha.id] });
+      queryClient.invalidateQueries({ queryKey: ["disparos-contatos", queryKeyId] });
       queryClient.invalidateQueries({ queryKey: ["disparos-campanhas"] });
     },
     onError: (error: any) => {
