@@ -30,11 +30,23 @@ import {
 } from "@/components/ui/command";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Megaphone, Plus, Search, Calendar, Check, ChevronsUpDown, X, FileText } from "lucide-react";
+import { CheckCircle2, Trash2 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { CampanhaPropostasVinculadas } from "@/components/disparos/CampanhaPropostasVinculadas";
 import { useVincularProposta } from "@/hooks/useCampanhaPropostas";
+import { usePermissions } from "@/hooks/usePermissions";
 
 const STATUS_VARIANTS: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
   rascunho: "outline",
