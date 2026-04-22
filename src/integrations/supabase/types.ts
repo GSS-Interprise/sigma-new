@@ -1609,6 +1609,52 @@ export type Database = {
           },
         ]
       }
+      campanha_listas: {
+        Row: {
+          campanha_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          lista_id: string
+        }
+        Insert: {
+          campanha_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          lista_id: string
+        }
+        Update: {
+          campanha_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          lista_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campanha_listas_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "campanhas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campanha_listas_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "vw_campanha_metricas"
+            referencedColumns: ["campanha_id"]
+          },
+          {
+            foreignKeyName: "campanha_listas_lista_id_fkey"
+            columns: ["lista_id"]
+            isOneToOne: false
+            referencedRelation: "disparo_listas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       campanha_msg_queue: {
         Row: {
           created_at: string | null
