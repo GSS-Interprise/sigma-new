@@ -6,10 +6,12 @@ import { CaptacaoProtectedRoute } from "@/components/auth/CaptacaoProtectedRoute
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Plus, ExternalLink, Megaphone, Users, FileText } from "lucide-react";
+import { ArrowLeft, Plus, ExternalLink, Megaphone, Users, FileText, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCampanhaPropostas } from "@/hooks/useCampanhaPropostas";
+import { useCampanhaListas, useRemoverListaCampanha } from "@/hooks/useCampanhaListas";
 import { VincularPropostaCampanhaDialog } from "@/components/disparos/VincularPropostaCampanhaDialog";
+import { AdicionarListaCampanhaDialog } from "@/components/disparos/AdicionarListaCampanhaDialog";
 import { CampanhaPropostaModal } from "@/components/disparos/CampanhaPropostaModal";
 
 const STATUS_VARIANTS: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
