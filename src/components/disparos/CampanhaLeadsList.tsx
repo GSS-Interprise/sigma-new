@@ -446,14 +446,12 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
                           className="h-7 px-2"
                           onClick={() => setLiberarLead({ id: l.id, nome: l.nome })}
                         >
-                          <Unlock className="h-3 w-3 xl:mr-1" />
-                          <span className="hidden xl:inline">Liberar</span>
+                          <Unlock className="h-3 w-3 mr-1" />
+                          Liberar
                         </Button>
                       ) : cascataAtiva ? (
                         <div className="flex items-center justify-end gap-1">
                           {tempo && canal !== "tiktok" && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
                                 <Button
                                   size="sm"
                                   variant="default"
@@ -471,17 +469,12 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
                                     <Loader2 className="h-3 w-3 animate-spin" />
                                   ) : (
                                     <>
-                                      <ArrowRightCircle className="h-3 w-3 xl:mr-1" />
-                                      <span className="hidden xl:inline">Próxima fase</span>
+                                      <ArrowRightCircle className="h-3 w-3 mr-1" />
+                                      Próxima fase
                                     </>
                                   )}
                                 </Button>
-                              </TooltipTrigger>
-                              <TooltipContent className="xl:hidden">Próxima fase</TooltipContent>
-                            </Tooltip>
                           )}
-                          <Tooltip>
-                            <TooltipTrigger asChild>
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -493,14 +486,11 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
                                   <Loader2 className="h-3 w-3 animate-spin" />
                                 ) : (
                                   <>
-                                    <XCircle className="h-3 w-3 xl:mr-1" />
-                                    <span className="hidden xl:inline">Encerrar</span>
+                                    <XCircle className="h-3 w-3 mr-1" />
+                                    Encerrar
                                   </>
                                 )}
                               </Button>
-                            </TooltipTrigger>
-                            <TooltipContent className="xl:hidden">Encerrar nesta proposta</TooltipContent>
-                          </Tooltip>
                         </div>
                       ) : (
                         <span className="text-xs text-muted-foreground">—</span>
