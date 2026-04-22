@@ -15,7 +15,6 @@ import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import { DisparosContatosPanel } from "./DisparosContatosPanel";
-import { CampanhaPropostasVinculadas } from "./CampanhaPropostasVinculadas";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useCaptacaoPermissions } from "@/hooks/useCaptacaoPermissions";
 
