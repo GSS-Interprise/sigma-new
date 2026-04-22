@@ -73,6 +73,32 @@ const CANAL_LABEL: Record<CanalCascata, string> = {
   tiktok: "TikTok",
 };
 
+const PAGE_SIZE = 1000;
+
+async function carregarTodosItensLista(listaId: string) {
+  let from = 0;
+  const acc: any[] = [];
+
+  while (true) {
+    const { data, error } = await supabase
+      .from("disparo_lista_itens")
+      .select(
+        "id, lead_id, leads:lead_id (id, nome, phone_e164, email, especialidade, uf, cidade, status)",
+      )
+      .eq("lista_id", listaId)
+      .range(from, from + PAGE_SIZE - 1);
+
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+
+    acc.push(...data);
+    if (data.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
+  }
+
+  return acc.map((i: any) => i.leads).filter(Boolean);
+}
+
 export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, canal }: Props) {
   const [filtro, setFiltro] = useState<FiltroStatus>("todos");
   const [busca, setBusca] = useState("");
@@ -118,18 +144,7 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
   const { data: itens = [], isLoading } = useQuery({
     queryKey: ["campanha-lista-leads", listaId],
     enabled: !!listaId,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("disparo_lista_itens")
-        .select(
-          "id, lead_id, leads:lead_id (id, nome, phone_e164, email, especialidade, uf, cidade, status)"
-        )
-        .eq("lista_id", listaId!);
-      if (error) throw error;
-      return (data || [])
-        .map((i: any) => i.leads)
-        .filter(Boolean);
-    },
+    queryFn: async () => carregarTodosItensLista(listaId!),
   });
 
   // Aplica o gate da cascata: só leads cujo canal anterior foi finalizado.
