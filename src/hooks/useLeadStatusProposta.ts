@@ -53,8 +53,8 @@ async function carregarLeadIdsDaProposta(campanhaPropostaId: string) {
   if (error) throw error;
   if (!propostaRow?.lista_id) return [] as string[];
 
-  const itens = await paginateRows<{ lead_id: string | null }>((from, to) =>
-    supabase
+  const itens = await paginateRows<{ lead_id: string | null }>(async (from, to) =>
+    await supabase
       .from("disparo_lista_itens")
       .select("lead_id")
       .eq("lista_id", propostaRow.lista_id)
@@ -170,8 +170,8 @@ export function useLeadStatusProposta(campanhaPropostaId: string | null | undefi
       entrou_em: string;
       status_final: string;
       motivo_saida: string | null;
-    }>((from, to) =>
-      supabase
+    }>(async (from, to) =>
+      await supabase
         .from("campanha_proposta_lead_canais")
         .select("id, lead_id, entrou_em, status_final, motivo_saida")
         .eq("campanha_proposta_id", id)
