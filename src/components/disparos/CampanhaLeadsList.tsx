@@ -147,8 +147,8 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
       fechado: 0,
     };
     for (const l of itensVisiveis) {
-      const st = statusMap?.get(l.id)?.status_proposta;
-      c[statusToBucket(st)]++;
+      const sRow = statusMap?.get(l.id);
+      c[statusToBucket(sRow?.status_proposta, sRow?.tem_raia_aberta)]++;
     }
     return c;
   }, [itensVisiveis, statusMap]);
@@ -157,8 +157,8 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
     const q = busca.trim().toLowerCase();
     return itensVisiveis.filter((l: any) => {
       if (filtro !== "todos") {
-        const st = statusMap?.get(l.id)?.status_proposta;
-        if (statusToBucket(st) !== filtro) return false;
+        const sRow = statusMap?.get(l.id);
+        if (statusToBucket(sRow?.status_proposta, sRow?.tem_raia_aberta) !== filtro) return false;
       }
       if (q) {
         const hay = `${l.nome ?? ""} ${l.phone_e164 ?? ""} ${l.especialidade ?? ""} ${l.cidade ?? ""}`.toLowerCase();
