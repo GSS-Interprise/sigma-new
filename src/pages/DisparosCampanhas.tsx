@@ -30,11 +30,23 @@ import {
 } from "@/components/ui/command";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Megaphone, Plus, Search, Calendar, Check, ChevronsUpDown, X, FileText } from "lucide-react";
+import { CheckCircle2, Trash2 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { CampanhaPropostasVinculadas } from "@/components/disparos/CampanhaPropostasVinculadas";
 import { useVincularProposta } from "@/hooks/useCampanhaPropostas";
+import { usePermissions } from "@/hooks/usePermissions";
 
 const STATUS_VARIANTS: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
   rascunho: "outline",
@@ -55,6 +67,8 @@ export default function DisparosCampanhas() {
   const qc = useQueryClient();
   const vincular = useVincularProposta();
   const navigate = useNavigate();
+  const { isAdmin } = usePermissions();
+  const [confirmAcao, setConfirmAcao] = useState<{ id: string; nome: string; tipo: "finalizar" | "deletar" } | null>(null);
 
   const { data: campanhas = [], isLoading } = useQuery({
     queryKey: ["campanhas-multicanal", busca],
@@ -113,6 +127,53 @@ export default function DisparosCampanhas() {
       setPropostaIds([]);
     },
     onError: (e: any) => toast.error("Erro: " + e.message),
+  });
+
+  const finalizarCampanha = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from("campanhas")
+        .update({ status: "finalizada" as any, data_termino: new Date().toISOString() })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["campanhas-multicanal"] });
+      toast.success("Campanha finalizada");
+      setConfirmAcao(null);
+    },
+    onError: (e: any) => toast.error("Erro ao finalizar: " + e.message),
+  });
+
+  const deletarCampanha = useMutation({
+    mutationFn: async (id: string) => {
+      // Limpa dependências antes de deletar
+      const { data: cps } = await supabase
+        .from("campanha_propostas")
+        .select("id")
+        .eq("campanha_id", id);
+      const cpIds = (cps || []).map((c) => c.id);
+      if (cpIds.length) {
+        await supabase.from("campanha_proposta_canais").delete().in("campanha_proposta_id", cpIds);
+        await supabase.from("campanha_proposta_lead_canais").delete().in("campanha_proposta_id", cpIds);
+        await supabase.from("campanha_propostas").delete().eq("campanha_id", id);
+      }
+      await supabase.from("campanhas_envios").delete().eq("campanha_id", id);
+      const { data: cls } = await supabase.from("campanha_leads").select("id").eq("campanha_id", id);
+      const clIds = (cls || []).map((c) => c.id);
+      if (clIds.length) {
+        await supabase.from("campanha_lead_touches").delete().in("campanha_lead_id", clIds);
+        await supabase.from("campanha_leads").delete().eq("campanha_id", id);
+      }
+      const { error } = await supabase.from("campanhas").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["campanhas-multicanal"] });
+      toast.success("Campanha deletada");
+      setConfirmAcao(null);
+    },
+    onError: (e: any) => toast.error("Erro ao deletar: " + e.message),
   });
 
   const togglePropostaId = (id: string) => {
@@ -318,6 +379,36 @@ export default function DisparosCampanhas() {
                         </span>
                       )}
                     </div>
+                    {isAdmin && (
+                      <div className="flex items-center gap-2 mt-3 pt-3 border-t" onClick={(e) => e.stopPropagation()}>
+                        {c.status !== "finalizada" && c.status !== "arquivada" && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setConfirmAcao({ id: c.id, nome: c.nome, tipo: "finalizar" });
+                            }}
+                          >
+                            <CheckCircle2 className="h-3 w-3 mr-1" />
+                            Finalizar
+                          </Button>
+                        )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-xs text-destructive hover:text-destructive"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setConfirmAcao({ id: c.id, nome: c.nome, tipo: "deletar" });
+                          }}
+                        >
+                          <Trash2 className="h-3 w-3 mr-1" />
+                          Deletar
+                        </Button>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               ))}
@@ -350,6 +441,34 @@ export default function DisparosCampanhas() {
           </DialogContent>
         </Dialog>
       </AppLayout>
+
+      <AlertDialog open={!!confirmAcao} onOpenChange={(o) => !o && setConfirmAcao(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirmAcao?.tipo === "finalizar" ? "Finalizar campanha?" : "Deletar campanha?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmAcao?.tipo === "finalizar"
+                ? `A campanha "${confirmAcao?.nome}" será marcada como finalizada.`
+                : `A campanha "${confirmAcao?.nome}" e todos os seus vínculos serão deletados permanentemente.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!confirmAcao) return;
+                if (confirmAcao.tipo === "finalizar") finalizarCampanha.mutate(confirmAcao.id);
+                else deletarCampanha.mutate(confirmAcao.id);
+              }}
+              className={confirmAcao?.tipo === "deletar" ? "bg-destructive hover:bg-destructive/90" : ""}
+            >
+              Confirmar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </CaptacaoProtectedRoute>
   );
 }
