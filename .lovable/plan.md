@@ -1,55 +1,72 @@
 
 
-## Problema
+## Objetivo
 
-A Amanda parece estar "falando sozinha" porque o `sigzap-fetch-history` só importa mensagens **enviadas** (fromMe=true). As respostas do lead nunca chegam ao banco.
+Quando o operador enviar a primeira mensagem manual ao lead (botão "Enviar" do painel manual OU input do chat SIG Zap), o lead deve:
 
-## Causa raiz (confirmado via Evolution API)
+1. Ficar marcado como **Contactado** na lista da proposta (já funciona pelo botão "Enviar"; falta para o input do chat).
+2. Aparecer automaticamente no **Kanban de Acompanhamento** (`/disparos/acompanhamento`) na coluna "Contatados".
 
-O WhatsApp moderno usa dois identificadores diferentes para o mesmo contato:
+Hoje:
+- Botão "Enviar" do painel manual → grava `disparo_manual_envios`, fecha raia WhatsApp como `respondeu` (vira `contactado` na view) → **mas o lead NÃO entra no Kanban de Acompanhamento**, porque o Kanban lê `leads.status` (texto livre tipo "Contatados", "Enviados", etc.), não a view de propostas.
+- Input do chat SIG Zap → só insere mensagem; nada é feito na proposta nem no `leads.status`.
 
-| Tipo de mensagem | `key.remoteJid` | `key.remoteJidAlt` |
-|---|---|---|
-| Enviada pela Amanda (fromMe=true) | `553799659763@s.whatsapp.net` | (vazio) |
-| Recebida do lead (fromMe=false) | `110836009947205@lid` | `553799659763@s.whatsapp.net` |
+## O que vai mudar
 
-A query atual filtra **apenas** por `key.remoteJid = "<phone>@s.whatsapp.net"`, então pega só as enviadas. As respostas do lead ficam invisíveis porque o `remoteJid` delas é o LID.
+### 1. Trigger de banco em `sigzap_messages`
 
-Confirmação prática para 553799659763:
-- Filtro atual → **2 records** (só fromMe=true)
-- Filtro por `remoteJidAlt` → **10 records** (inclui as 2 respostas do lead e mais variações)
+Quando uma mensagem `from_me = true` for inserida em uma conversa com `lead_id`:
 
-## Correção
+- Para cada `campanha_proposta` ativa onde esse lead aparece: chama `fechar_lead_canal(..., 'whatsapp', 'respondeu', 'Mensagem enviada via SIG Zap')` se ainda houver raia WhatsApp aberta. Isso garante que o status na proposta vire **Contactado** mesmo quando enviado pelo input do chat.
+- Atualiza `leads.status` para a label da **primeira coluna** do Kanban de Acompanhamento (`disparos`) — hoje "Contatados" — somente se o status atual for `Novo` ou vazio (não sobrescreve operadores que já moveram o card adiante).
+- Insere registro em `lead_historico` com `tipo_evento = 'mensagem_manual_enviada'`.
 
-Em `supabase/functions/sigzap-fetch-history/index.ts`, ao chamar `chat/findMessages`:
+A trigger é idempotente: só dispara na **primeira** mensagem outbound por conversa (verifica `NOT EXISTS` de outra `from_me=true` anterior na mesma `conversation_id`).
 
-1. **Disparar duas chamadas em paralelo** para o mesmo contato:
-   - `where: { key: { remoteJid: "<phone>@s.whatsapp.net" } }`
-   - `where: { key: { remoteJidAlt: "<phone>@s.whatsapp.net" } }`
+### 2. Painel manual (`send-disparo-manual`)
 
-2. **Mesclar os resultados** e **deduplicar** por `key.id` (já temos isso via checagem `wa_message_id` no DB, basta unir os arrays antes do loop de processamento).
+Adicionar a mesma atualização de `leads.status → "Contatados"` ao final da função (caso o lead ainda esteja como `Novo`). Hoje a função fecha a raia mas não promove o lead ao Kanban de Acompanhamento.
 
-3. **Ajustar `has_more`**: como agora juntamos duas listas, considerar `has_more = true` se qualquer uma das duas chamadas retornou `limit` registros (mantém paginação manual funcionando).
+### 3. Frontend — invalidar Kanban Acompanhamento
 
-4. **Persistir o JID real** no `sender_jid` e mensagens recebidas: para `fromMe=false`, o `sender_jid` deve ser `key.remoteJid` (o LID), preservando o vínculo, e podemos opcionalmente guardar o E.164 derivado de `remoteJidAlt` para exibição.
+Em `useDisparoManual.ts` (botão Enviar) e no hook de envio do chat SIG Zap, invalidar `["acompanhamento-leads"]` no `onSuccess` para o card aparecer imediatamente.
 
-5. **Bonus de robustez**: também aceitar contatos cujo `contact_jid` no nosso DB seja `@lid` — nesse caso, fazer a busca via `remoteJid` direto no LID (já funciona), e adicionalmente uma segunda chamada com o phone E.164 quando disponível em `contact_phone`.
+### 4. Backfill (uma vez)
 
-## Por que o auto-sync resolve (depois do fix)
+Migration roda um update único: para cada conversa com `from_me=true` cujo lead esteja com `status='Novo'`, promove para "Contatados" e fecha a raia das propostas ativas correspondentes. Assim os leads "Ewerton rubi" e "Bruna Pereira" que você já contactou aparecem corretos.
 
-Hoje o auto-sync já roda ao abrir a conversa, então depois da correção, abrir a conversa da Amanda vai trazer as mensagens faltantes automaticamente — sem precisar clicar em "Buscar histórico".
+## Detalhes técnicos
 
-## Observação sobre JWT
+**Migration SQL (resumo):**
 
-A hipótese de "não autorização do token" não procede neste caso: os logs da função mostram chamadas concluídas (200 OK) com `total: 2`. O problema é puramente de filtro no Evolution API, não de autenticação.
+```sql
+-- 1) Função do trigger
+CREATE OR REPLACE FUNCTION trg_sigzap_outbound_marca_contactado() ...
+  -- só atua se NEW.from_me = true E é a primeira from_me da conversa
+  -- busca conv.lead_id; se null, sai
+  -- fecha raia whatsapp em todas campanha_propostas ativas com esse lead
+  -- UPDATE leads SET status='Contatados' WHERE id=lead_id AND status IN ('Novo', NULL)
+  -- INSERT lead_historico
 
-## Arquivos a modificar
+CREATE TRIGGER trg_sigzap_outbound_after_insert
+AFTER INSERT ON sigzap_messages
+FOR EACH ROW WHEN (NEW.from_me = true)
+EXECUTE FUNCTION trg_sigzap_outbound_marca_contactado();
 
-- `supabase/functions/sigzap-fetch-history/index.ts` — adicionar segunda chamada com `remoteJidAlt`, mesclar resultados, deduplicar, ajustar `has_more` e `sender_jid`.
+-- 2) Backfill
+DO $$ ... promove leads existentes ... $$;
+```
 
-## Sem mudanças necessárias em
+**Arquivos alterados:**
+- nova migration SQL (trigger + backfill)
+- `supabase/functions/send-disparo-manual/index.ts` — promover `leads.status`
+- `src/hooks/useDisparoManual.ts` — invalidar `acompanhamento-leads`
+- hook de envio do chat SIG Zap (provavelmente `ChatView.tsx` `sendMutation`) — invalidar `acompanhamento-leads` e `lead-status-proposta`
 
-- Frontend (`SigZapChatColumn.tsx`) — o auto-sync e botão "Buscar histórico" continuam funcionando igual; vão simplesmente trazer mais mensagens.
-- Webhook receiver — mensagens que chegam em tempo real via webhook já são salvas corretamente.
-- Schema do banco.
+## Resultado esperado
+
+Ao enviar a primeira mensagem manual:
+- Lead aparece como **Contactado** na proposta (badge verde).
+- Card do lead aparece na coluna **Contatados** do Kanban `/disparos/acompanhamento`.
+- Operador pode arrastar livremente daí em diante (Sem Resposta, Respondidos, etc.) sem que mensagens futuras sobrescrevam.
 
