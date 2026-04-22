@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
@@ -73,7 +73,8 @@ const CANAL_LABEL: Record<CanalCascata, string> = {
   tiktok: "TikTok",
 };
 
-const PAGE_SIZE = 1000;
+const PAGE_SIZE = 300;
+const PAGE_SIZE_UI = 300;
 
 async function carregarTodosItensLista(listaId: string) {
   let from = 0;
@@ -106,6 +107,7 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
   const [fechandoId, setFechandoId] = useState<string | null>(null);
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
   const [dialogModo, setDialogModo] = useState<"transferir" | "fechar" | null>(null);
+  const [pagina, setPagina] = useState(1);
   const qc = useQueryClient();
   const cascataAtiva = !!campanhaPropostaId && !!canal;
   const { data: canaisRows = [] } = useLeadCanais(cascataAtiva ? campanhaPropostaId : undefined);
@@ -183,6 +185,18 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
     });
   }, [itensVisiveis, filtro, busca, statusMap]);
 
+  const totalPaginas = Math.max(1, Math.ceil(filtrados.length / PAGE_SIZE_UI));
+  const paginaAtual = Math.min(pagina, totalPaginas);
+  const filtradosPagina = useMemo(() => {
+    const inicio = (paginaAtual - 1) * PAGE_SIZE_UI;
+    return filtrados.slice(inicio, inicio + PAGE_SIZE_UI);
+  }, [filtrados, paginaAtual]);
+
+  // Reset de página ao mudar filtro/busca/lista
+  useEffect(() => {
+    setPagina(1);
+  }, [filtro, busca, listaId]);
+
   if (!listaId) {
     return (
       <Card className="p-6 text-center text-sm text-muted-foreground">
@@ -200,8 +214,17 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
     });
   };
   const toggleTodos = () => {
-    if (selecionados.size === filtrados.length) setSelecionados(new Set());
-    else setSelecionados(new Set(filtrados.map((l: any) => l.id)));
+    const idsPagina = filtradosPagina.map((l: any) => l.id);
+    const todosNaPagina = idsPagina.every((id) => selecionados.has(id));
+    setSelecionados((prev) => {
+      const next = new Set(prev);
+      if (todosNaPagina) {
+        for (const id of idsPagina) next.delete(id);
+      } else {
+        for (const id of idsPagina) next.add(id);
+      }
+      return next;
+    });
   };
   const limparSelecao = () => setSelecionados(new Set());
 
@@ -326,8 +349,8 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
                   <th className="px-2 py-1.5 w-8">
                     <Checkbox
                       checked={
-                        filtrados.length > 0 &&
-                        selecionados.size === filtrados.length
+                        filtradosPagina.length > 0 &&
+                        filtradosPagina.every((l: any) => selecionados.has(l.id))
                       }
                       onCheckedChange={toggleTodos}
                     />
@@ -345,7 +368,8 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
               </tr>
             </thead>
             <tbody>
-              {filtrados.map((l: any, idx: number) => {
+              {filtradosPagina.map((l: any, idxNaPagina: number) => {
+                const idx = (paginaAtual - 1) * PAGE_SIZE_UI + idxNaPagina;
                 const sRow = statusMap?.get(l.id);
                 const status = sRow?.status_proposta ?? "a_contactar";
                 const fechadoProp = status === "fechado_proposta";
@@ -516,6 +540,44 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {filtrados.length > 0 && (
+        <div className="flex items-center justify-between gap-2 p-2 border-t bg-muted/20 text-xs text-muted-foreground flex-wrap">
+          <span>
+            Mostrando{" "}
+            <strong className="text-foreground">
+              {(paginaAtual - 1) * PAGE_SIZE_UI + 1}
+              {"–"}
+              {Math.min(paginaAtual * PAGE_SIZE_UI, filtrados.length)}
+            </strong>{" "}
+            de <strong className="text-foreground">{filtrados.length}</strong> leads
+          </span>
+          <div className="flex items-center gap-1">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 px-2"
+              disabled={paginaAtual <= 1}
+              onClick={() => setPagina((p) => Math.max(1, p - 1))}
+            >
+              Anterior
+            </Button>
+            <span className="px-2">
+              Página <strong className="text-foreground">{paginaAtual}</strong> de{" "}
+              <strong className="text-foreground">{totalPaginas}</strong>
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 px-2"
+              disabled={paginaAtual >= totalPaginas}
+              onClick={() => setPagina((p) => Math.min(totalPaginas, p + 1))}
+            >
+              Próxima
+            </Button>
+          </div>
         </div>
       )}
 
