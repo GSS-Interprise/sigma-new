@@ -10,12 +10,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Plus, Play, Pause, Eye, Trash2, UserPlus, Users, CheckCircle, XCircle, AlertTriangle, Clock, Send, Power, PowerOff, Bot } from "lucide-react";
+import { Eye, Trash2, Users, CheckCircle, XCircle, AlertTriangle, Clock, Send, Power, PowerOff, Bot } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import { DisparosContatosPanel } from "./DisparosContatosPanel";
-import { DisparosImportDialog } from "./DisparosImportDialog";
 import { CampanhaPropostasVinculadas } from "./CampanhaPropostasVinculadas";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useCaptacaoPermissions } from "@/hooks/useCaptacaoPermissions";
@@ -51,20 +50,12 @@ const statusConfig: Record<string, { label: string; variant: "default" | "second
 };
 
 export function DisparosCampanhasTab() {
-  const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedCampanha, setSelectedCampanha] = useState<Campanha | null>(null);
-  const [importDialogOpen, setImportDialogOpen] = useState(false);
-  const [campanhaParaImportar, setCampanhaParaImportar] = useState<string | null>(null);
   const [mostrarInativos, setMostrarInativos] = useState(false);
-  const [campanhaEmProcessamento, setCampanhaEmProcessamento] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const { isAdmin } = usePermissions();
   const { isCaptacaoLeader } = useCaptacaoPermissions();
   const canSwitchInstance = isAdmin || isCaptacaoLeader;
-
-  // Form state
-  const [propostaId, setPropostaId] = useState("");
-  const [chipId, setChipId] = useState("");
 
   // Realtime subscription para campanhas
   useEffect(() => {
