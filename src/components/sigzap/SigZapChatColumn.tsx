@@ -1425,7 +1425,7 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
   // Empty state
   if (!conversaId) {
     return (
-      <div className="flex flex-col h-full overflow-hidden">
+      <div className="flex flex-col h-full min-h-0 min-w-0 overflow-hidden">
         <div className="p-3 border-b bg-muted/30 flex items-center gap-2 h-12">
           <MessageCircle className="h-4 w-4 text-muted-foreground" />
           <h3 className="font-semibold text-sm">Chat</h3>
@@ -1447,7 +1447,7 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
   return (
     <div 
       ref={chatContainerRef}
-      className="flex flex-col h-full overflow-hidden relative"
+      className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden"
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
       onDragOver={handleDragOver}
@@ -1525,7 +1525,7 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
       </div>
 
       {/* Messages */}
-      <ScrollArea className="flex-1 min-h-0 p-4">
+      <ScrollArea className="flex-1 min-h-0 min-w-0 overflow-hidden p-4">
         <div className="space-y-3">
           {/* Load more history button - top of messages */}
           {conversa && historyHasMore && (
@@ -1626,7 +1626,7 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
                     canDelete={canSendMessages && !isDeleted}
                     hasLinkedLead={!!linkedLead?.id}
                   >
-                    <div className={cn("flex gap-2", isFromMe ? "justify-end" : "justify-start")}>
+                    <div className={cn("flex min-w-0 gap-2", isFromMe ? "justify-end" : "justify-start")}>
                       {/* Sender avatar for from_me messages */}
                       {isFromMe && sender && (
                         <div 
@@ -1639,7 +1639,7 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
                       )}
                       <div
                         className={cn(
-                          "relative rounded-lg px-3 py-2 text-sm cursor-pointer max-w-[80%]",
+                          "relative max-w-[80%] min-w-0 cursor-pointer overflow-hidden rounded-lg px-3 py-2 text-sm",
                           isFromMe
                             ? "text-white rounded-br-none"
                             : "bg-muted rounded-bl-none",
@@ -1682,11 +1682,11 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
                               msg.message_text !== '[document]' &&
                               msg.message_text !== '[Mensagem apagada]'
                             ) || msg.media_caption ? (
-                              <p className="whitespace-pre-wrap break-words">
+                              <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
                                 {renderMessageWithPhoneLinks(msg.media_caption || msg.message_text || "", isFromMe, (conversa?.instance as any)?.id)}
                               </p>
                             ) : !msg.media_url && msg.message_type === 'text' ? (
-                              <p className="whitespace-pre-wrap break-words">
+                              <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
                                 {renderMessageWithPhoneLinks(msg.message_text || "", isFromMe, (conversa?.instance as any)?.id)}
                               </p>
                             ) : null}
