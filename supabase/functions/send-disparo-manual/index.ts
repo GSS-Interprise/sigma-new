@@ -217,15 +217,6 @@ serve(async (req) => {
       },
     });
 
-    // Fecha raia do canal whatsapp como contactado (mesmo padrão da cascata)
-    await supabase.rpc("fechar_lead_canal", {
-      p_campanha_proposta_id: campanha_proposta_id,
-      p_lead_id: lead_id,
-      p_canal: "whatsapp",
-      p_status_final: "respondeu",
-      p_motivo: "Disparo manual realizado",
-    }).then(() => {}, (e) => console.warn("fechar_lead_canal falhou:", e?.message));
-
     return new Response(
       JSON.stringify({ success: true, conversation_id: conversationId, message: msgFinal }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
