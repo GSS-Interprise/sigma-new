@@ -379,6 +379,36 @@ export default function DisparosCampanhas() {
                         </span>
                       )}
                     </div>
+                    {isAdmin && (
+                      <div className="flex items-center gap-2 mt-3 pt-3 border-t" onClick={(e) => e.stopPropagation()}>
+                        {c.status !== "concluida" && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setConfirmAcao({ id: c.id, nome: c.nome, tipo: "finalizar" });
+                            }}
+                          >
+                            <CheckCircle2 className="h-3 w-3 mr-1" />
+                            Finalizar
+                          </Button>
+                        )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-xs text-destructive hover:text-destructive"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setConfirmAcao({ id: c.id, nome: c.nome, tipo: "deletar" });
+                          }}
+                        >
+                          <Trash2 className="h-3 w-3 mr-1" />
+                          Deletar
+                        </Button>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               ))}
