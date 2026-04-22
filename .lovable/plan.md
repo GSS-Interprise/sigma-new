@@ -1,54 +1,53 @@
 
 
-## Agrupamento visual das abas em Fases — com header destacado
+## Restaurar fluxo "Adicionar Disparo" no Disparos Zap, vinculado a Campanha → Proposta
 
-Reorganizar a `TabsList` do `CampanhaPropostaModal` aplicando o **mesmo padrão visual da imagem de referência** (header verde "FASE 1") para os dois grupos.
+Voltar ao modelo antigo de criar disparos pela tela `/disparos/zap` (botão **Adicionar Disparo**), mas com a fonte de contatos vinda da **lista da proposta dentro da campanha selecionada**. Status de envio e fallback de chip permanecem como hoje.
 
-### Layout proposto
+### Fluxo do botão "Adicionar Disparo"
 
-```text
-┌──────────┐  ┌─[ FASE 1 ]──────────────┐  ┌─[ FASE 2 ]──────────────────────────────┐
-│ Cascata  │  │ WhatsApp │ Tráfego Pago │  │ Email │ Instagram │ Ligação │ LinkedIn │ TikTok │
-└──────────┘  └─────────────────────────┘  └─────────────────────────────────────────┘
-```
+Modal `DisparosNovoDialog` (substituindo/atualizando o `DisparosImportDialog`):
 
-### Estilo dos blocos de fase (igual à imagem)
+1. **Select Campanha** (obrigatório) — lista `campanhas` com `status = 'ativa'` (ou todas, com filtro padrão "ativas").
+   - Se houver apenas **1 campanha ativa**, vem pré-selecionada.
+2. **Select Proposta** (obrigatório) — lista `campanha_propostas` da campanha escolhida com `status = 'ativa'`.
+   - Se a campanha tiver apenas **1 proposta ativa** → pré-selecionada.
+   - Se tiver **mais de uma** → select fica vazio, usuário precisa escolher (validação `required`).
+3. **Preview da lista** — mostra `disparo_listas` vinculada à `campanha_proposta` e a contagem de números (`disparo_lista_itens` com telefone válido). Read-only.
+4. **Configurações de envio** (mantidas do fluxo antigo):
+   - Chip principal + chips fallback (multi-select).
+   - Mensagem inicial (template).
+   - Delays / batch size — defaults da campanha, editáveis.
+5. **Botão "Criar Disparo"** → cria registro em `disparos_campanhas` (modelo antigo) populando `lista_id` e `campanha_proposta_id` para rastreabilidade, e enfileira contatos a partir de `disparo_lista_itens` da proposta (status inicial `1-ENVIAR`).
 
-Cada grupo de fase é um container com:
-- **Header**: faixa superior em `bg-primary` (verde), `text-primary-foreground`, label centralizado em maiúsculas (`FASE 1`, `FASE 2`), pequeno (`text-xs font-bold tracking-wider`), padding `px-4 py-1`, cantos arredondados só no topo (`rounded-t-md`).
-- **Corpo**: `border-2 border-primary` (mesma cor do header), `rounded-b-md`, `bg-background`, padding interno `p-2`, contendo os triggers das abas em `flex gap-1`.
-- A "moldura" inteira (header + corpo) forma um bloco coeso, exatamente como o destaque verde em volta de "WhatsApp" / "Tráfego Pago" na imagem.
+### Mudanças
 
-A aba **Cascata** fica num bloco separado **sem header de fase** (é visão geral), apenas com borda sutil `border border-border rounded-md p-2`.
+**Frontend:**
+- `src/pages/DisparosZap.tsx`:
+  - Remover o aviso "Novo modelo de disparos / use o dossiê" e voltar a renderizar o botão **"Adicionar Disparo"** no header.
+  - Abrir `<DisparosNovoDialog />` ao clicar.
+- `src/components/disparos/DisparosNovoDialog.tsx` **(novo)**:
+  - Campos: `campanha_id` (Select), `campanha_proposta_id` (Select dependente), preview da lista, `chip_id`, `chip_fallback_ids`, mensagem inicial, delays.
+  - Lógica de auto-seleção:
+    - `useQuery` campanhas ativas → se length=1, set default.
+    - Ao escolher campanha, `useQuery` propostas ativas → se length=1, set default; senão deixa vazio + `required`.
+  - `useQuery` lista vinculada (`disparo_listas` + count de `disparo_lista_itens`) para preview.
+  - Mutation `criarDisparo` que insere em `disparos_campanhas` com `campanha_proposta_id` + `lista_id` e dispara função/edge para enfileirar os contatos a partir de `disparo_lista_itens`.
+- Manter `DisparosMonitor` / `DisparosZapRanking` como estão.
+- A aba **Zap** dentro do `CampanhaPropostaModal` (`ZapTab`) volta a ser apenas leitura/acompanhamento (já é o que tínhamos antes do desvio) — o **botão de criação fica apenas em /disparos/zap**.
 
-### Estilo dos triggers
-
-- **Inativo**: fundo transparente, ícone `text-muted-foreground`, label `text-sm`.
-- **Ativo**: `bg-primary/10`, `ring-2 ring-primary`, ícone na cor do canal (verde para WhatsApp, etc.), label em `font-semibold text-foreground`, leve `shadow-sm`.
-- Largura mínima `min-w-[88px]` para evitar "pulo" ao trocar.
-
-### Mudanças no código
-
-`src/components/disparos/CampanhaPropostaModal.tsx`:
-- Definir array de grupos:
-  ```tsx
-  const GRUPOS = [
-    { fase: null,     abas: ["cascata"] },
-    { fase: "FASE 1", abas: ["whatsapp", "trafego_pago"] },
-    { fase: "FASE 2", abas: ["email", "instagram", "ligacao", "linkedin", "tiktok"] },
-  ];
-  ```
-- Substituir o `TabsList` único por um wrapper `flex flex-wrap gap-3 items-stretch` contendo um `<TabsList>` com `className` neutro (`bg-transparent p-0 h-auto flex flex-wrap gap-3`) — Radix continua funcionando porque os triggers permanecem como filhos de um único `TabsList`.
-- Renderizar cada grupo:
-  - Se `fase` existe → wrapper com header verde + corpo bordado.
-  - Se não → wrapper simples para a Cascata.
-- Cada `TabsTrigger` recebe className com os estados `data-[state=active]:bg-primary/10 data-[state=active]:ring-2 data-[state=active]:ring-primary data-[state=active]:shadow-sm`.
-
-Sem mudanças em `tabs.tsx` — toda customização via `className` no consumidor.
+**Backend (Supabase):**
+- Garantir que `disparos_campanhas` tenha as colunas `campanha_proposta_id uuid` e `lista_id uuid` (verificar; se faltar, migration adicionando + FKs + index). Sem mudanças em status/fallback.
+- Função/edge `criar-disparo-da-proposta` (ou reaproveitar a existente de import) que:
+  - Lê `disparo_lista_itens` da `lista_id` informada.
+  - Filtra telefones válidos / não-blacklist.
+  - Insere em `disparos_log` (ou tabela equivalente da fila) com status `1-ENVIAR` vinculados ao `disparos_campanhas.id`.
 
 ### Resultado
 
-- Identifica-se à primeira vista que **WhatsApp + Tráfego Pago = Fase 1** e que os outros canais formam a **Fase 2**, ambos com a mesma moldura verde com header (consistente com o destaque mostrado na imagem).
-- Aba ativa fica nitidamente marcada com anel verde + fundo suave.
-- Cascata permanece como visão geral, separada mas no mesmo nível visual.
+- Na tela `/disparos/zap`, volta o botão **Adicionar Disparo** com o fluxo de criação completo.
+- A escolha de **campanha + proposta** define automaticamente a fonte dos números (lista da proposta).
+- Auto-preenchimento quando há só 1 opção; obrigatório quando há ambiguidade.
+- Status de envio (`1-ENVIAR` … `06-BLOQUEADOR`) e lógica de fallback de chip permanecem idênticos ao fluxo atual.
+- O dossiê da campanha continua exibindo a aba Zap como acompanhamento (sem botão de criação ali).
 
