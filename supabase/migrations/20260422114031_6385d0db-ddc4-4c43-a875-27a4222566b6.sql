@@ -1,0 +1,2 @@
+ALTER PUBLICATION supabase_realtime ADD TABLE public.campanha_proposta_lead_canais;
+ALTER TABLE public.campanha_proposta_lead_canais REPLICA IDENTITY FULL;
