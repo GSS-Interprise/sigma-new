@@ -293,6 +293,36 @@ export function CascataTab({ campanhaPropostaId, listaId }: Props) {
           </tbody>
         </table>
       </ScrollArea>
+      {linhas.length > PAGE_SIZE_UI && (
+        <div className="flex items-center justify-between gap-2 p-3 border-t bg-muted/30 text-xs">
+          <span className="text-muted-foreground">
+            Mostrando {inicio + 1}–{Math.min(inicio + PAGE_SIZE_UI, linhas.length)} de {linhas.length}
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs"
+              disabled={paginaAtual <= 1}
+              onClick={() => setPagina((p) => Math.max(1, p - 1))}
+            >
+              Anterior
+            </Button>
+            <span className="text-muted-foreground">
+              {paginaAtual} / {totalPaginas}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs"
+              disabled={paginaAtual >= totalPaginas}
+              onClick={() => setPagina((p) => Math.min(totalPaginas, p + 1))}
+            >
+              Próxima
+            </Button>
+          </div>
+        </div>
+      )}
     </Card>
   );
 }
