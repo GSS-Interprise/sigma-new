@@ -1,7 +1,7 @@
 import { AppLayout } from "@/components/layout/AppLayout";
 
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Send, Mail, LayoutDashboard, Users, Ban, MessageCircle, Settings, FileText, ShieldCheck, MapPin, Eye, Wrench, GraduationCap, Megaphone, Megaphone as CampaignIcon } from "lucide-react";
+import { Send, Mail, LayoutDashboard, Users, Ban, MessageCircle, Settings, FileText, ShieldCheck, MapPin, Eye, Wrench, GraduationCap, Megaphone, Megaphone as CampaignIcon, BarChart3 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useCaptacaoPermissions, CaptacaoPermission } from "@/hooks/useCaptacaoPermissions";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -67,6 +67,7 @@ export default function Disparos() {
     { name: "Monitor", href: "/disparos/monitor", icon: Eye, description: "Supervisão de captadores (ADM)", permission: null, adminOnly: true },
     { name: "Residentes", href: "/disparos/residentes", icon: GraduationCap, description: "Gerencie médicos residentes", permission: "leads" as CaptacaoPermission, adminOnly: false },
     { name: "Campanhas", href: "/disparos/campanhas", icon: CampaignIcon, description: "Gerencie suas campanhas de disparo", permission: "disparos_zap" as CaptacaoPermission, adminOnly: false },
+    { name: "BI - Prospec", href: "/bi?tab=prospec", icon: BarChart3, description: "Análise de tráfego pago, disparos e conversões", permission: "disparos_zap" as CaptacaoPermission, adminOnly: false },
   ];
 
   const visibleModules = allModules.filter((module) => {
