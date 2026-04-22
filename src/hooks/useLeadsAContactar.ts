@@ -78,11 +78,16 @@ export function useLeadsAContactar(campanhaPropostaId: string | null | undefined
       const leads = leadsAcc;
 
       // 3. Busca envios manuais já realizados nesta proposta para marcar como "contactado"
-      const { data: envios } = await (supabase as any)
-        .from("disparo_manual_envios")
-        .select("lead_id, created_at, status")
-        .eq("campanha_proposta_id", campanhaPropostaId!)
-        .in("lead_id", leadIds);
+      const enviosAcc: any[] = [];
+      for (const ids of leadIdChunks) {
+        const { data: page } = await (supabase as any)
+          .from("disparo_manual_envios")
+          .select("lead_id, created_at, status")
+          .eq("campanha_proposta_id", campanhaPropostaId!)
+          .in("lead_id", ids);
+        if (page) enviosAcc.push(...page);
+      }
+      const envios = enviosAcc;
 
       const contactMap = new Map<string, string>();
       for (const e of envios || []) {
@@ -96,20 +101,30 @@ export function useLeadsAContactar(campanhaPropostaId: string | null | undefined
       // 3b. Fallback: também marca como contactado quando existir QUALQUER mensagem
       // enviada por nós (from_me=true) em conversas SIG Zap vinculadas ao lead.
       // Cobre o caso em que o usuário enviou direto pelo input do chat.
-      const { data: convs } = await (supabase as any)
-        .from("sigzap_conversations")
-        .select("id, lead_id")
-        .in("lead_id", leadIds);
+      const convsAcc: any[] = [];
+      for (const ids of leadIdChunks) {
+        const { data: page } = await (supabase as any)
+          .from("sigzap_conversations")
+          .select("id, lead_id")
+          .in("lead_id", ids);
+        if (page) convsAcc.push(...page);
+      }
+      const convs = convsAcc;
       const convIdToLead = new Map<string, string>();
       for (const c of convs || []) convIdToLead.set(c.id, c.lead_id);
       const convIds = Array.from(convIdToLead.keys());
       if (convIds.length > 0) {
-        const { data: msgs } = await (supabase as any)
-          .from("sigzap_messages")
-          .select("conversation_id, sent_at, created_at, from_me")
-          .in("conversation_id", convIds)
-          .eq("from_me", true);
-        for (const m of msgs || []) {
+        const convIdChunks = chunk(convIds, 200);
+        const msgsAcc: any[] = [];
+        for (const ids of convIdChunks) {
+          const { data: page } = await (supabase as any)
+            .from("sigzap_messages")
+            .select("conversation_id, sent_at, created_at, from_me")
+            .in("conversation_id", ids)
+            .eq("from_me", true);
+          if (page) msgsAcc.push(...page);
+        }
+        for (const m of msgsAcc) {
           const lid = convIdToLead.get(m.conversation_id);
           if (!lid) continue;
           const ts = m.sent_at || m.created_at;
@@ -123,13 +138,17 @@ export function useLeadsAContactar(campanhaPropostaId: string | null | undefined
       // 3c. Sincroniza com a fila do disparo em massa: leads que o n8n já
       // pegou (3-TRATANDO) ou enviou (4-ENVIADO) também contam como contactado,
       // mesmo que ainda não exista mensagem em sigzap_messages.
-      const { data: filaRows } = await (supabase as any)
-        .from("disparos_contatos")
-        .select("lead_id, updated_at, status")
-        .eq("campanha_proposta_id", campanhaPropostaId!)
-        .in("lead_id", leadIds)
-        .in("status", ["3-TRATANDO", "4-ENVIADO"]);
-      for (const r of filaRows || []) {
+      const filaAcc: any[] = [];
+      for (const ids of leadIdChunks) {
+        const { data: page } = await (supabase as any)
+          .from("disparos_contatos")
+          .select("lead_id, updated_at, status")
+          .eq("campanha_proposta_id", campanhaPropostaId!)
+          .in("lead_id", ids)
+          .in("status", ["3-TRATANDO", "4-ENVIADO"]);
+        if (page) filaAcc.push(...page);
+      }
+      for (const r of filaAcc) {
         const ts = r.updated_at;
         const prev = contactMap.get(r.lead_id);
         if (!prev || (ts && new Date(ts) > new Date(prev))) {
