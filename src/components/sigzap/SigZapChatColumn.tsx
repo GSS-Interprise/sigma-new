@@ -701,6 +701,10 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sigzap-messages', conversaId] });
       queryClient.invalidateQueries({ queryKey: ['sigzap-conversations'] });
+      queryClient.invalidateQueries({ queryKey: ['lead-status-proposta'] });
+      queryClient.invalidateQueries({ queryKey: ['lead-canais'] });
+      queryClient.invalidateQueries({ queryKey: ['acompanhamento-leads'] });
+      queryClient.invalidateQueries({ queryKey: ['campanha-lista-leads'] });
       // Note: setReplyingTo(null) and setMensagem("") are now handled in handleSendText for optimistic UX
     },
     onError: (error: any) => {

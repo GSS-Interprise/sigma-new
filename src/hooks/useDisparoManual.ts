@@ -25,6 +25,9 @@ export function useDisparoManual() {
       qc.invalidateQueries({ queryKey: ["leads-a-contactar", vars.campanha_proposta_id] });
       qc.invalidateQueries({ queryKey: ["lead-status-proposta", vars.campanha_proposta_id] });
       qc.invalidateQueries({ queryKey: ["sigzap-conversations"] });
+      qc.invalidateQueries({ queryKey: ["lead-canais", vars.campanha_proposta_id] });
+      qc.invalidateQueries({ queryKey: ["acompanhamento-leads"] });
+      qc.invalidateQueries({ queryKey: ["campanha-lista-leads"] });
       toast.success("Mensagem enviada e conversa registrada");
     },
     onError: (e: any) => toast.error("Erro: " + (e?.message || "falha no envio")),

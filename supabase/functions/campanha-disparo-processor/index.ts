@@ -247,6 +247,100 @@ serve(async (req) => {
           throw new Error(`Evolution ${resp.status}: ${errText.slice(0, 200)}`);
         }
 
+        // Resposta da Evolution costuma trazer key.id
+        let waMessageId: string | null = null;
+        try {
+          const respBody = await resp.clone().json();
+          waMessageId = respBody?.key?.id ?? respBody?.messageId ?? null;
+        } catch (_) { /* ignore */ }
+
+        // ── Persistir conversa SIG Zap (dispara trigger de "contactado" via raia) ──
+        try {
+          const numberDigits = phone.replace(/\D/g, "");
+          const contactJid = `${numberDigits}@s.whatsapp.net`;
+          const contactPhone = `+${numberDigits}`;
+
+          const { data: sigInst } = await supabase
+            .from("sigzap_instances")
+            .select("id")
+            .eq("name", chip.instance_name)
+            .maybeSingle();
+
+          if (sigInst?.id) {
+            // Upsert contact
+            let contactId: string | null = null;
+            const { data: existingContact } = await supabase
+              .from("sigzap_contacts")
+              .select("id")
+              .eq("instance_id", sigInst.id)
+              .eq("contact_jid", contactJid)
+              .maybeSingle();
+            if (existingContact) {
+              contactId = existingContact.id;
+            } else {
+              const { data: newContact } = await supabase
+                .from("sigzap_contacts")
+                .insert({
+                  instance_id: sigInst.id,
+                  contact_jid: contactJid,
+                  contact_phone: contactPhone,
+                  contact_name: lead?.nome || null,
+                })
+                .select("id")
+                .single();
+              contactId = newContact?.id ?? null;
+            }
+
+            if (contactId) {
+              // Upsert conversation com lead_id
+              let convId: string | null = null;
+              const { data: existingConv } = await supabase
+                .from("sigzap_conversations")
+                .select("id, lead_id")
+                .eq("instance_id", sigInst.id)
+                .eq("contact_id", contactId)
+                .maybeSingle();
+              if (existingConv) {
+                convId = existingConv.id;
+                if (!existingConv.lead_id) {
+                  await supabase
+                    .from("sigzap_conversations")
+                    .update({ lead_id: cl.lead_id })
+                    .eq("id", convId);
+                }
+              } else {
+                const { data: newConv } = await supabase
+                  .from("sigzap_conversations")
+                  .insert({
+                    instance_id: sigInst.id,
+                    contact_id: contactId,
+                    lead_id: cl.lead_id,
+                    status: "open",
+                  })
+                  .select("id")
+                  .single();
+                convId = newConv?.id ?? null;
+              }
+
+              if (convId) {
+                // Inserir mensagem outbound — dispara trigger trg_sigzap_outbound_after_insert
+                await supabase.from("sigzap_messages").insert({
+                  conversation_id: convId,
+                  instance_id: sigInst.id,
+                  contact_id: contactId,
+                  from_me: true,
+                  message_type: "text",
+                  message_text: msgFinal,
+                  wa_message_id: waMessageId,
+                  status: "sent",
+                });
+              }
+            }
+          }
+        } catch (sigErr: any) {
+          console.warn(`[disparo] sigzap persist falhou: ${sigErr?.message}`);
+        }
+
         // ── Sucesso ──
         await supabase
           .from("campanha_leads")

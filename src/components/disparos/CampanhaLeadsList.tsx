@@ -14,12 +14,12 @@ import { toast } from "sonner";
 import {
   CanalCascata,
   useLeadCanais,
-  formatDuracao,
-  tempoNaRaia,
+  useEnviarProximaFase,
 } from "@/hooks/useLeadCanais";
 import { TransferirCanalDialog } from "./TransferirCanalDialog";
 import { useLeadStatusProposta, StatusProposta } from "@/hooks/useLeadStatusProposta";
 import { LiberarLeadDialog } from "./LiberarLeadDialog";
+import { TempoRaia } from "./TempoRaia";
 
 type FiltroStatus = "todos" | "contactar" | "contactado" | "aberto" | "fechado";
 
@@ -90,6 +90,7 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
   const { data: canaisRows = [] } = useLeadCanais(cascataAtiva ? campanhaPropostaId : undefined);
   const { data: statusMap } = useLeadStatusProposta(campanhaPropostaId);
   const [liberarLead, setLiberarLead] = useState<{ id: string; nome?: string } | null>(null);
+  const proximaFase = useEnviarProximaFase();
 
   // Para canais pós Fase 1: leads liberados são aqueles cujo canal anterior
   // já tem ao menos uma raia finalizada (status_final ≠ 'aberto').
@@ -107,13 +108,13 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
 
   // Tempo na raia atual por lead (somente do canal ativo desta aba)
   const tempoPorLead = useMemo(() => {
-    const map = new Map<string, { id: string; segundos: number }>();
+    const map = new Map<string, { id: string; entrouEm: string }>();
     if (!cascataAtiva) return map;
     for (const r of canaisRows) {
       if (r.canal !== canal || r.status_final !== "aberto") continue;
       map.set(r.lead_id, {
         id: r.id,
-        segundos: tempoNaRaia(r.entrou_em, null),
+        entrouEm: r.entrou_em,
       });
     }
     return map;
@@ -422,7 +423,7 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
                     </td>
                     {cascataAtiva && (
                       <td className="px-4 py-2 text-xs text-muted-foreground">
-                        {tempo ? formatDuracao(tempo.segundos) : "—"}
+                        <TempoRaia entrouEm={tempo?.entrouEm} />
                       </td>
                     )}
                     <td className="px-4 py-2 text-right">
@@ -438,19 +439,48 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
                           <Unlock className="h-3 w-3 mr-1" /> Liberar lead
                         </Button>
                       ) : cascataAtiva ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={fechandoId === l.id}
-                          onClick={() => encerrarNaProposta(l.id)}
-                          className="h-7"
-                        >
-                          {fechandoId === l.id ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            "Encerrar nesta proposta"
+                        <div className="flex items-center justify-end gap-1.5">
+                          {tempo && canal !== "tiktok" && (
+                            <Button
+                              size="sm"
+                              variant="default"
+                              className="h-7"
+                              disabled={proximaFase.isPending}
+                              onClick={() =>
+                                proximaFase.mutate({
+                                  campanhaPropostaId: campanhaPropostaId!,
+                                  leadId: l.id,
+                                  canalAtual: canal!,
+                                })
+                              }
+                            >
+                              {proximaFase.isPending ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <>
+                                  <ArrowRightCircle className="h-3 w-3 mr-1" />
+                                  Próxima fase
+                                </>
+                              )}
+                            </Button>
                           )}
-                        </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={fechandoId === l.id}
+                            onClick={() => encerrarNaProposta(l.id)}
+                            className="h-7"
+                          >
+                            {fechandoId === l.id ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <>
+                                <XCircle className="h-3 w-3 mr-1" />
+                                Encerrar
+                              </>
+                            )}
+                          </Button>
+                        </div>
                       ) : (
                         <span className="text-xs text-muted-foreground">—</span>
                       )}

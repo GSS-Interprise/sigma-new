@@ -11804,6 +11804,15 @@ export type Database = {
       }
       cleanup_expired_edit_locks: { Args: never; Returns: undefined }
       cleanup_whatsapp_rate_limit: { Args: never; Returns: undefined }
+      enviar_lead_proxima_fase: {
+        Args: {
+          p_campanha_proposta_id: string
+          p_canal_atual: string
+          p_lead_id: string
+          p_motivo?: string
+        }
+        Returns: string
+      }
       exportar_leads_trafego_pago: {
         Args: { p_campanha_id: string }
         Returns: {
