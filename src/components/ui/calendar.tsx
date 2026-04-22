@@ -32,6 +32,7 @@ function Calendar({
   onMonthChange,
   ...props 
 }: CalendarProps) {
+  const selectedValue = (props as any).selected;
   const [viewMode, setViewMode] = React.useState<ViewMode>("days");
   const [decadeStart, setDecadeStart] = React.useState<number>(() => {
     const year = controlledMonth?.getFullYear() || new Date().getFullYear();
@@ -39,9 +40,8 @@ function Calendar({
   });
   const [internalMonth, setInternalMonth] = React.useState<Date>(() => {
     if (controlledMonth) return controlledMonth;
-    const selected = (props as any).selected;
-    if (selected instanceof Date) return selected;
-    if (selected?.from instanceof Date) return selected.from;
+    if (selectedValue instanceof Date) return selectedValue;
+    if (selectedValue?.from instanceof Date) return selectedValue.from;
     return new Date();
   });
 
@@ -51,16 +51,15 @@ function Calendar({
       return;
     }
 
-    const selected = (props as any).selected;
-    if (selected instanceof Date) {
-      setInternalMonth(selected);
+    if (selectedValue instanceof Date) {
+      setInternalMonth(selectedValue);
       return;
     }
 
-    if (selected?.from instanceof Date) {
-      setInternalMonth(selected.from);
+    if (selectedValue?.from instanceof Date) {
+      setInternalMonth(selectedValue.from);
     }
-  }, [controlledMonth, props]);
+  }, [controlledMonth, selectedValue]);
 
   const currentMonth = controlledMonth || internalMonth;
   const currentYear = currentMonth.getFullYear();
