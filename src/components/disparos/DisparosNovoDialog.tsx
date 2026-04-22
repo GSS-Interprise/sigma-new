@@ -197,11 +197,15 @@ export function DisparosNovoDialog({ open, onOpenChange }: Props) {
                 } />
               </SelectTrigger>
               <SelectContent>
-                {propostas.map((p: any) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.proposta?.codigo_proposta || p.proposta?.id?.slice(0, 8) || "Proposta"}
-                  </SelectItem>
-                ))}
+                {propostas.map((p: any) => {
+                  const num = p.proposta?.numero_proposta;
+                  const label = p.proposta?.nome
+                    ? `${num ? `#${num} — ` : ""}${p.proposta.nome}`
+                    : num ? `Proposta #${num}` : (p.proposta?.id?.slice(0, 8) || "Proposta");
+                  return (
+                    <SelectItem key={p.id} value={p.id}>{label}</SelectItem>
+                  );
+                })}
               </SelectContent>
             </Select>
             {campanhaId && propostas.length > 1 && !propostaId && (
