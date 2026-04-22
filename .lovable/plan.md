@@ -1,58 +1,74 @@
 
 
-## Plano (em português)
+## Problema
 
-Quando uma mensagem for enviada para um lead — não importa de onde (painel manual, chat do SIG Zap ou disparo em massa) — o lead automaticamente:
+O cronômetro mostra **105d 12h** porque o lead tem uma raia antiga (de campanha/proposta encerrada) que nunca foi fechada. Quando ele entra numa **nova proposta** com o mesmo número, o sistema pega a raia antiga em vez de abrir uma nova janela de contato isolada para a proposta atual.
 
-1. Vira **"Contactado"** na proposta
-2. Aparece no **Kanban de Acompanhamento** (coluna "Contatados")
-3. Começa a contar **tempo na raia** (cronômetro ao vivo)
-4. Ganha dois botões: **"Encerrar"** e **"Próxima fase"**
+Exemplo real: lead participou da campanha Chapecó com o número A → foi fechado por falta de interesse → semanas depois entra em outra proposta da mesma campanha (ou outra) com o mesmo número → conversa do WhatsApp já existe → trigger não abre nova raia porque acha que "já tem uma aberta" ou pega o tempo desde a primeira mensagem histórica.
+
+## Conceito: janela de contato por (lead × proposta)
+
+Cada vínculo `(lead, campanha_proposta)` tem sua própria janela de raia, **independente** de conversas antigas no WhatsApp. O cronômetro de tempo na raia mede **a janela atual desta proposta**, não o tempo absoluto desde a primeira mensagem do número.
+
+Regras:
+
+1. **Abertura da janela** = momento em que o lead é vinculado à proposta (`campanha_proposta_leads.created_at`) OU quando uma mensagem outbound é enviada após o vínculo, **o que vier primeiro relevante para esta proposta**.
+2. **Fechamento da janela** acontece em 4 situações:
+   - Operador clica **"Encerrar"** → `status_final = 'encerrado'`
+   - Operador clica **"Próxima fase"** → `status_final = 'transferido'` (abre raia do próximo canal)
+   - **Proposta é encerrada** (`campanha_propostas.status = 'encerrada'`) → fecha automaticamente todas as raias abertas dessa proposta como `status_final = 'proposta_encerrada'`
+   - **Campanha é encerrada** → fecha em cascata todas as raias das propostas dessa campanha
+3. **Reabertura em nova proposta**: quando o mesmo lead é vinculado a uma nova `campanha_proposta`, abre-se uma raia NOVA, isolada, com `entrou_em = now()`. A trigger de mensagem outbound deve filtrar por `campanha_proposta_id` específico, não pelo lead globalmente.
+
+## Causa raiz do bug atual
+
+A trigger `trg_sigzap_outbound_marca_contactado` hoje:
+- Olha todas as `campanha_propostas ativas` que contêm o lead
+- Insere raia se "não existe raia aberta WhatsApp" para aquele `(lead, proposta)`
+- **Problema**: a query do frontend (`useLeadCanais`) pega a raia mais antiga aberta do lead, ignorando a proposta — então mostra 105d de uma proposta antiga que nunca foi fechada quando o lead aparece numa nova.
+
+E também: ao **vincular o lead a uma proposta nova**, nenhuma raia é aberta. Só abre quando manda mensagem. Se o operador abrir o dossiê antes de mandar mensagem, vê resíduo de proposta antiga.
 
 ## O que vai mudar
 
-### 1. Banco de dados (migration)
+### 1. Migration SQL
 
-- **Gatilho automático** na tabela de mensagens: toda vez que uma mensagem sai (`from_me=true`) e a conversa tem lead vinculado:
-  - Abre a "raia" do WhatsApp nas propostas ativas desse lead (cronômetro inicia)
-  - Marca `leads.status = 'Contatados'` (se ainda estava "Novo")
-  - Registra no histórico do lead
-- **Função nova** `enviar_lead_proxima_fase`: fecha a raia atual como "transferido" e abre a do próximo canal da cascata da proposta
-- **Backfill**: leads que você já contactou (Ewerton, Bruna) serão corrigidos automaticamente
+**a) Trigger no vínculo do lead à proposta** (`campanha_proposta_leads AFTER INSERT`):
+- Abrir uma raia inicial "a contactar" em `campanha_proposta_lead_canais` para o canal inicial da cascata da proposta (geralmente WhatsApp), com `entrou_em = now()`, `status_final = NULL`. Ou deixar sem raia até a primeira mensagem — escolher uma das duas para consistência. **Decisão**: deixar SEM raia até o primeiro envio (evita poluir métrica). O frontend já trata "sem raia" como "A contactar" e mostra `—` no cronômetro.
 
-### 2. Disparo em massa (`campanha-disparo-processor`)
+**b) Corrigir `trg_sigzap_outbound_marca_contactado`**:
+- A query atual não está restrita corretamente por proposta. Garantir que cada `(lead, proposta_ativa)` que NÃO TEM raia aberta para o WhatsApp recebe uma raia nova com `entrou_em = now()`. Ignorar raias de propostas encerradas.
+- Idempotência: já existir raia aberta para `(lead, proposta, canal=whatsapp)` → não recriar.
 
-Hoje envia direto pela Evolution API mas não registra a conversa no SIG Zap. Vou ajustar para gravar `sigzap_conversations` + `sigzap_messages` com o `lead_id` — assim o gatilho dispara também para envios em massa, e o lead fica visível no inbox do SIG Zap para ser respondido.
+**c) Trigger no encerramento da proposta** (`campanha_propostas AFTER UPDATE WHEN status muda para 'encerrada'`):
+- Fechar todas as raias abertas (`status_final IS NULL`) de `campanha_proposta_lead_canais` daquela proposta com `status_final = 'proposta_encerrada'`, `saiu_em = now()`, `motivo_saida = 'proposta_encerrada'`.
 
-### 3. Painel manual (`send-disparo-manual`)
+**d) Trigger no encerramento da campanha** (`campanhas AFTER UPDATE WHEN status muda para 'encerrada'/'concluida'`):
+- Para cada `campanha_proposta` ativa daquela campanha, marcar como encerrada (cascata vai disparar a trigger do item c).
 
-Remover o fechamento prematuro da raia (hoje fecha como "respondeu" no momento do envio). Quem fecha a raia agora é o operador, via os dois botões.
+**e) Backfill imediato**:
+- Fechar todas as raias `(status_final IS NULL)` cuja proposta está com `status = 'encerrada'` → marcar `status_final = 'proposta_encerrada'`, `saiu_em = encerrada_em da proposta`.
+- Para o lead atual mostrando 105d: identificar a raia órfã, fechá-la, e se ele está vinculado a uma proposta ativa sem raia aberta, abrir uma nova com `entrou_em = now()`.
 
-### 4. Lista de leads da proposta (`CampanhaLeadsList`)
+### 2. Backend (`useLeadCanais` hook)
 
-- Coluna **"Tempo na raia"** com cronômetro ao vivo (atualiza a cada segundo enquanto a raia está aberta)
-  - Lead "A contactar" → mostra `—`
-  - Lead "Contactado" → cronômetro rodando
-  - Lead fechado → tempo congelado
-- Dois botões na linha do lead contactado:
-  - 🟢 **Próxima fase** — passa para o próximo canal da cascata
-  - 🔴 **Encerrar** — fecha o lead nessa proposta
+- Garantir que a query de "raia atual" filtra por `campanha_proposta_id` específico (parâmetro do dossiê) e por `status_final IS NULL`. Verificar que o componente pai já passa o `campanhaPropostaId` correto.
+- Se hoje a query usa só `lead_id`, restringir.
 
-### 5. Frontend — atualização instantânea
+### 3. Sem mudanças visuais
 
-Após qualquer envio, atualizar automaticamente: lista de leads da proposta, Kanban de Acompanhamento e badge de status.
+A coluna "Tempo na raia" continua igual; só vai mostrar o tempo correto da janela atual da proposta.
 
 ## Arquivos alterados
 
-- Nova migration SQL (gatilho + função nova + backfill)
-- `supabase/functions/send-disparo-manual/index.ts`
-- `supabase/functions/campanha-disparo-processor/index.ts`
-- `src/components/disparos/CampanhaLeadsList.tsx`
-- `src/components/disparos/TempoRaia.tsx` (novo, cronômetro ao vivo)
-- `src/hooks/useLeadCanais.ts` (novo hook `useEnviarProximaFase`)
-- `src/hooks/useDisparoManual.ts` + hook do chat SIG Zap (invalidações)
+- nova migration SQL (4 triggers + backfill)
+- `src/hooks/useLeadCanais.ts` — confirmar/corrigir filtro por `campanha_proposta_id`
+- (opcional) `src/components/disparos/CampanhaLeadsList.tsx` — confirmar que passa `campanha_proposta_id` no hook
 
-## Resultado final
+## Resultado
 
-Você envia mensagem (de qualquer lugar) → lead vira "Contactado" → aparece no Kanban → cronômetro começa → você decide depois entre **Encerrar** ou mandar para a **Próxima fase**.
+- Lead vinculado a proposta nova → raia começa do zero quando o operador manda a primeira mensagem (ou já fica em "A contactar" mostrando `—`).
+- Encerrar proposta/campanha → todas as raias abertas dessa proposta/campanha fecham automaticamente.
+- Mesmo lead voltando em nova proposta → janela isolada, cronômetro correto.
+- Bug do "105d 12h" sumirá após o backfill.
 
