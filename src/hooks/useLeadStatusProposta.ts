@@ -1,12 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
-export type StatusProposta = "a_contactar" | "em_aberto" | "contactado" | "fechado_proposta";
+export type StatusProposta = "a_contactar" | "contactado" | "fechado_proposta";
 
 export interface LeadStatusPropostaRow {
   campanha_proposta_id: string;
   lead_id: string;
   status_proposta: StatusProposta;
+  tem_raia_aberta: boolean;
   ultima_decisao_em: string | null;
   ultimo_motivo: string | null;
   bloqueado_blacklist: boolean;
