@@ -501,7 +501,7 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
               })}
             </tbody>
           </table>
-        </ScrollArea>
+        </div>
       )}
 
       <LeadProntuarioDialog
