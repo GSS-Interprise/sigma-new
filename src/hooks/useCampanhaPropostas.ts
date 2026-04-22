@@ -30,8 +30,35 @@ export function useCampanhaPropostas(campanhaId?: string) {
         console.error("[useCampanhaPropostas] erro:", error);
         throw error;
       }
+
+      const vinculos = data || [];
+      const listaIds = Array.from(
+        new Set(vinculos.map((item: any) => item.lista_id).filter(Boolean))
+      ) as string[];
+
+      const leadsPorLista = new Map<string, number>();
+
+      if (listaIds.length > 0) {
+        const { data: listaItens, error: listaItensError } = await supabase
+          .from("disparo_lista_itens")
+          .select("lista_id")
+          .in("lista_id", listaIds);
+
+        if (listaItensError) {
+          console.error("[useCampanhaPropostas] erro ao contar leads das listas:", listaItensError);
+          throw listaItensError;
+        }
+
+        for (const item of listaItens || []) {
+          leadsPorLista.set(item.lista_id, (leadsPorLista.get(item.lista_id) || 0) + 1);
+        }
+      }
+
       console.log("[useCampanhaPropostas] campanhaId=", campanhaId, "rows=", data?.length);
-      return data || [];
+      return vinculos.map((item: any) => ({
+        ...item,
+        lista_leads_count: item.lista_id ? leadsPorLista.get(item.lista_id) || 0 : 0,
+      }));
     },
   });
 }
