@@ -92,7 +92,10 @@ export default function DisparosCampanhas() {
         .select("id, id_proposta, descricao, status")
         .order("criado_em", { ascending: false });
       if (error) throw error;
-      return data || [];
+      // Apenas propostas gerais — exclui personalizadas
+      return (data || []).filter(
+        (p: any) => !/personalizada/i.test(p.descricao || "")
+      );
     },
   });
 
