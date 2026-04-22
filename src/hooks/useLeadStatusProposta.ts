@@ -44,6 +44,8 @@ export function useLeadStatusProposta(campanhaPropostaId: string | null | undefi
     queryKey: ["lead-status-proposta", campanhaPropostaId],
     enabled: !!campanhaPropostaId,
     refetchOnWindowFocus: true,
+    refetchOnMount: "always",
+    refetchInterval: 15000,
     staleTime: 0,
     queryFn: async () => {
       const { data, error } = await (supabase as any)
