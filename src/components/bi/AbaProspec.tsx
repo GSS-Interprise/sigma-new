@@ -364,20 +364,41 @@ export function AbaProspec() {
             </PanelCard>
 
             <PanelCard title="Mix por tipo" description="Distribuição no período" accent={NEON.magenta}>
-              <ResponsiveContainer width="100%" height={260}>
-                <PieChart>
-                  <Pie data={resumoTipos} dataKey="total" nameKey="tipo" innerRadius={55} outerRadius={95} paddingAngle={3} stroke="#020617" strokeWidth={2}>
-                    {resumoTipos.map((_r, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                  </Pie>
-                  <RechartsTooltip contentStyle={tooltipStyle} />
-                  <Legend wrapperStyle={{ color: "#cbd5e1", fontSize: 12 }} />
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="text-center -mt-32 pointer-events-none">
-                <div className="text-3xl font-bold" style={{ color: "#f1f5f9", textShadow: `0 0 10px ${NEON.magenta}66` }}>
-                  {totalGeralDisparos.toLocaleString()}
+              <div className="relative">
+                <ResponsiveContainer width="100%" height={260}>
+                  <PieChart>
+                    <Pie
+                      data={resumoTipos}
+                      dataKey="total"
+                      nameKey="tipo"
+                      innerRadius={60}
+                      outerRadius={95}
+                      paddingAngle={3}
+                      stroke="#020617"
+                      strokeWidth={2}
+                    >
+                      {resumoTipos.map((_r, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                    </Pie>
+                    <RechartsTooltip
+                      contentStyle={tooltipStyle}
+                      itemStyle={tooltipItemStyle}
+                      labelStyle={tooltipLabelStyle}
+                      formatter={(v: any, n: any) => [Number(v).toLocaleString(), n]}
+                    />
+                    <Legend wrapperStyle={{ color: "#cbd5e1", fontSize: 12 }} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div
+                  className="absolute inset-x-0 top-1/2 -translate-y-[60%] text-center pointer-events-none"
+                >
+                  <div
+                    className="text-3xl font-bold"
+                    style={{ color: "#f1f5f9", textShadow: `0 0 10px ${NEON.magenta}66` }}
+                  >
+                    {totalGeralDisparos.toLocaleString()}
+                  </div>
+                  <div className="text-[10px] uppercase tracking-widest" style={{ color: "#94a3b8" }}>total</div>
                 </div>
-                <div className="text-[10px] uppercase tracking-widest" style={{ color: "#64748b" }}>total</div>
               </div>
             </PanelCard>
           </div>
