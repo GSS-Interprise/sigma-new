@@ -441,6 +441,34 @@ export default function DisparosCampanhas() {
           </DialogContent>
         </Dialog>
       </AppLayout>
+
+      <AlertDialog open={!!confirmAcao} onOpenChange={(o) => !o && setConfirmAcao(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirmAcao?.tipo === "finalizar" ? "Finalizar campanha?" : "Deletar campanha?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmAcao?.tipo === "finalizar"
+                ? `A campanha "${confirmAcao?.nome}" será marcada como finalizada.`
+                : `A campanha "${confirmAcao?.nome}" e todos os seus vínculos serão deletados permanentemente.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!confirmAcao) return;
+                if (confirmAcao.tipo === "finalizar") finalizarCampanha.mutate(confirmAcao.id);
+                else deletarCampanha.mutate(confirmAcao.id);
+              }}
+              className={confirmAcao?.tipo === "deletar" ? "bg-destructive hover:bg-destructive/90" : ""}
+            >
+              Confirmar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </CaptacaoProtectedRoute>
   );
 }
