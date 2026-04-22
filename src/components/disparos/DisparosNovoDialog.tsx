@@ -58,7 +58,7 @@ export function DisparosNovoDialog({ open, onOpenChange }: Props) {
       if (!campanhaId) return [];
       const { data, error } = await supabase
         .from("campanha_propostas")
-        .select("id, status, lista_id, proposta:proposta_id (id, nome, numero_proposta, observacoes)")
+        .select("id, status, lista_id, proposta:proposta_id (id, nome, numero_proposta, descricao, id_proposta, observacoes)")
         .eq("campanha_id", campanhaId)
         .eq("status", "ativa")
         .order("created_at", { ascending: false });
@@ -200,9 +200,15 @@ export function DisparosNovoDialog({ open, onOpenChange }: Props) {
               <SelectContent>
                 {propostas.map((p: any) => {
                   const num = p.proposta?.numero_proposta;
-                  const label = p.proposta?.nome
-                    ? `${num ? `#${num} — ` : ""}${p.proposta.nome}`
-                    : num ? `Proposta #${num}` : (p.proposta?.id?.slice(0, 8) || "Proposta");
+                  const titulo =
+                    p.proposta?.nome ||
+                    p.proposta?.descricao ||
+                    p.proposta?.id_proposta;
+                  const label = titulo
+                    ? `${num ? `#${num} — ` : ""}${titulo}`
+                    : num
+                    ? `Proposta #${num}`
+                    : p.proposta?.id?.slice(0, 8) || "Proposta";
                   return (
                     <SelectItem key={p.id} value={p.id}>{label}</SelectItem>
                   );
