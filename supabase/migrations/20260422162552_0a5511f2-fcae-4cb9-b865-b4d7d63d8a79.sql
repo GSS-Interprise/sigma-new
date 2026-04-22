@@ -1,0 +1,1 @@
+UPDATE campanhas SET status = 'ativa' WHERE status = 'rascunho';
