@@ -66,6 +66,9 @@ export function useVincularListaProposta() {
     onSuccess: (input) => {
       qc.invalidateQueries({ queryKey: ["campanha-propostas", input.campanha_id] });
       qc.invalidateQueries({ queryKey: ["campanha-proposta", input.campanha_proposta_id] });
+      qc.invalidateQueries({ queryKey: ["campanha-proposta-detail", input.campanha_proposta_id] });
+      qc.invalidateQueries({ queryKey: ["campanha-proposta-leads-stats"] });
+      qc.refetchQueries({ queryKey: ["campanha-proposta-detail", input.campanha_proposta_id] });
       toast.success("Lista vinculada à proposta");
     },
     onError: (e: any) => toast.error("Erro: " + e.message),
