@@ -334,16 +334,20 @@ export function DisparosContatosPanel({ campanha, onBack, campanhaPropostaId, em
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={onBack}>
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Voltar
-          </Button>
-          <div>
-            <h2 className="text-xl font-semibold">{campanha.nome}</h2>
-            <p className="text-sm text-muted-foreground">
-              {campanha.proposta_id} | {campanha.instancia}
-            </p>
-          </div>
+          {!embedded && onBack && (
+            <Button variant="ghost" size="sm" onClick={onBack}>
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Voltar
+            </Button>
+          )}
+          {!embedded && campanha && (
+            <div>
+              <h2 className="text-xl font-semibold">{campanha.nome}</h2>
+              <p className="text-sm text-muted-foreground">
+                {campanha.proposta_id} | {campanha.instancia}
+              </p>
+            </div>
+          )}
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => refetch()}>
@@ -372,15 +376,16 @@ export function DisparosContatosPanel({ campanha, onBack, campanhaPropostaId, em
                   <AlertDialogAction
                     onClick={async () => {
                       try {
-                        const { data, error } = await supabase
+                        let q = supabase
                           .from("disparos_contatos")
                           .update({ status: "1-ENVIAR" })
-                          .eq("campanha_id", campanha.id)
-                          .eq("status", "5-NOZAP")
-                          .select("id");
+                          .eq("status", "5-NOZAP");
+                        if (filterByProposta) q = q.eq("campanha_proposta_id", campanhaPropostaId!);
+                        else if (campanha?.id) q = q.eq("campanha_id", campanha.id);
+                        const { data, error } = await q.select("id");
                         if (error) throw error;
                         toast.success(`${data?.length ?? 0} lead(s) resetados para 1-ENVIAR!`);
-                        queryClient.invalidateQueries({ queryKey: ["disparos-contatos", campanha.id] });
+                        queryClient.invalidateQueries({ queryKey: ["disparos-contatos", queryKeyId] });
                         queryClient.invalidateQueries({ queryKey: ["disparos-campanhas"] });
                       } catch (err: any) {
                         toast.error("Erro ao resetar: " + err.message);
