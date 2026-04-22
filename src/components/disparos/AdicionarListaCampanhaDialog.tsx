@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -16,7 +16,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useDisparoListas } from "@/hooks/useDisparoListas";
-import { useAdicionarListaCampanha } from "@/hooks/useCampanhaListas";
+import { useVincularListaProposta } from "@/hooks/useCampanhaListas";
+import { useCampanhaPropostas } from "@/hooks/useCampanhaPropostas";
 import { Users } from "lucide-react";
 
 interface Props {
@@ -26,13 +27,25 @@ interface Props {
 }
 
 export function AdicionarListaCampanhaDialog({ campanhaId, open, onOpenChange }: Props) {
+  const [propostaId, setPropostaId] = useState("");
   const [listaId, setListaId] = useState("");
   const { data: listas = [] } = useDisparoListas();
-  const adicionar = useAdicionarListaCampanha();
+  const { data: vinculos = [] } = useCampanhaPropostas(campanhaId);
+  const vincular = useVincularListaProposta();
+
+  const propostasAtivas = useMemo(
+    () => (vinculos as any[]).filter((v) => v.status === "ativa"),
+    [vinculos]
+  );
 
   const handleSubmit = async () => {
-    if (!listaId) return;
-    await adicionar.mutateAsync({ campanha_id: campanhaId, lista_id: listaId });
+    if (!propostaId || !listaId) return;
+    await vincular.mutateAsync({
+      campanha_proposta_id: propostaId,
+      lista_id: listaId,
+      campanha_id: campanhaId,
+    });
+    setPropostaId("");
     setListaId("");
     onOpenChange(false);
   };
@@ -43,13 +56,29 @@ export function AdicionarListaCampanhaDialog({ campanhaId, open, onOpenChange }:
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Users className="h-5 w-5" />
-            Adicionar lista de disparo
+            Vincular lista a uma proposta
           </DialogTitle>
           <DialogDescription>
-            Selecione a lista de contatos que ficará disponível nesta campanha.
+            Escolha a proposta vinculada à campanha e a lista de contatos que será usada nela.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>Proposta da campanha *</Label>
+            <Select value={propostaId} onValueChange={setPropostaId}>
+              <SelectTrigger>
+                <SelectValue placeholder={propostasAtivas.length ? "Selecione a proposta" : "Nenhuma proposta vinculada"} />
+              </SelectTrigger>
+              <SelectContent>
+                {propostasAtivas.map((v: any) => (
+                  <SelectItem key={v.id} value={v.id}>
+                    {v.proposta?.id_proposta || v.proposta?.descricao || v.id.slice(0, 8)}
+                    {v.lista?.nome ? ` • atual: ${v.lista.nome}` : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <div className="space-y-2">
             <Label>Lista de prospecção *</Label>
             <Select value={listaId} onValueChange={setListaId}>
@@ -67,10 +96,10 @@ export function AdicionarListaCampanhaDialog({ campanhaId, open, onOpenChange }:
           </div>
           <Button
             onClick={handleSubmit}
-            disabled={!listaId || adicionar.isPending}
+            disabled={!propostaId || !listaId || vincular.isPending}
             className="w-full"
           >
-            {adicionar.isPending ? "Adicionando..." : "Adicionar lista"}
+            {vincular.isPending ? "Vinculando..." : "Vincular lista"}
           </Button>
         </div>
       </DialogContent>

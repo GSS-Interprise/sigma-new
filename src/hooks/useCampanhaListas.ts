@@ -52,6 +52,26 @@ export function useAdicionarListaCampanha() {
   });
 }
 
+export function useVincularListaProposta() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { campanha_proposta_id: string; lista_id: string; campanha_id: string }) => {
+      const { error } = await supabase
+        .from("campanha_propostas")
+        .update({ lista_id: input.lista_id })
+        .eq("id", input.campanha_proposta_id);
+      if (error) throw error;
+      return input;
+    },
+    onSuccess: (input) => {
+      qc.invalidateQueries({ queryKey: ["campanha-propostas", input.campanha_id] });
+      qc.invalidateQueries({ queryKey: ["campanha-proposta", input.campanha_proposta_id] });
+      toast.success("Lista vinculada à proposta");
+    },
+    onError: (e: any) => toast.error("Erro: " + e.message),
+  });
+}
+
 export function useRemoverListaCampanha() {
   const qc = useQueryClient();
   return useMutation({

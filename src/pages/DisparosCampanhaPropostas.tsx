@@ -6,10 +6,9 @@ import { CaptacaoProtectedRoute } from "@/components/auth/CaptacaoProtectedRoute
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Plus, ExternalLink, Megaphone, Users, FileText, Trash2 } from "lucide-react";
+import { ArrowLeft, ExternalLink, Megaphone, Users, FileText } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCampanhaPropostas } from "@/hooks/useCampanhaPropostas";
-import { useCampanhaListas, useRemoverListaCampanha } from "@/hooks/useCampanhaListas";
 import { VincularPropostaCampanhaDialog } from "@/components/disparos/VincularPropostaCampanhaDialog";
 import { AdicionarListaCampanhaDialog } from "@/components/disparos/AdicionarListaCampanhaDialog";
 import { CampanhaPropostaModal } from "@/components/disparos/CampanhaPropostaModal";
@@ -47,8 +46,6 @@ export default function DisparosCampanhaPropostas() {
   });
 
   const { data: vinculos = [], isLoading } = useCampanhaPropostas(id);
-  const { data: listasVinc = [], isLoading: isLoadingListas } = useCampanhaListas(id);
-  const removerLista = useRemoverListaCampanha();
 
   const totalPropostas = vinculos.length;
   const ativas = vinculos.filter((v: any) => v.status === "ativa").length;
@@ -91,7 +88,7 @@ export default function DisparosCampanhaPropostas() {
             <div className="flex items-center gap-2 flex-wrap">
               <Button variant="outline" onClick={() => setListaOpen(true)}>
                 <Users className="h-4 w-4 mr-1" />
-                Adicionar lista de disparo
+                Vincular lista à proposta
               </Button>
               <Button onClick={() => setVincularOpen(true)}>
                 <FileText className="h-4 w-4 mr-1" />
@@ -178,47 +175,6 @@ export default function DisparosCampanhaPropostas() {
             )}
           </div>
 
-          {/* Listas de disparo vinculadas */}
-          <div>
-            <h2 className="text-lg font-semibold mb-3">Listas de disparo</h2>
-            {isLoadingListas ? (
-              <Card className="p-8 text-center text-muted-foreground">Carregando...</Card>
-            ) : listasVinc.length === 0 ? (
-              <Card className="p-8 text-center text-sm text-muted-foreground">
-                Nenhuma lista adicionada. Clique em "Adicionar lista de disparo" para começar.
-              </Card>
-            ) : (
-              <div className="grid gap-2">
-                {listasVinc.map((l: any) => (
-                  <Card key={l.id}>
-                    <CardContent className="p-4">
-                      <div className="flex items-center justify-between gap-3 flex-wrap">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <Users className="h-5 w-5 text-muted-foreground shrink-0" />
-                          <div className="min-w-0">
-                            <div className="font-medium truncate">
-                              {l.lista?.nome || "Lista"}
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              {l.lista_leads_count ?? 0} leads
-                            </div>
-                          </div>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => removerLista.mutate(l.id)}
-                          disabled={removerLista.isPending}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </div>
         </div>
 
         {id && (
