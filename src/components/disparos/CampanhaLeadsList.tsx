@@ -90,6 +90,7 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
   const { data: canaisRows = [] } = useLeadCanais(cascataAtiva ? campanhaPropostaId : undefined);
   const { data: statusMap } = useLeadStatusProposta(campanhaPropostaId);
   const [liberarLead, setLiberarLead] = useState<{ id: string; nome?: string } | null>(null);
+  const proximaFase = useEnviarProximaFase();
 
   // Para canais pós Fase 1: leads liberados são aqueles cujo canal anterior
   // já tem ao menos uma raia finalizada (status_final ≠ 'aberto').
