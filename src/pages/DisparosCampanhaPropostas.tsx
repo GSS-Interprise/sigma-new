@@ -177,6 +177,48 @@ export default function DisparosCampanhaPropostas() {
               </div>
             )}
           </div>
+
+          {/* Listas de disparo vinculadas */}
+          <div>
+            <h2 className="text-lg font-semibold mb-3">Listas de disparo</h2>
+            {isLoadingListas ? (
+              <Card className="p-8 text-center text-muted-foreground">Carregando...</Card>
+            ) : listasVinc.length === 0 ? (
+              <Card className="p-8 text-center text-sm text-muted-foreground">
+                Nenhuma lista adicionada. Clique em "Adicionar lista de disparo" para começar.
+              </Card>
+            ) : (
+              <div className="grid gap-2">
+                {listasVinc.map((l: any) => (
+                  <Card key={l.id}>
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between gap-3 flex-wrap">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <Users className="h-5 w-5 text-muted-foreground shrink-0" />
+                          <div className="min-w-0">
+                            <div className="font-medium truncate">
+                              {l.lista?.nome || "Lista"}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {l.lista_leads_count ?? 0} leads
+                            </div>
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removerLista.mutate(l.id)}
+                          disabled={removerLista.isPending}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {id && (
@@ -184,6 +226,13 @@ export default function DisparosCampanhaPropostas() {
             campanhaId={id}
             open={vincularOpen}
             onOpenChange={setVincularOpen}
+          />
+        )}
+        {id && (
+          <AdicionarListaCampanhaDialog
+            campanhaId={id}
+            open={listaOpen}
+            onOpenChange={setListaOpen}
           />
         )}
         <CampanhaPropostaModal
