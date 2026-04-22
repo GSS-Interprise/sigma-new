@@ -10,7 +10,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Eye, Trash2, Users, CheckCircle, XCircle, AlertTriangle, Send, Power, PowerOff, Bot, Info } from "lucide-react";
+import { Eye, Trash2, Users, CheckCircle, XCircle, AlertTriangle, Send, Power, PowerOff, Bot, Info, Rocket, Clock } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
@@ -186,6 +186,39 @@ export function DisparosCampanhasTab() {
     onError: (error: Error) => toast.error(error.message),
   });
 
+  const dispararMutation = useMutation({
+    mutationFn: async (campanhaId: string) => {
+      const { data, error } = await supabase.functions.invoke("disparos-webhook", {
+        body: { acao: "iniciar", campanha_id: campanhaId },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["disparos-campanhas"] });
+      toast.success("Disparo iniciado.");
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const agendarMutation = useMutation({
+    mutationFn: async ({ id, agendar }: { id: string; agendar: boolean }) => {
+      const novoStatus = agendar ? "agendado" : "pendente";
+      const { error } = await supabase
+        .from("disparos_campanhas")
+        .update({ status: novoStatus, updated_at: new Date().toISOString() })
+        .eq("id", id);
+      if (error) throw error;
+      return { agendar };
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["disparos-campanhas"] });
+      toast.success(data.agendar ? "Disparo agendado." : "Agendamento removido.");
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
   if (selectedCampanha) {
     return <DisparosContatosPanel campanha={selectedCampanha} onBack={() => setSelectedCampanha(null)} />;
   }
@@ -301,6 +334,31 @@ export function DisparosCampanhasTab() {
                   </div>
 
                   <div className="flex items-center gap-2">
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={() => dispararMutation.mutate(campanha.id)}
+                      disabled={dispararMutation.isPending || !campanha.ativo || campanha.total_contatos === 0}
+                      title="Disparar agora (envia lote ao n8n)"
+                    >
+                      <Rocket className="h-4 w-4 mr-1" />
+                      Disparar
+                    </Button>
+                    <Button
+                      variant={campanha.status === "agendado" ? "secondary" : "outline"}
+                      size="sm"
+                      onClick={() =>
+                        agendarMutation.mutate({
+                          id: campanha.id,
+                          agendar: campanha.status !== "agendado",
+                        })
+                      }
+                      disabled={agendarMutation.isPending}
+                      title={campanha.status === "agendado" ? "Remover agendamento" : "Agendar"}
+                    >
+                      <Clock className="h-4 w-4 mr-1" />
+                      {campanha.status === "agendado" ? "Agendado" : "Agendar"}
+                    </Button>
                     <Button variant="outline" size="sm" onClick={() => setSelectedCampanha(campanha)}>
                       <Eye className="h-4 w-4 mr-1" />Ver
                     </Button>
