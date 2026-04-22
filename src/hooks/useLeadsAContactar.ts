@@ -44,14 +44,25 @@ export function useLeadsAContactar(campanhaPropostaId: string | null | undefined
         if (eLista) throw eLista;
 
         if (propostaRow?.lista_id) {
-          const { data: listaItems, error: eItems } = await supabase
-            .from("disparo_lista_itens")
-            .select("lead_id")
-            .eq("lista_id", propostaRow.lista_id);
-
-          if (eItems) throw eItems;
+          // Pagina manualmente — Supabase trava em 1000 por padrão
+          const PAGE = 1000;
+          let from = 0;
+          const acc: any[] = [];
+          // eslint-disable-next-line no-constant-condition
+          while (true) {
+            const { data: page, error: eItems } = await supabase
+              .from("disparo_lista_itens")
+              .select("lead_id")
+              .eq("lista_id", propostaRow.lista_id)
+              .range(from, from + PAGE - 1);
+            if (eItems) throw eItems;
+            if (!page || page.length === 0) break;
+            acc.push(...page);
+            if (page.length < PAGE) break;
+            from += PAGE;
+          }
           leadIds = Array.from(
-            new Set((listaItems || []).map((item: any) => item.lead_id).filter(Boolean))
+            new Set(acc.map((item: any) => item.lead_id).filter(Boolean))
           ) as string[];
         }
       }
