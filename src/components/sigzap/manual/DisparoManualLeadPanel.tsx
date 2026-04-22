@@ -19,6 +19,7 @@ import { Phone, Send, Ban, Bookmark, Unlock, Loader2, X, Check, MessageCircle, P
 import { cn } from "@/lib/utils";
 import { useDisparoManual } from "@/hooks/useDisparoManual";
 import { LiberarLeadDialog } from "@/components/disparos/LiberarLeadDialog";
+import { usePermissions } from "@/hooks/usePermissions";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -53,6 +54,28 @@ export function DisparoManualLeadPanel({ campanhaPropostaId, leadId, onOpenChat 
   const [confirmBanco, setConfirmBanco] = useState(false);
   const disparo = useDisparoManual();
   const [wppStatus, setWppStatus] = useState<Record<string, "has" | "no" | "unchecked">>({});
+  const { isAdmin } = usePermissions();
+
+  // Primeiro disparo manual já enviado (trava instância e telefone para não-admin)
+  const { data: primeiroEnvio } = useQuery({
+    queryKey: ["dm-primeiro-envio", campanhaPropostaId, leadId],
+    enabled: !!campanhaPropostaId && !!leadId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("disparo_manual_envios")
+        .select("instance_id, phone_e164, created_at")
+        .eq("campanha_proposta_id", campanhaPropostaId!)
+        .eq("lead_id", leadId!)
+        .eq("status", "enviado")
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data as { instance_id: string; phone_e164: string } | null;
+    },
+  });
+
+  const travado = !!primeiroEnvio && !isAdmin;
 
   // Lead
   const { data: lead, isLoading: loadingLead } = useQuery({
@@ -103,11 +126,22 @@ export function DisparoManualLeadPanel({ campanhaPropostaId, leadId, onOpenChat 
 
   // Auto-select primeiro telefone ativo
   useEffect(() => {
+    if (travado && primeiroEnvio?.phone_e164) {
+      setSelectedPhone(primeiroEnvio.phone_e164);
+      return;
+    }
     if (!selectedPhone && phones.length > 0) {
       const ativo = phones.find((p) => !isInativo(p));
       if (ativo) setSelectedPhone(clean(ativo));
     }
-  }, [phones, selectedPhone]);
+  }, [phones, selectedPhone, travado, primeiroEnvio]);
+
+  // Trava instância para não-admin quando lead já foi contactado
+  useEffect(() => {
+    if (travado && primeiroEnvio?.instance_id) {
+      setSelectedInstance(primeiroEnvio.instance_id);
+    }
+  }, [travado, primeiroEnvio]);
 
   // Toggle inativo
   const toggleInativo = useMutation({
@@ -256,6 +290,7 @@ export function DisparoManualLeadPanel({ campanhaPropostaId, leadId, onOpenChat 
               <Select
                 value={selectedInstance ?? ""}
                 onValueChange={setSelectedInstance}
+                disabled={travado}
               >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Selecione uma instância" />
@@ -271,6 +306,11 @@ export function DisparoManualLeadPanel({ campanhaPropostaId, leadId, onOpenChat 
                   ))}
                 </SelectContent>
               </Select>
+            )}
+            {travado && (
+              <p className="text-[11px] text-muted-foreground italic">
+                Lead já contactado — instância e número travados. Apenas administradores podem alterar.
+              </p>
             )}
           </div>
 
@@ -291,20 +331,26 @@ export function DisparoManualLeadPanel({ campanhaPropostaId, leadId, onOpenChat 
                 const numero = clean(p);
                 const isSelected = selectedPhone === numero;
                 const wpp = wppStatus[numero];
+                const lockedRow = travado && primeiroEnvio?.phone_e164 !== numero;
                 return (
                   <div
                     key={p}
                     className={cn(
                       "flex items-center gap-1.5 cursor-pointer",
-                      inativo && "opacity-50"
+                      inativo && "opacity-50",
+                      lockedRow && "opacity-40 cursor-not-allowed"
                     )}
-                    onClick={() => !inativo && setSelectedPhone(numero)}
+                    onClick={() => {
+                      if (inativo) return;
+                      if (travado) return;
+                      setSelectedPhone(numero);
+                    }}
                   >
                     <input
                       type="radio"
                       readOnly
                       checked={isSelected}
-                      disabled={inativo}
+                      disabled={inativo || travado}
                       className="h-3 w-3 accent-primary flex-shrink-0"
                     />
                     <div
