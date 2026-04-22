@@ -39,19 +39,21 @@ export function useCampanhaPropostas(campanhaId?: string) {
       const leadsPorLista = new Map<string, number>();
 
       if (listaIds.length > 0) {
-        const { data: listaItens, error: listaItensError } = await supabase
-          .from("disparo_lista_itens")
-          .select("lista_id")
-          .in("lista_id", listaIds);
-
-        if (listaItensError) {
-          console.error("[useCampanhaPropostas] erro ao contar leads das listas:", listaItensError);
-          throw listaItensError;
-        }
-
-        for (const item of listaItens || []) {
-          leadsPorLista.set(item.lista_id, (leadsPorLista.get(item.lista_id) || 0) + 1);
-        }
+        // Conta por lista usando HEAD + count exato (evita o limite padrão de 1000 linhas
+        // do PostgREST que estava truncando listas grandes).
+        await Promise.all(
+          listaIds.map(async (lid) => {
+            const { count, error } = await supabase
+              .from("disparo_lista_itens")
+              .select("lista_id", { count: "exact", head: true })
+              .eq("lista_id", lid);
+            if (error) {
+              console.error("[useCampanhaPropostas] erro ao contar lista", lid, error);
+              return;
+            }
+            leadsPorLista.set(lid, count || 0);
+          })
+        );
       }
 
       console.log("[useCampanhaPropostas] campanhaId=", campanhaId, "rows=", data?.length);
