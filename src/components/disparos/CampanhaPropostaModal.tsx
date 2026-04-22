@@ -51,6 +51,18 @@ const ABAS: {
   { value: "tiktok", label: "TikTok", Icon: TikTokIcon, descricao: "Engajamento e prospecção via TikTok" },
 ];
 
+const GRUPOS: { fase: string | null; abas: string[] }[] = [
+  { fase: null, abas: ["cascata"] },
+  { fase: "FASE 1", abas: ["whatsapp", "trafego_pago"] },
+  { fase: "FASE 2", abas: ["email", "instagram", "ligacao", "linkedin", "tiktok"] },
+];
+
+const TRIGGER_CLASS =
+  "flex flex-col gap-1 py-2 px-2 min-w-[88px] rounded-md transition-all " +
+  "text-muted-foreground hover:text-foreground hover:bg-muted/40 " +
+  "data-[state=active]:bg-primary/10 data-[state=active]:text-foreground " +
+  "data-[state=active]:ring-2 data-[state=active]:ring-primary data-[state=active]:shadow-sm";
+
 export function CampanhaPropostaModal({ campanhaPropostaId, open, onOpenChange }: Props) {
   const { data: cp } = useQuery({
     queryKey: ["campanha-proposta-detail", campanhaPropostaId],
