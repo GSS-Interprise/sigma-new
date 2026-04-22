@@ -12,7 +12,6 @@ import { AbaContratos } from "@/components/bi/AbaContratos";
 import { AbaAges } from "@/components/bi/AbaAges";
 import { AbaTI } from "@/components/bi/AbaTI";
 import { AbaClienteExterno } from "@/components/bi/AbaClienteExterno";
-import { AbaProspec } from "@/components/bi/AbaProspec";
 
 const ALL_MODULE_KEYS = BI_CATEGORIES.flatMap((c) => c.modules.map((m) => m.key));
 
@@ -30,7 +29,6 @@ const MODULE_COMPONENTS: Record<string, React.ComponentType> = {
   relacionamento: AbaRelacionamento,
   financeiro: AbaFinanceiro,
   disparos: AbaDisparos,
-  prospec: AbaProspec,
   escalas: AbaEscalas,
   ti: AbaTI,
 };
