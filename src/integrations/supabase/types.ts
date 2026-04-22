@@ -11918,6 +11918,15 @@ export type Database = {
         }
         Returns: Json
       }
+      mover_lead_entre_propostas: {
+        Args: {
+          p_canal?: string
+          p_lead_id: string
+          p_proposta_destino: string
+          p_proposta_origem: string
+        }
+        Returns: string
+      }
       nome_is_subset: {
         Args: { p_nome1: string; p_nome2: string }
         Returns: boolean

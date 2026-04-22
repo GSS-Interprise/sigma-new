@@ -101,7 +101,16 @@ export function useAdicionarLeadsCampanha() {
       qc.invalidateQueries({ queryKey: ["campanhas-prospeccao"] });
       toast.success(`${count} leads adicionados à campanha`);
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => {
+      const msg = String(e?.message || "");
+      if (msg.includes("Lead já está ativo em outra proposta")) {
+        toast.error(
+          "Um ou mais leads já estão ativos em outra proposta desta campanha. Encerre o vínculo atual antes de adicioná-los aqui."
+        );
+      } else {
+        toast.error(msg || "Erro ao adicionar leads");
+      }
+    },
   });
 }
 
