@@ -152,13 +152,13 @@ export function FiltroPeriodo({
     ? "border-[hsl(var(--fp-border)/0.22)] bg-[hsl(var(--fp-surface-elevated)/0.96)] text-[hsl(var(--fp-foreground))] hover:border-[hsl(var(--fp-border)/0.5)] focus:ring-[hsl(var(--fp-accent)/0.35)]"
     : "";
   const popoverCls = isDark
-    ? "z-50 w-auto border-[hsl(var(--fp-border)/0.24)] bg-[hsl(var(--fp-surface)/0.98)] p-0 text-[hsl(var(--fp-foreground))] shadow-[0_0_24px_hsl(var(--fp-border)/0.15)]"
+    ? "z-[220] w-auto border-[hsl(var(--fp-border)/0.34)] bg-[hsl(var(--fp-surface)/1)] p-0 text-[hsl(var(--fp-foreground))] shadow-[0_0_28px_hsl(var(--fp-border)/0.18)]"
     : "w-auto p-0 bg-popover z-50";
   const selectContentCls = isDark
-    ? "z-50 border-[hsl(var(--fp-border)/0.24)] bg-[hsl(var(--fp-surface)/0.98)] text-[hsl(var(--fp-foreground))] shadow-[0_0_24px_hsl(var(--fp-border)/0.15)] [&_[data-radix-select-viewport]]:p-2"
+    ? "z-[220] border-[hsl(var(--fp-border)/0.34)] bg-[hsl(var(--fp-surface)/1)] text-[hsl(var(--fp-foreground))] shadow-[0_0_28px_hsl(var(--fp-border)/0.18)] [&_[data-radix-select-viewport]]:p-2"
     : "bg-popover z-50";
   const selectItemCls = isDark
-    ? "rounded-md text-[hsl(var(--fp-foreground))] focus:bg-[hsl(var(--fp-accent)/0.14)] focus:text-[hsl(var(--fp-foreground))] data-[state=checked]:bg-[hsl(var(--fp-accent)/0.12)] data-[state=checked]:text-[hsl(var(--fp-foreground))]"
+    ? "rounded-md text-[hsl(var(--fp-foreground))] hover:bg-[hsl(var(--fp-accent)/0.12)] hover:text-[hsl(var(--fp-foreground))] focus:bg-[hsl(var(--fp-accent)/0.16)] focus:text-[hsl(var(--fp-foreground))] data-[state=checked]:bg-[hsl(var(--fp-accent)/0.14)] data-[state=checked]:text-[hsl(var(--fp-foreground))]"
     : "";
   const buttonCls = isDark
     ? "w-full justify-start border-[hsl(var(--fp-border)/0.22)] bg-[hsl(var(--fp-surface-elevated)/0.96)] text-left font-normal text-[hsl(var(--fp-foreground))] hover:border-[hsl(var(--fp-border)/0.5)] hover:bg-[hsl(var(--fp-surface-elevated))] hover:text-[hsl(var(--fp-foreground))]"
@@ -179,7 +179,7 @@ export function FiltroPeriodo({
             <SelectTrigger className={triggerCls}>
               <SelectValue placeholder="Selecione o período" />
             </SelectTrigger>
-            <SelectContent className={selectContentCls}>
+            <SelectContent className={selectContentCls} style={themeVars}>
                 <SelectItem value="atual" className={selectItemCls}>Mês atual</SelectItem>
               {presets.ultimos8.map((m) => (
                   <SelectItem key={m.value} value={m.value} className={selectItemCls}>
@@ -208,7 +208,7 @@ export function FiltroPeriodo({
                   {labelPersonalizado}
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className={popoverCls} align="start">
+              <PopoverContent className={popoverCls} align="start" style={themeVars}>
                 <Calendar
                   mode="range"
                   selected={range}
