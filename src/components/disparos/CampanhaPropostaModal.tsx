@@ -162,6 +162,8 @@ export function CampanhaPropostaModal({ campanhaPropostaId, open, onOpenChange }
                   campanhaPropostaId={campanhaPropostaId}
                   listaId={cp?.lista_id}
                 />
+              ) : value === "whatsapp" ? (
+                <ZapTab campanhaPropostaId={campanhaPropostaId} />
               ) : (
                 <>
               {value === "trafego_pago" && (
