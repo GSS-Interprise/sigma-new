@@ -106,6 +106,30 @@ export default function DisparosSigZap() {
     return () => window.removeEventListener('sigzap-open-conversa', handler);
   }, []);
 
+  // Auto-abre conversa existente do lead selecionado no Disparo Manual
+  useEffect(() => {
+    if (mode !== "manual" || !dmLeadId) {
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from("sigzap_conversations")
+        .select("id, last_message_at, updated_at")
+        .eq("lead_id", dmLeadId)
+        .order("last_message_at", { ascending: false, nullsFirst: false })
+        .limit(1);
+      if (cancelled) return;
+      if (error) return;
+      if (data && data.length > 0) {
+        setSelectedConversaId(data[0].id);
+      } else {
+        setSelectedConversaId(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [dmLeadId, mode]);
+
   const handleFixDuplicates = async () => {
     try {
       setFixingDuplicates(true);
