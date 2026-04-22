@@ -17,11 +17,16 @@ export function useCampanhaListas(campanhaId?: string) {
       const ids = Array.from(new Set(rows.map((r: any) => r.lista_id).filter(Boolean))) as string[];
       const counts = new Map<string, number>();
       if (ids.length) {
-        const { data: itens } = await supabase
-          .from("disparo_lista_itens")
-          .select("lista_id")
-          .in("lista_id", ids);
-        for (const it of itens || []) counts.set(it.lista_id, (counts.get(it.lista_id) || 0) + 1);
+        // HEAD + count exato evita o limite padrão de 1000 linhas do PostgREST
+        await Promise.all(
+          ids.map(async (lid) => {
+            const { count } = await supabase
+              .from("disparo_lista_itens")
+              .select("lista_id", { count: "exact", head: true })
+              .eq("lista_id", lid);
+            counts.set(lid, count || 0);
+          })
+        );
       }
       return rows.map((r: any) => ({ ...r, lista_leads_count: counts.get(r.lista_id) || 0 }));
     },
