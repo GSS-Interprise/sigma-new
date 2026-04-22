@@ -2,3 +2,6 @@ project_id = "zupsbgtoeoixfokzkjro"
 
 [functions.evolution-api-proxy]
 verify_jwt = false
+
+[functions.disparos-zap-pendentes]
+verify_jwt = false
