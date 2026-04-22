@@ -66,7 +66,6 @@ export default function Disparos() {
     { name: "Captadores", href: "/disparos/captadores", icon: ShieldCheck, description: "Gerencie permissões do setor", permission: null, adminOnly: false },
     { name: "Monitor", href: "/disparos/monitor", icon: Eye, description: "Supervisão de captadores (ADM)", permission: null, adminOnly: true },
     { name: "Residentes", href: "/disparos/residentes", icon: GraduationCap, description: "Gerencie médicos residentes", permission: "leads" as CaptacaoPermission, adminOnly: false },
-    { name: "Tráfego Pago", href: "/disparos/trafego-pago", icon: Megaphone, description: "Envie listas de prospecção via webhook", permission: "disparos_zap" as CaptacaoPermission, adminOnly: false },
     { name: "Campanhas", href: "/disparos/campanhas", icon: CampaignIcon, description: "Gerencie suas campanhas de disparo", permission: "disparos_zap" as CaptacaoPermission, adminOnly: false },
   ];
 

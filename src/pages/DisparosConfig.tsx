@@ -3,7 +3,7 @@ import { InstanciaConfigTab } from "@/components/configuracoes/InstanciaConfigTa
 import { CaptacaoProtectedRoute } from "@/components/auth/CaptacaoProtectedRoute";
 import { WebhookDisparosTab } from "@/components/disparos/WebhookDisparosTab";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Send, Megaphone, Webhook } from "lucide-react";
+import { Send, Webhook } from "lucide-react";
 import { usePermissions } from "@/hooks/usePermissions";
 
 export default function DisparosConfig() {
@@ -36,10 +36,6 @@ export default function DisparosConfig() {
                 <Send className="h-4 w-4" />
                 WhatsApp de Disparos
               </TabsTrigger>
-              <TabsTrigger value="trafego_pago" className="gap-2">
-                <Megaphone className="h-4 w-4" />
-                Tráfego Pago
-              </TabsTrigger>
               {isAdmin && (
                 <TabsTrigger value="webhook-disparos" className="gap-2">
                   <Webhook className="h-4 w-4" />
@@ -49,9 +45,6 @@ export default function DisparosConfig() {
             </TabsList>
             <TabsContent value="disparos" className="mt-4">
               <InstanciaConfigTab tipo="disparos" />
-            </TabsContent>
-            <TabsContent value="trafego_pago" className="mt-4">
-              <InstanciaConfigTab tipo="trafego_pago" />
             </TabsContent>
             {isAdmin && (
               <TabsContent value="webhook-disparos" className="mt-4">
