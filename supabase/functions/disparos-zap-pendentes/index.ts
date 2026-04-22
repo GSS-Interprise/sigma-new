@@ -10,6 +10,7 @@ const corsHeaders = {
 }
 
 const LIMITE_POR_DIA = 120
+const LIMITE_POR_DISPARO = 600
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -138,25 +139,76 @@ Deno.serve(async (req) => {
     }
 
     // 5. Montar payload (mesmo formato do antigo "iniciar")
-    const contatos = selecionados.map((s, idx) => ({
-      numero: idx + 1,
-      id: s.id,
-      campanha_id: s.campanha_id,
-      campanha_proposta_id: s.campanha_proposta_id,
-      NOME: s.nome,
-      TELEFONE: s.telefone_e164,
-      TELEFONE_ORIGINAL: s.telefone_original,
-      ID_PROPOSTA: s.camp.proposta_id,
-      TEXTO_IA: s.camp.texto_ia,
-      INSTANCIA: s.camp.instancia,
-      RESPONSAVEL: s.camp.responsavel_nome,
-      tentativas: (s.tentativas || 0) + 1,
-    }))
+    // Agrupa por (campanha_id + instancia) para manter o MESMO envelope que
+    // o disparos-webhook envia ao n8n: { campanha_id, instancia, contatos, total_pendentes, lote_info }
+    type Lote = {
+      campanha_id: string
+      instancia: string | null
+      contatos: any[]
+      total_pendentes: number
+      lote_info: {
+        enviados_agora: number
+        enviados_hoje: number
+        limite_diario: number
+        limite_disparo: number
+        restantes: number
+      }
+    }
+    const lotesMap = new Map<string, Lote>()
+    for (const s of selecionados) {
+      const camp = s.camp
+      const key = `${s.campanha_id}::${camp.instancia ?? ''}`
+      let lote = lotesMap.get(key)
+      if (!lote) {
+        lote = {
+          campanha_id: s.campanha_id,
+          instancia: camp.instancia ?? null,
+          contatos: [],
+          total_pendentes: 0,
+          lote_info: {
+            enviados_agora: 0,
+            enviados_hoje: 0,
+            limite_diario: LIMITE_POR_DIA,
+            limite_disparo: LIMITE_POR_DISPARO,
+            restantes: 0,
+          },
+        }
+        lotesMap.set(key, lote)
+      }
+      lote.contatos.push({
+        numero: lote.contatos.length + 1,
+        id: s.id,
+        campanha_id: s.campanha_id,
+        campanha_proposta_id: s.campanha_proposta_id,
+        NOME: s.nome,
+        TELEFONE: s.telefone_e164,
+        TELEFONE_ORIGINAL: s.telefone_original,
+        ID_PROPOSTA: camp.proposta_id,
+        TEXTO_IA: camp.texto_ia,
+        INSTANCIA: camp.instancia,
+        RESPONSAVEL: camp.responsavel_nome,
+        tentativas: (s.tentativas || 0) + 1,
+      })
+      lote.total_pendentes = lote.contatos.length
+      lote.lote_info.enviados_agora = lote.contatos.length
+    }
+
+    const lotes = Array.from(lotesMap.values())
+
+    // Se há apenas 1 lote (filtro por campanha/instância específica), devolve
+    // exatamente o mesmo objeto que o webhook envia ao n8n. Caso contrário,
+    // devolve { lotes: [...] } para o n8n iterar.
+    if (lotes.length === 1) {
+      const unico = lotes[0]
+      return new Response(JSON.stringify(unico), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
 
     return new Response(
       JSON.stringify({
-        contatos,
-        total_pendentes: contatos.length,
+        lotes,
+        total_pendentes: lotes.reduce((acc, l) => acc + l.total_pendentes, 0),
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     )
