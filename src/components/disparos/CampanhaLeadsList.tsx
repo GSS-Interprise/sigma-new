@@ -308,7 +308,7 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
             <thead className="sticky top-0 bg-muted/50 backdrop-blur z-10">
               <tr className="text-left text-xs uppercase tracking-wider text-muted-foreground">
                 {cascataAtiva && (
-                  <th className="px-3 py-2 w-8">
+                  <th className="px-2 py-1.5 w-8">
                     <Checkbox
                       checked={
                         filtrados.length > 0 &&
@@ -318,15 +318,15 @@ export function CampanhaLeadsList({ listaId, listaNome, campanhaPropostaId, cana
                     />
                   </th>
                 )}
-                <th className="px-4 py-2 font-semibold">#</th>
-                <th className="px-4 py-2 font-semibold">Nome</th>
-                <th className="px-4 py-2 font-semibold">Telefone</th>
-                <th className="px-4 py-2 font-semibold">Email</th>
-                <th className="px-4 py-2 font-semibold">Status</th>
+                <th className="px-2 py-1.5 font-semibold w-10">#</th>
+                <th className="px-3 py-1.5 font-semibold">Nome</th>
+                <th className="px-3 py-1.5 font-semibold">Telefone</th>
+                <th className="px-3 py-1.5 font-semibold">Email</th>
+                <th className="px-3 py-1.5 font-semibold whitespace-nowrap">Status</th>
                 {cascataAtiva && (
-                  <th className="px-4 py-2 font-semibold">Tempo na raia</th>
+                  <th className="px-3 py-1.5 font-semibold whitespace-nowrap">Tempo</th>
                 )}
-                <th className="px-4 py-2 font-semibold text-right">Ação</th>
+                <th className="px-3 py-1.5 font-semibold text-right">Ação</th>
               </tr>
             </thead>
             <tbody>
