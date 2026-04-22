@@ -306,6 +306,7 @@ export function AbaProspec() {
         dataFim={dataFim}
         onDataInicioChange={setDataInicio}
         onDataFimChange={setDataFim}
+        theme="dark-neon"
       />
 
       {/* KPIs principais */}
