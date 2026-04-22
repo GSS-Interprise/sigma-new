@@ -1,12 +1,14 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useLeadsAContactar } from "@/hooks/useLeadsAContactar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { Users, MapPin, CheckCheck } from "lucide-react";
+import { Users, MapPin, CheckCheck, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type FiltroTipo = "todos" | "nao_contactados" | "contactados";
+
+const PAGE_SIZE = 30;
 
 interface Props {
   campanhaPropostaId: string | null;
@@ -17,6 +19,8 @@ interface Props {
 export function DisparoManualLeadsColumn({ campanhaPropostaId, selectedLeadId, onSelectLead }: Props) {
   const [filtro, setFiltro] = useState<FiltroTipo>("todos");
   const { data: leads, isLoading } = useLeadsAContactar(campanhaPropostaId);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   const counts = useMemo(() => {
     const arr = leads || [];
@@ -34,6 +38,31 @@ export function DisparoManualLeadsColumn({ campanhaPropostaId, selectedLeadId, o
     if (filtro === "nao_contactados") return leads.filter((l) => !l.contactado);
     return leads;
   }, [leads, filtro]);
+
+  // Reset paginação ao trocar filtro/proposta
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [filtro, campanhaPropostaId]);
+
+  const visiveis = useMemo(() => filtrados.slice(0, visibleCount), [filtrados, visibleCount]);
+  const temMais = visibleCount < filtrados.length;
+
+  // IntersectionObserver para lazy load conforme scroll
+  useEffect(() => {
+    if (!temMais) return;
+    const el = sentinelRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setVisibleCount((c) => Math.min(c + PAGE_SIZE, filtrados.length));
+        }
+      },
+      { root: null, rootMargin: "120px", threshold: 0 }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [temMais, filtrados.length, visiveis.length]);
 
   return (
     <div className="border-r flex flex-col h-full min-h-0 min-w-0 overflow-hidden bg-card">
@@ -76,16 +105,20 @@ export function DisparoManualLeadsColumn({ campanhaPropostaId, selectedLeadId, o
             </p>
           )}
           {campanhaPropostaId && isLoading && (
-            <>
-              {[1, 2, 3].map((i) => <Skeleton key={i} className="h-14 w-full" />)}
-            </>
+            <div className="space-y-2">
+              <div className="flex items-center justify-center gap-2 py-3 text-xs text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Carregando leads...
+              </div>
+              {[1, 2, 3, 4, 5].map((i) => <Skeleton key={i} className="h-14 w-full" />)}
+            </div>
           )}
           {campanhaPropostaId && !isLoading && filtrados.length === 0 && (
             <p className="text-xs text-muted-foreground p-4 text-center">
               Nenhum lead nesta categoria.
             </p>
           )}
-          {filtrados.map((l) => (
+          {visiveis.map((l) => (
             <button
               key={l.lead_id}
               onClick={() => onSelectLead(l.lead_id)}
@@ -114,6 +147,20 @@ export function DisparoManualLeadsColumn({ campanhaPropostaId, selectedLeadId, o
               </div>
             </button>
           ))}
+          {temMais && (
+            <div
+              ref={sentinelRef}
+              className="flex items-center justify-center gap-2 py-3 text-xs text-muted-foreground"
+            >
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Carregando mais... ({visiveis.length}/{filtrados.length})
+            </div>
+          )}
+          {!temMais && filtrados.length > PAGE_SIZE && (
+            <div className="text-center text-[10px] text-muted-foreground py-2 opacity-60">
+              {filtrados.length} leads carregados
+            </div>
+          )}
         </div>
       </ScrollArea>
     </div>
