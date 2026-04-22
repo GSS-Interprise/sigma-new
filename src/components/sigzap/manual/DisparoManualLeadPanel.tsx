@@ -52,7 +52,6 @@ export function DisparoManualLeadPanel({ campanhaPropostaId, leadId, onOpenChat 
   const [confirmBlacklist, setConfirmBlacklist] = useState(false);
   const [confirmBanco, setConfirmBanco] = useState(false);
   const disparo = useDisparoManual();
-  const [checkingWpp, setCheckingWpp] = useState(false);
   const [wppStatus, setWppStatus] = useState<Record<string, "has" | "no" | "unchecked">>({});
 
   // Lead
@@ -183,46 +182,35 @@ export function DisparoManualLeadPanel({ campanhaPropostaId, leadId, onOpenChat 
     campanhaPropostaId && leadId && selectedPhone && selectedInstance && mensagem.trim()
   );
 
-  const handleCheckWhatsApp = async () => {
-    if (phones.length === 0) return;
-    setCheckingWpp(true);
+  const checkWhatsAppFor = async (instanceName: string, phonesToCheck: string[]) => {
+    if (phonesToCheck.length === 0 || !instanceName) return;
     try {
-      const { data: instances } = await supabase
-        .from("sigzap_instances")
-        .select("name, chips!inner(tipo_instancia)")
-        .eq("status", "connected")
-        .eq("chips.tipo_instancia", "disparos");
-      if (!instances || instances.length === 0) {
-        toast.error("Nenhuma instância WhatsApp conectada.");
-        return;
-      }
-      let workingInstance: string | null = null;
-      for (const inst of instances) {
-        try {
-          const { data: testData } = await supabase.functions.invoke("evolution-api-proxy", {
-            body: { action: "checkIsOnWhatsapp", instanceName: inst.name, data: { numbers: ["5511999999999"] } },
-          });
-          const disc = testData?.code === "CONNECTION_CLOSED" || testData?.isBoom || testData?.output?.payload?.message === "Connection Closed";
-          if (!disc) { workingInstance = inst.name; break; }
-        } catch { /* next */ }
-      }
-      if (!workingInstance) { toast.error("Instâncias desconectadas."); return; }
       const newSt: Record<string, "has" | "no" | "unchecked"> = {};
-      for (const p of phones) {
+      for (const p of phonesToCheck) {
         const raw = clean(p);
         const digits = raw.replace(/\D/g, "");
         if (!digits) { newSt[raw] = "no"; continue; }
         const num = digits.startsWith("55") ? digits : `55${digits}`;
         try {
           const { data } = await supabase.functions.invoke("evolution-api-proxy", {
-            body: { action: "checkIsOnWhatsapp", instanceName: workingInstance, data: { numbers: [num] } },
+            body: { action: "checkIsOnWhatsapp", instanceName, data: { numbers: [num] } },
           });
           newSt[raw] = Array.isArray(data) && data[0]?.exists ? "has" : "no";
         } catch { newSt[raw] = "no"; }
       }
       setWppStatus(newSt);
-    } catch { toast.error("Erro ao verificar WhatsApp"); } finally { setCheckingWpp(false); }
+    } catch { /* silent auto-check */ }
   };
+
+  // Auto-verifica WhatsApp ao selecionar instância + carregar lead
+  useEffect(() => {
+    if (!selectedInstance || phones.length === 0 || !chips) return;
+    const chip = chips.find((c: any) => c.id === selectedInstance);
+    if (!chip?.instance_name) return;
+    setWppStatus({});
+    checkWhatsAppFor(chip.instance_name, phones);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedInstance, leadId, phones.length]);
 
   const handleSend = async () => {
     if (!canSend) return;
@@ -257,29 +245,41 @@ export function DisparoManualLeadPanel({ campanhaPropostaId, leadId, onOpenChat 
 
       <ScrollArea className="flex-1">
         <div className="p-3 space-y-4">
-          {/* Bloco 1: Números */}
-          <div className="border rounded-lg p-3 bg-muted/20 space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
-                <Phone className="h-3.5 w-3.5" />
-                Telefones
-              </label>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-6 text-[10px] px-2"
-                onClick={handleCheckWhatsApp}
-                disabled={checkingWpp || phones.length === 0}
+          {/* Bloco 1: Instância */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase text-muted-foreground">
+              Instância (única)
+            </Label>
+            {(chips || []).length === 0 ? (
+              <p className="text-xs text-muted-foreground">Nenhuma instância conectada.</p>
+            ) : (
+              <Select
+                value={selectedInstance ?? ""}
+                onValueChange={setSelectedInstance}
               >
-                {checkingWpp ? (
-                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                ) : (
-                  <MessageCircle className="h-3 w-3 mr-1" />
-                )}
-                Verificar WhatsApp
-              </Button>
-            </div>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Selecione uma instância" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(chips || []).map((c: any) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      <span className="font-medium">{c.nome}</span>
+                      <span className="text-xs text-muted-foreground ml-2">
+                        {c.instance_name}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+
+          {/* Bloco 2: Telefones */}
+          <div className="border rounded-lg p-3 bg-muted/20 space-y-2">
+            <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+              <Phone className="h-3.5 w-3.5" />
+              Telefones
+            </label>
 
             {phones.length === 0 && (
               <p className="text-xs text-muted-foreground">Nenhum número cadastrado.</p>
@@ -388,35 +388,6 @@ export function DisparoManualLeadPanel({ campanhaPropostaId, leadId, onOpenChat 
                 Liberar
               </Button>
             </div>
-          </div>
-
-          {/* Bloco 3: Envio */}
-          <div className="space-y-2">
-            <Label className="text-xs font-semibold uppercase text-muted-foreground">
-              Instância (única)
-            </Label>
-            {(chips || []).length === 0 ? (
-              <p className="text-xs text-muted-foreground">Nenhuma instância conectada.</p>
-            ) : (
-              <Select
-                value={selectedInstance ?? ""}
-                onValueChange={setSelectedInstance}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Selecione uma instância" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(chips || []).map((c: any) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      <span className="font-medium">{c.nome}</span>
-                      <span className="text-xs text-muted-foreground ml-2">
-                        {c.instance_name}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
           </div>
 
         </div>
