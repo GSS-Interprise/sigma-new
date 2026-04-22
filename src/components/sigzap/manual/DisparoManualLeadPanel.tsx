@@ -330,9 +330,12 @@ export function DisparoManualLeadPanel({ campanhaPropostaId, leadId, onOpenChat 
                         >
                           <MessageCircle className="h-4 w-4 text-green-500 fill-green-500" />
                         </button>
-                      ) : wpp === "no" ? (
-                        <MessageCircle className="h-4 w-4 text-muted-foreground/40 flex-shrink-0" />
-                      ) : null
+                      ) : (
+                        <MessageCircle
+                          className="h-4 w-4 text-muted-foreground/40 flex-shrink-0"
+                          aria-label={wpp === "no" ? "Sem WhatsApp" : "Não verificado"}
+                        />
+                      )
                     )}
                     <Button
                       type="button"
