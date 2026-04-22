@@ -331,20 +331,26 @@ export function DisparoManualLeadPanel({ campanhaPropostaId, leadId, onOpenChat 
                 const numero = clean(p);
                 const isSelected = selectedPhone === numero;
                 const wpp = wppStatus[numero];
+                const lockedRow = travado && primeiroEnvio?.phone_e164 !== numero;
                 return (
                   <div
                     key={p}
                     className={cn(
                       "flex items-center gap-1.5 cursor-pointer",
-                      inativo && "opacity-50"
+                      inativo && "opacity-50",
+                      lockedRow && "opacity-40 cursor-not-allowed"
                     )}
-                    onClick={() => !inativo && setSelectedPhone(numero)}
+                    onClick={() => {
+                      if (inativo) return;
+                      if (travado) return;
+                      setSelectedPhone(numero);
+                    }}
                   >
                     <input
                       type="radio"
                       readOnly
                       checked={isSelected}
-                      disabled={inativo}
+                      disabled={inativo || travado}
                       className="h-3 w-3 accent-primary flex-shrink-0"
                     />
                     <div
