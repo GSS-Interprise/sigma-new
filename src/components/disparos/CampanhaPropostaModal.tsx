@@ -15,6 +15,7 @@ import { EncerrarCampanhaButton } from "./EncerrarCampanhaButton";
 import { Badge } from "@/components/ui/badge";
 import { CampanhaLeadsList } from "./CampanhaLeadsList";
 import { CascataTab } from "./CascataTab";
+import { ZapTab } from "./ZapTab";
 import {
   WhatsAppIcon,
   InstagramIcon,
@@ -161,6 +162,8 @@ export function CampanhaPropostaModal({ campanhaPropostaId, open, onOpenChange }
                   campanhaPropostaId={campanhaPropostaId}
                   listaId={cp?.lista_id}
                 />
+              ) : value === "whatsapp" ? (
+                <ZapTab campanhaPropostaId={campanhaPropostaId} />
               ) : (
                 <>
               {value === "trafego_pago" && (

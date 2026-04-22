@@ -53,8 +53,12 @@ interface Contato {
 }
 
 interface DisparosContatosPanelProps {
-  campanha: Campanha;
-  onBack: () => void;
+  campanha?: Campanha;
+  onBack?: () => void;
+  /** Quando informado, filtra contatos por campanha_proposta_id ao invés de campanha_id. */
+  campanhaPropostaId?: string;
+  /** Esconde o cabeçalho com botão "voltar" — útil ao embutir em outra view. */
+  embedded?: boolean;
 }
 
 type StatusCfg = {
@@ -101,21 +105,28 @@ const statusConfig: Record<string, StatusCfg> = {
   },
 };
 
-export function DisparosContatosPanel({ campanha, onBack }: DisparosContatosPanelProps) {
+export function DisparosContatosPanel({ campanha, onBack, campanhaPropostaId, embedded }: DisparosContatosPanelProps) {
   const [filtroStatus, setFiltroStatus] = useState<string>("todos");
   const [busca, setBusca] = useState("");
   const queryClient = useQueryClient();
   const { isAdmin } = usePermissions();
+  const filterByProposta = !!campanhaPropostaId;
+  const queryKeyId = filterByProposta ? `cp:${campanhaPropostaId}` : `c:${campanha?.id}`;
 
   // Buscar contatos
   const { data: contatos = [], isLoading, refetch } = useQuery({
-    queryKey: ["disparos-contatos", campanha.id, filtroStatus],
+    queryKey: ["disparos-contatos", queryKeyId, filtroStatus],
+    enabled: filterByProposta || !!campanha?.id,
     queryFn: async () => {
       let query = supabase
         .from("disparos_contatos")
         .select("*")
-        .eq("campanha_id", campanha.id)
         .order("created_at", { ascending: true });
+      if (filterByProposta) {
+        query = query.eq("campanha_proposta_id", campanhaPropostaId!);
+      } else if (campanha?.id) {
+        query = query.eq("campanha_id", campanha.id);
+      }
 
       if (filtroStatus !== "todos") {
         query = query.eq("status", filtroStatus);
@@ -129,18 +140,21 @@ export function DisparosContatosPanel({ campanha, onBack }: DisparosContatosPane
 
   // Realtime subscription
   useEffect(() => {
+    if (!filterByProposta && !campanha?.id) return;
     const channel = supabase
-      .channel(`disparos_contatos_${campanha.id}`)
+      .channel(`disparos_contatos_${queryKeyId}`)
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
           table: "disparos_contatos",
-          filter: `campanha_id=eq.${campanha.id}`,
+          filter: filterByProposta
+            ? `campanha_proposta_id=eq.${campanhaPropostaId}`
+            : `campanha_id=eq.${campanha!.id}`,
         },
         () => {
-          queryClient.invalidateQueries({ queryKey: ["disparos-contatos", campanha.id] });
+          queryClient.invalidateQueries({ queryKey: ["disparos-contatos", queryKeyId] });
           queryClient.invalidateQueries({ queryKey: ["disparos-campanhas"] });
         }
       )
@@ -149,7 +163,7 @@ export function DisparosContatosPanel({ campanha, onBack }: DisparosContatosPane
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [campanha.id, queryClient]);
+  }, [campanha?.id, campanhaPropostaId, filterByProposta, queryClient, queryKeyId]);
 
   const contatosFiltrados = contatos.filter((c) => {
     if (!busca) return true;
@@ -175,17 +189,18 @@ export function DisparosContatosPanel({ campanha, onBack }: DisparosContatosPane
 
       if (error) throw error;
 
-      // Atualizar total de contatos na campanha
-      await supabase
-        .from("disparos_campanhas")
-        .update({ 
-          total_contatos: Math.max(0, (campanha.total_contatos || 0) - 1),
-          updated_at: new Date().toISOString()
-        })
-        .eq("id", campanha.id);
+      if (campanha?.id) {
+        await supabase
+          .from("disparos_campanhas")
+          .update({
+            total_contatos: Math.max(0, (campanha.total_contatos || 0) - 1),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", campanha.id);
+      }
 
       toast.success("Contato deletado com sucesso");
-      queryClient.invalidateQueries({ queryKey: ["disparos-contatos", campanha.id] });
+      queryClient.invalidateQueries({ queryKey: ["disparos-contatos", queryKeyId] });
       queryClient.invalidateQueries({ queryKey: ["disparos-campanhas"] });
     } catch (error) {
       console.error("Erro ao deletar contato:", error);
@@ -202,7 +217,7 @@ export function DisparosContatosPanel({ campanha, onBack }: DisparosContatosPane
         .eq("id", contatoId);
       if (error) throw error;
       toast.success(`Status alterado para ${novoStatus}`);
-      queryClient.invalidateQueries({ queryKey: ["disparos-contatos", campanha.id] });
+      queryClient.invalidateQueries({ queryKey: ["disparos-contatos", queryKeyId] });
       queryClient.invalidateQueries({ queryKey: ["disparos-campanhas"] });
     } catch (error) {
       console.error("Erro ao alterar status:", error);
@@ -213,6 +228,7 @@ export function DisparosContatosPanel({ campanha, onBack }: DisparosContatosPane
   // Mutation para concluir disparo e liberar leads pendentes
   const concluirDisparoMutation = useMutation({
     mutationFn: async () => {
+      if (!campanha?.id) throw new Error("Disparo não disponível");
       // 1. Primeiro, mudar status "3-TRATANDO" para "1-ENVIAR"
       const leadsTratando = contatos.filter((c) => c.status === "3-TRATANDO");
       if (leadsTratando.length > 0) {
@@ -266,10 +282,10 @@ export function DisparosContatosPanel({ campanha, onBack }: DisparosContatosPane
       } else {
         toast.success("Disparo concluído!");
       }
-      queryClient.invalidateQueries({ queryKey: ["disparos-contatos", campanha.id] });
+      queryClient.invalidateQueries({ queryKey: ["disparos-contatos", queryKeyId] });
       queryClient.invalidateQueries({ queryKey: ["disparos-campanhas"] });
       queryClient.invalidateQueries({ queryKey: ["disparos-instancias-em-uso"] });
-      onBack();
+      onBack?.();
     },
     onError: (error) => {
       console.error("Erro ao concluir disparo:", error);
@@ -280,18 +296,19 @@ export function DisparosContatosPanel({ campanha, onBack }: DisparosContatosPane
   // [ADMIN] Mutation: resetar 3-TRATANDO → 1-ENVIAR
   const resetTratandoMutation = useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase
+      let q = supabase
         .from("disparos_contatos")
         .update({ status: "1-ENVIAR" })
-        .eq("campanha_id", campanha.id)
-        .eq("status", "3-TRATANDO")
-        .select("id");
+        .eq("status", "3-TRATANDO");
+      if (filterByProposta) q = q.eq("campanha_proposta_id", campanhaPropostaId!);
+      else if (campanha?.id) q = q.eq("campanha_id", campanha.id);
+      const { data, error } = await q.select("id");
       if (error) throw error;
       return data?.length ?? 0;
     },
     onSuccess: (qtd) => {
       toast.success(`${qtd} lead(s) resetados para 1-ENVIAR!`);
-      queryClient.invalidateQueries({ queryKey: ["disparos-contatos", campanha.id] });
+      queryClient.invalidateQueries({ queryKey: ["disparos-contatos", queryKeyId] });
       queryClient.invalidateQueries({ queryKey: ["disparos-campanhas"] });
     },
     onError: (error: any) => {
@@ -317,16 +334,20 @@ export function DisparosContatosPanel({ campanha, onBack }: DisparosContatosPane
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={onBack}>
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Voltar
-          </Button>
-          <div>
-            <h2 className="text-xl font-semibold">{campanha.nome}</h2>
-            <p className="text-sm text-muted-foreground">
-              {campanha.proposta_id} | {campanha.instancia}
-            </p>
-          </div>
+          {!embedded && onBack && (
+            <Button variant="ghost" size="sm" onClick={onBack}>
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Voltar
+            </Button>
+          )}
+          {!embedded && campanha && (
+            <div>
+              <h2 className="text-xl font-semibold">{campanha.nome}</h2>
+              <p className="text-sm text-muted-foreground">
+                {campanha.proposta_id} | {campanha.instancia}
+              </p>
+            </div>
+          )}
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => refetch()}>
@@ -355,15 +376,16 @@ export function DisparosContatosPanel({ campanha, onBack }: DisparosContatosPane
                   <AlertDialogAction
                     onClick={async () => {
                       try {
-                        const { data, error } = await supabase
+                        let q = supabase
                           .from("disparos_contatos")
                           .update({ status: "1-ENVIAR" })
-                          .eq("campanha_id", campanha.id)
-                          .eq("status", "5-NOZAP")
-                          .select("id");
+                          .eq("status", "5-NOZAP");
+                        if (filterByProposta) q = q.eq("campanha_proposta_id", campanhaPropostaId!);
+                        else if (campanha?.id) q = q.eq("campanha_id", campanha.id);
+                        const { data, error } = await q.select("id");
                         if (error) throw error;
                         toast.success(`${data?.length ?? 0} lead(s) resetados para 1-ENVIAR!`);
-                        queryClient.invalidateQueries({ queryKey: ["disparos-contatos", campanha.id] });
+                        queryClient.invalidateQueries({ queryKey: ["disparos-contatos", queryKeyId] });
                         queryClient.invalidateQueries({ queryKey: ["disparos-campanhas"] });
                       } catch (err: any) {
                         toast.error("Erro ao resetar: " + err.message);
@@ -410,6 +432,7 @@ export function DisparosContatosPanel({ campanha, onBack }: DisparosContatosPane
             </AlertDialog>
           )}
           
+          {campanha?.id && (
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button 
@@ -461,6 +484,7 @@ export function DisparosContatosPanel({ campanha, onBack }: DisparosContatosPane
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
+          )}
         </div>
       </div>
 
