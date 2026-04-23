@@ -308,6 +308,17 @@ serve(async (req) => {
       throw new Error("Dados inválidos para processamento");
     }
 
+    // Resolver especialidade_id (uma vez por execução) a partir do nome
+    let especialidadeIdResolved: string | null = null;
+    if (especialidadeParam) {
+      const { data: espRow } = await supabase
+        .from("especialidades")
+        .select("id")
+        .ilike("nome", especialidadeParam.trim())
+        .maybeSingle();
+      especialidadeIdResolved = espRow?.id || null;
+    }
+
     // Caminho do JSON pré-processado (evita re-parsear XLSX em cada chunk)
     const jsonStoragePath = storagePath.replace(/\.(xlsx|xls)$/i, '.json');
     let jsonData: Record<string, any>[];
