@@ -142,7 +142,7 @@ export function AbaProspec() {
   };
 
   // === Dashboard agregado via RPC (1 chamada) ===
-  const { data: dashboard, isLoading, error: dashboardError } = useQuery({
+  const { data: dashboard, isLoading, error: dashboardError, dataUpdatedAt, refetch, isFetching } = useQuery({
     queryKey: ["bi-prospec-dashboard", dataInicio, dataFim],
     queryFn: async () => {
       const { data, error } = await (supabase as any).rpc("get_bi_prospec_dashboard", {
