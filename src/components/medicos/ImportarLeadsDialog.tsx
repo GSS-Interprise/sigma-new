@@ -315,7 +315,7 @@ export function ImportarLeadsDialog({ open, onOpenChange, onSuccess, listaDestin
     }
   };
 
-  const canImport = file && validationResult?.valid && selectedEspecialidade && selectedOrigem;
+  const canImport = file && validationResult?.valid && selectedEspecialidades.length > 0 && selectedOrigem;
 
   const handleImport = async () => {
     if (!canImport) return;
@@ -346,7 +346,9 @@ export function ImportarLeadsDialog({ open, onOpenChange, onSuccess, listaDestin
       formData.append("file", file);
       formData.append("job_id", job.id);
       formData.append("arquivo_nome", file.name);
-      formData.append("especialidade", selectedEspecialidade);
+      // Compatibilidade: envia a primeira como `especialidade` (string) e a lista completa em `especialidades`
+      formData.append("especialidade", selectedEspecialidades[0] || "");
+      formData.append("especialidades", JSON.stringify(selectedEspecialidades));
       formData.append("origem", selectedOrigem);
       if (listaDestino?.mode === "existing") {
         formData.append("lista_destino_id", listaDestino.id);
