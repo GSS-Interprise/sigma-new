@@ -144,13 +144,73 @@ export function AbaProspec() {
   const { data: campanhasMetricas, isLoading: lc } = useQuery({
     queryKey: ["bi-prospec-campanhas", dataInicio, dataFim],
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
+      // 1) Métricas base da view (status do funil campanha_leads)
+      const { data: base, error } = await (supabase as any)
         .from("vw_campanha_metricas")
         .select("*")
         .gte("campanha_criada_em", `${dataInicio}T00:00:00`)
         .lte("campanha_criada_em", `${dataFim}T23:59:59`);
       if (error) throw error;
-      return (data ?? []) as any[];
+
+      // 2) Complemento: agregação de campanha_proposta_lead_canais
+      //    (leads reais que entraram nos canais — usados quando a campanha
+      //    opera via cascata/propostas e não popula campanha_leads)
+      const campIds = (base ?? []).map((b: any) => b.campanha_id);
+      if (campIds.length === 0) return (base ?? []) as any[];
+
+      const { data: props } = await (supabase as any)
+        .from("campanha_propostas")
+        .select("id,campanha_id")
+        .in("campanha_id", campIds);
+
+      const propIds = (props ?? []).map((p: any) => p.id);
+      const propToCamp = new Map<string, string>(
+        (props ?? []).map((p: any) => [p.id, p.campanha_id])
+      );
+
+      let canais: any[] = [];
+      if (propIds.length > 0) {
+        canais = await fetchAllChunks<any>(
+          "campanha_proposta_lead_canais",
+          "campanha_proposta_id,lead_id,canal,status_final,saiu_em",
+          (q) => q.in("campanha_proposta_id", propIds)
+        );
+      }
+
+      // Agrupa por campanha
+      const agg = new Map<string, { contatados: Set<string>; emConversa: Set<string>; convertidos: Set<string> }>();
+      for (const c of canais) {
+        const camp = propToCamp.get(c.campanha_proposta_id);
+        if (!camp) continue;
+        if (!agg.has(camp)) agg.set(camp, { contatados: new Set(), emConversa: new Set(), convertidos: new Set() });
+        const a = agg.get(camp)!;
+        a.contatados.add(c.lead_id);
+        if (c.status_final === "aberto" || c.saiu_em == null) a.emConversa.add(c.lead_id);
+        if (c.status_final === "convertido" || c.status_final === "aceitou") a.convertidos.add(c.lead_id);
+      }
+
+      // Mescla nos registros base (somando ao que já vem da view)
+      const merged = (base ?? []).map((b: any) => {
+        const a = agg.get(b.campanha_id);
+        if (!a) return b;
+        const contatados = (Number(b.contatados) || 0) + a.contatados.size;
+        const emConversa = (Number(b.em_conversa) || 0) + a.emConversa.size;
+        const convertidos = (Number(b.convertidos) || 0) + a.convertidos.size;
+        const totalLeads = Math.max(Number(b.total_leads) || 0, a.contatados.size);
+        const disparados = Math.max(Number(b.disparados) || 0, a.contatados.size);
+        const taxa = disparados > 0 ? (convertidos / disparados) * 100 : 0;
+        return {
+          ...b,
+          total_leads: totalLeads,
+          contatados,
+          em_conversa: emConversa,
+          convertidos,
+          disparados,
+          taxa_conversao_pct: taxa,
+        };
+      });
+
+      return merged as any[];
     },
   });
 
@@ -218,11 +278,10 @@ export function AbaProspec() {
         leads: acc.leads + (Number(r.total_leads) || 0),
         contatados: acc.contatados + (Number(r.contatados) || 0),
         emConversa: acc.emConversa + (Number(r.em_conversa) || 0),
-        quentes: acc.quentes + (Number(r.quentes) || 0),
         convertidos: acc.convertidos + (Number(r.convertidos) || 0),
         disparados: acc.disparados + (Number(r.disparados) || 0),
       }),
-      { leads: 0, contatados: 0, emConversa: 0, quentes: 0, convertidos: 0, disparados: 0 }
+      { leads: 0, contatados: 0, emConversa: 0, convertidos: 0, disparados: 0 }
     );
   }, [campanhasMetricas]);
 
@@ -458,7 +517,7 @@ export function AbaProspec() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left border-b" style={{ borderColor: `${NEON.cyan}33` }}>
-                    {["Campanha","Status","Leads","Contatados","Em conversa","Quentes","Convertidos","Taxa conv."].map((h, i) => (
+                    {["Campanha","Status","Leads","Contatados","Em conversa","Convertidos","Taxa conv."].map((h, i) => (
                       <th key={h} className={`py-2 px-2 text-[11px] uppercase tracking-wider font-semibold ${i>=2?"text-right":""}`} style={{ color: NEON.cyan }}>{h}</th>
                     ))}
                   </tr>
@@ -471,13 +530,12 @@ export function AbaProspec() {
                       <td className="py-2 px-2 text-right" style={{ color: "#cbd5e1" }}>{Number(c.total_leads).toLocaleString()}</td>
                       <td className="py-2 px-2 text-right" style={{ color: "#cbd5e1" }}>{Number(c.contatados).toLocaleString()}</td>
                       <td className="py-2 px-2 text-right" style={{ color: "#cbd5e1" }}>{Number(c.em_conversa).toLocaleString()}</td>
-                      <td className="py-2 px-2 text-right" style={{ color: NEON.yellow }}>{Number(c.quentes).toLocaleString()}</td>
                       <td className="py-2 px-2 text-right font-bold" style={{ color: NEON.green, textShadow: `0 0 6px ${NEON.green}55` }}>{Number(c.convertidos).toLocaleString()}</td>
                       <td className="py-2 px-2 text-right font-mono" style={{ color: NEON.magenta }}>{Number(c.taxa_conversao_pct ?? 0).toFixed(1)}%</td>
                     </tr>
                   ))}
                   {topCampanhas.length === 0 && (
-                    <tr><td colSpan={8} className="py-6 text-center" style={{ color: "#64748b" }}>Sem campanhas no período.</td></tr>
+                    <tr><td colSpan={7} className="py-6 text-center" style={{ color: "#64748b" }}>Sem campanhas no período.</td></tr>
                   )}
                 </tbody>
               </table>
