@@ -45,6 +45,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
+import { EspecialidadeMultiSelect } from "@/components/medicos/EspecialidadeMultiSelect";
 
 interface ImportarLeadsDialogProps {
   open: boolean;
@@ -87,12 +88,11 @@ export function ImportarLeadsDialog({ open, onOpenChange, onSuccess, listaDestin
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Novos campos obrigatórios de seleção
-  const [selectedEspecialidade, setSelectedEspecialidade] = useState<string>("");
+  const [selectedEspecialidades, setSelectedEspecialidades] = useState<string[]>([]);
   const [selectedOrigem, setSelectedOrigem] = useState<string>("");
 
   // Especialidades vêm da tabela normalizada `especialidades`
   const { data: especialidadesData = [] } = useEspecialidades();
-  const especialidadesConsolidadas = especialidadesData.map((e) => e.nome);
 
   // Usar apenas lista fixa de origens (sem buscar do banco para evitar variações)
   const origensConsolidadas = ORIGENS_PADRAO;
