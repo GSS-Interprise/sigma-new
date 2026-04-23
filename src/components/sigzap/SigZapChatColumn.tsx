@@ -1057,10 +1057,7 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
       setLeadLinkDialogOpen(false);
       setAutoMatchDialogOpen(false);
       setAutoMatchLead(null);
-      setSelectedLeadId(linkedLeadId);
-      setIsNewLead(false);
-      setProntuarioOpen(true);
-      toast.info("Lead já vinculado à conversa");
+      toast.info("Essa conversa já está vinculada a um lead");
       return;
     }
     
