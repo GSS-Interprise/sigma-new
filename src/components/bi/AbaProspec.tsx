@@ -575,8 +575,8 @@ export function AbaProspec() {
     );
   }
 
-  const taxaResp = totaisTrafego.enviados > 0 ? ((totaisTrafego.responderam / totaisTrafego.enviados) * 100).toFixed(1) : "0";
-  const taxaConv = totaisTrafego.enviados > 0 ? ((totaisTrafego.convertidos / totaisTrafego.enviados) * 100).toFixed(1) : "0";
+  const taxaResp = totalGeralDisparos > 0 ? ((totaisGerais.responderam / totalGeralDisparos) * 100).toFixed(1) : "0";
+  const taxaConv = totalGeralDisparos > 0 ? ((totaisGerais.convertidos / totalGeralDisparos) * 100).toFixed(1) : "0";
 
   return (
     <div
