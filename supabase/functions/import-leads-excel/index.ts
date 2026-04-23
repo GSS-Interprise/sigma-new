@@ -556,6 +556,7 @@ serve(async (req) => {
         status: "Novo",
         arquivo_id: arquivoNome,
         especialidade: especialidadeParam || null,
+        especialidade_id: especialidadeIdResolved,
         origem: origemParam || "Importação Excel",
         updated_at: new Date().toISOString(),
       };
