@@ -254,7 +254,74 @@ export function AbaProspec() {
     },
   });
 
-  const isLoading = lt || lc || ldm || ldz;
+  // === NOVAS QUERIES ===
+
+  // Email — disparos e respostas
+  const { data: emails, isLoading: lem } = useQuery({
+    queryKey: ["bi-prospec-emails", dataInicio, dataFim],
+    queryFn: async () =>
+      await fetchAllChunks<any>(
+        "email_interacoes",
+        "id,lead_id,direcao,created_at",
+        (q) => q
+          .gte("created_at", `${dataInicio}T00:00:00`)
+          .lte("created_at", `${dataFim}T23:59:59`)
+      ),
+  });
+
+  // Leads — especialidade, conversão, responsável
+  const { data: leadsAll, isLoading: lla } = useQuery({
+    queryKey: ["bi-prospec-leads", dataInicio, dataFim],
+    queryFn: async () =>
+      await fetchAllChunks<any>(
+        "leads",
+        "id,especialidade,convertido_por,data_conversao,status,created_at",
+        (q) => q
+          .gte("created_at", `${dataInicio}T00:00:00`)
+          .lte("created_at", `${dataFim}T23:59:59`)
+      ),
+  });
+
+  // Leads convertidos no período (por data_conversao, independente de quando foi criado)
+  const { data: leadsConvertidos } = useQuery({
+    queryKey: ["bi-prospec-leads-conv", dataInicio, dataFim],
+    queryFn: async () =>
+      await fetchAllChunks<any>(
+        "leads",
+        "id,especialidade,convertido_por,data_conversao",
+        (q) => q
+          .not("data_conversao", "is", null)
+          .gte("data_conversao", `${dataInicio}T00:00:00`)
+          .lte("data_conversao", `${dataFim}T23:59:59`)
+      ),
+  });
+
+  // Todos os canais de proposta no período (para motivos de não conversão e Instagram)
+  const { data: canaisAll } = useQuery({
+    queryKey: ["bi-prospec-canais-all", dataInicio, dataFim],
+    queryFn: async () =>
+      await fetchAllChunks<any>(
+        "campanha_proposta_lead_canais",
+        "id,lead_id,canal,status_final,motivo_saida,saiu_em,created_at",
+        (q) => q
+          .gte("created_at", `${dataInicio}T00:00:00`)
+          .lte("created_at", `${dataFim}T23:59:59`)
+      ),
+  });
+
+  // Profiles para nome do colaborador
+  const { data: profiles } = useQuery({
+    queryKey: ["bi-prospec-profiles"],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("profiles")
+        .select("id,nome_completo");
+      if (error) throw error;
+      return (data ?? []) as any[];
+    },
+  });
+
+  const isLoading = lt || lc || ldm || ldz || lem || lla;
 
   // ---- Agregações ----
   const totaisTrafego = useMemo(() => {
