@@ -359,6 +359,36 @@ export function AbaProspec() {
         <KPI icon={Instagram} label="Instagram" value={metricasPorCanal.instagram.enviados.toLocaleString()} color={NEON.purple} />
       </div>
 
+      {/* Sub-métricas granulares de "Em Massa" + Última atualização */}
+      <div className="flex flex-wrap items-center justify-between gap-3 -mt-2 px-1">
+        <div className="text-[11px] font-mono flex flex-wrap items-center gap-2" style={{ color: "#94a3b8" }}>
+          <span className="uppercase tracking-wider" style={{ color: NEON.green }}>Em massa:</span>
+          <span><span style={{ color: NEON.green }}>{(Number(totais.massa_enviados) || 0).toLocaleString()}</span> enviados</span>
+          <span className="opacity-40">·</span>
+          <span><span style={{ color: NEON.yellow }}>{(Number(totais.massa_fila) || 0).toLocaleString()}</span> na fila</span>
+          <span className="opacity-40">·</span>
+          <span><span style={{ color: NEON.orange }}>{(Number(totais.massa_nozap) || 0).toLocaleString()}</span> sem WhatsApp</span>
+          <span className="opacity-40">·</span>
+          <span><span style={{ color: NEON.magenta }}>{(Number(totais.massa_bloqueadas) || 0).toLocaleString()}</span> bloqueadas</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-mono" style={{ color: "#64748b" }}>
+            Última atualização: {dataUpdatedAt ? new Date(dataUpdatedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "—"}
+          </span>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="h-7 px-2 border-cyan-500/40 bg-slate-950/60 text-cyan-300 hover:bg-cyan-500/10 hover:text-cyan-200"
+          >
+            <RefreshCw className={`h-3 w-3 mr-1 ${isFetching ? "animate-spin" : ""}`} />
+            Atualizar
+          </Button>
+        </div>
+      </div>
+
       <Tabs value={tabAtiva} onValueChange={setTabAtiva} className="space-y-4">
         <TabsList
           className="bg-transparent border p-1 gap-1"
