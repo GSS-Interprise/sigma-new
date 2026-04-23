@@ -43,21 +43,62 @@ export function ZapTab({ campanhaPropostaId }: Props) {
     },
   });
 
-  const { data: emAndamento } = useQuery({
-    queryKey: ["disparo-em-andamento", campanhaPropostaId],
+  // Disparos ativos da proposta agrupados por instância (cada instância = 1 disparo paralelo)
+  const { data: disparosAtivos = [] } = useQuery({
+    queryKey: ["disparos-ativos-proposta", campanhaPropostaId],
     queryFn: async () => {
-      const { count, error } = await supabase
-        .from("disparos_contatos")
-        .select("id", { count: "exact", head: true })
+      const { data: campanhas, error: e1 } = await supabase
+        .from("disparos_campanhas")
+        .select("id, instancia, chip_id, status, ativo")
         .eq("campanha_proposta_id", campanhaPropostaId)
+        .eq("ativo", true)
+        .not("status", "in", "(concluido,cancelado)");
+      if (e1) throw e1;
+      const ids = (campanhas || []).map(c => c.id);
+      if (ids.length === 0) return [];
+      const { data: contatos, error: e2 } = await supabase
+        .from("disparos_contatos")
+        .select("campanha_id, status")
+        .in("campanha_id", ids)
         .in("status", ["1-ENVIAR", "2-AGENDADO", "3-TRATANDO"]);
-      if (error) throw error;
-      return count ?? 0;
+      if (e2) throw e2;
+      const pendentesPorCampanha = new Map<string, number>();
+      (contatos || []).forEach(c => {
+        pendentesPorCampanha.set(c.campanha_id, (pendentesPorCampanha.get(c.campanha_id) || 0) + 1);
+      });
+      return (campanhas || [])
+        .map(c => ({
+          id: c.id,
+          instancia: c.instancia,
+          chip_id: c.chip_id,
+          pendentes: pendentesPorCampanha.get(c.id) || 0,
+        }))
+        .filter(c => c.pendentes > 0);
     },
     refetchInterval: 45000,
   });
 
-  const disparoEmAndamento = (emAndamento ?? 0) > 0;
+  // Instâncias da PROPOSTA atualmente com fila pendente (bloqueia reuso do mesmo chip)
+  const instanciasPropostaEmUso = disparosAtivos
+    .map(d => d.instancia)
+    .filter(Boolean) as string[];
+
+  const chipSelecionado = chips.find((c: any) => c.id === chipId);
+  const instanciaSelecionada = chipSelecionado?.instance_name || null;
+
+  // Bloqueio: precisa ter um chip escolhido que NÃO esteja em uso (nem nesta proposta, nem global)
+  const chipBloqueadoNestaProposta = !!instanciaSelecionada && instanciasPropostaEmUso.includes(instanciaSelecionada);
+  const chipBloqueadoGlobal = !!instanciaSelecionada && instanciasEmUso.includes(instanciaSelecionada);
+  const semChipSelecionado = !chipId;
+  const botaoBloqueado = semChipSelecionado || chipBloqueadoNestaProposta || chipBloqueadoGlobal;
+
+  const motivoBloqueio = semChipSelecionado
+    ? "Selecione um chip para criar um novo disparo paralelo"
+    : chipBloqueadoNestaProposta
+      ? `Chip ${instanciaSelecionada} já tem disparo em andamento nesta proposta`
+      : chipBloqueadoGlobal
+        ? `Chip ${instanciaSelecionada} já está em uso em outro disparo ativo`
+        : undefined;
 
   const gerarMutation = useMutation({
     mutationFn: async () => {
@@ -102,21 +143,30 @@ export function ZapTab({ campanhaPropostaId }: Props) {
           </div>
           <Button
             onClick={() => gerarMutation.mutate()}
-            disabled={gerarMutation.isPending || disparoEmAndamento}
-            title={disparoEmAndamento ? `Aguarde: ${emAndamento} contato(s) em processamento` : undefined}
+            disabled={gerarMutation.isPending || botaoBloqueado}
+            title={motivoBloqueio}
           >
             {gerarMutation.isPending ? (
               <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Gerando...</>
-            ) : disparoEmAndamento ? (
-              <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Disparo em andamento ({emAndamento})</>
             ) : (
               <><Plus className="h-4 w-4 mr-2" />Adicionar disparo Zap</>
             )}
           </Button>
         </div>
+        {disparosAtivos.length > 0 && (
+          <div className="rounded-md border border-border bg-muted/30 p-3 space-y-1">
+            <p className="text-xs font-medium">Disparos ativos nesta proposta ({disparosAtivos.length}):</p>
+            <ul className="text-xs text-muted-foreground space-y-0.5">
+              {disparosAtivos.map(d => (
+                <li key={d.id}>
+                  • <code className="bg-background px-1 rounded">{d.instancia || "sem instância"}</code> — {d.pendentes} pendente(s)
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         <p className="text-xs text-muted-foreground">
-          Cria contatos pendentes (1-ENVIAR) para os leads elegíveis desta proposta. O n8n consome a fila via GET <code className="bg-muted px-1 rounded">/disparos-zap-pendentes</code>.
-          {disparoEmAndamento && " O botão será reabilitado quando todos os contatos atuais saírem dos status 1-ENVIAR / 2-AGENDADO / 3-TRATANDO."}
+          Cada chip diferente cria um disparo paralelo (até 120 msgs/dia por instância). Para criar um novo disparo, selecione um chip que ainda não esteja em uso nesta proposta.
         </p>
       </Card>
 
