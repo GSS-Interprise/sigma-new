@@ -103,7 +103,11 @@ export function DisparosCampanhasTab() {
     queryKey: ["chips-ativos"],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("chips").select("*").eq("status", "ativo").order("nome");
+        .from("chips")
+        .select("*")
+        .eq("status", "ativo")
+        .or("tipo_instancia.is.null,tipo_instancia.neq.trafego_pago")
+        .order("nome");
       if (error) throw error;
       return data;
     },
