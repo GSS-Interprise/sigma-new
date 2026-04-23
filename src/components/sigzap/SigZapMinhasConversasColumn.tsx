@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { User, RefreshCw, Inbox, Unlock, Plus, Loader2, Send, X, MessageCircle, Wifi, WifiOff, AlertCircle, UserX } from "lucide-react";
+import { User, RefreshCw, Inbox, Unlock, Plus, Loader2, Send, X, MessageCircle, Wifi, WifiOff, AlertCircle, UserX, Tag as TagIcon } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -50,6 +50,22 @@ export function SigZapMinhasConversasColumn({
   const [novoNumero, setNovoNumero] = useState("");
   const [novaInstanciaId, setNovaInstanciaId] = useState<string>("");
   const attemptedPhotoSyncContactIdsRef = useRef<Set<string>>(new Set());
+
+  // Filtro: todos | nao_lido | tag:<nome>
+  const [filtro, setFiltro] = useState<string>("todos");
+
+  // Tags disponíveis (mesmas do Kanban)
+  const { data: tagsConfig } = useQuery({
+    queryKey: ['leads-etiquetas-config-sigzap'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('leads_etiquetas_config')
+        .select('nome')
+        .order('nome');
+      if (error) throw error;
+      return data || [];
+    },
+  });
 
   // Mutation to sync contact photos on demand
   const syncPhotosMutation = useMutation({
@@ -112,7 +128,7 @@ export function SigZapMinhasConversasColumn({
           *,
           contact:sigzap_contacts(*),
           instance:sigzap_instances(id, name),
-          lead:leads!sigzap_conversations_lead_id_fkey(id, nome)
+          lead:leads!sigzap_conversations_lead_id_fkey(id, nome, tags)
         `)
         .eq('assigned_user_id', user.id)
         .neq('status', 'inactive')
@@ -154,6 +170,23 @@ export function SigZapMinhasConversasColumn({
       .map(phone => normalizeToE164(phone))
       .filter(Boolean) as string[];
   }, [minhasConversas]);
+
+  // Conversas filtradas
+  const conversasFiltradas = useMemo(() => {
+    if (!minhasConversas) return [];
+    if (filtro === "todos") return minhasConversas;
+    if (filtro === "nao_lido") {
+      return minhasConversas.filter((c: any) => (c.unread_count || 0) > 0);
+    }
+    if (filtro.startsWith("tag:")) {
+      const tagNome = filtro.slice(4);
+      return minhasConversas.filter((c: any) => {
+        const tags = (c.lead as any)?.tags;
+        return Array.isArray(tags) && tags.includes(tagNome);
+      });
+    }
+    return minhasConversas;
+  }, [minhasConversas, filtro]);
 
   // Fetch leads by phone numbers (phone_e164 + telefones_adicionais)
   const { data: leadsMap } = useQuery({
@@ -635,15 +668,73 @@ export function SigZapMinhasConversasColumn({
       {/* Count + refresh */}
       <div className="flex items-center justify-between px-3 py-2 border-b text-xs text-muted-foreground">
         <span>
-          {minhasConversas?.length || 0} conversa{(minhasConversas?.length || 0) !== 1 ? 's' : ''}
+          {conversasFiltradas.length} conversa{conversasFiltradas.length !== 1 ? 's' : ''}
           {(() => {
-            const naoLidos = minhasConversas?.reduce((acc, c: any) => acc + (c.unread_count || 0), 0) || 0;
+            const naoLidos = conversasFiltradas.reduce((acc, c: any) => acc + (c.unread_count || 0), 0);
             return naoLidos > 0 ? ` · ${naoLidos} não lida${naoLidos !== 1 ? 's' : ''}` : '';
           })()}
         </span>
         <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => refetch()}>
           <RefreshCw className="h-3 w-3" />
         </Button>
+      </div>
+
+      {/* Filtros */}
+      <div className="flex items-center gap-1 px-2 py-1.5 border-b bg-muted/10">
+        <Button
+          variant={filtro === "todos" ? "secondary" : "ghost"}
+          size="sm"
+          className="h-7 px-2 text-[11px]"
+          onClick={() => setFiltro("todos")}
+        >
+          Todos
+        </Button>
+        <Button
+          variant={filtro === "nao_lido" ? "secondary" : "ghost"}
+          size="sm"
+          className="h-7 px-2 text-[11px]"
+          onClick={() => setFiltro("nao_lido")}
+        >
+          Não lido
+        </Button>
+        <Select
+          value={filtro.startsWith("tag:") ? filtro : ""}
+          onValueChange={(v) => setFiltro(v)}
+        >
+          <SelectTrigger
+            className={cn(
+              "h-7 text-[11px] flex-1 min-w-0",
+              filtro.startsWith("tag:") && "bg-secondary"
+            )}
+          >
+            <div className="flex items-center gap-1 min-w-0">
+              <TagIcon className="h-3 w-3 flex-shrink-0" />
+              <SelectValue placeholder="Tag" />
+            </div>
+          </SelectTrigger>
+          <SelectContent className="bg-background z-50">
+            {(tagsConfig || []).length === 0 ? (
+              <div className="px-2 py-1.5 text-xs text-muted-foreground">Nenhuma tag</div>
+            ) : (
+              (tagsConfig || []).map((t: any) => (
+                <SelectItem key={t.nome} value={`tag:${t.nome}`} className="text-xs">
+                  {t.nome}
+                </SelectItem>
+              ))
+            )}
+          </SelectContent>
+        </Select>
+        {filtro !== "todos" && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 flex-shrink-0"
+            onClick={() => setFiltro("todos")}
+            title="Limpar filtro"
+          >
+            <X className="h-3 w-3" />
+          </Button>
+        )}
       </div>
 
       {/* Conversations List */}
@@ -665,8 +756,13 @@ export function SigZapMinhasConversasColumn({
               <p>Nenhuma conversa atribuída</p>
               <p className="text-xs mt-1">Clique em uma conversa livre para assumir</p>
             </div>
+          ) : conversasFiltradas.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground text-sm">
+              <Inbox className="h-10 w-10 mx-auto mb-2 opacity-20" />
+              <p>Nenhuma conversa nesse filtro</p>
+            </div>
           ) : (
-            minhasConversas.map((conversa) => {
+            conversasFiltradas.map((conversa) => {
               const contact = conversa.contact as any;
               const instance = conversa.instance as any;
               const lastMessageAt = conversa.last_message_at;
