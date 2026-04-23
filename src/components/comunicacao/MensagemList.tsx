@@ -245,8 +245,8 @@ export function MensagemList({ mensagens, currentUserId, onReply, onEdit, onUser
                         "truncate",
                         isOwn ? "text-primary-foreground/60" : "text-muted-foreground"
                       )}>
-                        {replyMessage.mensagem.substring(0, 50)}
-                        {replyMessage.mensagem.length > 50 ? "..." : ""}
+                        {(replyMessage.mensagem ?? "").substring(0, 50)}
+                        {(replyMessage.mensagem ?? "").length > 50 ? "..." : ""}
                       </p>
                     </div>
                   )}
