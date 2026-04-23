@@ -43,7 +43,7 @@ export function ZapTab({ campanhaPropostaId }: Props) {
     },
   });
 
-  // Disparos ativos da proposta agrupados por instância (cada instância = 1 disparo paralelo)
+  // Disparos ativos da proposta (apenas informativo — cada disparo é independente)
   const { data: disparosAtivos = [] } = useQuery({
     queryKey: ["disparos-ativos-proposta", campanhaPropostaId],
     queryFn: async () => {
@@ -78,27 +78,19 @@ export function ZapTab({ campanhaPropostaId }: Props) {
     refetchInterval: 45000,
   });
 
-  // Instâncias da PROPOSTA atualmente com fila pendente (bloqueia reuso do mesmo chip)
-  const instanciasPropostaEmUso = disparosAtivos
-    .map(d => d.instancia)
-    .filter(Boolean) as string[];
-
   const chipSelecionado = chips.find((c: any) => c.id === chipId);
   const instanciaSelecionada = chipSelecionado?.instance_name || null;
 
-  // Bloqueio: precisa ter um chip escolhido que NÃO esteja em uso (nem nesta proposta, nem global)
-  const chipBloqueadoNestaProposta = !!instanciaSelecionada && instanciasPropostaEmUso.includes(instanciaSelecionada);
+  // Bloqueio: a única regra é que a mesma instância não esteja em outro disparo ativo (global)
   const chipBloqueadoGlobal = !!instanciaSelecionada && instanciasEmUso.includes(instanciaSelecionada);
   const semChipSelecionado = !chipId;
-  const botaoBloqueado = semChipSelecionado || chipBloqueadoNestaProposta || chipBloqueadoGlobal;
+  const botaoBloqueado = semChipSelecionado || chipBloqueadoGlobal;
 
   const motivoBloqueio = semChipSelecionado
-    ? "Selecione um chip para criar um novo disparo paralelo"
-    : chipBloqueadoNestaProposta
-      ? `Chip ${instanciaSelecionada} já tem disparo em andamento nesta proposta`
-      : chipBloqueadoGlobal
-        ? `Chip ${instanciaSelecionada} já está em uso em outro disparo ativo`
-        : undefined;
+    ? "Selecione um chip para criar um novo disparo"
+    : chipBloqueadoGlobal
+      ? `Instância ${instanciaSelecionada} já está em uso em outro disparo ativo`
+      : undefined;
 
   const gerarMutation = useMutation({
     mutationFn: async () => {
@@ -166,7 +158,7 @@ export function ZapTab({ campanhaPropostaId }: Props) {
           </div>
         )}
         <p className="text-xs text-muted-foreground">
-          Cada chip diferente cria um disparo paralelo (até 120 msgs/dia por instância). Para criar um novo disparo, selecione um chip que ainda não esteja em uso nesta proposta.
+          Cada disparo é independente (até 120 msgs/dia por instância). A mesma instância não pode estar em dois disparos ativos ao mesmo tempo — escolha uma instância livre.
         </p>
       </Card>
 
