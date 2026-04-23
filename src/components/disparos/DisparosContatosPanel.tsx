@@ -179,6 +179,17 @@ export function DisparosContatosPanel({ campanha, onBack, campanhaPropostaId, em
     );
   });
 
+  // Reset paginação ao mudar filtro/busca/proposta
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [filtroStatus, busca, queryKeyId]);
+
+  const contatosVisiveis = useMemo(
+    () => contatosFiltrados.slice(0, visibleCount),
+    [contatosFiltrados, visibleCount]
+  );
+  const temMais = contatosFiltrados.length > contatosVisiveis.length;
+
   // Função para deletar contato
   const handleDeleteContato = async (contatoId: string, contatoNome: string | null) => {
     if (!confirm(`Tem certeza que deseja deletar o contato "${contatoNome || 'Sem nome'}"?`)) {
