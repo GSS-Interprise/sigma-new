@@ -51,6 +51,22 @@ export function SigZapMinhasConversasColumn({
   const [novaInstanciaId, setNovaInstanciaId] = useState<string>("");
   const attemptedPhotoSyncContactIdsRef = useRef<Set<string>>(new Set());
 
+  // Filtro: todos | nao_lido | tag:<nome>
+  const [filtro, setFiltro] = useState<string>("todos");
+
+  // Tags disponíveis (mesmas do Kanban)
+  const { data: tagsConfig } = useQuery({
+    queryKey: ['leads-etiquetas-config-sigzap'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('leads_etiquetas_config')
+        .select('nome')
+        .order('nome');
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
   // Mutation to sync contact photos on demand
   const syncPhotosMutation = useMutation({
     mutationFn: async ({ contactIds }: { contactIds: string[] }) => {
