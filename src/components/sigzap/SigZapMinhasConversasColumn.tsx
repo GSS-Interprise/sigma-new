@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { User, RefreshCw, Inbox, Unlock, Plus, Loader2, Send, X, MessageCircle, Wifi, WifiOff, AlertCircle, UserX } from "lucide-react";
+import { User, RefreshCw, Inbox, Unlock, Plus, Loader2, Send, X, MessageCircle, Wifi, WifiOff, AlertCircle, UserX, Tag as TagIcon } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
