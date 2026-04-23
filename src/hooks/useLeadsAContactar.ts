@@ -151,21 +151,33 @@ export function useLeadsAContactar(campanhaPropostaId: string | null | undefined
       // 3c. Sincroniza com a fila do disparo em massa: leads que o n8n já
       // pegou (3-TRATANDO) ou enviou (4-ENVIADO) também contam como contactado,
       // mesmo que ainda não exista mensagem em sigzap_messages.
+      // Também coletamos status 1-ENVIAR / 2-REENVIAR / 3-TRATANDO em QUALQUER
+      // proposta para marcar o lead como BLOQUEADO no manual.
       const filaAcc: any[] = [];
       for (const ids of leadIdChunks) {
         const { data: page } = await (supabase as any)
           .from("disparos_contatos")
           .select("lead_id, updated_at, status")
-          .eq("campanha_proposta_id", campanhaPropostaId!)
           .in("lead_id", ids)
-          .in("status", ["3-TRATANDO", "4-ENVIADO"]);
+          .in("status", ["1-ENVIAR", "2-REENVIAR", "3-TRATANDO", "4-ENVIADO"]);
         if (page) filaAcc.push(...page);
       }
+      const bloqueioMap = new Map<string, string>();
       for (const r of filaAcc) {
-        const ts = r.updated_at;
-        const prev = contactMap.get(r.lead_id);
-        if (!prev || (ts && new Date(ts) > new Date(prev))) {
-          contactMap.set(r.lead_id, ts);
+        if (r.status === "4-ENVIADO" || r.status === "3-TRATANDO") {
+          const ts = r.updated_at;
+          const prev = contactMap.get(r.lead_id);
+          if (!prev || (ts && new Date(ts) > new Date(prev))) {
+            contactMap.set(r.lead_id, ts);
+          }
+        }
+        if (r.status === "1-ENVIAR" || r.status === "2-REENVIAR" || r.status === "3-TRATANDO") {
+          // Mantém o "pior" (mais avançado) status para exibição
+          const prev = bloqueioMap.get(r.lead_id);
+          const ordem = (s: string) => (s === "3-TRATANDO" ? 3 : s === "2-REENVIAR" ? 2 : 1);
+          if (!prev || ordem(r.status) > ordem(prev)) {
+            bloqueioMap.set(r.lead_id, r.status);
+          }
         }
       }
 
@@ -179,6 +191,8 @@ export function useLeadsAContactar(campanhaPropostaId: string | null | undefined
         cidade: l.cidade,
         contactado: contactMap.has(l.id),
         ultimo_contato_em: contactMap.get(l.id) ?? null,
+        bloqueado_disparo_massa: bloqueioMap.has(l.id),
+        status_disparo: bloqueioMap.get(l.id) ?? null,
       }));
     },
   });
