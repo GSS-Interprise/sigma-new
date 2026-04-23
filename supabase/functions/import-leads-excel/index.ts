@@ -194,6 +194,7 @@ serve(async (req) => {
     let chunkAtual = 0;
     let arquivoNome = "";
     let especialidadeParam = "";
+    let especialidadesParam: string[] = [];
     let origemParam = "";
     let listaDestinoId = "";
 
@@ -204,6 +205,19 @@ serve(async (req) => {
       jobId = formData.get("job_id") as string;
       arquivoNome = formData.get("arquivo_nome") as string || file?.name || "upload.xlsx";
       especialidadeParam = formData.get("especialidade") as string || "";
+      // Lista completa de especialidades (multi-select). Aceita JSON array.
+      const especialidadesRaw = formData.get("especialidades") as string | null;
+      if (especialidadesRaw) {
+        try {
+          const parsed = JSON.parse(especialidadesRaw);
+          if (Array.isArray(parsed)) {
+            especialidadesParam = parsed.map((s) => String(s).trim()).filter(Boolean);
+          }
+        } catch (_) { /* ignora */ }
+      }
+      if (especialidadesParam.length === 0 && especialidadeParam) {
+        especialidadesParam = [especialidadeParam];
+      }
       origemParam = formData.get("origem") as string || "Importação Excel";
       const listaDestinoIdParam = (formData.get("lista_destino_id") as string) || "";
       const listaDestinoNomeParam = (formData.get("lista_destino_nome") as string) || "";
@@ -271,6 +285,7 @@ serve(async (req) => {
           mapeamento_colunas: {
             _params: {
               especialidade: especialidadeParam,
+              especialidades: especialidadesParam,
               origem: origemParam,
               lista_destino_id: listaDestinoIdFinal || null,
             }
@@ -300,6 +315,7 @@ serve(async (req) => {
       // Recuperar parâmetros salvos
       const params = (job.mapeamento_colunas as any)?._params || {};
       especialidadeParam = params.especialidade || "";
+      especialidadesParam = Array.isArray(params.especialidades) ? params.especialidades : (especialidadeParam ? [especialidadeParam] : []);
       origemParam = params.origem || "Importação Excel";
       listaDestinoId = params.lista_destino_id || "";
     }
@@ -308,16 +324,21 @@ serve(async (req) => {
       throw new Error("Dados inválidos para processamento");
     }
 
-    // Resolver especialidade_id (uma vez por execução) a partir do nome
-    let especialidadeIdResolved: string | null = null;
-    if (especialidadeParam) {
-      const { data: espRow } = await supabase
+    // Resolver especialidade_ids (uma vez por execução) a partir dos nomes
+    const especialidadeIdsResolved: string[] = [];
+    if (especialidadesParam.length > 0) {
+      const { data: espRows } = await supabase
         .from("especialidades")
-        .select("id")
-        .ilike("nome", especialidadeParam.trim())
-        .maybeSingle();
-      especialidadeIdResolved = espRow?.id || null;
+        .select("id, nome")
+        .in("nome", especialidadesParam);
+      const byNameLower = new Map((espRows || []).map((r: any) => [String(r.nome).toLowerCase(), r.id]));
+      for (const nome of especialidadesParam) {
+        const id = byNameLower.get(nome.toLowerCase());
+        if (id) especialidadeIdsResolved.push(id);
+      }
     }
+    // Primeira especialidade_id: usada na coluna escalar legada de leads
+    const especialidadeIdResolved: string | null = especialidadeIdsResolved[0] || null;
 
     // Caminho do JSON pré-processado (evita re-parsear XLSX em cada chunk)
     const jsonStoragePath = storagePath.replace(/\.(xlsx|xls)$/i, '.json');
@@ -656,13 +677,14 @@ serve(async (req) => {
       }
     }
 
-    // Popular junction table lead_especialidades para todos os leads importados
-    if (especialidadeIdResolved && leadIdsImportados.length > 0) {
-      const espRows = leadIdsImportados.map((lead_id) => ({
-        lead_id,
-        especialidade_id: especialidadeIdResolved,
-        fonte: "import_excel",
-      }));
+    // Popular junction table lead_especialidades para todos os leads x todas as especialidades selecionadas
+    if (especialidadeIdsResolved.length > 0 && leadIdsImportados.length > 0) {
+      const espRows: { lead_id: string; especialidade_id: string; fonte: string }[] = [];
+      for (const lead_id of leadIdsImportados) {
+        for (const especialidade_id of especialidadeIdsResolved) {
+          espRows.push({ lead_id, especialidade_id, fonte: "import_excel" });
+        }
+      }
       const ESP_BATCH = 500;
       for (let i = 0; i < espRows.length; i += ESP_BATCH) {
         const slice = espRows.slice(i, i + ESP_BATCH);
@@ -670,7 +692,7 @@ serve(async (req) => {
           .from("lead_especialidades")
           .upsert(slice, { onConflict: "lead_id,especialidade_id", ignoreDuplicates: true });
         if (espErr) {
-          console.error("Erro vinculando especialidade aos leads:", espErr.message);
+          console.error("Erro vinculando especialidades aos leads:", espErr.message);
         }
       }
     }
