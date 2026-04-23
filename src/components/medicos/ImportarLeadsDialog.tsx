@@ -90,31 +90,9 @@ export function ImportarLeadsDialog({ open, onOpenChange, onSuccess, listaDestin
   const [selectedEspecialidade, setSelectedEspecialidade] = useState<string>("");
   const [selectedOrigem, setSelectedOrigem] = useState<string>("");
 
-  // Buscar especialidades existentes no banco para consolidar lista
-  const { data: especialidadesDB } = useQuery({
-    queryKey: ["especialidades-import"],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("leads")
-        .select("especialidade")
-        .not("especialidade", "is", null);
-      
-      const unique = new Set<string>();
-      data?.forEach(l => {
-        if (l.especialidade && l.especialidade.trim()) {
-          unique.add(l.especialidade.trim());
-        }
-      });
-      return Array.from(unique).sort();
-    },
-  });
-
-  // Consolidar especialidades (padrão + banco de dados)
-  const especialidadesConsolidadas = useMemo(() => {
-    const all = new Set<string>(ESPECIALIDADES_MEDICAS);
-    especialidadesDB?.forEach(e => all.add(e));
-    return Array.from(all).sort();
-  }, [especialidadesDB]);
+  // Especialidades vêm da tabela normalizada `especialidades`
+  const { data: especialidadesData = [] } = useEspecialidades();
+  const especialidadesConsolidadas = especialidadesData.map((e) => e.nome);
 
   // Usar apenas lista fixa de origens (sem buscar do banco para evitar variações)
   const origensConsolidadas = ORIGENS_PADRAO;
