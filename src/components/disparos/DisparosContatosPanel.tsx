@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -112,6 +112,10 @@ export function DisparosContatosPanel({ campanha, onBack, campanhaPropostaId, em
   const { isAdmin } = usePermissions();
   const filterByProposta = !!campanhaPropostaId;
   const queryKeyId = filterByProposta ? `cp:${campanhaPropostaId}` : `c:${campanha?.id}`;
+
+  // Lazy/chunked rendering: começa com 50, carrega mais sob demanda
+  const PAGE_SIZE = 50;
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   // Buscar contatos
   const { data: contatos = [], isLoading, refetch } = useQuery({
