@@ -241,7 +241,7 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
 
       return null;
     },
-    enabled: !!conversaId && !hasLinkedLead && (!!contactPhone || (!!contactName && contactName.length >= 3)),
+    enabled: !!conversaId && !loadingConversa && !hasLinkedLead && (!!contactPhone || (!!contactName && contactName.length >= 3)),
     staleTime: 0,
   });
 
