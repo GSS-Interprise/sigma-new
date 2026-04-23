@@ -14,6 +14,19 @@ export function useDisparoManual() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: DisparoManualInput) => {
+      // Bloqueio defensivo: lead em fila de disparo em massa
+      const { data: bloqueio } = await (supabase as any)
+        .from("disparos_contatos")
+        .select("status")
+        .eq("lead_id", input.lead_id)
+        .in("status", ["1-ENVIAR", "2-REENVIAR", "3-TRATANDO"])
+        .limit(1)
+        .maybeSingle();
+      if (bloqueio?.status) {
+        throw new Error(
+          `Lead em fila de disparo em massa (${bloqueio.status}). Envio manual bloqueado.`
+        );
+      }
       const { data, error } = await supabase.functions.invoke("send-disparo-manual", {
         body: input,
       });
