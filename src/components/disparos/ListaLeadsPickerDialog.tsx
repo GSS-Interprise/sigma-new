@@ -35,13 +35,22 @@ function applyFilters(q: any, opts: {
   cidade: string;
   ano: string;
   anoMode: AnoMode;
-}) {
+}, leadIdsByEspecialidade?: string[] | null) {
   const { debounced, especialidades, ufs, cidade, ano, anoMode } = opts;
   q = q.not("phone_e164", "is", null).is("merged_into_id", null);
   if (debounced.trim()) {
     q = q.or(`nome.ilike.%${debounced}%,phone_e164.ilike.%${debounced}%,especialidade.ilike.%${debounced}%`);
   }
-  if (especialidades.length > 0) q = q.in("especialidade_id", especialidades);
+  if (especialidades.length > 0) {
+    // Usa o resultado pré-buscado de lead_especialidades (N:N), que inclui especialidades secundárias/RQE
+    // alinhando com a contagem mostrada no dropdown do filtro.
+    if (leadIdsByEspecialidade && leadIdsByEspecialidade.length > 0) {
+      q = q.in("id", leadIdsByEspecialidade);
+    } else if (leadIdsByEspecialidade && leadIdsByEspecialidade.length === 0) {
+      // Sem leads para a especialidade selecionada — força resultado vazio
+      q = q.eq("id", "00000000-0000-0000-0000-000000000000");
+    }
+  }
   if (ufs.length > 0) q = q.in("uf", ufs.map((u) => u.toUpperCase()));
   if (cidade.trim()) q = q.ilike("cidade", `%${cidade.trim()}%`);
   if (ano && /^\d{4}$/.test(ano)) {
@@ -103,22 +112,50 @@ export function ListaLeadsPickerDialog({ open, onOpenChange, listaId, listaNome 
     enabled: open,
   });
 
+  // Busca lead_ids que possuem QUALQUER uma das especialidades selecionadas (via tabela N:N lead_especialidades).
+  // Isso alinha o filtro com a contagem exibida no dropdown (que conta especialidades primárias + secundárias/RQE).
+  const { data: leadIdsEspecialidade } = useQuery({
+    queryKey: ["leads-by-especialidades", especialidades],
+    queryFn: async () => {
+      if (especialidades.length === 0) return null;
+      const ids = new Set<string>();
+      let from = 0;
+      const CHUNK = 1000;
+      while (true) {
+        const { data, error } = await supabase
+          .from("lead_especialidades")
+          .select("lead_id")
+          .in("especialidade_id", especialidades)
+          .range(from, from + CHUNK - 1);
+        if (error) throw error;
+        (data || []).forEach((r: any) => ids.add(r.lead_id));
+        if (!data || data.length < CHUNK) break;
+        from += CHUNK;
+      }
+      return Array.from(ids);
+    },
+    enabled: open && especialidades.length > 0,
+    staleTime: 60_000,
+  });
+
   const filtersOpts = { debounced, especialidades, ufs, cidade, ano, anoMode };
+  const espLeadIds = especialidades.length > 0 ? (leadIdsEspecialidade ?? null) : undefined;
+  const espLoading = especialidades.length > 0 && leadIdsEspecialidade === undefined;
 
   const { data: pageData, isLoading, isFetching } = useQuery({
-    queryKey: ["leads-picker-page", page, debounced, especialidades, ufs, cidade, ano, anoMode],
+    queryKey: ["leads-picker-page", page, debounced, especialidades, ufs, cidade, ano, anoMode, espLeadIds?.length ?? 0],
     queryFn: async () => {
       const from = page * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
       let q: any = supabase
         .from("leads")
         .select("id, nome, phone_e164, especialidade, especialidade_id, uf, cidade, data_formatura", { count: "exact" });
-      q = applyFilters(q, filtersOpts).range(from, to).order("nome", { ascending: true });
+      q = applyFilters(q, filtersOpts, espLeadIds).range(from, to).order("nome", { ascending: true });
       const { data, error, count } = await q;
       if (error) throw error;
       return { leads: data || [], totalCount: count || 0 };
     },
-    enabled: open,
+    enabled: open && !espLoading,
     placeholderData: (prev) => prev,
   });
 
@@ -151,7 +188,7 @@ export function ListaLeadsPickerDialog({ open, onOpenChange, listaId, listaNome 
       let from = 0;
       while (from < SELECT_ALL_MAX) {
         let q: any = supabase.from("leads").select("id");
-        q = applyFilters(q, filtersOpts).range(from, from + SELECT_ALL_CHUNK - 1);
+        q = applyFilters(q, filtersOpts, espLeadIds).range(from, from + SELECT_ALL_CHUNK - 1);
         const { data, error } = await q;
         if (error) throw error;
         (data || []).forEach((l: any) => {
