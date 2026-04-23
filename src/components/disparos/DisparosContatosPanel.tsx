@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -113,6 +113,10 @@ export function DisparosContatosPanel({ campanha, onBack, campanhaPropostaId, em
   const filterByProposta = !!campanhaPropostaId;
   const queryKeyId = filterByProposta ? `cp:${campanhaPropostaId}` : `c:${campanha?.id}`;
 
+  // Lazy/chunked rendering: começa com 50, carrega mais sob demanda
+  const PAGE_SIZE = 50;
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+
   // Buscar contatos
   const { data: contatos = [], isLoading, refetch } = useQuery({
     queryKey: ["disparos-contatos", queryKeyId, filtroStatus],
@@ -174,6 +178,17 @@ export function DisparosContatosPanel({ campanha, onBack, campanhaPropostaId, em
       c.telefone_e164?.includes(termo)
     );
   });
+
+  // Reset paginação ao mudar filtro/busca/proposta
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [filtroStatus, busca, queryKeyId]);
+
+  const contatosVisiveis = useMemo(
+    () => contatosFiltrados.slice(0, visibleCount),
+    [contatosFiltrados, visibleCount]
+  );
+  const temMais = contatosFiltrados.length > contatosVisiveis.length;
 
   // Função para deletar contato
   const handleDeleteContato = async (contatoId: string, contatoNome: string | null) => {
@@ -568,7 +583,7 @@ export function DisparosContatosPanel({ campanha, onBack, campanhaPropostaId, em
               </TableRow>
             </TableHeader>
               <TableBody>
-                {contatosFiltrados.map((contato, index) => {
+                {contatosVisiveis.map((contato, index) => {
                   const config = statusConfig[contato.status] || statusConfig["1-ENVIAR"];
                   return (
                     <TableRow key={contato.id}>
@@ -632,6 +647,24 @@ export function DisparosContatosPanel({ campanha, onBack, campanhaPropostaId, em
           </Table>
         )}
       </Card>
+
+      {/* Carregar mais (lazy / chunked) */}
+      {!isLoading && contatosFiltrados.length > 0 && (
+        <div className="flex items-center justify-between text-xs text-muted-foreground pt-1">
+          <span>
+            Mostrando {contatosVisiveis.length} de {contatosFiltrados.length}
+          </span>
+          {temMais && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setVisibleCount((n) => n + PAGE_SIZE)}
+            >
+              Carregar mais {Math.min(PAGE_SIZE, contatosFiltrados.length - contatosVisiveis.length)}
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
