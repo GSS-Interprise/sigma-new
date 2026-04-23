@@ -756,8 +756,13 @@ export function SigZapMinhasConversasColumn({
               <p>Nenhuma conversa atribuída</p>
               <p className="text-xs mt-1">Clique em uma conversa livre para assumir</p>
             </div>
+          ) : conversasFiltradas.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground text-sm">
+              <Inbox className="h-10 w-10 mx-auto mb-2 opacity-20" />
+              <p>Nenhuma conversa nesse filtro</p>
+            </div>
           ) : (
-            minhasConversas.map((conversa) => {
+            conversasFiltradas.map((conversa) => {
               const contact = conversa.contact as any;
               const instance = conversa.instance as any;
               const lastMessageAt = conversa.last_message_at;
