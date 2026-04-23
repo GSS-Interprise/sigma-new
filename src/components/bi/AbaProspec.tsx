@@ -49,16 +49,33 @@ async function fetchAllChunks<T = any>(
   select: string,
   applyFilters: (q: any) => any,
   chunkSize = 1000,
-  maxRows = 50000
+  maxRows = 50000,
+  orderColumn = "created_at"
 ): Promise<T[]> {
   const all: T[] = [];
   let from = 0;
   while (from < maxRows) {
     const to = from + chunkSize - 1;
-    let q: any = (supabase as any).from(table).select(select).range(from, to);
+    let q: any = (supabase as any)
+      .from(table)
+      .select(select)
+      .order(orderColumn, { ascending: true, nullsFirst: false })
+      .range(from, to);
     q = applyFilters(q);
     const { data, error } = await q;
-    if (error) throw error;
+    if (error) {
+      // Fallback: tenta sem order (caso a coluna não exista no select/view)
+      const q2: any = applyFilters(
+        (supabase as any).from(table).select(select).range(from, to)
+      );
+      const r2 = await q2;
+      if (r2.error) throw r2.error;
+      const rows2 = (r2.data ?? []) as T[];
+      all.push(...rows2);
+      if (rows2.length < chunkSize) break;
+      from += chunkSize;
+      continue;
+    }
     const rows = (data ?? []) as T[];
     all.push(...rows);
     if (rows.length < chunkSize) break;
@@ -168,13 +185,16 @@ export function AbaProspec() {
   const { data: trafegoPago, isLoading: lt } = useQuery({
     queryKey: ["bi-prospec-trafego", dataInicio, dataFim],
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from("vw_trafego_pago_funil")
-        .select("*")
-        .gte("primeiro_envio", `${dataInicio}T00:00:00`)
-        .lte("primeiro_envio", `${dataFim}T23:59:59`);
-      if (error) throw error;
-      return (data ?? []) as any[];
+      return await fetchAllChunks<any>(
+        "vw_trafego_pago_funil",
+        "*",
+        (q) => q
+          .gte("primeiro_envio", `${dataInicio}T00:00:00`)
+          .lte("primeiro_envio", `${dataFim}T23:59:59`),
+        1000,
+        50000,
+        "primeiro_envio"
+      );
     },
   });
 
@@ -183,12 +203,16 @@ export function AbaProspec() {
     queryKey: ["bi-prospec-campanhas", dataInicio, dataFim],
     queryFn: async () => {
       // 1) Métricas base da view (status do funil campanha_leads)
-      const { data: base, error } = await (supabase as any)
-        .from("vw_campanha_metricas")
-        .select("*")
-        .gte("campanha_criada_em", `${dataInicio}T00:00:00`)
-        .lte("campanha_criada_em", `${dataFim}T23:59:59`);
-      if (error) throw error;
+      const base = await fetchAllChunks<any>(
+        "vw_campanha_metricas",
+        "*",
+        (q) => q
+          .gte("campanha_criada_em", `${dataInicio}T00:00:00`)
+          .lte("campanha_criada_em", `${dataFim}T23:59:59`),
+        1000,
+        50000,
+        "campanha_criada_em"
+      );
 
       // 2) Complemento: agregação de campanha_proposta_lead_canais
       //    (leads reais que entraram nos canais — usados quando a campanha
