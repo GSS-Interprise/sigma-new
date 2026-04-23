@@ -70,7 +70,7 @@ interface SenderInfo {
 
 const MAX_FILE_SIZE = 16 * 1024 * 1024; // 16MB
 
-export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
+export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapChatColumnProps) {
   const [mensagem, setMensagem] = useState("");
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
