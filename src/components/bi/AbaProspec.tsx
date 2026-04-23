@@ -185,13 +185,16 @@ export function AbaProspec() {
   const { data: trafegoPago, isLoading: lt } = useQuery({
     queryKey: ["bi-prospec-trafego", dataInicio, dataFim],
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from("vw_trafego_pago_funil")
-        .select("*")
-        .gte("primeiro_envio", `${dataInicio}T00:00:00`)
-        .lte("primeiro_envio", `${dataFim}T23:59:59`);
-      if (error) throw error;
-      return (data ?? []) as any[];
+      return await fetchAllChunks<any>(
+        "vw_trafego_pago_funil",
+        "*",
+        (q) => q
+          .gte("primeiro_envio", `${dataInicio}T00:00:00`)
+          .lte("primeiro_envio", `${dataFim}T23:59:59`),
+        1000,
+        50000,
+        "primeiro_envio"
+      );
     },
   });
 
@@ -200,12 +203,16 @@ export function AbaProspec() {
     queryKey: ["bi-prospec-campanhas", dataInicio, dataFim],
     queryFn: async () => {
       // 1) Métricas base da view (status do funil campanha_leads)
-      const { data: base, error } = await (supabase as any)
-        .from("vw_campanha_metricas")
-        .select("*")
-        .gte("campanha_criada_em", `${dataInicio}T00:00:00`)
-        .lte("campanha_criada_em", `${dataFim}T23:59:59`);
-      if (error) throw error;
+      const base = await fetchAllChunks<any>(
+        "vw_campanha_metricas",
+        "*",
+        (q) => q
+          .gte("campanha_criada_em", `${dataInicio}T00:00:00`)
+          .lte("campanha_criada_em", `${dataFim}T23:59:59`),
+        1000,
+        50000,
+        "campanha_criada_em"
+      );
 
       // 2) Complemento: agregação de campanha_proposta_lead_canais
       //    (leads reais que entraram nos canais — usados quando a campanha
