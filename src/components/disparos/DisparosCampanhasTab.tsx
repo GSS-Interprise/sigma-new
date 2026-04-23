@@ -110,7 +110,10 @@ export function DisparosCampanhasTab() {
         .or("tipo_instancia.is.null,tipo_instancia.neq.trafego_pago")
         .order("nome");
       if (error) throw error;
-      return data;
+      return (data || []).filter((chip: any) => {
+        const tipoInstancia = String(chip.tipo_instancia || "").trim().toLowerCase();
+        return tipoInstancia !== "trafego_pago";
+      });
     },
   });
 
