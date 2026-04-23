@@ -668,15 +668,73 @@ export function SigZapMinhasConversasColumn({
       {/* Count + refresh */}
       <div className="flex items-center justify-between px-3 py-2 border-b text-xs text-muted-foreground">
         <span>
-          {minhasConversas?.length || 0} conversa{(minhasConversas?.length || 0) !== 1 ? 's' : ''}
+          {conversasFiltradas.length} conversa{conversasFiltradas.length !== 1 ? 's' : ''}
           {(() => {
-            const naoLidos = minhasConversas?.reduce((acc, c: any) => acc + (c.unread_count || 0), 0) || 0;
+            const naoLidos = conversasFiltradas.reduce((acc, c: any) => acc + (c.unread_count || 0), 0);
             return naoLidos > 0 ? ` · ${naoLidos} não lida${naoLidos !== 1 ? 's' : ''}` : '';
           })()}
         </span>
         <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => refetch()}>
           <RefreshCw className="h-3 w-3" />
         </Button>
+      </div>
+
+      {/* Filtros */}
+      <div className="flex items-center gap-1 px-2 py-1.5 border-b bg-muted/10">
+        <Button
+          variant={filtro === "todos" ? "secondary" : "ghost"}
+          size="sm"
+          className="h-7 px-2 text-[11px]"
+          onClick={() => setFiltro("todos")}
+        >
+          Todos
+        </Button>
+        <Button
+          variant={filtro === "nao_lido" ? "secondary" : "ghost"}
+          size="sm"
+          className="h-7 px-2 text-[11px]"
+          onClick={() => setFiltro("nao_lido")}
+        >
+          Não lido
+        </Button>
+        <Select
+          value={filtro.startsWith("tag:") ? filtro : ""}
+          onValueChange={(v) => setFiltro(v)}
+        >
+          <SelectTrigger
+            className={cn(
+              "h-7 text-[11px] flex-1 min-w-0",
+              filtro.startsWith("tag:") && "bg-secondary"
+            )}
+          >
+            <div className="flex items-center gap-1 min-w-0">
+              <TagIcon className="h-3 w-3 flex-shrink-0" />
+              <SelectValue placeholder="Tag" />
+            </div>
+          </SelectTrigger>
+          <SelectContent className="bg-background z-50">
+            {(tagsConfig || []).length === 0 ? (
+              <div className="px-2 py-1.5 text-xs text-muted-foreground">Nenhuma tag</div>
+            ) : (
+              (tagsConfig || []).map((t: any) => (
+                <SelectItem key={t.nome} value={`tag:${t.nome}`} className="text-xs">
+                  {t.nome}
+                </SelectItem>
+              ))
+            )}
+          </SelectContent>
+        </Select>
+        {filtro !== "todos" && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 flex-shrink-0"
+            onClick={() => setFiltro("todos")}
+            title="Limpar filtro"
+          >
+            <X className="h-3 w-3" />
+          </Button>
+        )}
       </div>
 
       {/* Conversations List */}
