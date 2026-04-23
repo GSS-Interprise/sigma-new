@@ -104,8 +104,21 @@ export function FiltroPeriodo({
       setRange({ from: presets.atual.inicio, to: presets.atual.fim });
       onDataInicioChange(fmt(presets.atual.inicio));
       onDataFimChange(fmt(presets.atual.fim));
+    } else if (value === "hoje") {
+      setRange({ from: presets.hoje.inicio, to: presets.hoje.fim });
+      onDataInicioChange(fmt(presets.hoje.inicio));
+      onDataFimChange(fmt(presets.hoje.fim));
+    } else if (value === "ultimos7") {
+      setRange({ from: presets.ultimos7.inicio, to: presets.ultimos7.fim });
+      onDataInicioChange(fmt(presets.ultimos7.inicio));
+      onDataFimChange(fmt(presets.ultimos7.fim));
+    } else if (value === "ultimos30") {
+      setRange({ from: presets.ultimos30.inicio, to: presets.ultimos30.fim });
+      onDataInicioChange(fmt(presets.ultimos30.inicio));
+      onDataFimChange(fmt(presets.ultimos30.fim));
     } else if (value === "personalizado") {
-      setRange(createRangeFromValues(dataInicio, dataFim));
+      // Limpa o range para o usuário começar uma nova seleção do zero
+      setRange(undefined);
       setRangeOpen(true);
     } else {
       const m = presets.ultimos8.find((x) => x.value === value);
@@ -118,8 +131,20 @@ export function FiltroPeriodo({
   };
 
   const handleRange = (r: DateRange | undefined) => {
+    // Se o usuário clica em uma data quando já existe um range completo,
+    // o react-day-picker reinicia a seleção. Detectamos isso e tratamos
+    // como início de uma nova seleção (não dispara update da tela ainda).
+    const tinhaRangeCompleto = !!(range?.from && range?.to);
+    const novoTemSoFrom = !!(r?.from && !r?.to);
+
+    if (tinhaRangeCompleto && novoTemSoFrom) {
+      setRange({ from: r!.from, to: undefined });
+      return;
+    }
+
     setRange(r);
 
+    // Só atualiza a tela quando AMBAS as datas estão selecionadas
     if (r?.from && r?.to) {
       onDataInicioChange(fmt(r.from));
       onDataFimChange(fmt(r.to));
