@@ -194,6 +194,7 @@ serve(async (req) => {
     let chunkAtual = 0;
     let arquivoNome = "";
     let especialidadeParam = "";
+    let especialidadesParam: string[] = [];
     let origemParam = "";
     let listaDestinoId = "";
 
@@ -204,6 +205,19 @@ serve(async (req) => {
       jobId = formData.get("job_id") as string;
       arquivoNome = formData.get("arquivo_nome") as string || file?.name || "upload.xlsx";
       especialidadeParam = formData.get("especialidade") as string || "";
+      // Lista completa de especialidades (multi-select). Aceita JSON array.
+      const especialidadesRaw = formData.get("especialidades") as string | null;
+      if (especialidadesRaw) {
+        try {
+          const parsed = JSON.parse(especialidadesRaw);
+          if (Array.isArray(parsed)) {
+            especialidadesParam = parsed.map((s) => String(s).trim()).filter(Boolean);
+          }
+        } catch (_) { /* ignora */ }
+      }
+      if (especialidadesParam.length === 0 && especialidadeParam) {
+        especialidadesParam = [especialidadeParam];
+      }
       origemParam = formData.get("origem") as string || "Importação Excel";
       const listaDestinoIdParam = (formData.get("lista_destino_id") as string) || "";
       const listaDestinoNomeParam = (formData.get("lista_destino_nome") as string) || "";
@@ -271,6 +285,7 @@ serve(async (req) => {
           mapeamento_colunas: {
             _params: {
               especialidade: especialidadeParam,
+              especialidades: especialidadesParam,
               origem: origemParam,
               lista_destino_id: listaDestinoIdFinal || null,
             }
@@ -300,6 +315,7 @@ serve(async (req) => {
       // Recuperar parâmetros salvos
       const params = (job.mapeamento_colunas as any)?._params || {};
       especialidadeParam = params.especialidade || "";
+      especialidadesParam = Array.isArray(params.especialidades) ? params.especialidades : (especialidadeParam ? [especialidadeParam] : []);
       origemParam = params.origem || "Importação Excel";
       listaDestinoId = params.lista_destino_id || "";
     }
