@@ -208,6 +208,9 @@ export function FiltroPeriodo({
               <SelectValue placeholder="Selecione o período" />
             </SelectTrigger>
             <SelectContent className={selectContentCls} style={themeVars}>
+                <SelectItem value="hoje" className={selectItemCls}>Hoje</SelectItem>
+                <SelectItem value="ultimos7" className={selectItemCls}>Últimos 7 dias</SelectItem>
+                <SelectItem value="ultimos30" className={selectItemCls}>Últimos 30 dias</SelectItem>
                 <SelectItem value="atual" className={selectItemCls}>Mês atual</SelectItem>
               {presets.ultimos8.map((m) => (
                   <SelectItem key={m.value} value={m.value} className={selectItemCls}>
