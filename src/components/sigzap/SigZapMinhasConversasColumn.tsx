@@ -128,7 +128,7 @@ export function SigZapMinhasConversasColumn({
           *,
           contact:sigzap_contacts(*),
           instance:sigzap_instances(id, name),
-          lead:leads!sigzap_conversations_lead_id_fkey(id, nome)
+          lead:leads!sigzap_conversations_lead_id_fkey(id, nome, tags)
         `)
         .eq('assigned_user_id', user.id)
         .neq('status', 'inactive')
