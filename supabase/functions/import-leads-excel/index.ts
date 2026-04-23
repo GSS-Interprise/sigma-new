@@ -21,6 +21,24 @@ const EXPECTED_COLUMNS = {
   data_nascimento: ["data_nasc", "data_nascimento", "nascimento", "datanasc", "dt_nasc", "dt_nascimento", "birth", "birthdate"],
 };
 
+// Detecta colunas de telefones adicionais: telefone1, telefone2, tel1, celular2, whatsapp3, phone_2, etc.
+// Retorna array ordenado por número (1, 2, 3...) com o nome ORIGINAL da coluna.
+function findAdditionalPhoneColumns(headers: string[], primaryCol: string | null): string[] {
+  const matches: { col: string; idx: number }[] = [];
+  const primaryNorm = primaryCol ? normalizeColumnName(primaryCol) : null;
+  const re = /^(telefone|phone|celular|whatsapp|tel|cel|fone|whats)[\s_\-]?(\d+)$/;
+  for (const header of headers) {
+    const norm = normalizeColumnName(header);
+    if (norm === primaryNorm) continue;
+    const m = norm.match(re);
+    if (m) {
+      matches.push({ col: header, idx: parseInt(m[2], 10) });
+    }
+  }
+  matches.sort((a, b) => a.idx - b.idx);
+  return matches.map((m) => m.col);
+}
+
 // UFs válidas
 const UFS_VALIDAS = [
   "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA",
@@ -409,6 +427,12 @@ serve(async (req) => {
     for (const [field, aliases] of Object.entries(EXPECTED_COLUMNS)) {
       columnMapping[field] = findColumnMatch(headers, aliases);
     }
+
+    // Detectar colunas de telefones adicionais (telefone1, telefone2, ...)
+    const additionalPhoneCols = findAdditionalPhoneColumns(headers, columnMapping.telefone);
+    if (additionalPhoneCols.length > 0) {
+      console.log(`Colunas de telefones adicionais detectadas: ${additionalPhoneCols.join(", ")}`);
+    }
     
     // Validar colunas obrigatórias - Nome, Telefone e UF são obrigatórios
     const missingColumns: string[] = [];
@@ -599,7 +623,25 @@ serve(async (req) => {
       if (columnMapping.cidade && row[columnMapping.cidade]) {
         leadData.cidade = String(row[columnMapping.cidade]).trim();
       }
-      
+
+      // Telefones adicionais (telefone1, telefone2, ...)
+      if (additionalPhoneCols.length > 0) {
+        const adicionais: string[] = [];
+        const seen = new Set<string>([phone_e164]);
+        for (const col of additionalPhoneCols) {
+          const raw = row[col];
+          if (raw === undefined || raw === null || String(raw).trim() === "") continue;
+          const normalized = normalizePhone(String(raw));
+          if (!normalized) continue;
+          if (seen.has(normalized)) continue;
+          seen.add(normalized);
+          adicionais.push(normalized);
+        }
+        if (adicionais.length > 0) {
+          leadData.telefones_adicionais = adicionais;
+        }
+      }
+
       leadsMap.set(phone_e164, { rowNum, data: leadData, originalRow: row });
     }
 

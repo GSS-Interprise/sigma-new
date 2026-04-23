@@ -11,6 +11,19 @@ import * as XLSX from 'xlsx';
 import { validateCPF } from "@/lib/validators";
 import { ESPECIALIDADES_MEDICAS } from "./EspecialidadeMultiSelect";
 
+// Detecta colunas extras de telefone (telefone1, tel2, celular3, whatsapp_2, etc.)
+function findAdditionalPhoneKeys(rowKeys: string[]): string[] {
+  const re = /^(telefone|phone|celular|whatsapp|tel|cel|fone|whats)[\s_\-]?(\d+)$/i;
+  const found: { key: string; idx: number }[] = [];
+  for (const k of rowKeys) {
+    const norm = k.toLowerCase().trim();
+    const m = norm.match(re);
+    if (m) found.push({ key: k, idx: parseInt(m[2], 10) });
+  }
+  found.sort((a, b) => a.idx - b.idx);
+  return found.map((f) => f.key);
+}
+
 interface ImportarMedicosDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -168,6 +181,20 @@ export function ImportarMedicosDialog({ open, onOpenChange, onSuccess }: Importa
           especialidade: especialidades,
           email: String(row.email).trim().toLowerCase(),
           telefone: String(row.telefone).trim(),
+          telefones_adicionais: (() => {
+            const extras: string[] = [];
+            const principal = String(row.telefone).replace(/\D/g, "");
+            const seen = new Set<string>([principal]);
+            for (const key of findAdditionalPhoneKeys(Object.keys(row))) {
+              const raw = row[key];
+              if (raw === undefined || raw === null || String(raw).trim() === "") continue;
+              const digits = String(raw).replace(/\D/g, "");
+              if (!digits || seen.has(digits)) continue;
+              seen.add(digits);
+              extras.push(String(raw).trim());
+            }
+            return extras.length > 0 ? extras : null;
+          })(),
           cpf: row.cpf ? String(row.cpf).replace(/[^\d]/g, '') : null,
           data_nascimento: dataNascimento,
           estado: row.estado ? String(row.estado).toUpperCase().trim() : null,
@@ -217,6 +244,9 @@ export function ImportarMedicosDialog({ open, onOpenChange, onSuccess }: Importa
         especialidade: 'Cardiologia, Clínica Médica',
         email: 'joao@exemplo.com',
         telefone: '(11) 99999-9999',
+        telefone1: '(11) 98888-7777',
+        telefone2: '(11) 97777-6666',
+        telefone3: '',
         cpf: '123.456.789-00',
         data_nascimento: '1980-05-15',
         estado: 'SP',
@@ -258,6 +288,7 @@ export function ImportarMedicosDialog({ open, onOpenChange, onSuccess }: Importa
                   <li><strong>especialidade</strong>: Uma ou mais especialidades separadas por vírgula (obrigatório). Ex: "Cardiologia, Clínica Médica"</li>
                   <li><strong>email</strong>: Email válido (obrigatório)</li>
                   <li><strong>telefone</strong>: Telefone de contato (obrigatório)</li>
+                  <li><strong>telefone1, telefone2, telefone3...</strong>: Telefones adicionais (opcional, vazios são ignorados). Aceita também <code>celular2</code>, <code>whatsapp3</code>, etc.</li>
                   <li><strong>cpf</strong>: CPF no formato XXX.XXX.XXX-XX (opcional)</li>
                   <li><strong>data_nascimento</strong>: Data no formato AAAA-MM-DD (opcional)</li>
                   <li><strong>estado</strong>: Sigla do estado (opcional)</li>
