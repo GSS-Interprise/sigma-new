@@ -102,7 +102,7 @@ export function LeadChannelsSidebar({ leadId, activeConversaIdOverride }: LeadCh
             )}
             {/* Chat */}
             <div className="flex-1 min-h-0">
-              <SigZapChatColumn conversaId={activeConversaId} />
+              <SigZapChatColumn conversaId={activeConversaId} hideLeadButton />
             </div>
           </div>
         )}
