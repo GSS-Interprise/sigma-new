@@ -403,6 +403,9 @@ export function ImportarLeadsDialog({ open, onOpenChange, onSuccess, listaDestin
       {
         Nome: "João da Silva",
         Telefone: "5547999758708",
+        telefone1: "5547988887777",
+        telefone2: "5547977776666",
+        telefone3: "",
         data_nasc: "03/01/1990",
         CPF: "11155511187",
         UF: "SP",
@@ -481,6 +484,14 @@ export function ImportarLeadsDialog({ open, onOpenChange, onSuccess, listaDestin
                 <li>Data nascimento: <code className="bg-green-100 px-1 rounded">DD/MM/YYYY</code> ou <code className="bg-green-100 px-1 rounded">YYYY-MM-DD</code></li>
                 <li>A combinação Nome + Data Nascimento funciona como identificador único (anti-duplicação)</li>
                 <li>Colunas opcionais: CPF, Email, Cidade</li>
+                <li>
+                  <strong>Telefones adicionais</strong> (opcional): use colunas{" "}
+                  <code className="bg-green-100 px-1 rounded">telefone1</code>,{" "}
+                  <code className="bg-green-100 px-1 rounded">telefone2</code>,{" "}
+                  <code className="bg-green-100 px-1 rounded">telefone3</code>... (também aceita{" "}
+                  <code className="bg-green-100 px-1 rounded">celular2</code>,{" "}
+                  <code className="bg-green-100 px-1 rounded">whatsapp3</code>). Vazias são ignoradas.
+                </li>
               </ul>
             </div>
           </div>
