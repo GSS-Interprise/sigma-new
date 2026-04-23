@@ -1,8 +1,8 @@
-import { useState, useRef, useMemo } from "react";
+import { useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
-import { useQuery } from "@tanstack/react-query";
+import { useEspecialidades } from "@/hooks/useEspecialidades";
 import {
   Dialog,
   DialogContent,
@@ -44,7 +44,6 @@ import {
 } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { ESPECIALIDADES_MEDICAS } from "./EspecialidadeMultiSelect";
 import { cn } from "@/lib/utils";
 
 interface ImportarLeadsDialogProps {
