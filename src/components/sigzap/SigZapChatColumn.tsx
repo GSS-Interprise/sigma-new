@@ -1554,20 +1554,22 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
               </Badge>
             )}
             
-            <Button 
-              variant="outline" 
-              size="sm" 
-              className="h-8 gap-1"
-              onClick={handleLeadClick}
-              disabled={isCheckingLead || !conversa}
-            >
-              {isCheckingLead ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <FileText className="h-3.5 w-3.5" />
-              )}
-              <span className="hidden lg:inline">Lead</span>
-            </Button>
+            {!hideLeadButton && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="h-8 gap-1"
+                onClick={handleLeadClick}
+                disabled={isCheckingLead || !conversa}
+              >
+                {isCheckingLead ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <FileText className="h-3.5 w-3.5" />
+                )}
+                <span className="hidden lg:inline">Lead</span>
+              </Button>
+            )}
             
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => refetch()}>
               <RefreshCw className="h-4 w-4" />
