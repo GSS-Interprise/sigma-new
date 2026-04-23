@@ -151,14 +151,14 @@ export function ListaLeadsPickerDialog({ open, onOpenChange, listaId, listaNome 
       const next = new Set(selecionados);
       let from = 0;
       while (from < SELECT_ALL_MAX) {
-        let q: any = supabase.from("leads").select("id");
-        q = applyFilters(q, filtersOpts, espLeadIds).range(from, from + SELECT_ALL_CHUNK - 1);
-        const { data, error } = await q;
+        const params = buildRpcParams(filtersOpts, SELECT_ALL_CHUNK, from);
+        const { data, error } = await (supabase as any).rpc("search_leads_for_picker", params);
         if (error) throw error;
-        (data || []).forEach((l: any) => {
+        const rows = (data || []) as any[];
+        rows.forEach((l: any) => {
           if (!jaNaLista?.has(l.id)) next.add(l.id);
         });
-        if (!data || data.length < SELECT_ALL_CHUNK) break;
+        if (rows.length < SELECT_ALL_CHUNK) break;
         from += SELECT_ALL_CHUNK;
       }
       setSelecionados(next);
