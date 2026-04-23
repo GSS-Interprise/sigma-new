@@ -298,6 +298,17 @@ export function DisparoManualLeadPanel({ campanhaPropostaId, leadId, onOpenChat 
 
       <ScrollArea className="flex-1">
         <div className="p-3 space-y-4">
+          {bloqueadoMassa && (
+            <div className="rounded-md border border-primary/40 bg-primary/5 p-3 text-xs flex gap-2">
+              <Lock className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <p className="font-semibold text-primary">Lead em fila de disparo em massa</p>
+                <p className="text-muted-foreground">
+                  Status atual: <span className="font-mono">{bloqueioStatus}</span>. O envio manual está bloqueado para evitar mensagens duplicadas e risco de bloqueio do número.
+                </p>
+              </div>
+            </div>
+          )}
           {/* Bloco 1: Instância */}
           <div className="space-y-2">
             <Label className="text-xs font-semibold uppercase text-muted-foreground">
