@@ -473,60 +473,43 @@ Deno.serve(async (req) => {
 
       console.log('[disparos-webhook] Enviando para n8n:', n8nWebhookUrl, 'com', contatosParaN8N.length, 'contatos');
 
-      // Enviar para o webhook n8n
-      let n8nResponseData: { success?: string | boolean } | null = null;
-      
-      try {
-        const n8nResponse = await fetch(n8nWebhookUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payloadN8N)
-        });
-
-        console.log('[disparos-webhook] Resposta n8n status:', n8nResponse.status);
-
-        if (!n8nResponse.ok) {
-          const errorText = await n8nResponse.text();
-          console.error('[disparos-webhook] Erro n8n:', errorText);
-          
-          // Reverter status dos contatos
+      // Disparar fetch para n8n em background (fire-and-forget) para não estourar
+      // o timeout de 150s do edge runtime. O n8n atualizará os status via callback.
+      // @ts-ignore - EdgeRuntime existe no runtime do Supabase
+      const runtime = (globalThis as any).EdgeRuntime;
+      const backgroundN8N = (async () => {
+        try {
+          const n8nResponse = await fetch(n8nWebhookUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payloadN8N)
+          });
+          console.log('[disparos-webhook] (bg) Resposta n8n status:', n8nResponse.status);
+          if (!n8nResponse.ok) {
+            const errorText = await n8nResponse.text();
+            console.error('[disparos-webhook] (bg) Erro n8n:', errorText);
+            await supabase
+              .from('disparos_contatos')
+              .update({ status: '1-ENVIAR', updated_at: new Date().toISOString() })
+              .in('id', ids);
+          }
+        } catch (n8nError) {
+          console.error('[disparos-webhook] (bg) Erro ao chamar n8n:', n8nError);
           await supabase
             .from('disparos_contatos')
             .update({ status: '1-ENVIAR', updated_at: new Date().toISOString() })
             .in('id', ids);
-
-          return new Response(
-            JSON.stringify({ error: 'Erro ao enviar para n8n', details: errorText }),
-            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
         }
+      })();
 
-        // Tentar parsear resposta do n8n (ele retorna {success: "true"} quando fluxo termina)
-        try {
-          n8nResponseData = await n8nResponse.json();
-          console.log('[disparos-webhook] Resposta n8n body:', n8nResponseData);
-        } catch {
-          // Se não for JSON, apenas ignora
-          console.log('[disparos-webhook] Resposta n8n não é JSON');
-        }
-      } catch (n8nError) {
-        console.error('[disparos-webhook] Erro ao chamar n8n:', n8nError);
-        
-        // Reverter status dos contatos
-        await supabase
-          .from('disparos_contatos')
-          .update({ status: '1-ENVIAR', updated_at: new Date().toISOString() })
-          .in('id', ids);
-
-        return new Response(
-          JSON.stringify({ error: 'Erro de conexão com n8n', details: String(n8nError) }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+      if (runtime?.waitUntil) {
+        runtime.waitUntil(backgroundN8N);
       }
 
-      // Se n8n retornou success true, significa que o lote foi processado
-      const fluxoFinalizado = n8nResponseData?.success === true || n8nResponseData?.success === 'true';
-      
+      // Retornamos imediatamente; a verificação de "fluxo finalizado" só acontece
+      // pelo callback do n8n (disparos-callback). Bloco abaixo desativado.
+      const fluxoFinalizado = false;
+
       if (fluxoFinalizado) {
         console.log('[disparos-webhook] Fluxo n8n finalizou com sucesso para lote');
         
