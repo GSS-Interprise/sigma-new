@@ -26,6 +26,19 @@ import { normalizeToDigitsOnly, normalizeToE164 } from "@/lib/phoneUtils";
 import { sigzapNormalizePhoneKey } from "@/lib/sigzapPhoneKey";
 import { SigZapConversaContextMenu } from "./SigZapConversaContextMenu";
 
+const tagColorMap: Record<string, { bg: string; text: string }> = {
+  red: { bg: 'bg-red-100', text: 'text-red-800' },
+  orange: { bg: 'bg-orange-100', text: 'text-orange-800' },
+  yellow: { bg: 'bg-yellow-100', text: 'text-yellow-800' },
+  green: { bg: 'bg-green-100', text: 'text-green-800' },
+  blue: { bg: 'bg-blue-100', text: 'text-blue-800' },
+  purple: { bg: 'bg-purple-100', text: 'text-purple-800' },
+  pink: { bg: 'bg-pink-100', text: 'text-pink-800' },
+  teal: { bg: 'bg-teal-100', text: 'text-teal-800' },
+  indigo: { bg: 'bg-indigo-100', text: 'text-indigo-800' },
+  gray: { bg: 'bg-gray-100', text: 'text-gray-800' },
+};
+
 interface SigZapMinhasConversasColumnProps {
   selectedConversaId: string | null;
   onSelectConversa: (id: string) => void;
@@ -60,7 +73,7 @@ export function SigZapMinhasConversasColumn({
     queryFn: async () => {
       const { data, error } = await supabase
         .from('leads_etiquetas_config')
-        .select('nome')
+        .select('nome, cor_id')
         .order('nome');
       if (error) throw error;
       return data || [];
@@ -878,6 +891,21 @@ key={conversa.id}
                               Não é o médico
                             </Badge>
                           )}
+                          {Array.isArray((conversa.lead as any)?.tags) && (conversa.lead as any).tags.map((tagNome: string) => {
+                            const cfg = (tagsConfig || []).find((t: any) => t.nome === tagNome);
+                            const colorId = cfg?.cor_id || 'gray';
+                            const colors = tagColorMap[colorId] || tagColorMap.gray;
+                            return (
+                              <Badge
+                                key={tagNome}
+                                variant="outline"
+                                className={cn("text-[10px] h-5 gap-0.5 border-0", colors.bg, colors.text)}
+                              >
+                                <TagIcon className="h-3 w-3" />
+                                {tagNome}
+                              </Badge>
+                            );
+                          })}
                         </div>
                         <Button
                           variant="ghost"
