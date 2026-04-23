@@ -231,6 +231,27 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
               return { mode: 'auto-silent' as const, lead: { ...lead, score: 100 } };
             }
           }
+
+          // Exact lead match by phone in base → silent auto-link too
+          const { data: exactLead } = await supabase
+            .from('leads')
+            .select('id, nome, phone_e164, telefones_adicionais, email, uf, especialidade')
+            .eq('phone_e164', phoneE164)
+            .maybeSingle();
+
+          if (exactLead) {
+            return { mode: 'auto-silent' as const, lead: { ...exactLead, score: 100 } };
+          }
+
+          const { data: extraPhoneLead } = await supabase
+            .from('leads')
+            .select('id, nome, phone_e164, telefones_adicionais, email, uf, especialidade')
+            .contains('telefones_adicionais', [phoneE164])
+            .maybeSingle();
+
+          if (extraPhoneLead) {
+            return { mode: 'auto-silent' as const, lead: { ...extraPhoneLead, score: 100 } };
+          }
         }
       }
 
@@ -1094,11 +1115,18 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
       if (error) throw error;
       
       if (existingLead) {
-        // Lead exists - open existing prontuario directly
-        setSelectedLeadId(existingLead.id);
-        setIsNewLead(false);
-        setProntuarioOpen(true);
-        toast.info("Lead encontrado na base de dados");
+        if (conversaId) {
+          await supabase
+            .from('sigzap_conversations')
+            .update({ lead_id: existingLead.id })
+            .eq('id', conversaId);
+        }
+        setLeadLinkDialogOpen(false);
+        setAutoMatchDialogOpen(false);
+        setAutoMatchLead(null);
+        queryClient.invalidateQueries({ queryKey: ['sigzap-chat-conversa', conversaId] });
+        queryClient.invalidateQueries({ queryKey: ['sigzap-linked-lead'] });
+        toast.success("Lead identificado e vinculado à conversa");
       } else {
         // Lead doesn't exist with exact match - open dialog to link or create
         setPendingContactPhone(phoneE164);
