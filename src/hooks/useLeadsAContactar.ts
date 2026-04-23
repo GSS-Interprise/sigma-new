@@ -11,6 +11,8 @@ export interface LeadAContactar {
   cidade: string | null;
   contactado: boolean;
   ultimo_contato_em: string | null;
+  bloqueado_disparo_massa: boolean;
+  status_disparo: string | null;
 }
 
 export function useLeadsAContactar(campanhaPropostaId: string | null | undefined) {
