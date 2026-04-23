@@ -220,7 +220,8 @@ Deno.serve(async (req) => {
           nome: c.nome,
           telefone_original: c.telefone,
           telefone_e164: phoneE164,
-          status: '1-ENVIAR'
+          status: '1-ENVIAR',
+          disparado_por: campanha.responsavel_id ?? null
         });
       }
 

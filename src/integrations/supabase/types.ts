@@ -1868,7 +1868,9 @@ export type Database = {
           entrou_em: string
           id: string
           lead_id: string
+          motivo_movimentacao: string | null
           motivo_saida: string | null
+          movido_por: string | null
           proximo_canal: string | null
           saiu_em: string | null
           status_final: string
@@ -1883,7 +1885,9 @@ export type Database = {
           entrou_em?: string
           id?: string
           lead_id: string
+          motivo_movimentacao?: string | null
           motivo_saida?: string | null
+          movido_por?: string | null
           proximo_canal?: string | null
           saiu_em?: string | null
           status_final?: string
@@ -1898,7 +1902,9 @@ export type Database = {
           entrou_em?: string
           id?: string
           lead_id?: string
+          motivo_movimentacao?: string | null
           motivo_saida?: string | null
+          movido_por?: string | null
           proximo_canal?: string | null
           saiu_em?: string | null
           status_final?: string
@@ -3990,6 +3996,13 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "conversas_responsavel_id_fkey"
+            columns: ["responsavel_id"]
+            isOneToOne: false
+            referencedRelation: "vw_produtividade_disparos"
+            referencedColumns: ["user_id"]
+          },
         ]
       }
       demandas: {
@@ -4405,6 +4418,7 @@ export type Database = {
           created_at: string | null
           data_envio: string | null
           data_reenvio: string | null
+          disparado_por: string | null
           id: string
           lead_id: string | null
           mensagem_enviada: string | null
@@ -4422,6 +4436,7 @@ export type Database = {
           created_at?: string | null
           data_envio?: string | null
           data_reenvio?: string | null
+          disparado_por?: string | null
           id?: string
           lead_id?: string | null
           mensagem_enviada?: string | null
@@ -4439,6 +4454,7 @@ export type Database = {
           created_at?: string | null
           data_envio?: string | null
           data_reenvio?: string | null
+          disparado_por?: string | null
           id?: string
           lead_id?: string | null
           mensagem_enviada?: string | null
@@ -7914,6 +7930,13 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "licitacoes_atividades_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "vw_produtividade_disparos"
+            referencedColumns: ["user_id"]
+          },
         ]
       }
       licitacoes_colunas: {
@@ -10709,6 +10732,30 @@ export type Database = {
           },
         ]
       }
+      raia_sla_config: {
+        Row: {
+          acao_estouro: string
+          canal: string
+          created_at: string
+          prazo_horas: number
+          updated_at: string
+        }
+        Insert: {
+          acao_estouro?: string
+          canal: string
+          created_at?: string
+          prazo_horas: number
+          updated_at?: string
+        }
+        Update: {
+          acao_estouro?: string
+          canal?: string
+          created_at?: string
+          prazo_horas?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       recebimentos_cliente: {
         Row: {
           contrato_demanda_id: string
@@ -11055,6 +11102,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sigzap_conversations_assigned_user_id_fkey"
+            columns: ["assigned_user_id"]
+            isOneToOne: false
+            referencedRelation: "vw_produtividade_disparos"
+            referencedColumns: ["user_id"]
           },
           {
             foreignKeyName: "sigzap_conversations_contact_id_fkey"
@@ -11972,6 +12026,13 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "user_roles_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "vw_produtividade_disparos"
+            referencedColumns: ["user_id"]
+          },
         ]
       }
       whatsapp_rate_limit: {
@@ -12222,6 +12283,22 @@ export type Database = {
           },
         ]
       }
+      vw_produtividade_disparos: {
+        Row: {
+          campanhas_criadas: number | null
+          conversoes: number | null
+          manuais_enviados: number | null
+          manuais_total: number | null
+          massa_contatos: number | null
+          massa_enviados: number | null
+          massa_falhas: number | null
+          nome_completo: string | null
+          raias_abertas: number | null
+          raias_movidas: number | null
+          user_id: string | null
+        }
+        Relationships: []
+      }
       vw_trafego_pago_funil: {
         Row: {
           campanha_id: string | null
@@ -12337,6 +12414,22 @@ export type Database = {
       get_or_create_empresa_concorrente: {
         Args: { p_nome: string }
         Returns: string
+      }
+      get_ranking_disparos: {
+        Args: { p_metric?: string; p_periodo?: string }
+        Returns: {
+          campanhas_criadas: number
+          conversoes: number
+          manuais_enviados: number
+          massa_enviados: number
+          massa_falhas: number
+          nome_completo: string
+          raias_abertas: number
+          raias_movidas: number
+          sla_cumprido_pct: number
+          sla_medio_horas: number
+          user_id: string
+        }[]
       }
       get_user_setor: { Args: { _user_id: string }; Returns: string }
       has_captacao_permission: {
