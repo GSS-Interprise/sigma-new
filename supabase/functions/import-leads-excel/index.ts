@@ -572,6 +572,7 @@ serve(async (req) => {
 
     // Converter Map para array para upsert
     const leadsToUpsert = Array.from(leadsMap.values());
+    const leadIdsImportados: string[] = [];
 
     // Processar upserts em lotes
     for (let i = 0; i < leadsToUpsert.length; i += UPSERT_BATCH) {
@@ -590,9 +591,10 @@ serve(async (req) => {
       if (upsertError) {
         // Se deu erro no lote, tentar inserir um por um para identificar o problemático
         for (const item of batch) {
-          const { error: singleError } = await supabase
+          const { data: singleData, error: singleError } = await supabase
             .from("leads")
-            .upsert([item.data], { onConflict: "phone_e164", ignoreDuplicates: false });
+            .upsert([item.data], { onConflict: "phone_e164", ignoreDuplicates: false })
+            .select("id");
           
           if (singleError) {
             results.skipped++;
@@ -609,11 +611,36 @@ serve(async (req) => {
             }
           } else {
             results.inserted++;
+            if (singleData?.[0]?.id) leadIdsImportados.push(singleData[0].id);
           }
         }
       } else {
         // Contabilizar como inseridos
         results.inserted += upsertResult?.length || batchData.length;
+        if (upsertResult) {
+          for (const r of upsertResult) {
+            if (r?.id) leadIdsImportados.push(r.id);
+          }
+        }
+      }
+    }
+
+    // Se este import tem lista de destino, vincular leads à lista
+    if (listaDestinoId && leadIdsImportados.length > 0) {
+      const itensRows = leadIdsImportados.map((lead_id) => ({
+        lista_id: listaDestinoId,
+        lead_id,
+      }));
+      // Em lotes para evitar payload gigante
+      const ITEM_BATCH = 500;
+      for (let i = 0; i < itensRows.length; i += ITEM_BATCH) {
+        const slice = itensRows.slice(i, i + ITEM_BATCH);
+        const { error: itemErr } = await supabase
+          .from("disparo_lista_itens")
+          .upsert(slice, { onConflict: "lista_id,lead_id", ignoreDuplicates: true });
+        if (itemErr) {
+          console.error("Erro vinculando leads à lista:", itemErr.message);
+        }
       }
     }
 
