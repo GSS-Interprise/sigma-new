@@ -112,22 +112,50 @@ export function ListaLeadsPickerDialog({ open, onOpenChange, listaId, listaNome 
     enabled: open,
   });
 
+  // Busca lead_ids que possuem QUALQUER uma das especialidades selecionadas (via tabela N:N lead_especialidades).
+  // Isso alinha o filtro com a contagem exibida no dropdown (que conta especialidades primárias + secundárias/RQE).
+  const { data: leadIdsEspecialidade } = useQuery({
+    queryKey: ["leads-by-especialidades", especialidades],
+    queryFn: async () => {
+      if (especialidades.length === 0) return null;
+      const ids = new Set<string>();
+      let from = 0;
+      const CHUNK = 1000;
+      while (true) {
+        const { data, error } = await supabase
+          .from("lead_especialidades")
+          .select("lead_id")
+          .in("especialidade_id", especialidades)
+          .range(from, from + CHUNK - 1);
+        if (error) throw error;
+        (data || []).forEach((r: any) => ids.add(r.lead_id));
+        if (!data || data.length < CHUNK) break;
+        from += CHUNK;
+      }
+      return Array.from(ids);
+    },
+    enabled: open && especialidades.length > 0,
+    staleTime: 60_000,
+  });
+
   const filtersOpts = { debounced, especialidades, ufs, cidade, ano, anoMode };
+  const espLeadIds = especialidades.length > 0 ? (leadIdsEspecialidade ?? null) : undefined;
+  const espLoading = especialidades.length > 0 && leadIdsEspecialidade === undefined;
 
   const { data: pageData, isLoading, isFetching } = useQuery({
-    queryKey: ["leads-picker-page", page, debounced, especialidades, ufs, cidade, ano, anoMode],
+    queryKey: ["leads-picker-page", page, debounced, especialidades, ufs, cidade, ano, anoMode, espLeadIds?.length ?? 0],
     queryFn: async () => {
       const from = page * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
       let q: any = supabase
         .from("leads")
         .select("id, nome, phone_e164, especialidade, especialidade_id, uf, cidade, data_formatura", { count: "exact" });
-      q = applyFilters(q, filtersOpts).range(from, to).order("nome", { ascending: true });
+      q = applyFilters(q, filtersOpts, espLeadIds).range(from, to).order("nome", { ascending: true });
       const { data, error, count } = await q;
       if (error) throw error;
       return { leads: data || [], totalCount: count || 0 };
     },
-    enabled: open,
+    enabled: open && !espLoading,
     placeholderData: (prev) => prev,
   });
 
