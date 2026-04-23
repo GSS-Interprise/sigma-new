@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Phone, Send, Ban, Bookmark, Unlock, Loader2, X, Check, MessageCircle, Pencil, BanIcon, RotateCcw, Plus } from "lucide-react";
+import { Phone, Send, Ban, Bookmark, Unlock, Loader2, X, Check, MessageCircle, Pencil, BanIcon, RotateCcw, Plus, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDisparoManual } from "@/hooks/useDisparoManual";
 import { LiberarLeadDialog } from "@/components/disparos/LiberarLeadDialog";
@@ -55,6 +55,25 @@ export function DisparoManualLeadPanel({ campanhaPropostaId, leadId, onOpenChat 
   const disparo = useDisparoManual();
   const [wppStatus, setWppStatus] = useState<Record<string, "has" | "no" | "unchecked">>({});
   const { isAdmin } = usePermissions();
+
+  // Bloqueio: lead em fila de disparo em massa (1-ENVIAR / 2-REENVIAR / 3-TRATANDO)
+  const { data: bloqueioStatus } = useQuery({
+    queryKey: ["dm-bloqueio-massa", leadId],
+    enabled: !!leadId,
+    refetchInterval: 10000,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("disparos_contatos")
+        .select("status")
+        .eq("lead_id", leadId!)
+        .in("status", ["1-ENVIAR", "2-REENVIAR", "3-TRATANDO"])
+        .limit(1)
+        .maybeSingle();
+      if (error) return null;
+      return (data?.status as string | undefined) ?? null;
+    },
+  });
+  const bloqueadoMassa = !!bloqueioStatus;
 
   // Primeiro disparo manual já enviado (trava instância e telefone para não-admin)
   const { data: primeiroEnvio } = useQuery({
@@ -213,7 +232,7 @@ export function DisparoManualLeadPanel({ campanhaPropostaId, leadId, onOpenChat 
   });
 
   const canSend = !!(
-    campanhaPropostaId && leadId && selectedPhone && selectedInstance && mensagem.trim()
+    campanhaPropostaId && leadId && selectedPhone && selectedInstance && mensagem.trim() && !bloqueadoMassa
   );
 
   const checkWhatsAppFor = async (instanceName: string, phonesToCheck: string[]) => {
