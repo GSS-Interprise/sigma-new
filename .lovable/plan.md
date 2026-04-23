@@ -1,49 +1,40 @@
 
 
-## Bloqueio de leads em fila de disparo em massa no Disparo Manual
+## Verificação: bloqueio do botão "Disparar" persiste após refresh
 
-Quando um lead estiver com status `1-ENVIAR`, `2-REENVIAR` ou `3-TRATANDO` na tabela `disparos_contatos`, ele aparecerá **bloqueado** na interface de Disparo Manual, impedindo que o captador envie mensagem manual e cause duplicidade/risco de ban.
+### Resposta direta
 
-### Comportamento visual
+**Sim, o botão fica bloqueado mesmo após atualizar a tela** — desde que ainda existam contatos com status `1-ENVIAR`, `2-AGENDADO` ou `3-TRATANDO` na tabela `disparos_contatos` para a proposta atual.
 
-Na coluna de leads (`DisparoManualLeadsColumn`):
-- Lead bloqueado aparece com **opacidade reduzida**, ícone de cadeado (`Lock`) e badge "Em fila".
-- Permanece **clicável** para visualizar dados, mas com indicação clara do bloqueio.
+### Como funciona hoje (`src/components/disparos/ZapTab.tsx`)
 
-No painel do lead (`DisparoManualLeadPanel`):
-- Quando o lead selecionado estiver bloqueado:
-  - Banner amarelo no topo: "⚠️ Este lead está em fila de disparo em massa (status: X-NOME). Envio manual bloqueado para evitar duplicidade."
-  - Campo de mensagem **desabilitado**.
-  - Botão "Enviar" **desabilitado** com tooltip: "Em fila de disparo em massa".
-  - Ações alternativas (Blacklist, Banco de Interesse, Liberar Lead) permanecem habilitadas.
+O bloqueio **não depende de estado local** (React state) que se perderia no refresh. Ele depende de uma query ao banco:
 
-### Mudanças técnicas
+```text
+useQuery(["disparo-em-andamento", campanhaPropostaId])
+  ↓
+SELECT count(*) FROM disparos_contatos
+WHERE campanha_proposta_id = ?
+  AND status IN ('1-ENVIAR', '2-AGENDADO', '3-TRATANDO')
+  ↓
+disabled = (count > 0)
+```
 
-**1. `src/hooks/useLeadsAContactar.ts`**
-- Adicionar campo `bloqueado_disparo_massa: boolean` e `status_disparo: string | null` ao tipo `LeadAContactar`.
-- Na consulta a `disparos_contatos`, além de detectar "contactado" (status `4-ENVIADO`), também detectar se o lead possui registro com status `1-ENVIAR`, `2-REENVIAR` ou `3-TRATANDO` em qualquer campanha ativa, e marcar como bloqueado.
+Fluxo após clicar em "Disparar":
+1. RPC `gerar_disparo_zap` cria N registros em `disparos_contatos` com status `1-ENVIAR`.
+2. Próxima execução da query retorna `count > 0` → botão desabilitado.
+3. Polling de 5s mantém o estado atualizado automaticamente.
+4. **Refresh (F5)**: a query roda de novo no mount → mesmo resultado → botão continua bloqueado.
+5. Só desbloqueia quando n8n callback move TODOS os contatos para `4-ENVIADO`, `5-NOZAP` ou `6-BLOQUEADORA`.
 
-**2. `src/components/sigzap/manual/DisparoManualLeadsColumn.tsx`**
-- Renderizar badge "Em fila" + ícone `Lock` quando `lead.bloqueado_disparo_massa === true`.
-- Aplicar classe visual diferenciada (opacidade ~70%, borda tracejada).
-- Tooltip ao hover: "Em fila de disparo em massa".
+### Conclusão
 
-**3. `src/components/sigzap/manual/DisparoManualLeadPanel.tsx`**
-- Buscar status do lead via novo hook ou prop derivada.
-- Exibir banner de aviso quando bloqueado.
-- Desabilitar `Textarea` da mensagem e botão "Enviar".
-- Adicionar tooltip explicativo no botão.
+Comportamento já está correto e à prova de refresh. **Nenhuma mudança necessária.**
 
-**4. (Opcional) Filtro adicional**
-- Adicionar nova aba de filtro "Bloqueados" ao lado de "Todos / Não lidos / Contactados", para o captador identificar rapidamente quais estão em fila.
+Se quiser uma camada extra de segurança (ex.: bloqueio também sobreviver a falhas de RLS ou erros de rede que façam a query retornar 0 indevidamente), posso adicionar:
 
-### Fluxo de desbloqueio automático
+- Fallback local em `localStorage` com timestamp do último disparo (libera após X minutos OU quando o servidor confirmar 0 pendentes — o que vier primeiro).
+- Indicador visual de "última sincronização há Xs" para o usuário saber se o estado está fresco.
 
-Quando o `disparos-callback` ou `campanha-disparo-processor` atualizar o status para `4-ENVIADO`, `5-NOZAP` ou `6-BLOQUEADORA`, o React Query do hook `useLeadsAContactar` revalidará e o lead voltará ao estado normal (contactado ou disponível).
-
-### Arquivos editados
-
-- `src/hooks/useLeadsAContactar.ts`
-- `src/components/sigzap/manual/DisparoManualLeadsColumn.tsx`
-- `src/components/sigzap/manual/DisparoManualLeadPanel.tsx`
+Me avise se quer alguma dessas camadas adicionais; caso contrário, o sistema já atende ao requisito.
 
