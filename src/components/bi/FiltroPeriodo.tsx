@@ -170,7 +170,7 @@ export function FiltroPeriodo({
   return (
     <Card className={cardCls} style={themeVars}>
       <div className="flex flex-wrap gap-4 items-end">
-        <div className="flex-1 min-w-[240px]">
+        <div className="w-full sm:w-[220px] flex-shrink-0">
           <Label className={labelCls}>
             <CalendarIcon className="h-4 w-4" />
             Período
