@@ -5,7 +5,7 @@ import { FiltroPeriodo } from "./FiltroPeriodo";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Send, MessageCircle, Trophy, TrendingUp, Megaphone, Users, Target, Radio, MousePointer, BarChart3 } from "lucide-react";
+import { Loader2, Send, MessageCircle, Trophy, TrendingUp, Megaphone, Users, Target, Radio, MousePointer, BarChart3, Mail, Instagram, Stethoscope, UserCheck, XCircle, MessageSquare } from "lucide-react";
 import {
   BarChart, Bar, LineChart, Line, Area, AreaChart, XAxis, YAxis, CartesianGrid,
   Tooltip as RechartsTooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell,
