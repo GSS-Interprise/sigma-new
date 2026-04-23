@@ -324,16 +324,21 @@ serve(async (req) => {
       throw new Error("Dados inválidos para processamento");
     }
 
-    // Resolver especialidade_id (uma vez por execução) a partir do nome
-    let especialidadeIdResolved: string | null = null;
-    if (especialidadeParam) {
-      const { data: espRow } = await supabase
+    // Resolver especialidade_ids (uma vez por execução) a partir dos nomes
+    const especialidadeIdsResolved: string[] = [];
+    if (especialidadesParam.length > 0) {
+      const { data: espRows } = await supabase
         .from("especialidades")
-        .select("id")
-        .ilike("nome", especialidadeParam.trim())
-        .maybeSingle();
-      especialidadeIdResolved = espRow?.id || null;
+        .select("id, nome")
+        .in("nome", especialidadesParam);
+      const byNameLower = new Map((espRows || []).map((r: any) => [String(r.nome).toLowerCase(), r.id]));
+      for (const nome of especialidadesParam) {
+        const id = byNameLower.get(nome.toLowerCase());
+        if (id) especialidadeIdsResolved.push(id);
+      }
     }
+    // Primeira especialidade_id: usada na coluna escalar legada de leads
+    const especialidadeIdResolved: string | null = especialidadeIdsResolved[0] || null;
 
     // Caminho do JSON pré-processado (evita re-parsear XLSX em cada chunk)
     const jsonStoragePath = storagePath.replace(/\.(xlsx|xls)$/i, '.json');
