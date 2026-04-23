@@ -43,6 +43,22 @@ export function ZapTab({ campanhaPropostaId }: Props) {
     },
   });
 
+  const { data: emAndamento } = useQuery({
+    queryKey: ["disparo-em-andamento", campanhaPropostaId],
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from("disparos_contatos")
+        .select("id", { count: "exact", head: true })
+        .eq("campanha_proposta_id", campanhaPropostaId)
+        .in("status", ["1-ENVIAR", "2-AGENDADO", "3-TRATANDO"]);
+      if (error) throw error;
+      return count ?? 0;
+    },
+    refetchInterval: 5000,
+  });
+
+  const disparoEmAndamento = (emAndamento ?? 0) > 0;
+
   const gerarMutation = useMutation({
     mutationFn: async () => {
       const { data, error } = await supabase.rpc("gerar_disparo_zap", {
@@ -85,10 +101,13 @@ export function ZapTab({ campanhaPropostaId }: Props) {
           </div>
           <Button
             onClick={() => gerarMutation.mutate()}
-            disabled={gerarMutation.isPending}
+            disabled={gerarMutation.isPending || disparoEmAndamento}
+            title={disparoEmAndamento ? `Aguarde: ${emAndamento} contato(s) em processamento` : undefined}
           >
             {gerarMutation.isPending ? (
               <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Gerando...</>
+            ) : disparoEmAndamento ? (
+              <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Disparo em andamento ({emAndamento})</>
             ) : (
               <><Plus className="h-4 w-4 mr-2" />Adicionar disparo Zap</>
             )}
@@ -96,6 +115,7 @@ export function ZapTab({ campanhaPropostaId }: Props) {
         </div>
         <p className="text-xs text-muted-foreground">
           Cria contatos pendentes (1-ENVIAR) para os leads elegíveis desta proposta. O n8n consome a fila via GET <code className="bg-muted px-1 rounded">/disparos-zap-pendentes</code>.
+          {disparoEmAndamento && " O botão será reabilitado quando todos os contatos atuais saírem dos status 1-ENVIAR / 2-AGENDADO / 3-TRATANDO."}
         </p>
       </Card>
 
