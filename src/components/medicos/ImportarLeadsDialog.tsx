@@ -393,7 +393,7 @@ export function ImportarLeadsDialog({ open, onOpenChange, onSuccess, listaDestin
     setPreview([]);
     setHeaders([]);
     setValidationResult(null);
-    setSelectedEspecialidade("");
+    setSelectedEspecialidades([]);
     setSelectedOrigem("");
     onOpenChange(false);
   };
@@ -436,47 +436,14 @@ export function ImportarLeadsDialog({ open, onOpenChange, onSuccess, listaDestin
         <div className="grid grid-cols-2 gap-4 mb-4 p-4 bg-muted/30 rounded-lg border">
           <div className="space-y-2">
             <Label htmlFor="especialidade" className="font-medium">
-              Especialidade <span className="text-destructive">*</span>
+              Especialidades <span className="text-destructive">*</span>
             </Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  role="combobox"
-                  className="w-full justify-between"
-                >
-                  {selectedEspecialidade || "Selecione a especialidade..."}
-                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-full p-0 bg-popover" align="start">
-                <Command>
-                  <CommandInput placeholder="Buscar especialidade..." />
-                  <CommandList>
-                    <CommandEmpty>Nenhuma especialidade encontrada.</CommandEmpty>
-                    <CommandGroup className="max-h-64 overflow-auto">
-                      {especialidadesConsolidadas.map((esp) => (
-                        <CommandItem
-                          key={esp}
-                          value={esp}
-                          onSelect={() => setSelectedEspecialidade(esp)}
-                        >
-                          <Check
-                            className={cn(
-                              "mr-2 h-4 w-4",
-                              selectedEspecialidade === esp ? "opacity-100" : "opacity-0"
-                            )}
-                          />
-                          {esp}
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
+            <EspecialidadeMultiSelect
+              value={selectedEspecialidades}
+              onChange={setSelectedEspecialidades}
+            />
             <p className="text-xs text-muted-foreground">
-              Todos os leads importados receberão esta especialidade
+              Todos os leads importados receberão estas especialidades
             </p>
           </div>
 
@@ -653,11 +620,11 @@ export function ImportarLeadsDialog({ open, onOpenChange, onSuccess, listaDestin
         )}
 
         {/* Aviso se não selecionou especialidade/origem */}
-        {file && validationResult?.valid && (!selectedEspecialidade || !selectedOrigem) && (
+        {file && validationResult?.valid && (selectedEspecialidades.length === 0 || !selectedOrigem) && (
           <Alert variant="destructive" className="mt-2">
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
-              Selecione a <strong>Especialidade</strong> e a <strong>Origem</strong> antes de importar.
+              Selecione pelo menos uma <strong>Especialidade</strong> e a <strong>Origem</strong> antes de importar.
             </AlertDescription>
           </Alert>
         )}
