@@ -10,7 +10,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Eye, Trash2, Users, CheckCircle, XCircle, AlertTriangle, Send, Power, PowerOff, Bot, Info, Rocket, Clock } from "lucide-react";
+import { Eye, Trash2, Users, CheckCircle, XCircle, AlertTriangle, Send, Power, PowerOff, Bot, Info, Rocket, Clock, Loader2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
@@ -51,6 +51,7 @@ const statusConfig: Record<string, { label: string; variant: "default" | "second
 export function DisparosCampanhasTab() {
   const [selectedCampanha, setSelectedCampanha] = useState<Campanha | null>(null);
   const [mostrarInativos, setMostrarInativos] = useState(false);
+  const [disparandoIds, setDisparandoIds] = useState<Set<string>>(new Set());
   const queryClient = useQueryClient();
   const { isAdmin } = usePermissions();
   const { isCaptacaoLeader } = useCaptacaoPermissions();
@@ -197,13 +198,26 @@ export function DisparosCampanhasTab() {
       });
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
-      return data;
+      return { ...(data as any), campanhaId };
     },
-    onSuccess: () => {
+    onSuccess: (_data, campanhaId) => {
       queryClient.invalidateQueries({ queryKey: ["disparos-campanhas"] });
       toast.success("Disparo iniciado.");
+      // Mantém o botão travado até o status real chegar via refetch
+      setDisparandoIds((prev) => {
+        const next = new Set(prev);
+        next.delete(campanhaId);
+        return next;
+      });
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error, campanhaId) => {
+      toast.error(error.message);
+      setDisparandoIds((prev) => {
+        const next = new Set(prev);
+        next.delete(campanhaId);
+        return next;
+      });
+    },
   });
 
   const agendarMutation = useMutation({
@@ -341,12 +355,29 @@ export function DisparosCampanhasTab() {
                     <Button
                       variant="default"
                       size="sm"
-                      onClick={() => dispararMutation.mutate(campanha.id)}
-                      disabled={dispararMutation.isPending || !campanha.ativo || campanha.total_contatos === 0}
+                      onClick={() => {
+                        setDisparandoIds((prev) => new Set(prev).add(campanha.id));
+                        dispararMutation.mutate(campanha.id);
+                      }}
+                      disabled={
+                        disparandoIds.has(campanha.id) ||
+                        !campanha.ativo ||
+                        campanha.total_contatos === 0 ||
+                        campanha.status === "em_andamento"
+                      }
                       title="Disparar agora (envia lote ao n8n)"
                     >
-                      <Rocket className="h-4 w-4 mr-1" />
-                      Disparar
+                      {disparandoIds.has(campanha.id) ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                          Disparando...
+                        </>
+                      ) : (
+                        <>
+                          <Rocket className="h-4 w-4 mr-1" />
+                          Disparar
+                        </>
+                      )}
                     </Button>
                     <Button
                       variant={campanha.status === "agendado" ? "secondary" : "outline"}
