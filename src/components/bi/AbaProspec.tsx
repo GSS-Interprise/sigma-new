@@ -49,16 +49,33 @@ async function fetchAllChunks<T = any>(
   select: string,
   applyFilters: (q: any) => any,
   chunkSize = 1000,
-  maxRows = 50000
+  maxRows = 50000,
+  orderColumn = "created_at"
 ): Promise<T[]> {
   const all: T[] = [];
   let from = 0;
   while (from < maxRows) {
     const to = from + chunkSize - 1;
-    let q: any = (supabase as any).from(table).select(select).range(from, to);
+    let q: any = (supabase as any)
+      .from(table)
+      .select(select)
+      .order(orderColumn, { ascending: true, nullsFirst: false })
+      .range(from, to);
     q = applyFilters(q);
     const { data, error } = await q;
-    if (error) throw error;
+    if (error) {
+      // Fallback: tenta sem order (caso a coluna não exista no select/view)
+      const q2: any = applyFilters(
+        (supabase as any).from(table).select(select).range(from, to)
+      );
+      const r2 = await q2;
+      if (r2.error) throw r2.error;
+      const rows2 = (r2.data ?? []) as T[];
+      all.push(...rows2);
+      if (rows2.length < chunkSize) break;
+      from += chunkSize;
+      continue;
+    }
     const rows = (data ?? []) as T[];
     all.push(...rows);
     if (rows.length < chunkSize) break;
