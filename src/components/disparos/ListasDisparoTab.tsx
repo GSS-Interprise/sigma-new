@@ -3,7 +3,12 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Pencil, Trash2, Users, Send } from "lucide-react";
+import { Plus, Pencil, Trash2, Users, Send, Upload } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
@@ -15,22 +20,43 @@ import {
 } from "@/hooks/useDisparoListas";
 import { ListaDisparoFormDialog } from "./ListaDisparoFormDialog";
 import { ListaLeadsPickerDialog } from "./ListaLeadsPickerDialog";
+import { ImportarLeadsDialog } from "@/components/medicos/ImportarLeadsDialog";
 import { useNavigate } from "react-router-dom";
 
 export function ListasDisparoTab() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { data: listas = [], isLoading } = useDisparoListas();
   const del = useDeleteDisparoLista();
   const [formOpen, setFormOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [detalhesOpen, setDetalhesOpen] = useState(false);
   const [selecionada, setSelecionada] = useState<DisparoLista | null>(null);
+  const [importPromptOpen, setImportPromptOpen] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importNome, setImportNome] = useState("");
+  const [importDesc, setImportDesc] = useState("");
 
   const handleNova = () => { setSelecionada(null); setFormOpen(true); };
   const handleEditar = (lista: DisparoLista) => { setSelecionada(lista); setFormOpen(true); };
   const handleAddLeads = (lista: DisparoLista) => { setSelecionada(lista); setPickerOpen(true); };
   const handleAbrir = (lista: DisparoLista) => { setSelecionada(lista); setDetalhesOpen(true); };
   const handleDisparar = (lista: DisparoLista) => navigate(`/disparos/zap?lista=${lista.id}`);
+
+  const handleAbrirImport = () => {
+    setImportNome("");
+    setImportDesc("");
+    setImportPromptOpen(true);
+  };
+
+  const handleConfirmarImport = () => {
+    if (!importNome.trim()) {
+      toast.error("Informe o nome da lista");
+      return;
+    }
+    setImportPromptOpen(false);
+    setImportDialogOpen(true);
+  };
 
   return (
     <div className="space-y-4">
@@ -41,10 +67,16 @@ export function ListasDisparoTab() {
             Prepare listas reutilizáveis para campanhas de WhatsApp
           </p>
         </div>
-        <Button onClick={handleNova} className="gap-2">
-          <Plus className="h-4 w-4" />
-          Nova lista
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={handleAbrirImport} className="gap-2">
+            <Upload className="h-4 w-4" />
+            Importar lista
+          </Button>
+          <Button onClick={handleNova} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Nova lista
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -126,6 +158,65 @@ export function ListasDisparoTab() {
           />
         </>
       )}
+
+      {/* Prompt para nome da nova lista (antes de abrir o import) */}
+      <Dialog open={importPromptOpen} onOpenChange={setImportPromptOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Nova lista por importação</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="import-lista-nome">
+                Nome da lista <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="import-lista-nome"
+                value={importNome}
+                onChange={(e) => setImportNome(e.target.value)}
+                placeholder="Ex.: Cardiologistas SP - Nov/2025"
+                autoFocus
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="import-lista-desc">Descrição (opcional)</Label>
+              <Textarea
+                id="import-lista-desc"
+                value={importDesc}
+                onChange={(e) => setImportDesc(e.target.value)}
+                placeholder="Como esta lista será usada"
+                rows={3}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              No próximo passo você envia a planilha. Leads novos serão criados,
+              os já existentes (mesmo telefone) serão reaproveitados — todos vão
+              direto para esta lista de disparo.
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setImportPromptOpen(false)}>
+                Cancelar
+              </Button>
+              <Button onClick={handleConfirmarImport}>Continuar</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog de importação de leads (mesmo modelo da aba Leads) */}
+      <ImportarLeadsDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        listaDestino={
+          importNome
+            ? { mode: "new", nome: importNome.trim(), descricao: importDesc.trim() || undefined }
+            : undefined
+        }
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ["disparo-listas"] });
+          toast.success("Importação iniciada — a lista será preenchida em segundo plano.");
+        }}
+      />
     </div>
   );
 }

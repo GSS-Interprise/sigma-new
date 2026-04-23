@@ -51,6 +51,14 @@ interface ImportarLeadsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess?: () => void;
+  /**
+   * Quando definido, leads importados serão vinculados a uma lista de disparo.
+   * - { mode: "new", nome, descricao? }: cria uma nova lista com esse nome no servidor
+   * - { mode: "existing", id }: adiciona à lista existente
+   */
+  listaDestino?:
+    | { mode: "new"; nome: string; descricao?: string }
+    | { mode: "existing"; id: string };
 }
 
 // Lista de origens padronizadas
@@ -69,7 +77,7 @@ const UFS_BRASIL = [
   "RS", "RO", "RR", "SC", "SP", "SE", "TO"
 ];
 
-export function ImportarLeadsDialog({ open, onOpenChange, onSuccess }: ImportarLeadsDialogProps) {
+export function ImportarLeadsDialog({ open, onOpenChange, onSuccess, listaDestino }: ImportarLeadsDialogProps) {
   const { user } = useAuth();
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<Record<string, any>[]>([]);
@@ -363,6 +371,14 @@ export function ImportarLeadsDialog({ open, onOpenChange, onSuccess }: ImportarL
       formData.append("arquivo_nome", file.name);
       formData.append("especialidade", selectedEspecialidade);
       formData.append("origem", selectedOrigem);
+      if (listaDestino?.mode === "existing") {
+        formData.append("lista_destino_id", listaDestino.id);
+      } else if (listaDestino?.mode === "new") {
+        formData.append("lista_destino_nome", listaDestino.nome);
+        if (listaDestino.descricao) {
+          formData.append("lista_destino_descricao", listaDestino.descricao);
+        }
+      }
 
       const { data: session } = await supabase.auth.getSession();
       
