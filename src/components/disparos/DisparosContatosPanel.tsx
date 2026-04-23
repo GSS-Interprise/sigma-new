@@ -583,7 +583,7 @@ export function DisparosContatosPanel({ campanha, onBack, campanhaPropostaId, em
               </TableRow>
             </TableHeader>
               <TableBody>
-                {contatosFiltrados.map((contato, index) => {
+                {contatosVisiveis.map((contato, index) => {
                   const config = statusConfig[contato.status] || statusConfig["1-ENVIAR"];
                   return (
                     <TableRow key={contato.id}>
@@ -647,6 +647,24 @@ export function DisparosContatosPanel({ campanha, onBack, campanhaPropostaId, em
           </Table>
         )}
       </Card>
+
+      {/* Carregar mais (lazy / chunked) */}
+      {!isLoading && contatosFiltrados.length > 0 && (
+        <div className="flex items-center justify-between text-xs text-muted-foreground pt-1">
+          <span>
+            Mostrando {contatosVisiveis.length} de {contatosFiltrados.length}
+          </span>
+          {temMais && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setVisibleCount((n) => n + PAGE_SIZE)}
+            >
+              Carregar mais {Math.min(PAGE_SIZE, contatosFiltrados.length - contatosVisiveis.length)}
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
