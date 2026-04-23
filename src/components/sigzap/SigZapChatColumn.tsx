@@ -241,7 +241,7 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
 
       return null;
     },
-    enabled: !!conversaId && !hasLinkedLead && (!!contactPhone || (!!contactName && contactName.length >= 3)),
+    enabled: !!conversaId && !loadingConversa && !hasLinkedLead && (!!contactPhone || (!!contactName && contactName.length >= 3)),
     staleTime: 0,
   });
 
@@ -271,7 +271,7 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
   // Auto-silent: link automatically without confirmation for disparo matches
   // Manual: open the manual search dialog for everything else
   useEffect(() => {
-    if (!conversaId || hasLinkedLead) return;
+    if (!conversaId || loadingConversa || hasLinkedLead) return;
 
     const phoneDisplay = resolvedDisplayPhone
       ? (normalizeToE164(resolvedDisplayPhone) || resolvedDisplayPhone)
@@ -302,7 +302,7 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
     }
 
     setLeadLinkDialogOpen(false);
-  }, [leadMatchResult, hasLinkedLead, conversaId, contactPhone, contactName, isLidContact, resolvedDisplayPhone]);
+  }, [leadMatchResult, hasLinkedLead, loadingConversa, conversaId, contactPhone, contactName, isLidContact, resolvedDisplayPhone]);
 
   // Reset dismissed state when conversation changes
   const prevConversaIdRef = useRef<string | null>(null);
