@@ -158,6 +158,65 @@ export function ListasDisparoTab() {
           />
         </>
       )}
+
+      {/* Prompt para nome da nova lista (antes de abrir o import) */}
+      <Dialog open={importPromptOpen} onOpenChange={setImportPromptOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Nova lista por importação</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="import-lista-nome">
+                Nome da lista <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="import-lista-nome"
+                value={importNome}
+                onChange={(e) => setImportNome(e.target.value)}
+                placeholder="Ex.: Cardiologistas SP - Nov/2025"
+                autoFocus
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="import-lista-desc">Descrição (opcional)</Label>
+              <Textarea
+                id="import-lista-desc"
+                value={importDesc}
+                onChange={(e) => setImportDesc(e.target.value)}
+                placeholder="Como esta lista será usada"
+                rows={3}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              No próximo passo você envia a planilha. Leads novos serão criados,
+              os já existentes (mesmo telefone) serão reaproveitados — todos vão
+              direto para esta lista de disparo.
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setImportPromptOpen(false)}>
+                Cancelar
+              </Button>
+              <Button onClick={handleConfirmarImport}>Continuar</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog de importação de leads (mesmo modelo da aba Leads) */}
+      <ImportarLeadsDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        listaDestino={
+          importNome
+            ? { mode: "new", nome: importNome.trim(), descricao: importDesc.trim() || undefined }
+            : undefined
+        }
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ["disparo-listas"] });
+          toast.success("Importação iniciada — a lista será preenchida em segundo plano.");
+        }}
+      />
     </div>
   );
 }
