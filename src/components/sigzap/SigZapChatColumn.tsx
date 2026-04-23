@@ -39,6 +39,7 @@ import { renderMessageWithPhoneLinks } from "./SigZapPhoneLink";
 
 interface SigZapChatColumnProps {
   conversaId: string | null;
+  hideLeadButton?: boolean;
 }
 
 interface SigZapMessage {
