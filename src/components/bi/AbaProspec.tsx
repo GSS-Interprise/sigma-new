@@ -128,6 +128,41 @@ function PanelCard({ title, description, icon: Icon, accent = NEON.cyan, childre
 export function AbaProspec() {
   const [dataInicio, setDataInicio] = useState(startOfMonthsAgo(5));
   const [dataFim, setDataFim] = useState(new Date().toISOString().slice(0, 10));
+  const [tabAtiva, setTabAtiva] = useState<string>("visao");
+  const [pergunta, setPergunta] = useState<string>("");
+
+  const PERIODO_INICIO_DEFAULT = startOfMonthsAgo(5);
+  const PERIODO_FIM_DEFAULT = new Date().toISOString().slice(0, 10);
+
+  // Mapa de pergunta → aba destino
+  const perguntaParaTab: Record<string, string> = {
+    "geral-disparos": "visao",
+    "geral-disparos-respostas": "visao",
+    "geral-disparos-respostas-conv": "visao",
+    "esp-disparos": "especialidade",
+    "esp-disparos-respostas": "especialidade",
+    "esp-disparos-respostas-conv": "especialidade",
+    "esp-motivos-nao-conv": "conversao",
+    "esp-conv-colaborador": "conversao",
+    "origem-email": "canais",
+    "origem-sigzap": "canais",
+    "origem-trafego": "trafego",
+    "origem-instagram": "canais",
+    "origem-ocorrencias": "canais",
+  };
+
+  const handlePerguntaChange = (value: string) => {
+    setPergunta(value);
+    const tab = perguntaParaTab[value];
+    if (tab) setTabAtiva(tab);
+  };
+
+  const handleLimparFiltros = () => {
+    setDataInicio(PERIODO_INICIO_DEFAULT);
+    setDataFim(PERIODO_FIM_DEFAULT);
+    setPergunta("");
+    setTabAtiva("visao");
+  };
 
   // Funil tráfego pago — agregando vw_trafego_pago_funil
   const { data: trafegoPago, isLoading: lt } = useQuery({
