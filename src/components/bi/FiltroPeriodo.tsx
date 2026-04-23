@@ -16,7 +16,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { endOfMonth, format, isValid, parseISO, startOfMonth, subMonths } from "date-fns";
+import { endOfMonth, format, isValid, parseISO, startOfMonth, subDays, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import type { DateRange } from "react-day-picker";
@@ -52,6 +52,9 @@ function buildPresets() {
     inicio: startOfMonth(hoje),
     fim: endOfMonth(hoje),
   };
+  const hojePreset = { inicio: hoje, fim: hoje };
+  const ultimos7 = { inicio: subDays(hoje, 6), fim: hoje };
+  const ultimos30 = { inicio: subDays(hoje, 29), fim: hoje };
   const ultimos8: { value: string; label: string; inicio: Date; fim: Date }[] = [];
   for (let i = 1; i <= 8; i++) {
     const ref = subMonths(hoje, i);
@@ -62,7 +65,7 @@ function buildPresets() {
       fim: endOfMonth(ref),
     });
   }
-  return { atual, ultimos8 };
+  return { atual, hoje: hojePreset, ultimos7, ultimos30, ultimos8 };
 }
 
 export function FiltroPeriodo({
