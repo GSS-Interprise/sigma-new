@@ -16,7 +16,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { endOfMonth, format, isValid, parseISO, startOfMonth, subMonths } from "date-fns";
+import { endOfMonth, format, isValid, parseISO, startOfMonth, subDays, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import type { DateRange } from "react-day-picker";
@@ -52,6 +52,9 @@ function buildPresets() {
     inicio: startOfMonth(hoje),
     fim: endOfMonth(hoje),
   };
+  const hojePreset = { inicio: hoje, fim: hoje };
+  const ultimos7 = { inicio: subDays(hoje, 6), fim: hoje };
+  const ultimos30 = { inicio: subDays(hoje, 29), fim: hoje };
   const ultimos8: { value: string; label: string; inicio: Date; fim: Date }[] = [];
   for (let i = 1; i <= 8; i++) {
     const ref = subMonths(hoje, i);
@@ -62,7 +65,7 @@ function buildPresets() {
       fim: endOfMonth(ref),
     });
   }
-  return { atual, ultimos8 };
+  return { atual, hoje: hojePreset, ultimos7, ultimos30, ultimos8 };
 }
 
 export function FiltroPeriodo({
@@ -101,8 +104,21 @@ export function FiltroPeriodo({
       setRange({ from: presets.atual.inicio, to: presets.atual.fim });
       onDataInicioChange(fmt(presets.atual.inicio));
       onDataFimChange(fmt(presets.atual.fim));
+    } else if (value === "hoje") {
+      setRange({ from: presets.hoje.inicio, to: presets.hoje.fim });
+      onDataInicioChange(fmt(presets.hoje.inicio));
+      onDataFimChange(fmt(presets.hoje.fim));
+    } else if (value === "ultimos7") {
+      setRange({ from: presets.ultimos7.inicio, to: presets.ultimos7.fim });
+      onDataInicioChange(fmt(presets.ultimos7.inicio));
+      onDataFimChange(fmt(presets.ultimos7.fim));
+    } else if (value === "ultimos30") {
+      setRange({ from: presets.ultimos30.inicio, to: presets.ultimos30.fim });
+      onDataInicioChange(fmt(presets.ultimos30.inicio));
+      onDataFimChange(fmt(presets.ultimos30.fim));
     } else if (value === "personalizado") {
-      setRange(createRangeFromValues(dataInicio, dataFim));
+      // Limpa o range para o usuário começar uma nova seleção do zero
+      setRange(undefined);
       setRangeOpen(true);
     } else {
       const m = presets.ultimos8.find((x) => x.value === value);
@@ -115,8 +131,20 @@ export function FiltroPeriodo({
   };
 
   const handleRange = (r: DateRange | undefined) => {
+    // Se o usuário clica em uma data quando já existe um range completo,
+    // o react-day-picker reinicia a seleção. Detectamos isso e tratamos
+    // como início de uma nova seleção (não dispara update da tela ainda).
+    const tinhaRangeCompleto = !!(range?.from && range?.to);
+    const novoTemSoFrom = !!(r?.from && !r?.to);
+
+    if (tinhaRangeCompleto && novoTemSoFrom) {
+      setRange({ from: r!.from, to: undefined });
+      return;
+    }
+
     setRange(r);
 
+    // Só atualiza a tela quando AMBAS as datas estão selecionadas
     if (r?.from && r?.to) {
       onDataInicioChange(fmt(r.from));
       onDataFimChange(fmt(r.to));
@@ -180,6 +208,9 @@ export function FiltroPeriodo({
               <SelectValue placeholder="Selecione o período" />
             </SelectTrigger>
             <SelectContent className={selectContentCls} style={themeVars}>
+                <SelectItem value="hoje" className={selectItemCls}>Hoje</SelectItem>
+                <SelectItem value="ultimos7" className={selectItemCls}>Últimos 7 dias</SelectItem>
+                <SelectItem value="ultimos30" className={selectItemCls}>Últimos 30 dias</SelectItem>
                 <SelectItem value="atual" className={selectItemCls}>Mês atual</SelectItem>
               {presets.ultimos8.map((m) => (
                   <SelectItem key={m.value} value={m.value} className={selectItemCls}>
