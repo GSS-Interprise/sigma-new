@@ -697,7 +697,7 @@ export function AbaProspec() {
         <KPI icon={Instagram} label="Instagram" value={metricasPorCanal.instagram.enviados.toLocaleString()} color={NEON.purple} />
       </div>
 
-      <Tabs defaultValue="visao" className="space-y-4">
+      <Tabs value={tabAtiva} onValueChange={setTabAtiva} className="space-y-4">
         <TabsList
           className="bg-transparent border p-1 gap-1"
           style={{ borderColor: `${NEON.cyan}33`, background: "rgba(15,23,42,0.6)" }}
