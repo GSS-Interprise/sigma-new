@@ -51,6 +51,7 @@ const statusConfig: Record<string, { label: string; variant: "default" | "second
 export function DisparosCampanhasTab() {
   const [selectedCampanha, setSelectedCampanha] = useState<Campanha | null>(null);
   const [mostrarInativos, setMostrarInativos] = useState(false);
+  const [disparandoIds, setDisparandoIds] = useState<Set<string>>(new Set());
   const queryClient = useQueryClient();
   const { isAdmin } = usePermissions();
   const { isCaptacaoLeader } = useCaptacaoPermissions();
@@ -354,12 +355,29 @@ export function DisparosCampanhasTab() {
                     <Button
                       variant="default"
                       size="sm"
-                      onClick={() => dispararMutation.mutate(campanha.id)}
-                      disabled={dispararMutation.isPending || !campanha.ativo || campanha.total_contatos === 0}
+                      onClick={() => {
+                        setDisparandoIds((prev) => new Set(prev).add(campanha.id));
+                        dispararMutation.mutate(campanha.id);
+                      }}
+                      disabled={
+                        disparandoIds.has(campanha.id) ||
+                        !campanha.ativo ||
+                        campanha.total_contatos === 0 ||
+                        campanha.status === "em_andamento"
+                      }
                       title="Disparar agora (envia lote ao n8n)"
                     >
-                      <Rocket className="h-4 w-4 mr-1" />
-                      Disparar
+                      {disparandoIds.has(campanha.id) ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                          Disparando...
+                        </>
+                      ) : (
+                        <>
+                          <Rocket className="h-4 w-4 mr-1" />
+                          Disparar
+                        </>
+                      )}
                     </Button>
                     <Button
                       variant={campanha.status === "agendado" ? "secondary" : "outline"}
