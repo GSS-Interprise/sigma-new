@@ -60,7 +60,7 @@ export function SigZapMinhasConversasColumn({
     queryFn: async () => {
       const { data, error } = await supabase
         .from('leads_etiquetas_config')
-        .select('nome')
+        .select('nome, cor')
         .order('nome');
       if (error) throw error;
       return data || [];
