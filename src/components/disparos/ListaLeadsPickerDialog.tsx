@@ -188,7 +188,7 @@ export function ListaLeadsPickerDialog({ open, onOpenChange, listaId, listaNome 
       let from = 0;
       while (from < SELECT_ALL_MAX) {
         let q: any = supabase.from("leads").select("id");
-        q = applyFilters(q, filtersOpts).range(from, from + SELECT_ALL_CHUNK - 1);
+        q = applyFilters(q, filtersOpts, espLeadIds).range(from, from + SELECT_ALL_CHUNK - 1);
         const { data, error } = await q;
         if (error) throw error;
         (data || []).forEach((l: any) => {
