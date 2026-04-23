@@ -106,7 +106,7 @@ export function DisparosCampanhasTab() {
         .from("chips")
         .select("*")
         .eq("status", "ativo")
-        .neq("tipo_instancia", "trafego_pago")
+        .or("tipo_instancia.is.null,tipo_instancia.neq.trafego_pago")
         .order("nome");
       if (error) throw error;
       return data;
