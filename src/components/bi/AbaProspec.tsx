@@ -382,12 +382,16 @@ export function AbaProspec() {
     const manual = (disparosManuais ?? []).length;
     const massa = (disparosMassa ?? []).length;
     const trafego = totaisTrafego.enviados;
+    const email = (emails ?? []).filter((e: any) => e.direcao === "enviado").length;
+    const instagram = (canaisAll ?? []).filter((c: any) => c.canal === "instagram").length;
     return [
       { tipo: "Manual", total: manual, cor: COLORS[0] },
       { tipo: "Em Massa", total: massa, cor: COLORS[1] },
       { tipo: "Tráfego Pago", total: trafego, cor: COLORS[2] },
+      { tipo: "Email", total: email, cor: COLORS[3] },
+      { tipo: "Instagram", total: instagram, cor: COLORS[4] },
     ];
-  }, [disparosManuais, disparosMassa, totaisTrafego]);
+  }, [disparosManuais, disparosMassa, totaisTrafego, emails, canaisAll]);
 
   const totalGeralDisparos = resumoTipos.reduce((s, r) => s + r.total, 0);
 
