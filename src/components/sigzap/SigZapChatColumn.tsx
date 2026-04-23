@@ -271,7 +271,12 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
   // Auto-silent: link automatically without confirmation for disparo matches
   // Manual: open the manual search dialog for everything else
   useEffect(() => {
-    if (!conversaId || loadingConversa || hasLinkedLead) return;
+    if (!conversaId || loadingConversa || hasLinkedLead) {
+      setLeadLinkDialogOpen(false);
+      setAutoMatchDialogOpen(false);
+      setAutoMatchLead(null);
+      return;
+    }
 
     const phoneDisplay = resolvedDisplayPhone
       ? (normalizeToE164(resolvedDisplayPhone) || resolvedDisplayPhone)
@@ -1046,6 +1051,18 @@ export function SigZapChatColumn({ conversaId }: SigZapChatColumnProps) {
   // Handle Lead button click - check if lead exists or create new
   const handleLeadClick = async () => {
     if (!conversa) return;
+
+    const linkedLeadId = conversa.lead_id || (conversa.lead as any)?.id;
+    if (linkedLeadId) {
+      setLeadLinkDialogOpen(false);
+      setAutoMatchDialogOpen(false);
+      setAutoMatchLead(null);
+      setSelectedLeadId(linkedLeadId);
+      setIsNewLead(false);
+      setProntuarioOpen(true);
+      toast.info("Lead já vinculado à conversa");
+      return;
+    }
     
     const contact = conversa.contact as any;
     const contactNameLocal = contact?.contact_name || contact?.contact_phone;
