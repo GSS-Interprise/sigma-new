@@ -54,7 +54,7 @@ export function ZapTab({ campanhaPropostaId }: Props) {
       if (error) throw error;
       return count ?? 0;
     },
-    refetchInterval: 5000,
+    refetchInterval: 45000,
   });
 
   const disparoEmAndamento = (emAndamento ?? 0) > 0;
@@ -72,6 +72,7 @@ export function ZapTab({ campanhaPropostaId }: Props) {
       toast.success(`Disparo gerado: ${data?.inseridos ?? 0} novos, ${data?.ignorados ?? 0} ignorados`);
       qc.invalidateQueries({ queryKey: ["disparos-contatos"] });
       qc.invalidateQueries({ queryKey: ["disparos-campanhas"] });
+      qc.invalidateQueries({ queryKey: ["disparo-em-andamento", campanhaPropostaId] });
     },
     onError: (e: any) => toast.error(e.message),
   });
