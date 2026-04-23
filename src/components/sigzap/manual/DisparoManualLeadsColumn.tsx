@@ -37,7 +37,12 @@ export function DisparoManualLeadsColumn({ campanhaPropostaId, selectedLeadId, o
     if (!leads) return [];
     if (filtro === "contactados") return leads.filter((l) => l.contactado);
     if (filtro === "nao_contactados") return leads.filter((l) => !l.contactado);
-    return leads;
+    // "todos": não-contactados primeiro, contactados depois (ordem estável)
+    return [...leads].sort((a, b) => {
+      const aDone = a.contactado ? 1 : 0;
+      const bDone = b.contactado ? 1 : 0;
+      return aDone - bDone;
+    });
   }, [leads, filtro]);
 
   // Reset paginação ao trocar filtro/proposta
