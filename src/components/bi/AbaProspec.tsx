@@ -616,6 +616,8 @@ export function AbaProspec() {
         >
           {[
             ["visao", "Visão geral"],
+            ["especialidade", "Por especialidade"],
+            ["conversao", "Conversão"],
             ["trafego", "Tráfego pago"],
             ["campanhas", "Campanhas"],
             ["propostas", "Propostas"],
