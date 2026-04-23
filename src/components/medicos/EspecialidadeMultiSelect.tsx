@@ -16,7 +16,10 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { useEspecialidades } from "@/hooks/useEspecialidades";
 
+// Mantido apenas para retrocompatibilidade de imports legados.
+// A fonte de verdade agora é a tabela `especialidades` via useEspecialidades().
 export const ESPECIALIDADES_MEDICAS = [
   "Alergologia e Imunologia",
   "Anestesiologista",
@@ -146,6 +149,8 @@ export function EspecialidadeMultiSelect({
   disabled = false,
 }: EspecialidadeMultiSelectProps) {
   const [open, setOpen] = useState(false);
+  const { data: especialidadesDB = [], isLoading } = useEspecialidades();
+  const especialidades = especialidadesDB.map((e) => e.nome);
 
   const handleSelect = (especialidade: string) => {
     if (value.includes(especialidade)) {
@@ -182,9 +187,11 @@ export function EspecialidadeMultiSelect({
           <Command>
             <CommandInput placeholder="Buscar especialidade..." />
             <CommandList>
-              <CommandEmpty>Nenhuma especialidade encontrada.</CommandEmpty>
+              <CommandEmpty>
+                {isLoading ? "Carregando..." : "Nenhuma especialidade encontrada."}
+              </CommandEmpty>
               <CommandGroup className="max-h-64 overflow-auto">
-                {ESPECIALIDADES_MEDICAS.map((especialidade) => (
+                {especialidades.map((especialidade) => (
                   <CommandItem
                     key={especialidade}
                     value={especialidade}

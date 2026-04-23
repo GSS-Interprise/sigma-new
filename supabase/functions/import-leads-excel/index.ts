@@ -308,6 +308,17 @@ serve(async (req) => {
       throw new Error("Dados inválidos para processamento");
     }
 
+    // Resolver especialidade_id (uma vez por execução) a partir do nome
+    let especialidadeIdResolved: string | null = null;
+    if (especialidadeParam) {
+      const { data: espRow } = await supabase
+        .from("especialidades")
+        .select("id")
+        .ilike("nome", especialidadeParam.trim())
+        .maybeSingle();
+      especialidadeIdResolved = espRow?.id || null;
+    }
+
     // Caminho do JSON pré-processado (evita re-parsear XLSX em cada chunk)
     const jsonStoragePath = storagePath.replace(/\.(xlsx|xls)$/i, '.json');
     let jsonData: Record<string, any>[];
@@ -545,6 +556,7 @@ serve(async (req) => {
         status: "Novo",
         arquivo_id: arquivoNome,
         especialidade: especialidadeParam || null,
+        especialidade_id: especialidadeIdResolved,
         origem: origemParam || "Importação Excel",
         updated_at: new Date().toISOString(),
       };
@@ -640,6 +652,25 @@ serve(async (req) => {
           .upsert(slice, { onConflict: "lista_id,lead_id", ignoreDuplicates: true });
         if (itemErr) {
           console.error("Erro vinculando leads à lista:", itemErr.message);
+        }
+      }
+    }
+
+    // Popular junction table lead_especialidades para todos os leads importados
+    if (especialidadeIdResolved && leadIdsImportados.length > 0) {
+      const espRows = leadIdsImportados.map((lead_id) => ({
+        lead_id,
+        especialidade_id: especialidadeIdResolved,
+        fonte: "import_excel",
+      }));
+      const ESP_BATCH = 500;
+      for (let i = 0; i < espRows.length; i += ESP_BATCH) {
+        const slice = espRows.slice(i, i + ESP_BATCH);
+        const { error: espErr } = await supabase
+          .from("lead_especialidades")
+          .upsert(slice, { onConflict: "lead_id,especialidade_id", ignoreDuplicates: true });
+        if (espErr) {
+          console.error("Erro vinculando especialidade aos leads:", espErr.message);
         }
       }
     }
