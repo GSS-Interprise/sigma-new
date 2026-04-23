@@ -677,13 +677,14 @@ serve(async (req) => {
       }
     }
 
-    // Popular junction table lead_especialidades para todos os leads importados
-    if (especialidadeIdResolved && leadIdsImportados.length > 0) {
-      const espRows = leadIdsImportados.map((lead_id) => ({
-        lead_id,
-        especialidade_id: especialidadeIdResolved,
-        fonte: "import_excel",
-      }));
+    // Popular junction table lead_especialidades para todos os leads x todas as especialidades selecionadas
+    if (especialidadeIdsResolved.length > 0 && leadIdsImportados.length > 0) {
+      const espRows: { lead_id: string; especialidade_id: string; fonte: string }[] = [];
+      for (const lead_id of leadIdsImportados) {
+        for (const especialidade_id of especialidadeIdsResolved) {
+          espRows.push({ lead_id, especialidade_id, fonte: "import_excel" });
+        }
+      }
       const ESP_BATCH = 500;
       for (let i = 0; i < espRows.length; i += ESP_BATCH) {
         const slice = espRows.slice(i, i + ESP_BATCH);
@@ -691,7 +692,7 @@ serve(async (req) => {
           .from("lead_especialidades")
           .upsert(slice, { onConflict: "lead_id,especialidade_id", ignoreDuplicates: true });
         if (espErr) {
-          console.error("Erro vinculando especialidade aos leads:", espErr.message);
+          console.error("Erro vinculando especialidades aos leads:", espErr.message);
         }
       }
     }
