@@ -5,7 +5,7 @@ import { FiltroPeriodo } from "./FiltroPeriodo";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Send, MessageCircle, Trophy, TrendingUp, Megaphone, Users, Target, Radio, MousePointer, BarChart3 } from "lucide-react";
+import { Loader2, Send, MessageCircle, Trophy, TrendingUp, Megaphone, Users, Target, Radio, MousePointer, BarChart3, Mail, Instagram, Stethoscope, UserCheck, XCircle, MessageSquare } from "lucide-react";
 import {
   BarChart, Bar, LineChart, Line, Area, AreaChart, XAxis, YAxis, CartesianGrid,
   Tooltip as RechartsTooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell,
@@ -254,7 +254,74 @@ export function AbaProspec() {
     },
   });
 
-  const isLoading = lt || lc || ldm || ldz;
+  // === NOVAS QUERIES ===
+
+  // Email — disparos e respostas
+  const { data: emails, isLoading: lem } = useQuery({
+    queryKey: ["bi-prospec-emails", dataInicio, dataFim],
+    queryFn: async () =>
+      await fetchAllChunks<any>(
+        "email_interacoes",
+        "id,lead_id,direcao,created_at",
+        (q) => q
+          .gte("created_at", `${dataInicio}T00:00:00`)
+          .lte("created_at", `${dataFim}T23:59:59`)
+      ),
+  });
+
+  // Leads — especialidade, conversão, responsável
+  const { data: leadsAll, isLoading: lla } = useQuery({
+    queryKey: ["bi-prospec-leads", dataInicio, dataFim],
+    queryFn: async () =>
+      await fetchAllChunks<any>(
+        "leads",
+        "id,especialidade,convertido_por,data_conversao,status,created_at",
+        (q) => q
+          .gte("created_at", `${dataInicio}T00:00:00`)
+          .lte("created_at", `${dataFim}T23:59:59`)
+      ),
+  });
+
+  // Leads convertidos no período (por data_conversao, independente de quando foi criado)
+  const { data: leadsConvertidos } = useQuery({
+    queryKey: ["bi-prospec-leads-conv", dataInicio, dataFim],
+    queryFn: async () =>
+      await fetchAllChunks<any>(
+        "leads",
+        "id,especialidade,convertido_por,data_conversao",
+        (q) => q
+          .not("data_conversao", "is", null)
+          .gte("data_conversao", `${dataInicio}T00:00:00`)
+          .lte("data_conversao", `${dataFim}T23:59:59`)
+      ),
+  });
+
+  // Todos os canais de proposta no período (para motivos de não conversão e Instagram)
+  const { data: canaisAll } = useQuery({
+    queryKey: ["bi-prospec-canais-all", dataInicio, dataFim],
+    queryFn: async () =>
+      await fetchAllChunks<any>(
+        "campanha_proposta_lead_canais",
+        "id,lead_id,canal,status_final,motivo_saida,saiu_em,created_at",
+        (q) => q
+          .gte("created_at", `${dataInicio}T00:00:00`)
+          .lte("created_at", `${dataFim}T23:59:59`)
+      ),
+  });
+
+  // Profiles para nome do colaborador
+  const { data: profiles } = useQuery({
+    queryKey: ["bi-prospec-profiles"],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("profiles")
+        .select("id,nome_completo");
+      if (error) throw error;
+      return (data ?? []) as any[];
+    },
+  });
+
+  const isLoading = lt || lc || ldm || ldz || lem || lla;
 
   // ---- Agregações ----
   const totaisTrafego = useMemo(() => {
@@ -315,12 +382,16 @@ export function AbaProspec() {
     const manual = (disparosManuais ?? []).length;
     const massa = (disparosMassa ?? []).length;
     const trafego = totaisTrafego.enviados;
+    const email = (emails ?? []).filter((e: any) => e.direcao === "enviado").length;
+    const instagram = (canaisAll ?? []).filter((c: any) => c.canal === "instagram").length;
     return [
       { tipo: "Manual", total: manual, cor: COLORS[0] },
       { tipo: "Em Massa", total: massa, cor: COLORS[1] },
       { tipo: "Tráfego Pago", total: trafego, cor: COLORS[2] },
+      { tipo: "Email", total: email, cor: COLORS[3] },
+      { tipo: "Instagram", total: instagram, cor: COLORS[4] },
     ];
-  }, [disparosManuais, disparosMassa, totaisTrafego]);
+  }, [disparosManuais, disparosMassa, totaisTrafego, emails, canaisAll]);
 
   const totalGeralDisparos = resumoTipos.reduce((s, r) => s + r.total, 0);
 
@@ -340,6 +411,166 @@ export function AbaProspec() {
 
   const chipsTrafego = (chips ?? []).filter((c) => c.is_trafego_pago);
 
+  // ===== NOVAS AGREGAÇÕES =====
+
+  // Mapas auxiliares
+  const leadEspecialidadeMap = useMemo(() => {
+    const m = new Map<string, string>();
+    (leadsAll ?? []).forEach((l: any) => {
+      m.set(l.id, (l.especialidade || "Sem especialidade").trim() || "Sem especialidade");
+    });
+    (leadsConvertidos ?? []).forEach((l: any) => {
+      if (!m.has(l.id)) m.set(l.id, (l.especialidade || "Sem especialidade").trim() || "Sem especialidade");
+    });
+    return m;
+  }, [leadsAll, leadsConvertidos]);
+
+  const profilesMap = useMemo(() => {
+    const m = new Map<string, string>();
+    (profiles ?? []).forEach((p: any) => m.set(p.id, p.nome_completo || "—"));
+    return m;
+  }, [profiles]);
+
+  // Lead → respondeu? (qualquer canal)
+  const leadsResponderam = useMemo(() => {
+    const set = new Set<string>();
+    // email inbound
+    (emails ?? []).forEach((e: any) => {
+      if (e.direcao === "recebido" && e.lead_id) set.add(e.lead_id);
+    });
+    // canais com saiu_em (algum movimento) ou status respondeu/aceitou/convertido
+    (canaisAll ?? []).forEach((c: any) => {
+      if (!c.lead_id) return;
+      if (
+        c.status_final === "respondeu" ||
+        c.status_final === "aceitou" ||
+        c.status_final === "convertido" ||
+        c.status_final === "em_conversa"
+      ) set.add(c.lead_id);
+    });
+    return set;
+  }, [emails, canaisAll]);
+
+  // Lead → convertido (todas as fontes)
+  const leadsConvertidosSet = useMemo(() => {
+    const set = new Set<string>();
+    (leadsConvertidos ?? []).forEach((l: any) => set.add(l.id));
+    (canaisAll ?? []).forEach((c: any) => {
+      if (c.status_final === "convertido" && c.lead_id) set.add(c.lead_id);
+    });
+    return set;
+  }, [leadsConvertidos, canaisAll]);
+
+  // === Por especialidade ===
+  const porEspecialidade = useMemo(() => {
+    const map = new Map<string, { especialidade: string; disparos: number; responderam: Set<string>; convertidos: Set<string> }>();
+    const ensure = (esp: string) => {
+      if (!map.has(esp)) map.set(esp, { especialidade: esp, disparos: 0, responderam: new Set(), convertidos: new Set() });
+      return map.get(esp)!;
+    };
+    const addDisparoForLead = (leadId?: string | null) => {
+      if (!leadId) return;
+      const esp = leadEspecialidadeMap.get(leadId) || "Sem especialidade";
+      const e = ensure(esp);
+      e.disparos += 1;
+      if (leadsResponderam.has(leadId)) e.responderam.add(leadId);
+      if (leadsConvertidosSet.has(leadId)) e.convertidos.add(leadId);
+    };
+    (disparosMassa ?? []).forEach((d: any) => addDisparoForLead(d.lead_id));
+    (disparosManuais ?? []).forEach((d: any) => addDisparoForLead(d.lead_id));
+    (emails ?? []).forEach((e: any) => { if (e.direcao === "enviado") addDisparoForLead(e.lead_id); });
+    (canaisAll ?? []).forEach((c: any) => addDisparoForLead(c.lead_id));
+
+    return Array.from(map.values())
+      .map((r) => ({
+        especialidade: r.especialidade,
+        disparos: r.disparos,
+        responderam: r.responderam.size,
+        convertidos: r.convertidos.size,
+      }))
+      .sort((a, b) => b.disparos - a.disparos)
+      .slice(0, 15);
+  }, [disparosMassa, disparosManuais, emails, canaisAll, leadEspecialidadeMap, leadsResponderam, leadsConvertidosSet]);
+
+  // === Convertidos por colaborador ===
+  const convPorColaborador = useMemo(() => {
+    const map = new Map<string, number>();
+    (leadsConvertidos ?? []).forEach((l: any) => {
+      const k = l.convertido_por || "sem_responsavel";
+      map.set(k, (map.get(k) || 0) + 1);
+    });
+    return Array.from(map.entries())
+      .map(([id, total]) => ({
+        id,
+        nome: id === "sem_responsavel" ? "— Sem responsável" : (profilesMap.get(id) || "Usuário desconhecido"),
+        total,
+      }))
+      .sort((a, b) => b.total - a.total);
+  }, [leadsConvertidos, profilesMap]);
+
+  // === Motivos de não conversão ===
+  const motivosNaoConversao = useMemo(() => {
+    const map = new Map<string, number>();
+    (canaisAll ?? []).forEach((c: any) => {
+      const isNaoConv =
+        c.status_final === "descartado" ||
+        c.status_final === "fechado" ||
+        c.status_final === "proposta_encerrada" ||
+        c.status_final === "nao_respondeu";
+      if (!isNaoConv) return;
+      const motivo = (c.motivo_saida || "Sem motivo informado").trim() || "Sem motivo informado";
+      map.set(motivo, (map.get(motivo) || 0) + 1);
+    });
+    return Array.from(map.entries())
+      .map(([motivo, total]) => ({ motivo, total }))
+      .sort((a, b) => b.total - a.total);
+  }, [canaisAll]);
+
+  // === Métricas por canal de origem ===
+  const metricasPorCanal = useMemo(() => {
+    const calc = (leadIds: Set<string>, totalEnv: number) => {
+      let resp = 0, conv = 0;
+      leadIds.forEach((id) => {
+        if (leadsResponderam.has(id)) resp += 1;
+        if (leadsConvertidosSet.has(id)) conv += 1;
+      });
+      return { enviados: totalEnv, responderam: resp, convertidos: conv };
+    };
+
+    // WhatsApp / SigZap = massa + manual
+    const wppLeads = new Set<string>();
+    let wppTotal = 0;
+    (disparosMassa ?? []).forEach((d: any) => { wppTotal += 1; if (d.lead_id) wppLeads.add(d.lead_id); });
+    (disparosManuais ?? []).forEach((d: any) => { wppTotal += 1; if (d.lead_id) wppLeads.add(d.lead_id); });
+
+    // Email
+    const emailLeads = new Set<string>();
+    let emailTotal = 0;
+    (emails ?? []).forEach((e: any) => {
+      if (e.direcao === "enviado") { emailTotal += 1; if (e.lead_id) emailLeads.add(e.lead_id); }
+    });
+
+    // Instagram
+    const igLeads = new Set<string>();
+    let igTotal = 0;
+    (canaisAll ?? []).forEach((c: any) => {
+      if (c.canal === "instagram") { igTotal += 1; if (c.lead_id) igLeads.add(c.lead_id); }
+    });
+
+    return {
+      whatsapp: calc(wppLeads, wppTotal),
+      email: calc(emailLeads, emailTotal),
+      trafego: { enviados: totaisTrafego.enviados, responderam: totaisTrafego.responderam, convertidos: totaisTrafego.convertidos },
+      instagram: calc(igLeads, igTotal),
+    };
+  }, [disparosMassa, disparosManuais, emails, canaisAll, leadsResponderam, leadsConvertidosSet, totaisTrafego]);
+
+  // === Total geral de respondidos / convertidos (todos os canais) ===
+  const totaisGerais = useMemo(() => ({
+    responderam: leadsResponderam.size,
+    convertidos: leadsConvertidosSet.size,
+  }), [leadsResponderam, leadsConvertidosSet]);
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -348,8 +579,8 @@ export function AbaProspec() {
     );
   }
 
-  const taxaResp = totaisTrafego.enviados > 0 ? ((totaisTrafego.responderam / totaisTrafego.enviados) * 100).toFixed(1) : "0";
-  const taxaConv = totaisTrafego.enviados > 0 ? ((totaisTrafego.convertidos / totaisTrafego.enviados) * 100).toFixed(1) : "0";
+  const taxaResp = totalGeralDisparos > 0 ? ((totaisGerais.responderam / totalGeralDisparos) * 100).toFixed(1) : "0";
+  const taxaConv = totalGeralDisparos > 0 ? ((totaisGerais.convertidos / totalGeralDisparos) * 100).toFixed(1) : "0";
 
   return (
     <div
@@ -371,11 +602,11 @@ export function AbaProspec() {
       {/* KPIs principais */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <KPI icon={Send} label="Total disparos" value={totalGeralDisparos.toLocaleString()} color={NEON.cyan} />
-        <KPI icon={Megaphone} label="Tráfego — enviados" value={totaisTrafego.enviados.toLocaleString()} color={NEON.yellow} />
-        <KPI icon={MessageCircle} label="Responderam" value={totaisTrafego.responderam.toLocaleString()} sub={`${taxaResp}%`} color={NEON.magenta} />
-        <KPI icon={Trophy} label="Convertidos" value={totaisTrafego.convertidos.toLocaleString()} sub={`${taxaConv}%`} color={NEON.green} />
-        <KPI icon={Users} label="Leads campanhas" value={totaisCampanhas.leads.toLocaleString()} color={NEON.blue} />
-        <KPI icon={Target} label="Conv. campanhas" value={totaisCampanhas.convertidos.toLocaleString()} color={NEON.purple} />
+        <KPI icon={MessageCircle} label="Responderam (todos canais)" value={totaisGerais.responderam.toLocaleString()} sub={`${taxaResp}%`} color={NEON.magenta} />
+        <KPI icon={Trophy} label="Convertidos (todos canais)" value={totaisGerais.convertidos.toLocaleString()} sub={`${taxaConv}%`} color={NEON.green} />
+        <KPI icon={Megaphone} label="Tráfego pago — enviados" value={totaisTrafego.enviados.toLocaleString()} color={NEON.yellow} />
+        <KPI icon={Mail} label="Emails enviados" value={metricasPorCanal.email.enviados.toLocaleString()} color={NEON.blue} />
+        <KPI icon={Instagram} label="Instagram" value={metricasPorCanal.instagram.enviados.toLocaleString()} color={NEON.purple} />
       </div>
 
       <Tabs defaultValue="visao" className="space-y-4">
@@ -385,6 +616,8 @@ export function AbaProspec() {
         >
           {[
             ["visao", "Visão geral"],
+            ["especialidade", "Por especialidade"],
+            ["conversao", "Conversão"],
             ["trafego", "Tráfego pago"],
             ["campanhas", "Campanhas"],
             ["propostas", "Propostas"],
@@ -481,6 +714,131 @@ export function AbaProspec() {
                 <Area type="monotone" dataKey="convertidos" stroke={NEON.green} fill="url(#aConv)" name="Convertidos" strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
+          </PanelCard>
+        </TabsContent>
+
+        {/* === Por Especialidade === */}
+        <TabsContent value="especialidade" className="space-y-4">
+          <PanelCard title="Disparos × Responderam × Convertidos por especialidade" description="Top 15 especialidades no período" icon={Stethoscope} accent={NEON.cyan}>
+            <ResponsiveContainer width="100%" height={Math.max(320, porEspecialidade.length * 36)}>
+              <BarChart data={porEspecialidade} layout="vertical" margin={{ left: 120 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                <XAxis type="number" stroke="#64748b" tick={{ fill: "#94a3b8", fontSize: 11 }} />
+                <YAxis dataKey="especialidade" type="category" stroke="#64748b" tick={{ fill: "#cbd5e1", fontSize: 11 }} width={140} />
+                <RechartsTooltip contentStyle={tooltipStyle} cursor={{ fill: "rgba(34,211,238,0.05)" }} />
+                <Legend wrapperStyle={{ color: "#cbd5e1", fontSize: 12 }} />
+                <Bar dataKey="disparos" fill={NEON.cyan} name="Disparos" radius={[0,4,4,0]} />
+                <Bar dataKey="responderam" fill={NEON.magenta} name="Responderam" radius={[0,4,4,0]} />
+                <Bar dataKey="convertidos" fill={NEON.green} name="Convertidos" radius={[0,4,4,0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </PanelCard>
+
+          <PanelCard title="Detalhamento por especialidade" accent={NEON.magenta}>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left border-b" style={{ borderColor: `${NEON.magenta}33` }}>
+                    {["Especialidade","Disparos","Responderam","Convertidos","Taxa resp.","Taxa conv."].map((h, i) => (
+                      <th key={h} className={`py-2 px-2 text-[11px] uppercase tracking-wider font-semibold ${i>=1?"text-right":""}`} style={{ color: NEON.magenta }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {porEspecialidade.map((r) => {
+                    const tr = r.disparos > 0 ? ((r.responderam / r.disparos) * 100).toFixed(1) : "0";
+                    const tc = r.disparos > 0 ? ((r.convertidos / r.disparos) * 100).toFixed(1) : "0";
+                    return (
+                      <tr key={r.especialidade} className="border-b hover:bg-magenta-500/5 transition-colors" style={{ borderColor: "#1e293b" }}>
+                        <td className="py-2 px-2 font-medium" style={{ color: "#e2e8f0" }}>{r.especialidade}</td>
+                        <td className="py-2 px-2 text-right" style={{ color: NEON.cyan }}>{r.disparos.toLocaleString()}</td>
+                        <td className="py-2 px-2 text-right" style={{ color: NEON.magenta }}>{r.responderam.toLocaleString()}</td>
+                        <td className="py-2 px-2 text-right font-bold" style={{ color: NEON.green, textShadow: `0 0 6px ${NEON.green}55` }}>{r.convertidos.toLocaleString()}</td>
+                        <td className="py-2 px-2 text-right font-mono" style={{ color: "#cbd5e1" }}>{tr}%</td>
+                        <td className="py-2 px-2 text-right font-mono" style={{ color: NEON.yellow }}>{tc}%</td>
+                      </tr>
+                    );
+                  })}
+                  {porEspecialidade.length === 0 && (
+                    <tr><td colSpan={6} className="py-6 text-center" style={{ color: "#64748b" }}>Sem dados de especialidade no período.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </PanelCard>
+        </TabsContent>
+
+        {/* === Conversão === */}
+        <TabsContent value="conversao" className="space-y-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <PanelCard title="Convertidos por colaborador" description="Leads com data_conversao no período" icon={UserCheck} accent={NEON.green}>
+              <ResponsiveContainer width="100%" height={Math.max(280, convPorColaborador.length * 36)}>
+                <BarChart data={convPorColaborador} layout="vertical" margin={{ left: 100 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                  <XAxis type="number" stroke="#64748b" tick={{ fill: "#94a3b8", fontSize: 11 }} />
+                  <YAxis dataKey="nome" type="category" stroke="#64748b" tick={{ fill: "#cbd5e1", fontSize: 11 }} width={120} />
+                  <RechartsTooltip contentStyle={tooltipStyle} cursor={{ fill: "rgba(34,197,94,0.05)" }} />
+                  <Bar dataKey="total" fill={NEON.green} name="Convertidos" radius={[0,6,6,0]} />
+                </BarChart>
+              </ResponsiveContainer>
+              {convPorColaborador.length === 0 && (
+                <p className="text-sm py-4 text-center" style={{ color: "#64748b" }}>Sem conversões no período.</p>
+              )}
+            </PanelCard>
+
+            <PanelCard title="Motivos de não conversão" description="Status: descartado, fechado, encerrado, não respondeu" icon={XCircle} accent={NEON.orange}>
+              {motivosNaoConversao.length === 0 ? (
+                <p className="text-sm py-8 text-center" style={{ color: "#64748b" }}>Sem registros de não conversão no período.</p>
+              ) : (
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie
+                      data={motivosNaoConversao}
+                      dataKey="total"
+                      nameKey="motivo"
+                      innerRadius={50}
+                      outerRadius={100}
+                      paddingAngle={3}
+                      stroke="#020617"
+                      strokeWidth={2}
+                    >
+                      {motivosNaoConversao.map((_r, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                    </Pie>
+                    <RechartsTooltip contentStyle={tooltipStyle} formatter={(v: any, n: any) => [Number(v).toLocaleString(), n]} />
+                    <Legend wrapperStyle={{ color: "#cbd5e1", fontSize: 11 }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
+            </PanelCard>
+          </div>
+
+          <PanelCard title="Detalhamento dos motivos" accent={NEON.orange}>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left border-b" style={{ borderColor: `${NEON.orange}33` }}>
+                    <th className="py-2 px-2 text-[11px] uppercase tracking-wider font-semibold" style={{ color: NEON.orange }}>Motivo</th>
+                    <th className="py-2 px-2 text-right text-[11px] uppercase tracking-wider font-semibold" style={{ color: NEON.orange }}>Total</th>
+                    <th className="py-2 px-2 text-right text-[11px] uppercase tracking-wider font-semibold" style={{ color: NEON.orange }}>%</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(() => {
+                    const total = motivosNaoConversao.reduce((s, r) => s + r.total, 0);
+                    return motivosNaoConversao.map((r) => (
+                      <tr key={r.motivo} className="border-b hover:bg-orange-500/5 transition-colors" style={{ borderColor: "#1e293b" }}>
+                        <td className="py-2 px-2 font-medium" style={{ color: "#e2e8f0" }}>{r.motivo}</td>
+                        <td className="py-2 px-2 text-right font-bold" style={{ color: NEON.orange }}>{r.total.toLocaleString()}</td>
+                        <td className="py-2 px-2 text-right font-mono" style={{ color: "#cbd5e1" }}>{total > 0 ? ((r.total / total) * 100).toFixed(1) : "0"}%</td>
+                      </tr>
+                    ));
+                  })()}
+                  {motivosNaoConversao.length === 0 && (
+                    <tr><td colSpan={3} className="py-6 text-center" style={{ color: "#64748b" }}>Sem motivos registrados.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </PanelCard>
         </TabsContent>
 
@@ -584,21 +942,36 @@ export function AbaProspec() {
 
         {/* === Canais & instâncias === */}
         <TabsContent value="canais" className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {resumoTipos.map((r, i) => {
-              const cor = COLORS[i % COLORS.length];
-              const pct = totalGeralDisparos > 0 ? (r.total / totalGeralDisparos) * 100 : 0;
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {[
+              { tipo: "WhatsApp / SigZap", icon: MessageSquare, cor: NEON.green, m: metricasPorCanal.whatsapp },
+              { tipo: "Email", icon: Mail, cor: NEON.blue, m: metricasPorCanal.email },
+              { tipo: "Tráfego Pago", icon: Megaphone, cor: NEON.yellow, m: metricasPorCanal.trafego },
+              { tipo: "Instagram", icon: Instagram, cor: NEON.purple, m: metricasPorCanal.instagram },
+            ].map(({ tipo, icon: Icon, cor, m }) => {
+              const tr = m.enviados > 0 ? ((m.responderam / m.enviados) * 100).toFixed(1) : "0";
+              const tc = m.enviados > 0 ? ((m.convertidos / m.enviados) * 100).toFixed(1) : "0";
               return (
-                <div key={r.tipo} className="relative overflow-hidden rounded-xl border p-5 backdrop-blur-sm"
+                <div key={tipo} className="relative overflow-hidden rounded-xl border p-5 backdrop-blur-sm"
                   style={{ background: "linear-gradient(135deg, rgba(15,23,42,0.85), rgba(2,6,23,0.95))", borderColor: `${cor}55`, boxShadow: `0 0 24px ${cor}22` }}>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm uppercase tracking-wider" style={{ color: "#94a3b8" }}>{r.tipo}</span>
-                    <span className="text-xs font-mono px-2 py-0.5 rounded" style={{ background: `${cor}22`, color: cor }}>{pct.toFixed(1)}%</span>
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="p-1.5 rounded-md" style={{ background: `${cor}22`, border: `1px solid ${cor}55` }}>
+                      <Icon className="h-4 w-4" style={{ color: cor }} />
+                    </div>
+                    <span className="text-sm uppercase tracking-wider font-semibold" style={{ color: "#e2e8f0" }}>{tipo}</span>
                   </div>
-                  <div className="text-4xl font-bold mt-3" style={{ color: "#f1f5f9", textShadow: `0 0 10px ${cor}66` }}>{r.total.toLocaleString()}</div>
-                  <div className="text-xs mt-1" style={{ color: "#64748b" }}>disparos no período</div>
-                  <div className="mt-3 h-1.5 rounded-full overflow-hidden" style={{ background: "#1e293b" }}>
-                    <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: cor, boxShadow: `0 0 8px ${cor}` }} />
+                  <div className="text-3xl font-bold" style={{ color: "#f1f5f9", textShadow: `0 0 10px ${cor}66` }}>{m.enviados.toLocaleString()}</div>
+                  <div className="text-[11px] uppercase tracking-wider" style={{ color: "#64748b" }}>enviados</div>
+
+                  <div className="mt-4 space-y-2 pt-3 border-t" style={{ borderColor: `${cor}22` }}>
+                    <div className="flex items-center justify-between text-sm">
+                      <span style={{ color: "#94a3b8" }}>Responderam</span>
+                      <span className="font-mono" style={{ color: NEON.magenta }}>{m.responderam.toLocaleString()} <span className="text-xs opacity-70">({tr}%)</span></span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span style={{ color: "#94a3b8" }}>Convertidos</span>
+                      <span className="font-mono font-bold" style={{ color: NEON.green }}>{m.convertidos.toLocaleString()} <span className="text-xs opacity-70">({tc}%)</span></span>
+                    </div>
                   </div>
                 </div>
               );
