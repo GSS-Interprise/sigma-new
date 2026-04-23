@@ -39,6 +39,24 @@ interface Campanha {
   proximo_envio: string | null;
 }
 
+const normalizarInstancia = (valor?: string | null) =>
+  String(valor || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+
+const isChipDisponivelParaDisparo = (chip: any) => {
+  const tipoInstancia = normalizarInstancia(chip.tipo_instancia);
+  const nome = normalizarInstancia(chip.nome);
+  const instancia = normalizarInstancia(chip.instance_name);
+  const flaggedAsTrafegoPago = chip.is_trafego_pago === true;
+  const blockedByDispatchFlag = chip.pode_disparar === false;
+  const namedAsTrafegoPago = nome.includes("trafego pago") || instancia.includes("trafego pago");
+
+  return !flaggedAsTrafegoPago && !blockedByDispatchFlag && tipoInstancia !== "trafego_pago" && !namedAsTrafegoPago;
+};
+
 const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
   pendente: { label: "Pendente", variant: "outline" },
   em_andamento: { label: "Em Andamento", variant: "default" },
@@ -110,15 +128,12 @@ export function DisparosCampanhasTab() {
         .or("tipo_instancia.is.null,tipo_instancia.neq.trafego_pago")
         .order("nome");
       if (error) throw error;
-      return (data || []).filter((chip: any) => {
-        const tipoInstancia = String(chip.tipo_instancia || "").trim().toLowerCase();
-        return tipoInstancia !== "trafego_pago";
-      });
+      return (data || []).filter(isChipDisponivelParaDisparo);
     },
   });
 
   const chips = useMemo(
-    () => chipsRaw.filter((chip: any) => String(chip.tipo_instancia || "").trim().toLowerCase() !== "trafego_pago"),
+    () => chipsRaw.filter(isChipDisponivelParaDisparo),
     [chipsRaw]
   );
 
