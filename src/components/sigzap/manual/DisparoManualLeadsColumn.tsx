@@ -126,7 +126,7 @@ export function DisparoManualLeadsColumn({ campanhaPropostaId, selectedLeadId, o
               className={cn(
                 "w-full text-left p-2 rounded-md border transition-colors hover:bg-muted/60",
                 selectedLeadId === l.lead_id ? "bg-muted border-primary" : "border-transparent",
-                l.bloqueado_disparo_massa && "opacity-70 border-dashed border-amber-500/60"
+                l.bloqueado_disparo_massa && "opacity-70 border-dashed border-primary/50"
               )}
             >
               <div className="flex items-center justify-between gap-2">
@@ -135,7 +135,7 @@ export function DisparoManualLeadsColumn({ campanhaPropostaId, selectedLeadId, o
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <Badge variant="outline" className="shrink-0 h-5 px-1.5 text-[10px] gap-0.5 border-amber-500 text-amber-600 dark:text-amber-400">
+                        <Badge variant="outline" className="shrink-0 h-5 px-1.5 text-[10px] gap-0.5 border-primary/60 text-primary">
                           <Lock className="h-3 w-3" />
                           Em fila
                         </Badge>
