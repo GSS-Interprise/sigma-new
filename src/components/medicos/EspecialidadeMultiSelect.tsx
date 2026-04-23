@@ -187,9 +187,11 @@ export function EspecialidadeMultiSelect({
           <Command>
             <CommandInput placeholder="Buscar especialidade..." />
             <CommandList>
-              <CommandEmpty>Nenhuma especialidade encontrada.</CommandEmpty>
+              <CommandEmpty>
+                {isLoading ? "Carregando..." : "Nenhuma especialidade encontrada."}
+              </CommandEmpty>
               <CommandGroup className="max-h-64 overflow-auto">
-                {ESPECIALIDADES_MEDICAS.map((especialidade) => (
+                {especialidades.map((especialidade) => (
                   <CommandItem
                     key={especialidade}
                     value={especialidade}
