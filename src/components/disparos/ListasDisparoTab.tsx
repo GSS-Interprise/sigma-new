@@ -3,7 +3,12 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Pencil, Trash2, Users, Send } from "lucide-react";
+import { Plus, Pencil, Trash2, Users, Send, Upload } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
@@ -15,22 +20,43 @@ import {
 } from "@/hooks/useDisparoListas";
 import { ListaDisparoFormDialog } from "./ListaDisparoFormDialog";
 import { ListaLeadsPickerDialog } from "./ListaLeadsPickerDialog";
+import { ImportarLeadsDialog } from "@/components/medicos/ImportarLeadsDialog";
 import { useNavigate } from "react-router-dom";
 
 export function ListasDisparoTab() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { data: listas = [], isLoading } = useDisparoListas();
   const del = useDeleteDisparoLista();
   const [formOpen, setFormOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [detalhesOpen, setDetalhesOpen] = useState(false);
   const [selecionada, setSelecionada] = useState<DisparoLista | null>(null);
+  const [importPromptOpen, setImportPromptOpen] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importNome, setImportNome] = useState("");
+  const [importDesc, setImportDesc] = useState("");
 
   const handleNova = () => { setSelecionada(null); setFormOpen(true); };
   const handleEditar = (lista: DisparoLista) => { setSelecionada(lista); setFormOpen(true); };
   const handleAddLeads = (lista: DisparoLista) => { setSelecionada(lista); setPickerOpen(true); };
   const handleAbrir = (lista: DisparoLista) => { setSelecionada(lista); setDetalhesOpen(true); };
   const handleDisparar = (lista: DisparoLista) => navigate(`/disparos/zap?lista=${lista.id}`);
+
+  const handleAbrirImport = () => {
+    setImportNome("");
+    setImportDesc("");
+    setImportPromptOpen(true);
+  };
+
+  const handleConfirmarImport = () => {
+    if (!importNome.trim()) {
+      toast.error("Informe o nome da lista");
+      return;
+    }
+    setImportPromptOpen(false);
+    setImportDialogOpen(true);
+  };
 
   return (
     <div className="space-y-4">
@@ -41,10 +67,16 @@ export function ListasDisparoTab() {
             Prepare listas reutilizáveis para campanhas de WhatsApp
           </p>
         </div>
-        <Button onClick={handleNova} className="gap-2">
-          <Plus className="h-4 w-4" />
-          Nova lista
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={handleAbrirImport} className="gap-2">
+            <Upload className="h-4 w-4" />
+            Importar lista
+          </Button>
+          <Button onClick={handleNova} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Nova lista
+          </Button>
+        </div>
       </div>
 
       <Card>
