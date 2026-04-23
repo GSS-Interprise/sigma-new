@@ -171,6 +171,23 @@ export function SigZapMinhasConversasColumn({
       .filter(Boolean) as string[];
   }, [minhasConversas]);
 
+  // Conversas filtradas
+  const conversasFiltradas = useMemo(() => {
+    if (!minhasConversas) return [];
+    if (filtro === "todos") return minhasConversas;
+    if (filtro === "nao_lido") {
+      return minhasConversas.filter((c: any) => (c.unread_count || 0) > 0);
+    }
+    if (filtro.startsWith("tag:")) {
+      const tagNome = filtro.slice(4);
+      return minhasConversas.filter((c: any) => {
+        const tags = (c.lead as any)?.tags;
+        return Array.isArray(tags) && tags.includes(tagNome);
+      });
+    }
+    return minhasConversas;
+  }, [minhasConversas, filtro]);
+
   // Fetch leads by phone numbers (phone_e164 + telefones_adicionais)
   const { data: leadsMap } = useQuery({
     queryKey: ['sigzap-leads-by-phone', phoneNumbers],
