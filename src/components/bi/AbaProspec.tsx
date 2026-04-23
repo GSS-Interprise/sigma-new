@@ -5,7 +5,7 @@ import { FiltroPeriodo } from "./FiltroPeriodo";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Send, MessageCircle, Trophy, TrendingUp, Megaphone, Users, Target, Radio, MousePointer, BarChart3, Mail, Instagram, Stethoscope, UserCheck, XCircle, MessageSquare, HelpCircle, RotateCcw, Lock, AlertCircle } from "lucide-react";
+import { Loader2, Send, MessageCircle, Trophy, TrendingUp, Megaphone, Users, Target, Radio, MousePointer, BarChart3, Mail, Instagram, Stethoscope, UserCheck, XCircle, MessageSquare, HelpCircle, RotateCcw, Lock, AlertCircle, RefreshCw, Inbox } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select";
@@ -42,47 +42,6 @@ function startOfMonthsAgo(n: number) {
   d.setMonth(d.getMonth() - n);
   d.setDate(1);
   return d.toISOString().slice(0, 10);
-}
-
-// Busca paginada em chunks de 1000 (limite default do Supabase)
-async function fetchAllChunks<T = any>(
-  table: string,
-  select: string,
-  applyFilters: (q: any) => any,
-  chunkSize = 1000,
-  maxRows = 50000,
-  orderColumn = "created_at"
-): Promise<T[]> {
-  const all: T[] = [];
-  let from = 0;
-  while (from < maxRows) {
-    const to = from + chunkSize - 1;
-    let q: any = (supabase as any)
-      .from(table)
-      .select(select)
-      .order(orderColumn, { ascending: true, nullsFirst: false })
-      .range(from, to);
-    q = applyFilters(q);
-    const { data, error } = await q;
-    if (error) {
-      // Fallback: tenta sem order (caso a coluna não exista no select/view)
-      const q2: any = applyFilters(
-        (supabase as any).from(table).select(select).range(from, to)
-      );
-      const r2 = await q2;
-      if (r2.error) throw r2.error;
-      const rows2 = (r2.data ?? []) as T[];
-      all.push(...rows2);
-      if (rows2.length < chunkSize) break;
-      from += chunkSize;
-      continue;
-    }
-    const rows = (data ?? []) as T[];
-    all.push(...rows);
-    if (rows.length < chunkSize) break;
-    from += chunkSize;
-  }
-  return all;
 }
 
 function KPI({ icon: Icon, label, value, sub, color = NEON.cyan }: any) {
