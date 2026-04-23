@@ -27,37 +27,32 @@ const SELECT_ALL_MAX = 50000;
 
 type AnoMode = "min" | "exato";
 
-// Aplica filtros comuns à query Supabase
-function applyFilters(q: any, opts: {
+// Monta os parâmetros da RPC search_leads_for_picker a partir dos filtros da UI
+function buildRpcParams(opts: {
   debounced: string;
   especialidades: string[];
   ufs: string[];
   cidade: string;
   ano: string;
   anoMode: AnoMode;
-}, leadIdsByEspecialidade?: string[] | null) {
+}, limit: number, offset: number) {
   const { debounced, especialidades, ufs, cidade, ano, anoMode } = opts;
-  q = q.not("phone_e164", "is", null).is("merged_into_id", null);
-  if (debounced.trim()) {
-    q = q.or(`nome.ilike.%${debounced}%,phone_e164.ilike.%${debounced}%,especialidade.ilike.%${debounced}%`);
-  }
-  if (especialidades.length > 0) {
-    // Usa o resultado pré-buscado de lead_especialidades (N:N), que inclui especialidades secundárias/RQE
-    // alinhando com a contagem mostrada no dropdown do filtro.
-    if (leadIdsByEspecialidade && leadIdsByEspecialidade.length > 0) {
-      q = q.in("id", leadIdsByEspecialidade);
-    } else if (leadIdsByEspecialidade && leadIdsByEspecialidade.length === 0) {
-      // Sem leads para a especialidade selecionada — força resultado vazio
-      q = q.eq("id", "00000000-0000-0000-0000-000000000000");
-    }
-  }
-  if (ufs.length > 0) q = q.in("uf", ufs.map((u) => u.toUpperCase()));
-  if (cidade.trim()) q = q.ilike("cidade", `%${cidade.trim()}%`);
+  const params: Record<string, any> = {
+    p_especialidade_ids: especialidades.length > 0 ? especialidades : null,
+    p_ufs: ufs.length > 0 ? ufs.map((u) => u.toUpperCase()) : null,
+    p_cidade: cidade.trim() || null,
+    p_busca: debounced.trim() || null,
+    p_limit: limit,
+    p_offset: offset,
+    p_ano_min: null,
+    p_ano_max: null,
+  };
   if (ano && /^\d{4}$/.test(ano)) {
-    if (anoMode === "min") q = q.gte("data_formatura", `${ano}-01-01`);
-    else q = q.gte("data_formatura", `${ano}-01-01`).lte("data_formatura", `${ano}-12-31`);
+    const y = parseInt(ano, 10);
+    params.p_ano_min = y;
+    if (anoMode === "exato") params.p_ano_max = y;
   }
-  return q;
+  return params;
 }
 
 export function ListaLeadsPickerDialog({ open, onOpenChange, listaId, listaNome }: Props) {
