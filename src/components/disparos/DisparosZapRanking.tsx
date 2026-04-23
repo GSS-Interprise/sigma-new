@@ -25,16 +25,6 @@ type MetricFilter = "enviados" | "conversoes" | "sla";
 
 const MEDAL_COLORS = ["text-yellow-500", "text-gray-400", "text-amber-700"];
 
-function getWeekRange(): { from: string; to: string } {
-  const now = new Date();
-  const monday = startOfWeek(now, { weekStartsOn: 1 });
-  const friday = endOfDay(addDays(monday, 4)); // sexta-feira
-  return {
-    from: monday.toISOString(),
-    to: friday.toISOString(),
-  };
-}
-
 export function DisparosZapRanking() {
   const [period, setPeriod] = useState<PeriodFilter>("semana");
   const [metric, setMetric] = useState<MetricFilter>("enviados");
