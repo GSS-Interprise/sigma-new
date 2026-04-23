@@ -15,7 +15,7 @@ import { toast } from "sonner";
 import { RegiaoInteresseDialog } from "@/components/disparos/RegiaoInteresseDialog";
 import { normalizeToE164 } from "@/lib/phoneUtils";
 import { registrarHistoricoLead } from "@/lib/leadHistoryLogger";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import {
   AlertDialog,
@@ -315,88 +315,36 @@ export function SigZapConversaContextMenu({
             )}
           </DropdownMenuItem>
 
-          <Popover open={tagPopoverOpen} onOpenChange={setTagPopoverOpen}>
-            <PopoverTrigger asChild>
-              <DropdownMenuItem
-                disabled={!leadExists?.id}
-                onSelect={(e) => {
-                  e.preventDefault();
-                  if (leadExists?.id) setTagPopoverOpen(true);
-                }}
-                className={!leadExists?.id ? "opacity-50" : ""}
+          <DropdownMenuItem
+            disabled={!leadExists?.id}
+            onSelect={(e) => {
+              e.preventDefault();
+              if (leadExists?.id) {
+                // abre o seletor de tag depois que o dropdown fecha,
+                // evitando que o outside-click do Radix feche o popover.
+                setTimeout(() => setTagPopoverOpen(true), 50);
+              }
+            }}
+            className={!leadExists?.id ? "opacity-50" : ""}
+          >
+            <Tag className="h-4 w-4 mr-2" />
+            Tag
+            {currentTag && (
+              <span
+                className={cn(
+                  "ml-auto text-[10px] text-white px-1.5 py-0.5 rounded",
+                  TAG_COLORS_MAP[
+                    availableTags.find((t) => t.nome === currentTag)?.cor_id || "gray"
+                  ] || "bg-gray-500"
+                )}
               >
-                <Tag className="h-4 w-4 mr-2" />
-                Tag
-                {currentTag && (
-                  <span
-                    className={cn(
-                      "ml-auto text-[10px] text-white px-1.5 py-0.5 rounded",
-                      TAG_COLORS_MAP[
-                        availableTags.find((t) => t.nome === currentTag)?.cor_id || "gray"
-                      ] || "bg-gray-500"
-                    )}
-                  >
-                    {currentTag}
-                  </span>
-                )}
-                {!leadExists?.id && (
-                  <span className="ml-auto text-[10px] text-muted-foreground">sem lead</span>
-                )}
-              </DropdownMenuItem>
-            </PopoverTrigger>
-            <PopoverContent
-              align="end"
-              side="left"
-              className="w-56 p-2 z-[60]"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="text-xs font-medium text-muted-foreground px-2 pb-2">
-                Tag única (substitui)
-              </div>
-              <div className="max-h-64 overflow-y-auto space-y-1">
-                {availableTags.length === 0 && (
-                  <div className="text-xs text-muted-foreground px-2 py-3 text-center">
-                    Nenhuma tag cadastrada no Kanban.
-                  </div>
-                )}
-                {availableTags.map((tag) => {
-                  const isCurrent = currentTag === tag.nome;
-                  return (
-                    <button
-                      key={tag.nome}
-                      onClick={() =>
-                        setTagMutation.mutate(isCurrent ? null : tag.nome)
-                      }
-                      disabled={setTagMutation.isPending}
-                      className={cn(
-                        "w-full flex items-center gap-2 px-2 py-1.5 rounded text-left hover:bg-muted transition-colors text-sm",
-                        isCurrent && "bg-muted"
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          "h-3 w-3 rounded-sm flex-shrink-0",
-                          TAG_COLORS_MAP[tag.cor_id] || "bg-gray-500"
-                        )}
-                      />
-                      <span className="flex-1 truncate">{tag.nome}</span>
-                      {isCurrent && <Check className="h-3.5 w-3.5 text-primary" />}
-                    </button>
-                  );
-                })}
-              </div>
-              {currentTag && (
-                <button
-                  onClick={() => setTagMutation.mutate(null)}
-                  disabled={setTagMutation.isPending}
-                  className="w-full mt-2 pt-2 border-t text-xs text-destructive hover:bg-destructive/10 rounded px-2 py-1.5 flex items-center gap-2"
-                >
-                  <X className="h-3.5 w-3.5" />
-                  Remover tag
-                </button>
-              )}
-            </PopoverContent>
-          </Popover>
+                {currentTag}
+              </span>
+            )}
+            {!leadExists?.id && (
+              <span className="ml-auto text-[10px] text-muted-foreground">sem lead</span>
+            )}
+          </DropdownMenuItem>
 
           <DropdownMenuItem
             disabled={!leadExists?.id}
@@ -474,6 +422,61 @@ export function SigZapConversaContextMenu({
         onOpenChange={setShowRegiaoDialog}
         leadId={regiaoLeadId}
       />
+
+      {/* Seletor de Tag única */}
+      <Dialog open={tagPopoverOpen} onOpenChange={setTagPopoverOpen}>
+        <DialogContent className="max-w-sm" onClick={(e) => e.stopPropagation()}>
+          <DialogHeader>
+            <DialogTitle>Tag única (substitui)</DialogTitle>
+          </DialogHeader>
+          <div className="max-h-80 overflow-y-auto space-y-1">
+            {availableTags.length === 0 && (
+              <div className="text-xs text-muted-foreground px-2 py-3 text-center">
+                Nenhuma tag cadastrada no Kanban.
+              </div>
+            )}
+            {availableTags.map((tag) => {
+              const isCurrent = currentTag === tag.nome;
+              return (
+                <button
+                  key={tag.nome}
+                  onClick={() => {
+                    setTagMutation.mutate(isCurrent ? null : tag.nome);
+                    setTagPopoverOpen(false);
+                  }}
+                  disabled={setTagMutation.isPending}
+                  className={cn(
+                    "w-full flex items-center gap-2 px-2 py-2 rounded text-left hover:bg-muted transition-colors text-sm",
+                    isCurrent && "bg-muted"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "h-3 w-3 rounded-sm flex-shrink-0",
+                      TAG_COLORS_MAP[tag.cor_id] || "bg-gray-500"
+                    )}
+                  />
+                  <span className="flex-1 truncate">{tag.nome}</span>
+                  {isCurrent && <Check className="h-3.5 w-3.5 text-primary" />}
+                </button>
+              );
+            })}
+          </div>
+          {currentTag && (
+            <button
+              onClick={() => {
+                setTagMutation.mutate(null);
+                setTagPopoverOpen(false);
+              }}
+              disabled={setTagMutation.isPending}
+              className="w-full mt-2 pt-2 border-t text-xs text-destructive hover:bg-destructive/10 rounded px-2 py-2 flex items-center gap-2"
+            >
+              <X className="h-3.5 w-3.5" />
+              Remover tag
+            </button>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Confirm Inactivate Dialog */}
       {/* Confirm "Não é o médico" Dialog */}
