@@ -635,7 +635,57 @@ export function AbaProspec() {
         onDataInicioChange={setDataInicio}
         onDataFimChange={setDataFim}
         theme="dark-neon"
-      />
+      >
+        {/* Select: O que você quer saber? */}
+        <div className="flex-1 min-w-[280px]">
+          <Label className="mb-2 flex items-center gap-2 text-[hsl(var(--fp-muted))]">
+            <HelpCircle className="h-4 w-4" />
+            O que você quer saber?
+          </Label>
+          <Select value={pergunta} onValueChange={handlePerguntaChange}>
+            <SelectTrigger className="border-[hsl(var(--fp-border)/0.22)] bg-[hsl(var(--fp-surface-elevated)/0.96)] text-[hsl(var(--fp-foreground))] hover:border-[hsl(var(--fp-border)/0.5)] focus:ring-[hsl(var(--fp-accent)/0.35)]">
+              <SelectValue placeholder="Selecione uma pergunta…" />
+            </SelectTrigger>
+            <SelectContent className="z-[220] border-[hsl(var(--fp-border)/0.34)] bg-[hsl(var(--fp-surface)/1)] text-[hsl(var(--fp-foreground))] shadow-[0_0_28px_hsl(var(--fp-border)/0.18)] max-h-[400px]">
+              <SelectGroup>
+                <SelectLabel className="text-cyan-300/80 text-[11px] uppercase tracking-wider">Geral</SelectLabel>
+                <SelectItem value="geral-disparos">Nº de disparos</SelectItem>
+                <SelectItem value="geral-disparos-respostas">Disparos × Médicos que responderam</SelectItem>
+                <SelectItem value="geral-disparos-respostas-conv">Disparos × Responderam × Convertidos</SelectItem>
+              </SelectGroup>
+              <SelectGroup>
+                <SelectLabel className="text-cyan-300/80 text-[11px] uppercase tracking-wider">Por especialidade</SelectLabel>
+                <SelectItem value="esp-disparos">Nº de disparos por especialidade</SelectItem>
+                <SelectItem value="esp-disparos-respostas">Disparos × Responderam por especialidade</SelectItem>
+                <SelectItem value="esp-disparos-respostas-conv">Disparos × Responderam × Convertidos por especialidade</SelectItem>
+                <SelectItem value="esp-motivos-nao-conv">Motivos da não conversão</SelectItem>
+                <SelectItem value="esp-conv-colaborador">Convertidos por colaborador</SelectItem>
+              </SelectGroup>
+              <SelectGroup>
+                <SelectLabel className="text-cyan-300/80 text-[11px] uppercase tracking-wider">Origem</SelectLabel>
+                <SelectItem value="origem-email">Nº de disparos por email</SelectItem>
+                <SelectItem value="origem-sigzap">Nº de disparos SigZap</SelectItem>
+                <SelectItem value="origem-trafego">Nº de retorno pelo tráfego pago</SelectItem>
+                <SelectItem value="origem-instagram">Nº de prospecção por Instagram</SelectItem>
+                <SelectItem value="origem-ocorrencias">Nº de ocorrências</SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Limpar filtros */}
+        <div className="flex-shrink-0">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleLimparFiltros}
+            className="border-[hsl(var(--fp-border)/0.34)] bg-[hsl(var(--fp-surface-elevated)/0.96)] text-[hsl(var(--fp-foreground))] hover:bg-[hsl(var(--fp-accent)/0.12)] hover:text-[hsl(var(--fp-foreground))]"
+          >
+            <RotateCcw className="h-4 w-4 mr-2" />
+            Limpar filtros
+          </Button>
+        </div>
+      </FiltroPeriodo>
 
       {/* KPIs principais */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
