@@ -362,8 +362,7 @@ export function DisparosCampanhasTab() {
                       disabled={
                         disparandoIds.has(campanha.id) ||
                         !campanha.ativo ||
-                        campanha.total_contatos === 0 ||
-                        campanha.status === "em_andamento"
+                        campanha.total_contatos === 0
                       }
                       title="Disparar agora (envia lote ao n8n)"
                     >
