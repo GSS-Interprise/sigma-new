@@ -204,6 +204,9 @@ serve(async (req) => {
       arquivoNome = formData.get("arquivo_nome") as string || file?.name || "upload.xlsx";
       especialidadeParam = formData.get("especialidade") as string || "";
       origemParam = formData.get("origem") as string || "Importação Excel";
+      const listaDestinoIdParam = (formData.get("lista_destino_id") as string) || "";
+      const listaDestinoNomeParam = (formData.get("lista_destino_nome") as string) || "";
+      const listaDestinoDescParam = (formData.get("lista_destino_descricao") as string) || "";
       
       if (!file) {
         return new Response(
@@ -235,6 +238,24 @@ serve(async (req) => {
 
       storagePath = storageFileName;
 
+      // Se foi solicitado criar uma nova lista de disparo, criar agora
+      let listaDestinoIdFinal = listaDestinoIdParam || "";
+      if (!listaDestinoIdFinal && listaDestinoNomeParam) {
+        const { data: novaLista, error: listaErr } = await supabase
+          .from("disparo_listas")
+          .insert({
+            nome: listaDestinoNomeParam,
+            descricao: listaDestinoDescParam || `Importada de ${arquivoNome}`,
+            excluir_blacklist: true,
+          })
+          .select("id")
+          .single();
+        if (listaErr) {
+          throw new Error(`Erro ao criar lista de disparo: ${listaErr.message}`);
+        }
+        listaDestinoIdFinal = novaLista.id;
+      }
+
       // Atualizar job com path do Storage e parâmetros
       await supabase
         .from("lead_import_jobs")
@@ -249,6 +270,7 @@ serve(async (req) => {
             _params: {
               especialidade: especialidadeParam,
               origem: origemParam,
+              lista_destino_id: listaDestinoIdFinal || null,
             }
           },
         })
