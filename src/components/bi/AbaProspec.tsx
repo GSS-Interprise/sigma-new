@@ -5,7 +5,7 @@ import { FiltroPeriodo } from "./FiltroPeriodo";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Send, MessageCircle, Trophy, TrendingUp, Megaphone, Users, Target, Radio, MousePointer, BarChart3, Mail, Instagram, Stethoscope, UserCheck, XCircle, MessageSquare, HelpCircle, RotateCcw, Lock, AlertCircle } from "lucide-react";
+import { Loader2, Send, MessageCircle, Trophy, TrendingUp, Megaphone, Users, Target, Radio, MousePointer, BarChart3, Mail, Instagram, Stethoscope, UserCheck, XCircle, MessageSquare, HelpCircle, RotateCcw, Lock, AlertCircle, RefreshCw, Inbox } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select";
@@ -42,47 +42,6 @@ function startOfMonthsAgo(n: number) {
   d.setMonth(d.getMonth() - n);
   d.setDate(1);
   return d.toISOString().slice(0, 10);
-}
-
-// Busca paginada em chunks de 1000 (limite default do Supabase)
-async function fetchAllChunks<T = any>(
-  table: string,
-  select: string,
-  applyFilters: (q: any) => any,
-  chunkSize = 1000,
-  maxRows = 50000,
-  orderColumn = "created_at"
-): Promise<T[]> {
-  const all: T[] = [];
-  let from = 0;
-  while (from < maxRows) {
-    const to = from + chunkSize - 1;
-    let q: any = (supabase as any)
-      .from(table)
-      .select(select)
-      .order(orderColumn, { ascending: true, nullsFirst: false })
-      .range(from, to);
-    q = applyFilters(q);
-    const { data, error } = await q;
-    if (error) {
-      // Fallback: tenta sem order (caso a coluna não exista no select/view)
-      const q2: any = applyFilters(
-        (supabase as any).from(table).select(select).range(from, to)
-      );
-      const r2 = await q2;
-      if (r2.error) throw r2.error;
-      const rows2 = (r2.data ?? []) as T[];
-      all.push(...rows2);
-      if (rows2.length < chunkSize) break;
-      from += chunkSize;
-      continue;
-    }
-    const rows = (data ?? []) as T[];
-    all.push(...rows);
-    if (rows.length < chunkSize) break;
-    from += chunkSize;
-  }
-  return all;
 }
 
 function KPI({ icon: Icon, label, value, sub, color = NEON.cyan }: any) {
@@ -183,7 +142,7 @@ export function AbaProspec() {
   };
 
   // === Dashboard agregado via RPC (1 chamada) ===
-  const { data: dashboard, isLoading, error: dashboardError } = useQuery({
+  const { data: dashboard, isLoading, error: dashboardError, dataUpdatedAt, refetch, isFetching } = useQuery({
     queryKey: ["bi-prospec-dashboard", dataInicio, dataFim],
     queryFn: async () => {
       const { data, error } = await (supabase as any).rpc("get_bi_prospec_dashboard", {
@@ -398,6 +357,36 @@ export function AbaProspec() {
         <KPI icon={Megaphone} label="Tráfego pago — enviados" value={totaisTrafego.enviados.toLocaleString()} color={NEON.yellow} />
         <KPI icon={Mail} label="Emails enviados" value={metricasPorCanal.email.enviados.toLocaleString()} color={NEON.blue} />
         <KPI icon={Instagram} label="Instagram" value={metricasPorCanal.instagram.enviados.toLocaleString()} color={NEON.purple} />
+      </div>
+
+      {/* Sub-métricas granulares de "Em Massa" + Última atualização */}
+      <div className="flex flex-wrap items-center justify-between gap-3 -mt-2 px-1">
+        <div className="text-[11px] font-mono flex flex-wrap items-center gap-2" style={{ color: "#94a3b8" }}>
+          <span className="uppercase tracking-wider" style={{ color: NEON.green }}>Em massa:</span>
+          <span><span style={{ color: NEON.green }}>{(Number(totais.massa_enviados) || 0).toLocaleString()}</span> enviados</span>
+          <span className="opacity-40">·</span>
+          <span><span style={{ color: NEON.yellow }}>{(Number(totais.massa_fila) || 0).toLocaleString()}</span> na fila</span>
+          <span className="opacity-40">·</span>
+          <span><span style={{ color: NEON.orange }}>{(Number(totais.massa_nozap) || 0).toLocaleString()}</span> sem WhatsApp</span>
+          <span className="opacity-40">·</span>
+          <span><span style={{ color: NEON.magenta }}>{(Number(totais.massa_bloqueadas) || 0).toLocaleString()}</span> bloqueadas</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-mono" style={{ color: "#64748b" }}>
+            Última atualização: {dataUpdatedAt ? new Date(dataUpdatedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "—"}
+          </span>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="h-7 px-2 border-cyan-500/40 bg-slate-950/60 text-cyan-300 hover:bg-cyan-500/10 hover:text-cyan-200"
+          >
+            <RefreshCw className={`h-3 w-3 mr-1 ${isFetching ? "animate-spin" : ""}`} />
+            Atualizar
+          </Button>
+        </div>
       </div>
 
       <Tabs value={tabAtiva} onValueChange={setTabAtiva} className="space-y-4">
@@ -742,6 +731,7 @@ export function AbaProspec() {
             ].map(({ tipo, icon: Icon, cor, m }) => {
               const tr = m.enviados > 0 ? ((m.responderam / m.enviados) * 100).toFixed(1) : "0";
               const tc = m.enviados > 0 ? ((m.convertidos / m.enviados) * 100).toFixed(1) : "0";
+              const semDados = m.enviados === 0 && m.responderam === 0 && m.convertidos === 0;
               return (
                 <div key={tipo} className="relative overflow-hidden rounded-xl border p-5 backdrop-blur-sm"
                   style={{ background: "linear-gradient(135deg, rgba(15,23,42,0.85), rgba(2,6,23,0.95))", borderColor: `${cor}55`, boxShadow: `0 0 24px ${cor}22` }}>
@@ -751,19 +741,28 @@ export function AbaProspec() {
                     </div>
                     <span className="text-sm uppercase tracking-wider font-semibold" style={{ color: "#e2e8f0" }}>{tipo}</span>
                   </div>
-                  <div className="text-3xl font-bold" style={{ color: "#f1f5f9", textShadow: `0 0 10px ${cor}66` }}>{m.enviados.toLocaleString()}</div>
-                  <div className="text-[11px] uppercase tracking-wider" style={{ color: "#64748b" }}>enviados</div>
+                  {semDados ? (
+                    <div className="flex flex-col items-center justify-center py-6 text-center gap-2">
+                      <Inbox className="h-6 w-6" style={{ color: `${cor}88` }} />
+                      <p className="text-xs" style={{ color: "#94a3b8" }}>Canal ainda não tem dados no período</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="text-3xl font-bold" style={{ color: "#f1f5f9", textShadow: `0 0 10px ${cor}66` }}>{m.enviados.toLocaleString()}</div>
+                      <div className="text-[11px] uppercase tracking-wider" style={{ color: "#64748b" }}>enviados</div>
 
-                  <div className="mt-4 space-y-2 pt-3 border-t" style={{ borderColor: `${cor}22` }}>
-                    <div className="flex items-center justify-between text-sm">
-                      <span style={{ color: "#94a3b8" }}>Responderam</span>
-                      <span className="font-mono" style={{ color: NEON.magenta }}>{m.responderam.toLocaleString()} <span className="text-xs opacity-70">({tr}%)</span></span>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span style={{ color: "#94a3b8" }}>Convertidos</span>
-                      <span className="font-mono font-bold" style={{ color: NEON.green }}>{m.convertidos.toLocaleString()} <span className="text-xs opacity-70">({tc}%)</span></span>
-                    </div>
-                  </div>
+                      <div className="mt-4 space-y-2 pt-3 border-t" style={{ borderColor: `${cor}22` }}>
+                        <div className="flex items-center justify-between text-sm">
+                          <span style={{ color: "#94a3b8" }}>Responderam</span>
+                          <span className="font-mono" style={{ color: NEON.magenta }}>{m.responderam.toLocaleString()} <span className="text-xs opacity-70">({tr}%)</span></span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm">
+                          <span style={{ color: "#94a3b8" }}>Convertidos</span>
+                          <span className="font-mono font-bold" style={{ color: NEON.green }}>{m.convertidos.toLocaleString()} <span className="text-xs opacity-70">({tc}%)</span></span>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               );
             })}
