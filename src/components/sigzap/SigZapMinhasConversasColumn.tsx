@@ -878,6 +878,21 @@ key={conversa.id}
                               Não é o médico
                             </Badge>
                           )}
+                          {Array.isArray((conversa.lead as any)?.tags) && (conversa.lead as any).tags.map((tagNome: string) => {
+                            const cfg = (tagsConfig || []).find((t: any) => t.nome === tagNome);
+                            const cor = cfg?.cor || '#64748b';
+                            return (
+                              <Badge
+                                key={tagNome}
+                                variant="outline"
+                                className="text-[10px] h-5 gap-0.5 border-0 text-white"
+                                style={{ backgroundColor: cor }}
+                              >
+                                <TagIcon className="h-3 w-3" />
+                                {tagNome}
+                              </Badge>
+                            );
+                          })}
                         </div>
                         <Button
                           variant="ghost"
