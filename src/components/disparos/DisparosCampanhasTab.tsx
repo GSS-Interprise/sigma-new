@@ -100,7 +100,7 @@ export function DisparosCampanhasTab() {
     enabled: campanhas.length > 0,
   });
 
-  const { data: chips = [] } = useQuery({
+  const { data: chipsRaw = [] } = useQuery({
     queryKey: ["chips-ativos"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -116,6 +116,11 @@ export function DisparosCampanhasTab() {
       });
     },
   });
+
+  const chips = useMemo(
+    () => chipsRaw.filter((chip: any) => String(chip.tipo_instancia || "").trim().toLowerCase() !== "trafego_pago"),
+    [chipsRaw]
+  );
 
   const { data: instanciasEmUso = [] } = useQuery({
     queryKey: ["disparos-instancias-em-uso"],
