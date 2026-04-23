@@ -1493,6 +1493,7 @@ export type Database = {
       }
       campanha_leads: {
         Row: {
+          aguarda_resposta_humana: boolean
           campanha_id: string
           canal_atual: string | null
           chip_usado_id: string | null
@@ -1517,6 +1518,7 @@ export type Database = {
           variation_indices: number[] | null
         }
         Insert: {
+          aguarda_resposta_humana?: boolean
           campanha_id: string
           canal_atual?: string | null
           chip_usado_id?: string | null
@@ -1541,6 +1543,7 @@ export type Database = {
           variation_indices?: number[] | null
         }
         Update: {
+          aguarda_resposta_humana?: boolean
           campanha_id?: string
           canal_atual?: string | null
           chip_usado_id?: string | null
@@ -1690,6 +1693,119 @@ export type Database = {
           phone?: string
         }
         Relationships: []
+      }
+      campanha_perguntas_pendentes: {
+        Row: {
+          alerta_enviado_em: string
+          alerta_instance: string
+          alerta_msg_id: string
+          alerta_phone: string
+          campanha_id: string
+          campanha_lead_id: string
+          contexto_conversa: string | null
+          created_at: string
+          id: string
+          lead_id: string
+          pergunta_medico: string
+          pergunta_resumo: string | null
+          relayed: boolean
+          relayed_at: string | null
+          relayed_text: string | null
+          respondida: boolean
+          respondida_at: string | null
+          resposta_humana: string | null
+        }
+        Insert: {
+          alerta_enviado_em?: string
+          alerta_instance: string
+          alerta_msg_id: string
+          alerta_phone: string
+          campanha_id: string
+          campanha_lead_id: string
+          contexto_conversa?: string | null
+          created_at?: string
+          id?: string
+          lead_id: string
+          pergunta_medico: string
+          pergunta_resumo?: string | null
+          relayed?: boolean
+          relayed_at?: string | null
+          relayed_text?: string | null
+          respondida?: boolean
+          respondida_at?: string | null
+          resposta_humana?: string | null
+        }
+        Update: {
+          alerta_enviado_em?: string
+          alerta_instance?: string
+          alerta_msg_id?: string
+          alerta_phone?: string
+          campanha_id?: string
+          campanha_lead_id?: string
+          contexto_conversa?: string | null
+          created_at?: string
+          id?: string
+          lead_id?: string
+          pergunta_medico?: string
+          pergunta_resumo?: string | null
+          relayed?: boolean
+          relayed_at?: string | null
+          relayed_text?: string | null
+          respondida?: boolean
+          respondida_at?: string | null
+          resposta_humana?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campanha_perguntas_pendentes_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "campanhas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campanha_perguntas_pendentes_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "vw_campanha_metricas"
+            referencedColumns: ["campanha_id"]
+          },
+          {
+            foreignKeyName: "campanha_perguntas_pendentes_campanha_lead_id_fkey"
+            columns: ["campanha_lead_id"]
+            isOneToOne: false
+            referencedRelation: "campanha_leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campanha_perguntas_pendentes_campanha_lead_id_fkey"
+            columns: ["campanha_lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_leads_quentes_esperando"
+            referencedColumns: ["campanha_lead_id"]
+          },
+          {
+            foreignKeyName: "campanha_perguntas_pendentes_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campanha_perguntas_pendentes_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_leads_duplicados"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campanha_perguntas_pendentes_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_leads_quentes_esperando"
+            referencedColumns: ["lead_id"]
+          },
+        ]
       }
       campanha_proposta_canais: {
         Row: {
@@ -12586,6 +12702,8 @@ export type Database = {
         | "email_enviado"
         | "email_falhou"
         | "email_respondido"
+        | "qa_pergunta_enviada"
+        | "qa_resposta_relayed"
       tipo_impacto_suporte:
         | "sistema"
         | "infraestrutura"
@@ -12975,6 +13093,8 @@ export const Constants = {
         "email_enviado",
         "email_falhou",
         "email_respondido",
+        "qa_pergunta_enviada",
+        "qa_resposta_relayed",
       ],
       tipo_impacto_suporte: [
         "sistema",
