@@ -10,7 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { MoreVertical, Pin, Ban, EyeOff, Loader2, ArrowRightLeft, MapPin, UserX, Tag, Check } from "lucide-react";
+import { MoreVertical, Pin, Ban, EyeOff, Loader2, ArrowRightLeft, MapPin, UserX, Tag, Check, X } from "lucide-react";
 import { toast } from "sonner";
 import { RegiaoInteresseDialog } from "@/components/disparos/RegiaoInteresseDialog";
 import { normalizeToE164 } from "@/lib/phoneUtils";
