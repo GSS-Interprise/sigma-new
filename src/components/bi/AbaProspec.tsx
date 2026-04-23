@@ -261,169 +261,56 @@ export function AbaProspec() {
   );
 
   const topPropostas: any[] = dashboard?.top_propostas ?? [];
-  }, [trafegoPago]);
 
   const chipsTrafego = (chips ?? []).filter((c) => c.is_trafego_pago);
 
-  // ===== NOVAS AGREGAÇÕES =====
+  // === Por especialidade / colaborador / motivos / canal — vindos da RPC ===
+  const porEspecialidade: any[] = dashboard?.por_especialidade ?? [];
+  const convPorColaborador: any[] = dashboard?.por_colaborador ?? [];
+  const motivosNaoConversao: any[] = (dashboard?.motivos_nao_conversao ?? []).map((m: any) => ({
+    motivo: m.motivo,
+    total: Number(m.total) || 0,
+  }));
 
-  // Mapas auxiliares
-  const leadEspecialidadeMap = useMemo(() => {
-    const m = new Map<string, string>();
-    (leadsAll ?? []).forEach((l: any) => {
-      m.set(l.id, (l.especialidade || "Sem especialidade").trim() || "Sem especialidade");
-    });
-    (leadsConvertidos ?? []).forEach((l: any) => {
-      if (!m.has(l.id)) m.set(l.id, (l.especialidade || "Sem especialidade").trim() || "Sem especialidade");
-    });
-    return m;
-  }, [leadsAll, leadsConvertidos]);
+  const metricasPorCanal = {
+    whatsapp: {
+      enviados: Number(porCanal?.whatsapp?.enviados) || 0,
+      responderam: Number(porCanal?.whatsapp?.responderam) || 0,
+      convertidos: Number(porCanal?.whatsapp?.convertidos) || 0,
+    },
+    email: {
+      enviados: Number(porCanal?.email?.enviados) || 0,
+      responderam: Number(porCanal?.email?.responderam) || 0,
+      convertidos: Number(porCanal?.email?.convertidos) || 0,
+    },
+    trafego: {
+      enviados: totaisTrafego.enviados,
+      responderam: totaisTrafego.responderam,
+      convertidos: totaisTrafego.convertidos,
+    },
+    instagram: {
+      enviados: Number(porCanal?.instagram?.enviados) || 0,
+      responderam: Number(porCanal?.instagram?.responderam) || 0,
+      convertidos: Number(porCanal?.instagram?.convertidos) || 0,
+    },
+  };
 
-  const profilesMap = useMemo(() => {
-    const m = new Map<string, string>();
-    (profiles ?? []).forEach((p: any) => m.set(p.id, p.nome_completo || "—"));
-    return m;
-  }, [profiles]);
+  const totaisGerais = {
+    responderam: Number(totais.responderam_geral) || 0,
+    convertidos: Number(totais.convertidos_geral) || 0,
+  };
 
-  // Lead → respondeu? (qualquer canal)
-  const leadsResponderam = useMemo(() => {
-    const set = new Set<string>();
-    // email inbound
-    (emails ?? []).forEach((e: any) => {
-      if (e.direcao === "recebido" && e.lead_id) set.add(e.lead_id);
-    });
-    // canais com saiu_em (algum movimento) ou status respondeu/aceitou/convertido
-    (canaisAll ?? []).forEach((c: any) => {
-      if (!c.lead_id) return;
-      if (
-        c.status_final === "respondeu" ||
-        c.status_final === "aceitou" ||
-        c.status_final === "convertido" ||
-        c.status_final === "em_conversa"
-      ) set.add(c.lead_id);
-    });
-    return set;
-  }, [emails, canaisAll]);
-
-  // Lead → convertido (todas as fontes)
-  const leadsConvertidosSet = useMemo(() => {
-    const set = new Set<string>();
-    (leadsConvertidos ?? []).forEach((l: any) => set.add(l.id));
-    (canaisAll ?? []).forEach((c: any) => {
-      if (c.status_final === "convertido" && c.lead_id) set.add(c.lead_id);
-    });
-    return set;
-  }, [leadsConvertidos, canaisAll]);
-
-  // === Por especialidade ===
-  const porEspecialidade = useMemo(() => {
-    const map = new Map<string, { especialidade: string; disparos: number; responderam: Set<string>; convertidos: Set<string> }>();
-    const ensure = (esp: string) => {
-      if (!map.has(esp)) map.set(esp, { especialidade: esp, disparos: 0, responderam: new Set(), convertidos: new Set() });
-      return map.get(esp)!;
-    };
-    const addDisparoForLead = (leadId?: string | null) => {
-      if (!leadId) return;
-      const esp = leadEspecialidadeMap.get(leadId) || "Sem especialidade";
-      const e = ensure(esp);
-      e.disparos += 1;
-      if (leadsResponderam.has(leadId)) e.responderam.add(leadId);
-      if (leadsConvertidosSet.has(leadId)) e.convertidos.add(leadId);
-    };
-    (disparosMassa ?? []).forEach((d: any) => addDisparoForLead(d.lead_id));
-    (disparosManuais ?? []).forEach((d: any) => addDisparoForLead(d.lead_id));
-    (emails ?? []).forEach((e: any) => { if (e.direcao === "enviado") addDisparoForLead(e.lead_id); });
-    (canaisAll ?? []).forEach((c: any) => addDisparoForLead(c.lead_id));
-
-    return Array.from(map.values())
-      .map((r) => ({
-        especialidade: r.especialidade,
-        disparos: r.disparos,
-        responderam: r.responderam.size,
-        convertidos: r.convertidos.size,
-      }))
-      .sort((a, b) => b.disparos - a.disparos)
-      .slice(0, 15);
-  }, [disparosMassa, disparosManuais, emails, canaisAll, leadEspecialidadeMap, leadsResponderam, leadsConvertidosSet]);
-
-  // === Convertidos por colaborador ===
-  const convPorColaborador = useMemo(() => {
-    const map = new Map<string, number>();
-    (leadsConvertidos ?? []).forEach((l: any) => {
-      const k = l.convertido_por || "sem_responsavel";
-      map.set(k, (map.get(k) || 0) + 1);
-    });
-    return Array.from(map.entries())
-      .map(([id, total]) => ({
-        id,
-        nome: id === "sem_responsavel" ? "— Sem responsável" : (profilesMap.get(id) || "Usuário desconhecido"),
-        total,
-      }))
-      .sort((a, b) => b.total - a.total);
-  }, [leadsConvertidos, profilesMap]);
-
-  // === Motivos de não conversão ===
-  const motivosNaoConversao = useMemo(() => {
-    const map = new Map<string, number>();
-    (canaisAll ?? []).forEach((c: any) => {
-      const isNaoConv =
-        c.status_final === "descartado" ||
-        c.status_final === "fechado" ||
-        c.status_final === "proposta_encerrada" ||
-        c.status_final === "nao_respondeu";
-      if (!isNaoConv) return;
-      const motivo = (c.motivo_saida || "Sem motivo informado").trim() || "Sem motivo informado";
-      map.set(motivo, (map.get(motivo) || 0) + 1);
-    });
-    return Array.from(map.entries())
-      .map(([motivo, total]) => ({ motivo, total }))
-      .sort((a, b) => b.total - a.total);
-  }, [canaisAll]);
-
-  // === Métricas por canal de origem ===
-  const metricasPorCanal = useMemo(() => {
-    const calc = (leadIds: Set<string>, totalEnv: number) => {
-      let resp = 0, conv = 0;
-      leadIds.forEach((id) => {
-        if (leadsResponderam.has(id)) resp += 1;
-        if (leadsConvertidosSet.has(id)) conv += 1;
-      });
-      return { enviados: totalEnv, responderam: resp, convertidos: conv };
-    };
-
-    // WhatsApp / SigZap = massa + manual
-    const wppLeads = new Set<string>();
-    let wppTotal = 0;
-    (disparosMassa ?? []).forEach((d: any) => { wppTotal += 1; if (d.lead_id) wppLeads.add(d.lead_id); });
-    (disparosManuais ?? []).forEach((d: any) => { wppTotal += 1; if (d.lead_id) wppLeads.add(d.lead_id); });
-
-    // Email
-    const emailLeads = new Set<string>();
-    let emailTotal = 0;
-    (emails ?? []).forEach((e: any) => {
-      if (e.direcao === "enviado") { emailTotal += 1; if (e.lead_id) emailLeads.add(e.lead_id); }
-    });
-
-    // Instagram
-    const igLeads = new Set<string>();
-    let igTotal = 0;
-    (canaisAll ?? []).forEach((c: any) => {
-      if (c.canal === "instagram") { igTotal += 1; if (c.lead_id) igLeads.add(c.lead_id); }
-    });
-
-    return {
-      whatsapp: calc(wppLeads, wppTotal),
-      email: calc(emailLeads, emailTotal),
-      trafego: { enviados: totaisTrafego.enviados, responderam: totaisTrafego.responderam, convertidos: totaisTrafego.convertidos },
-      instagram: calc(igLeads, igTotal),
-    };
-  }, [disparosMassa, disparosManuais, emails, canaisAll, leadsResponderam, leadsConvertidosSet, totaisTrafego]);
-
-  // === Total geral de respondidos / convertidos (todos os canais) ===
-  const totaisGerais = useMemo(() => ({
-    responderam: leadsResponderam.size,
-    convertidos: leadsConvertidosSet.size,
-  }), [leadsResponderam, leadsConvertidosSet]);
+  if (semPermissao) {
+    return (
+      <div className="flex flex-col items-center justify-center h-96 gap-3 text-center">
+        <Lock className="h-10 w-10 text-amber-400" />
+        <h2 className="text-xl font-semibold text-slate-100">Sem permissão</h2>
+        <p className="text-sm text-slate-400 max-w-md">
+          Você não tem permissão para visualizar o BI Prospec. Peça ao administrador para liberar a permissão <code className="px-1.5 py-0.5 rounded bg-slate-800 text-amber-300">captacao.view</code>.
+        </p>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
