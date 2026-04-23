@@ -65,6 +65,7 @@ export function SigZapConversaContextMenu({
   const [blacklistReason, setBlacklistReason] = useState("");
   const [showRegiaoDialog, setShowRegiaoDialog] = useState(false);
   const [regiaoLeadId, setRegiaoLeadId] = useState<string | undefined>();
+  const [tagPopoverOpen, setTagPopoverOpen] = useState(false);
 
   const phoneE164 = contactPhone ? normalizeToE164(contactPhone) : null;
 
@@ -75,13 +76,51 @@ export function SigZapConversaContextMenu({
       if (!phoneE164) return null;
       const { data, error } = await supabase
         .from('leads')
-        .select('id')
+        .select('id, tags')
         .eq('phone_e164', phoneE164)
         .maybeSingle();
       if (error) return null;
       return data;
     },
     enabled: !!phoneE164,
+  });
+
+  // Tags disponíveis (mesma fonte do Kanban de Acompanhamento)
+  const { data: availableTags = [] } = useQuery({
+    queryKey: ['leads-etiquetas-config'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('leads_etiquetas_config')
+        .select('nome, cor_id')
+        .order('nome');
+      if (error) throw error;
+      return data as { nome: string; cor_id: string }[];
+    },
+  });
+
+  const currentTag = (leadExists as any)?.tags?.[0] as string | undefined;
+
+  // Mutation: define tag única do lead (substitui qualquer tag existente)
+  const setTagMutation = useMutation({
+    mutationFn: async (tagName: string | null) => {
+      if (!leadExists?.id) throw new Error('Lead não encontrado');
+      const newTags = tagName ? [tagName] : [];
+      const { error } = await supabase
+        .from('leads')
+        .update({ tags: newTags, updated_at: new Date().toISOString() })
+        .eq('id', leadExists.id);
+      if (error) throw error;
+      return { tagName };
+    },
+    onSuccess: ({ tagName }) => {
+      toast.success(tagName ? `Tag "${tagName}" aplicada` : 'Tag removida');
+      queryClient.invalidateQueries({ queryKey: ['sigzap-lead-exists'] });
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      queryClient.invalidateQueries({ queryKey: ['lead', leadExists?.id] });
+      queryClient.invalidateQueries({ queryKey: ['kanban-leads'] });
+      setTagPopoverOpen(false);
+    },
+    onError: (e: any) => toast.error(e.message || 'Erro ao aplicar tag'),
   });
 
   // "Não é o médico" mutation
