@@ -646,28 +646,28 @@ export function AbaProspec() {
             <SelectTrigger className="border-[hsl(var(--fp-border)/0.22)] bg-[hsl(var(--fp-surface-elevated)/0.96)] text-[hsl(var(--fp-foreground))] hover:border-[hsl(var(--fp-border)/0.5)] focus:ring-[hsl(var(--fp-accent)/0.35)]">
               <SelectValue placeholder="Selecione uma pergunta…" />
             </SelectTrigger>
-            <SelectContent className="z-[220] border-[hsl(var(--fp-border)/0.34)] bg-[hsl(var(--fp-surface)/1)] text-[hsl(var(--fp-foreground))] shadow-[0_0_28px_hsl(var(--fp-border)/0.18)] max-h-[400px]">
+            <SelectContent className="z-[220] border border-cyan-500/40 bg-slate-950 text-slate-100 shadow-[0_0_28px_rgba(34,211,238,0.25)] max-h-[400px]">
               <SelectGroup>
-                <SelectLabel className="text-cyan-300/80 text-[11px] uppercase tracking-wider">Geral</SelectLabel>
-                <SelectItem value="geral-disparos">Nº de disparos</SelectItem>
-                <SelectItem value="geral-disparos-respostas">Disparos × Médicos que responderam</SelectItem>
-                <SelectItem value="geral-disparos-respostas-conv">Disparos × Responderam × Convertidos</SelectItem>
+                <SelectLabel className="text-cyan-300 text-[11px] uppercase tracking-wider">Geral</SelectLabel>
+                <SelectItem value="geral-disparos" className="text-slate-100 focus:bg-cyan-500/20 focus:text-white">Nº de disparos</SelectItem>
+                <SelectItem value="geral-disparos-respostas" className="text-slate-100 focus:bg-cyan-500/20 focus:text-white">Disparos × Médicos que responderam</SelectItem>
+                <SelectItem value="geral-disparos-respostas-conv" className="text-slate-100 focus:bg-cyan-500/20 focus:text-white">Disparos × Responderam × Convertidos</SelectItem>
               </SelectGroup>
               <SelectGroup>
-                <SelectLabel className="text-cyan-300/80 text-[11px] uppercase tracking-wider">Por especialidade</SelectLabel>
-                <SelectItem value="esp-disparos">Nº de disparos por especialidade</SelectItem>
-                <SelectItem value="esp-disparos-respostas">Disparos × Responderam por especialidade</SelectItem>
-                <SelectItem value="esp-disparos-respostas-conv">Disparos × Responderam × Convertidos por especialidade</SelectItem>
-                <SelectItem value="esp-motivos-nao-conv">Motivos da não conversão</SelectItem>
-                <SelectItem value="esp-conv-colaborador">Convertidos por colaborador</SelectItem>
+                <SelectLabel className="text-cyan-300 text-[11px] uppercase tracking-wider">Por especialidade</SelectLabel>
+                <SelectItem value="esp-disparos" className="text-slate-100 focus:bg-cyan-500/20 focus:text-white">Nº de disparos por especialidade</SelectItem>
+                <SelectItem value="esp-disparos-respostas" className="text-slate-100 focus:bg-cyan-500/20 focus:text-white">Disparos × Responderam por especialidade</SelectItem>
+                <SelectItem value="esp-disparos-respostas-conv" className="text-slate-100 focus:bg-cyan-500/20 focus:text-white">Disparos × Responderam × Convertidos por especialidade</SelectItem>
+                <SelectItem value="esp-motivos-nao-conv" className="text-slate-100 focus:bg-cyan-500/20 focus:text-white">Motivos da não conversão</SelectItem>
+                <SelectItem value="esp-conv-colaborador" className="text-slate-100 focus:bg-cyan-500/20 focus:text-white">Convertidos por colaborador</SelectItem>
               </SelectGroup>
               <SelectGroup>
-                <SelectLabel className="text-cyan-300/80 text-[11px] uppercase tracking-wider">Origem</SelectLabel>
-                <SelectItem value="origem-email">Nº de disparos por email</SelectItem>
-                <SelectItem value="origem-sigzap">Nº de disparos SigZap</SelectItem>
-                <SelectItem value="origem-trafego">Nº de retorno pelo tráfego pago</SelectItem>
-                <SelectItem value="origem-instagram">Nº de prospecção por Instagram</SelectItem>
-                <SelectItem value="origem-ocorrencias">Nº de ocorrências</SelectItem>
+                <SelectLabel className="text-cyan-300 text-[11px] uppercase tracking-wider">Origem</SelectLabel>
+                <SelectItem value="origem-email" className="text-slate-100 focus:bg-cyan-500/20 focus:text-white">Nº de disparos por email</SelectItem>
+                <SelectItem value="origem-sigzap" className="text-slate-100 focus:bg-cyan-500/20 focus:text-white">Nº de disparos SigZap</SelectItem>
+                <SelectItem value="origem-trafego" className="text-slate-100 focus:bg-cyan-500/20 focus:text-white">Nº de retorno pelo tráfego pago</SelectItem>
+                <SelectItem value="origem-instagram" className="text-slate-100 focus:bg-cyan-500/20 focus:text-white">Nº de prospecção por Instagram</SelectItem>
+                <SelectItem value="origem-ocorrencias" className="text-slate-100 focus:bg-cyan-500/20 focus:text-white">Nº de ocorrências</SelectItem>
               </SelectGroup>
             </SelectContent>
           </Select>
