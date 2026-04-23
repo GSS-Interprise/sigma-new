@@ -195,6 +195,7 @@ serve(async (req) => {
     let arquivoNome = "";
     let especialidadeParam = "";
     let origemParam = "";
+    let listaDestinoId = "";
 
     if (contentType.includes("multipart/form-data")) {
       // PRIMEIRA EXECUÇÃO: receber arquivo do FormData
@@ -255,6 +256,7 @@ serve(async (req) => {
         }
         listaDestinoIdFinal = novaLista.id;
       }
+      listaDestinoId = listaDestinoIdFinal;
 
       // Atualizar job com path do Storage e parâmetros
       await supabase
@@ -299,6 +301,7 @@ serve(async (req) => {
       const params = (job.mapeamento_colunas as any)?._params || {};
       especialidadeParam = params.especialidade || "";
       origemParam = params.origem || "Importação Excel";
+      listaDestinoId = params.lista_destino_id || "";
     }
 
     if (!storagePath || !jobId) {
