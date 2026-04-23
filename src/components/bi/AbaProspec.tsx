@@ -731,6 +731,7 @@ export function AbaProspec() {
             ].map(({ tipo, icon: Icon, cor, m }) => {
               const tr = m.enviados > 0 ? ((m.responderam / m.enviados) * 100).toFixed(1) : "0";
               const tc = m.enviados > 0 ? ((m.convertidos / m.enviados) * 100).toFixed(1) : "0";
+              const semDados = m.enviados === 0 && m.responderam === 0 && m.convertidos === 0;
               return (
                 <div key={tipo} className="relative overflow-hidden rounded-xl border p-5 backdrop-blur-sm"
                   style={{ background: "linear-gradient(135deg, rgba(15,23,42,0.85), rgba(2,6,23,0.95))", borderColor: `${cor}55`, boxShadow: `0 0 24px ${cor}22` }}>
@@ -740,19 +741,28 @@ export function AbaProspec() {
                     </div>
                     <span className="text-sm uppercase tracking-wider font-semibold" style={{ color: "#e2e8f0" }}>{tipo}</span>
                   </div>
-                  <div className="text-3xl font-bold" style={{ color: "#f1f5f9", textShadow: `0 0 10px ${cor}66` }}>{m.enviados.toLocaleString()}</div>
-                  <div className="text-[11px] uppercase tracking-wider" style={{ color: "#64748b" }}>enviados</div>
+                  {semDados ? (
+                    <div className="flex flex-col items-center justify-center py-6 text-center gap-2">
+                      <Inbox className="h-6 w-6" style={{ color: `${cor}88` }} />
+                      <p className="text-xs" style={{ color: "#94a3b8" }}>Canal ainda não tem dados no período</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="text-3xl font-bold" style={{ color: "#f1f5f9", textShadow: `0 0 10px ${cor}66` }}>{m.enviados.toLocaleString()}</div>
+                      <div className="text-[11px] uppercase tracking-wider" style={{ color: "#64748b" }}>enviados</div>
 
-                  <div className="mt-4 space-y-2 pt-3 border-t" style={{ borderColor: `${cor}22` }}>
-                    <div className="flex items-center justify-between text-sm">
-                      <span style={{ color: "#94a3b8" }}>Responderam</span>
-                      <span className="font-mono" style={{ color: NEON.magenta }}>{m.responderam.toLocaleString()} <span className="text-xs opacity-70">({tr}%)</span></span>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span style={{ color: "#94a3b8" }}>Convertidos</span>
-                      <span className="font-mono font-bold" style={{ color: NEON.green }}>{m.convertidos.toLocaleString()} <span className="text-xs opacity-70">({tc}%)</span></span>
-                    </div>
-                  </div>
+                      <div className="mt-4 space-y-2 pt-3 border-t" style={{ borderColor: `${cor}22` }}>
+                        <div className="flex items-center justify-between text-sm">
+                          <span style={{ color: "#94a3b8" }}>Responderam</span>
+                          <span className="font-mono" style={{ color: NEON.magenta }}>{m.responderam.toLocaleString()} <span className="text-xs opacity-70">({tr}%)</span></span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm">
+                          <span style={{ color: "#94a3b8" }}>Convertidos</span>
+                          <span className="font-mono font-bold" style={{ color: NEON.green }}>{m.convertidos.toLocaleString()} <span className="text-xs opacity-70">({tc}%)</span></span>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               );
             })}
