@@ -717,6 +717,131 @@ export function AbaProspec() {
           </PanelCard>
         </TabsContent>
 
+        {/* === Por Especialidade === */}
+        <TabsContent value="especialidade" className="space-y-4">
+          <PanelCard title="Disparos × Responderam × Convertidos por especialidade" description="Top 15 especialidades no período" icon={Stethoscope} accent={NEON.cyan}>
+            <ResponsiveContainer width="100%" height={Math.max(320, porEspecialidade.length * 36)}>
+              <BarChart data={porEspecialidade} layout="vertical" margin={{ left: 120 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                <XAxis type="number" stroke="#64748b" tick={{ fill: "#94a3b8", fontSize: 11 }} />
+                <YAxis dataKey="especialidade" type="category" stroke="#64748b" tick={{ fill: "#cbd5e1", fontSize: 11 }} width={140} />
+                <RechartsTooltip contentStyle={tooltipStyle} cursor={{ fill: "rgba(34,211,238,0.05)" }} />
+                <Legend wrapperStyle={{ color: "#cbd5e1", fontSize: 12 }} />
+                <Bar dataKey="disparos" fill={NEON.cyan} name="Disparos" radius={[0,4,4,0]} />
+                <Bar dataKey="responderam" fill={NEON.magenta} name="Responderam" radius={[0,4,4,0]} />
+                <Bar dataKey="convertidos" fill={NEON.green} name="Convertidos" radius={[0,4,4,0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </PanelCard>
+
+          <PanelCard title="Detalhamento por especialidade" accent={NEON.magenta}>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left border-b" style={{ borderColor: `${NEON.magenta}33` }}>
+                    {["Especialidade","Disparos","Responderam","Convertidos","Taxa resp.","Taxa conv."].map((h, i) => (
+                      <th key={h} className={`py-2 px-2 text-[11px] uppercase tracking-wider font-semibold ${i>=1?"text-right":""}`} style={{ color: NEON.magenta }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {porEspecialidade.map((r) => {
+                    const tr = r.disparos > 0 ? ((r.responderam / r.disparos) * 100).toFixed(1) : "0";
+                    const tc = r.disparos > 0 ? ((r.convertidos / r.disparos) * 100).toFixed(1) : "0";
+                    return (
+                      <tr key={r.especialidade} className="border-b hover:bg-magenta-500/5 transition-colors" style={{ borderColor: "#1e293b" }}>
+                        <td className="py-2 px-2 font-medium" style={{ color: "#e2e8f0" }}>{r.especialidade}</td>
+                        <td className="py-2 px-2 text-right" style={{ color: NEON.cyan }}>{r.disparos.toLocaleString()}</td>
+                        <td className="py-2 px-2 text-right" style={{ color: NEON.magenta }}>{r.responderam.toLocaleString()}</td>
+                        <td className="py-2 px-2 text-right font-bold" style={{ color: NEON.green, textShadow: `0 0 6px ${NEON.green}55` }}>{r.convertidos.toLocaleString()}</td>
+                        <td className="py-2 px-2 text-right font-mono" style={{ color: "#cbd5e1" }}>{tr}%</td>
+                        <td className="py-2 px-2 text-right font-mono" style={{ color: NEON.yellow }}>{tc}%</td>
+                      </tr>
+                    );
+                  })}
+                  {porEspecialidade.length === 0 && (
+                    <tr><td colSpan={6} className="py-6 text-center" style={{ color: "#64748b" }}>Sem dados de especialidade no período.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </PanelCard>
+        </TabsContent>
+
+        {/* === Conversão === */}
+        <TabsContent value="conversao" className="space-y-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <PanelCard title="Convertidos por colaborador" description="Leads com data_conversao no período" icon={UserCheck} accent={NEON.green}>
+              <ResponsiveContainer width="100%" height={Math.max(280, convPorColaborador.length * 36)}>
+                <BarChart data={convPorColaborador} layout="vertical" margin={{ left: 100 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                  <XAxis type="number" stroke="#64748b" tick={{ fill: "#94a3b8", fontSize: 11 }} />
+                  <YAxis dataKey="nome" type="category" stroke="#64748b" tick={{ fill: "#cbd5e1", fontSize: 11 }} width={120} />
+                  <RechartsTooltip contentStyle={tooltipStyle} cursor={{ fill: "rgba(34,197,94,0.05)" }} />
+                  <Bar dataKey="total" fill={NEON.green} name="Convertidos" radius={[0,6,6,0]} />
+                </BarChart>
+              </ResponsiveContainer>
+              {convPorColaborador.length === 0 && (
+                <p className="text-sm py-4 text-center" style={{ color: "#64748b" }}>Sem conversões no período.</p>
+              )}
+            </PanelCard>
+
+            <PanelCard title="Motivos de não conversão" description="Status: descartado, fechado, encerrado, não respondeu" icon={XCircle} accent={NEON.orange}>
+              {motivosNaoConversao.length === 0 ? (
+                <p className="text-sm py-8 text-center" style={{ color: "#64748b" }}>Sem registros de não conversão no período.</p>
+              ) : (
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie
+                      data={motivosNaoConversao}
+                      dataKey="total"
+                      nameKey="motivo"
+                      innerRadius={50}
+                      outerRadius={100}
+                      paddingAngle={3}
+                      stroke="#020617"
+                      strokeWidth={2}
+                    >
+                      {motivosNaoConversao.map((_r, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                    </Pie>
+                    <RechartsTooltip contentStyle={tooltipStyle} formatter={(v: any, n: any) => [Number(v).toLocaleString(), n]} />
+                    <Legend wrapperStyle={{ color: "#cbd5e1", fontSize: 11 }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
+            </PanelCard>
+          </div>
+
+          <PanelCard title="Detalhamento dos motivos" accent={NEON.orange}>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left border-b" style={{ borderColor: `${NEON.orange}33` }}>
+                    <th className="py-2 px-2 text-[11px] uppercase tracking-wider font-semibold" style={{ color: NEON.orange }}>Motivo</th>
+                    <th className="py-2 px-2 text-right text-[11px] uppercase tracking-wider font-semibold" style={{ color: NEON.orange }}>Total</th>
+                    <th className="py-2 px-2 text-right text-[11px] uppercase tracking-wider font-semibold" style={{ color: NEON.orange }}>%</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(() => {
+                    const total = motivosNaoConversao.reduce((s, r) => s + r.total, 0);
+                    return motivosNaoConversao.map((r) => (
+                      <tr key={r.motivo} className="border-b hover:bg-orange-500/5 transition-colors" style={{ borderColor: "#1e293b" }}>
+                        <td className="py-2 px-2 font-medium" style={{ color: "#e2e8f0" }}>{r.motivo}</td>
+                        <td className="py-2 px-2 text-right font-bold" style={{ color: NEON.orange }}>{r.total.toLocaleString()}</td>
+                        <td className="py-2 px-2 text-right font-mono" style={{ color: "#cbd5e1" }}>{total > 0 ? ((r.total / total) * 100).toFixed(1) : "0"}%</td>
+                      </tr>
+                    ));
+                  })()}
+                  {motivosNaoConversao.length === 0 && (
+                    <tr><td colSpan={3} className="py-6 text-center" style={{ color: "#64748b" }}>Sem motivos registrados.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </PanelCard>
+        </TabsContent>
+
         {/* === Tráfego pago === */}
         <TabsContent value="trafego" className="space-y-4">
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
