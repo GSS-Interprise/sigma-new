@@ -3,8 +3,9 @@ import { useLeadsAContactar } from "@/hooks/useLeadsAContactar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { Users, MapPin, CheckCheck, Loader2 } from "lucide-react";
+import { Users, MapPin, CheckCheck, Loader2, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 
 type FiltroTipo = "todos" | "nao_contactados" | "contactados";
 
@@ -124,12 +125,27 @@ export function DisparoManualLeadsColumn({ campanhaPropostaId, selectedLeadId, o
               onClick={() => onSelectLead(l.lead_id)}
               className={cn(
                 "w-full text-left p-2 rounded-md border transition-colors hover:bg-muted/60",
-                selectedLeadId === l.lead_id ? "bg-muted border-primary" : "border-transparent"
+                selectedLeadId === l.lead_id ? "bg-muted border-primary" : "border-transparent",
+                l.bloqueado_disparo_massa && "opacity-70 border-dashed border-primary/50"
               )}
             >
               <div className="flex items-center justify-between gap-2">
                 <div className="font-medium text-sm truncate">{l.nome || "(sem nome)"}</div>
-                {l.contactado && (
+                {l.bloqueado_disparo_massa ? (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Badge variant="outline" className="shrink-0 h-5 px-1.5 text-[10px] gap-0.5 border-primary/60 text-primary">
+                          <Lock className="h-3 w-3" />
+                          Em fila
+                        </Badge>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        Em fila de disparo em massa ({l.status_disparo})
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                ) : l.contactado && (
                   <Badge variant="secondary" className="shrink-0 h-5 px-1.5 text-[10px] gap-0.5">
                     <CheckCheck className="h-3 w-3" />
                     Contactado
