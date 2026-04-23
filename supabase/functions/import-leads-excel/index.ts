@@ -623,7 +623,25 @@ serve(async (req) => {
       if (columnMapping.cidade && row[columnMapping.cidade]) {
         leadData.cidade = String(row[columnMapping.cidade]).trim();
       }
-      
+
+      // Telefones adicionais (telefone1, telefone2, ...)
+      if (additionalPhoneCols.length > 0) {
+        const adicionais: string[] = [];
+        const seen = new Set<string>([phone_e164]);
+        for (const col of additionalPhoneCols) {
+          const raw = row[col];
+          if (raw === undefined || raw === null || String(raw).trim() === "") continue;
+          const normalized = normalizePhone(String(raw));
+          if (!normalized) continue;
+          if (seen.has(normalized)) continue;
+          seen.add(normalized);
+          adicionais.push(normalized);
+        }
+        if (adicionais.length > 0) {
+          leadData.telefones_adicionais = adicionais;
+        }
+      }
+
       leadsMap.set(phone_e164, { rowNum, data: leadData, originalRow: row });
     }
 
