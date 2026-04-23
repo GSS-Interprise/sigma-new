@@ -12433,6 +12433,30 @@ export type Database = {
         Args: { p_licitacao_id: string }
         Returns: undefined
       }
+      search_leads_for_picker: {
+        Args: {
+          p_ano_max?: number
+          p_ano_min?: number
+          p_busca?: string
+          p_cidade?: string
+          p_especialidade_ids?: string[]
+          p_limit?: number
+          p_offset?: number
+          p_only_ids?: boolean
+          p_ufs?: string[]
+        }
+        Returns: {
+          cidade: string
+          data_formatura: string
+          especialidade: string
+          especialidade_id: string
+          id: string
+          nome: string
+          phone_e164: string
+          total_count: number
+          uf: string
+        }[]
+      }
       seed_fase1_lead_canais: {
         Args: { p_campanha_proposta_id: string }
         Returns: number

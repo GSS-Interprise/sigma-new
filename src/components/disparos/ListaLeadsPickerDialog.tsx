@@ -27,37 +27,32 @@ const SELECT_ALL_MAX = 50000;
 
 type AnoMode = "min" | "exato";
 
-// Aplica filtros comuns à query Supabase
-function applyFilters(q: any, opts: {
+// Monta os parâmetros da RPC search_leads_for_picker a partir dos filtros da UI
+function buildRpcParams(opts: {
   debounced: string;
   especialidades: string[];
   ufs: string[];
   cidade: string;
   ano: string;
   anoMode: AnoMode;
-}, leadIdsByEspecialidade?: string[] | null) {
+}, limit: number, offset: number) {
   const { debounced, especialidades, ufs, cidade, ano, anoMode } = opts;
-  q = q.not("phone_e164", "is", null).is("merged_into_id", null);
-  if (debounced.trim()) {
-    q = q.or(`nome.ilike.%${debounced}%,phone_e164.ilike.%${debounced}%,especialidade.ilike.%${debounced}%`);
-  }
-  if (especialidades.length > 0) {
-    // Usa o resultado pré-buscado de lead_especialidades (N:N), que inclui especialidades secundárias/RQE
-    // alinhando com a contagem mostrada no dropdown do filtro.
-    if (leadIdsByEspecialidade && leadIdsByEspecialidade.length > 0) {
-      q = q.in("id", leadIdsByEspecialidade);
-    } else if (leadIdsByEspecialidade && leadIdsByEspecialidade.length === 0) {
-      // Sem leads para a especialidade selecionada — força resultado vazio
-      q = q.eq("id", "00000000-0000-0000-0000-000000000000");
-    }
-  }
-  if (ufs.length > 0) q = q.in("uf", ufs.map((u) => u.toUpperCase()));
-  if (cidade.trim()) q = q.ilike("cidade", `%${cidade.trim()}%`);
+  const params: Record<string, any> = {
+    p_especialidade_ids: especialidades.length > 0 ? especialidades : null,
+    p_ufs: ufs.length > 0 ? ufs.map((u) => u.toUpperCase()) : null,
+    p_cidade: cidade.trim() || null,
+    p_busca: debounced.trim() || null,
+    p_limit: limit,
+    p_offset: offset,
+    p_ano_min: null,
+    p_ano_max: null,
+  };
   if (ano && /^\d{4}$/.test(ano)) {
-    if (anoMode === "min") q = q.gte("data_formatura", `${ano}-01-01`);
-    else q = q.gte("data_formatura", `${ano}-01-01`).lte("data_formatura", `${ano}-12-31`);
+    const y = parseInt(ano, 10);
+    params.p_ano_min = y;
+    if (anoMode === "exato") params.p_ano_max = y;
   }
-  return q;
+  return params;
 }
 
 export function ListaLeadsPickerDialog({ open, onOpenChange, listaId, listaNome }: Props) {
@@ -112,50 +107,19 @@ export function ListaLeadsPickerDialog({ open, onOpenChange, listaId, listaNome 
     enabled: open,
   });
 
-  // Busca lead_ids que possuem QUALQUER uma das especialidades selecionadas (via tabela N:N lead_especialidades).
-  // Isso alinha o filtro com a contagem exibida no dropdown (que conta especialidades primárias + secundárias/RQE).
-  const { data: leadIdsEspecialidade } = useQuery({
-    queryKey: ["leads-by-especialidades", especialidades],
-    queryFn: async () => {
-      if (especialidades.length === 0) return null;
-      const ids = new Set<string>();
-      let from = 0;
-      const CHUNK = 1000;
-      while (true) {
-        const { data, error } = await supabase
-          .from("lead_especialidades")
-          .select("lead_id")
-          .in("especialidade_id", especialidades)
-          .range(from, from + CHUNK - 1);
-        if (error) throw error;
-        (data || []).forEach((r: any) => ids.add(r.lead_id));
-        if (!data || data.length < CHUNK) break;
-        from += CHUNK;
-      }
-      return Array.from(ids);
-    },
-    enabled: open && especialidades.length > 0,
-    staleTime: 60_000,
-  });
-
   const filtersOpts = { debounced, especialidades, ufs, cidade, ano, anoMode };
-  const espLeadIds = especialidades.length > 0 ? (leadIdsEspecialidade ?? null) : undefined;
-  const espLoading = especialidades.length > 0 && leadIdsEspecialidade === undefined;
 
   const { data: pageData, isLoading, isFetching } = useQuery({
-    queryKey: ["leads-picker-page", page, debounced, especialidades, ufs, cidade, ano, anoMode, espLeadIds?.length ?? 0],
+    queryKey: ["leads-picker-page", page, debounced, especialidades, ufs, cidade, ano, anoMode],
     queryFn: async () => {
-      const from = page * PAGE_SIZE;
-      const to = from + PAGE_SIZE - 1;
-      let q: any = supabase
-        .from("leads")
-        .select("id, nome, phone_e164, especialidade, especialidade_id, uf, cidade, data_formatura", { count: "exact" });
-      q = applyFilters(q, filtersOpts, espLeadIds).range(from, to).order("nome", { ascending: true });
-      const { data, error, count } = await q;
+      const params = buildRpcParams(filtersOpts, PAGE_SIZE, page * PAGE_SIZE);
+      const { data, error } = await (supabase as any).rpc("search_leads_for_picker", params);
       if (error) throw error;
-      return { leads: data || [], totalCount: count || 0 };
+      const rows = (data || []) as any[];
+      const totalCount = rows.length > 0 ? Number(rows[0].total_count) || 0 : 0;
+      return { leads: rows, totalCount };
     },
-    enabled: open && !espLoading,
+    enabled: open,
     placeholderData: (prev) => prev,
   });
 
@@ -187,14 +151,14 @@ export function ListaLeadsPickerDialog({ open, onOpenChange, listaId, listaNome 
       const next = new Set(selecionados);
       let from = 0;
       while (from < SELECT_ALL_MAX) {
-        let q: any = supabase.from("leads").select("id");
-        q = applyFilters(q, filtersOpts, espLeadIds).range(from, from + SELECT_ALL_CHUNK - 1);
-        const { data, error } = await q;
+        const params = buildRpcParams(filtersOpts, SELECT_ALL_CHUNK, from);
+        const { data, error } = await (supabase as any).rpc("search_leads_for_picker", params);
         if (error) throw error;
-        (data || []).forEach((l: any) => {
+        const rows = (data || []) as any[];
+        rows.forEach((l: any) => {
           if (!jaNaLista?.has(l.id)) next.add(l.id);
         });
-        if (!data || data.length < SELECT_ALL_CHUNK) break;
+        if (rows.length < SELECT_ALL_CHUNK) break;
         from += SELECT_ALL_CHUNK;
       }
       setSelecionados(next);
