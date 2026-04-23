@@ -158,7 +158,7 @@ export function ZapTab({ campanhaPropostaId }: Props) {
           </div>
         )}
         <p className="text-xs text-muted-foreground">
-          Cada chip diferente cria um disparo paralelo (até 120 msgs/dia por instância). Para criar um novo disparo, selecione um chip que ainda não esteja em uso nesta proposta.
+          Cada disparo é independente (até 120 msgs/dia por instância). A mesma instância não pode estar em dois disparos ativos ao mesmo tempo — escolha uma instância livre.
         </p>
       </Card>
 
