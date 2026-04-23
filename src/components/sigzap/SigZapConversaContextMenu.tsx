@@ -10,11 +10,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { MoreVertical, Pin, Ban, EyeOff, Loader2, ArrowRightLeft, MapPin, UserX } from "lucide-react";
+import { MoreVertical, Pin, Ban, EyeOff, Loader2, ArrowRightLeft, MapPin, UserX, Tag, Check } from "lucide-react";
 import { toast } from "sonner";
 import { RegiaoInteresseDialog } from "@/components/disparos/RegiaoInteresseDialog";
 import { normalizeToE164 } from "@/lib/phoneUtils";
 import { registrarHistoricoLead } from "@/lib/leadHistoryLogger";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,6 +27,20 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+
+const TAG_COLORS_MAP: Record<string, string> = {
+  blue: "bg-blue-600",
+  teal: "bg-teal-600",
+  green: "bg-green-600",
+  yellow: "bg-yellow-500",
+  orange: "bg-orange-500",
+  red: "bg-red-500",
+  pink: "bg-pink-500",
+  purple: "bg-purple-600",
+  gray: "bg-gray-500",
+  stone: "bg-stone-400",
+  black: "bg-black",
+};
 
 interface SigZapConversaContextMenuProps {
   conversaId: string;
