@@ -192,7 +192,7 @@ export function FiltroPeriodo({
         </div>
 
         {modo === "personalizado" && (
-          <div className="flex-1 min-w-[260px]">
+          <div className="w-full sm:w-[260px] flex-shrink-0">
             <Label className={labelCls}>
               <CalendarIcon className="h-4 w-4" />
               Intervalo
