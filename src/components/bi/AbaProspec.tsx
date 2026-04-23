@@ -602,11 +602,11 @@ export function AbaProspec() {
       {/* KPIs principais */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <KPI icon={Send} label="Total disparos" value={totalGeralDisparos.toLocaleString()} color={NEON.cyan} />
-        <KPI icon={Megaphone} label="Tráfego — enviados" value={totaisTrafego.enviados.toLocaleString()} color={NEON.yellow} />
-        <KPI icon={MessageCircle} label="Responderam" value={totaisTrafego.responderam.toLocaleString()} sub={`${taxaResp}%`} color={NEON.magenta} />
-        <KPI icon={Trophy} label="Convertidos" value={totaisTrafego.convertidos.toLocaleString()} sub={`${taxaConv}%`} color={NEON.green} />
-        <KPI icon={Users} label="Leads campanhas" value={totaisCampanhas.leads.toLocaleString()} color={NEON.blue} />
-        <KPI icon={Target} label="Conv. campanhas" value={totaisCampanhas.convertidos.toLocaleString()} color={NEON.purple} />
+        <KPI icon={MessageCircle} label="Responderam (todos canais)" value={totaisGerais.responderam.toLocaleString()} sub={`${taxaResp}%`} color={NEON.magenta} />
+        <KPI icon={Trophy} label="Convertidos (todos canais)" value={totaisGerais.convertidos.toLocaleString()} sub={`${taxaConv}%`} color={NEON.green} />
+        <KPI icon={Megaphone} label="Tráfego pago — enviados" value={totaisTrafego.enviados.toLocaleString()} color={NEON.yellow} />
+        <KPI icon={Mail} label="Emails enviados" value={metricasPorCanal.email.enviados.toLocaleString()} color={NEON.blue} />
+        <KPI icon={Instagram} label="Instagram" value={metricasPorCanal.instagram.enviados.toLocaleString()} color={NEON.purple} />
       </div>
 
       <Tabs defaultValue="visao" className="space-y-4">
