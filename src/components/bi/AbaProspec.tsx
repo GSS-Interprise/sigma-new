@@ -942,21 +942,36 @@ export function AbaProspec() {
 
         {/* === Canais & instâncias === */}
         <TabsContent value="canais" className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {resumoTipos.map((r, i) => {
-              const cor = COLORS[i % COLORS.length];
-              const pct = totalGeralDisparos > 0 ? (r.total / totalGeralDisparos) * 100 : 0;
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {[
+              { tipo: "WhatsApp / SigZap", icon: MessageSquare, cor: NEON.green, m: metricasPorCanal.whatsapp },
+              { tipo: "Email", icon: Mail, cor: NEON.blue, m: metricasPorCanal.email },
+              { tipo: "Tráfego Pago", icon: Megaphone, cor: NEON.yellow, m: metricasPorCanal.trafego },
+              { tipo: "Instagram", icon: Instagram, cor: NEON.purple, m: metricasPorCanal.instagram },
+            ].map(({ tipo, icon: Icon, cor, m }) => {
+              const tr = m.enviados > 0 ? ((m.responderam / m.enviados) * 100).toFixed(1) : "0";
+              const tc = m.enviados > 0 ? ((m.convertidos / m.enviados) * 100).toFixed(1) : "0";
               return (
-                <div key={r.tipo} className="relative overflow-hidden rounded-xl border p-5 backdrop-blur-sm"
+                <div key={tipo} className="relative overflow-hidden rounded-xl border p-5 backdrop-blur-sm"
                   style={{ background: "linear-gradient(135deg, rgba(15,23,42,0.85), rgba(2,6,23,0.95))", borderColor: `${cor}55`, boxShadow: `0 0 24px ${cor}22` }}>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm uppercase tracking-wider" style={{ color: "#94a3b8" }}>{r.tipo}</span>
-                    <span className="text-xs font-mono px-2 py-0.5 rounded" style={{ background: `${cor}22`, color: cor }}>{pct.toFixed(1)}%</span>
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="p-1.5 rounded-md" style={{ background: `${cor}22`, border: `1px solid ${cor}55` }}>
+                      <Icon className="h-4 w-4" style={{ color: cor }} />
+                    </div>
+                    <span className="text-sm uppercase tracking-wider font-semibold" style={{ color: "#e2e8f0" }}>{tipo}</span>
                   </div>
-                  <div className="text-4xl font-bold mt-3" style={{ color: "#f1f5f9", textShadow: `0 0 10px ${cor}66` }}>{r.total.toLocaleString()}</div>
-                  <div className="text-xs mt-1" style={{ color: "#64748b" }}>disparos no período</div>
-                  <div className="mt-3 h-1.5 rounded-full overflow-hidden" style={{ background: "#1e293b" }}>
-                    <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: cor, boxShadow: `0 0 8px ${cor}` }} />
+                  <div className="text-3xl font-bold" style={{ color: "#f1f5f9", textShadow: `0 0 10px ${cor}66` }}>{m.enviados.toLocaleString()}</div>
+                  <div className="text-[11px] uppercase tracking-wider" style={{ color: "#64748b" }}>enviados</div>
+
+                  <div className="mt-4 space-y-2 pt-3 border-t" style={{ borderColor: `${cor}22` }}>
+                    <div className="flex items-center justify-between text-sm">
+                      <span style={{ color: "#94a3b8" }}>Responderam</span>
+                      <span className="font-mono" style={{ color: NEON.magenta }}>{m.responderam.toLocaleString()} <span className="text-xs opacity-70">({tr}%)</span></span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span style={{ color: "#94a3b8" }}>Convertidos</span>
+                      <span className="font-mono font-bold" style={{ color: NEON.green }}>{m.convertidos.toLocaleString()} <span className="text-xs opacity-70">({tc}%)</span></span>
+                    </div>
                   </div>
                 </div>
               );
