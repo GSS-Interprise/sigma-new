@@ -182,130 +182,31 @@ export function AbaProspec() {
     setTabAtiva("visao");
   };
 
-  // Funil tráfego pago — agregando vw_trafego_pago_funil
-  const { data: trafegoPago, isLoading: lt } = useQuery({
-    queryKey: ["bi-prospec-trafego", dataInicio, dataFim],
+  // === Dashboard agregado via RPC (1 chamada) ===
+  const { data: dashboard, isLoading, error: dashboardError } = useQuery({
+    queryKey: ["bi-prospec-dashboard", dataInicio, dataFim],
     queryFn: async () => {
-      return await fetchAllChunks<any>(
-        "vw_trafego_pago_funil",
-        "*",
-        (q) => q
-          .gte("primeiro_envio", `${dataInicio}T00:00:00`)
-          .lte("primeiro_envio", `${dataFim}T23:59:59`),
-        1000,
-        50000,
-        "primeiro_envio"
-      );
-    },
-  });
-
-  // Métricas de campanhas
-  const { data: campanhasMetricas, isLoading: lc } = useQuery({
-    queryKey: ["bi-prospec-campanhas", dataInicio, dataFim],
-    queryFn: async () => {
-      // 1) Métricas base da view (status do funil campanha_leads)
-      const base = await fetchAllChunks<any>(
-        "vw_campanha_metricas",
-        "*",
-        (q) => q
-          .gte("campanha_criada_em", `${dataInicio}T00:00:00`)
-          .lte("campanha_criada_em", `${dataFim}T23:59:59`),
-        1000,
-        50000,
-        "campanha_criada_em"
-      );
-
-      // 2) Complemento: agregação de campanha_proposta_lead_canais
-      //    (leads reais que entraram nos canais — usados quando a campanha
-      //    opera via cascata/propostas e não popula campanha_leads)
-      const campIds = (base ?? []).map((b: any) => b.campanha_id);
-      if (campIds.length === 0) return (base ?? []) as any[];
-
-      const { data: props } = await (supabase as any)
-        .from("campanha_propostas")
-        .select("id,campanha_id")
-        .in("campanha_id", campIds);
-
-      const propIds = (props ?? []).map((p: any) => p.id);
-      const propToCamp = new Map<string, string>(
-        (props ?? []).map((p: any) => [p.id, p.campanha_id])
-      );
-
-      let canais: any[] = [];
-      if (propIds.length > 0) {
-        canais = await fetchAllChunks<any>(
-          "campanha_proposta_lead_canais",
-          "campanha_proposta_id,lead_id,canal,status_final,saiu_em",
-          (q) => q.in("campanha_proposta_id", propIds)
-        );
-      }
-
-      // Agrupa por campanha
-      const agg = new Map<string, { contatados: Set<string>; emConversa: Set<string>; convertidos: Set<string> }>();
-      for (const c of canais) {
-        const camp = propToCamp.get(c.campanha_proposta_id);
-        if (!camp) continue;
-        if (!agg.has(camp)) agg.set(camp, { contatados: new Set(), emConversa: new Set(), convertidos: new Set() });
-        const a = agg.get(camp)!;
-        a.contatados.add(c.lead_id);
-        if (c.status_final === "aberto" || c.saiu_em == null) a.emConversa.add(c.lead_id);
-        if (c.status_final === "convertido" || c.status_final === "aceitou") a.convertidos.add(c.lead_id);
-      }
-
-      // Mescla nos registros base (somando ao que já vem da view)
-      const merged = (base ?? []).map((b: any) => {
-        const a = agg.get(b.campanha_id);
-        if (!a) return b;
-        const contatados = (Number(b.contatados) || 0) + a.contatados.size;
-        const emConversa = (Number(b.em_conversa) || 0) + a.emConversa.size;
-        const convertidos = (Number(b.convertidos) || 0) + a.convertidos.size;
-        const totalLeads = Math.max(Number(b.total_leads) || 0, a.contatados.size);
-        const disparados = Math.max(Number(b.disparados) || 0, a.contatados.size);
-        const taxa = disparados > 0 ? (convertidos / disparados) * 100 : 0;
-        return {
-          ...b,
-          total_leads: totalLeads,
-          contatados,
-          em_conversa: emConversa,
-          convertidos,
-          disparados,
-          taxa_conversao_pct: taxa,
-        };
+      const { data, error } = await (supabase as any).rpc("get_bi_prospec_dashboard", {
+        p_inicio: `${dataInicio}T00:00:00`,
+        p_fim: `${dataFim}T23:59:59`,
       });
-
-      return merged as any[];
+      if (error) {
+        if (error.code === "42501" || (error.message || "").toLowerCase().includes("permiss")) {
+          toast.error("Sem permissão para visualizar o BI Prospec. Peça acesso (captacao.view) ao admin.");
+        } else {
+          toast.error(`Erro ao carregar BI: ${error.message}`);
+        }
+        throw error;
+      }
+      return data as any;
     },
+    staleTime: 60_000,
+    retry: false,
   });
 
-  // Disparos manuais por mês
-  const { data: disparosManuais, isLoading: ldm } = useQuery({
-    queryKey: ["bi-prospec-manuais", dataInicio, dataFim],
-    queryFn: async () => {
-      return await fetchAllChunks<any>(
-        "disparo_manual_envios",
-        "created_at,status",
-        (q) => q
-          .gte("created_at", `${dataInicio}T00:00:00`)
-          .lte("created_at", `${dataFim}T23:59:59`)
-      );
-    },
-  });
+  const semPermissao = (dashboardError as any)?.code === "42501";
 
-  // Disparos em massa (disparos_contatos)
-  const { data: disparosMassa, isLoading: ldz } = useQuery({
-    queryKey: ["bi-prospec-massa", dataInicio, dataFim],
-    queryFn: async () => {
-      return await fetchAllChunks<any>(
-        "disparos_contatos",
-        "data_envio,status,campanha_id,created_at",
-        (q) => q
-          .gte("created_at", `${dataInicio}T00:00:00`)
-          .lte("created_at", `${dataFim}T23:59:59`)
-      );
-    },
-  });
-
-  // Chips de tráfego pago
+  // Chips de tráfego pago (consulta separada, leve)
   const { data: chips } = useQuery({
     queryKey: ["bi-prospec-chips"],
     queryFn: async () => {
@@ -315,161 +216,51 @@ export function AbaProspec() {
       if (error) throw error;
       return (data ?? []) as any[];
     },
+    staleTime: 5 * 60_000,
   });
 
-  // === NOVAS QUERIES ===
+  // Desestrutura RPC com defaults seguros
+  const totais = (dashboard?.totais ?? {}) as any;
+  const porCanal = (dashboard?.por_canal ?? {}) as any;
+  const trafegoPago: any[] = dashboard?.propostas_trafego ?? [];
+  const campanhasMetricas: any[] = dashboard?.top_campanhas ?? [];
 
-  // Email — disparos e respostas
-  const { data: emails, isLoading: lem } = useQuery({
-    queryKey: ["bi-prospec-emails", dataInicio, dataFim],
-    queryFn: async () =>
-      await fetchAllChunks<any>(
-        "email_interacoes",
-        "id,lead_id,direcao,created_at",
-        (q) => q
-          .gte("created_at", `${dataInicio}T00:00:00`)
-          .lte("created_at", `${dataFim}T23:59:59`)
-      ),
-  });
+  const totaisTrafego = {
+    enviados: Number(totais.trafego_enviados) || 0,
+    responderam: Number(totais.trafego_responderam) || 0,
+    emConversa: Number(totais.trafego_em_conversa) || 0,
+    aceitaram: Number(totais.trafego_aceitaram) || 0,
+    convertidos: Number(totais.trafego_convertidos) || 0,
+  };
 
-  // Leads — especialidade, conversão, responsável
-  const { data: leadsAll, isLoading: lla } = useQuery({
-    queryKey: ["bi-prospec-leads", dataInicio, dataFim],
-    queryFn: async () =>
-      await fetchAllChunks<any>(
-        "leads",
-        "id,especialidade,convertido_por,data_conversao,status,created_at",
-        (q) => q
-          .gte("created_at", `${dataInicio}T00:00:00`)
-          .lte("created_at", `${dataFim}T23:59:59`)
-      ),
-  });
+  const evolucaoMensal = useMemo(
+    () => (dashboard?.evolucao_mensal ?? []).map((r: any) => ({
+      mes: r.mes,
+      manual: Number(r.manual) || 0,
+      massa: Number(r.massa) || 0,
+      trafego: Number(r.trafego) || 0,
+      respostas: Number(r.respostas) || 0,
+      convertidos: Number(r.convertidos) || 0,
+    })),
+    [dashboard]
+  );
 
-  // Leads convertidos no período (por data_conversao, independente de quando foi criado)
-  const { data: leadsConvertidos } = useQuery({
-    queryKey: ["bi-prospec-leads-conv", dataInicio, dataFim],
-    queryFn: async () =>
-      await fetchAllChunks<any>(
-        "leads",
-        "id,especialidade,convertido_por,data_conversao",
-        (q) => q
-          .not("data_conversao", "is", null)
-          .gte("data_conversao", `${dataInicio}T00:00:00`)
-          .lte("data_conversao", `${dataFim}T23:59:59`)
-      ),
-  });
-
-  // Todos os canais de proposta no período (para motivos de não conversão e Instagram)
-  const { data: canaisAll } = useQuery({
-    queryKey: ["bi-prospec-canais-all", dataInicio, dataFim],
-    queryFn: async () =>
-      await fetchAllChunks<any>(
-        "campanha_proposta_lead_canais",
-        "id,lead_id,canal,status_final,motivo_saida,saiu_em,created_at",
-        (q) => q
-          .gte("created_at", `${dataInicio}T00:00:00`)
-          .lte("created_at", `${dataFim}T23:59:59`)
-      ),
-  });
-
-  // Profiles para nome do colaborador
-  const { data: profiles } = useQuery({
-    queryKey: ["bi-prospec-profiles"],
-    queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from("profiles")
-        .select("id,nome_completo");
-      if (error) throw error;
-      return (data ?? []) as any[];
-    },
-  });
-
-  const isLoading = lt || lc || ldm || ldz || lem || lla;
-
-  // ---- Agregações ----
-  const totaisTrafego = useMemo(() => {
-    const arr = trafegoPago ?? [];
-    return arr.reduce(
-      (acc, r) => ({
-        enviados: acc.enviados + (Number(r.total_enviados) || 0),
-        responderam: acc.responderam + (Number(r.total_responderam) || 0),
-        emConversa: acc.emConversa + (Number(r.total_em_conversa) || 0),
-        aceitaram: acc.aceitaram + (Number(r.total_aceitaram) || 0),
-        convertidos: acc.convertidos + (Number(r.total_convertidos) || 0),
-      }),
-      { enviados: 0, responderam: 0, emConversa: 0, aceitaram: 0, convertidos: 0 }
-    );
-  }, [trafegoPago]);
-
-  const totaisCampanhas = useMemo(() => {
-    const arr = campanhasMetricas ?? [];
-    return arr.reduce(
-      (acc, r) => ({
-        leads: acc.leads + (Number(r.total_leads) || 0),
-        contatados: acc.contatados + (Number(r.contatados) || 0),
-        emConversa: acc.emConversa + (Number(r.em_conversa) || 0),
-        convertidos: acc.convertidos + (Number(r.convertidos) || 0),
-        disparados: acc.disparados + (Number(r.disparados) || 0),
-      }),
-      { leads: 0, contatados: 0, emConversa: 0, convertidos: 0, disparados: 0 }
-    );
-  }, [campanhasMetricas]);
-
-  // Evolução por mês — combina manuais + massa + tráfego
-  const evolucaoMensal = useMemo(() => {
-    const map: Record<string, { mes: string; manual: number; massa: number; trafego: number; respostas: number; convertidos: number }> = {};
-    const ensure = (k: string) => (map[k] ??= { mes: k, manual: 0, massa: 0, trafego: 0, respostas: 0, convertidos: 0 });
-
-    (disparosManuais ?? []).forEach((r) => {
-      const k = (r.created_at || "").slice(0, 7);
-      if (k) ensure(k).manual += 1;
-    });
-    (disparosMassa ?? []).forEach((r) => {
-      const k = (r.created_at || r.data_envio || "").slice(0, 7);
-      if (k) ensure(k).massa += 1;
-    });
-    (trafegoPago ?? []).forEach((r) => {
-      const k = (r.primeiro_envio || "").slice(0, 7);
-      if (!k) return;
-      const e = ensure(k);
-      e.trafego += Number(r.total_enviados) || 0;
-      e.respostas += Number(r.total_responderam) || 0;
-      e.convertidos += Number(r.total_convertidos) || 0;
-    });
-
-    return Object.values(map).sort((a, b) => a.mes.localeCompare(b.mes));
-  }, [disparosManuais, disparosMassa, trafegoPago]);
-
-  // Resumo por tipo de disparo
-  const resumoTipos = useMemo(() => {
-    const manual = (disparosManuais ?? []).length;
-    const massa = (disparosMassa ?? []).length;
-    const trafego = totaisTrafego.enviados;
-    const email = (emails ?? []).filter((e: any) => e.direcao === "enviado").length;
-    const instagram = (canaisAll ?? []).filter((c: any) => c.canal === "instagram").length;
-    return [
-      { tipo: "Manual", total: manual, cor: COLORS[0] },
-      { tipo: "Em Massa", total: massa, cor: COLORS[1] },
-      { tipo: "Tráfego Pago", total: trafego, cor: COLORS[2] },
-      { tipo: "Email", total: email, cor: COLORS[3] },
-      { tipo: "Instagram", total: instagram, cor: COLORS[4] },
-    ];
-  }, [disparosManuais, disparosMassa, totaisTrafego, emails, canaisAll]);
+  const resumoTipos = useMemo(() => ([
+    { tipo: "Manual", total: Number(totais.manuais) || 0, cor: COLORS[0] },
+    { tipo: "Em Massa", total: Number(totais.massa_enviados) || 0, cor: COLORS[1] },
+    { tipo: "Tráfego Pago", total: Number(totais.trafego_enviados) || 0, cor: COLORS[2] },
+    { tipo: "Email", total: Number(totais.emails_enviados) || 0, cor: COLORS[3] },
+    { tipo: "Instagram", total: Number(totais.instagram_enviados) || 0, cor: COLORS[4] },
+  ]), [totais]);
 
   const totalGeralDisparos = resumoTipos.reduce((s, r) => s + r.total, 0);
 
-  // Top campanhas por conversão
-  const topCampanhas = useMemo(() => {
-    return [...(campanhasMetricas ?? [])]
-      .sort((a, b) => (Number(b.convertidos) || 0) - (Number(a.convertidos) || 0))
-      .slice(0, 8);
-  }, [campanhasMetricas]);
+  const topCampanhas = useMemo(
+    () => [...campanhasMetricas].slice(0, 8),
+    [campanhasMetricas]
+  );
 
-  // Top propostas (tráfego pago)
-  const topPropostas = useMemo(() => {
-    return [...(trafegoPago ?? [])]
-      .sort((a, b) => (Number(b.total_convertidos) || 0) - (Number(a.total_convertidos) || 0))
-      .slice(0, 8);
+  const topPropostas: any[] = dashboard?.top_propostas ?? [];
   }, [trafegoPago]);
 
   const chipsTrafego = (chips ?? []).filter((c) => c.is_trafego_pago);
