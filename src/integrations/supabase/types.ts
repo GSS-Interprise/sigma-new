@@ -12322,6 +12322,10 @@ export type Database = {
         Args: { p_campanha_proposta_id: string; p_chip_id?: string }
         Returns: Json
       }
+      get_bi_prospec_dashboard: {
+        Args: { p_fim: string; p_inicio: string }
+        Returns: Json
+      }
       get_leads_especialidade_counts: {
         Args: never
         Returns: {
