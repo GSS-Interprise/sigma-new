@@ -1,56 +1,72 @@
 
 
-## Sincronizar disparo manual ↔ disparo em massa (Zap)
+## Auditoria do BI – Prospec vs. Perguntas Solicitadas
 
-Hoje os dois fluxos não conversam: o n8n pode buscar um lead que já foi contactado manualmente, e um envio manual não é refletido na fila de massa. A view `vw_lead_status_por_proposta` cobre parcialmente, mas a tabela `disparos_contatos` (fila do n8n) não é atualizada nos dois sentidos.
+### Status atual de cobertura
 
-### O que vamos garantir
+| # | Pergunta | Cobertura hoje | Observação |
+|---|---|---|---|
+| **GERAL** | | | |
+| 1 | Nº de disparos | ✅ Sim (KPI "Total disparos" + gráfico Evolução mensal) | Soma manual + massa + tráfego |
+| 2 | Disparos × Responderam | ⚠️ Parcial | Só mostra respostas de **tráfego pago**, não há respostas de WhatsApp/sigzap nem email |
+| 3 | Disparos × Responderam × Convertidos | ⚠️ Parcial | Mesma limitação (só tráfego pago) |
+| **POR ESPECIALIDADE** | | | |
+| 4 | Disparos por especialidade | ❌ Não | Nada agrupado por especialidade |
+| 5 | Disparos × Responderam por especialidade | ❌ Não | — |
+| 6 | Disparos × Responderam × Convertidos por especialidade | ❌ Não | — |
+| 7 | Motivos da não conversão | ❌ Não | Existe `campanha_proposta_lead_canais.motivo_saida` mas não é exibido |
+| 8 | Convertidos por colaborador | ❌ Não | `leads.convertido_por` existe mas não usado |
+| **ORIGEM** | | | |
+| 9 | Disparos por email | ❌ Não | `email_interacoes` / `sigma_email_log` não consultados |
+| 10 | Disparos sigzap (WhatsApp) | ⚠️ Parcial | Conta `disparos_contatos`, mas não separa do "manual" |
+| 11 | Retorno tráfego pago | ✅ Sim | Aba "Tráfego pago" responde |
+| 12 | Prospecção por Instagram | ❌ Não | Existe canal `instagram` em `campanha_proposta_lead_canais` mas não exibido |
+| 13 | Nº de ocorrências | ❌ Não | Não há tabela "ocorrências" definida — precisa esclarecimento |
 
-1. **Manual → Massa**: ao enviar manual com sucesso, qualquer `disparos_contatos` pendente daquele lead/proposta vira `4-ENVIADO` (não vai mais para o n8n).
-2. **Massa "tratando" → Manual**: leads com `disparos_contatos.status = '3-TRATANDO'` ou `'4-ENVIADO'` aparecem como **contactado** na lista "a contactar" do manual (já tem fallback parcial via `disparo_manual_envios` e `sigzap_messages`, falta cobrir o caso em que o n8n pegou mas ainda não voltou callback).
-3. **Idempotência**: `gerar_disparo_zap` já ignora leads com status pendente. Sem mudança.
+### O que será adicionado
 
-### Mudanças
+**1. Nova aba "Por Especialidade"**
+- Tabela e gráfico de barras agrupando: Disparos × Responderam × Convertidos por especialidade
+- Fonte: `disparos_contatos` + `email_interacoes` + `campanha_proposta_lead_canais` ↔ `leads.especialidade`
 
-**A. Edge `send-disparo-manual`** (após `disparo_manual_envios` insert com `status='enviado'`):
-```ts
-await supabase.from('disparos_contatos')
-  .update({ status: '4-ENVIADO', updated_at: nowIso })
-  .eq('campanha_proposta_id', campanha_proposta_id)
-  .eq('lead_id', lead_id)
-  .in('status', ['1-ENVIAR','2-REENVIAR','3-TRATANDO']);
-```
-Marca como enviado para tirar da fila do n8n. Adiciona evento `lead_historico` com tag `origem: 'manual'` (já existe, só completar metadados).
+**2. Nova aba "Conversão"**
+- **Convertidos por colaborador**: agrupa `leads` por `convertido_por` (join com `profiles.nome_completo`), filtrando por `data_conversao` no período
+- **Motivos de não conversão**: distribuição dos `motivo_saida` em `campanha_proposta_lead_canais` onde `status_final IN ('descartado','fechado','proposta_encerrada')` — gráfico de pizza + tabela
 
-**B. Hook `useLeadsAContactar.ts`**: incluir uma quarta fonte de "contactado":
-- Buscar `disparos_contatos` da proposta com status em `('3-TRATANDO','4-ENVIADO')` para os `leadIds` e mesclar no `contactMap` (timestamp = `updated_at`).
+**3. Aba "Canais" expandida (substitui a atual)**
+KPIs separados por canal de origem:
+- **WhatsApp/SigZap**: count `disparos_contatos` (status `4-ENVIADO`) + `disparo_manual_envios` (tipo `whatsapp`)
+- **Email**: count `email_interacoes` (direcao=`enviado`) + `disparo_manual_envios` (tipo `email`)
+- **Tráfego pago**: já existe (vw_trafego_pago_funil)
+- **Instagram**: count `campanha_proposta_lead_canais` (canal=`instagram`)
+- Cada canal mostra: enviados / responderam / convertidos
 
-Isso resolve o cenário "n8n já pegou os 120, ainda não enviou callback" — esses leads não aparecem mais como "a contactar" no painel manual.
+**4. Visão Geral – aprimoramento**
+- KPI "Responderam" passa a somar respostas de **todos** os canais (tráfego + email_interacoes inbound + raias com `saiu_em` e `status_final='respondeu'`)
+- Mesmo para "Convertidos"
 
-**C. View `vw_lead_status_por_proposta` (opcional, recomendado)**: garantir que considera `disparos_contatos.status IN ('3-TRATANDO','4-ENVIADO')` como `contactado`. Vou inspecionar a definição atual; se já cobre, não mexo. Se não, migration ajusta para que toda a UI (Kanban, status, etc.) fique consistente.
+### Pendência – pergunta 13 "Ocorrências"
 
-**D. Callback `disparos-callback` (status `4-ENVIADO`)**: já marca em `lead_raia_status`/`lead_historico`. Adicionar registro espelho em `disparo_manual_envios`? **Não** — manteremos `disparo_manual_envios` exclusivo do manual; a fonte cruzada será `disparos_contatos` lida pelo hook.
+Não existe tabela com esse nome. Antes de implementar, preciso confirmar o que conta como ocorrência:
+- Falhas de disparo (`disparos_contatos.status` em `5-NOZAP`, `7-BLACKLIST`, etc.)?
+- Tickets de suporte (`suporte_tickets`)?
+- Outro conceito específico?
 
-### Fluxo final
+### Detalhes técnicos
 
-```text
-Manual envia ──┐
-               ├──► disparo_manual_envios (insert)
-               ├──► disparos_contatos UPDATE → 4-ENVIADO   (NOVO)
-               └──► sigzap_messages
+- Todas as novas queries usam `fetchAllChunks` (paginação 1000) já implementado
+- Filtro de período (`dataInicio`/`dataFim`) aplicado em `created_at` de cada fonte
+- Mantém o estilo dark-neon (paleta NEON, `PanelCard`, `KPI`)
+- Joins client-side via Map (Supabase JS não permite join direto entre views)
+- Para "Por especialidade": fetch dos leads do período (id + especialidade) e cruza com cada origem de disparo via `lead_id`
 
-n8n GET ──────► disparos_contatos UPDATE → 3-TRATANDO
-n8n callback ─► disparos_contatos UPDATE → 4-ENVIADO
-                    │
-                    └──► useLeadsAContactar lê 3-TRATANDO + 4-ENVIADO
-                         e marca lead como "contactado"  (NOVO)
-```
+### Plano de execução
 
-### Arquivos editados
+1. Adicionar queries: `email_interacoes`, `leads` (especialidade/convertido_por), `campanha_proposta_lead_canais` agregado por motivo
+2. Criar componente `KpiCanal` reutilizável
+3. Adicionar abas: "Por Especialidade", "Conversão" e refazer "Canais"
+4. Atualizar KPIs da Visão Geral para somar respostas/conversões de todos os canais
+5. Ajustar `Mix por tipo` (donut) para incluir Email e Instagram
 
-- `supabase/functions/send-disparo-manual/index.ts` — update em `disparos_contatos` após sucesso.
-- `src/hooks/useLeadsAContactar.ts` — adicionar leitura de `disparos_contatos` ao `contactMap`.
-- (Condicional) Migration ajustando `vw_lead_status_por_proposta` se a definição atual ignorar `3-TRATANDO`.
-
-Sem novas tabelas, sem novas colunas. Apenas sincronização entre o que já existe.
+**Aguardo definição sobre "Nº de ocorrências" antes de iniciar.**
 
