@@ -10,7 +10,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Eye, Trash2, Users, CheckCircle, XCircle, AlertTriangle, Send, Power, PowerOff, Bot, Info, Rocket, Clock } from "lucide-react";
+import { Eye, Trash2, Users, CheckCircle, XCircle, AlertTriangle, Send, Power, PowerOff, Bot, Info, Rocket, Clock, Loader2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
@@ -197,13 +197,26 @@ export function DisparosCampanhasTab() {
       });
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
-      return data;
+      return { ...(data as any), campanhaId };
     },
-    onSuccess: () => {
+    onSuccess: (_data, campanhaId) => {
       queryClient.invalidateQueries({ queryKey: ["disparos-campanhas"] });
       toast.success("Disparo iniciado.");
+      // Mantém o botão travado até o status real chegar via refetch
+      setDisparandoIds((prev) => {
+        const next = new Set(prev);
+        next.delete(campanhaId);
+        return next;
+      });
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error, campanhaId) => {
+      toast.error(error.message);
+      setDisparandoIds((prev) => {
+        const next = new Set(prev);
+        next.delete(campanhaId);
+        return next;
+      });
+    },
   });
 
   const agendarMutation = useMutation({
