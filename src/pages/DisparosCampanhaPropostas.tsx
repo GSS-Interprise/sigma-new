@@ -1,17 +1,23 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { CaptacaoProtectedRoute } from "@/components/auth/CaptacaoProtectedRoute";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, ExternalLink, Megaphone, Users, FileText } from "lucide-react";
+import { ArrowLeft, ExternalLink, Megaphone, Users, FileText, Unlink, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCampanhaPropostas } from "@/hooks/useCampanhaPropostas";
 import { VincularPropostaCampanhaDialog } from "@/components/disparos/VincularPropostaCampanhaDialog";
 import { AdicionarListaCampanhaDialog } from "@/components/disparos/AdicionarListaCampanhaDialog";
 import { CampanhaPropostaModal } from "@/components/disparos/CampanhaPropostaModal";
+import { usePermissions } from "@/hooks/usePermissions";
+import { toast } from "sonner";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const STATUS_VARIANTS: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
   rascunho: "outline",
@@ -30,6 +36,25 @@ export default function DisparosCampanhaPropostas() {
   const [vincularOpen, setVincularOpen] = useState(false);
   const [listaOpen, setListaOpen] = useState(false);
   const [cpAberto, setCpAberto] = useState<string | null>(null);
+  const [desvincularId, setDesvincularId] = useState<string | null>(null);
+  const { isAdmin } = usePermissions();
+  const qc = useQueryClient();
+
+  const desvincularMutation = useMutation({
+    mutationFn: async (vinculoId: string) => {
+      const { error } = await supabase
+        .from("campanha_propostas")
+        .delete()
+        .eq("id", vinculoId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Proposta desvinculada da campanha");
+      qc.invalidateQueries({ queryKey: ["campanha-propostas", id] });
+      setDesvincularId(null);
+    },
+    onError: (e: any) => toast.error(e.message || "Erro ao desvincular"),
+  });
 
   const { data: campanha } = useQuery({
     queryKey: ["campanha-detail", id],
@@ -165,6 +190,20 @@ export default function DisparosCampanhaPropostas() {
                               tráfego ✓
                             </Badge>
                           )}
+                          {isAdmin && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
+                              title="Desvincular proposta da campanha"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDesvincularId(v.id);
+                              }}
+                            >
+                              <Unlink className="h-4 w-4" />
+                            </Button>
+                          )}
                           <ExternalLink className="h-4 w-4 text-muted-foreground" />
                         </div>
                       </div>
@@ -196,6 +235,34 @@ export default function DisparosCampanhaPropostas() {
           open={!!cpAberto}
           onOpenChange={(o) => !o && setCpAberto(null)}
         />
+
+        <AlertDialog open={!!desvincularId} onOpenChange={(o) => !o && setDesvincularId(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Desvincular proposta?</AlertDialogTitle>
+              <AlertDialogDescription>
+                A proposta será removida desta campanha. Disparos já registrados (<code>disparos_campanhas</code>, <code>disparos_contatos</code>) permanecem no histórico, mas o vínculo da proposta com a campanha será apagado. Esta ação não pode ser desfeita.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={desvincularMutation.isPending}>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={(e) => {
+                  e.preventDefault();
+                  if (desvincularId) desvincularMutation.mutate(desvincularId);
+                }}
+                disabled={desvincularMutation.isPending}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {desvincularMutation.isPending ? (
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Desvinculando...</>
+                ) : (
+                  <><Unlink className="h-4 w-4 mr-2" />Desvincular</>
+                )}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </AppLayout>
     </CaptacaoProtectedRoute>
   );
