@@ -35,13 +35,22 @@ function applyFilters(q: any, opts: {
   cidade: string;
   ano: string;
   anoMode: AnoMode;
-}) {
+}, leadIdsByEspecialidade?: string[] | null) {
   const { debounced, especialidades, ufs, cidade, ano, anoMode } = opts;
   q = q.not("phone_e164", "is", null).is("merged_into_id", null);
   if (debounced.trim()) {
     q = q.or(`nome.ilike.%${debounced}%,phone_e164.ilike.%${debounced}%,especialidade.ilike.%${debounced}%`);
   }
-  if (especialidades.length > 0) q = q.in("especialidade_id", especialidades);
+  if (especialidades.length > 0) {
+    // Usa o resultado pré-buscado de lead_especialidades (N:N), que inclui especialidades secundárias/RQE
+    // alinhando com a contagem mostrada no dropdown do filtro.
+    if (leadIdsByEspecialidade && leadIdsByEspecialidade.length > 0) {
+      q = q.in("id", leadIdsByEspecialidade);
+    } else if (leadIdsByEspecialidade && leadIdsByEspecialidade.length === 0) {
+      // Sem leads para a especialidade selecionada — força resultado vazio
+      q = q.eq("id", "00000000-0000-0000-0000-000000000000");
+    }
+  }
   if (ufs.length > 0) q = q.in("uf", ufs.map((u) => u.toUpperCase()));
   if (cidade.trim()) q = q.ilike("cidade", `%${cidade.trim()}%`);
   if (ano && /^\d{4}$/.test(ano)) {
