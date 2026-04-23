@@ -1,72 +1,49 @@
 
 
-## Auditoria do BI – Prospec vs. Perguntas Solicitadas
+## Bloqueio de leads em fila de disparo em massa no Disparo Manual
 
-### Status atual de cobertura
+Quando um lead estiver com status `1-ENVIAR`, `2-REENVIAR` ou `3-TRATANDO` na tabela `disparos_contatos`, ele aparecerá **bloqueado** na interface de Disparo Manual, impedindo que o captador envie mensagem manual e cause duplicidade/risco de ban.
 
-| # | Pergunta | Cobertura hoje | Observação |
-|---|---|---|---|
-| **GERAL** | | | |
-| 1 | Nº de disparos | ✅ Sim (KPI "Total disparos" + gráfico Evolução mensal) | Soma manual + massa + tráfego |
-| 2 | Disparos × Responderam | ⚠️ Parcial | Só mostra respostas de **tráfego pago**, não há respostas de WhatsApp/sigzap nem email |
-| 3 | Disparos × Responderam × Convertidos | ⚠️ Parcial | Mesma limitação (só tráfego pago) |
-| **POR ESPECIALIDADE** | | | |
-| 4 | Disparos por especialidade | ❌ Não | Nada agrupado por especialidade |
-| 5 | Disparos × Responderam por especialidade | ❌ Não | — |
-| 6 | Disparos × Responderam × Convertidos por especialidade | ❌ Não | — |
-| 7 | Motivos da não conversão | ❌ Não | Existe `campanha_proposta_lead_canais.motivo_saida` mas não é exibido |
-| 8 | Convertidos por colaborador | ❌ Não | `leads.convertido_por` existe mas não usado |
-| **ORIGEM** | | | |
-| 9 | Disparos por email | ❌ Não | `email_interacoes` / `sigma_email_log` não consultados |
-| 10 | Disparos sigzap (WhatsApp) | ⚠️ Parcial | Conta `disparos_contatos`, mas não separa do "manual" |
-| 11 | Retorno tráfego pago | ✅ Sim | Aba "Tráfego pago" responde |
-| 12 | Prospecção por Instagram | ❌ Não | Existe canal `instagram` em `campanha_proposta_lead_canais` mas não exibido |
-| 13 | Nº de ocorrências | ❌ Não | Não há tabela "ocorrências" definida — precisa esclarecimento |
+### Comportamento visual
 
-### O que será adicionado
+Na coluna de leads (`DisparoManualLeadsColumn`):
+- Lead bloqueado aparece com **opacidade reduzida**, ícone de cadeado (`Lock`) e badge "Em fila".
+- Permanece **clicável** para visualizar dados, mas com indicação clara do bloqueio.
 
-**1. Nova aba "Por Especialidade"**
-- Tabela e gráfico de barras agrupando: Disparos × Responderam × Convertidos por especialidade
-- Fonte: `disparos_contatos` + `email_interacoes` + `campanha_proposta_lead_canais` ↔ `leads.especialidade`
+No painel do lead (`DisparoManualLeadPanel`):
+- Quando o lead selecionado estiver bloqueado:
+  - Banner amarelo no topo: "⚠️ Este lead está em fila de disparo em massa (status: X-NOME). Envio manual bloqueado para evitar duplicidade."
+  - Campo de mensagem **desabilitado**.
+  - Botão "Enviar" **desabilitado** com tooltip: "Em fila de disparo em massa".
+  - Ações alternativas (Blacklist, Banco de Interesse, Liberar Lead) permanecem habilitadas.
 
-**2. Nova aba "Conversão"**
-- **Convertidos por colaborador**: agrupa `leads` por `convertido_por` (join com `profiles.nome_completo`), filtrando por `data_conversao` no período
-- **Motivos de não conversão**: distribuição dos `motivo_saida` em `campanha_proposta_lead_canais` onde `status_final IN ('descartado','fechado','proposta_encerrada')` — gráfico de pizza + tabela
+### Mudanças técnicas
 
-**3. Aba "Canais" expandida (substitui a atual)**
-KPIs separados por canal de origem:
-- **WhatsApp/SigZap**: count `disparos_contatos` (status `4-ENVIADO`) + `disparo_manual_envios` (tipo `whatsapp`)
-- **Email**: count `email_interacoes` (direcao=`enviado`) + `disparo_manual_envios` (tipo `email`)
-- **Tráfego pago**: já existe (vw_trafego_pago_funil)
-- **Instagram**: count `campanha_proposta_lead_canais` (canal=`instagram`)
-- Cada canal mostra: enviados / responderam / convertidos
+**1. `src/hooks/useLeadsAContactar.ts`**
+- Adicionar campo `bloqueado_disparo_massa: boolean` e `status_disparo: string | null` ao tipo `LeadAContactar`.
+- Na consulta a `disparos_contatos`, além de detectar "contactado" (status `4-ENVIADO`), também detectar se o lead possui registro com status `1-ENVIAR`, `2-REENVIAR` ou `3-TRATANDO` em qualquer campanha ativa, e marcar como bloqueado.
 
-**4. Visão Geral – aprimoramento**
-- KPI "Responderam" passa a somar respostas de **todos** os canais (tráfego + email_interacoes inbound + raias com `saiu_em` e `status_final='respondeu'`)
-- Mesmo para "Convertidos"
+**2. `src/components/sigzap/manual/DisparoManualLeadsColumn.tsx`**
+- Renderizar badge "Em fila" + ícone `Lock` quando `lead.bloqueado_disparo_massa === true`.
+- Aplicar classe visual diferenciada (opacidade ~70%, borda tracejada).
+- Tooltip ao hover: "Em fila de disparo em massa".
 
-### Pendência – pergunta 13 "Ocorrências"
+**3. `src/components/sigzap/manual/DisparoManualLeadPanel.tsx`**
+- Buscar status do lead via novo hook ou prop derivada.
+- Exibir banner de aviso quando bloqueado.
+- Desabilitar `Textarea` da mensagem e botão "Enviar".
+- Adicionar tooltip explicativo no botão.
 
-Não existe tabela com esse nome. Antes de implementar, preciso confirmar o que conta como ocorrência:
-- Falhas de disparo (`disparos_contatos.status` em `5-NOZAP`, `7-BLACKLIST`, etc.)?
-- Tickets de suporte (`suporte_tickets`)?
-- Outro conceito específico?
+**4. (Opcional) Filtro adicional**
+- Adicionar nova aba de filtro "Bloqueados" ao lado de "Todos / Não lidos / Contactados", para o captador identificar rapidamente quais estão em fila.
 
-### Detalhes técnicos
+### Fluxo de desbloqueio automático
 
-- Todas as novas queries usam `fetchAllChunks` (paginação 1000) já implementado
-- Filtro de período (`dataInicio`/`dataFim`) aplicado em `created_at` de cada fonte
-- Mantém o estilo dark-neon (paleta NEON, `PanelCard`, `KPI`)
-- Joins client-side via Map (Supabase JS não permite join direto entre views)
-- Para "Por especialidade": fetch dos leads do período (id + especialidade) e cruza com cada origem de disparo via `lead_id`
+Quando o `disparos-callback` ou `campanha-disparo-processor` atualizar o status para `4-ENVIADO`, `5-NOZAP` ou `6-BLOQUEADORA`, o React Query do hook `useLeadsAContactar` revalidará e o lead voltará ao estado normal (contactado ou disponível).
 
-### Plano de execução
+### Arquivos editados
 
-1. Adicionar queries: `email_interacoes`, `leads` (especialidade/convertido_por), `campanha_proposta_lead_canais` agregado por motivo
-2. Criar componente `KpiCanal` reutilizável
-3. Adicionar abas: "Por Especialidade", "Conversão" e refazer "Canais"
-4. Atualizar KPIs da Visão Geral para somar respostas/conversões de todos os canais
-5. Ajustar `Mix por tipo` (donut) para incluir Email e Instagram
-
-**Aguardo definição sobre "Nº de ocorrências" antes de iniciar.**
+- `src/hooks/useLeadsAContactar.ts`
+- `src/components/sigzap/manual/DisparoManualLeadsColumn.tsx`
+- `src/components/sigzap/manual/DisparoManualLeadPanel.tsx`
 
