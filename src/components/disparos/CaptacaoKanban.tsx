@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useKanbanColumns } from "@/hooks/useKanbanColumns";
-import { User, Mail, Phone, FileText, Calendar, CreditCard, Loader2, Settings, UserCheck, RefreshCw, Search } from "lucide-react";
+import { User, Mail, Phone, FileText, Calendar, CreditCard, Loader2, Settings, UserCheck, RefreshCw, Search, MessageCircle, Instagram, Linkedin, Music2, PhoneCall, Mails, Megaphone } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -35,6 +35,16 @@ interface TagConfig {
   nome: string;
   cor_id: string;
 }
+
+const CANAL_CONFIG: Record<string, { label: string; icon: any; className: string }> = {
+  whatsapp:     { label: "WhatsApp",     icon: MessageCircle, className: "bg-green-100 text-green-700 border-green-300" },
+  trafego_pago: { label: "Tráfego Pago", icon: Megaphone,     className: "bg-amber-100 text-amber-700 border-amber-300" },
+  email:        { label: "E-mail",       icon: Mails,         className: "bg-blue-100 text-blue-700 border-blue-300" },
+  instagram:    { label: "Instagram",    icon: Instagram,     className: "bg-pink-100 text-pink-700 border-pink-300" },
+  ligacao:      { label: "Ligação",      icon: PhoneCall,     className: "bg-purple-100 text-purple-700 border-purple-300" },
+  linkedin:     { label: "LinkedIn",     icon: Linkedin,      className: "bg-sky-100 text-sky-700 border-sky-300" },
+  tiktok:       { label: "TikTok",       icon: Music2,        className: "bg-zinc-100 text-zinc-800 border-zinc-300" },
+};
 
 export function CaptacaoKanban() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -74,6 +84,32 @@ export function CaptacaoKanban() {
         ...l,
         convertido_por_nome: l.convertido_por ? (userMap[l.convertido_por] || null) : null,
       })) as Lead[];
+    },
+  });
+
+  // Canal atual (raia) de cada lead - última entrada sem saída
+  const { data: canaisAtivos = {} } = useQuery({
+    queryKey: ["acompanhamento-canais-ativos"],
+    queryFn: async () => {
+      const map: Record<string, string> = {};
+      const CHUNK = 1000;
+      let offset = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from("campanha_proposta_lead_canais")
+          .select("lead_id, canal, entrou_em")
+          .is("saiu_em", null)
+          .order("entrou_em", { ascending: false })
+          .range(offset, offset + CHUNK - 1);
+        if (error) throw error;
+        const lote = data || [];
+        for (const row of lote as any[]) {
+          if (!map[row.lead_id]) map[row.lead_id] = row.canal;
+        }
+        if (lote.length < CHUNK) break;
+        offset += CHUNK;
+      }
+      return map;
     },
   });
 
@@ -273,9 +309,26 @@ export function CaptacaoKanban() {
                               {/* Nome */}
                               <div className="flex items-center gap-2">
                                 <User className="h-4 w-4 text-primary flex-shrink-0" />
-                                <h4 className="font-semibold text-sm line-clamp-1">
+                                <h4 className="font-semibold text-sm line-clamp-1 flex-1">
                                   {lead.nome}
                                 </h4>
+                                {(() => {
+                                  const canal = canaisAtivos[lead.id];
+                                  if (!canal) return null;
+                                  const cfg = CANAL_CONFIG[canal];
+                                  if (!cfg) return null;
+                                  const Icon = cfg.icon;
+                                  return (
+                                    <Badge
+                                      variant="outline"
+                                      className={`text-[10px] gap-1 px-1.5 py-0 h-5 ${cfg.className}`}
+                                      title={`Raia atual: ${cfg.label}`}
+                                    >
+                                      <Icon className="h-3 w-3" />
+                                      {cfg.label}
+                                    </Badge>
+                                  );
+                                })()}
                               </div>
 
                               {/* Informações */}
