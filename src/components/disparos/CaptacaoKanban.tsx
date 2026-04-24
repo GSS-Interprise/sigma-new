@@ -309,9 +309,26 @@ export function CaptacaoKanban() {
                               {/* Nome */}
                               <div className="flex items-center gap-2">
                                 <User className="h-4 w-4 text-primary flex-shrink-0" />
-                                <h4 className="font-semibold text-sm line-clamp-1">
+                                <h4 className="font-semibold text-sm line-clamp-1 flex-1">
                                   {lead.nome}
                                 </h4>
+                                {(() => {
+                                  const canal = canaisAtivos[lead.id];
+                                  if (!canal) return null;
+                                  const cfg = CANAL_CONFIG[canal];
+                                  if (!cfg) return null;
+                                  const Icon = cfg.icon;
+                                  return (
+                                    <Badge
+                                      variant="outline"
+                                      className={`text-[10px] gap-1 px-1.5 py-0 h-5 ${cfg.className}`}
+                                      title={`Raia atual: ${cfg.label}`}
+                                    >
+                                      <Icon className="h-3 w-3" />
+                                      {cfg.label}
+                                    </Badge>
+                                  );
+                                })()}
                               </div>
 
                               {/* Informações */}
