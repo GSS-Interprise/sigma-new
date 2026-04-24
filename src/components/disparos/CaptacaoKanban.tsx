@@ -308,14 +308,14 @@ export function CaptacaoKanban() {
 
                                 {lead.phone_e164 && (
                                   <div className="flex items-center gap-1 text-muted-foreground">
-                                    <Phone className="h-3 w-3 flex-shrink-0" />
+                                    <WhatsAppIcon className="h-3.5 w-3.5 flex-shrink-0 text-[#25D366]" />
                                     <span className="truncate">{lead.phone_e164}</span>
                                   </div>
                                 )}
 
                                 {lead.email && (
                                   <div className="flex items-center gap-1 text-muted-foreground">
-                                    <Mail className="h-3 w-3 flex-shrink-0" />
+                                    <Mail className="h-3.5 w-3.5 flex-shrink-0 text-[#EA4335]" />
                                     <span className="truncate">{lead.email}</span>
                                   </div>
                                 )}
