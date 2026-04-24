@@ -12548,6 +12548,13 @@ export type Database = {
         Args: { p_licitacao_id: string }
         Returns: undefined
       }
+      reprocessar_acompanhamento: {
+        Args: never
+        Returns: {
+          destino: string
+          quantidade: number
+        }[]
+      }
       search_leads_for_picker: {
         Args: {
           p_ano_max?: number
