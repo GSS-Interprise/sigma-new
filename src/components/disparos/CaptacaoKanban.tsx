@@ -5,7 +5,19 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useKanbanColumns } from "@/hooks/useKanbanColumns";
-import { User, Mail, Phone, FileText, Calendar, CreditCard, Loader2, Settings, UserCheck, RefreshCw, Search } from "lucide-react";
+import { User, Mail, FileText, Calendar, CreditCard, Loader2, Settings, UserCheck, RefreshCw, Search } from "lucide-react";
+
+// WhatsApp brand glyph (Lucide doesn't ship one)
+const WhatsAppIcon = ({ className = "" }: { className?: string }) => (
+  <svg
+    viewBox="0 0 32 32"
+    className={className}
+    fill="currentColor"
+    aria-hidden="true"
+  >
+    <path d="M19.11 17.205c-.372 0-1.088 1.39-1.518 1.39a.63.63 0 0 1-.315-.1c-.802-.402-1.504-.817-2.163-1.447-.155-.146-.27-.346-.51-.437-.202-.079-.337-.213-.337-.457 0-.343.56-.844.718-1.07.108-.154.138-.297.138-.48 0-.197-.09-.39-.18-.562-.146-.283-.777-1.857-1.003-2.148-.22-.283-.54-.405-.87-.405-.175 0-.44-.013-.668.016a1.58 1.58 0 0 0-.902.41c-.6.542-1.242 1.415-1.242 2.585 0 1.188.796 2.326 1.17 2.83.568.762 1.85 2.18 3.765 3.007 1.12.482 2.057.795 2.793.795.53 0 1.054-.08 1.448-.293.57-.313 1.265-1.065 1.265-1.8 0-.164-.045-.33-.165-.46-.23-.25-.586-.42-.952-.589zM16.001 4C9.373 4 4 9.373 4 16c0 2.194.59 4.252 1.614 6.022L4 28l6.127-1.595A11.94 11.94 0 0 0 16 28c6.627 0 12-5.373 12-12S22.628 4 16.001 4zm0 21.98a9.937 9.937 0 0 1-5.07-1.386l-.363-.217-3.635.946.973-3.54-.237-.376A9.94 9.94 0 0 1 6.02 16c0-5.504 4.479-9.98 9.98-9.98 5.503 0 9.98 4.476 9.98 9.98 0 5.503-4.477 9.98-9.98 9.98z" />
+  </svg>
+);
 import { Input } from "@/components/ui/input";
 import { format } from "date-fns";
 import { toast } from "sonner";
