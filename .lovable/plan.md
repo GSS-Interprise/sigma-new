@@ -1,111 +1,107 @@
+# Automação de status no Kanban de Acompanhamento
 
+Automatizar as 3 primeiras colunas do Kanban (`/disparos/acompanhamento`) com base no comportamento real do lead, respeitando qualquer movimentação manual.
 
-## Rastreabilidade de autoria em disparos e raias
+## Colunas envolvidas (existentes em `kanban_status_config`)
 
-### Problema
+- `Acompanhamento` — "Contatados" (disparo enviado, aguardando)
+- `sem_resposta` — "Sem Resposta" (>24h sem resposta ao disparo)
+- `em_conversa` — "Conversação" (lead ou operador conversando)
 
-Hoje só conseguimos saber **quem disparou** em parte das tabelas:
+As demais colunas (`qualificados`, `Aprovados`, `descartados`, `Devolucao_Contratos`) e o envio para Kanban Médico ficam **fora da automação**.
 
-| Tabela | Campo de autor | Situação |
-|---|---|---|
-| `disparos_campanhas` (massa) | `responsavel_id`, `responsavel_nome` | ✅ 108/108 preenchidos |
-| `disparos_log` (histórico massa/email) | `usuario_id`, `usuario_nome` | ✅ preenchido |
-| `disparo_manual_envios` | `enviado_por` | ⚠️ existe, mas 0 registros — edge function grava `user.id`, ok daqui pra frente |
-| `campanha_proposta_lead_canais` (raias / cascata) | `criado_por` | ❌ 172 registros, **0 com autor** — RPCs de transferência/avanço de raia não passam o `auth.uid()` |
-| `disparos_contatos` (linha-a-linha do disparo em massa) | — | ❌ não existe campo de autor; herda da campanha |
-| `lead_historico` | `usuario_id` (em metadados) | ⚠️ inconsistente entre fontes |
+## Regras de negócio
 
-Sem essa autoria não conseguimos responder: **"quem disparou mais essa semana?", "quem converte mais médicos?", "quem mantém prazos por raia?"**.
+1. **Disparo enviado (manual ou em massa)** → lead vai para `Acompanhamento` automaticamente (já ocorre hoje via `disparos-callback` / `disparos-webhook`, mas hoje só promove quem está em `Novo`). Vamos ampliar: se o lead estiver em `sem_resposta` e receber um **novo disparo** (ex.: próxima raia do fluxo — e-mail, Instagram, etc.), ele volta para `Acompanhamento`.
 
-### Plano
+2. **>24h sem resposta ao disparo** → se status = `Acompanhamento` e não houve **nenhuma mensagem recebida do lead** desde o disparo há mais de 24h → move para `sem_resposta`.
 
-**1. Schema — preencher lacunas de autoria**
+3. **Lead respondeu / alguém está conversando** → se chega mensagem do lead (`from_me = false`) **ou** o operador envia mensagem manual (`from_me = true` fora de um disparo de campanha) e o status atual é `Acompanhamento` ou `sem_resposta` → move para `em_conversa`.
 
-Migration única adicionando colunas onde faltam e índices p/ ranking:
+4. **Conversa parou mas já estava em `em_conversa`** → permanece em `em_conversa`. Nunca volta para `sem_resposta` (só é "sem resposta" se nunca respondeu ao disparo).
 
-```sql
--- Raia: já existe criado_por, adicionar quem MOVEU/FECHOU
-ALTER TABLE campanha_proposta_lead_canais
-  ADD COLUMN movido_por uuid,           -- quem tirou da raia
-  ADD COLUMN motivo_movimentacao text;  -- transferencia|avanco_fase|fechamento
+5. **Movimentação manual trava a automação naquele momento**: se o usuário arrastar o card para qualquer coluna (inclusive entre as 3), a automação **não sobrescreve** enquanto a raia não mudar. Destrava assim que o lead entra em uma nova raia (`campanha_proposta_lead_canais` ganha um novo `entrou_em`) ou recebe novo disparo.
 
--- Disparo em massa: autor do envio individual (para casos de reprocesso por outro user)
-ALTER TABLE disparos_contatos
-  ADD COLUMN disparado_por uuid;        -- preenchido pelo processor/callback
+6. **Saídas da automação**: se o lead foi movido para `qualificados`, `Aprovados`, `descartados`, `Devolucao_Contratos`, ou enviado ao Kanban Médico → automação não atua mais nele.
 
--- Índices para os rankings
-CREATE INDEX ON disparo_manual_envios (enviado_por, created_at DESC);
-CREATE INDEX ON disparos_campanhas (responsavel_id, created_at DESC);
-CREATE INDEX ON campanha_proposta_lead_canais (criado_por, entrou_em DESC);
-CREATE INDEX ON campanha_proposta_lead_canais (movido_por, saiu_em DESC) WHERE saiu_em IS NOT NULL;
+## Desenho técnico
+
+### 1. Tabela de controle de automação
+
+Criar `lead_automacao_raia`:
+
+```
+lead_id uuid PK → leads.id
+ultimo_disparo_em timestamptz      -- quando foi o último disparo registrado
+ultima_resposta_em timestamptz     -- última msg recebida do lead
+ultima_msg_operador_em timestamptz -- última msg from_me fora de campanha
+movido_manualmente_em timestamptz  -- timestamp da última mudança manual
+raia_atual text                    -- canal ativo (whatsapp/email/...)
+raia_entrou_em timestamptz         -- quando entrou na raia atual
+automacao_travada boolean          -- true após movimentação manual, false após nova raia/disparo
+updated_at timestamptz
 ```
 
-**2. Backend — passar `auth.uid()` em todas as RPCs/edge functions de raia**
+### 2. Triggers no Postgres
 
-- RPCs `transferir_leads_canal`, `fechar_leads_canal`, `enviar_proxima_fase` (chamadas em `useLeadCanais.ts`): receber `_movido_por uuid default auth.uid()` e gravar em `movido_por` ao fechar a raia atual + `criado_por = auth.uid()` ao abrir a próxima.
-- `campanha-disparo-processor`: ao escrever em `disparos_contatos`, copiar `responsavel_id` da campanha em `disparado_por`.
-- `send-disparo-manual`: já grava `enviado_por` — ok.
+- **Em `sigzap_messages` (AFTER INSERT)**:
+  - Se `from_me = false` → atualiza `ultima_resposta_em` e, se status ∈ (`Acompanhamento`, `sem_resposta`) e `automacao_travada = false`, muda lead para `em_conversa`.
+  - Se `from_me = true` e a mensagem **não** faz parte de um disparo de campanha (checar ausência de vínculo em `disparos_envios` / `campanha_disparos` pelo `wa_message_id` ou pela janela de tempo) → mesma transição para `em_conversa`.
 
-**3. View consolidada de produtividade por usuário**
+- **Em `leads` (BEFORE UPDATE OF status)**:
+  - Se o update vem de uma sessão de usuário (não do service_role das edges), marcar `movido_manualmente_em = now()` e `automacao_travada = true` em `lead_automacao_raia`.
+  - Estratégia: usar a função `auth.uid()`; quando `auth.uid() IS NOT NULL` é movimentação humana. Os cron/edges usam service role (uid null).
 
-```sql
-CREATE OR REPLACE VIEW vw_produtividade_disparos AS
-SELECT
-  p.id as user_id, p.nome_completo,
-  -- volumes
-  count(DISTINCT dc.id) FILTER (WHERE dc.responsavel_id = p.id) as campanhas_criadas,
-  coalesce(sum(dc.enviados) FILTER (WHERE dc.responsavel_id = p.id), 0) as massa_enviados,
-  count(dme.id) FILTER (WHERE dme.enviado_por = p.id AND dme.status='enviado') as manuais_enviados,
-  -- raias
-  count(cplc.id) FILTER (WHERE cplc.criado_por = p.id) as raias_abertas,
-  count(cplc.id) FILTER (WHERE cplc.movido_por = p.id) as raias_movidas,
-  -- conversão (lead que virou médico ativo após disparo do user)
-  count(DISTINCT l.id) FILTER (WHERE l.status='convertido' 
-        AND (dme.enviado_por = p.id OR dc.responsavel_id = p.id)) as conversoes
-FROM profiles p
-LEFT JOIN disparos_campanhas dc ON dc.responsavel_id = p.id
-LEFT JOIN disparo_manual_envios dme ON dme.enviado_por = p.id
-LEFT JOIN campanha_proposta_lead_canais cplc ON cplc.criado_por = p.id OR cplc.movido_por = p.id
-LEFT JOIN leads l ON l.id IN (dme.lead_id, cplc.lead_id)
-GROUP BY p.id, p.nome_completo;
-```
+- **Em `campanha_proposta_lead_canais` (AFTER INSERT)**: nova raia → atualiza `raia_atual`, `raia_entrou_em` e libera `automacao_travada = false`.
 
-E uma RPC `get_ranking_disparos(periodo, metric)` para o BI consumir com filtro `semana|mes|total` e ordenação por `enviados | conversao | sla_raia`.
+### 3. Registro de disparo
 
-**4. UI — Ranking expandido em `DisparosZapRanking` + nova aba no BI Prospec**
+Nos edges já existentes (`disparos-callback`, `disparos-webhook`) e no hook `useDisparoManual`:
+- Além de mover para `Acompanhamento` quando status = `Novo`, também mover quando status = `sem_resposta` (caso esteja sem automação travada ou a raia acabou de mudar).
+- Sempre gravar `ultimo_disparo_em = now()` em `lead_automacao_raia` (upsert).
+- Resetar `automacao_travada = false` quando um disparo entra por uma **nova raia**.
 
-- Estender `DisparosZapRanking.tsx` para incluir colunas: **manuais enviados**, **raias movidas**, **conversões**, **SLA médio por raia** (usando `vw_lead_tempo_por_canal`).
-- Adicionar widget em `AbaProspec` (BI) com top 5 por: volume, conversão, SLA cumprido. Drill-down por usuário mostra raias estouradas (`saiu_em - entrou_em > sla_max`).
+### 4. Cron de "sem resposta" (24h)
 
-**5. SLA por raia (prazo a ser configurado depois)**
-
-Já preparar a tabela:
+Novo edge function `acompanhamento-24h-sweeper` + job `pg_cron` a cada 15 min:
 
 ```sql
-CREATE TABLE raia_sla_config (
-  canal text PRIMARY KEY,                    -- whatsapp, email, ligacao...
-  prazo_horas int NOT NULL,
-  acao_estouro text DEFAULT 'notificar'      -- notificar|auto_avancar
-);
+UPDATE leads
+SET status = 'sem_resposta', updated_at = now()
+FROM lead_automacao_raia a
+WHERE leads.id = a.lead_id
+  AND leads.status = 'Acompanhamento'
+  AND a.automacao_travada = false
+  AND a.ultimo_disparo_em < now() - interval '24 hours'
+  AND (a.ultima_resposta_em IS NULL OR a.ultima_resposta_em < a.ultimo_disparo_em);
 ```
 
-A view de ranking calcula `sla_cumprido = (duracao_segundos/3600) <= prazo_horas`. Configuração de prazos vem em PR seguinte (UI admin).
+### 5. Frontend (`CaptacaoKanban.tsx`)
 
-### Arquivos afetados
+- Nenhuma mudança de UI obrigatória. Opcional: indicador visual sutil no card ("auto" com `Tooltip` "Status gerenciado automaticamente") quando `automacao_travada = false` e o lead está em `Acompanhamento`/`sem_resposta`/`em_conversa`.
+- Realtime já invalida `acompanhamento-leads` quando a tabela `leads` muda.
+- No `handleDrop` (drag-and-drop manual) a trigger marcará `automacao_travada = true` automaticamente — nenhuma alteração extra.
 
-- **Migration nova** (schema + view + tabela `raia_sla_config`)
-- `supabase/functions/campanha-disparo-processor/index.ts` — gravar `disparado_por`
-- RPCs `transferir_leads_canal`, `fechar_leads_canal`, `enviar_proxima_fase` — gravar `movido_por`/`criado_por`
-- `src/hooks/useLeadCanais.ts` — passar `_movido_por: (await supabase.auth.getUser()).data.user?.id`
-- `src/components/disparos/DisparosZapRanking.tsx` — novas colunas
-- `src/components/bi/AbaProspec.tsx` — widget de produtividade
+### 6. Backfill inicial
 
-### Histórico retroativo
+- Popular `lead_automacao_raia` para todos os leads com status em (`Acompanhamento`, `sem_resposta`, `em_conversa`) com base em:
+  - `ultimo_disparo_em` ← `leads.ultimo_disparo_em`
+  - `ultima_resposta_em` ← `max(sigzap_messages.sent_at)` com `from_me=false`
+  - `raia_atual` ← última linha aberta em `campanha_proposta_lead_canais`
 
-Os 172 registros sem `criado_por` em `campanha_proposta_lead_canais` ficarão como **"Sistema/Histórico"**. Não há fonte confiável para inferir o autor passado — backfill só onde `lead_historico` referencia o evento (best-effort, opcional).
+## Entregáveis
 
-### Não está incluso
+1. Migração: tabela `lead_automacao_raia`, triggers, função helper `is_user_action()` (checa `auth.uid()`).
+2. Edge function `acompanhamento-24h-sweeper` + job `pg_cron` `*/15 * * * *`.
+3. Ajustes em `disparos-callback`, `disparos-webhook`, `useDisparoManual` e `receive-whatsapp-messages` para:
+   - gravar `ultimo_disparo_em` / `ultima_resposta_em`;
+   - permitir promoção de `sem_resposta` → `Acompanhamento` em novo disparo;
+   - transição automática para `em_conversa` ao chegar resposta / msg do operador.
+4. Backfill único populando `lead_automacao_raia`.
+5. (Opcional) Tooltip no card indicando que o status está em automação.
 
-- Definir os valores de prazo por raia (aguardando seu input em PR seguinte).
-- Dashboard externo / export — pode ser adicionado consumindo a mesma view.
+## Fora do escopo
 
+- Alterar colunas finais (qualificados, aprovados, descartados, devolução, kanban médico).
+- Mudar ordem/labels das colunas existentes.
+- Alterar lógica de cascata de raias (`campanha_proposta_lead_canais`) em si — apenas **ler** para destravar automação.
