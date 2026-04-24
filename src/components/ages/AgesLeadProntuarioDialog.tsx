@@ -40,7 +40,7 @@ import AgesProfissionalDocumentos from "./AgesProfissionalDocumentos";
 import { AgesLeadAtividadesPanel } from "./AgesLeadAtividadesPanel";
 import { AgesLeadAnexosSection } from "./AgesLeadAnexosSection";
 import { AgesLeadTimelineSection } from "./AgesLeadTimelineSection";
-import { LeadTimelineUnificadoSection } from "../medicos/LeadTimelineUnificadoSection";
+import { LeadTimelineSection } from "../medicos/LeadTimelineSection";
 import { LeadLgpdBadges } from "../medicos/LeadLgpdBadges";
 import { LeadPerfilIaSection } from "../medicos/LeadPerfilIaSection";
 import { AgesLeadPropostasSection } from "./AgesLeadPropostasSection";
@@ -1186,7 +1186,7 @@ export function AgesLeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead
                 <TabsContent value="historico" className="m-0 h-full">
                   <ScrollArea className="h-full p-4">
                     {leadId ? (
-                      <LeadTimelineUnificadoSection leadId={leadId} />
+                      <LeadTimelineSection leadId={leadId} />
                     ) : (
                       <div className="text-center py-12 text-muted-foreground">
                         <History className="h-12 w-12 mx-auto mb-4 opacity-50" />
