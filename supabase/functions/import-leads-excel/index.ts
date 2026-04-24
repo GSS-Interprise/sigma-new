@@ -358,8 +358,8 @@ serve(async (req) => {
     // Primeira especialidade_id: usada na coluna escalar legada de leads
     const especialidadeIdResolved: string | null = especialidadeIdsResolved[0] || null;
 
-    // Caminho do JSON pré-processado (evita re-parsear XLSX em cada chunk)
-    const jsonStoragePath = storagePath.replace(/\.(xlsx|xls)$/i, '.json');
+    // Caminho do JSON pré-processado (evita re-parsear XLSX/CSV em cada chunk)
+    const jsonStoragePath = storagePath.replace(/\.(xlsx|xls|csv)$/i, '.json');
     let jsonData: Record<string, any>[];
 
     if (chunkAtual === 0) {

@@ -235,8 +235,8 @@ export function ImportarLeadsDialog({ open, onOpenChange, onSuccess, listaDestin
   };
 
   const handleFileSelect = (selectedFile: File) => {
-    if (!selectedFile.name.match(/\.(xlsx|xls)$/i)) {
-      toast.error("Selecione um arquivo Excel (.xlsx ou .xls)");
+    if (!selectedFile.name.match(/\.(xlsx|xls|csv)$/i)) {
+      toast.error("Selecione um arquivo Excel (.xlsx, .xls) ou CSV (.csv)");
       return;
     }
 
@@ -519,15 +519,15 @@ export function ImportarLeadsDialog({ open, onOpenChange, onSuccess, listaDestin
           >
             <Upload className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
             <p className="text-sm font-medium">
-              Arraste o arquivo Excel aqui ou clique para selecionar
+              Arraste o arquivo Excel ou CSV aqui ou clique para selecionar
             </p>
             <p className="text-xs text-muted-foreground mt-1">
-              Formatos aceitos: .xlsx, .xls
+              Formatos aceitos: .xlsx, .xls, .csv
             </p>
             <Input
               ref={fileInputRef}
               type="file"
-              accept=".xlsx,.xls"
+              accept=".xlsx,.xls,.csv"
               onChange={(e) => e.target.files?.[0] && handleFileSelect(e.target.files[0])}
               className="hidden"
             />
