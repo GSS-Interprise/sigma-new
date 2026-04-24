@@ -43,6 +43,21 @@ export function useDisparoManual() {
       qc.invalidateQueries({ queryKey: ["campanha-lista-leads"] });
       toast.success("Mensagem enviada e conversa registrada");
     },
-    onError: (e: any) => toast.error("Erro: " + (e?.message || "falha no envio")),
+    onError: (e: any) => {
+      const raw = String(e?.message || "");
+      const isDisconnected =
+        /connection\s*closed/i.test(raw) ||
+        /instance.*(disconnect|closed)/i.test(raw) ||
+        /whatsapp.*desconect/i.test(raw);
+      if (isDisconnected) {
+        toast.error("WhatsApp desconectado", {
+          description:
+            "A instância selecionada está fora do ar. Reconecte-a em Disparos → Zap (leia o QR Code) e tente novamente.",
+          duration: 8000,
+        });
+        return;
+      }
+      toast.error("Erro: " + (raw || "falha no envio"));
+    },
   });
 }
