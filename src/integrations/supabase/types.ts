@@ -12590,6 +12590,13 @@ export type Database = {
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
       sweeper_acompanhamento_sem_resposta: { Args: never; Returns: number }
+      test_automacao_kanban: {
+        Args: never
+        Returns: {
+          cenario: string
+          resultado: string
+        }[]
+      }
       transferir_lead_canal: {
         Args: {
           p_campanha_proposta_id: string
