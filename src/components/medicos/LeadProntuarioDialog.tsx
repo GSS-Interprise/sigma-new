@@ -1452,7 +1452,7 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[80vw] max-w-[80vw] h-[85vh] max-h-[85vh] p-0 gap-0 overflow-hidden">
+      <DialogContent className="w-[92vw] max-w-[92vw] h-[97vh] max-h-[97vh] p-0 gap-0 overflow-hidden">
         <div className="flex h-full overflow-hidden">
           {/* Main Content */}
           <div className="flex-1 flex flex-col overflow-hidden min-w-0">
