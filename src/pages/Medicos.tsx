@@ -39,10 +39,10 @@ export default function Medicos() {
 
   return (
     <AppLayout headerActions={headerActions}>
-      <div className="p-4 space-y-6">
+      <div className="p-4 flex-1 min-h-0 flex flex-col gap-4">
 
-        <Tabs defaultValue="kanban" className="w-full">
-          <TabsList className={`grid w-full ${isAdmin ? 'grid-cols-6' : 'grid-cols-5'}`}>
+        <Tabs defaultValue="kanban" className="w-full flex-1 min-h-0 flex flex-col">
+          <TabsList className={`grid w-full flex-shrink-0 ${isAdmin ? 'grid-cols-6' : 'grid-cols-5'}`}>
             <TabsTrigger value="kanban" className="gap-2">
               <Kanban className="h-4 w-4" />
               Kanban
@@ -71,28 +71,28 @@ export default function Medicos() {
             )}
           </TabsList>
 
-          <TabsContent value="kanban" className="space-y-6">
+          <TabsContent value="kanban" className="flex-1 min-h-0 mt-4 data-[state=active]:flex flex-col">
             <KanbanTab />
           </TabsContent>
 
-          <TabsContent value="corpo-clinico" className="space-y-6">
+          <TabsContent value="corpo-clinico" className="flex-1 min-h-0 mt-4 data-[state=active]:flex flex-col overflow-auto">
             <CorpoClinicoTab />
           </TabsContent>
 
-          <TabsContent value="leads" className="space-y-6">
+          <TabsContent value="leads" className="flex-1 min-h-0 mt-4 data-[state=active]:flex flex-col">
             <LeadsTab />
           </TabsContent>
 
-          <TabsContent value="ausencia" className="space-y-6">
+          <TabsContent value="ausencia" className="flex-1 min-h-0 mt-4 data-[state=active]:flex flex-col overflow-auto">
             <AusenciaTab />
           </TabsContent>
 
-          <TabsContent value="remuneracao" className="space-y-6">
+          <TabsContent value="remuneracao" className="flex-1 min-h-0 mt-4 data-[state=active]:flex flex-col overflow-auto">
             <RemuneracaoTab />
           </TabsContent>
 
           {isAdmin && (
-            <TabsContent value="migracao" className="space-y-6">
+            <TabsContent value="migracao" className="flex-1 min-h-0 mt-4 data-[state=active]:flex flex-col overflow-auto">
               <MigracaoMedicosAdmin />
             </TabsContent>
           )}
