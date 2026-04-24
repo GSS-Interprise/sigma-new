@@ -12400,6 +12400,17 @@ export type Database = {
       }
       find_lead_by_phone: { Args: { p_phone: string }; Returns: string }
       find_lead_by_phone_fuzzy: { Args: { p_phone: string }; Returns: string }
+      fn_log_status_change: {
+        Args: {
+          p_lead_id: string
+          p_metadados?: Json
+          p_motivo: string
+          p_origem: string
+          p_status_anterior: string
+          p_status_novo: string
+        }
+        Returns: undefined
+      }
       generate_ticket_numero: { Args: never; Returns: string }
       gerar_disparo_zap: {
         Args: { p_campanha_proposta_id: string; p_chip_id?: string }

@@ -5,7 +5,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { 
   Mail, MessageSquare, FileText, CheckCircle2, XCircle, 
   UserCheck, Phone, Calendar, Clock, ArrowRight, Building2,
-  Edit, PlusCircle, UserPlus, AlertTriangle, Send, Eye
+  Edit, PlusCircle, UserPlus, AlertTriangle, Send, Eye,
+  Bot, User as UserIcon, Timer
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -196,6 +197,47 @@ export function LeadTimelineSection({ leadId }: LeadTimelineSectionProps) {
                     <p>{format(new Date(evento.criado_em), "HH:mm", { locale: ptBR })}</p>
                   </div>
                 </div>
+
+                {/* Automação de Kanban — badge de origem + transição */}
+                {evento.metadados && typeof evento.metadados === 'object' && (evento.metadados as any).automacao_kanban && (
+                  <div className="flex flex-wrap items-center gap-2 text-xs mb-2">
+                    {(() => {
+                      const meta = evento.metadados as any;
+                      const origem = meta.origem as string;
+                      const cfg = origem === 'sistema'
+                        ? { label: 'Automação', icon: Bot, cls: 'bg-amber-100 text-amber-700 border-amber-300' }
+                        : origem === 'operador'
+                        ? { label: 'Operador (msg)', icon: MessageSquare, cls: 'bg-emerald-100 text-emerald-700 border-emerald-300' }
+                        : { label: 'Operador (manual)', icon: UserIcon, cls: 'bg-sky-100 text-sky-700 border-sky-300' };
+                      const Icon = cfg.icon;
+                      const is24h = typeof meta.motivo === 'string' && /24h/i.test(meta.motivo);
+                      return (
+                        <>
+                          <Badge variant="outline" className={`gap-1 ${cfg.cls}`}>
+                            <Icon className="h-3 w-3" /> {cfg.label}
+                          </Badge>
+                          {is24h && (
+                            <Badge variant="outline" className="gap-1 bg-red-100 text-red-700 border-red-300">
+                              <Timer className="h-3 w-3" /> Timeout 24h
+                            </Badge>
+                          )}
+                          {meta.status_anterior && meta.status_novo && (
+                            <span className="inline-flex items-center gap-1 text-muted-foreground">
+                              <code className="px-1 py-0.5 rounded bg-muted text-[10px]">{meta.status_anterior}</code>
+                              <ArrowRight className="h-3 w-3" />
+                              <code className="px-1 py-0.5 rounded bg-muted text-[10px]">{meta.status_novo}</code>
+                            </span>
+                          )}
+                          {meta.mensagem_preview && (
+                            <span className="inline-flex items-center gap-1 text-muted-foreground italic truncate max-w-full">
+                              "{meta.mensagem_preview}"
+                            </span>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
+                )}
 
                 {/* Related entities */}
                 <div className="flex flex-wrap gap-2 text-xs">
