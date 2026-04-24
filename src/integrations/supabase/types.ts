@@ -6910,6 +6910,7 @@ export type Database = {
         Row: {
           agencia: string | null
           arquivo_id: string | null
+          automacao_status_travada: boolean
           banco: string | null
           canal_conversao: string | null
           cep: string | null
@@ -6977,6 +6978,7 @@ export type Database = {
           trafego_pago_instancia: string | null
           trafego_pago_origem: Json | null
           uf: string | null
+          ultima_resposta_em: string | null
           ultimo_disparo_em: string | null
           unidades_vinculadas: string[] | null
           updated_at: string | null
@@ -6986,6 +6988,7 @@ export type Database = {
         Insert: {
           agencia?: string | null
           arquivo_id?: string | null
+          automacao_status_travada?: boolean
           banco?: string | null
           canal_conversao?: string | null
           cep?: string | null
@@ -7053,6 +7056,7 @@ export type Database = {
           trafego_pago_instancia?: string | null
           trafego_pago_origem?: Json | null
           uf?: string | null
+          ultima_resposta_em?: string | null
           ultimo_disparo_em?: string | null
           unidades_vinculadas?: string[] | null
           updated_at?: string | null
@@ -7062,6 +7066,7 @@ export type Database = {
         Update: {
           agencia?: string | null
           arquivo_id?: string | null
+          automacao_status_travada?: boolean
           banco?: string | null
           canal_conversao?: string | null
           cep?: string | null
@@ -7129,6 +7134,7 @@ export type Database = {
           trafego_pago_instancia?: string | null
           trafego_pago_origem?: Json | null
           uf?: string | null
+          ultima_resposta_em?: string | null
           ultimo_disparo_em?: string | null
           unidades_vinculadas?: string[] | null
           updated_at?: string | null
@@ -12462,6 +12468,7 @@ export type Database = {
         Args: { _setor_id: string; _user_id: string }
         Returns: boolean
       }
+      is_user_session: { Args: never; Returns: boolean }
       liberar_lead_proposta: {
         Args: {
           p_campanha_proposta_id: string
@@ -12571,6 +12578,7 @@ export type Database = {
       }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
+      sweeper_acompanhamento_sem_resposta: { Args: never; Returns: number }
       transferir_lead_canal: {
         Args: {
           p_campanha_proposta_id: string

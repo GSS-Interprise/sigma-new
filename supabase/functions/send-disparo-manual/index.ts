@@ -221,6 +221,19 @@ serve(async (req) => {
       console.warn("[send-disparo-manual] erro inesperado ao sincronizar disparos_contatos:", e);
     }
 
+    // Atualiza ultimo_disparo_em no lead — dispara a automação de status (Acompanhamento)
+    try {
+      await supabase
+        .from("leads")
+        .update({
+          ultimo_disparo_em: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", lead_id);
+    } catch (e) {
+      console.warn("[send-disparo-manual] falha ao atualizar ultimo_disparo_em:", e);
+    }
+
     // Histórico do lead
     await supabase.from("lead_historico").insert({
       lead_id,
