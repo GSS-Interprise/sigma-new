@@ -71,6 +71,21 @@ serve(async (req) => {
     if (!locked)
       return json({ ok: true, msg: "Outro processo rodando" });
 
+    // ── Buscar cadência da campanha (se ativa) ──
+    let cadenciaPassos: any[] = [];
+    if (camp.cadencia_template_id && camp.cadencia_ativa !== false) {
+      const { data: passos } = await supabase
+        .from("cadencia_passos")
+        .select("id, ordem, dia_offset, canal, is_inicial, is_breakup")
+        .eq("template_id", camp.cadencia_template_id)
+        .order("ordem", { ascending: true });
+      cadenciaPassos = passos || [];
+    }
+    const passoInicial = cadenciaPassos.find((p) => p.is_inicial === true) || cadenciaPassos[0];
+    const passoSeguinte = passoInicial
+      ? cadenciaPassos.find((p) => p.ordem > passoInicial.ordem)
+      : null;
+
     // ── Config ──
     const batchSize = camp.batch_size || 10;
     const delayMinMs = camp.delay_min_ms || 8000;
@@ -171,6 +186,13 @@ serve(async (req) => {
     let sent = 0,
       failed = 0,
       chipIndex = 0;
+    // Métricas por chip nesta execução (pra detectar chip morto)
+    const chipMetrics: Record<string, { sucessos: number; erros: number }> = {};
+    const bumpChip = (id: string, ok: boolean) => {
+      if (!chipMetrics[id]) chipMetrics[id] = { sucessos: 0, erros: 0 };
+      if (ok) chipMetrics[id].sucessos++;
+      else chipMetrics[id].erros++;
+    };
 
     for (let i = 0; i < leadsFrio.length; i++) {
       const cl = leadsFrio[i];
@@ -201,18 +223,22 @@ serve(async (req) => {
         if (curr?.status === "pausada") break;
       }
 
-      // ── Escolher chip ──
-      const chip =
+      // ── Ordenar chips: primário primeiro, fallback depois ──
+      const chipPrimario =
         rotation === "random"
           ? chipsDisponiveis[Math.floor(Math.random() * chipsDisponiveis.length)]
           : chipsDisponiveis[chipIndex % chipsDisponiveis.length];
       chipIndex++;
+      const chipsParaTentar = [
+        chipPrimario,
+        ...chipsDisponiveis.filter((c) => c.id !== chipPrimario.id),
+      ];
 
       // ── Resolver spintax ──
       const msgTemplate = camp.mensagem_inicial || "Olá, {{nome}}!";
       const { text: msgResolvida, indices } = resolveSpintax(msgTemplate);
       const msgFinal = applyTemplate(msgResolvida, {
-        nome: lead.nome || "Dr(a)",
+        nome: stripDoctorPrefix(lead.nome) || "Dr(a)",
         especialidade: lead.especialidade || "",
         cidade: lead.cidade || "",
         uf: lead.uf || "",
@@ -229,158 +255,117 @@ serve(async (req) => {
         continue;
       }
 
-      // ── Enviar via Evolution API ──
-      try {
-        const endpoint = `${evoUrl}/message/sendText/${encodeURIComponent(chip.instance_name)}`;
-        const resp = await fetchWithTimeout(
-          endpoint,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json", apikey: evoKey },
-            body: JSON.stringify({ number: phone, text: msgFinal }),
-          },
-          SEND_TIMEOUT_MS
-        );
+      // ── Enviar via Evolution API com fallback de chip ──
+      let success = false;
+      let chipUsado: any = null;
+      let lastError = "";
+      let tentativas = 0;
 
-        if (!resp.ok) {
-          const errText = await resp.text();
-          throw new Error(`Evolution ${resp.status}: ${errText.slice(0, 200)}`);
-        }
-
-        // Resposta da Evolution costuma trazer key.id
-        let waMessageId: string | null = null;
+      for (const chipTry of chipsParaTentar) {
+        tentativas++;
         try {
-          const respBody = await resp.clone().json();
-          waMessageId = respBody?.key?.id ?? respBody?.messageId ?? null;
-        } catch (_) { /* ignore */ }
+          const endpoint = `${evoUrl}/message/sendText/${encodeURIComponent(chipTry.instance_name)}`;
+          const resp = await fetchWithTimeout(
+            endpoint,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json", apikey: evoKey },
+              body: JSON.stringify({ number: phone, text: msgFinal }),
+            },
+            SEND_TIMEOUT_MS
+          );
 
-        // ── Persistir conversa SIG Zap (dispara trigger de "contactado" via raia) ──
-        try {
-          const numberDigits = phone.replace(/\D/g, "");
-          const contactJid = `${numberDigits}@s.whatsapp.net`;
-          const contactPhone = `+${numberDigits}`;
-
-          const { data: sigInst } = await supabase
-            .from("sigzap_instances")
-            .select("id")
-            .eq("name", chip.instance_name)
-            .maybeSingle();
-
-          if (sigInst?.id) {
-            // Upsert contact
-            let contactId: string | null = null;
-            const { data: existingContact } = await supabase
-              .from("sigzap_contacts")
-              .select("id")
-              .eq("instance_id", sigInst.id)
-              .eq("contact_jid", contactJid)
-              .maybeSingle();
-            if (existingContact) {
-              contactId = existingContact.id;
-            } else {
-              const { data: newContact } = await supabase
-                .from("sigzap_contacts")
-                .insert({
-                  instance_id: sigInst.id,
-                  contact_jid: contactJid,
-                  contact_phone: contactPhone,
-                  contact_name: lead?.nome || null,
-                })
-                .select("id")
-                .single();
-              contactId = newContact?.id ?? null;
-            }
-
-            if (contactId) {
-              // Upsert conversation com lead_id
-              let convId: string | null = null;
-              const { data: existingConv } = await supabase
-                .from("sigzap_conversations")
-                .select("id, lead_id")
-                .eq("instance_id", sigInst.id)
-                .eq("contact_id", contactId)
-                .maybeSingle();
-              if (existingConv) {
-                convId = existingConv.id;
-                if (!existingConv.lead_id) {
-                  await supabase
-                    .from("sigzap_conversations")
-                    .update({ lead_id: cl.lead_id })
-                    .eq("id", convId);
-                }
-              } else {
-                const { data: newConv } = await supabase
-                  .from("sigzap_conversations")
-                  .insert({
-                    instance_id: sigInst.id,
-                    contact_id: contactId,
-                    lead_id: cl.lead_id,
-                    status: "open",
-                  })
-                  .select("id")
-                  .single();
-                convId = newConv?.id ?? null;
-              }
-
-              if (convId) {
-                // Inserir mensagem outbound — dispara trigger trg_sigzap_outbound_after_insert
-                await supabase.from("sigzap_messages").insert({
-                  conversation_id: convId,
-                  instance_id: sigInst.id,
-                  contact_id: contactId,
-                  from_me: true,
-                  message_type: "text",
-                  message_text: msgFinal,
-                  wa_message_id: waMessageId,
-                  status: "sent",
-                });
-              }
-            }
+          if (!resp.ok) {
+            const errText = await resp.text();
+            throw new Error(`Evolution ${resp.status}: ${errText.slice(0, 200)}`);
           }
-        } catch (sigErr: any) {
-          console.warn(`[disparo] sigzap persist falhou: ${sigErr?.message}`);
-        }
 
-        // ── Sucesso ──
+          success = true;
+          chipUsado = chipTry;
+          bumpChip(chipTry.id, true);
+          if (tentativas > 1) {
+            console.warn(
+              `[disparo] ↻ Fallback OK pra ${lead.nome} via ${chipTry.nome} (após ${tentativas - 1} chip(s) falhar(em))`
+            );
+          }
+          break;
+        } catch (err: any) {
+          lastError = err.message || String(err);
+          bumpChip(chipTry.id, false);
+          console.warn(
+            `[disparo] ⚠️ ${chipTry.nome} falhou pra ${lead.nome}: ${lastError}`
+          );
+          // tenta próximo chip
+        }
+      }
+
+      if (success && chipUsado) {
+        // Agenda próximo touch se há cadência configurada
+        const agoraIso = new Date().toISOString();
+        const proximoTouchEm =
+          passoSeguinte
+            ? new Date(Date.now() + (passoSeguinte.dia_offset - (passoInicial?.dia_offset || 0)) * 86400_000).toISOString()
+            : null;
+
         await supabase
           .from("campanha_leads")
           .update({
             status: "contatado",
-            data_primeiro_contato: new Date().toISOString(),
-            data_ultimo_contato: new Date().toISOString(),
-            data_status: new Date().toISOString(),
-            tentativas: 1,
+            data_primeiro_contato: agoraIso,
+            data_ultimo_contato: agoraIso,
+            data_status: agoraIso,
+            tentativas,
             canal_atual: "whatsapp",
-            chip_usado_id: chip.id,
+            chip_usado_id: chipUsado.id,
             mensagem_enviada: msgFinal,
             variation_indices: indices,
+            proximo_touch_em: proximoTouchEm,
+            proximo_passo_id: passoSeguinte?.id || null,
+            touches_executados: 1,
           })
           .eq("id", cl.id);
 
-        // Registrar touchpoint
+        // Registra o touch inicial em campanha_lead_touches
+        if (passoInicial) {
+          await supabase.from("campanha_lead_touches").insert({
+            campanha_lead_id: cl.id,
+            passo_id: passoInicial.id,
+            ordem: passoInicial.ordem,
+            canal: "whatsapp",
+            chip_usado_id: chipUsado.id,
+            executado_em: agoraIso,
+            resultado: "enviado",
+            conteudo_enviado: msgFinal,
+          });
+        }
+
         await supabase.from("lead_historico").insert({
           lead_id: cl.lead_id,
           tipo_evento: "campanha_disparo",
           descricao_resumida: `Disparo WhatsApp - campanha`,
           metadados: {
             campanha_id,
-            chip_id: chip.id,
-            chip_nome: chip.nome,
+            chip_id: chipUsado.id,
+            chip_nome: chipUsado.nome,
+            tentativas,
+            proximo_touch_em: proximoTouchEm,
           },
         });
 
         sent++;
-        console.log(`[disparo] ✅ ${lead.nome} (${phone}) via ${chip.nome}`);
-      } catch (err: any) {
+        console.log(`[disparo] ✅ ${lead.nome} (${phone}) via ${chipUsado.nome}${proximoTouchEm ? ` (T${passoSeguinte?.ordem} em ${new Date(proximoTouchEm).toISOString().slice(0,10)})` : ""}`);
+      } else {
         failed++;
         await supabase
           .from("campanha_leads")
           .update({
-            erro_envio: err.message?.slice(0, 500),
-            tentativas: 1,
+            erro_envio: `Todos ${tentativas} chip(s) falharam. Último: ${lastError.slice(0, 400)}`,
+            tentativas,
           })
           .eq("id", cl.id);
-        console.error(`[disparo] ❌ ${lead.nome}: ${err.message}`);
+        console.error(
+          `[disparo] ❌ ${lead.nome}: todos ${tentativas} chip(s) falharam. Último: ${lastError}`
+        );
       }
 
       // ── Delay entre msgs ──
@@ -400,6 +385,24 @@ serve(async (req) => {
       .eq("id", campanha_id);
 
     console.log(`[disparo] Lote: sent=${sent} failed=${failed}`);
+
+    // ── Diagnóstico de chips: marca como suspeito quem teve >50% erros e >=3 tentativas ──
+    for (const [chipId, m] of Object.entries(chipMetrics)) {
+      const total = m.sucessos + m.erros;
+      const taxaErro = total > 0 ? m.erros / total : 0;
+      console.log(
+        `[disparo] chip ${chipId}: ok=${m.sucessos} err=${m.erros} (${Math.round(taxaErro * 100)}%)`
+      );
+      if (total >= 3 && taxaErro >= 0.5) {
+        await supabase
+          .from("chips")
+          .update({ status: "suspeito" })
+          .eq("id", chipId);
+        console.warn(
+          `[disparo] 🚨 Chip ${chipId} marcado como suspeito (${m.erros}/${total} erros)`
+        );
+      }
+    }
 
     // ── Verificar restantes ──
     const { count: remaining } = await supabase
@@ -541,4 +544,14 @@ function applyTemplate(
     /\{\{(\w+)\}\}/g,
     (match, key) => vars[key] ?? match
   );
+}
+
+// Remove prefixos "Dr.", "Dra.", "Dr(a)." do início pra evitar duplicação
+// com templates tipo "Boa tarde, Dr(a). {{nome}}". Não toca se o nome
+// não começa com prefixo.
+function stripDoctorPrefix(raw: string | null | undefined): string {
+  if (!raw) return "";
+  return String(raw)
+    .replace(/^\s*(dr\.?\s*\(a\)\.?|dra?\.?)\s+/i, "")
+    .trim();
 }

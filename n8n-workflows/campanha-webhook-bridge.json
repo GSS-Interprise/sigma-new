@@ -17,10 +17,10 @@
     },
     {
       "parameters": {
-        "jsCode": "// Parse Evolution webhook payload\nconst body = $json.body || $json;\nconst event = body.event;\n\nif (event !== 'messages.upsert') return [];\n\nconst data = body.data || {};\nconst key = data.key || {};\n\n// Ignore own messages and groups\nif (key.fromMe) return [];\nif ((key.remoteJid || '').includes('@g.us')) return [];\n\n// Extract message content\nconst msg = data.message || {};\nlet text = msg.conversation || (msg.extendedTextMessage || {}).text || '';\nlet msgType = 'text';\nlet mediaUrl = '';\n\nif (msg.audioMessage) {\n  msgType = 'audio';\n  mediaUrl = msg.audioMessage.url || '';\n  if (!text) text = '[audio]';\n} else if (msg.imageMessage) {\n  msgType = 'image';\n  mediaUrl = msg.imageMessage.url || '';\n  text = msg.imageMessage.caption || '[imagem]';\n} else if (msg.videoMessage) {\n  msgType = 'video';\n  text = msg.videoMessage.caption || '[video]';\n} else if (msg.documentMessage) {\n  msgType = 'document';\n  text = msg.documentMessage.caption || '[documento]';\n} else if (msg.stickerMessage) {\n  msgType = 'sticker';\n  text = '[sticker]';\n} else if (!text) {\n  text = '[mensagem]';\n}\n\nconst phone = (key.remoteJid || '').replace('@s.whatsapp.net', '').replace('@lid', '');\nconst msgId = key.id || ('id_' + Date.now());\nconst instanceName = body.instance || '';\n\nreturn [{ json: {\n  phone,\n  msg_text: text,\n  msg_type: msgType,\n  msg_id: msgId,\n  media_url: mediaUrl,\n  instance_name: instanceName\n} }];"
+        "jsCode": "const body = $json.body || $json;\nconst event = body.event;\n\nif (event !== 'messages.upsert') return [];\n\nconst data = body.data || {};\nconst key = data.key || {};\n\nif (key.fromMe) return [];\nif ((key.remoteJid || '').includes('@g.us')) return [];\n\nconst msg = data.message || {};\nlet text = msg.conversation || (msg.extendedTextMessage || {}).text || '';\nlet msgType = 'text';\nlet mediaUrl = '';\n\nif (msg.audioMessage) {\n  msgType = 'audio';\n  mediaUrl = msg.audioMessage.url || '';\n  if (!text) text = '[audio]';\n} else if (msg.imageMessage) {\n  msgType = 'image';\n  mediaUrl = msg.imageMessage.url || '';\n  text = msg.imageMessage.caption || '[imagem]';\n} else if (!text) {\n  text = '[mensagem]';\n}\n\nconst phone = (key.remoteJid || '').replace('@s.whatsapp.net', '').replace('@lid', '');\nconst msgId = key.id || '';\n\n// Detecta quote (resposta citando msg anterior) — pode ser resposta de alerta Q&A\nconst ctxInfo = (msg.extendedTextMessage || {}).contextInfo || msg.contextInfo || {};\nconst quotedMsgId = ctxInfo.stanzaId || ctxInfo.quotedMessageId || '';\n\n// Detecta opt-out LGPD\nconst optOutRegex = /\\b(parar|pare|para de mandar|remov(a|er|e)|me (tira|retira)|n[\\u00e3a]o quero mais|n[\\u00e3a]o me mande|cancelar|descadastrar|sair da lista|stop|unsubscribe|chega|deixa pra l[\\u00e1a]|n[\\u00e3a]o perturbe|denunciar|procon|reclamar)\\b/i;\nconst isOptOut = optOutRegex.test(text);\n\nreturn [{ json: {\n  phone,\n  msg_id: msgId,\n  msg_text: text,\n  msg_type: msgType,\n  media_url: mediaUrl,\n  instance_name: body.instance || '',\n  is_opt_out: isOptOut,\n  quoted_msg_id: quotedMsgId,\n  is_quote_reply: !!quotedMsgId\n} }];"
       },
       "id": "parse",
-      "name": "Parsear Mensagem",
+      "name": "Parsear",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [220, 0]
@@ -34,60 +34,90 @@
           "parameters": [
             { "name": "apikey", "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp1cHNiZ3RvZW9peGZva3pranJvIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTE1NDA4MSwiZXhwIjoyMDkwNzMwMDgxfQ.DyapBTSccnh-0I7am5EP-VsqguKmr0VP95FeGjbXitI" },
             { "name": "Authorization", "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp1cHNiZ3RvZW9peGZva3pranJvIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTE1NDA4MSwiZXhwIjoyMDkwNzMwMDgxfQ.DyapBTSccnh-0I7am5EP-VsqguKmr0VP95FeGjbXitI" },
+            { "name": "Content-Type", "value": "application/json" },
             { "name": "Prefer", "value": "return=representation" }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ phone: $json.phone, instance_name: $json.instance_name, msg_id: $json.msg_id, msg_text: $json.msg_text, msg_type: $json.msg_type, media_url: $json.media_url || '' }) }}",
-        "options": {}
+        "jsonBody": "={{ JSON.stringify({ phone: $json.phone, instance_name: $json.instance_name, msg_id: $json.msg_id, msg_text: $json.msg_text, msg_type: $json.msg_type, media_url: $json.media_url, from_me: false }) }}",
+        "options": { "timeout": 15000 }
       },
-      "id": "enqueue",
-      "name": "Enfileirar (Supabase)",
+      "id": "insert-queue",
+      "name": "Insert na fila",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [440, 0]
     },
     {
       "parameters": {
-        "amount": 10
+        "amount": 10,
+        "unit": "seconds"
       },
-      "id": "debounce-wait",
+      "id": "wait-debounce",
       "name": "Aguardar 10s",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
       "position": [660, 0],
-      "webhookId": "debounce-campanha-wait"
+      "webhookId": "wait-debounce-cb"
     },
     {
       "parameters": {
-        "jsCode": "// Fetch all queued messages for this phone and check ownership\nconst phone = $('Parsear Mensagem').item.json.phone;\nconst myMsgId = $('Parsear Mensagem').item.json.msg_id;\nconst apikey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp1cHNiZ3RvZW9peGZva3pranJvIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTE1NDA4MSwiZXhwIjoyMDkwNzMwMDgxfQ.DyapBTSccnh-0I7am5EP-VsqguKmr0VP95FeGjbXitI';\n\n// Fetch queue for this phone\nconst resp = await fetch(\n  `https://zupsbgtoeoixfokzkjro.supabase.co/rest/v1/campanha_msg_queue?phone=eq.${phone}&order=created_at.asc`,\n  { headers: { 'apikey': apikey, 'Authorization': 'Bearer ' + apikey } }\n);\nconst rows = await resp.json();\n\nif (!rows || rows.length === 0) {\n  return [{ json: { skip: true, reason: 'empty_queue' } }];\n}\n\n// Check if I'm the owner (last message in queue)\nconst lastRow = rows[rows.length - 1];\nif (lastRow.msg_id !== myMsgId) {\n  return [{ json: { skip: true, reason: 'not_owner' } }];\n}\n\n// I'm the owner — aggregate all texts\nconst texts = rows.map(r => r.msg_text || '').filter(t => t.length > 0);\nconst aggregated = texts.join('\\n');\nconst lastMsgType = lastRow.msg_type || 'text';\nconst lastMediaUrl = lastRow.media_url || '';\nconst instanceName = lastRow.instance_name || '';\n\nreturn [{ json: {\n  skip: false,\n  phone: phone,\n  aggregated_text: aggregated,\n  msg_type: lastMsgType,\n  media_url: lastMediaUrl,\n  instance_name: instanceName,\n  msg_count: rows.length,\n  row_ids: rows.map(r => r.id)\n} }];"
+        "method": "GET",
+        "url": "=https://zupsbgtoeoixfokzkjro.supabase.co/rest/v1/campanha_msg_queue?phone=eq.{{ $json.phone }}&order=created_at.desc&limit=1&select=id",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp1cHNiZ3RvZW9peGZva3pranJvIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTE1NDA4MSwiZXhwIjoyMDkwNzMwMDgxfQ.DyapBTSccnh-0I7am5EP-VsqguKmr0VP95FeGjbXitI" },
+            { "name": "Authorization", "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp1cHNiZ3RvZW9peGZva3pranJvIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTE1NDA4MSwiZXhwIjoyMDkwNzMwMDgxfQ.DyapBTSccnh-0I7am5EP-VsqguKmr0VP95FeGjbXitI" }
+          ]
+        },
+        "options": { "timeout": 10000 }
       },
       "id": "check-owner",
-      "name": "Verificar Dono da Fila",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
+      "name": "Verificar dono",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
       "position": [880, 0]
     },
     {
       "parameters": {
-        "conditions": {
-          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
-          "conditions": [{
-            "id": "not-skip",
-            "leftValue": "={{ $json.skip }}",
-            "rightValue": false,
-            "operator": { "type": "boolean", "operation": "equals" }
-          }],
-          "combinator": "and"
-        },
-        "options": {}
+        "jsCode": "// Esta execução é a 'dona' da fila se a última linha desse phone for a minha.\n// Se outra msg entrou depois, eu descarto e deixo a execução mais nova processar.\nconst lastId = $json.id;\nconst myRow = $('Insert na fila').first().json;\nconst myId = myRow.id;\n\nif (lastId !== myId) {\n  // Não sou o dono — descarto silenciosamente\n  return [];\n}\n\nreturn [{ json: {\n  phone: myRow.phone,\n  my_created_at: myRow.created_at\n} }];"
       },
-      "id": "should-process",
+      "id": "am-i-owner",
       "name": "Sou o dono?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [1100, 0]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://zupsbgtoeoixfokzkjro.supabase.co/rest/v1/campanha_msg_queue?phone=eq.{{ $json.phone }}&created_at=lte.{{ encodeURIComponent($json.my_created_at) }}&order=created_at.asc&select=msg_id,msg_text,msg_type,media_url,instance_name",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp1cHNiZ3RvZW9peGZva3pranJvIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTE1NDA4MSwiZXhwIjoyMDkwNzMwMDgxfQ.DyapBTSccnh-0I7am5EP-VsqguKmr0VP95FeGjbXitI" },
+            { "name": "Authorization", "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp1cHNiZ3RvZW9peGZva3pranJvIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTE1NDA4MSwiZXhwIjoyMDkwNzMwMDgxfQ.DyapBTSccnh-0I7am5EP-VsqguKmr0VP95FeGjbXitI" }
+          ]
+        },
+        "options": { "timeout": 10000 }
+      },
+      "id": "fetch-queue",
+      "name": "Buscar fila",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1320, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Consolida as msgs da fila em uma única chamada pra IA.\n// - Filtra placeholders [audio]/[imagem] do texto (a transcrição/análise vai ser feita na edge function)\n// - Identifica última mídia do batch (não só último item) — assim áudio + texto ainda transcreve o áudio\nlet items = $input.all();\n\n// PostgREST pode retornar array unwrapped (1 item por linha) ou wrapped (1 item com array).\nif (items.length === 1 && Array.isArray(items[0].json)) {\n  items = items[0].json.map(j => ({ json: j }));\n}\n\nif (items.length === 0) return [];\n\nconst msgs = items\n  .map(i => (i.json.msg_text || '').trim())\n  .filter(t => t.length > 0 && t !== '[audio]' && t !== '[imagem]' && t !== '[mensagem]');\nconst consolidated = msgs.join('\\n');\n\n// Última mídia do batch (procura de trás pra frente). Fallback: último item.\nlet mediaItem = null;\nfor (let i = items.length - 1; i >= 0; i--) {\n  const t = items[i].json.msg_type;\n  if (t === 'audio' || t === 'image') { mediaItem = items[i].json; break; }\n}\nconst ref = mediaItem || items[items.length - 1].json;\n\nconst ctx = $('Sou o dono?').first().json;\n\nreturn [{ json: {\n  phone: ctx.phone,\n  message_text: consolidated,\n  msg_type: ref.msg_type || 'text',\n  media_url: ref.media_url || '',\n  msg_id: ref.msg_id || '',\n  instance_name: ref.instance_name || '',\n  my_created_at: ctx.my_created_at,\n  msg_count: items.length\n} }];"
+      },
+      "id": "consolidate",
+      "name": "Consolidar",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1540, 0]
     },
     {
       "parameters": {
@@ -101,44 +131,133 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ phone: $json.phone, aggregated_texts: $json.aggregated_text, message_text: $json.aggregated_text, instance_name: $json.instance_name, message_type: $json.msg_type, media_url: $json.media_url }) }}",
+        "jsonBody": "={{ JSON.stringify({ phone: $json.phone, message_text: $json.message_text, instance_name: $json.instance_name, message_type: $json.msg_type, media_url: $json.media_url, msg_id: $json.msg_id }) }}",
         "options": { "timeout": 55000 }
       },
       "id": "call-ia",
       "name": "Chamar IA",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1320, 0]
+      "position": [1760, 0]
     },
     {
       "parameters": {
-        "jsCode": "// Delete processed messages from queue\nconst rowIds = $('Verificar Dono da Fila').item.json.row_ids || [];\nconst apikey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp1cHNiZ3RvZW9peGZva3pranJvIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTE1NDA4MSwiZXhwIjoyMDkwNzMwMDgxfQ.DyapBTSccnh-0I7am5EP-VsqguKmr0VP95FeGjbXitI';\n\nfor (const id of rowIds) {\n  await fetch(\n    `https://zupsbgtoeoixfokzkjro.supabase.co/rest/v1/campanha_msg_queue?id=eq.${id}`,\n    {\n      method: 'DELETE',\n      headers: { 'apikey': apikey, 'Authorization': 'Bearer ' + apikey }\n    }\n  );\n}\n\nreturn [{ json: { cleaned: rowIds.length } }];"
+        "method": "DELETE",
+        "url": "=https://zupsbgtoeoixfokzkjro.supabase.co/rest/v1/campanha_msg_queue?phone=eq.{{ $('Consolidar').first().json.phone }}&created_at=lte.{{ encodeURIComponent($('Consolidar').first().json.my_created_at) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp1cHNiZ3RvZW9peGZva3pranJvIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTE1NDA4MSwiZXhwIjoyMDkwNzMwMDgxfQ.DyapBTSccnh-0I7am5EP-VsqguKmr0VP95FeGjbXitI" },
+            { "name": "Authorization", "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp1cHNiZ3RvZW9peGZva3pranJvIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTE1NDA4MSwiZXhwIjoyMDkwNzMwMDgxfQ.DyapBTSccnh-0I7am5EP-VsqguKmr0VP95FeGjbXitI" }
+          ]
+        },
+        "options": { "timeout": 10000 }
       },
-      "id": "cleanup",
-      "name": "Limpar Fila",
-      "type": "n8n-nodes-base.code",
+      "id": "clear-queue",
+      "name": "Limpar fila",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1980, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "id": "cond-opt-out",
+              "leftValue": "={{ $json.is_opt_out }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-opt-out",
+      "name": "Opt-out?",
+      "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [1540, 0]
+      "position": [320, 0]
     },
     {
       "parameters": {
-        "content": "## Campanha Webhook Bridge v2\n\n**Fluxo:**\nWebhook Evolution → Parsear → Enfileirar (Supabase) → Wait 10s\n→ Verificar Dono da Fila → Se dono: Agregar + Chamar IA → Limpar Fila\n\n✅ Debounce 10s via Supabase (sem Google Sheets)\n✅ Agrega múltiplas msgs antes de processar\n✅ Suporta texto, áudio, imagem (processados na edge function)\n✅ Sem rate limit de API externa"
+        "method": "POST",
+        "url": "https://zupsbgtoeoixfokzkjro.functions.supabase.co/campanha-opt-out-handler",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp1cHNiZ3RvZW9peGZva3pranJvIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTE1NDA4MSwiZXhwIjoyMDkwNzMwMDgxfQ.DyapBTSccnh-0I7am5EP-VsqguKmr0VP95FeGjbXitI" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ phone: $json.phone, msg_text: $json.msg_text, instance_name: $json.instance_name }) }}",
+        "options": { "timeout": 20000 }
       },
-      "id": "sticky",
-      "name": "Nota",
-      "type": "n8n-nodes-base.stickyNote",
-      "typeVersion": 1,
-      "position": [-200, -200]
+      "id": "call-opt-out-handler",
+      "name": "Chamar Opt-out Handler",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [540, -160]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "id": "cond-quote",
+              "leftValue": "={{ $json.is_quote_reply }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-qa-reply",
+      "name": "Q&A reply?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [320, 180]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://zupsbgtoeoixfokzkjro.functions.supabase.co/campanha-qa-relay",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp1cHNiZ3RvZW9peGZva3pranJvIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTE1NDA4MSwiZXhwIjoyMDkwNzMwMDgxfQ.DyapBTSccnh-0I7am5EP-VsqguKmr0VP95FeGjbXitI" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ quoted_msg_id: $json.quoted_msg_id, resposta_humana: $json.msg_text, from_phone: $json.phone }) }}",
+        "options": { "timeout": 60000 }
+      },
+      "id": "call-qa-relay",
+      "name": "Chamar Q&A Relay",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [540, 180]
     }
   ],
   "connections": {
-    "Webhook": { "main": [[{ "node": "Parsear Mensagem", "type": "main", "index": 0 }]] },
-    "Parsear Mensagem": { "main": [[{ "node": "Enfileirar (Supabase)", "type": "main", "index": 0 }]] },
-    "Enfileirar (Supabase)": { "main": [[{ "node": "Aguardar 10s", "type": "main", "index": 0 }]] },
-    "Aguardar 10s": { "main": [[{ "node": "Verificar Dono da Fila", "type": "main", "index": 0 }]] },
-    "Verificar Dono da Fila": { "main": [[{ "node": "Sou o dono?", "type": "main", "index": 0 }]] },
-    "Sou o dono?": { "main": [[{ "node": "Chamar IA", "type": "main", "index": 0 }]] },
-    "Chamar IA": { "main": [[{ "node": "Limpar Fila", "type": "main", "index": 0 }]] }
+    "Webhook": { "main": [[{ "node": "Parsear", "type": "main", "index": 0 }]] },
+    "Parsear": { "main": [[{ "node": "Q&A reply?", "type": "main", "index": 0 }]] },
+    "Q&A reply?": { "main": [ [{ "node": "Chamar Q&A Relay", "type": "main", "index": 0 }], [{ "node": "Opt-out?", "type": "main", "index": 0 }] ] },
+    "Opt-out?": { "main": [ [{ "node": "Chamar Opt-out Handler", "type": "main", "index": 0 }], [{ "node": "Insert na fila", "type": "main", "index": 0 }] ] },
+    "Insert na fila": { "main": [[{ "node": "Aguardar 10s", "type": "main", "index": 0 }]] },
+    "Aguardar 10s": { "main": [[{ "node": "Verificar dono", "type": "main", "index": 0 }]] },
+    "Verificar dono": { "main": [[{ "node": "Sou o dono?", "type": "main", "index": 0 }]] },
+    "Sou o dono?": { "main": [[{ "node": "Buscar fila", "type": "main", "index": 0 }]] },
+    "Buscar fila": { "main": [[{ "node": "Consolidar", "type": "main", "index": 0 }]] },
+    "Consolidar": { "main": [[{ "node": "Chamar IA", "type": "main", "index": 0 }]] },
+    "Chamar IA": { "main": [[{ "node": "Limpar fila", "type": "main", "index": 0 }]] }
   },
   "settings": { "executionOrder": "v1" },
   "active": true

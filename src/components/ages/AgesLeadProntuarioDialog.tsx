@@ -31,6 +31,7 @@ import {
   CreditCard,
   Home,
   FolderArchive,
+  Brain,
 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
@@ -39,6 +40,9 @@ import AgesProfissionalDocumentos from "./AgesProfissionalDocumentos";
 import { AgesLeadAtividadesPanel } from "./AgesLeadAtividadesPanel";
 import { AgesLeadAnexosSection } from "./AgesLeadAnexosSection";
 import { AgesLeadTimelineSection } from "./AgesLeadTimelineSection";
+import { LeadTimelineUnificadoSection } from "../medicos/LeadTimelineUnificadoSection";
+import { LeadLgpdBadges } from "../medicos/LeadLgpdBadges";
+import { LeadPerfilIaSection } from "../medicos/LeadPerfilIaSection";
 import { AgesLeadPropostasSection } from "./AgesLeadPropostasSection";
 import { AgesUnidadeMultiSelect } from "./AgesUnidadeMultiSelect";
 import { ImportarLeadTextoDialog } from "@/components/medicos/ImportarLeadTextoDialog";
@@ -735,6 +739,7 @@ export function AgesLeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead
                               Profissional
                             </Badge>
                           )}
+                          {leadId && <LeadLgpdBadges leadId={leadId} />}
                         </>
                       )}
                     </div>
@@ -791,10 +796,14 @@ export function AgesLeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead
             </DialogHeader>
 
             <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
-              <TabsList className="grid grid-cols-5 mx-4 mt-2 flex-shrink-0 w-auto">
+              <TabsList className="grid grid-cols-6 mx-4 mt-2 flex-shrink-0 w-auto">
                 <TabsTrigger value="dados" className="gap-1.5 text-xs">
                   <User className="h-3.5 w-3.5" />
                   Dados
+                </TabsTrigger>
+                <TabsTrigger value="perfil" className="gap-1.5 text-xs">
+                  <Brain className="h-3.5 w-3.5" />
+                  Perfil IA
                 </TabsTrigger>
                 <TabsTrigger value="propostas" className="gap-1.5 text-xs">
                   <FileText className="h-3.5 w-3.5" />
@@ -1158,11 +1167,26 @@ export function AgesLeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead
                   </ScrollArea>
                 </TabsContent>
 
+                {/* Perfil IA */}
+                <TabsContent value="perfil" className="m-0 h-full">
+                  <ScrollArea className="h-full p-4">
+                    {leadId ? (
+                      <LeadPerfilIaSection leadId={leadId} />
+                    ) : (
+                      <div className="text-center py-12 text-muted-foreground">
+                        <Brain className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                        <p className="text-lg font-medium">Salve o lead primeiro</p>
+                        <p className="text-sm">Após criar o lead, o perfil extraído pela IA aparecerá aqui.</p>
+                      </div>
+                    )}
+                  </ScrollArea>
+                </TabsContent>
+
                 {/* Histórico */}
                 <TabsContent value="historico" className="m-0 h-full">
                   <ScrollArea className="h-full p-4">
                     {leadId ? (
-                      <AgesLeadTimelineSection leadId={leadId} />
+                      <LeadTimelineUnificadoSection leadId={leadId} />
                     ) : (
                       <div className="text-center py-12 text-muted-foreground">
                         <History className="h-12 w-12 mx-auto mb-4 opacity-50" />

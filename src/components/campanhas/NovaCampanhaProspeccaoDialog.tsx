@@ -48,6 +48,7 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange }: Props) {
   const [delayBatchMin, setDelayBatchMin] = useState(5);
   const [delayBatchMax, setDelayBatchMax] = useState(10);
   const [mensagemInicial, setMensagemInicial] = useState("");
+  const [cadenciaAtiva, setCadenciaAtiva] = useState(true);
   // Briefing IA — campos estruturados (anti-burro)
   const [bNomeServico, setBNomeServico] = useState(""); // Ex: "Plantão UTI Pediátrica"
   const [bHospital, setBHospital] = useState(""); // Ex: "Hospital Regional do Oeste"
@@ -67,6 +68,14 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange }: Props) {
   const [bObjecao2, setBObjecao2] = useState("");
   const [bResposta2, setBResposta2] = useState("");
   const [bInfoExtra, setBInfoExtra] = useState(""); // Algo mais que a IA precisa saber?
+  // Novos campos ricos (opcionais, melhoram muito a qualidade da IA)
+  const [bInicioServico, setBInicioServico] = useState(""); // "01/05/2026"
+  const [bPagamento, setBPagamento] = useState(""); // "Último dia do mês subsequente"
+  const [bCidadeInfo, setBCidadeInfo] = useState(""); // Contexto da cidade
+  const [bLinkVideo, setBLinkVideo] = useState(""); // URL do vídeo
+  const [bHandoffFrase, setBHandoffFrase] = useState(""); // Frase do handoff
+  const [bHandoffGatilhos, setBHandoffGatilhos] = useState(""); // Regras explícitas de quando acionar handoff
+  const [bPalavrasProibidas, setBPalavrasProibidas] = useState(""); // Termos que a IA não pode usar
   const qc = useQueryClient();
 
   const { data: especialidades = [] } = useQuery({
@@ -86,8 +95,10 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange }: Props) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("chips")
-        .select("id, nome, numero, status, pode_disparar")
+        .select("id, nome, numero, status, pode_disparar, tipo_instancia")
         .eq("status", "ativo")
+        .eq("tipo_instancia", "disparos")
+        .eq("pode_disparar", true)
         .order("nome");
       if (error) throw error;
       return data || [];
@@ -142,6 +153,13 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange }: Props) {
           ...(bObjecao2 ? [{ objecao: bObjecao2, resposta: bResposta2 }] : []),
         ],
         info_extra: bInfoExtra,
+        inicio_servico: bInicioServico,
+        pagamento: bPagamento,
+        cidade_info: bCidadeInfo,
+        link_video: bLinkVideo,
+        handoff_frase: bHandoffFrase,
+        handoff_gatilhos: bHandoffGatilhos,
+        palavras_proibidas: bPalavrasProibidas,
       };
 
       const { data, error } = await supabase
@@ -165,6 +183,7 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange }: Props) {
           delay_between_batches_max: delayBatchMax * 60,
           mensagem_inicial: mensagemInicial || null,
           briefing_ia: briefing,
+          cadencia_ativa: cadenciaAtiva,
           criado_por: user.user?.id,
         })
         .select()
@@ -194,6 +213,7 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange }: Props) {
     setDelayBatchMin(5);
     setDelayBatchMax(10);
     setMensagemInicial("");
+    setCadenciaAtiva(true);
     setBNomeServico("");
     setBHospital("");
     setBCidade("");
@@ -212,6 +232,13 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange }: Props) {
     setBObjecao2("");
     setBResposta2("");
     setBInfoExtra("");
+    setBInicioServico("");
+    setBPagamento("");
+    setBCidadeInfo("");
+    setBLinkVideo("");
+    setBHandoffFrase("");
+    setBHandoffGatilhos("");
+    setBPalavrasProibidas("");
     setTab("basico");
   };
 
@@ -478,6 +505,40 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange }: Props) {
                 enviada pelo disparo automático.
               </p>
             </div>
+
+            <div className="border rounded-lg p-4 space-y-3 bg-amber-50/50">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1">
+                  <h4 className="font-semibold text-sm flex items-center gap-2">
+                    <Zap className="h-4 w-4 text-amber-600" />
+                    Cadência automática (follow-up)
+                  </h4>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Se o médico não responder à mensagem inicial, o sistema envia automaticamente
+                    um reforço em 2 dias (WhatsApp) e um email em 3 dias.
+                    Se o médico responder em qualquer momento, a cadência pausa e a IA assume.
+                  </p>
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={cadenciaAtiva}
+                    onChange={(e) => setCadenciaAtiva(e.target.checked)}
+                    className="w-4 h-4"
+                  />
+                  <span className="text-sm font-medium">
+                    {cadenciaAtiva ? "Ativada" : "Desativada"}
+                  </span>
+                </label>
+              </div>
+              {cadenciaAtiva && (
+                <div className="text-xs bg-white rounded border p-2 space-y-1 text-muted-foreground">
+                  <div><strong>T1 D+0</strong> — WhatsApp (mensagem inicial acima)</div>
+                  <div><strong>T2 D+2</strong> — WhatsApp reforço automático</div>
+                  <div><strong>T3 D+3</strong> — Email de último contato</div>
+                </div>
+              )}
+            </div>
           </TabsContent>
 
           <TabsContent value="ia" className="space-y-4 mt-4">
@@ -576,6 +637,59 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange }: Props) {
                       rows={2}
                     />
                   </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label>Início do serviço (opcional)</Label>
+                      <Input
+                        value={bInicioServico}
+                        onChange={(e) => setBInicioServico(e.target.value)}
+                        placeholder="Ex: 01/05/2026 ou imediato"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label>Forma de pagamento (opcional)</Label>
+                      <Input
+                        value={bPagamento}
+                        onChange={(e) => setBPagamento(e.target.value)}
+                        placeholder="Ex: Último dia do mês subsequente"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* BLOCO 1.5: Cidade / Material */}
+                <div className="space-y-3">
+                  <h4 className="font-semibold text-sm border-b pb-1">
+                    Cidade e material de apoio (opcional mas recomendado)
+                  </h4>
+                  <p className="text-xs text-muted-foreground">
+                    Quanto mais contexto, mais rica a conversa da IA com o médico.
+                    Se o médico perguntar sobre a cidade, a IA usa essas informações.
+                  </p>
+
+                  <div className="space-y-1">
+                    <Label>Sobre a cidade</Label>
+                    <Textarea
+                      value={bCidadeInfo}
+                      onChange={(e) => setBCidadeInfo(e.target.value)}
+                      placeholder="Ex: Chapecó, Capital do Oeste Catarinense. 282k habitantes, aeroporto com 5 voos/dia pra SP, boa infra urbana..."
+                      rows={3}
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label>Link de vídeo da cidade/hospital</Label>
+                    <Input
+                      type="url"
+                      value={bLinkVideo}
+                      onChange={(e) => setBLinkVideo(e.target.value)}
+                      placeholder="https://youtube.com/watch?v=..."
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      A IA vai oferecer esse vídeo ao médico no momento certo da conversa.
+                    </p>
+                  </div>
                 </div>
 
                 {/* BLOCO 2: Valores e benefícios */}
@@ -669,6 +783,33 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange }: Props) {
                       />
                     </div>
                   </div>
+
+                  <div className="space-y-1">
+                    <Label>Frase de contexto no handoff (opcional)</Label>
+                    <Input
+                      value={bHandoffFrase}
+                      onChange={(e) => setBHandoffFrase(e.target.value)}
+                      placeholder="Ex: Ela vai te passar todos os detalhes sobre valores e escala."
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Como a IA explica pro médico o que o responsável vai fazer.
+                      Se em branco, usa frase genérica.
+                    </p>
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label>Quando acionar o responsável (opcional)</Label>
+                    <Textarea
+                      value={bHandoffGatilhos}
+                      onChange={(e) => setBHandoffGatilhos(e.target.value)}
+                      placeholder={`Default: APENAS quando (1) médico perguntar valor/remuneração OU (2) IA não souber responder alguma dúvida.`}
+                      rows={3}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Se vazio, usa regra padrão. Customize se essa campanha tiver
+                      critério específico pra passar pro responsável.
+                    </p>
+                  </div>
                 </div>
 
                 {/* BLOCO 4: Objeções */}
@@ -708,7 +849,22 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange }: Props) {
                   </div>
                 </div>
 
-                {/* BLOCO 5: Info extra */}
+                {/* BLOCO 5: Palavras proibidas */}
+                <div className="space-y-1.5">
+                  <Label>Palavras ou expressões proibidas (opcional)</Label>
+                  <Textarea
+                    value={bPalavrasProibidas}
+                    onChange={(e) => setBPalavrasProibidas(e.target.value)}
+                    placeholder="Ex: moderno, tecnologia de ponta, ambiente incrível, oportunidade única"
+                    rows={2}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Separadas por vírgula. A IA já evita termos de venda genéricos por padrão
+                    — use isto pra adicionar termos específicos desta campanha.
+                  </p>
+                </div>
+
+                {/* BLOCO 6: Info extra */}
                 <div className="space-y-1.5">
                   <Label>Algo mais que a IA precisa saber? (opcional)</Label>
                   <Textarea

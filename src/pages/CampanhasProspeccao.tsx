@@ -31,6 +31,8 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { NovaCampanhaProspeccaoDialog } from "@/components/campanhas/NovaCampanhaProspeccaoDialog";
 import { CampanhaProspeccaoKanban } from "@/components/campanhas/CampanhaProspeccaoKanban";
+import { QuentesEsperandoBanner } from "@/components/campanhas/QuentesEsperandoBanner";
+import { ChipPerformancePanel } from "@/components/campanhas/ChipPerformancePanel";
 import { useAdicionarLeadsCampanha } from "@/hooks/useCampanhaLeads";
 import { toast } from "sonner";
 
@@ -249,6 +251,7 @@ export default function CampanhasProspeccao() {
     <CaptacaoProtectedRoute permission="disparos_zap">
       <AppLayout headerActions={headerActions}>
         <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-4">
+          <QuentesEsperandoBanner />
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <DashboardCard
               icon={Rocket}
@@ -320,6 +323,8 @@ export default function CampanhasProspeccao() {
               ))}
             </div>
           )}
+
+          <ChipPerformancePanel />
         </div>
 
         <NovaCampanhaProspeccaoDialog
