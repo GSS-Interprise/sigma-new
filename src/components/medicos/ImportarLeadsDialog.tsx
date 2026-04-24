@@ -422,7 +422,7 @@ export function ImportarLeadsDialog({ open, onOpenChange, onSuccess, listaDestin
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-4xl h-[90vh] overflow-hidden flex flex-col p-6">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileSpreadsheet className="h-5 w-5 text-green-600" />
@@ -430,7 +430,7 @@ export function ImportarLeadsDialog({ open, onOpenChange, onSuccess, listaDestin
           </DialogTitle>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 min-h-0 max-h-[calc(90vh-180px)] pr-4">
+        <ScrollArea className="flex-1 min-h-0 -mr-4 pr-4">
         <div className="text-sm text-muted-foreground mb-4">
           Preencha os campos abaixo e depois carregue a planilha.
         </div>
