@@ -11,13 +11,13 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { 
-  User, FileText, History, UserCheck, ExternalLink, 
+import {
+  User, FileText, History, UserCheck, ExternalLink,
   ArrowRight, CheckCircle2, Send, CreditCard, Landmark,
   FileSignature, Calendar, Stethoscope, Phone, Mail, MapPin,
   Building2, Globe, Heart, IdCard, Save, Briefcase, Home, Import,
   ClipboardCheck, Award, FolderArchive, Activity, Undo2, AlertTriangle,
-  XCircle
+  XCircle, Brain
 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DocumentacaoTab } from "./DocumentacaoTab";
@@ -31,6 +31,8 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { usePermissions } from "@/hooks/usePermissions";
 import { LeadPropostasSection } from "./LeadPropostasSection";
 import { LeadHistoricoAnotacoesSection } from "./LeadHistoricoAnotacoesSection";
+import { LeadPerfilIaSection } from "./LeadPerfilIaSection";
+import { LeadTimelineUnificadoSection } from "./LeadTimelineUnificadoSection";
 import { LeadAnexosSection } from "./LeadAnexosSection";
 import { LeadLinksExternosSection } from "./LeadLinksExternosSection";
 import { LeadAtividadesPanel } from "./LeadAtividadesPanel";
@@ -1573,7 +1575,7 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
             </DialogHeader>
 
             <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
-              <TabsList className="grid grid-cols-6 mx-4 mt-2 flex-shrink-0 w-auto">
+              <TabsList className={`grid ${canViewOld ? "grid-cols-7" : "grid-cols-6"} mx-4 mt-2 flex-shrink-0 w-auto`}>
                 <TabsTrigger value="dados" className="gap-1.5 text-xs">
                   <User className="h-3.5 w-3.5" />
                   Dados
@@ -1590,6 +1592,10 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                       {historicoUnreadCount > 99 ? '99+' : historicoUnreadCount}
                     </span>
                   )}
+                </TabsTrigger>
+                <TabsTrigger value="perfil-ia" className="gap-1.5 text-xs" disabled={!leadId || isNewLead}>
+                  <Brain className="h-3.5 w-3.5" />
+                  Perfil IA
                 </TabsTrigger>
                 {canViewOld && (
                   <TabsTrigger value="old" className="gap-1.5 text-xs">
@@ -2096,11 +2102,38 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
 
                 {/* Histórico / Anotações */}
                 <TabsContent value="historico" className="m-0 h-full p-4">
-                  <LeadHistoricoAnotacoesSection 
-                    leadId={leadId} 
+                  <LeadHistoricoAnotacoesSection
+                    leadId={leadId}
                     phoneE164={lead?.phone_e164 || editedData.phone_e164}
                     onConversaClick={(conversaId) => setSidebarConversaId(conversaId)}
                   />
+                </TabsContent>
+
+                {/* Perfil IA: perfil extraído + contatos + timeline cross-canal */}
+                <TabsContent value="perfil-ia" className="m-0 h-full overflow-hidden">
+                  <ScrollArea className="h-full w-full">
+                    <div className="p-4 space-y-4">
+                      {leadId ? (
+                        <>
+                          <LeadPerfilIaSection leadId={leadId} />
+                          <div className="rounded-lg border p-4 bg-card">
+                            <div className="flex items-center gap-2 mb-3">
+                              <History className="h-4 w-4 text-muted-foreground" />
+                              <h3 className="text-base font-semibold">Histórico Unificado</h3>
+                              <span className="text-xs text-muted-foreground">
+                                IA + conversas manuais + touchpoints
+                              </span>
+                            </div>
+                            <LeadTimelineUnificadoSection leadId={leadId} />
+                          </div>
+                        </>
+                      ) : (
+                        <div className="text-sm text-muted-foreground text-center py-8">
+                          Salve o lead para ver o perfil IA e histórico unificado.
+                        </div>
+                      )}
+                    </div>
+                  </ScrollArea>
                 </TabsContent>
 
                 {/* OLD - Documentação e Prontuário - Admin, Líderes e Gestores de Contratos */}
