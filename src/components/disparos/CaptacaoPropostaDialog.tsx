@@ -58,7 +58,13 @@ export function CaptacaoPropostaDialog({
   onSuccess,
 }: CaptacaoPropostaDialogProps) {
   const queryClient = useQueryClient();
-  const { isAdmin } = usePermissions();
+  const { isAdmin, isLeader, userRoles } = usePermissions();
+  const canEditMensagens =
+    isAdmin ||
+    isLeader ||
+    userRoles.some(
+      (r) => r.role === "gestor_captacao" || r.role === "gestor_contratos"
+    );
   const [itensValores, setItensValores] = useState<ItemValor[]>([]);
   const [itensCustom, setItensCustom] = useState<ItemValor[]>([]);
   const [novoItemNome, setNovoItemNome] = useState("");
@@ -127,7 +133,7 @@ export function CaptacaoPropostaDialog({
         descricao: `Proposta de Captação - ${nomeDestino || contratoNome || "Contrato"}`,
       };
 
-      if (isAdmin) {
+      if (canEditMensagens) {
         propostaPayload.mensagem_whatsapp = mensagens.whatsapp || null;
         propostaPayload.mensagem_email = mensagens.email || null;
         propostaPayload.mensagem_instagram = mensagens.instagram || null;
@@ -380,7 +386,7 @@ export function CaptacaoPropostaDialog({
             <MensagensCanaisTabs
               values={mensagens}
               onChange={handleMensagemChange}
-              readOnly={!isAdmin}
+              readOnly={!canEditMensagens}
             />
           </div>
         </div>
