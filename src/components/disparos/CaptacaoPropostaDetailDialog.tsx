@@ -55,7 +55,13 @@ export function CaptacaoPropostaDetailDialog({
   onSuccess,
 }: CaptacaoPropostaDetailDialogProps) {
   const queryClient = useQueryClient();
-  const { isAdmin } = usePermissions();
+  const { isAdmin, isLeader, userRoles } = usePermissions();
+  const canEditMensagens =
+    isAdmin ||
+    isLeader ||
+    userRoles.some(
+      (r) => r.role === "gestor_captacao" || r.role === "gestor_contratos"
+    );
   
   const [isEditing, setIsEditing] = useState(false);
   const [editStatus, setEditStatus] = useState<string>("");
@@ -134,7 +140,7 @@ export function CaptacaoPropostaDetailDialog({
         descricao: editDescricao || null,
         atualizado_em: new Date().toISOString(),
       };
-      if (isAdmin) {
+      if (canEditMensagens) {
         updatePayload.mensagem_whatsapp = editMensagens.whatsapp || null;
         updatePayload.mensagem_email = editMensagens.email || null;
         updatePayload.mensagem_instagram = editMensagens.instagram || null;
@@ -282,7 +288,7 @@ export function CaptacaoPropostaDetailDialog({
               <FileText className="h-5 w-5" />
               {propostaNome || `Proposta ${propostaId.slice(0, 8)}`}
             </DialogTitle>
-            {isAdmin && !isEditing && !isLoading && (
+            {canEditMensagens && !isEditing && !isLoading && (
               <Button variant="outline" size="sm" onClick={startEditing}>
                 <Pencil className="h-4 w-4 mr-1" />
                 Editar
@@ -492,7 +498,7 @@ export function CaptacaoPropostaDetailDialog({
                   <MensagensCanaisTabs
                     values={editMensagens}
                     onChange={handleMensagemChange}
-                    readOnly={!isAdmin}
+                    readOnly={!canEditMensagens}
                   />
                 ) : (
                   <MensagensCanaisTabs
