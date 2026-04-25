@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { CaptacaoProtectedRoute } from "@/components/auth/CaptacaoProtectedRoute";
 import { Card, CardContent } from "@/components/ui/card";
@@ -27,10 +28,12 @@ import {
   Play,
   Stethoscope,
   MapPin,
+  ClipboardList,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { NovaCampanhaProspeccaoDialog } from "@/components/campanhas/NovaCampanhaProspeccaoDialog";
 import { CampanhaProspeccaoKanban } from "@/components/campanhas/CampanhaProspeccaoKanban";
+import { AcompanhamentoView } from "@/components/campanhas/acompanhamento/AcompanhamentoView";
 import { useAdicionarLeadsCampanha } from "@/hooks/useCampanhaLeads";
 import { toast } from "sonner";
 
@@ -56,7 +59,29 @@ export default function CampanhasProspeccao() {
   const [busca, setBusca] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selecionada, setSelecionada] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const view = (searchParams.get("view") || "campanhas") as "campanhas" | "acompanhamento";
+  const setView = (next: "campanhas" | "acompanhamento") => {
+    const sp = new URLSearchParams(searchParams);
+    if (next === "campanhas") sp.delete("view");
+    else sp.set("view", next);
+    setSearchParams(sp);
+  };
   const adicionarLeads = useAdicionarLeadsCampanha();
+
+  // Contador de leads quentes sem dono (só pra badge no toggle)
+  const { data: quentesSemDono = 0 } = useQuery({
+    queryKey: ["quentes-sem-dono-count"],
+    queryFn: async () => {
+      const { count } = await (supabase as any)
+        .from("vw_acompanhamento_kanban")
+        .select("campanha_lead_id", { count: "exact", head: true })
+        .eq("etapa_acompanhamento", "quente")
+        .is("assumido_por", null);
+      return count || 0;
+    },
+    refetchInterval: 60_000,
+  });
 
   const { data: campanhas = [], isLoading } = useQuery({
     queryKey: ["campanhas-prospeccao", busca],
@@ -249,76 +274,98 @@ export default function CampanhasProspeccao() {
     <CaptacaoProtectedRoute permission="disparos_zap">
       <AppLayout headerActions={headerActions}>
         <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <DashboardCard
-              icon={Rocket}
-              label="Campanhas Ativas"
-              value={campanhasAtivas}
-              color="text-primary"
-            />
-            <DashboardCard
-              icon={Users}
-              label="Leads no Pipeline"
-              value={totalLeads}
-              color="text-blue-600"
-            />
-            <DashboardCard
-              icon={Flame}
-              label="Leads Quentes"
-              value={totalQuentes}
-              color="text-red-600"
-            />
-            <DashboardCard
-              icon={CheckCircle}
-              label="Convertidos"
-              value={totalConvertidos}
-              color="text-green-600"
-            />
+          <div className="flex items-center gap-1 border-b">
+            <ToggleTab active={view === "campanhas"} onClick={() => setView("campanhas")}>
+              <Rocket className="h-3.5 w-3.5" />
+              Campanhas
+            </ToggleTab>
+            <ToggleTab active={view === "acompanhamento"} onClick={() => setView("acompanhamento")}>
+              <ClipboardList className="h-3.5 w-3.5" />
+              Acompanhamento
+              {quentesSemDono > 0 && (
+                <Badge variant="destructive" className="ml-1 h-5 px-1.5 text-[10px]">
+                  {quentesSemDono}
+                </Badge>
+              )}
+            </ToggleTab>
           </div>
 
-          <Card>
-            <CardContent className="p-4 flex items-center justify-between gap-3 flex-wrap">
-              <div className="relative flex-1 min-w-[240px] max-w-md">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar campanha..."
-                  value={busca}
-                  onChange={(e) => setBusca(e.target.value)}
-                  className="pl-9"
+          {view === "campanhas" ? (
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <DashboardCard
+                  icon={Rocket}
+                  label="Campanhas Ativas"
+                  value={campanhasAtivas}
+                  color="text-primary"
+                />
+                <DashboardCard
+                  icon={Users}
+                  label="Leads no Pipeline"
+                  value={totalLeads}
+                  color="text-blue-600"
+                />
+                <DashboardCard
+                  icon={Flame}
+                  label="Leads Quentes"
+                  value={totalQuentes}
+                  color="text-red-600"
+                />
+                <DashboardCard
+                  icon={CheckCircle}
+                  label="Convertidos"
+                  value={totalConvertidos}
+                  color="text-green-600"
                 />
               </div>
-              <Button onClick={() => setDialogOpen(true)}>
-                <Plus className="h-4 w-4 mr-2" />
-                Nova Campanha
-              </Button>
-            </CardContent>
-          </Card>
 
-          {isLoading ? (
-            <Card className="p-8 text-center text-muted-foreground">
-              Carregando campanhas...
-            </Card>
-          ) : campanhas.length === 0 ? (
-            <Card className="p-12 text-center">
-              <Rocket className="h-12 w-12 text-muted-foreground/30 mx-auto mb-3" />
-              <p className="text-muted-foreground">
-                Nenhuma campanha de prospecção criada.
-              </p>
-              <Button className="mt-4" onClick={() => setDialogOpen(true)}>
-                <Plus className="h-4 w-4 mr-2" />
-                Criar primeira campanha
-              </Button>
-            </Card>
+              <Card>
+                <CardContent className="p-4 flex items-center justify-between gap-3 flex-wrap">
+                  <div className="relative flex-1 min-w-[240px] max-w-md">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Buscar campanha..."
+                      value={busca}
+                      onChange={(e) => setBusca(e.target.value)}
+                      className="pl-9"
+                    />
+                  </div>
+                  <Button onClick={() => setDialogOpen(true)}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Nova Campanha
+                  </Button>
+                </CardContent>
+              </Card>
+
+              {isLoading ? (
+                <Card className="p-8 text-center text-muted-foreground">
+                  Carregando campanhas...
+                </Card>
+              ) : campanhas.length === 0 ? (
+                <Card className="p-12 text-center">
+                  <Rocket className="h-12 w-12 text-muted-foreground/30 mx-auto mb-3" />
+                  <p className="text-muted-foreground">
+                    Nenhuma campanha de prospecção criada.
+                  </p>
+                  <Button className="mt-4" onClick={() => setDialogOpen(true)}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Criar primeira campanha
+                  </Button>
+                </Card>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {campanhas.map((c) => (
+                    <CampanhaCard
+                      key={c.id}
+                      campanha={c}
+                      onClick={() => setSelecionada(c.id)}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {campanhas.map((c) => (
-                <CampanhaCard
-                  key={c.id}
-                  campanha={c}
-                  onClick={() => setSelecionada(c.id)}
-                />
-              ))}
-            </div>
+            <AcompanhamentoView />
           )}
 
         </div>
@@ -329,6 +376,30 @@ export default function CampanhasProspeccao() {
         />
       </AppLayout>
     </CaptacaoProtectedRoute>
+  );
+}
+
+function ToggleTab({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
+        active
+          ? "text-primary border-primary"
+          : "text-muted-foreground border-transparent hover:text-foreground hover:border-muted"
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 
