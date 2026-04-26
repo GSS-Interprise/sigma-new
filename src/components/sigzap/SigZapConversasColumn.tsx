@@ -412,6 +412,21 @@ export function SigZapConversasColumn({
     );
   }) || [];
 
+  // Origem das conversas (manual / massa / trafego pago / inbound)
+  const conversaIdsParaOrigem = useMemo(
+    () => (filteredConversas || []).map((c: any) => c.id),
+    [filteredConversas]
+  );
+  const { data: origemMap } = useSigzapConversationOrigem(conversaIdsParaOrigem);
+
+  const filteredConversasFinal = useMemo(() => {
+    if (origemFiltro === "all") return filteredConversas;
+    return filteredConversas.filter((c: any) => {
+      const o = origemMap?.[c.id]?.origem || "inbound";
+      return o === origemFiltro;
+    });
+  }, [filteredConversas, origemFiltro, origemMap]);
+
   // Single unified list - no more split between Livres/Atribuídas
 
   const toHslWithAlpha = (color: string, alpha: number) => {
