@@ -574,6 +574,10 @@ export function SigZapConversasColumn({
                   Não é o médico
                 </Badge>
               )}
+              <SigZapOrigemBadge
+                info={origemMap?.[conversa.id]}
+                selected={isSelected}
+              />
             </div>
           </div>
         </div>
