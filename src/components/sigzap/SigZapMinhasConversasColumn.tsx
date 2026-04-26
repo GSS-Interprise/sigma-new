@@ -25,6 +25,8 @@ import { toast } from "sonner";
 import { normalizeToDigitsOnly, normalizeToE164 } from "@/lib/phoneUtils";
 import { sigzapNormalizePhoneKey } from "@/lib/sigzapPhoneKey";
 import { SigZapConversaContextMenu } from "./SigZapConversaContextMenu";
+import { SigZapOrigemBadge } from "./SigZapOrigemBadge";
+import { useSigzapConversationOrigem, type ConversaOrigem } from "@/hooks/useSigzapConversationOrigem";
 
 const tagColorMap: Record<string, { bg: string; text: string }> = {
   red: { bg: 'bg-red-600', text: 'text-white' },
@@ -66,6 +68,8 @@ export function SigZapMinhasConversasColumn({
 
   // Filtro: todos | nao_lido | tag:<nome>
   const [filtro, setFiltro] = useState<string>("todos");
+  // Filtro de origem: all | manual | massa | trafego_pago | inbound
+  const [origemFiltro, setOrigemFiltro] = useState<"all" | ConversaOrigem>("all");
 
   // Tags disponíveis (mesmas do Kanban)
   const { data: tagsConfig } = useQuery({
@@ -187,19 +191,34 @@ export function SigZapMinhasConversasColumn({
   // Conversas filtradas
   const conversasFiltradas = useMemo(() => {
     if (!minhasConversas) return [];
-    if (filtro === "todos") return minhasConversas;
+    let lista = minhasConversas;
     if (filtro === "nao_lido") {
-      return minhasConversas.filter((c: any) => (c.unread_count || 0) > 0);
-    }
-    if (filtro.startsWith("tag:")) {
+      lista = lista.filter((c: any) => (c.unread_count || 0) > 0);
+    } else if (filtro.startsWith("tag:")) {
       const tagNome = filtro.slice(4);
-      return minhasConversas.filter((c: any) => {
+      lista = lista.filter((c: any) => {
         const tags = (c.lead as any)?.tags;
         return Array.isArray(tags) && tags.includes(tagNome);
       });
     }
-    return minhasConversas;
+    return lista;
   }, [minhasConversas, filtro]);
+
+  // Origem das conversas (manual / massa / trafego pago / inbound)
+  const conversaIds = useMemo(
+    () => (minhasConversas || []).map((c: any) => c.id),
+    [minhasConversas]
+  );
+  const { data: origemMap } = useSigzapConversationOrigem(conversaIds);
+
+  // Aplica filtro de origem por cima do filtro de tag/não-lido
+  const conversasFinais = useMemo(() => {
+    if (origemFiltro === "all") return conversasFiltradas;
+    return conversasFiltradas.filter((c: any) => {
+      const o = origemMap?.[c.id]?.origem || "inbound";
+      return o === origemFiltro;
+    });
+  }, [conversasFiltradas, origemFiltro, origemMap]);
 
   // Fetch leads by phone numbers (phone_e164 + telefones_adicionais)
   const { data: leadsMap } = useQuery({
