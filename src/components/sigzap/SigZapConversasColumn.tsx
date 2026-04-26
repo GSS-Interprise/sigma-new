@@ -18,6 +18,8 @@ import { normalizeToE164 } from "@/lib/phoneUtils";
 import { sigzapNormalizePhoneKey } from "@/lib/sigzapPhoneKey";
 import { SigZapInstanceMultiSelect } from "./SigZapInstanceMultiSelect";
 import { SigZapConversaContextMenu } from "./SigZapConversaContextMenu";
+import { SigZapOrigemBadge } from "./SigZapOrigemBadge";
+import { useSigzapConversationOrigem, type ConversaOrigem } from "@/hooks/useSigzapConversationOrigem";
 
 interface SigZapConversasColumnProps {
   selectedConversaId: string | null;
@@ -40,6 +42,7 @@ export function SigZapConversasColumn({
 }: SigZapConversasColumnProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [filtroAtivo, setFiltroAtivo] = useState<"todas" | "nao_lidas">("todas");
+  const [origemFiltro, setOrigemFiltro] = useState<"all" | ConversaOrigem>("all");
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const attemptedPhotoSyncContactIdsRef = useRef<Set<string>>(new Set());
