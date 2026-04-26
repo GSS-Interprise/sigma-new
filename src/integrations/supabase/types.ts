@@ -1458,6 +1458,13 @@ export type Database = {
             foreignKeyName: "campanha_lead_touches_campanha_lead_id_fkey"
             columns: ["campanha_lead_id"]
             isOneToOne: false
+            referencedRelation: "vw_acompanhamento_kanban"
+            referencedColumns: ["campanha_lead_id"]
+          },
+          {
+            foreignKeyName: "campanha_lead_touches_campanha_lead_id_fkey"
+            columns: ["campanha_lead_id"]
+            isOneToOne: false
             referencedRelation: "vw_leads_quentes_esperando"
             referencedColumns: ["campanha_lead_id"]
           },
@@ -1494,6 +1501,8 @@ export type Database = {
       campanha_leads: {
         Row: {
           aguarda_resposta_humana: boolean
+          assumido_em: string | null
+          assumido_por: string | null
           campanha_id: string
           canal_atual: string | null
           chip_usado_id: string | null
@@ -1503,22 +1512,28 @@ export type Database = {
           data_status: string | null
           data_ultimo_contato: string | null
           erro_envio: string | null
+          etapa_acompanhamento: string | null
           historico_conversa: Json | null
           humano_assumiu: boolean | null
           id: string
           lead_id: string
           mensagem_enviada: string | null
           metadados: Json | null
+          motivo_perdido: string | null
           proximo_passo_id: string | null
           proximo_touch_em: string | null
+          resultado_final: string | null
           status: Database["public"]["Enums"]["status_lead_campanha"]
           tentativas: number | null
           touches_executados: number
           updated_at: string | null
+          validacoes: Json | null
           variation_indices: number[] | null
         }
         Insert: {
           aguarda_resposta_humana?: boolean
+          assumido_em?: string | null
+          assumido_por?: string | null
           campanha_id: string
           canal_atual?: string | null
           chip_usado_id?: string | null
@@ -1528,22 +1543,28 @@ export type Database = {
           data_status?: string | null
           data_ultimo_contato?: string | null
           erro_envio?: string | null
+          etapa_acompanhamento?: string | null
           historico_conversa?: Json | null
           humano_assumiu?: boolean | null
           id?: string
           lead_id: string
           mensagem_enviada?: string | null
           metadados?: Json | null
+          motivo_perdido?: string | null
           proximo_passo_id?: string | null
           proximo_touch_em?: string | null
+          resultado_final?: string | null
           status?: Database["public"]["Enums"]["status_lead_campanha"]
           tentativas?: number | null
           touches_executados?: number
           updated_at?: string | null
+          validacoes?: Json | null
           variation_indices?: number[] | null
         }
         Update: {
           aguarda_resposta_humana?: boolean
+          assumido_em?: string | null
+          assumido_por?: string | null
           campanha_id?: string
           canal_atual?: string | null
           chip_usado_id?: string | null
@@ -1553,18 +1574,22 @@ export type Database = {
           data_status?: string | null
           data_ultimo_contato?: string | null
           erro_envio?: string | null
+          etapa_acompanhamento?: string | null
           historico_conversa?: Json | null
           humano_assumiu?: boolean | null
           id?: string
           lead_id?: string
           mensagem_enviada?: string | null
           metadados?: Json | null
+          motivo_perdido?: string | null
           proximo_passo_id?: string | null
           proximo_touch_em?: string | null
+          resultado_final?: string | null
           status?: Database["public"]["Enums"]["status_lead_campanha"]
           tentativas?: number | null
           touches_executados?: number
           updated_at?: string | null
+          validacoes?: Json | null
           variation_indices?: number[] | null
         }
         Relationships: [
@@ -1776,6 +1801,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "campanha_leads"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campanha_perguntas_pendentes_campanha_lead_id_fkey"
+            columns: ["campanha_lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_acompanhamento_kanban"
+            referencedColumns: ["campanha_lead_id"]
           },
           {
             foreignKeyName: "campanha_perguntas_pendentes_campanha_lead_id_fkey"
@@ -1995,6 +2027,78 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "proposta"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      campanha_qualidade_metricas: {
+        Row: {
+          campanha_id: string
+          computed_at: string | null
+          data: string
+          disparos_enviados: number | null
+          ia_pausou_humano: number | null
+          id: string
+          leads_aprovado: number | null
+          leads_em_conversa: number | null
+          leads_perdido: number | null
+          leads_quente: number | null
+          msgs_ia_total: number | null
+          msgs_lead_total: number | null
+          qualidade_perceptiva_nota: number | null
+          qualidade_perceptiva_obs: string | null
+          respostas_recebidas: number | null
+          tempo_medio_ate_quente_min: number | null
+        }
+        Insert: {
+          campanha_id: string
+          computed_at?: string | null
+          data: string
+          disparos_enviados?: number | null
+          ia_pausou_humano?: number | null
+          id?: string
+          leads_aprovado?: number | null
+          leads_em_conversa?: number | null
+          leads_perdido?: number | null
+          leads_quente?: number | null
+          msgs_ia_total?: number | null
+          msgs_lead_total?: number | null
+          qualidade_perceptiva_nota?: number | null
+          qualidade_perceptiva_obs?: string | null
+          respostas_recebidas?: number | null
+          tempo_medio_ate_quente_min?: number | null
+        }
+        Update: {
+          campanha_id?: string
+          computed_at?: string | null
+          data?: string
+          disparos_enviados?: number | null
+          ia_pausou_humano?: number | null
+          id?: string
+          leads_aprovado?: number | null
+          leads_em_conversa?: number | null
+          leads_perdido?: number | null
+          leads_quente?: number | null
+          msgs_ia_total?: number | null
+          msgs_lead_total?: number | null
+          qualidade_perceptiva_nota?: number | null
+          qualidade_perceptiva_obs?: string | null
+          respostas_recebidas?: number | null
+          tempo_medio_ate_quente_min?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campanha_qualidade_metricas_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "campanhas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campanha_qualidade_metricas_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "vw_campanha_metricas"
+            referencedColumns: ["campanha_id"]
           },
         ]
       }
@@ -12134,6 +12238,81 @@ export type Database = {
       }
     }
     Views: {
+      vw_acompanhamento_kanban: {
+        Row: {
+          assumido_em: string | null
+          assumido_por: string | null
+          assumido_por_email: string | null
+          assumido_por_nome: string | null
+          campanha_id: string | null
+          campanha_lead_id: string | null
+          campanha_nome: string | null
+          data_primeiro_contato: string | null
+          data_status: string | null
+          data_ultimo_contato: string | null
+          etapa_acompanhamento: string | null
+          handoff_nome: string | null
+          humano_assumiu: boolean | null
+          lead_cidade: string | null
+          lead_classificacao: string | null
+          lead_especialidade: string | null
+          lead_id: string | null
+          lead_nome: string | null
+          lead_opt_out: boolean | null
+          lead_phone: string | null
+          lead_uf: string | null
+          motivo_perdido: string | null
+          msgs_total: number | null
+          perfil_confianca: number | null
+          perfil_modalidade: string[] | null
+          perfil_resumo: string | null
+          perfil_valor_min: number | null
+          resultado_final: string | null
+          servico: string | null
+          servico_cidade: string | null
+          status: Database["public"]["Enums"]["status_lead_campanha"] | null
+          updated_at: string | null
+          validacoes: Json | null
+          validacoes_ok: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campanha_leads_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "campanhas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campanha_leads_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "vw_campanha_metricas"
+            referencedColumns: ["campanha_id"]
+          },
+          {
+            foreignKeyName: "campanha_leads_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campanha_leads_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_leads_duplicados"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campanha_leads_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_leads_quentes_esperando"
+            referencedColumns: ["lead_id"]
+          },
+        ]
+      }
       vw_campanha_metricas: {
         Row: {
           campanha_criada_em: string | null
@@ -12347,6 +12526,7 @@ export type Database = {
       }
     }
     Functions: {
+      _prospeccao_validacoes_ok: { Args: { v: Json }; Returns: number }
       atualizar_status_lead_campanha: {
         Args: {
           p_campanha_id: string
@@ -12543,7 +12723,33 @@ export type Database = {
       norm_nome: { Args: { p_nome: string }; Returns: string }
       norm_phone: { Args: { p: string }; Returns: string }
       pode_encerrar_campanha: { Args: { _user_id: string }; Returns: boolean }
+      popular_qualidade_metricas: { Args: { p_data?: string }; Returns: Json }
       processar_disparos_agendados: { Args: never; Returns: undefined }
+      prospeccao_aprovar: {
+        Args: { p_campanha_lead_id: string }
+        Returns: Json
+      }
+      prospeccao_assumir: {
+        Args: { p_campanha_lead_id: string; p_force?: boolean }
+        Returns: Json
+      }
+      prospeccao_marcar_perdido: {
+        Args: { p_campanha_lead_id: string; p_motivo: string }
+        Returns: Json
+      }
+      prospeccao_mover_etapa: {
+        Args: { p_campanha_lead_id: string; p_etapa: string }
+        Returns: Json
+      }
+      prospeccao_validar: {
+        Args: {
+          p_campanha_lead_id: string
+          p_item: string
+          p_obs?: string
+          p_ok: boolean
+        }
+        Returns: Json
+      }
       release_licitacao_lock: {
         Args: { p_licitacao_id: string }
         Returns: undefined
