@@ -25,6 +25,8 @@ import { toast } from "sonner";
 import { normalizeToDigitsOnly, normalizeToE164 } from "@/lib/phoneUtils";
 import { sigzapNormalizePhoneKey } from "@/lib/sigzapPhoneKey";
 import { SigZapConversaContextMenu } from "./SigZapConversaContextMenu";
+import { SigZapOrigemBadge } from "./SigZapOrigemBadge";
+import { useSigzapConversationOrigem, type ConversaOrigem } from "@/hooks/useSigzapConversationOrigem";
 
 const tagColorMap: Record<string, { bg: string; text: string }> = {
   red: { bg: 'bg-red-600', text: 'text-white' },
@@ -66,6 +68,8 @@ export function SigZapMinhasConversasColumn({
 
   // Filtro: todos | nao_lido | tag:<nome>
   const [filtro, setFiltro] = useState<string>("todos");
+  // Filtro de origem: all | manual | massa | trafego_pago | inbound
+  const [origemFiltro, setOrigemFiltro] = useState<"all" | ConversaOrigem>("all");
 
   // Tags disponíveis (mesmas do Kanban)
   const { data: tagsConfig } = useQuery({
@@ -187,19 +191,34 @@ export function SigZapMinhasConversasColumn({
   // Conversas filtradas
   const conversasFiltradas = useMemo(() => {
     if (!minhasConversas) return [];
-    if (filtro === "todos") return minhasConversas;
+    let lista = minhasConversas;
     if (filtro === "nao_lido") {
-      return minhasConversas.filter((c: any) => (c.unread_count || 0) > 0);
-    }
-    if (filtro.startsWith("tag:")) {
+      lista = lista.filter((c: any) => (c.unread_count || 0) > 0);
+    } else if (filtro.startsWith("tag:")) {
       const tagNome = filtro.slice(4);
-      return minhasConversas.filter((c: any) => {
+      lista = lista.filter((c: any) => {
         const tags = (c.lead as any)?.tags;
         return Array.isArray(tags) && tags.includes(tagNome);
       });
     }
-    return minhasConversas;
+    return lista;
   }, [minhasConversas, filtro]);
+
+  // Origem das conversas (manual / massa / trafego pago / inbound)
+  const conversaIds = useMemo(
+    () => (minhasConversas || []).map((c: any) => c.id),
+    [minhasConversas]
+  );
+  const { data: origemMap } = useSigzapConversationOrigem(conversaIds);
+
+  // Aplica filtro de origem por cima do filtro de tag/não-lido
+  const conversasFinais = useMemo(() => {
+    if (origemFiltro === "all") return conversasFiltradas;
+    return conversasFiltradas.filter((c: any) => {
+      const o = origemMap?.[c.id]?.origem || "inbound";
+      return o === origemFiltro;
+    });
+  }, [conversasFiltradas, origemFiltro, origemMap]);
 
   // Fetch leads by phone numbers (phone_e164 + telefones_adicionais)
   const { data: leadsMap } = useQuery({
@@ -681,9 +700,9 @@ export function SigZapMinhasConversasColumn({
       {/* Count + refresh */}
       <div className="flex items-center justify-between px-3 py-2 border-b text-xs text-muted-foreground">
         <span>
-          {conversasFiltradas.length} conversa{conversasFiltradas.length !== 1 ? 's' : ''}
+          {conversasFinais.length} conversa{conversasFinais.length !== 1 ? 's' : ''}
           {(() => {
-            const naoLidos = conversasFiltradas.reduce((acc, c: any) => acc + (c.unread_count || 0), 0);
+            const naoLidos = conversasFinais.reduce((acc, c: any) => acc + (c.unread_count || 0), 0);
             return naoLidos > 0 ? ` · ${naoLidos} não lida${naoLidos !== 1 ? 's' : ''}` : '';
           })()}
         </span>
@@ -750,6 +769,27 @@ export function SigZapMinhasConversasColumn({
         )}
       </div>
 
+      {/* Filtro de origem */}
+      <div className="flex items-center gap-1 px-2 py-1.5 border-b bg-muted/5 overflow-x-auto">
+        {([
+          { v: "all", label: "Todas origens" },
+          { v: "manual", label: "Manual" },
+          { v: "massa", label: "Campanha" },
+          { v: "trafego_pago", label: "Anúncio" },
+          { v: "inbound", label: "Inbound" },
+        ] as { v: "all" | ConversaOrigem; label: string }[]).map((opt) => (
+          <Button
+            key={opt.v}
+            variant={origemFiltro === opt.v ? "secondary" : "ghost"}
+            size="sm"
+            className="h-6 px-2 text-[10px] flex-shrink-0"
+            onClick={() => setOrigemFiltro(opt.v)}
+          >
+            {opt.label}
+          </Button>
+        ))}
+      </div>
+
       {/* Conversations List */}
       <ScrollArea className="flex-1 min-h-0">
         <div className="p-2 space-y-2">
@@ -769,13 +809,13 @@ export function SigZapMinhasConversasColumn({
               <p>Nenhuma conversa atribuída</p>
               <p className="text-xs mt-1">Clique em uma conversa livre para assumir</p>
             </div>
-          ) : conversasFiltradas.length === 0 ? (
+          ) : conversasFinais.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground text-sm">
               <Inbox className="h-10 w-10 mx-auto mb-2 opacity-20" />
               <p>Nenhuma conversa nesse filtro</p>
             </div>
           ) : (
-            conversasFiltradas.map((conversa) => {
+            conversasFinais.map((conversa) => {
               const contact = conversa.contact as any;
               const instance = conversa.instance as any;
               const lastMessageAt = conversa.last_message_at;
@@ -879,6 +919,10 @@ key={conversa.id}
                           >
                             Atendendo
                           </Badge>
+                          <SigZapOrigemBadge
+                            info={origemMap?.[conversa.id]}
+                            selected={selectedConversaId === conversa.id}
+                          />
                           {msgCount > 0 && (
                             <Badge className={cn("text-[10px] h-5 gap-1", selectedConversaId === conversa.id ? "bg-white/20 text-white" : "bg-emerald-700 text-white border-emerald-700")}>
                               <MessageCircle className="h-3 w-3" />

@@ -18,6 +18,8 @@ import { normalizeToE164 } from "@/lib/phoneUtils";
 import { sigzapNormalizePhoneKey } from "@/lib/sigzapPhoneKey";
 import { SigZapInstanceMultiSelect } from "./SigZapInstanceMultiSelect";
 import { SigZapConversaContextMenu } from "./SigZapConversaContextMenu";
+import { SigZapOrigemBadge } from "./SigZapOrigemBadge";
+import { useSigzapConversationOrigem, type ConversaOrigem } from "@/hooks/useSigzapConversationOrigem";
 
 interface SigZapConversasColumnProps {
   selectedConversaId: string | null;
@@ -40,6 +42,7 @@ export function SigZapConversasColumn({
 }: SigZapConversasColumnProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [filtroAtivo, setFiltroAtivo] = useState<"todas" | "nao_lidas">("todas");
+  const [origemFiltro, setOrigemFiltro] = useState<"all" | ConversaOrigem>("all");
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const attemptedPhotoSyncContactIdsRef = useRef<Set<string>>(new Set());
@@ -409,6 +412,21 @@ export function SigZapConversasColumn({
     );
   }) || [];
 
+  // Origem das conversas (manual / massa / trafego pago / inbound)
+  const conversaIdsParaOrigem = useMemo(
+    () => (filteredConversas || []).map((c: any) => c.id),
+    [filteredConversas]
+  );
+  const { data: origemMap } = useSigzapConversationOrigem(conversaIdsParaOrigem);
+
+  const filteredConversasFinal = useMemo(() => {
+    if (origemFiltro === "all") return filteredConversas;
+    return filteredConversas.filter((c: any) => {
+      const o = origemMap?.[c.id]?.origem || "inbound";
+      return o === origemFiltro;
+    });
+  }, [filteredConversas, origemFiltro, origemMap]);
+
   // Single unified list - no more split between Livres/Atribuídas
 
   const toHslWithAlpha = (color: string, alpha: number) => {
@@ -556,6 +574,10 @@ export function SigZapConversasColumn({
                   Não é o médico
                 </Badge>
               )}
+              <SigZapOrigemBadge
+                info={origemMap?.[conversa.id]}
+                selected={isSelected}
+              />
             </div>
           </div>
         </div>
@@ -641,8 +663,32 @@ export function SigZapConversasColumn({
           Não lidas
         </button>
         <span className="ml-auto text-xs text-muted-foreground">
-          {filteredConversas.length}
+          {filteredConversasFinal.length}
         </span>
+      </div>
+
+      {/* Filtro por origem */}
+      <div className="flex items-center gap-1 px-3 py-1.5 border-b bg-muted/5 overflow-x-auto">
+        {([
+          { v: "all", label: "Todas origens" },
+          { v: "manual", label: "Manual" },
+          { v: "massa", label: "Campanha" },
+          { v: "trafego_pago", label: "Anúncio" },
+          { v: "inbound", label: "Inbound" },
+        ] as { v: "all" | ConversaOrigem; label: string }[]).map((opt) => (
+          <button
+            key={opt.v}
+            onClick={() => setOrigemFiltro(opt.v)}
+            className={cn(
+              "text-[10px] font-medium px-2 py-0.5 rounded-full transition-colors flex-shrink-0",
+              origemFiltro === opt.v
+                ? "bg-primary/15 text-primary"
+                : "bg-muted/50 text-muted-foreground hover:bg-muted"
+            )}
+          >
+            {opt.label}
+          </button>
+        ))}
       </div>
 
       {/* Conversations List */}
@@ -658,13 +704,13 @@ export function SigZapConversasColumn({
             [...Array(5)].map((_, i) => (
               <Skeleton key={i} className="h-20 w-full" />
             ))
-          ) : filteredConversas.length === 0 ? (
+          ) : filteredConversasFinal.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground text-sm">
               Nenhuma conversa encontrada
             </div>
           ) : (
             <>
-              {filteredConversas.map((conversa) => {
+              {filteredConversasFinal.map((conversa) => {
                 const corCaptador = conversa.assigned_user_id 
                   ? captadorCores?.[conversa.assigned_user_id] || null 
                   : null;

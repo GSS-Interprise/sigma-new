@@ -4323,6 +4323,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "disparo_manual_envios_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sigzap_conversation_origem"
+            referencedColumns: ["conversation_id"]
+          },
+          {
             foreignKeyName: "disparo_manual_envios_instance_id_fkey"
             columns: ["instance_id"]
             isOneToOne: false
@@ -11424,6 +11431,13 @@ export type Database = {
             referencedRelation: "sigzap_conversations"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "sigzap_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sigzap_conversation_origem"
+            referencedColumns: ["conversation_id"]
+          },
         ]
       }
       supabase_config: {
@@ -12481,6 +12495,16 @@ export type Database = {
           raias_abertas: number | null
           raias_movidas: number | null
           user_id: string | null
+        }
+        Relationships: []
+      }
+      vw_sigzap_conversation_origem: {
+        Row: {
+          campanha_nome: string | null
+          campanha_proposta_id: string | null
+          conversation_id: string | null
+          origem: string | null
+          ultimo_envio_at: string | null
         }
         Relationships: []
       }
