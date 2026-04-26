@@ -919,6 +919,10 @@ key={conversa.id}
                           >
                             Atendendo
                           </Badge>
+                          <SigZapOrigemBadge
+                            info={origemMap?.[conversa.id]}
+                            selected={selectedConversaId === conversa.id}
+                          />
                           {msgCount > 0 && (
                             <Badge className={cn("text-[10px] h-5 gap-1", selectedConversaId === conversa.id ? "bg-white/20 text-white" : "bg-emerald-700 text-white border-emerald-700")}>
                               <MessageCircle className="h-3 w-3" />
