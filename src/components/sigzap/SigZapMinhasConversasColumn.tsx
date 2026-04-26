@@ -700,9 +700,9 @@ export function SigZapMinhasConversasColumn({
       {/* Count + refresh */}
       <div className="flex items-center justify-between px-3 py-2 border-b text-xs text-muted-foreground">
         <span>
-          {conversasFiltradas.length} conversa{conversasFiltradas.length !== 1 ? 's' : ''}
+          {conversasFinais.length} conversa{conversasFinais.length !== 1 ? 's' : ''}
           {(() => {
-            const naoLidos = conversasFiltradas.reduce((acc, c: any) => acc + (c.unread_count || 0), 0);
+            const naoLidos = conversasFinais.reduce((acc, c: any) => acc + (c.unread_count || 0), 0);
             return naoLidos > 0 ? ` · ${naoLidos} não lida${naoLidos !== 1 ? 's' : ''}` : '';
           })()}
         </span>
@@ -767,6 +767,27 @@ export function SigZapMinhasConversasColumn({
             <X className="h-3 w-3" />
           </Button>
         )}
+      </div>
+
+      {/* Filtro de origem */}
+      <div className="flex items-center gap-1 px-2 py-1.5 border-b bg-muted/5 overflow-x-auto">
+        {([
+          { v: "all", label: "Todas origens" },
+          { v: "manual", label: "Manual" },
+          { v: "massa", label: "Campanha" },
+          { v: "trafego_pago", label: "Anúncio" },
+          { v: "inbound", label: "Inbound" },
+        ] as { v: "all" | ConversaOrigem; label: string }[]).map((opt) => (
+          <Button
+            key={opt.v}
+            variant={origemFiltro === opt.v ? "secondary" : "ghost"}
+            size="sm"
+            className="h-6 px-2 text-[10px] flex-shrink-0"
+            onClick={() => setOrigemFiltro(opt.v)}
+          >
+            {opt.label}
+          </Button>
+        ))}
       </div>
 
       {/* Conversations List */}
