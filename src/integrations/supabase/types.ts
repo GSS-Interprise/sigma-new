@@ -12551,6 +12551,14 @@ export type Database = {
     }
     Functions: {
       _prospeccao_validacoes_ok: { Args: { v: Json }; Returns: number }
+      abrir_canal_whatsapp_se_necessario: {
+        Args: {
+          _campanha_proposta_id: string
+          _entrou_em?: string
+          _lead_id: string
+        }
+        Returns: undefined
+      }
       atualizar_status_lead_campanha: {
         Args: {
           p_campanha_id: string
