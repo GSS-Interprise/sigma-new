@@ -193,11 +193,11 @@ export function usePendenciasSetor(setorId: string | null | undefined, isAdmin =
     queryKey: ["demandas", "pendencias-setor", setorId, isAdmin],
     enabled: !!setorId || isAdmin,
     queryFn: async () => {
-      let q = supabase.from("vw_worklist_pendencias_setor" as any).select("*");
+      let q: any = supabase.from("vw_worklist_pendencias_setor" as any).select("*");
       if (!isAdmin && setorId) q = q.eq("setor_id", setorId);
       const { data, error } = await q.order("urgencia", { ascending: false }).limit(200);
       if (error) throw error;
-      return (data || []) as Array<{
+      return (data || []) as unknown as Array<{
         id: string;
         setor_id: string;
         origem: string;
