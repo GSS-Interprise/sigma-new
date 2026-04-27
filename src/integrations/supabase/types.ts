@@ -2131,6 +2131,7 @@ export type Database = {
           disparos_falhas: number | null
           empresas_vinculadas: string[] | null
           especialidade_id: string | null
+          especialidade_ids: string[] | null
           horario_inteligente: boolean | null
           id: string
           limite_diario_campanha: number | null
@@ -2195,6 +2196,7 @@ export type Database = {
           disparos_falhas?: number | null
           empresas_vinculadas?: string[] | null
           especialidade_id?: string | null
+          especialidade_ids?: string[] | null
           horario_inteligente?: boolean | null
           id?: string
           limite_diario_campanha?: number | null
@@ -2259,6 +2261,7 @@ export type Database = {
           disparos_falhas?: number | null
           empresas_vinculadas?: string[] | null
           especialidade_id?: string | null
+          especialidade_ids?: string[] | null
           horario_inteligente?: boolean | null
           id?: string
           limite_diario_campanha?: number | null
@@ -2337,6 +2340,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "especialidades"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campanhas_especialidade_id_fkey"
+            columns: ["especialidade_id"]
+            isOneToOne: false
+            referencedRelation: "vw_especialidade_pool_count"
+            referencedColumns: ["especialidade_id"]
           },
         ]
       }
@@ -6672,6 +6682,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "lead_especialidades_especialidade_id_fkey"
+            columns: ["especialidade_id"]
+            isOneToOne: false
+            referencedRelation: "vw_especialidade_pool_count"
+            referencedColumns: ["especialidade_id"]
+          },
+          {
             foreignKeyName: "lead_especialidades_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
@@ -7266,6 +7283,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "especialidades"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_especialidade_id_fkey"
+            columns: ["especialidade_id"]
+            isOneToOne: false
+            referencedRelation: "vw_especialidade_pool_count"
+            referencedColumns: ["especialidade_id"]
           },
           {
             foreignKeyName: "leads_licitacao_origem_id_fkey"
@@ -12360,6 +12384,15 @@ export type Database = {
           instance_name: string | null
           pode_disparar: boolean | null
           ultimo_disparo: string | null
+        }
+        Relationships: []
+      }
+      vw_especialidade_pool_count: {
+        Row: {
+          especialidade_area: string | null
+          especialidade_id: string | null
+          especialidade_nome: string | null
+          total_leads: number | null
         }
         Relationships: []
       }
