@@ -236,14 +236,15 @@ function ListaDetalhesDialog({
   const { data: activeJob } = useActiveImportJobForLista(open ? lista.id : null);
   const queryClient = useQueryClient();
 
-  // Quando há job ativo, refaz a query da lista a cada poucos segundos
+  // Enquanto há job ativo, refaz a query da lista a cada poucos segundos
   // para acompanhar o crescimento em tempo real.
-  if (activeJob && open) {
-    // dispara invalidate periodicamente sem hook extra
-    setTimeout(() => {
+  useEffect(() => {
+    if (!open || !activeJob) return;
+    const t = setInterval(() => {
       queryClient.invalidateQueries({ queryKey: ["disparo-lista-itens", lista.id] });
     }, 4000);
-  }
+    return () => clearInterval(t);
+  }, [open, activeJob?.id, lista.id, queryClient]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
