@@ -315,6 +315,8 @@ serve(async (req) => {
       const body = await req.json();
       jobId = body.job_id;
       chunkAtual = body.chunk_atual || 0;
+      const listaDestinoIdOverride = typeof body.lista_destino_id === "string" ? body.lista_destino_id : "";
+      const resetCounts = body.reset_counts === true;
 
       // Buscar dados do job
       const { data: job, error: jobError } = await supabase
@@ -335,7 +337,14 @@ serve(async (req) => {
       especialidadeParam = params.especialidade || "";
       especialidadesParam = Array.isArray(params.especialidades) ? params.especialidades : (especialidadeParam ? [especialidadeParam] : []);
       origemParam = params.origem || "Importação Excel";
-      listaDestinoId = params.lista_destino_id || "";
+      listaDestinoId = listaDestinoIdOverride || params.lista_destino_id || "";
+
+      if (resetCounts && chunkAtual === 0) {
+        await supabase
+          .from("lead_import_jobs")
+          .update({ inseridos: 0, atualizados: 0, ignorados: 0, erros: [], status: "processando", finished_at: null })
+          .eq("id", jobId);
+      }
     }
 
     if (!storagePath || !jobId) {
@@ -447,7 +456,15 @@ serve(async (req) => {
         .update({ 
           status: "erro", 
           erros: [error],
-          mapeamento_colunas: { ...columnMapping, _params: { especialidade: especialidadeParam, origem: origemParam } },
+          mapeamento_colunas: {
+            ...columnMapping,
+            _params: {
+              especialidade: especialidadeParam,
+              especialidades: especialidadesParam,
+              origem: origemParam,
+              lista_destino_id: listaDestinoId || null,
+            },
+          },
           finished_at: new Date().toISOString(),
         })
         .eq("id", jobId);
@@ -470,7 +487,15 @@ serve(async (req) => {
         .from("lead_import_jobs")
         .update({ 
           total_linhas: jsonData.length,
-          mapeamento_colunas: { ...columnMapping, _params: { especialidade: especialidadeParam, origem: origemParam } },
+          mapeamento_colunas: {
+            ...columnMapping,
+            _params: {
+              especialidade: especialidadeParam,
+              especialidades: especialidadesParam,
+              origem: origemParam,
+              lista_destino_id: listaDestinoId || null,
+            },
+          },
           total_chunks: totalChunks,
         })
         .eq("id", jobId);
@@ -649,34 +674,49 @@ serve(async (req) => {
     const leadsToUpsert = Array.from(leadsMap.values());
     const leadIdsImportados: string[] = [];
 
-    // Processar upserts em lotes
+    // Processar em lotes. A tabela leads não tem constraint única em phone_e164,
+    // então upsert(onConflict: "phone_e164") falha. Fazemos merge manual por telefone.
     for (let i = 0; i < leadsToUpsert.length; i += UPSERT_BATCH) {
       const batch = leadsToUpsert.slice(i, i + UPSERT_BATCH);
       const batchData = batch.map(b => b.data);
-      
-      // Usar upsert com onConflict para phone_e164
-      const { data: upsertResult, error: upsertError } = await supabase
+
+      const phones = batchData.map((d) => d.phone_e164).filter(Boolean);
+      const phoneVariants = Array.from(new Set(phones.flatMap((phone) => [phone, `+${phone}`])));
+      const { data: existentes, error: existingError } = await supabase
         .from("leads")
-        .upsert(batchData, { 
-          onConflict: "phone_e164",
-          ignoreDuplicates: false,
-        })
-        .select("id");
-      
-      if (upsertError) {
-        // Se deu erro no lote, tentar inserir um por um para identificar o problemático
-        for (const item of batch) {
-          const { data: singleData, error: singleError } = await supabase
+        .select("id, phone_e164")
+        .in("phone_e164", phoneVariants)
+        .order("created_at", { ascending: true });
+
+      if (existingError) throw existingError;
+
+      const leadByPhone = new Map<string, string>();
+      for (const row of existentes || []) {
+        const normalizedExistingPhone = String(row.phone_e164 || "").replace(/\D/g, "");
+        if (normalizedExistingPhone && !leadByPhone.has(normalizedExistingPhone)) {
+          leadByPhone.set(normalizedExistingPhone, row.id);
+        }
+      }
+
+      const insertRows: Record<string, any>[] = [];
+      const insertMeta: typeof batch = [];
+
+      for (const item of batch) {
+        const existingId = leadByPhone.get(item.data.phone_e164);
+        if (existingId) {
+          const { data: updated, error: updateError } = await supabase
             .from("leads")
-            .upsert([item.data], { onConflict: "phone_e164", ignoreDuplicates: false })
-            .select("id");
-          
-          if (singleError) {
+            .update(item.data)
+            .eq("id", existingId)
+            .select("id")
+            .single();
+
+          if (updateError) {
             results.skipped++;
             if (results.errors.length < 500) {
               results.errors.push({
                 linha: item.rowNum,
-                motivo: singleError.message,
+                motivo: updateError.message,
                 dados: {
                   nome: item.data.nome,
                   telefone: item.data.phone_e164,
@@ -685,16 +725,41 @@ serve(async (req) => {
               });
             }
           } else {
-            results.inserted++;
-            if (singleData?.[0]?.id) leadIdsImportados.push(singleData[0].id);
+            results.updated++;
+            if (updated?.id) leadIdsImportados.push(updated.id);
           }
         }
-      } else {
-        // Contabilizar como inseridos
-        results.inserted += upsertResult?.length || batchData.length;
-        if (upsertResult) {
-          for (const r of upsertResult) {
-            if (r?.id) leadIdsImportados.push(r.id);
+        else {
+          insertRows.push(item.data);
+          insertMeta.push(item);
+        }
+      }
+
+      if (insertRows.length > 0) {
+        const { data: insertedRows, error: insertError } = await supabase
+          .from("leads")
+          .insert(insertRows)
+          .select("id");
+
+        if (insertError) {
+          for (const item of insertMeta) {
+            results.skipped++;
+            if (results.errors.length < 500) {
+              results.errors.push({
+                linha: item.rowNum,
+                motivo: insertError.message,
+                dados: {
+                  nome: item.data.nome,
+                  telefone: item.data.phone_e164,
+                  email: item.data.email || ""
+                }
+              });
+            }
+          }
+        } else {
+          results.inserted += insertedRows?.length || insertRows.length;
+          for (const row of insertedRows || []) {
+            if (row?.id) leadIdsImportados.push(row.id);
           }
         }
       }
@@ -777,6 +842,7 @@ serve(async (req) => {
             body: JSON.stringify({
               job_id: jobId,
               chunk_atual: nextChunk,
+              lista_destino_id: listaDestinoId || undefined,
             }),
           });
           
