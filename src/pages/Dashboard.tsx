@@ -98,7 +98,7 @@ export default function Dashboard() {
           </div>
 
           <TabsContent value="home" className="flex-1 mt-0">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 h-[calc(100vh-10rem)] md:grid-rows-2">
+            <div className="grid grid-cols-1 md:grid-cols-[1.15fr_1.15fr_0.7fr] gap-3 h-[calc(100vh-10rem)] md:grid-rows-2">
               {/* Coluna 1 - Agenda (grande, esquerda, 2 linhas) */}
               <div className="md:row-span-2 min-h-0">
                 <ColunaAgenda />
