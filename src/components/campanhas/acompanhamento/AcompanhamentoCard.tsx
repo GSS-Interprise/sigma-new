@@ -4,6 +4,7 @@ import { Flame, MessageSquare, MapPin, Stethoscope, Clock } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { AcompanhamentoLead } from "@/hooks/useAcompanhamentoLeads";
+import { CardActionsMenu } from "@/components/demandas/CardActionsMenu";
 
 interface Props {
   lead: AcompanhamentoLead;
@@ -42,9 +43,16 @@ export function AcompanhamentoCard({ lead, onClick, onDragStart, onDragEnd }: Pr
             </p>
           )}
         </div>
-        {semDono && lead.etapa_acompanhamento === "quente" && (
-          <Flame className="h-4 w-4 text-red-500 shrink-0" />
-        )}
+        <div className="flex items-center gap-1 shrink-0">
+          {semDono && lead.etapa_acompanhamento === "quente" && (
+            <Flame className="h-4 w-4 text-red-500" />
+          )}
+          <CardActionsMenu
+            tipo="lead"
+            recursoId={lead.lead_id}
+            label={`${lead.lead_nome}${lead.lead_especialidade ? " — " + lead.lead_especialidade : ""}`}
+          />
+        </div>
       </div>
 
       {(lead.lead_cidade || lead.lead_uf) && (
