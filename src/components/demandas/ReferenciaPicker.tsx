@@ -96,18 +96,30 @@ export function ReferenciaPicker({
         }));
       }
       if (tipoAtivo === "sigzap") {
-        const { data } = await supabase
-          .from("sigzap_conversations" as any)
+        const { data: contatos } = await supabase
+          .from("sigzap_contacts")
           .select("id, contact_name, contact_phone")
           .or(
             `contact_name.ilike.%${search}%,contact_phone.ilike.%${search}%`,
           )
           .limit(10);
-        return (data || []).map((d: any) => ({
-          id: d.id,
-          label: d.contact_name || d.contact_phone || "Conversa",
-          sub: d.contact_phone,
-        }));
+        const contatoIds = (contatos || []).map((c: any) => c.id);
+        if (!contatoIds.length) return [];
+        const { data: convs } = await supabase
+          .from("sigzap_conversations")
+          .select("id, contact_id")
+          .in("contact_id", contatoIds);
+        const byContact = new Map(
+          (contatos || []).map((c: any) => [c.id, c]),
+        );
+        return (convs || []).map((d: any) => {
+          const c = byContact.get(d.contact_id);
+          return {
+            id: d.id,
+            label: c?.contact_name || c?.contact_phone || "Conversa",
+            sub: c?.contact_phone,
+          };
+        });
       }
       return [];
     },
