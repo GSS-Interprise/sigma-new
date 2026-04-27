@@ -18,6 +18,7 @@ import {
   useDisparoListas,
   useRemoveLeadFromLista,
   useActiveImportJobForLista,
+  useActiveImportJobsByLista,
   DISPARO_LISTA_PAGE_SIZE,
 } from "@/hooks/useDisparoListas";
 import { CubeSpinner } from "@/components/ui/cube-spinner";
@@ -31,6 +32,7 @@ export function ListasDisparoTab() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: listas = [], isLoading } = useDisparoListas();
+  const { data: activeJobsByLista = {} } = useActiveImportJobsByLista();
   const del = useDeleteDisparoLista();
   const [formOpen, setFormOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -110,8 +112,24 @@ export function ListasDisparoTab() {
                   onClick={() => handleAbrir(lista)}
                 >
                   <TableCell className="font-medium">
-                    {lista.nome}
-                    {lista.descricao && <p className="text-xs text-muted-foreground">{lista.descricao}</p>}
+                    <div className="flex items-center gap-3">
+                      {activeJobsByLista[lista.id] && (
+                        <CubeSpinner className="shrink-0" />
+                      )}
+                      <div className="min-w-0">
+                        <p className="truncate">{lista.nome}</p>
+                        {activeJobsByLista[lista.id] ? (
+                          <p className="text-xs text-primary">
+                            Importando… {activeJobsByLista[lista.id].chunk_atual ?? 0}/
+                            {activeJobsByLista[lista.id].total_chunks ?? "?"} blocos
+                          </p>
+                        ) : (
+                          lista.descricao && (
+                            <p className="text-xs text-muted-foreground truncate">{lista.descricao}</p>
+                          )
+                        )}
+                      </div>
+                    </div>
                   </TableCell>
                   <TableCell>{lista.created_by_nome || "—"}</TableCell>
                   <TableCell className="text-sm">
