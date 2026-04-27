@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { Plus, GripVertical, FileText, Building2, MapPin, Calendar, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { CardActionsMenu } from "@/components/demandas/CardActionsMenu";
 
 type OrigemTipo = "manual" | "licitacao_arrematada";
 type StatusBoard = "prospectar" | "analisando" | "em_andamento" | "completo" | "descarte";
@@ -155,6 +156,18 @@ export function CaptacaoKanbanBoard() {
   const renderCard = (card: CaptacaoCard) => {
     const overlay = card.overlay_json || {};
     const isFromLicitacao = card.origem_tipo === "licitacao_arrematada";
+    // Decide o vínculo: contrato real > licitação de origem > nada
+    const vinculoTipo: "contrato" | "licitacao" | null = card.contrato_id
+      ? "contrato"
+      : card.origem_licitacao_id
+      ? "licitacao"
+      : null;
+    const vinculoId =
+      vinculoTipo === "contrato"
+        ? card.contrato_id!
+        : vinculoTipo === "licitacao"
+        ? card.origem_licitacao_id!
+        : null;
 
     return (
       <Card
@@ -168,14 +181,23 @@ export function CaptacaoKanbanBoard() {
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-2">
               <p className="text-sm font-medium truncate">{card.titulo_card}</p>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 flex-shrink-0 text-muted-foreground hover:text-destructive"
-                onClick={() => deleteCard.mutate(card.id)}
-              >
-                <Trash2 className="h-3 w-3" />
-              </Button>
+              <div className="flex items-center gap-0.5 flex-shrink-0">
+                {vinculoTipo && vinculoId && (
+                  <CardActionsMenu
+                    tipo={vinculoTipo}
+                    recursoId={vinculoId}
+                    label={card.titulo_card}
+                  />
+                )}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                  onClick={() => deleteCard.mutate(card.id)}
+                >
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </div>
             </div>
             
             <div className="flex flex-wrap gap-1 mt-2">
