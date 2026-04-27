@@ -43,11 +43,19 @@ export default function Demandas() {
   return (
     <AppLayout headerActions={headerActions}>
       <div className="h-[calc(100vh-8rem)] p-3">
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 h-full">
-          <ColunaAgenda />
-          <ColunaEnviadas />
-          <ColunaParaMim />
-          <ColunaPendenciasSetor />
+        <div className="grid grid-cols-1 md:grid-cols-3 md:grid-rows-2 gap-3 h-full">
+          <div className="md:row-span-2 min-h-0">
+            <ColunaAgenda />
+          </div>
+          <div className="min-h-0">
+            <ColunaEnviadas />
+          </div>
+          <div className="md:row-span-2 min-h-0">
+            <ColunaPendenciasSetor />
+          </div>
+          <div className="min-h-0">
+            <ColunaParaMim />
+          </div>
         </div>
       </div>
       <NovaDemandaDialog open={novaOpen} onOpenChange={setNovaOpen} />
