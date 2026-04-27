@@ -98,11 +98,23 @@ export default function Dashboard() {
           </div>
 
           <TabsContent value="home" className="flex-1 mt-0">
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 h-[calc(100vh-10rem)]">
-              <ColunaAgenda />
-              <ColunaEnviadas />
-              <ColunaParaMim />
-              <ColunaPendenciasSetor />
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 h-[calc(100vh-10rem)] md:grid-rows-2">
+              {/* Coluna 1 - Agenda (grande, esquerda, 2 linhas) */}
+              <div className="md:row-span-2 min-h-0">
+                <ColunaAgenda />
+              </div>
+              {/* Coluna 2 - Enviadas (meio, topo) */}
+              <div className="min-h-0">
+                <ColunaEnviadas />
+              </div>
+              {/* Coluna 4 - Pendências (direita, 2 linhas) */}
+              <div className="md:row-span-2 min-h-0">
+                <ColunaPendenciasSetor />
+              </div>
+              {/* Coluna 3 - Para mim (meio, baixo) */}
+              <div className="min-h-0">
+                <ColunaParaMim />
+              </div>
             </div>
           </TabsContent>
 
