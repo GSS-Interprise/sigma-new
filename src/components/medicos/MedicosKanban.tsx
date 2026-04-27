@@ -389,7 +389,7 @@ export function MedicosKanban({ searchTerm = "" }: { searchTerm?: string }) {
                               <div className="flex items-center gap-1 shrink-0">
                                 {getUrgencyBadge(card, column.id)}
                                 <CardActionsMenu
-                                  tipo="lead"
+                                  tipo="livre"
                                   recursoId={card.id}
                                   label={card.nome || "Médico"}
                                 />
