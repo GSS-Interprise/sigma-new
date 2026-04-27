@@ -247,7 +247,6 @@ serve(async (req) => {
             origem: payload.source || payload.pipeline || "API Import",
             created_at: now,
             updated_at: now,
-            api_enrich_status: payload.api_enrich_status || "pendente",
           };
 
           if (effectiveCpfClean) newLeadData.cpf = cpfRaw;
@@ -258,7 +257,6 @@ serve(async (req) => {
           if (payload.rqe) newLeadData.rqe = payload.rqe;
           if (payload.email) newLeadData.email = payload.email;
           if (payload.endereco) newLeadData.endereco = payload.endereco;
-          if (payload.api_enrich_source) newLeadData.api_enrich_source = payload.api_enrich_source;
 
           const cep = payload.endereco ? extractCep(payload.endereco) : null;
           if (cep) newLeadData.cep = cep;
@@ -335,6 +333,26 @@ serve(async (req) => {
           }
 
           // Sucesso — lead criado
+          // Enriquecimento → tabela dedicada lead_enrichments
+          {
+            const enrichStatusToInsert = (payload.api_enrich_status as string) || "pendente";
+            const isEnriched = enrichStatusToInsert === "concluido" || enrichStatusToInsert === "alimentado";
+            const expiresAtOne = isEnriched
+              ? new Date(Date.now() + 48 * 30 * 24 * 60 * 60 * 1000).toISOString()
+              : null;
+            await supabase.from("lead_enrichments").upsert(
+              {
+                lead_id: created.id,
+                enrich_one: isEnriched,
+                last_attempt_at_one: now,
+                expires_at_one: expiresAtOne,
+                status: enrichStatusToInsert,
+                source: payload.api_enrich_source || null,
+                completed_at: isEnriched ? now : null,
+              },
+              { onConflict: "lead_id" }
+            ).then(r => { if (r.error) console.warn("[process-queue] lead_enrichments upsert:", r.error.message); });
+          }
           await supabase.from("import_leads_failed_queue").update({
             status: "resolved", resolved_at: now, lead_id: created.id,
           }).eq("id", item.id);
@@ -387,8 +405,6 @@ serve(async (req) => {
         if (payload.uf) updateData.uf = payload.uf.toUpperCase().substring(0, 2);
         if (payload.crm) updateData.crm = payload.crm;
         if (payload.rqe) updateData.rqe = payload.rqe;
-        if (payload.api_enrich_status) updateData.api_enrich_status = payload.api_enrich_status;
-        if (payload.api_enrich_source) updateData.api_enrich_source = payload.api_enrich_source;
         if (payload.email) updateData.email = payload.email;
         if (payload.source) updateData.origem = payload.source;
 
@@ -437,6 +453,27 @@ serve(async (req) => {
           }
         } else {
           // Sucesso
+          // Enriquecimento → lead_enrichments (se vier no payload)
+          if (payload.api_enrich_status || payload.api_enrich_source) {
+            const nowIso = new Date().toISOString();
+            const enrichStatusToInsert = (payload.api_enrich_status as string) || "pendente";
+            const isEnriched = enrichStatusToInsert === "concluido" || enrichStatusToInsert === "alimentado";
+            const expiresAtOne = isEnriched
+              ? new Date(Date.now() + 48 * 30 * 24 * 60 * 60 * 1000).toISOString()
+              : null;
+            await supabase.from("lead_enrichments").upsert(
+              {
+                lead_id: existingLead.id,
+                enrich_one: isEnriched,
+                last_attempt_at_one: nowIso,
+                expires_at_one: expiresAtOne,
+                status: enrichStatusToInsert,
+                source: payload.api_enrich_source || null,
+                completed_at: isEnriched ? nowIso : null,
+              },
+              { onConflict: "lead_id" }
+            ).then(r => { if (r.error) console.warn("[process-queue] lead_enrichments upsert:", r.error.message); });
+          }
           await supabase
             .from("import_leads_failed_queue")
             .update({
