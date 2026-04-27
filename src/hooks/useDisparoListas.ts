@@ -42,31 +42,30 @@ export function useDisparoListas() {
   });
 }
 
-export function useDisparoListaItens(listaId: string | null) {
+export const DISPARO_LISTA_PAGE_SIZE = 50;
+
+export function useDisparoListaItens(
+  listaId: string | null,
+  page: number = 1,
+  pageSize: number = DISPARO_LISTA_PAGE_SIZE,
+) {
   return useQuery({
-    queryKey: ["disparo-lista-itens", listaId],
+    queryKey: ["disparo-lista-itens", listaId, page, pageSize],
     queryFn: async () => {
-      if (!listaId) return [];
-      // Pagina manualmente para passar do limite default (1000) do PostgREST
-      const PAGE = 1000;
-      let from = 0;
-      const all: any[] = [];
-      while (true) {
-        const { data, error } = await supabase
-          .from("disparo_lista_itens")
-          .select(
-            "id, lead_id, created_at, leads:lead_id (id, nome, phone_e164, especialidade, uf, cidade, status)"
-          )
-          .eq("lista_id", listaId)
-          .order("created_at", { ascending: false })
-          .range(from, from + PAGE - 1);
-        if (error) throw error;
-        const batch = data || [];
-        all.push(...batch);
-        if (batch.length < PAGE) break;
-        from += PAGE;
-      }
-      return all;
+      if (!listaId) return { itens: [], total: 0 };
+      const fromIdx = (page - 1) * pageSize;
+      const toIdx = fromIdx + pageSize - 1;
+      const { data, error, count } = await supabase
+        .from("disparo_lista_itens")
+        .select(
+          "id, lead_id, created_at, leads:lead_id (id, nome, phone_e164, especialidade, uf, cidade, status)",
+          { count: "exact" },
+        )
+        .eq("lista_id", listaId)
+        .order("created_at", { ascending: false })
+        .range(fromIdx, toIdx);
+      if (error) throw error;
+      return { itens: data || [], total: count ?? 0 };
     },
     enabled: !!listaId,
   });
