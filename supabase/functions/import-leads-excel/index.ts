@@ -681,18 +681,20 @@ serve(async (req) => {
       const batchData = batch.map(b => b.data);
 
       const phones = batchData.map((d) => d.phone_e164).filter(Boolean);
+      const phoneVariants = Array.from(new Set(phones.flatMap((phone) => [phone, `+${phone}`])));
       const { data: existentes, error: existingError } = await supabase
         .from("leads")
         .select("id, phone_e164")
-        .in("phone_e164", phones)
+        .in("phone_e164", phoneVariants)
         .order("created_at", { ascending: true });
 
       if (existingError) throw existingError;
 
       const leadByPhone = new Map<string, string>();
       for (const row of existentes || []) {
-        if (row.phone_e164 && !leadByPhone.has(row.phone_e164)) {
-          leadByPhone.set(row.phone_e164, row.id);
+        const normalizedExistingPhone = String(row.phone_e164 || "").replace(/\D/g, "");
+        if (normalizedExistingPhone && !leadByPhone.has(normalizedExistingPhone)) {
+          leadByPhone.set(normalizedExistingPhone, row.id);
         }
       }
 
