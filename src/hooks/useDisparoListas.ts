@@ -47,15 +47,26 @@ export function useDisparoListaItens(listaId: string | null) {
     queryKey: ["disparo-lista-itens", listaId],
     queryFn: async () => {
       if (!listaId) return [];
-      const { data, error } = await supabase
-        .from("disparo_lista_itens")
-        .select(
-          "id, lead_id, created_at, leads:lead_id (id, nome, phone_e164, especialidade, uf, cidade, status)"
-        )
-        .eq("lista_id", listaId)
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      return data || [];
+      // Pagina manualmente para passar do limite default (1000) do PostgREST
+      const PAGE = 1000;
+      let from = 0;
+      const all: any[] = [];
+      while (true) {
+        const { data, error } = await supabase
+          .from("disparo_lista_itens")
+          .select(
+            "id, lead_id, created_at, leads:lead_id (id, nome, phone_e164, especialidade, uf, cidade, status)"
+          )
+          .eq("lista_id", listaId)
+          .order("created_at", { ascending: false })
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        const batch = data || [];
+        all.push(...batch);
+        if (batch.length < PAGE) break;
+        from += PAGE;
+      }
+      return all;
     },
     enabled: !!listaId,
   });
@@ -197,4 +208,30 @@ export async function resolverContatosDaLista(lista: DisparoLista) {
   }
 
   return Array.from(leadsMap.values());
+}
+
+/**
+ * Retorna o job de importação ativo cuja lista_destino_id == listaId,
+ * para mostrar indicador de progresso enquanto a lista é preenchida.
+ */
+export function useActiveImportJobForLista(listaId: string | null) {
+  return useQuery({
+    queryKey: ["lead-import-job-ativo", listaId],
+    queryFn: async () => {
+      if (!listaId) return null;
+      const { data, error } = await supabase
+        .from("lead_import_jobs")
+        .select("id, status, total_linhas, linhas_processadas, chunk_atual, total_chunks, mapeamento_colunas")
+        .in("status", ["pendente", "processando"])
+        .order("created_at", { ascending: false })
+        .limit(20);
+      if (error) throw error;
+      const job = (data || []).find(
+        (j: any) => j?.mapeamento_colunas?._params?.lista_destino_id === listaId
+      );
+      return job || null;
+    },
+    enabled: !!listaId,
+    refetchInterval: (q) => (q.state.data ? 4000 : false),
+  });
 }

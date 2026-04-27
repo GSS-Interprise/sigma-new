@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -17,7 +17,9 @@ import {
   useDisparoListaItens,
   useDisparoListas,
   useRemoveLeadFromLista,
+  useActiveImportJobForLista,
 } from "@/hooks/useDisparoListas";
+import { CubeSpinner } from "@/components/ui/cube-spinner";
 import { ListaDisparoFormDialog } from "./ListaDisparoFormDialog";
 import { ListaLeadsPickerDialog } from "./ListaLeadsPickerDialog";
 import { ImportarLeadsDialog } from "@/components/medicos/ImportarLeadsDialog";
@@ -231,6 +233,18 @@ function ListaDetalhesDialog({
 }) {
   const { data: itens = [], isLoading } = useDisparoListaItens(open ? lista.id : null);
   const remove = useRemoveLeadFromLista();
+  const { data: activeJob } = useActiveImportJobForLista(open ? lista.id : null);
+  const queryClient = useQueryClient();
+
+  // Enquanto há job ativo, refaz a query da lista a cada poucos segundos
+  // para acompanhar o crescimento em tempo real.
+  useEffect(() => {
+    if (!open || !activeJob) return;
+    const t = setInterval(() => {
+      queryClient.invalidateQueries({ queryKey: ["disparo-lista-itens", lista.id] });
+    }, 4000);
+    return () => clearInterval(t);
+  }, [open, activeJob?.id, lista.id, queryClient]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -247,6 +261,24 @@ function ListaDetalhesDialog({
             <Plus className="h-4 w-4" /> Adicionar leads
           </Button>
         </div>
+
+        {activeJob && (
+          <div className="flex items-center gap-4 rounded-md border border-primary/30 bg-primary/5 p-4">
+            <CubeSpinner />
+            <div className="text-sm">
+              <p className="font-medium">Importando leads em segundo plano…</p>
+              <p className="text-xs text-muted-foreground">
+                {activeJob.chunk_atual ?? 0} de {activeJob.total_chunks ?? "?"} blocos processados
+                {activeJob.total_linhas
+                  ? ` · ${activeJob.linhas_processadas ?? 0} / ${activeJob.total_linhas} linhas`
+                  : ""}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                A lista vai continuar enchendo automaticamente — pode fechar esta janela.
+              </p>
+            </div>
+          </div>
+        )}
 
         <div className="flex-1 min-h-0 overflow-y-auto rounded-md border">
           {isLoading ? (
