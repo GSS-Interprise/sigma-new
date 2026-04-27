@@ -10,6 +10,7 @@ import { format, differenceInDays } from "date-fns";
 import { useKanbanColumns } from "@/hooks/useKanbanColumns";
 import { cn } from "@/lib/utils";
 import { MedicoKanbanCardDialog } from "./MedicoKanbanCardDialog";
+import { CardActionsMenu } from "@/components/demandas/CardActionsMenu";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -385,7 +386,14 @@ export function MedicosKanban({ searchTerm = "" }: { searchTerm?: string }) {
                                   {card.nome}
                                 </h4>
                               </div>
-                              {getUrgencyBadge(card, column.id)}
+                              <div className="flex items-center gap-1 shrink-0">
+                                {getUrgencyBadge(card, column.id)}
+                                <CardActionsMenu
+                                  tipo="livre"
+                                  recursoId={card.id}
+                                  label={card.nome || "Médico"}
+                                />
+                              </div>
                             </div>
 
                             {/* Informações */}

@@ -30,6 +30,7 @@ import {
   FileText,
   UserSearch,
   MessageCircle,
+  ListTodo,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -41,7 +42,7 @@ import { useCriarDemanda, useUploadAnexoDemanda } from "@/hooks/useDemandas";
 import { URGENCIA_LABEL } from "@/lib/setoresAccess";
 import { PessoasCombobox, type ModuloChave } from "./PessoasCombobox";
 
-export type VinculoTipo = "licitacao" | "contrato" | "lead" | "sigzap";
+export type VinculoTipo = "licitacao" | "contrato" | "lead" | "sigzap" | "livre";
 
 interface VinculoCtx {
   tipo: VinculoTipo;
@@ -83,6 +84,12 @@ const TIPO_META: Record<
     icon: MessageCircle,
     modulo: "sigzap",
     prefix: "SigZap",
+  },
+  livre: {
+    label: "Tarefa",
+    icon: ListTodo,
+    modulo: null,
+    prefix: "Sobre",
   },
 };
 
@@ -143,6 +150,7 @@ export function TarefaRapidaDialog({ open, onOpenChange, vinculo }: Props) {
     if (vinculo.tipo === "contrato") refs.contrato_id = vinculo.id;
     if (vinculo.tipo === "lead") refs.lead_id = vinculo.id;
     if (vinculo.tipo === "sigzap") refs.sigzap_conversation_id = vinculo.id;
+    // tipo "livre": nenhum vínculo de FK, só usa o label no título/descrição
 
     // Sem pessoas marcadas → tarefa pra mim mesmo
     const mencionadosFinal = pessoas.length ? pessoas : [user?.id ?? ""].filter(Boolean);

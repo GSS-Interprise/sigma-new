@@ -14,6 +14,7 @@ import { useLicitacoesProfiles } from "@/hooks/useLicitacoesProfiles";
 import { LicitacaoResultadoItensDialog } from "./LicitacaoResultadoItensDialog";
 import { LicitacaoDescarteDialog } from "./LicitacaoDescarteDialog";
 import { Button } from "@/components/ui/button";
+import { CardActionsMenu } from "@/components/demandas/CardActionsMenu";
 
 // Status que requerem resultado obrigatório (Inteligência Competitiva)
 const STATUS_REQUER_RESULTADO = ['arrematados', 'nao_ganhamos'];
@@ -1072,6 +1073,15 @@ export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filt
                         </div>
                       )}
                       <CardContent className="p-3 space-y-2">
+                        {/* Menu 3 pontinhos no canto superior direito */}
+                        <div className="absolute top-1 right-1 z-20" onClick={(e) => e.stopPropagation()}>
+                          <CardActionsMenu
+                            tipo="licitacao"
+                            recursoId={licitacao.id}
+                            label={licitacao.titulo || licitacao.numero_edital || licitacao.orgao || "Licitação"}
+                          />
+                        </div>
+
                         {/* Badge de Validação */}
 
                         {/* Etiquetas */}
