@@ -447,7 +447,15 @@ serve(async (req) => {
         .update({ 
           status: "erro", 
           erros: [error],
-          mapeamento_colunas: { ...columnMapping, _params: { especialidade: especialidadeParam, origem: origemParam } },
+          mapeamento_colunas: {
+            ...columnMapping,
+            _params: {
+              especialidade: especialidadeParam,
+              especialidades: especialidadesParam,
+              origem: origemParam,
+              lista_destino_id: listaDestinoId || null,
+            },
+          },
           finished_at: new Date().toISOString(),
         })
         .eq("id", jobId);
@@ -470,7 +478,15 @@ serve(async (req) => {
         .from("lead_import_jobs")
         .update({ 
           total_linhas: jsonData.length,
-          mapeamento_colunas: { ...columnMapping, _params: { especialidade: especialidadeParam, origem: origemParam } },
+          mapeamento_colunas: {
+            ...columnMapping,
+            _params: {
+              especialidade: especialidadeParam,
+              especialidades: especialidadesParam,
+              origem: origemParam,
+              lista_destino_id: listaDestinoId || null,
+            },
+          },
           total_chunks: totalChunks,
         })
         .eq("id", jobId);
