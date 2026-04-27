@@ -18,8 +18,10 @@ import {
   useDisparoListas,
   useRemoveLeadFromLista,
   useActiveImportJobForLista,
+  DISPARO_LISTA_PAGE_SIZE,
 } from "@/hooks/useDisparoListas";
 import { CubeSpinner } from "@/components/ui/cube-spinner";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { ListaDisparoFormDialog } from "./ListaDisparoFormDialog";
 import { ListaLeadsPickerDialog } from "./ListaLeadsPickerDialog";
 import { ImportarLeadsDialog } from "@/components/medicos/ImportarLeadsDialog";
@@ -231,10 +233,22 @@ function ListaDetalhesDialog({
   lista: DisparoLista;
   onAddLeads: () => void;
 }) {
-  const { data: itens = [], isLoading } = useDisparoListaItens(open ? lista.id : null);
+  const [page, setPage] = useState(1);
+  const { data, isLoading, isFetching } = useDisparoListaItens(
+    open ? lista.id : null,
+    page,
+  );
+  const itens = data?.itens ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / DISPARO_LISTA_PAGE_SIZE));
   const remove = useRemoveLeadFromLista();
   const { data: activeJob } = useActiveImportJobForLista(open ? lista.id : null);
   const queryClient = useQueryClient();
+
+  // Reset paginação ao reabrir o dialog para outra lista
+  useEffect(() => {
+    if (open) setPage(1);
+  }, [open, lista.id]);
 
   // Enquanto há job ativo, refaz a query da lista a cada poucos segundos
   // para acompanhar o crescimento em tempo real.
@@ -255,7 +269,7 @@ function ListaDetalhesDialog({
 
         <div className="flex items-center justify-between text-sm">
           <span className="text-muted-foreground">
-            {isLoading ? "Carregando..." : `${itens.length} leads na lista`}
+            {isLoading ? "Carregando..." : `${total} leads na lista`}
           </span>
           <Button size="sm" onClick={onAddLeads} className="gap-2">
             <Plus className="h-4 w-4" /> Adicionar leads
@@ -308,6 +322,31 @@ function ListaDetalhesDialog({
             </div>
           )}
         </div>
+
+        {total > DISPARO_LISTA_PAGE_SIZE && (
+          <div className="flex items-center justify-between text-sm pt-2">
+            <span className="text-xs text-muted-foreground">
+              Página {page} de {totalPages}
+              {isFetching ? " · atualizando…" : ""}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline" size="sm"
+                disabled={page <= 1 || isFetching}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+              >
+                <ChevronLeft className="h-4 w-4" /> Anterior
+              </Button>
+              <Button
+                variant="outline" size="sm"
+                disabled={page >= totalPages || isFetching}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              >
+                Próxima <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );
