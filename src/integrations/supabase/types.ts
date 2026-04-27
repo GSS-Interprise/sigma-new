@@ -12764,6 +12764,10 @@ export type Database = {
         Args: { p_respondido_em: string; p_resposta_esperada_ate: string }
         Returns: string
       }
+      can_manage_disparo_listas: {
+        Args: { _user_id: string }
+        Returns: boolean
+      }
       can_view_worklist_tarefa: {
         Args: { _tarefa_id: string; _user_id: string }
         Returns: boolean
