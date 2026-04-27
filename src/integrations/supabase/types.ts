@@ -4234,6 +4234,7 @@ export type Database = {
           filtro_status: string[] | null
           filtro_ufs: string[] | null
           id: string
+          modo: string
           nome: string
           total_estimado: number | null
           updated_at: string
@@ -4249,6 +4250,7 @@ export type Database = {
           filtro_status?: string[] | null
           filtro_ufs?: string[] | null
           id?: string
+          modo?: string
           nome: string
           total_estimado?: number | null
           updated_at?: string
@@ -4264,6 +4266,7 @@ export type Database = {
           filtro_status?: string[] | null
           filtro_ufs?: string[] | null
           id?: string
+          modo?: string
           nome?: string
           total_estimado?: number | null
           updated_at?: string
