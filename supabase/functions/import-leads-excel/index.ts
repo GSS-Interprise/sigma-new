@@ -315,6 +315,7 @@ serve(async (req) => {
       const body = await req.json();
       jobId = body.job_id;
       chunkAtual = body.chunk_atual || 0;
+      const listaDestinoIdOverride = typeof body.lista_destino_id === "string" ? body.lista_destino_id : "";
 
       // Buscar dados do job
       const { data: job, error: jobError } = await supabase
@@ -335,7 +336,7 @@ serve(async (req) => {
       especialidadeParam = params.especialidade || "";
       especialidadesParam = Array.isArray(params.especialidades) ? params.especialidades : (especialidadeParam ? [especialidadeParam] : []);
       origemParam = params.origem || "Importação Excel";
-      listaDestinoId = params.lista_destino_id || "";
+      listaDestinoId = listaDestinoIdOverride || params.lista_destino_id || "";
     }
 
     if (!storagePath || !jobId) {
