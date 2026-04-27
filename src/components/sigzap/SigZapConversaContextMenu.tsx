@@ -10,7 +10,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { MoreVertical, Pin, Ban, EyeOff, Loader2, ArrowRightLeft, MapPin, UserX, Tag, Check, X } from "lucide-react";
+import { MoreVertical, Pin, Ban, EyeOff, Loader2, ArrowRightLeft, MapPin, UserX, Tag, Check, X, ListTodo } from "lucide-react";
+import { TarefaRapidaDialog } from "@/components/demandas/TarefaRapidaDialog";
 import { toast } from "sonner";
 import { RegiaoInteresseDialog } from "@/components/disparos/RegiaoInteresseDialog";
 import { normalizeToE164 } from "@/lib/phoneUtils";
@@ -66,6 +67,7 @@ export function SigZapConversaContextMenu({
   const [showRegiaoDialog, setShowRegiaoDialog] = useState(false);
   const [regiaoLeadId, setRegiaoLeadId] = useState<string | undefined>();
   const [tagPopoverOpen, setTagPopoverOpen] = useState(false);
+  const [tarefaOpen, setTarefaOpen] = useState(false);
 
   const phoneE164 = contactPhone ? normalizeToE164(contactPhone) : null;
 
@@ -288,7 +290,19 @@ export function SigZapConversaContextMenu({
             <MoreVertical className="h-3.5 w-3.5" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-48" onClick={(e) => e.stopPropagation()}>
+        <DropdownMenuContent align="end" className="w-52" onClick={(e) => e.stopPropagation()}>
+          <DropdownMenuItem
+            onSelect={(e) => {
+              e.preventDefault();
+              setTarefaOpen(true);
+            }}
+          >
+            <ListTodo className="h-4 w-4 mr-2" />
+            Criar tarefa
+          </DropdownMenuItem>
+
+          <DropdownMenuSeparator />
+
           <DropdownMenuItem onClick={() => pinMutation.mutate()}>
             <Pin className="h-4 w-4 mr-2" />
             Fixar conversa
@@ -539,6 +553,15 @@ export function SigZapConversaContextMenu({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <TarefaRapidaDialog
+        open={tarefaOpen}
+        onOpenChange={setTarefaOpen}
+        vinculo={{
+          tipo: "sigzap",
+          id: conversaId,
+          label: `${contactName || "Contato"}${contactPhone ? " (" + contactPhone + ")" : ""}`,
+        }}
+      />
     </>
   );
 }
