@@ -8,6 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
+import { CardActionsMenu } from "@/components/demandas/CardActionsMenu";
 
 interface LicitacaoCardProps {
   licitacao: any;
@@ -124,11 +125,21 @@ export function LicitacaoCard({ licitacao, onEdit }: LicitacaoCardProps) {
               </Badge>
             )}
           </div>
-          {licitacao.fonte === "Effect" && (
-            <Badge variant="secondary" className="ml-2">
-              Effect
-            </Badge>
-          )}
+          <div className="flex items-center gap-1 ml-2">
+            {licitacao.fonte === "Effect" && (
+              <Badge variant="secondary">Effect</Badge>
+            )}
+            <CardActionsMenu
+              tipo="licitacao"
+              recursoId={licitacao.id}
+              label={
+                licitacao.titulo ||
+                licitacao.numero_edital ||
+                licitacao.orgao ||
+                "Licitação"
+              }
+            />
+          </div>
         </div>
       </CardHeader>
       
