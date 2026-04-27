@@ -12774,6 +12774,10 @@ export type Database = {
       }
       cleanup_expired_edit_locks: { Args: never; Returns: undefined }
       cleanup_whatsapp_rate_limit: { Args: never; Returns: undefined }
+      clonar_proposta_para_lead: {
+        Args: { lead_destino_id: string; proposta_origem_id: string }
+        Returns: string
+      }
       enviar_lead_proxima_fase: {
         Args: {
           p_campanha_proposta_id: string
