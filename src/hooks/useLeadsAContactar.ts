@@ -148,18 +148,18 @@ export function useLeadsAContactar(campanhaPropostaId: string | null | undefined
         }
       }
 
-      // 3c. Sincroniza com a fila do disparo em massa: leads que o n8n já
-      // pegou (3-TRATANDO) ou enviou (4-ENVIADO) também contam como contactado,
+      // 3c. Sincroniza com o disparo em massa: leads que o n8n já pegou
+      // (3-TRATANDO) ou enviou (4-ENVIADO) também contam como contactado,
       // mesmo que ainda não exista mensagem em sigzap_messages.
-      // Também coletamos status 1-ENVIAR / 2-REENVIAR / 3-TRATANDO em QUALQUER
-      // proposta para marcar o lead como BLOQUEADO no manual.
+      // Somente 3-TRATANDO bloqueia no manual, pois 1-ENVIAR/2-REENVIAR
+      // são apenas pendências aguardando processamento, não tratamento real.
       const filaAcc: any[] = [];
       for (const ids of leadIdChunks) {
         const { data: page } = await (supabase as any)
           .from("disparos_contatos")
-          .select("lead_id, updated_at, status")
+            .select("lead_id, updated_at, status")
           .in("lead_id", ids)
-          .in("status", ["1-ENVIAR", "2-REENVIAR", "3-TRATANDO", "4-ENVIADO"]);
+            .in("status", ["3-TRATANDO", "4-ENVIADO"]);
         if (page) filaAcc.push(...page);
       }
       const bloqueioMap = new Map<string, string>();
@@ -171,13 +171,8 @@ export function useLeadsAContactar(campanhaPropostaId: string | null | undefined
             contactMap.set(r.lead_id, ts);
           }
         }
-        if (r.status === "1-ENVIAR" || r.status === "2-REENVIAR" || r.status === "3-TRATANDO") {
-          // Mantém o "pior" (mais avançado) status para exibição
-          const prev = bloqueioMap.get(r.lead_id);
-          const ordem = (s: string) => (s === "3-TRATANDO" ? 3 : s === "2-REENVIAR" ? 2 : 1);
-          if (!prev || ordem(r.status) > ordem(prev)) {
-            bloqueioMap.set(r.lead_id, r.status);
-          }
+        if (r.status === "3-TRATANDO") {
+          bloqueioMap.set(r.lead_id, r.status);
         }
       }
 
