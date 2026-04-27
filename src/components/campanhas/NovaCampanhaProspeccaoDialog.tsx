@@ -37,7 +37,7 @@ interface Props {
 export function NovaCampanhaProspeccaoDialog({ open, onOpenChange }: Props) {
   const [tab, setTab] = useState("basico");
   const [nome, setNome] = useState("");
-  const [especialidadeId, setEspecialidadeId] = useState<string>("");
+  const [especialidadeIds, setEspecialidadeIds] = useState<string[]>([]);
   const [regiaoEstado, setRegiaoEstado] = useState<string>("");
   const [chipIds, setChipIds] = useState<string[]>([]);
   const [rotationStrategy, setRotationStrategy] = useState("round_robin");
@@ -79,14 +79,20 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange }: Props) {
   const qc = useQueryClient();
 
   const { data: especialidades = [] } = useQuery({
-    queryKey: ["especialidades-lista"],
+    queryKey: ["especialidades-lista-com-count"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("especialidades")
-        .select("id, nome, area")
-        .order("nome");
+      // Usa a view vw_especialidade_pool_count que pré-computa contagem
+      const { data, error } = await (supabase as any)
+        .from("vw_especialidade_pool_count")
+        .select("especialidade_id, especialidade_nome, especialidade_area, total_leads")
+        .order("especialidade_nome");
       if (error) throw error;
-      return data || [];
+      return (data || []).map((e: any) => ({
+        id: e.especialidade_id,
+        nome: e.especialidade_nome,
+        area: e.especialidade_area,
+        total_leads: e.total_leads || 0,
+      }));
     },
   });
 
@@ -106,26 +112,32 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange }: Props) {
   });
 
   const { data: poolCount } = useQuery({
-    queryKey: ["pool-count", especialidadeId, regiaoEstado],
-    enabled: !!especialidadeId || !!regiaoEstado,
+    queryKey: ["pool-count", especialidadeIds.join(","), regiaoEstado],
+    enabled: especialidadeIds.length > 0 || !!regiaoEstado,
     queryFn: async () => {
+      // Se há especialidades selecionadas, conta DISTINCT lead_id em lead_especialidades
+      // (filtrando por região no JOIN com leads se houver)
+      if (especialidadeIds.length > 0) {
+        let q = supabase
+          .from("lead_especialidades")
+          .select("lead_id, leads!inner(uf, phone_e164, merged_into_id, opt_out, classificacao)", { count: "exact", head: true })
+          .in("especialidade_id", especialidadeIds)
+          .is("leads.merged_into_id", null)
+          .not("leads.phone_e164", "is", null)
+          .neq("leads.phone_e164", "")
+          .eq("leads.opt_out", false);
+        if (regiaoEstado) q = q.eq("leads.uf", regiaoEstado);
+        const { count } = await q;
+        return count || 0;
+      }
+      // Sem especialidade, só conta leads pela região
       let q = supabase
         .from("leads")
         .select("id", { count: "exact", head: true })
         .is("merged_into_id", null)
         .not("phone_e164", "is", null)
         .neq("phone_e164", "");
-
       if (regiaoEstado) q = q.eq("uf", regiaoEstado);
-
-      if (especialidadeId) {
-        const { count } = await supabase
-          .from("lead_especialidades")
-          .select("lead_id", { count: "exact", head: true })
-          .eq("especialidade_id", especialidadeId);
-        return count || 0;
-      }
-
       const { count } = await q;
       return count || 0;
     },
@@ -162,14 +174,16 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange }: Props) {
         palavras_proibidas: bPalavrasProibidas,
       };
 
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("campanhas")
         .insert({
           nome,
-          canal: "whatsapp" as any,
-          status: "ativa" as any,
+          canal: "whatsapp",
+          status: "ativa",
           tipo_campanha: "prospeccao",
-          especialidade_id: especialidadeId || null,
+          especialidade_ids: especialidadeIds.length > 0 ? especialidadeIds : null,
+          // Mantém especialidade_id (singular) com a primeira pra retrocompat de UI legada
+          especialidade_id: especialidadeIds[0] || null,
           regiao_estado: regiaoEstado || null,
           chip_ids: chipIds.length > 0 ? chipIds : null,
           chip_id: chipIds[0] || null,
@@ -202,7 +216,7 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange }: Props) {
 
   const resetForm = () => {
     setNome("");
-    setEspecialidadeId("");
+    setEspecialidadeIds([]);
     setRegiaoEstado("");
     setChipIds([]);
     setRotationStrategy("round_robin");
@@ -242,7 +256,7 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange }: Props) {
     setTab("basico");
   };
 
-  const espSelecionada = especialidades.find((e) => e.id === especialidadeId);
+  const espsSelecionadas = especialidades.filter((e) => especialidadeIds.includes(e.id));
   const briefingCompleto = [bNomeServico, bHospital, bCidade, bTipoServico, bHandoffNome, bHandoffTelefone]
     .every((c) => c.trim().length > 0);
   const canCreate = nome.trim().length > 0 && briefingCompleto;
@@ -291,26 +305,44 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange }: Props) {
               <div className="space-y-1.5">
                 <Label className="flex items-center gap-1.5">
                   <Stethoscope className="h-3.5 w-3.5" />
-                  Especialidade
+                  Especialidades
+                  <span className="text-xs text-muted-foreground font-normal">
+                    (1 ou mais)
+                  </span>
                 </Label>
-                <Select value={especialidadeId} onValueChange={setEspecialidadeId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Todas as especialidades" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <ScrollArea className="h-64">
-                      {especialidades.map((e) => (
-                        <SelectItem key={e.id} value={e.id}>
-                          {e.nome}
-                        </SelectItem>
-                      ))}
-                    </ScrollArea>
-                  </SelectContent>
-                </Select>
-                {espSelecionada && (
-                  <Badge variant="outline" className="text-xs">
-                    {espSelecionada.area}
-                  </Badge>
+                <EspecialidadesMultiPicker
+                  value={especialidadeIds}
+                  onChange={setEspecialidadeIds}
+                  options={especialidades}
+                />
+                {espsSelecionadas.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {espsSelecionadas.map((e) => (
+                      <Badge
+                        key={e.id}
+                        variant="secondary"
+                        className="text-xs gap-1 pr-1"
+                      >
+                        {e.nome}
+                        <span className="text-muted-foreground">·</span>
+                        <span className="text-muted-foreground tabular-nums">
+                          {(e.total_leads || 0).toLocaleString("pt-BR")}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setEspecialidadeIds(
+                              especialidadeIds.filter((id) => id !== e.id),
+                            )
+                          }
+                          className="ml-0.5 rounded hover:bg-background/50 px-0.5"
+                          aria-label={`Remover ${e.nome}`}
+                        >
+                          ×
+                        </button>
+                      </Badge>
+                    ))}
+                  </div>
                 )}
               </div>
 
@@ -334,12 +366,17 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange }: Props) {
               </div>
             </div>
 
-            {(especialidadeId || regiaoEstado) && poolCount !== undefined && (
+            {(especialidadeIds.length > 0 || regiaoEstado) && poolCount !== undefined && (
               <div className="bg-muted/50 rounded-lg p-3 text-sm">
                 <span className="font-medium text-primary">
                   ~{poolCount.toLocaleString("pt-BR")} leads
                 </span>{" "}
                 disponíveis para esses filtros
+                {especialidadeIds.length > 1 && (
+                  <span className="text-xs text-muted-foreground ml-1">
+                    ({especialidadeIds.length} especialidades combinadas)
+                  </span>
+                )}
               </div>
             )}
 
@@ -945,5 +982,136 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange }: Props) {
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Multi-picker de especialidades com contagem inline (UX da campanha)
+// ─────────────────────────────────────────────────────────────────
+interface EspecialidadeOption {
+  id: string;
+  nome: string;
+  area: string | null;
+  total_leads: number;
+}
+
+function EspecialidadesMultiPicker({
+  value,
+  onChange,
+  options,
+}: {
+  value: string[];
+  onChange: (v: string[]) => void;
+  options: EspecialidadeOption[];
+}) {
+  const [open, setOpen] = useState(false);
+  const [busca, setBusca] = useState("");
+
+  const filtradas = busca.trim()
+    ? options.filter((o) =>
+        o.nome.toLowerCase().includes(busca.toLowerCase()),
+      )
+    : options;
+
+  // Ordena: selecionadas no topo, depois por total_leads desc
+  const ordenadas = [...filtradas].sort((a, b) => {
+    const aSel = value.includes(a.id) ? 1 : 0;
+    const bSel = value.includes(b.id) ? 1 : 0;
+    if (aSel !== bSel) return bSel - aSel;
+    return (b.total_leads || 0) - (a.total_leads || 0);
+  });
+
+  const toggle = (id: string) => {
+    if (value.includes(id)) {
+      onChange(value.filter((v) => v !== id));
+    } else {
+      onChange([...value, id]);
+    }
+  };
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm hover:bg-muted/40 transition-colors"
+      >
+        <span
+          className={
+            value.length === 0 ? "text-muted-foreground" : "font-medium"
+          }
+        >
+          {value.length === 0
+            ? "Todas as especialidades"
+            : `${value.length} selecionada${value.length > 1 ? "s" : ""}`}
+        </span>
+        <span className="text-muted-foreground text-xs">▾</span>
+      </button>
+      {open && (
+        <>
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => {
+              setOpen(false);
+              setBusca("");
+            }}
+          />
+          <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-lg">
+            <div className="p-2 border-b">
+              <Input
+                placeholder="Buscar especialidade..."
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                className="h-8 text-xs"
+                autoFocus
+              />
+            </div>
+            <ScrollArea className="max-h-72">
+              <div className="p-1">
+                {ordenadas.length === 0 ? (
+                  <div className="text-center text-xs text-muted-foreground py-4">
+                    Nenhuma especialidade encontrada
+                  </div>
+                ) : (
+                  ordenadas.map((opt) => {
+                    const selected = value.includes(opt.id);
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => toggle(opt.id)}
+                        className={`w-full flex items-center justify-between px-2 py-1.5 text-xs rounded hover:bg-muted/50 transition-colors ${
+                          selected ? "bg-primary/10 font-medium" : ""
+                        }`}
+                      >
+                        <span className="flex items-center gap-2 min-w-0">
+                          <span
+                            className={`shrink-0 h-3.5 w-3.5 rounded border ${
+                              selected
+                                ? "bg-primary border-primary"
+                                : "bg-background border-input"
+                            } flex items-center justify-center`}
+                          >
+                            {selected && (
+                              <span className="text-[10px] text-primary-foreground">
+                                ✓
+                              </span>
+                            )}
+                          </span>
+                          <span className="truncate text-left">{opt.nome}</span>
+                        </span>
+                        <span className="text-[10px] text-muted-foreground tabular-nums shrink-0 ml-2">
+                          {(opt.total_leads || 0).toLocaleString("pt-BR")}
+                        </span>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </ScrollArea>
+          </div>
+        </>
+      )}
+    </div>
   );
 }

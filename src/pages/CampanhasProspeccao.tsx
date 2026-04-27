@@ -43,6 +43,7 @@ interface CampanhaRow {
   status: string;
   tipo_campanha: string | null;
   especialidade_id: string | null;
+  especialidade_ids: string[] | null;
   regiao_estado: string | null;
   limite_diario_campanha: number | null;
   total_frio: number;
@@ -53,6 +54,7 @@ interface CampanhaRow {
   total_convertido: number;
   created_at: string;
   especialidade?: { nome: string } | null;
+  especialidades_nomes?: string[];
 }
 
 export default function CampanhasProspeccao() {
@@ -86,17 +88,39 @@ export default function CampanhasProspeccao() {
   const { data: campanhas = [], isLoading } = useQuery({
     queryKey: ["campanhas-prospeccao", busca],
     queryFn: async () => {
-      let q = supabase
+      let q = (supabase as any)
         .from("campanhas")
         .select(
-          "id, nome, status, tipo_campanha, especialidade_id, regiao_estado, limite_diario_campanha, total_frio, total_contatado, total_em_conversa, total_aquecido, total_quente, total_convertido, created_at, especialidade:especialidade_id(nome)"
+          "id, nome, status, tipo_campanha, especialidade_id, especialidade_ids, regiao_estado, limite_diario_campanha, total_frio, total_contatado, total_em_conversa, total_aquecido, total_quente, total_convertido, created_at, especialidade:especialidade_id(nome)"
         )
         .eq("tipo_campanha", "prospeccao")
         .order("created_at", { ascending: false });
       if (busca.trim()) q = q.ilike("nome", `%${busca.trim()}%`);
       const { data, error } = await q;
       if (error) throw error;
-      return (data || []) as CampanhaRow[];
+      const rows = (data || []) as CampanhaRow[];
+
+      // Hidrata nomes das especialidades quando há array (mais de 1)
+      const todosIds = Array.from(
+        new Set(
+          rows.flatMap((r) => r.especialidade_ids || []).filter(Boolean),
+        ),
+      );
+      if (todosIds.length > 0) {
+        const { data: espNomes } = await supabase
+          .from("especialidades")
+          .select("id, nome")
+          .in("id", todosIds);
+        const mapa = new Map((espNomes || []).map((e: any) => [e.id, e.nome]));
+        for (const r of rows) {
+          if (r.especialidade_ids && r.especialidade_ids.length > 0) {
+            r.especialidades_nomes = r.especialidade_ids
+              .map((id) => mapa.get(id))
+              .filter(Boolean) as string[];
+          }
+        }
+      }
+      return rows;
     },
   });
 
@@ -137,11 +161,23 @@ export default function CampanhasProspeccao() {
               <div>
                 <h1 className="text-xl font-bold">{campanhaSelecionada.nome}</h1>
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  {campanhaSelecionada.especialidade && (
-                    <span className="flex items-center gap-1">
+                  {campanhaSelecionada.especialidades_nomes && campanhaSelecionada.especialidades_nomes.length > 0 ? (
+                    <span
+                      className="flex items-center gap-1"
+                      title={campanhaSelecionada.especialidades_nomes.join(", ")}
+                    >
                       <Stethoscope className="h-3 w-3" />
-                      {(campanhaSelecionada.especialidade as any)?.nome}
+                      {campanhaSelecionada.especialidades_nomes.length === 1
+                        ? campanhaSelecionada.especialidades_nomes[0]
+                        : `${campanhaSelecionada.especialidades_nomes[0]} +${campanhaSelecionada.especialidades_nomes.length - 1}`}
                     </span>
+                  ) : (
+                    campanhaSelecionada.especialidade && (
+                      <span className="flex items-center gap-1">
+                        <Stethoscope className="h-3 w-3" />
+                        {(campanhaSelecionada.especialidade as any)?.nome}
+                      </span>
+                    )
                   )}
                   {campanhaSelecionada.regiao_estado && (
                     <span className="flex items-center gap-1">
@@ -477,12 +513,31 @@ function CampanhaCard({
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <h3 className="font-semibold truncate">{campanha.nome}</h3>
-            <div className="flex items-center gap-2 mt-1">
-              {campanha.especialidade && (
-                <Badge variant="outline" className="text-xs">
-                  <Stethoscope className="h-3 w-3 mr-1" />
-                  {(campanha.especialidade as any)?.nome}
-                </Badge>
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
+              {campanha.especialidades_nomes && campanha.especialidades_nomes.length > 0 ? (
+                campanha.especialidades_nomes.length === 1 ? (
+                  <Badge variant="outline" className="text-xs">
+                    <Stethoscope className="h-3 w-3 mr-1" />
+                    {campanha.especialidades_nomes[0]}
+                  </Badge>
+                ) : (
+                  <Badge
+                    variant="outline"
+                    className="text-xs"
+                    title={campanha.especialidades_nomes.join(", ")}
+                  >
+                    <Stethoscope className="h-3 w-3 mr-1" />
+                    {campanha.especialidades_nomes[0]} +
+                    {campanha.especialidades_nomes.length - 1}
+                  </Badge>
+                )
+              ) : (
+                campanha.especialidade && (
+                  <Badge variant="outline" className="text-xs">
+                    <Stethoscope className="h-3 w-3 mr-1" />
+                    {(campanha.especialidade as any)?.nome}
+                  </Badge>
+                )
               )}
               {campanha.regiao_estado && (
                 <Badge variant="outline" className="text-xs">
