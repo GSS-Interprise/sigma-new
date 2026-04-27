@@ -81,21 +81,36 @@ export function VincularContratoExistenteDialog({
       // 1. Buscar o rascunho para obter o pré-contrato automático vinculado
       const { data: rascunho } = await supabase
         .from("contrato_rascunho")
-        .select("contrato_id, licitacao_id")
+        .select("contrato_id, licitacao_id, status")
         .eq("id", rascunhoId)
         .maybeSingle();
 
       const preContratoId = rascunho?.contrato_id;
 
-      // 2. Buscar o codigo_interno do pré-contrato automático
+      // 2. Determinar se o contrato vinculado ao rascunho é um PRÉ-CONTRATO
+      //    automático (criado pela esteira de licitação → contrato em rascunho)
+      //    ou já é um contrato real do usuário (caso "Novo Card de Captação").
+      //    Só consideramos pré-contrato automático quando:
+      //      - veio de uma licitação (licitacao_id preenchido)
+      //      - o status do rascunho ainda é 'rascunho' (não consolidado antes)
+      //      - o contrato vinculado é diferente do escolhido agora
+      const ehPreContratoAutomatico =
+        !!preContratoId &&
+        preContratoId !== contratoSelecionado.id &&
+        !!rascunho?.licitacao_id &&
+        rascunho?.status === "rascunho";
+
       let codigoInternoPreContrato: number | null = null;
-      if (preContratoId && preContratoId !== contratoSelecionado.id) {
+      if (ehPreContratoAutomatico) {
         const { data: preContrato } = await supabase
           .from("contratos")
-          .select("codigo_interno")
-          .eq("id", preContratoId)
+          .select("codigo_interno, licitacao_origem_id")
+          .eq("id", preContratoId!)
           .maybeSingle();
-        codigoInternoPreContrato = preContrato?.codigo_interno ?? null;
+        // Confirmação extra: o pré-contrato automático deve estar amarrado à mesma licitação
+        if (preContrato && preContrato.licitacao_origem_id === rascunho?.licitacao_id) {
+          codigoInternoPreContrato = preContrato.codigo_interno ?? null;
+        }
       }
 
       // 3. Marcar rascunho como consolidado vinculado ao contrato existente
@@ -133,12 +148,14 @@ export function VincularContratoExistenteDialog({
           .eq("id", contratoSelecionado.id);
       }
 
-      // 5. Deletar o pré-contrato automático (já foi substituído pelo contrato real)
-      if (preContratoId && preContratoId !== contratoSelecionado.id) {
+      // 5. Deletar o pré-contrato automático (já foi substituído pelo contrato real).
+      //    Só fazemos isso quando temos certeza de que é um pré-contrato gerado
+      //    automaticamente — nunca apagar um contrato real escolhido pelo usuário.
+      if (ehPreContratoAutomatico && codigoInternoPreContrato !== null) {
         await supabase
           .from("contratos")
           .delete()
-          .eq("id", preContratoId);
+          .eq("id", preContratoId!);
       }
 
       // 6. Log de auditoria
@@ -148,7 +165,9 @@ export function VincularContratoExistenteDialog({
         acao: "editar",
         registroId: rascunhoId,
         registroDescricao: `Rascunho vinculado ao contrato existente ${contratoSelecionado.codigo_contrato || contratoSelecionado.id}`,
-        detalhes: `Pré-contrato #${codigoInternoPreContrato} vinculado ao contrato #${contratoSelecionado.codigo_interno} → codigo_interno transferido, pré-contrato removido`,
+        detalhes: ehPreContratoAutomatico
+          ? `Pré-contrato #${codigoInternoPreContrato} vinculado ao contrato #${contratoSelecionado.codigo_interno} → codigo_interno transferido, pré-contrato removido`
+          : `Rascunho vinculado ao contrato #${contratoSelecionado.codigo_interno} (sem pré-contrato automático)`,
       });
 
       return contratoSelecionado.id;
