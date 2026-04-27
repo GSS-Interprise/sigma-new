@@ -185,7 +185,12 @@ export function TarefaRapidaDialog({ open, onOpenChange, vinculo }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent
+        className="max-w-lg"
+        onClick={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Icon className="h-4 w-4 text-primary" />

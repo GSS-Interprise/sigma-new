@@ -37,7 +37,11 @@ export function CardActionsMenu({
   const [tarefaOpen, setTarefaOpen] = useState(false);
 
   return (
-    <>
+    <span
+      onClick={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+    >
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
@@ -79,6 +83,6 @@ export function CardActionsMenu({
         onOpenChange={setTarefaOpen}
         vinculo={{ tipo, id: recursoId, label }}
       />
-    </>
+    </span>
   );
 }
