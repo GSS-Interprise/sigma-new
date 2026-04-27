@@ -333,6 +333,26 @@ serve(async (req) => {
           }
 
           // Sucesso — lead criado
+          // Enriquecimento → tabela dedicada lead_enrichments
+          {
+            const enrichStatusToInsert = (payload.api_enrich_status as string) || "pendente";
+            const isEnriched = enrichStatusToInsert === "concluido" || enrichStatusToInsert === "alimentado";
+            const expiresAtOne = isEnriched
+              ? new Date(Date.now() + 48 * 30 * 24 * 60 * 60 * 1000).toISOString()
+              : null;
+            await supabase.from("lead_enrichments").upsert(
+              {
+                lead_id: created.id,
+                enrich_one: isEnriched,
+                last_attempt_at_one: now,
+                expires_at_one: expiresAtOne,
+                status: enrichStatusToInsert,
+                source: payload.api_enrich_source || null,
+                completed_at: isEnriched ? now : null,
+              },
+              { onConflict: "lead_id" }
+            ).then(r => { if (r.error) console.warn("[process-queue] lead_enrichments upsert:", r.error.message); });
+          }
           await supabase.from("import_leads_failed_queue").update({
             status: "resolved", resolved_at: now, lead_id: created.id,
           }).eq("id", item.id);
@@ -433,6 +453,27 @@ serve(async (req) => {
           }
         } else {
           // Sucesso
+          // Enriquecimento → lead_enrichments (se vier no payload)
+          if (payload.api_enrich_status || payload.api_enrich_source) {
+            const nowIso = new Date().toISOString();
+            const enrichStatusToInsert = (payload.api_enrich_status as string) || "pendente";
+            const isEnriched = enrichStatusToInsert === "concluido" || enrichStatusToInsert === "alimentado";
+            const expiresAtOne = isEnriched
+              ? new Date(Date.now() + 48 * 30 * 24 * 60 * 60 * 1000).toISOString()
+              : null;
+            await supabase.from("lead_enrichments").upsert(
+              {
+                lead_id: existingLead.id,
+                enrich_one: isEnriched,
+                last_attempt_at_one: nowIso,
+                expires_at_one: expiresAtOne,
+                status: enrichStatusToInsert,
+                source: payload.api_enrich_source || null,
+                completed_at: isEnriched ? nowIso : null,
+              },
+              { onConflict: "lead_id" }
+            ).then(r => { if (r.error) console.warn("[process-queue] lead_enrichments upsert:", r.error.message); });
+          }
           await supabase
             .from("import_leads_failed_queue")
             .update({
