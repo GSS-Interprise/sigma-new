@@ -12856,6 +12856,7 @@ export type Database = {
         Args: { _permission: string; _user_id: string }
         Returns: boolean
       }
+      has_disparo_permission: { Args: { _user_id: string }; Returns: boolean }
       has_permission: {
         Args: { _acao: string; _modulo: string; _user_id: string }
         Returns: boolean
