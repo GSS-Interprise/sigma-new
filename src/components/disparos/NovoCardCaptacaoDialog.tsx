@@ -62,10 +62,12 @@ export function NovoCardCaptacaoDialog({ open, onOpenChange }: NovoCardCaptacaoD
       const contrato = contratos.find((c) => c.id === contratoId);
       if (!contrato) throw new Error("Contrato não encontrado");
 
-      // Criar rascunho vinculado ao contrato (sem licitação)
+      // Como o card já está vinculado a um contrato real existente,
+      // ele nasce como "consolidado" — não é um pré-contrato em rascunho.
+      const nowIso = new Date().toISOString();
       const { error } = await supabase.from("contrato_rascunho").insert({
         contrato_id: contratoId,
-        status: "rascunho",
+        status: "consolidado",
         status_kanban: "prospectar",
         overlay_json: {
           origem: "manual",
@@ -76,6 +78,8 @@ export function NovoCardCaptacaoDialog({ open, onOpenChange }: NovoCardCaptacaoD
         },
         servicos_json: [],
         created_by: user?.id,
+        consolidado_em: nowIso,
+        consolidado_por: user?.id,
       });
 
       if (error) throw error;
