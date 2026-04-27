@@ -77,8 +77,24 @@ export default function DisparosSigZap() {
         setSelectedConversaId(existingConv.id);
       } else {
         const { data: newConv, error } = await supabase.from("sigzap_conversations").insert({ instance_id: inst.id, contact_id: contactId, assigned_user_id: u.user?.id, status: "in_progress", lead_id: dmLeadId }).select("id").single();
-        if (error) throw error;
-        setSelectedConversaId(newConv.id);
+        if (error) {
+          // Race condition: outra request (ex.: webhook) criou a conversa entre o select e o insert.
+          if ((error as any)?.code === "23505") {
+            const { data: raceConv, error: refetchErr } = await supabase
+              .from("sigzap_conversations")
+              .select("id")
+              .eq("instance_id", inst.id)
+              .eq("contact_id", contactId)
+              .maybeSingle();
+            if (refetchErr || !raceConv) throw error;
+            await supabase.from("sigzap_conversations").update({ assigned_user_id: u.user?.id, status: "in_progress", lead_id: dmLeadId }).eq("id", raceConv.id);
+            setSelectedConversaId(raceConv.id);
+          } else {
+            throw error;
+          }
+        } else {
+          setSelectedConversaId(newConv.id);
+        }
       }
 
       queryClient.invalidateQueries({ queryKey: ["sigzap-conversations"] });
