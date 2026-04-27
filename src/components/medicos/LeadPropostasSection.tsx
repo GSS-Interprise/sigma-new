@@ -309,17 +309,33 @@ export function LeadPropostasSection({ leadId, leadNome, unidadesVinculadas }: L
         <h3 className="font-semibold">
           Propostas ({propostas?.length || 0})
         </h3>
-      </div>
-
-      <div className="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
-        O vínculo de propostas a leads agora é feito exclusivamente via <strong>Campanhas</strong>.
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setVincularDialogOpen(true)}
+          >
+            <Link2 className="h-4 w-4 mr-2" />
+            Vincular Existente
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => {
+              setPropostaParaEditar(null);
+              setDialogOpen(true);
+            }}
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Nova Proposta
+          </Button>
+        </div>
       </div>
 
       {(!propostas || propostas.length === 0) ? (
         <div className="text-center py-12 text-muted-foreground border rounded-lg">
           <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
           <p className="text-lg font-medium">Nenhuma proposta vinculada</p>
-          <p className="text-sm">As propostas vinculadas via Campanhas aparecerão aqui.</p>
+          <p className="text-sm">Crie uma nova proposta ou vincule uma existente para este lead.</p>
         </div>
       ) : (
         <div className="space-y-3">
