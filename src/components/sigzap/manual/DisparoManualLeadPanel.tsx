@@ -56,7 +56,7 @@ export function DisparoManualLeadPanel({ campanhaPropostaId, leadId, onOpenChat 
   const [wppStatus, setWppStatus] = useState<Record<string, "has" | "no" | "unchecked">>({});
   const { isAdmin } = usePermissions();
 
-  // Bloqueio: lead em fila de disparo em massa (1-ENVIAR / 2-REENVIAR / 3-TRATANDO)
+  // Bloqueio: lead em tratamento real pelo disparo em massa
   const { data: bloqueioStatus } = useQuery({
     queryKey: ["dm-bloqueio-massa", leadId],
     enabled: !!leadId,
@@ -66,7 +66,7 @@ export function DisparoManualLeadPanel({ campanhaPropostaId, leadId, onOpenChat 
         .from("disparos_contatos")
         .select("status")
         .eq("lead_id", leadId!)
-        .in("status", ["1-ENVIAR", "2-REENVIAR", "3-TRATANDO"])
+        .eq("status", "3-TRATANDO")
         .limit(1)
         .maybeSingle();
       if (error) return null;
@@ -302,7 +302,7 @@ export function DisparoManualLeadPanel({ campanhaPropostaId, leadId, onOpenChat 
             <div className="rounded-md border border-primary/40 bg-primary/5 p-3 text-xs flex gap-2">
               <Lock className="h-4 w-4 text-primary shrink-0 mt-0.5" />
               <div className="space-y-1">
-                <p className="font-semibold text-primary">Lead em fila de disparo em massa</p>
+                <p className="font-semibold text-primary">Lead em tratamento no disparo em massa</p>
                 <p className="text-muted-foreground">
                   Status atual: <span className="font-mono">{bloqueioStatus}</span>. O envio manual está bloqueado para evitar mensagens duplicadas e risco de bloqueio do número.
                 </p>
