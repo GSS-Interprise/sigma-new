@@ -12201,54 +12201,177 @@ export type Database = {
         }
         Relationships: []
       }
+      worklist_tarefa_anexos: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          mime_type: string | null
+          nome: string | null
+          storage_path: string
+          tamanho_bytes: number | null
+          tarefa_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          mime_type?: string | null
+          nome?: string | null
+          storage_path: string
+          tamanho_bytes?: number | null
+          tarefa_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          mime_type?: string | null
+          nome?: string | null
+          storage_path?: string
+          tamanho_bytes?: number | null
+          tarefa_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "worklist_tarefa_anexos_tarefa_id_fkey"
+            columns: ["tarefa_id"]
+            isOneToOne: false
+            referencedRelation: "worklist_tarefas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      worklist_tarefa_comentarios: {
+        Row: {
+          conteudo: string
+          created_at: string
+          id: string
+          tarefa_id: string
+          user_id: string
+        }
+        Insert: {
+          conteudo: string
+          created_at?: string
+          id?: string
+          tarefa_id: string
+          user_id: string
+        }
+        Update: {
+          conteudo?: string
+          created_at?: string
+          id?: string
+          tarefa_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "worklist_tarefa_comentarios_tarefa_id_fkey"
+            columns: ["tarefa_id"]
+            isOneToOne: false
+            referencedRelation: "worklist_tarefas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      worklist_tarefa_mencionados: {
+        Row: {
+          created_at: string
+          tarefa_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          tarefa_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          tarefa_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "worklist_tarefa_mencionados_tarefa_id_fkey"
+            columns: ["tarefa_id"]
+            isOneToOne: false
+            referencedRelation: "worklist_tarefas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       worklist_tarefas: {
         Row: {
+          concluida_em: string | null
           contrato_id: string | null
           created_at: string | null
           created_by: string | null
           data_limite: string | null
           descricao: string | null
+          escopo: string
           id: string
+          lead_id: string | null
           licitacao_id: string | null
           modulo: string
           prioridade: string | null
           relacionamento_id: string | null
           responsavel_id: string | null
+          setor_destino_id: string | null
+          setor_origem_id: string | null
+          sigzap_conversation_id: string | null
           status: string
+          tipo: string
           titulo: string
           updated_at: string | null
+          urgencia: string
         }
         Insert: {
+          concluida_em?: string | null
           contrato_id?: string | null
           created_at?: string | null
           created_by?: string | null
           data_limite?: string | null
           descricao?: string | null
+          escopo?: string
           id?: string
+          lead_id?: string | null
           licitacao_id?: string | null
           modulo: string
           prioridade?: string | null
           relacionamento_id?: string | null
           responsavel_id?: string | null
+          setor_destino_id?: string | null
+          setor_origem_id?: string | null
+          sigzap_conversation_id?: string | null
           status: string
+          tipo?: string
           titulo: string
           updated_at?: string | null
+          urgencia?: string
         }
         Update: {
+          concluida_em?: string | null
           contrato_id?: string | null
           created_at?: string | null
           created_by?: string | null
           data_limite?: string | null
           descricao?: string | null
+          escopo?: string
           id?: string
+          lead_id?: string | null
           licitacao_id?: string | null
           modulo?: string
           prioridade?: string | null
           relacionamento_id?: string | null
           responsavel_id?: string | null
+          setor_destino_id?: string | null
+          setor_origem_id?: string | null
+          sigzap_conversation_id?: string | null
           status?: string
+          tipo?: string
           titulo?: string
           updated_at?: string | null
+          urgencia?: string
         }
         Relationships: [
           {
@@ -12270,6 +12393,20 @@ export type Database = {
             columns: ["relacionamento_id"]
             isOneToOne: false
             referencedRelation: "relacionamento_medico"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "worklist_tarefas_setor_destino_id_fkey"
+            columns: ["setor_destino_id"]
+            isOneToOne: false
+            referencedRelation: "setores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "worklist_tarefas_setor_origem_id_fkey"
+            columns: ["setor_origem_id"]
+            isOneToOne: false
+            referencedRelation: "setores"
             referencedColumns: ["id"]
           },
         ]
@@ -12581,6 +12718,20 @@ export type Database = {
           },
         ]
       }
+      vw_worklist_pendencias_setor: {
+        Row: {
+          descricao: string | null
+          id: string | null
+          link: string | null
+          origem: string | null
+          recurso_id: string | null
+          referencia_data: string | null
+          setor_id: string | null
+          titulo: string | null
+          urgencia: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       _prospeccao_validacoes_ok: { Args: { v: Json }; Returns: number }
@@ -12609,6 +12760,10 @@ export type Database = {
       calcular_status_resposta_atividade: {
         Args: { p_respondido_em: string; p_resposta_esperada_ate: string }
         Returns: string
+      }
+      can_view_worklist_tarefa: {
+        Args: { _tarefa_id: string; _user_id: string }
+        Returns: boolean
       }
       cleanup_expired_edit_locks: { Args: never; Returns: undefined }
       cleanup_whatsapp_rate_limit: { Args: never; Returns: undefined }
@@ -12895,6 +13050,7 @@ export type Database = {
         Returns: Json
       }
       unaccent: { Args: { "": string }; Returns: string }
+      user_setor_id: { Args: { _user_id: string }; Returns: string }
       validate_api_token: { Args: { _token: string }; Returns: string }
       validate_escala_api_token: { Args: { _token: string }; Returns: string }
       vincular_contato_novo: {
