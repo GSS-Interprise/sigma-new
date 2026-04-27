@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -10,6 +10,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -17,53 +20,86 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Badge } from "@/components/ui/badge";
 import {
   CalendarIcon,
-  Image as ImageIcon,
-  Paperclip,
-  X,
   Send,
+  Paperclip,
+  Image as ImageIcon,
+  X,
+  Gavel,
+  FileText,
+  UserSearch,
+  MessageCircle,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { useUserSetor } from "@/hooks/useUserSetor";
 import { useAuth } from "@/contexts/AuthContext";
+import { useUserSetor } from "@/hooks/useUserSetor";
 import { useCriarDemanda, useUploadAnexoDemanda } from "@/hooks/useDemandas";
 import { URGENCIA_LABEL } from "@/lib/setoresAccess";
-import { PessoasCombobox } from "./PessoasCombobox";
+import { PessoasCombobox, type ModuloChave } from "./PessoasCombobox";
+
+export type VinculoTipo = "licitacao" | "contrato" | "lead" | "sigzap";
+
+interface VinculoCtx {
+  tipo: VinculoTipo;
+  id: string;
+  /** Texto curto que descreve o recurso (ex: "Licitação 123/2025 — Pref. SP") */
+  label: string;
+}
 
 interface Props {
   open: boolean;
   onOpenChange: (o: boolean) => void;
-  defaultDate?: Date | null;
+  vinculo: VinculoCtx;
 }
 
-/**
- * Modal "Nova demanda" da tela Home.
- * Comportamento implícito (sem botões de tipo):
- *  - Sem ninguém marcado → tarefa pessoal (pra mim).
- *  - Com pessoas marcadas → tarefa livre.
- * Para vincular Licitação/Contrato/Lead/SigZap → use o menu (3 pontinhos)
- * dentro do card específico de cada módulo.
- */
-export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
-  const { setorId } = useUserSetor();
+const TIPO_META: Record<
+  VinculoTipo,
+  { label: string; icon: any; modulo: ModuloChave; prefix: string }
+> = {
+  licitacao: {
+    label: "Licitação",
+    icon: Gavel,
+    modulo: "licitacoes",
+    prefix: "Licitação",
+  },
+  contrato: {
+    label: "Contrato",
+    icon: FileText,
+    modulo: "contratos",
+    prefix: "Contrato",
+  },
+  lead: {
+    label: "Lead",
+    icon: UserSearch,
+    modulo: "disparos",
+    prefix: "Lead",
+  },
+  sigzap: {
+    label: "Conversa SigZap",
+    icon: MessageCircle,
+    modulo: "sigzap",
+    prefix: "SigZap",
+  },
+};
+
+export function TarefaRapidaDialog({ open, onOpenChange, vinculo }: Props) {
   const { user } = useAuth();
+  const { setorId } = useUserSetor();
   const criar = useCriarDemanda();
   const upload = useUploadAnexoDemanda();
+
+  const meta = TIPO_META[vinculo.tipo];
+  const Icon = meta.icon;
 
   const [titulo, setTitulo] = useState("");
   const [descricao, setDescricao] = useState("");
   const [pessoas, setPessoas] = useState<string[]>([]);
   const [urgencia, setUrgencia] = useState<"baixa" | "media" | "alta" | "critica">("media");
-  const [dataLimite, setDataLimite] = useState<Date | undefined>(
-    defaultDate ?? undefined,
-  );
+  const [dataLimite, setDataLimite] = useState<Date | undefined>(undefined);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -73,10 +109,10 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
       setDescricao("");
       setPessoas([]);
       setUrgencia("media");
-      setDataLimite(defaultDate ?? undefined);
+      setDataLimite(undefined);
       setPendingFiles([]);
     }
-  }, [open, defaultDate]);
+  }, [open, vinculo.id]);
 
   const handlePaste = (e: React.ClipboardEvent) => {
     const items = Array.from(e.clipboardData.items);
@@ -102,11 +138,15 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
       toast.error("Informe um título");
       return;
     }
-    const ehPessoal = pessoas.length === 0;
-    const mencionadosFinal = ehPessoal
-      ? [user?.id ?? ""].filter(Boolean)
-      : pessoas;
-    const responsavelFinal = ehPessoal ? user?.id ?? null : pessoas[0] ?? null;
+    const refs: any = {};
+    if (vinculo.tipo === "licitacao") refs.licitacao_id = vinculo.id;
+    if (vinculo.tipo === "contrato") refs.contrato_id = vinculo.id;
+    if (vinculo.tipo === "lead") refs.lead_id = vinculo.id;
+    if (vinculo.tipo === "sigzap") refs.sigzap_conversation_id = vinculo.id;
+
+    // Sem pessoas marcadas → tarefa pra mim mesmo
+    const mencionadosFinal = pessoas.length ? pessoas : [user?.id ?? ""].filter(Boolean);
+    const responsavelFinal = pessoas[0] ?? user?.id ?? null;
 
     try {
       const tarefaId = await criar.mutateAsync({
@@ -114,12 +154,13 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
         descricao: descricao.trim() || undefined,
         setor_destino_id: null,
         setor_origem_id: setorId ?? null,
-        escopo: ehPessoal ? "setor" : "geral",
+        escopo: "geral",
         tipo: "tarefa",
         urgencia,
         responsavel_id: responsavelFinal,
         mencionados: mencionadosFinal,
         data_limite: dataLimite ? format(dataLimite, "yyyy-MM-dd") : null,
+        ...refs,
       });
       for (const f of pendingFiles) {
         try {
@@ -134,14 +175,24 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
     }
   };
 
-  const ehPessoal = pessoas.length === 0;
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Nova demanda</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            <Icon className="h-4 w-4 text-primary" />
+            Nova tarefa
+          </DialogTitle>
         </DialogHeader>
+
+        {/* Vínculo (read-only, vem do card) */}
+        <div className="rounded-md border bg-muted/40 px-3 py-2 flex items-center gap-2">
+          <Badge variant="outline" className="gap-1 shrink-0">
+            <Icon className="h-3 w-3" />
+            {meta.prefix}
+          </Badge>
+          <span className="text-xs truncate">{vinculo.label}</span>
+        </div>
 
         <div className="grid gap-3">
           <div className="grid gap-1.5">
@@ -161,7 +212,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
               onChange={(e) => setDescricao(e.target.value)}
               onPaste={handlePaste}
               rows={3}
-              placeholder="Detalhe a demanda…"
+              placeholder="Detalhe a tarefa…"
             />
             {pendingFiles.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
@@ -207,17 +258,19 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
           </div>
 
           <div className="grid gap-1.5">
-            <Label className="text-xs">Pessoas envolvidas</Label>
+            <Label className="text-xs">
+              Marcar pessoas com acesso a {meta.label}
+            </Label>
             <PessoasCombobox
               value={pessoas}
               onChange={setPessoas}
-              modulo={null}
-              placeholder="Marcar pessoas (opcional)…"
+              modulo={meta.modulo}
+              placeholder="Buscar pessoa com acesso…"
             />
             <p className="text-[11px] text-muted-foreground">
-              {ehPessoal
-                ? "Sem ninguém marcado — esta tarefa é só pra você."
-                : "A primeira pessoa marcada é o responsável principal."}
+              {pessoas.length === 0
+                ? "Sem ninguém marcado, a tarefa fica pra você."
+                : "A primeira pessoa é o responsável principal."}
             </p>
           </div>
 
@@ -280,12 +333,6 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
               </Popover>
             </div>
           </div>
-
-          <p className="text-[11px] text-muted-foreground border-t pt-2">
-            💡 Para vincular a uma <strong>licitação, contrato, lead</strong> ou{" "}
-            <strong>conversa SigZap</strong>, abra o card correspondente e use o
-            menu <strong>⋯ → Criar tarefa</strong>.
-          </p>
         </div>
 
         <DialogFooter>
@@ -293,7 +340,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
             Cancelar
           </Button>
           <Button onClick={submit} disabled={criar.isPending} className="gap-1">
-            <Send className="h-4 w-4" /> Enviar demanda
+            <Send className="h-4 w-4" /> Criar tarefa
           </Button>
         </DialogFooter>
       </DialogContent>
