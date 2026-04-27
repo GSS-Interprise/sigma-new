@@ -247,7 +247,6 @@ serve(async (req) => {
             origem: payload.source || payload.pipeline || "API Import",
             created_at: now,
             updated_at: now,
-            api_enrich_status: payload.api_enrich_status || "pendente",
           };
 
           if (effectiveCpfClean) newLeadData.cpf = cpfRaw;
@@ -258,7 +257,6 @@ serve(async (req) => {
           if (payload.rqe) newLeadData.rqe = payload.rqe;
           if (payload.email) newLeadData.email = payload.email;
           if (payload.endereco) newLeadData.endereco = payload.endereco;
-          if (payload.api_enrich_source) newLeadData.api_enrich_source = payload.api_enrich_source;
 
           const cep = payload.endereco ? extractCep(payload.endereco) : null;
           if (cep) newLeadData.cep = cep;
@@ -387,8 +385,6 @@ serve(async (req) => {
         if (payload.uf) updateData.uf = payload.uf.toUpperCase().substring(0, 2);
         if (payload.crm) updateData.crm = payload.crm;
         if (payload.rqe) updateData.rqe = payload.rqe;
-        if (payload.api_enrich_status) updateData.api_enrich_status = payload.api_enrich_status;
-        if (payload.api_enrich_source) updateData.api_enrich_source = payload.api_enrich_source;
         if (payload.email) updateData.email = payload.email;
         if (payload.source) updateData.origem = payload.source;
 
