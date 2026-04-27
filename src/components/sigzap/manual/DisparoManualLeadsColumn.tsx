@@ -142,11 +142,11 @@ export function DisparoManualLeadsColumn({ campanhaPropostaId, selectedLeadId, o
                       <TooltipTrigger asChild>
                         <Badge variant="outline" className="shrink-0 h-5 px-1.5 text-[10px] gap-0.5 border-primary/60 text-primary">
                           <Lock className="h-3 w-3" />
-                          Em fila
+                          Tratando
                         </Badge>
                       </TooltipTrigger>
                       <TooltipContent>
-                        Em fila de disparo em massa ({l.status_disparo})
+                        Em tratamento no disparo em massa ({l.status_disparo})
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
