@@ -209,3 +209,29 @@ export async function resolverContatosDaLista(lista: DisparoLista) {
 
   return Array.from(leadsMap.values());
 }
+
+/**
+ * Retorna o job de importação ativo cuja lista_destino_id == listaId,
+ * para mostrar indicador de progresso enquanto a lista é preenchida.
+ */
+export function useActiveImportJobForLista(listaId: string | null) {
+  return useQuery({
+    queryKey: ["lead-import-job-ativo", listaId],
+    queryFn: async () => {
+      if (!listaId) return null;
+      const { data, error } = await supabase
+        .from("lead_import_jobs")
+        .select("id, status, total_linhas, linhas_processadas, chunk_atual, total_chunks, mapeamento_colunas")
+        .in("status", ["pendente", "processando"])
+        .order("created_at", { ascending: false })
+        .limit(20);
+      if (error) throw error;
+      const job = (data || []).find(
+        (j: any) => j?.mapeamento_colunas?._params?.lista_destino_id === listaId
+      );
+      return job || null;
+    },
+    enabled: !!listaId,
+    refetchInterval: (q) => (q.state.data ? 4000 : false),
+  });
+}
