@@ -316,6 +316,7 @@ serve(async (req) => {
       jobId = body.job_id;
       chunkAtual = body.chunk_atual || 0;
       const listaDestinoIdOverride = typeof body.lista_destino_id === "string" ? body.lista_destino_id : "";
+      const resetCounts = body.reset_counts === true;
 
       // Buscar dados do job
       const { data: job, error: jobError } = await supabase
@@ -337,6 +338,13 @@ serve(async (req) => {
       especialidadesParam = Array.isArray(params.especialidades) ? params.especialidades : (especialidadeParam ? [especialidadeParam] : []);
       origemParam = params.origem || "Importação Excel";
       listaDestinoId = listaDestinoIdOverride || params.lista_destino_id || "";
+
+      if (resetCounts && chunkAtual === 0) {
+        await supabase
+          .from("lead_import_jobs")
+          .update({ inseridos: 0, atualizados: 0, ignorados: 0, erros: [], status: "processando", finished_at: null })
+          .eq("id", jobId);
+      }
     }
 
     if (!storagePath || !jobId) {
