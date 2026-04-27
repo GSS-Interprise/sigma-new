@@ -234,3 +234,29 @@ export function useActiveImportJobForLista(listaId: string | null) {
     refetchInterval: (q) => (q.state.data ? 4000 : false),
   });
 }
+
+/**
+ * Retorna um mapa { listaId -> job } com TODOS os imports ativos,
+ * pra mostrar indicador na tabela de listas sem precisar 1 query por linha.
+ */
+export function useActiveImportJobsByLista() {
+  return useQuery({
+    queryKey: ["lead-import-jobs-ativos-by-lista"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("lead_import_jobs")
+        .select("id, status, total_linhas, linhas_processadas, chunk_atual, total_chunks, mapeamento_colunas")
+        .in("status", ["pendente", "processando"])
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (error) throw error;
+      const map: Record<string, any> = {};
+      for (const j of data || []) {
+        const lid = (j as any)?.mapeamento_colunas?._params?.lista_destino_id;
+        if (lid && !map[lid]) map[lid] = j;
+      }
+      return map;
+    },
+    refetchInterval: 5000,
+  });
+}
