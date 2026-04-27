@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { MessageSquare } from "lucide-react";
+import { CardActionsMenu } from "@/components/demandas/CardActionsMenu";
 
 interface ConversaCardProps {
   conversa: {
@@ -38,9 +39,16 @@ export function ConversaCard({ conversa, isSelected, onClick }: ConversaCardProp
         </div>
         
         <div className="flex flex-col items-end gap-1">
-          <Badge variant="secondary" className="text-[10px] h-5">
-            Aberto
-          </Badge>
+          <div className="flex items-center gap-1">
+            <Badge variant="secondary" className="text-[10px] h-5">
+              Aberto
+            </Badge>
+            <CardActionsMenu
+              tipo="sigzap"
+              recursoId={conversa.id}
+              label={`${conversa.nome_contato} (${conversa.numero_contato})`}
+            />
+          </div>
           {lastUpdate && (
             <span className="text-[10px] text-muted-foreground">
               {format(new Date(lastUpdate), "dd/MM HH:mm", { locale: ptBR })}
