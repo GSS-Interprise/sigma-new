@@ -840,6 +840,7 @@ serve(async (req) => {
             body: JSON.stringify({
               job_id: jobId,
               chunk_atual: nextChunk,
+              lista_destino_id: listaDestinoId || undefined,
             }),
           });
           
