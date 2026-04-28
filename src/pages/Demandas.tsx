@@ -8,7 +8,6 @@ import { ColunaEnviadas } from "@/components/demandas/ColunaEnviadas";
 import { ColunaParaMim } from "@/components/demandas/ColunaParaMim";
 import { ColunaPendenciasSetor } from "@/components/demandas/ColunaPendenciasSetor";
 import { NovaDemandaDialog } from "@/components/demandas/NovaDemandaDialog";
-import { TarefaDetalheDialog } from "@/components/demandas/TarefaDetalheDialog";
 import { useUserSetor } from "@/hooks/useUserSetor";
 import { usePermissions } from "@/hooks/usePermissions";
 import { toast } from "sonner";
@@ -72,7 +71,8 @@ export default function Demandas() {
         </div>
       </div>
       <NovaDemandaDialog open={novaOpen} onOpenChange={setNovaOpen} />
-      <TarefaDetalheDialog
+      <NovaDemandaDialog
+        key={tarefaAbertaId ?? "novo-detalhe"}
         tarefaId={tarefaAbertaId}
         open={!!tarefaAbertaId}
         onOpenChange={(open) => !open && setTarefaAbertaId(null)}
