@@ -230,6 +230,9 @@ export interface NovaDemandaInput {
   modulo?: string;
   checklist?: { texto: string; ok: boolean }[];
   tags?: string[];
+  comentario_inicial?: string | null;
+  comentario_mencionados?: string[];
+  comentario_links?: { titulo: string; url: string }[];
 }
 
 export function useCriarDemanda() {
@@ -271,6 +274,41 @@ export function useCriarDemanda() {
           .from("worklist_tarefa_mencionados")
           .insert(rows);
         if (mErr) throw mErr;
+      }
+      await supabase.from("worklist_tarefa_atividades" as any).insert({
+        tarefa_id: tarefaId,
+        user_id: user.id,
+        tipo: "criacao",
+        resumo: "Demanda criada",
+        detalhes: {
+          urgencia: input.urgencia,
+          responsavel_id: input.responsavel_id ?? null,
+          mencionados: input.mencionados ?? [],
+          tags: input.tags ?? [],
+        },
+      } as any);
+      const comentarioInicial = input.comentario_inicial?.trim();
+      if (comentarioInicial) {
+        const { error: cErr } = await supabase
+          .from("worklist_tarefa_comentarios" as any)
+          .insert({
+            tarefa_id: tarefaId,
+            user_id: user.id,
+            conteudo: comentarioInicial,
+            mencionados: input.comentario_mencionados ?? [],
+            links: input.comentario_links ?? [],
+          } as any);
+        if (cErr) throw cErr;
+        await supabase.from("worklist_tarefa_atividades" as any).insert({
+          tarefa_id: tarefaId,
+          user_id: user.id,
+          tipo: "comentario",
+          resumo: "Comentário inicial adicionado",
+          detalhes: {
+            mencionados: input.comentario_mencionados ?? [],
+            links: input.comentario_links ?? [],
+          },
+        } as any);
       }
       return tarefaId;
     },
