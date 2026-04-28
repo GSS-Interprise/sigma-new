@@ -12245,26 +12245,73 @@ export type Database = {
           },
         ]
       }
+      worklist_tarefa_atividades: {
+        Row: {
+          created_at: string
+          detalhes: Json
+          id: string
+          resumo: string
+          tarefa_id: string
+          tipo: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          detalhes?: Json
+          id?: string
+          resumo: string
+          tarefa_id: string
+          tipo: string
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          detalhes?: Json
+          id?: string
+          resumo?: string
+          tarefa_id?: string
+          tipo?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "worklist_tarefa_atividades_tarefa_id_fkey"
+            columns: ["tarefa_id"]
+            isOneToOne: false
+            referencedRelation: "worklist_tarefas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       worklist_tarefa_comentarios: {
         Row: {
           conteudo: string
           created_at: string
           id: string
+          links: Json
+          mencionados: string[]
           tarefa_id: string
+          updated_at: string
           user_id: string
         }
         Insert: {
           conteudo: string
           created_at?: string
           id?: string
+          links?: Json
+          mencionados?: string[]
           tarefa_id: string
+          updated_at?: string
           user_id: string
         }
         Update: {
           conteudo?: string
           created_at?: string
           id?: string
+          links?: Json
+          mencionados?: string[]
           tarefa_id?: string
+          updated_at?: string
           user_id?: string
         }
         Relationships: [

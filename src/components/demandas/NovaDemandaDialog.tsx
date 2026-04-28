@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -9,7 +10,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -31,6 +34,9 @@ import {
   GripVertical,
   Check,
   Tag as TagIcon,
+  MessageSquare,
+  Activity,
+  Link as LinkIcon,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -47,6 +53,8 @@ interface Props {
   onOpenChange: (o: boolean) => void;
   defaultDate?: Date | null;
 }
+
+type Urgencia = "baixa" | "media" | "alta" | "critica";
 
 /**
  * Modal "Nova demanda" da tela Home.
@@ -65,7 +73,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
   const [titulo, setTitulo] = useState("");
   const [descricao, setDescricao] = useState("");
   const [pessoas, setPessoas] = useState<string[]>([]);
-  const [urgencia, setUrgencia] = useState<"baixa" | "media" | "alta" | "critica">("media");
+  const [urgencia, setUrgencia] = useState<Urgencia>("media");
   const [dataLimite, setDataLimite] = useState<Date | undefined>(
     defaultDate ?? undefined,
   );
@@ -77,6 +85,11 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
   const novoItemRef = useRef<HTMLInputElement>(null);
   const [tags, setTags] = useState<string[]>([]);
   const [novaTag, setNovaTag] = useState("");
+  const [comentarioInicial, setComentarioInicial] = useState("");
+  const [comentarioPessoas, setComentarioPessoas] = useState<string[]>([]);
+  const [links, setLinks] = useState<{ titulo: string; url: string }[]>([]);
+  const [novoLinkTitulo, setNovoLinkTitulo] = useState("");
+  const [novoLinkUrl, setNovoLinkUrl] = useState("");
 
   useEffect(() => {
     if (open) {
@@ -90,6 +103,11 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
       setNovoItem("");
       setTags([]);
       setNovaTag("");
+      setComentarioInicial("");
+      setComentarioPessoas([]);
+      setLinks([]);
+      setNovoLinkTitulo("");
+      setNovoLinkUrl("");
     }
   }, [open, defaultDate]);
 
@@ -101,6 +119,17 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
     const files = Array.from(e.target.files || []);
     if (files.length) setPendingFiles((p) => [...p, ...files]);
     if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const adicionarLink = () => {
+    const url = novoLinkUrl.trim();
+    if (!url) return;
+    setLinks((p) => [
+      ...p,
+      { titulo: novoLinkTitulo.trim() || url, url },
+    ]);
+    setNovoLinkTitulo("");
+    setNovoLinkUrl("");
   };
 
   const submit = async () => {
@@ -128,6 +157,9 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
         data_limite: dataLimite ? format(dataLimite, "yyyy-MM-dd") : null,
         checklist: checklist.filter((c) => c.texto.trim()),
         tags,
+        comentario_inicial: comentarioInicial.trim() || null,
+        comentario_mencionados: comentarioPessoas,
+        comentario_links: links,
       });
       for (const f of pendingFiles) {
         try {
@@ -146,12 +178,18 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto">
+      <DialogContent className="max-w-[59rem] max-h-[92vh] overflow-hidden p-0">
         <DialogHeader>
-          <DialogTitle>Nova demanda</DialogTitle>
+          <div className="px-5 pt-5 pr-12">
+            <DialogTitle>Nova demanda</DialogTitle>
+            <DialogDescription>
+              Crie a tarefa com responsáveis, tags, comentários, links e histórico inicial.
+            </DialogDescription>
+          </div>
         </DialogHeader>
 
-        <div className="grid gap-3">
+        <div className="grid max-h-[calc(92vh-8.5rem)] gap-0 overflow-hidden border-y lg:grid-cols-[minmax(0,1fr)_20rem]">
+          <div className="grid gap-3 overflow-y-auto p-5">
           <div className="grid gap-1.5">
             <Label className="text-xs">Título *</Label>
             <Input
@@ -399,7 +437,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-1.5">
               <Label className="text-xs">Urgência</Label>
-              <Select value={urgencia} onValueChange={(v: any) => setUrgencia(v)}>
+              <Select value={urgencia} onValueChange={(v) => setUrgencia(v as Urgencia)}>
                 <SelectTrigger className="h-9">
                   <SelectValue />
                 </SelectTrigger>
@@ -461,9 +499,115 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
             <strong>conversa SigZap</strong>, abra o card correspondente e use o
             menu <strong>⋯ → Criar tarefa</strong>.
           </p>
+          </div>
+
+          <aside className="min-h-0 border-t bg-muted/20 lg:border-l lg:border-t-0">
+            <Tabs defaultValue="comentarios" className="flex h-full min-h-[24rem] flex-col">
+              <TabsList className="m-3 grid h-9 grid-cols-2">
+                <TabsTrigger value="comentarios" className="gap-1 text-xs">
+                  <MessageSquare className="h-3.5 w-3.5" /> Comentários
+                </TabsTrigger>
+                <TabsTrigger value="atividades" className="gap-1 text-xs">
+                  <Activity className="h-3.5 w-3.5" /> Atividades
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="comentarios" className="mt-0 flex-1 overflow-y-auto px-3 pb-3">
+                <div className="space-y-3">
+                  <div className="rounded-md border bg-background p-3 shadow-sm">
+                    <Label className="text-xs">Comentário inicial</Label>
+                    <Textarea
+                      value={comentarioInicial}
+                      onChange={(e) => setComentarioInicial(e.target.value)}
+                      placeholder="Escreva atualizações, contexto ou próximos passos…"
+                      className="mt-2 min-h-24 resize-none"
+                    />
+                  </div>
+
+                  <div className="rounded-md border bg-background p-3 shadow-sm">
+                    <Label className="text-xs">Marcar no comentário</Label>
+                    <PessoasCombobox
+                      value={comentarioPessoas}
+                      onChange={setComentarioPessoas}
+                      modulo={null}
+                      placeholder="@ mencionar pessoas…"
+                      className="mt-2"
+                    />
+                  </div>
+
+                  <div className="rounded-md border bg-background p-3 shadow-sm">
+                    <Label className="text-xs flex items-center gap-1.5">
+                      <LinkIcon className="h-3.5 w-3.5" /> Links relacionados
+                    </Label>
+                    <div className="mt-2 grid gap-2">
+                      {links.map((link, idx) => (
+                        <div key={`${link.url}-${idx}`} className="flex items-center gap-2 rounded border bg-muted/30 px-2 py-1.5 text-xs">
+                          <LinkIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                          <span className="min-w-0 flex-1 truncate">{link.titulo}</span>
+                          <button
+                            type="button"
+                            onClick={() => setLinks((p) => p.filter((_, i) => i !== idx))}
+                            className="text-muted-foreground hover:text-destructive"
+                            aria-label="Remover link"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                      <Input
+                        value={novoLinkTitulo}
+                        onChange={(e) => setNovoLinkTitulo(e.target.value)}
+                        placeholder="Nome do link"
+                        className="h-8 text-xs"
+                      />
+                      <div className="flex gap-2">
+                        <Input
+                          value={novoLinkUrl}
+                          onChange={(e) => setNovoLinkUrl(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              adicionarLink();
+                            }
+                          }}
+                          placeholder="https://..."
+                          className="h-8 text-xs"
+                        />
+                        <Button type="button" size="sm" variant="outline" onClick={adicionarLink} className="h-8 px-2">
+                          <Plus className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="atividades" className="mt-0 flex-1 overflow-y-auto px-3 pb-3">
+                <div className="space-y-3 text-xs">
+                  <div className="rounded-md border bg-background p-3 shadow-sm">
+                    <div className="font-medium">Demanda será criada</div>
+                    <div className="mt-1 text-muted-foreground">Título, descrição, checklist e prazo entram no histórico inicial.</div>
+                  </div>
+                  <div className="rounded-md border bg-background p-3 shadow-sm">
+                    <div className="font-medium">Pessoas</div>
+                    <div className="mt-1 text-muted-foreground">
+                      {pessoas.length ? `${pessoas.length} pessoa(s) envolvida(s)` : "Sem pessoas envolvidas"}
+                      {comentarioPessoas.length ? ` · ${comentarioPessoas.length} menção(ões)` : ""}
+                    </div>
+                  </div>
+                  <div className="rounded-md border bg-background p-3 shadow-sm">
+                    <div className="font-medium">Organização</div>
+                    <div className="mt-1 text-muted-foreground">
+                      {tags.length ? `${tags.length} tag(s)` : "Sem tags"} · {links.length ? `${links.length} link(s)` : "Sem links"}
+                    </div>
+                  </div>
+                </div>
+              </TabsContent>
+            </Tabs>
+          </aside>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="px-5 pb-5 pt-0">
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
