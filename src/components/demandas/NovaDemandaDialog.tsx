@@ -560,23 +560,38 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
                 <div className="space-y-3">
                   <div className="rounded-md border bg-background p-3 shadow-sm">
                     <Label className="text-xs">Comentário inicial</Label>
-                    <Textarea
-                      value={comentarioInicial}
-                      onChange={(e) => setComentarioInicial(e.target.value)}
-                      placeholder="Escreva atualizações, contexto ou próximos passos…"
-                      className="mt-2 min-h-24 resize-none"
-                    />
-                  </div>
-
-                  <div className="rounded-md border bg-background p-3 shadow-sm">
-                    <Label className="text-xs">Marcar no comentário</Label>
-                    <PessoasCombobox
-                      value={comentarioPessoas}
-                      onChange={setComentarioPessoas}
-                      modulo={null}
-                      placeholder="@ mencionar pessoas…"
-                      className="mt-2"
-                    />
+                    <div className="relative mt-2">
+                      <Textarea
+                        value={comentarioInicial}
+                        onChange={(e) => {
+                          setComentarioInicial(e.target.value);
+                          setComentarioCaret(e.target.selectionStart ?? e.target.value.length);
+                        }}
+                        onClick={(e) => setComentarioCaret(e.currentTarget.selectionStart ?? 0)}
+                        onKeyUp={(e) => setComentarioCaret(e.currentTarget.selectionStart ?? 0)}
+                        placeholder="Digite @ para marcar pessoas…"
+                        className="min-h-28 resize-none"
+                      />
+                      {sugestoesMention.length > 0 && (
+                        <div className="absolute left-2 right-2 top-full z-50 mt-1 overflow-hidden rounded-md border bg-popover shadow-lg">
+                          {sugestoesMention.map((p) => (
+                            <button
+                              key={p.id}
+                              type="button"
+                              onClick={() => selecionarMention(p)}
+                              className="block w-full px-3 py-2 text-left text-sm hover:bg-muted"
+                            >
+                              @{p.nome_completo || "Sem nome"}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    {comentarioPessoas.length > 0 && (
+                      <div className="mt-2 text-[11px] text-muted-foreground">
+                        {comentarioPessoas.length} pessoa(s) marcada(s) no comentário
+                      </div>
+                    )}
                   </div>
 
                   <div className="rounded-md border bg-background p-3 shadow-sm">
