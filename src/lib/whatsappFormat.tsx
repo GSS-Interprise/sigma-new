@@ -89,7 +89,7 @@ export function formatWhatsappText(text: string, keyBase = "wpf"): React.ReactNo
       nodes.push(
         <span
           key={k}
-          className="block border-l-2 border-current/40 pl-2 my-0.5 opacity-90"
+          className="block border-l-[3px] border-current/60 pl-2 my-0.5 italic opacity-90"
         >
           {renderInline(quote[1], k)}
         </span>
