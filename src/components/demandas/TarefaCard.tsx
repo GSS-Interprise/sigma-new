@@ -86,7 +86,14 @@ export function TarefaCard({ tarefa, onConcluir, onClick, compact }: Props) {
 
       {!compact && tarefa.descricao && (
         <p className="text-xs text-muted-foreground line-clamp-2 mb-2">
-          {tarefa.descricao}
+          {tarefa.descricao
+            .replace(/<[^>]*>/g, " ")
+            .replace(/&nbsp;/g, " ")
+            .replace(/&amp;/g, "&")
+            .replace(/&lt;/g, "<")
+            .replace(/&gt;/g, ">")
+            .replace(/\s+/g, " ")
+            .trim()}
         </p>
       )}
 
