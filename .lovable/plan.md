@@ -1,110 +1,141 @@
-# Plano: Suporte simultâneo ao fluxo antigo e ao novo n8n sigma-evo
+# Suporte a enquete e contato (e localização) no fluxo sigma-evo
 
-## Objetivo
+## Diagnóstico
 
-Permitir que **ambos os fluxos do n8n** (o antigo, atualmente em produção, e o novo sigma-evo com extração rica de metadados) enviem para a mesma edge function `receive-whatsapp-messages` durante a fase de testes — **sem quebrar envio/recebimento de mensagens** e **sem alterar formatos existentes**.
+Olhando os registros recentes da instância `teste5847` em `sigzap_messages` e o payload bruto entregue pelo novo workflow do n8n:
 
-Você poderá ativar o fluxo novo no n8n em paralelo, comparar resultados, e só depois desligar o antigo.
+**Enquete (`pollCreationMessageV3`)**
+- Payload: `raw_payload.data.message.pollCreationMessageV3 = { name, options[], selectableOptionsCount }`
+- Resultado salvo: `message_type = 'unknown'`, `message_text = '[Mensagem sem conteúdo]'`.
+- Causa: a função `extractMessageContent` em `supabase/functions/receive-whatsapp-messages/index.ts` não tem nenhum branch para `pollCreationMessage` / `pollCreationMessageV2` / `pollCreationMessageV3`. Cai no `return '[Mensagem sem conteúdo]'`.
 
-## Por que é seguro
+**Contato (`contactMessage`)**
+- Payload: `raw_payload.data.message.contactMessage = { displayName, vcard }`
+- Resultado salvo: `message_type = 'contact'`, `message_text = '[Contato: Amanda GSS]'`, mas `contact_data = NULL`.
+- Causas:
+  1. A função extrai apenas o `displayName` para virar texto — não popula a coluna `contact_data` (jsonb) que já existe no schema.
+  2. A UI (`SigZapChatColumn.tsx`) não tem `case 'contact'` em `renderMessageContent`, então cai no fallback que mostra só o texto `[Contato: ...]` em vez de um cartão de contato com nome + telefone + ação.
 
-A edge function atual (`supabase/functions/receive-whatsapp-messages/index.ts`, 1081 linhas) já foi escrita de forma **defensiva e tolerante**:
+**Localização** tem o mesmo problema do contato (já há coluna `location_data` mas não é populada nem renderizada). Aproveito para corrigir junto, é uma linha.
 
-- Lê campos normalizados do n8n (`message_type`, `from_me`, `sender_jid`, `instance_uuid`, `sender_lid`) **se existirem**
-- Se não existirem, faz fallback para `raw_payload.data.*` (estrutura crua da Evolution API)
-- Salva sempre `raw_payload` integral, então nenhum dado é perdido
+Conclusão: **é o JS** (edge function + UI), não a estrutura. O n8n novo está enviando o payload Evolution cru, e a edge function só foi adaptada para campos de mídia comuns — enquete não foi adaptada e contato/localização não populam as colunas dedicadas.
 
-O fluxo novo do n8n preserva o `raw_payload` e adiciona campos novos. A edge function atual simplesmente **ignora os campos que não conhece** — não dá erro.
+## Mudanças
 
-Conclusão: **o fluxo novo já funciona hoje**, mesmo sem nenhuma alteração. Só que os campos extras (`is_forwarded`, `location_data`, etc.) seriam descartados.
+### 1. `supabase/functions/receive-whatsapp-messages/index.ts`
 
-## Estratégia: aditiva, não destrutiva
-
-Toda mudança será **aditiva**:
-- Colunas novas no banco → `NULL` por padrão (registros antigos não quebram)
-- Leitura de campos novos na edge function → com `?? null` (se não vier, fica nulo)
-- Lógica antiga 100% preservada (mesma assinatura de insert, mesmos campos obrigatórios)
-
-## Etapas
-
-### 1. Migration aditiva em `sigzap_messages`
-
-Adicionar colunas opcionais (todas `NULL` por padrão):
-
-| Coluna | Tipo | Origem (fluxo novo) |
-|---|---|---|
-| `is_forwarded` | `boolean` | `payload.is_forwarded` |
-| `forward_score` | `integer` | `payload.forward_score` |
-| `location_data` | `jsonb` | `payload.location_data` |
-| `contact_data` | `jsonb` | `payload.contact_data` |
-| `quoted_message_type` | `text` | `payload.quoted_message_type` |
-| `quoted_message_participant` | `text` | `payload.quoted_message_participant` |
-
-Nenhuma alteração em colunas existentes. Nenhum `NOT NULL`. Nenhum constraint novo.
-
-### 2. Patch na edge function `receive-whatsapp-messages`
-
-Apenas **adicionar leitura** dos campos novos no bloco de insert (perto da linha 977-989). Estrutura:
+**a) Adicionar branch de enquete em `extractMessageContent`** (lê das duas formas — pré-processada pelo n8n e crua):
 
 ```ts
-.insert({
-  // ...todos os campos atuais permanecem iguais...
-  raw_payload: rawPayload,
-  // Campos novos (somente populados quando vierem do fluxo novo):
-  is_forwarded: payload.is_forwarded ?? null,
-  forward_score: payload.forward_score ?? null,
-  location_data: payload.location_data ?? null,
-  contact_data: payload.contact_data ?? null,
-  quoted_message_type: payload.quoted_message_type ?? null,
-  quoted_message_participant: payload.quoted_message_participant ?? null,
-})
+// Enquete (poll) – aceita V1, V2 e V3
+const pollMsg =
+  evolutionMessage.pollCreationMessageV3 ||
+  evolutionMessage.pollCreationMessageV2 ||
+  evolutionMessage.pollCreationMessage ||
+  msg?.pollCreationMessageV3 ||
+  msg?.pollCreationMessageV2 ||
+  msg?.pollCreationMessage;
+
+if (msgType === 'poll' || msgType?.startsWith('pollCreation') || pollMsg) {
+  const options = (pollMsg?.options || []).map((o: any) => o.optionName).filter(Boolean);
+  return {
+    text: `[Enquete: ${pollMsg?.name || 'sem título'}]`,
+    type: 'poll',
+    pollData: {
+      name: pollMsg?.name || '',
+      options,
+      selectableOptionsCount: pollMsg?.selectableOptionsCount ?? 1,
+    },
+  };
+}
 ```
 
-Adicionar também os tipos no `interface EvolutionMessage` (campos opcionais).
+**b) Enriquecer o branch de contato** para extrair telefone/vcard e devolver `contactData`:
 
-**Nada mais é alterado.** A lógica de detecção de mídia, download, dedup, leads, reactions, send/receive — tudo continua idêntico.
+```ts
+if (msgType === 'contact' || msgType === 'vcard' || evolutionMessage.contactMessage || msg?.contactMessage) {
+  const ctcMsg = evolutionMessage.contactMessage || msg?.contactMessage || {};
+  const vcard = ctcMsg.vcard || '';
+  const phone = (vcard.match(/TEL[^:]*:([+\d\s\-()]+)/) || [])[1]?.trim() || null;
+  return {
+    text: `[Contato: ${ctcMsg.displayName || 'sem nome'}]`,
+    type: 'contact',
+    contactData: {
+      displayName: ctcMsg.displayName || null,
+      phone,
+      vcard,
+    },
+  };
+}
+```
 
-### 3. Como diferenciar nos testes
+**c) Localização** — devolver também `locationData`:
 
-Para você comparar os fluxos durante o paralelo, pode filtrar no Supabase:
+```ts
+if (msgType === 'location' || evolutionMessage.locationMessage || msg?.locationMessage) {
+  const locMsg = evolutionMessage.locationMessage || msg?.locationMessage || {};
+  return {
+    text: `[Localização]`,
+    type: 'location',
+    locationData: {
+      latitude: locMsg.degreesLatitude,
+      longitude: locMsg.degreesLongitude,
+      name: locMsg.name || null,
+      address: locMsg.address || null,
+    },
+  };
+}
+```
+
+**d) No INSERT (linha ~989)** popular as colunas a partir do `messageContent` quando vierem da extração (não só do `payload.*`):
+
+```ts
+location_data: payload.location_data ?? messageContent.locationData ?? null,
+contact_data:  payload.contact_data  ?? messageContent.contactData  ?? null,
+// e novo:
+poll_data:     payload.poll_data     ?? messageContent.pollData     ?? null,
+```
+
+**e) Tipos** — atualizar a `interface EvolutionMessage` com os campos opcionais (`pollCreationMessageV3`, etc.) e o tipo de retorno de `extractMessageContent` para incluir `pollData`/`contactData`/`locationData`.
+
+### 2. Migration aditiva: nova coluna `poll_data jsonb null`
 
 ```sql
--- Mensagens vindas do fluxo novo (têm pelo menos um campo novo populado)
-SELECT * FROM sigzap_messages
-WHERE is_forwarded IS NOT NULL
-   OR location_data IS NOT NULL
-   OR contact_data IS NOT NULL
-ORDER BY created_at DESC;
-
--- Mensagens do fluxo antigo (todos os campos novos nulos)
-SELECT * FROM sigzap_messages
-WHERE is_forwarded IS NULL
-  AND location_data IS NULL
-  AND contact_data IS NULL
-ORDER BY created_at DESC;
+ALTER TABLE public.sigzap_messages
+  ADD COLUMN IF NOT EXISTS poll_data jsonb;
 ```
+
+Sem `NOT NULL`, sem default — não quebra nada.
+
+### 3. UI: `src/components/sigzap/SigZapChatColumn.tsx`
+
+**a) Adicionar `contact_data`, `location_data`, `poll_data` à interface `Message`** e ao `select(...)` da query de mensagens (se hoje usa `*`, já vem; se for explícito, incluir).
+
+**b) Adicionar `case` em `renderMessageContent`** para renderizar cartões dedicados em vez do fallback "Contato"/"sem conteúdo":
+
+- `case 'contact'`: cartão com avatar/ícone, nome do contato, telefone clicável (link `tel:` + botão "Iniciar conversa" se telefone existir).
+- `case 'location'`: bloco com lat/long, nome/endereço (se houver) e link "Abrir no Google Maps" (`https://maps.google.com/?q=lat,lng`).
+- `case 'poll'`: cartão estilo WhatsApp com título da enquete + lista de opções (radio/checkbox visual, somente leitura — sem voto, pois Evolution não envia respostas individuais aqui).
+
+Visual segue o padrão atual das bolhas (cores `isFromMe`, `rounded-lg`, etc.). Sem dependências novas.
+
+### 4. Backfill (opcional, defensivo)
+
+As mensagens já gravadas podem ser reaproveitadas porque o `raw_payload` tem tudo. Posso adicionar um pequeno bloco no início do `renderMessageContent` que, se a coluna `contact_data`/`location_data`/`poll_data` estiver vazia, tenta reconstruir on-the-fly a partir de `msg.raw_payload?.data?.message`. Assim as mensagens antigas (Tu/Porem, Amanda GSS) já aparecem corretas sem precisar reprocessar.
 
 ## Garantias de não-quebra
 
-| Risco | Mitigação |
+- Edge function: só adiciona branches novos antes do `return '[Mensagem sem conteúdo]'`. Fluxo antigo continua igual.
+- Migration: 1 coluna `NULL`.
+- UI: adiciona `case`s ao `switch`; o `default` permanece. Nenhum componente existente é modificado.
+- Sem alteração em send/receive, RLS, dedup, mídia.
+
+## Resumo
+
+| Arquivo | Mudança |
 |---|---|
-| Mensagem do fluxo antigo deixa de ser inserida | Impossível — nenhuma coluna obrigatória nova, nenhuma lógica removida |
-| Envio de mensagem (`send-sigzap-message`) afetado | Não é tocado — função totalmente separada |
-| Formato de mensagens na UI muda | Não — UI continua lendo as mesmas colunas (`text_content`, `message_type`, etc.) |
-| Mídia (imagem/áudio/vídeo) para de baixar | Não — lógica de mídia usa `raw_payload`, que ambos os fluxos enviam |
-| Reactions deixam de funcionar | Não — mesma fonte (`raw_payload.data.message.reactionMessage`) |
-| Dedup de conversa quebra | Não — chave de dedup (`remoteJid`) vem do `raw_payload` em ambos |
+| `supabase/functions/receive-whatsapp-messages/index.ts` | +3 branches (poll, contact enriquecido, location enriquecido), tipos, INSERT |
+| Nova migration | `+poll_data jsonb` em `sigzap_messages` |
+| `src/components/sigzap/SigZapChatColumn.tsx` | `case 'contact' / 'location' / 'poll'` em `renderMessageContent` + fallback via `raw_payload` |
 
-## Recomendação para o n8n
-
-Mantenha o webhook do fluxo novo **apontando para a mesma URL** da edge function (`receive-whatsapp-messages`). Ative os dois workflows simultaneamente no n8n. A edge function aceitará os dois formatos sem distinção.
-
-Quando estiver confiante, desative o antigo no n8n — sem precisar mexer no código.
-
-## Resumo do que será alterado
-
-- **1 migration** (adiciona 6 colunas opcionais em `sigzap_messages`)
-- **1 arquivo** editado: `supabase/functions/receive-whatsapp-messages/index.ts` (adiciona ~10 linhas no insert + tipos)
-- **0 alterações** em frontend, em `send-sigzap-message`, em outras edge functions, em RLS, em tabelas existentes
-
-Aprovando, executo as duas etapas e você pode ativar o fluxo novo no n8n em paralelo ao antigo.
+Aprovando, executo as 3 mudanças e a partir do próximo webhook (e nas mensagens já existentes via fallback do `raw_payload`) a enquete vira cartão de enquete e o contato vira cartão de contato com telefone clicável.
