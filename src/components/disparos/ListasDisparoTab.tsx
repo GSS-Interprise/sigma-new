@@ -192,6 +192,10 @@ export function ListasDisparoTab() {
             onOpenChange={setDetalhesOpen}
             lista={selecionada}
             onAddLeads={() => { setDetalhesOpen(false); setPickerOpen(true); }}
+            onComplementarCsv={() => {
+              setDetalhesOpen(false);
+              handleComplementar(selecionada);
+            }}
           />
         </>
       )}
