@@ -146,7 +146,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Nova demanda</DialogTitle>
         </DialogHeader>
@@ -354,6 +354,46 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
                 ? "Sem ninguém marcado — esta tarefa é só pra você."
                 : "A primeira pessoa marcada é o responsável principal."}
             </p>
+          </div>
+
+          <div className="grid gap-1.5">
+            <Label className="text-xs flex items-center gap-1.5 text-muted-foreground">
+              <TagIcon className="h-3.5 w-3.5" /> Tags
+            </Label>
+            <div className="flex flex-wrap items-center gap-1.5 rounded-md border bg-muted/30 px-2 py-1.5 min-h-9">
+              {tags.map((t, i) => (
+                <Badge key={i} variant="secondary" className="gap-1 pr-1">
+                  #{t}
+                  <button
+                    type="button"
+                    onClick={() => setTags((p) => p.filter((_, idx) => idx !== i))}
+                    className="hover:text-destructive"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              ))}
+              <input
+                value={novaTag}
+                onChange={(e) => setNovaTag(e.target.value)}
+                onKeyDown={(e) => {
+                  if ((e.key === "Enter" || e.key === ",") && novaTag.trim()) {
+                    e.preventDefault();
+                    const t = novaTag.trim().replace(/^#/, "").toLowerCase();
+                    if (!tags.includes(t)) setTags((p) => [...p, t]);
+                    setNovaTag("");
+                  } else if (
+                    e.key === "Backspace" &&
+                    novaTag === "" &&
+                    tags.length > 0
+                  ) {
+                    setTags((p) => p.slice(0, -1));
+                  }
+                }}
+                placeholder={tags.length ? "" : "Adicionar tag e Enter…"}
+                className="flex-1 min-w-[120px] bg-transparent border-0 outline-none text-sm py-0.5"
+              />
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
