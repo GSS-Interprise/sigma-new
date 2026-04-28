@@ -9,6 +9,7 @@ import { ptBR } from "date-fns/locale";
 import { useDemandaAtividades, useDemandaComentarios, useDemandaDetalhe } from "@/hooks/useDemandas";
 import { URGENCIA_LABEL } from "@/lib/setoresAccess";
 import { sanitizeHtml } from "@/lib/sanitizeHtml";
+import { toast } from "sonner";
 
 interface Props {
   tarefaId: string | null;
@@ -21,25 +22,36 @@ function initials(name?: string | null) {
   return name.split(" ").filter(Boolean).slice(0, 2).map((p) => p[0]).join("").toUpperCase();
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export function TarefaDetalheDialog({ tarefaId, open, onOpenChange }: Props) {
-  const { data: tarefa, isLoading } = useDemandaDetalhe(open ? tarefaId : null);
-  const { data: comentarios = [] } = useDemandaComentarios(open ? tarefaId : null);
-  const { data: atividades = [] } = useDemandaAtividades(open ? tarefaId : null);
+  const tarefaIdValido = !!tarefaId && UUID_RE.test(tarefaId);
+  const queryId = open && tarefaIdValido ? tarefaId : null;
+  const { data: tarefa, isLoading } = useDemandaDetalhe(queryId);
+  const { data: comentarios = [] } = useDemandaComentarios(queryId);
+  const { data: atividades = [] } = useDemandaAtividades(queryId);
+  const tarefaCorreta = !!tarefa && tarefa.id === tarefaId;
+
+  if (open && tarefaId && !tarefaIdValido) {
+    toast.error("Demanda inválida. Abra o card novamente.");
+    onOpenChange(false);
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[59rem] max-h-[92vh] overflow-hidden p-0">
         <DialogHeader>
           <div className="px-5 pt-5 pr-12">
-            <DialogTitle>{tarefa?.titulo ?? "Detalhe da demanda"}</DialogTitle>
+            <DialogTitle>{tarefaCorreta ? tarefa.titulo : "Detalhe da demanda"}</DialogTitle>
             <DialogDescription>Comentários, atividades e contexto da tarefa.</DialogDescription>
           </div>
         </DialogHeader>
 
         <div className="grid max-h-[calc(92vh-5.5rem)] overflow-hidden border-t lg:grid-cols-[minmax(0,1fr)_20rem]">
           <ScrollArea className="min-h-[28rem] p-5">
-            {isLoading && <div className="text-sm text-muted-foreground">Carregando…</div>}
-            {tarefa && (
+            {(isLoading || (tarefa && !tarefaCorreta)) && <div className="text-sm text-muted-foreground">Carregando demanda correta…</div>}
+            {!isLoading && tarefaIdValido && !tarefa && <div className="text-sm text-muted-foreground">Demanda não encontrada ou sem permissão de acesso.</div>}
+            {tarefaCorreta && (
               <div className="space-y-4 pr-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant="outline">{URGENCIA_LABEL[tarefa.urgencia] ?? tarefa.urgencia}</Badge>
