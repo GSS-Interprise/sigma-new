@@ -9,7 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import RichTextEditor from "@/components/ui/rich-text-editor";
+import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import {
   Select,
   SelectContent,
@@ -164,12 +164,12 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
 
           <div className="grid gap-1.5">
             <Label className="text-xs">Descrição (cole prints com Ctrl+V)</Label>
-            <Textarea
+            <RichTextEditor
               value={descricao}
-              onChange={(e) => setDescricao(e.target.value)}
-              onPaste={handlePaste}
-              rows={3}
-              placeholder="Detalhe a demanda…"
+              onChange={setDescricao}
+              placeholder="Detalhe a demanda… use a barra para formatar."
+              minHeight="140px"
+              onImagePaste={handleImagePaste}
             />
             {pendingFiles.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
