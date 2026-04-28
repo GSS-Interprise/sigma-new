@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Dialog,
   DialogContent,
@@ -46,6 +47,7 @@ import { useUserSetor } from "@/hooks/useUserSetor";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCriarDemanda, useUploadAnexoDemanda } from "@/hooks/useDemandas";
 import { URGENCIA_LABEL } from "@/lib/setoresAccess";
+import { supabase } from "@/integrations/supabase/client";
 import { PessoasCombobox } from "./PessoasCombobox";
 
 interface Props {
@@ -55,6 +57,7 @@ interface Props {
 }
 
 type Urgencia = "baixa" | "media" | "alta" | "critica";
+type PessoaMention = { id: string; nome_completo: string | null };
 
 /**
  * Modal "Nova demanda" da tela Home.
@@ -87,6 +90,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
   const [novaTag, setNovaTag] = useState("");
   const [comentarioInicial, setComentarioInicial] = useState("");
   const [comentarioPessoas, setComentarioPessoas] = useState<string[]>([]);
+  const [comentarioCaret, setComentarioCaret] = useState(0);
   const [links, setLinks] = useState<{ titulo: string; url: string }[]>([]);
   const [novoLinkTitulo, setNovoLinkTitulo] = useState("");
   const [novoLinkUrl, setNovoLinkUrl] = useState("");
@@ -105,11 +109,25 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
       setNovaTag("");
       setComentarioInicial("");
       setComentarioPessoas([]);
+      setComentarioCaret(0);
       setLinks([]);
       setNovoLinkTitulo("");
       setNovoLinkUrl("");
     }
   }, [open, defaultDate]);
+
+  const { data: pessoasSistema = [] } = useQuery({
+    queryKey: ["demandas-mentions-pessoas"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, nome_completo")
+        .order("nome_completo");
+      if (error) throw error;
+      return (data || []) as PessoaMention[];
+    },
+    staleTime: 1000 * 60 * 5,
+  });
 
   const handleImagePaste = (file: File) => {
     setPendingFiles((prev) => [...prev, file]);
@@ -130,6 +148,32 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
     ]);
     setNovoLinkTitulo("");
     setNovoLinkUrl("");
+  };
+
+  const mentionMatch = comentarioInicial.slice(0, comentarioCaret).match(/@([^@\s]*)$/);
+  const mentionQuery = mentionMatch?.[1]?.toLowerCase() ?? "";
+  const mentionStart = mentionMatch
+    ? comentarioCaret - mentionMatch[0].length
+    : -1;
+  const sugestoesMention = useMemo(() => {
+    if (mentionStart < 0) return [];
+    return pessoasSistema
+      .filter((p) => (p.nome_completo || "").toLowerCase().includes(mentionQuery))
+      .filter((p) => !comentarioPessoas.includes(p.id))
+      .slice(0, 6);
+  }, [comentarioPessoas, mentionQuery, mentionStart, pessoasSistema]);
+
+  const selecionarMention = (pessoa: PessoaMention) => {
+    if (mentionStart < 0) return;
+    const nome = pessoa.nome_completo || "pessoa";
+    const antes = comentarioInicial.slice(0, mentionStart);
+    const depois = comentarioInicial.slice(comentarioCaret);
+    const proximoTexto = `${antes}@${nome} ${depois}`;
+    setComentarioInicial(proximoTexto);
+    setComentarioPessoas((prev) =>
+      prev.includes(pessoa.id) ? prev : [...prev, pessoa.id],
+    );
+    setComentarioCaret(antes.length + nome.length + 2);
   };
 
   const submit = async () => {
@@ -516,23 +560,38 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
                 <div className="space-y-3">
                   <div className="rounded-md border bg-background p-3 shadow-sm">
                     <Label className="text-xs">Comentário inicial</Label>
-                    <Textarea
-                      value={comentarioInicial}
-                      onChange={(e) => setComentarioInicial(e.target.value)}
-                      placeholder="Escreva atualizações, contexto ou próximos passos…"
-                      className="mt-2 min-h-24 resize-none"
-                    />
-                  </div>
-
-                  <div className="rounded-md border bg-background p-3 shadow-sm">
-                    <Label className="text-xs">Marcar no comentário</Label>
-                    <PessoasCombobox
-                      value={comentarioPessoas}
-                      onChange={setComentarioPessoas}
-                      modulo={null}
-                      placeholder="@ mencionar pessoas…"
-                      className="mt-2"
-                    />
+                    <div className="relative mt-2">
+                      <Textarea
+                        value={comentarioInicial}
+                        onChange={(e) => {
+                          setComentarioInicial(e.target.value);
+                          setComentarioCaret(e.target.selectionStart ?? e.target.value.length);
+                        }}
+                        onClick={(e) => setComentarioCaret(e.currentTarget.selectionStart ?? 0)}
+                        onKeyUp={(e) => setComentarioCaret(e.currentTarget.selectionStart ?? 0)}
+                        placeholder="Digite @ para marcar pessoas…"
+                        className="min-h-28 resize-none"
+                      />
+                      {sugestoesMention.length > 0 && (
+                        <div className="absolute left-2 right-2 top-full z-50 mt-1 overflow-hidden rounded-md border bg-popover shadow-lg">
+                          {sugestoesMention.map((p) => (
+                            <button
+                              key={p.id}
+                              type="button"
+                              onClick={() => selecionarMention(p)}
+                              className="block w-full px-3 py-2 text-left text-sm hover:bg-muted"
+                            >
+                              @{p.nome_completo || "Sem nome"}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    {comentarioPessoas.length > 0 && (
+                      <div className="mt-2 text-[11px] text-muted-foreground">
+                        {comentarioPessoas.length} pessoa(s) marcada(s) no comentário
+                      </div>
+                    )}
                   </div>
 
                   <div className="rounded-md border bg-background p-3 shadow-sm">
