@@ -7,7 +7,8 @@ const corsHeaders = {
 };
 
 const MAX_ATTEMPTS = 3;
-const BATCH_SIZE = 1000;
+const BATCH_SIZE = 200;
+const PARALLELISM = 10;
 
 // =========================================================
 // ABANDONMENT REASONS
