@@ -102,6 +102,7 @@ function initials(name?: string | null) {
 export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = null }: Props) {
   const { setorId } = useUserSetor();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const criar = useCriarDemanda();
   const atualizar = useAtualizarDemanda();
   const comentar = useAdicionarComentarioDemanda();
@@ -197,6 +198,108 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
     setNovoItem("");
     setNovaTag("");
   }, [open, isEditing, tarefaCorreta, tarefaExistente, user?.id]);
+
+  // Buscar resumos das referências vinculadas
+  const { data: referencias } = useQuery({
+    queryKey: [
+      "demanda-referencias",
+      tarefaExistente?.licitacao_id,
+      tarefaExistente?.contrato_id,
+      tarefaExistente?.lead_id,
+      tarefaExistente?.sigzap_conversation_id,
+    ],
+    enabled:
+      isEditing &&
+      tarefaCorreta &&
+      !!(
+        tarefaExistente?.licitacao_id ||
+        tarefaExistente?.contrato_id ||
+        tarefaExistente?.lead_id ||
+        tarefaExistente?.sigzap_conversation_id
+      ),
+    queryFn: async () => {
+      const out: {
+        licitacao?: { id: string; label: string };
+        contrato?: { id: string; label: string };
+        lead?: { id: string; label: string };
+        conversa?: { id: string; label: string };
+      } = {};
+      if (tarefaExistente?.licitacao_id) {
+        const { data } = await supabase
+          .from("licitacoes")
+          .select("id, numero_edital, orgao, objeto")
+          .eq("id", tarefaExistente.licitacao_id)
+          .maybeSingle();
+        if (data) {
+          out.licitacao = {
+            id: data.id,
+            label:
+              data.numero_edital
+                ? `${data.numero_edital}${data.orgao ? ` · ${data.orgao}` : ""}`
+                : data.orgao || (data.objeto?.slice(0, 60) ?? "Licitação"),
+          };
+        }
+      }
+      if (tarefaExistente?.contrato_id) {
+        const { data } = await supabase
+          .from("contratos")
+          .select("id, codigo_contrato, codigo_interno, objeto_contrato")
+          .eq("id", tarefaExistente.contrato_id)
+          .maybeSingle();
+        if (data) {
+          out.contrato = {
+            id: data.id,
+            label:
+              data.codigo_contrato ||
+              data.codigo_interno ||
+              (data.objeto_contrato?.slice(0, 60) ?? "Contrato"),
+          };
+        }
+      }
+      if (tarefaExistente?.lead_id) {
+        const { data } = await supabase
+          .from("captacao_leads")
+          .select("id, nome")
+          .eq("id", tarefaExistente.lead_id)
+          .maybeSingle();
+        if (data) {
+          out.lead = { id: data.id, label: data.nome || "Lead" };
+        } else {
+          out.lead = { id: tarefaExistente.lead_id, label: "Lead" };
+        }
+      }
+      if (tarefaExistente?.sigzap_conversation_id) {
+        const { data } = await supabase
+          .from("sigzap_conversations")
+          .select("id, contact_id")
+          .eq("id", tarefaExistente.sigzap_conversation_id)
+          .maybeSingle();
+        let label = "Conversa SigZap";
+        if (data?.contact_id) {
+          const { data: c } = await supabase
+            .from("sigzap_contacts")
+            .select("contact_name, contact_phone")
+            .eq("id", data.contact_id)
+            .maybeSingle();
+          if (c) label = c.contact_name || c.contact_phone || label;
+        }
+        out.conversa = { id: tarefaExistente.sigzap_conversation_id, label };
+      }
+      return out;
+    },
+  });
+
+  const temReferencias = !!(
+    referencias?.licitacao ||
+    referencias?.contrato ||
+    referencias?.lead ||
+    referencias?.conversa
+  );
+
+  const irPara = (path: string) => {
+    onOpenChange(false);
+    navigate(path);
+  };
 
   const { data: pessoasSistema = [] } = useQuery({
     queryKey: ["demandas-mentions-pessoas"],
