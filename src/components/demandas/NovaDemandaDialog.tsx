@@ -433,93 +433,77 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[59rem] max-h-[92vh] overflow-hidden p-0">
-        <DialogHeader>
-          <div className="px-5 pt-5 pr-12 space-y-3">
-            <DialogTitle>{isEditing ? "Editar demanda" : "Nova demanda"}</DialogTitle>
-            <DialogDescription>
-              {isEditing
-                ? "Atualize título, responsáveis, checklist, prazo e adicione comentários."
-                : "Crie a tarefa com responsáveis, tags, comentários, links e histórico inicial."}
-            </DialogDescription>
-            {isEditing && loadingTarefa && (
-              <p className="mt-1 text-xs text-muted-foreground">Carregando demanda…</p>
-            )}
-            <div className="grid gap-1.5">
-              <Label className="text-xs">Título *</Label>
+        <DialogHeader className="space-y-0">
+          <div className="px-4 pt-3 pb-2 pr-12 space-y-2 border-b">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground shrink-0">
+                {isEditing ? "Editar" : "Nova"}
+              </span>
+              <DialogTitle className="sr-only">
+                {isEditing ? "Editar demanda" : "Nova demanda"}
+              </DialogTitle>
+              <DialogDescription className="sr-only">
+                {isEditing
+                  ? "Atualize a demanda."
+                  : "Crie uma nova demanda."}
+              </DialogDescription>
               <Input
                 value={titulo}
                 onChange={(e) => setTitulo(e.target.value)}
-                placeholder="O que precisa ser feito?"
+                placeholder="Título da demanda…"
                 autoFocus
+                className="h-8 border-0 bg-transparent px-1 text-base font-semibold shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
               />
+              {isEditing && loadingTarefa && (
+                <span className="text-[11px] text-muted-foreground shrink-0">carregando…</span>
+              )}
             </div>
             {isEditing && temReferencias && (
-              <div className="grid gap-1.5">
-                <Label className="text-xs flex items-center gap-1.5 text-muted-foreground">
-                  <ExternalLink className="h-3.5 w-3.5" /> Referências
-                </Label>
-                <div className="flex flex-wrap gap-2">
-                  {referencias?.licitacao && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-8 gap-1.5 text-xs"
-                      onClick={() =>
-                        irPara(`/licitacoes?open=${referencias.licitacao!.id}`)
-                      }
-                    >
-                      <FileText className="h-3.5 w-3.5" />
-                      Licitação: {referencias.licitacao.label}
-                      <ExternalLink className="h-3 w-3 opacity-60" />
-                    </Button>
-                  )}
-                  {referencias?.contrato && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-8 gap-1.5 text-xs"
-                      onClick={() =>
-                        irPara(`/contratos?open=${referencias.contrato!.id}`)
-                      }
-                    >
-                      <Briefcase className="h-3.5 w-3.5" />
-                      Contrato: {referencias.contrato.label}
-                      <ExternalLink className="h-3 w-3 opacity-60" />
-                    </Button>
-                  )}
-                  {referencias?.lead && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-8 gap-1.5 text-xs"
-                      onClick={() =>
-                        irPara(`/disparos/acompanhamento?lead=${referencias.lead!.id}`)
-                      }
-                    >
-                      <UserIcon className="h-3.5 w-3.5" />
-                      Lead: {referencias.lead.label}
-                      <ExternalLink className="h-3 w-3 opacity-60" />
-                    </Button>
-                  )}
-                  {referencias?.conversa && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-8 gap-1.5 text-xs"
-                      onClick={() =>
-                        irPara(`/sigzap?conversa=${referencias.conversa!.id}`)
-                      }
-                    >
-                      <MessageCircle className="h-3.5 w-3.5" />
-                      Conversa: {referencias.conversa.label}
-                      <ExternalLink className="h-3 w-3 opacity-60" />
-                    </Button>
-                  )}
-                </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {referencias?.licitacao && (
+                  <button
+                    type="button"
+                    onClick={() => irPara(`/licitacoes?open=${referencias.licitacao!.id}`)}
+                    className="inline-flex items-center gap-1 rounded-md border bg-muted/40 px-2 py-0.5 text-[11px] hover:bg-muted transition-colors"
+                  >
+                    <FileText className="h-3 w-3" />
+                    <span className="truncate max-w-[18rem]">{referencias.licitacao.label}</span>
+                    <ExternalLink className="h-2.5 w-2.5 opacity-60" />
+                  </button>
+                )}
+                {referencias?.contrato && (
+                  <button
+                    type="button"
+                    onClick={() => irPara(`/contratos?open=${referencias.contrato!.id}`)}
+                    className="inline-flex items-center gap-1 rounded-md border bg-muted/40 px-2 py-0.5 text-[11px] hover:bg-muted transition-colors"
+                  >
+                    <Briefcase className="h-3 w-3" />
+                    <span className="truncate max-w-[18rem]">{referencias.contrato.label}</span>
+                    <ExternalLink className="h-2.5 w-2.5 opacity-60" />
+                  </button>
+                )}
+                {referencias?.lead && (
+                  <button
+                    type="button"
+                    onClick={() => irPara(`/disparos/acompanhamento?lead=${referencias.lead!.id}`)}
+                    className="inline-flex items-center gap-1 rounded-md border bg-muted/40 px-2 py-0.5 text-[11px] hover:bg-muted transition-colors"
+                  >
+                    <UserIcon className="h-3 w-3" />
+                    <span className="truncate max-w-[18rem]">{referencias.lead.label}</span>
+                    <ExternalLink className="h-2.5 w-2.5 opacity-60" />
+                  </button>
+                )}
+                {referencias?.conversa && (
+                  <button
+                    type="button"
+                    onClick={() => irPara(`/sigzap?conversa=${referencias.conversa!.id}`)}
+                    className="inline-flex items-center gap-1 rounded-md border bg-muted/40 px-2 py-0.5 text-[11px] hover:bg-muted transition-colors"
+                  >
+                    <MessageCircle className="h-3 w-3" />
+                    <span className="truncate max-w-[18rem]">{referencias.conversa.label}</span>
+                    <ExternalLink className="h-2.5 w-2.5 opacity-60" />
+                  </button>
+                )}
               </div>
             )}
           </div>
