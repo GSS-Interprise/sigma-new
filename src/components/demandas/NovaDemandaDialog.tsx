@@ -250,8 +250,8 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
           out.contrato = {
             id: data.id,
             label:
-              data.codigo_contrato ||
-              data.codigo_interno ||
+              (data.codigo_contrato ? String(data.codigo_contrato) : "") ||
+              (data.codigo_interno ? String(data.codigo_interno) : "") ||
               (data.objeto_contrato?.slice(0, 60) ?? "Contrato"),
           };
         }
