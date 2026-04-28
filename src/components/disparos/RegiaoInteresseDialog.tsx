@@ -28,6 +28,7 @@ interface RegiaoInteresseDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   leadId?: string;
+  registroId?: string;
   onAfterNavigate?: () => void;
 }
 
@@ -45,9 +46,10 @@ interface IBGEMunicipio {
 // Stores selections as UF -> Set of cities
 type SelectionMap = Record<string, Set<string>>;
 
-export function RegiaoInteresseDialog({ open, onOpenChange, leadId, onAfterNavigate }: RegiaoInteresseDialogProps) {
+export function RegiaoInteresseDialog({ open, onOpenChange, leadId, registroId, onAfterNavigate }: RegiaoInteresseDialogProps) {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const isEditing = !!registroId;
   // UF currently being browsed (for city list)
   const [browsingUf, setBrowsingUf] = useState<string>("");
   // All selections: { "SC": Set(["Florianópolis"]), "PR": Set() }
@@ -55,6 +57,36 @@ export function RegiaoInteresseDialog({ open, onOpenChange, leadId, onAfterNavig
   const [cidadeSearch, setCidadeSearch] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const queryClient = useQueryClient();
+
+  const { data: registroExistente } = useQuery({
+    queryKey: ["regiao-interesse-registro", registroId],
+    queryFn: async () => {
+      if (!registroId) return null;
+      const { data, error } = await supabase
+        .from("banco_interesse_leads")
+        .select("id, lead_id, ufs, cidades")
+        .eq("id", registroId)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: open && !!registroId,
+  });
+
+  useMemo(() => {
+    if (!open || !registroExistente) return;
+    const next: SelectionMap = {};
+    (registroExistente.ufs || []).forEach((uf) => {
+      next[uf] = new Set<string>();
+    });
+    const primeiraUf = (registroExistente.ufs || [])[0] || "";
+    if (primeiraUf) {
+      (registroExistente.cidades || []).forEach((cidade) => next[primeiraUf]?.add(cidade));
+    }
+    setSelections(next);
+    setBrowsingUf(primeiraUf);
+    setCidadeSearch("");
+  }, [open, registroExistente]);
 
   const { data: estados } = useQuery({
     queryKey: ["ibge-estados"],
@@ -170,21 +202,29 @@ export function RegiaoInteresseDialog({ open, onOpenChange, leadId, onAfterNavig
         }
       }
 
-      const { error } = await supabase.from("banco_interesse_leads").insert({
+      const payload = {
         lead_id: leadId,
         encaminhado_por: user?.id || null,
         encaminhado_por_nome: user?.user_metadata?.nome_completo || user?.email || "Desconhecido",
         ufs: selectedUfs,
         cidades: allCidades,
-      });
+      };
+
+      const { error } = isEditing
+        ? await supabase
+            .from("banco_interesse_leads")
+            .update({ ufs: payload.ufs, cidades: payload.cidades })
+            .eq("id", registroId)
+        : await supabase.from("banco_interesse_leads").insert(payload);
 
       if (error) throw error;
 
       queryClient.invalidateQueries({ queryKey: ["regiao-interesse-leads"] });
-      toast.success("Lead encaminhado para o Banco de Interesse");
+      queryClient.invalidateQueries({ queryKey: ["regiao-interesse-registro", registroId] });
+      toast.success(isEditing ? "Alterações salvas" : "Lead encaminhado para o Banco de Interesse");
       onOpenChange(false);
       onAfterNavigate?.();
-      navigate("/disparos/regiao-interesse");
+      if (!isEditing) navigate("/disparos/regiao-interesse");
 
       // Reset
       setBrowsingUf("");
