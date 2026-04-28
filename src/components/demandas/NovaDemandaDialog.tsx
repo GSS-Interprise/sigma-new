@@ -753,6 +753,76 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
             </div>
           </div>
 
+          {isEditing && temReferencias && (
+            <div className="grid gap-1.5 border-t pt-3">
+              <Label className="text-xs flex items-center gap-1.5 text-muted-foreground">
+                <ExternalLink className="h-3.5 w-3.5" /> Referências
+              </Label>
+              <div className="flex flex-wrap gap-2">
+                {referencias?.licitacao && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 gap-1.5 text-xs"
+                    onClick={() =>
+                      irPara(`/licitacoes?open=${referencias.licitacao!.id}`)
+                    }
+                  >
+                    <FileText className="h-3.5 w-3.5" />
+                    Licitação: {referencias.licitacao.label}
+                    <ExternalLink className="h-3 w-3 opacity-60" />
+                  </Button>
+                )}
+                {referencias?.contrato && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 gap-1.5 text-xs"
+                    onClick={() =>
+                      irPara(`/contratos?open=${referencias.contrato!.id}`)
+                    }
+                  >
+                    <Briefcase className="h-3.5 w-3.5" />
+                    Contrato: {referencias.contrato.label}
+                    <ExternalLink className="h-3 w-3 opacity-60" />
+                  </Button>
+                )}
+                {referencias?.lead && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 gap-1.5 text-xs"
+                    onClick={() =>
+                      irPara(`/disparos/leads?open=${referencias.lead!.id}`)
+                    }
+                  >
+                    <UserIcon className="h-3.5 w-3.5" />
+                    Lead: {referencias.lead.label}
+                    <ExternalLink className="h-3 w-3 opacity-60" />
+                  </Button>
+                )}
+                {referencias?.conversa && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 gap-1.5 text-xs"
+                    onClick={() =>
+                      irPara(`/sigzap?conversa=${referencias.conversa!.id}`)
+                    }
+                  >
+                    <MessageCircle className="h-3.5 w-3.5" />
+                    Conversa: {referencias.conversa.label}
+                    <ExternalLink className="h-3 w-3 opacity-60" />
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+
           <p className="text-[11px] text-muted-foreground border-t pt-2">
             💡 Para vincular a uma <strong>licitação, contrato, lead</strong> ou{" "}
             <strong>conversa SigZap</strong>, abra o card correspondente e use o
