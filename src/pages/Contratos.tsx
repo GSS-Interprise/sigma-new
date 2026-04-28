@@ -80,6 +80,21 @@ export default function Contratos() {
     },
   });
 
+  // Deep-link: /contratos?open=<id>
+  useEffect(() => {
+    const openId = searchParams.get("open");
+    if (!openId || !contratos) return;
+    const contrato = (contratos as any[]).find((c) => c.id === openId);
+    if (contrato) {
+      setEditingContrato(contrato);
+      setDialogMode("view");
+      setDialogOpen(true);
+      setActiveTab("contratos");
+      searchParams.delete("open");
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, contratos, setSearchParams]);
+
   const { data: clientes, isLoading: loadingClientes } = useQuery({
     queryKey: ['clientes'],
     queryFn: async () => {
