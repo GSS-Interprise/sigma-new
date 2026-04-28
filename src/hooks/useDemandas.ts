@@ -570,3 +570,127 @@ export function useUploadAnexoDemanda() {
     },
   });
 }
+
+// =============================================================
+// Confirmações de conclusão (todos os envolvidos confirmam)
+// =============================================================
+
+export interface DemandaConfirmacao {
+  user_id: string;
+  confirmado_em: string;
+  nome?: string | null;
+}
+
+export function useDemandaConfirmacoes(tarefaId: string | null) {
+  return useQuery({
+    queryKey: ["demandas", "confirmacoes", tarefaId],
+    enabled: !!tarefaId,
+    queryFn: async (): Promise<DemandaConfirmacao[]> => {
+      const { data, error } = await supabase
+        .from("worklist_tarefa_confirmacoes" as any)
+        .select("user_id, confirmado_em")
+        .eq("tarefa_id", tarefaId!);
+      if (error) throw error;
+      const rows = (data || []) as any[];
+      const ids = Array.from(new Set(rows.map((r) => r.user_id)));
+      if (!ids.length) return [];
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id, nome_completo")
+        .in("id", ids);
+      const names = new Map((profiles || []).map((p) => [p.id, p.nome_completo]));
+      return rows.map((r) => ({
+        user_id: r.user_id,
+        confirmado_em: r.confirmado_em,
+        nome: names.get(r.user_id) ?? null,
+      }));
+    },
+  });
+}
+
+export function useToggleConfirmacaoDemanda() {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      tarefaId,
+      confirmar,
+      envolvidosIds,
+    }: {
+      tarefaId: string;
+      confirmar: boolean;
+      /** IDs de todos os envolvidos (responsável + mencionados) — usado para detectar se todos confirmaram */
+      envolvidosIds: string[];
+    }) => {
+      if (!user?.id) throw new Error("Sem usuário autenticado");
+
+      if (confirmar) {
+        const { error } = await supabase
+          .from("worklist_tarefa_confirmacoes" as any)
+          .upsert(
+            { tarefa_id: tarefaId, user_id: user.id, confirmado_em: new Date().toISOString() } as any,
+            { onConflict: "tarefa_id,user_id" } as any,
+          );
+        if (error) throw error;
+
+        await supabase.from("worklist_tarefa_atividades" as any).insert({
+          tarefa_id: tarefaId,
+          user_id: user.id,
+          tipo: "confirmacao",
+          resumo: "Marcou como realizada",
+          detalhes: {},
+        } as any);
+
+        // Verifica se todos os envolvidos já confirmaram → fecha a tarefa
+        const envolvidosUnicos = Array.from(new Set(envolvidosIds.filter(Boolean)));
+        if (envolvidosUnicos.length > 0) {
+          const { data: confs } = await supabase
+            .from("worklist_tarefa_confirmacoes" as any)
+            .select("user_id")
+            .eq("tarefa_id", tarefaId);
+          const confirmadosSet = new Set(((confs || []) as any[]).map((c) => c.user_id));
+          const todosConfirmaram = envolvidosUnicos.every((uid) => confirmadosSet.has(uid));
+          if (todosConfirmaram) {
+            await supabase
+              .from("worklist_tarefas")
+              .update({
+                status: "concluida",
+                concluida_em: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", tarefaId);
+            await supabase.from("worklist_tarefa_atividades" as any).insert({
+              tarefa_id: tarefaId,
+              user_id: user.id,
+              tipo: "conclusao",
+              resumo: "Tarefa concluída — todos os envolvidos confirmaram",
+              detalhes: {},
+            } as any);
+          }
+        }
+      } else {
+        const { error } = await supabase
+          .from("worklist_tarefa_confirmacoes" as any)
+          .delete()
+          .eq("tarefa_id", tarefaId)
+          .eq("user_id", user.id);
+        if (error) throw error;
+
+        await supabase.from("worklist_tarefa_atividades" as any).insert({
+          tarefa_id: tarefaId,
+          user_id: user.id,
+          tipo: "confirmacao_removida",
+          resumo: "Removeu a confirmação",
+          detalhes: {},
+        } as any);
+      }
+    },
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ["demandas", "confirmacoes", vars.tarefaId] });
+      qc.invalidateQueries({ queryKey: ["demandas", "detalhe", vars.tarefaId] });
+      qc.invalidateQueries({ queryKey: ["demandas", "atividades", vars.tarefaId] });
+      qc.invalidateQueries({ queryKey: ["demandas"] });
+    },
+    onError: (e: any) => toast.error(e.message ?? "Erro ao confirmar"),
+  });
+}
