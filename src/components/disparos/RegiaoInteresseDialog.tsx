@@ -248,7 +248,9 @@ export function RegiaoInteresseDialog({ open, onOpenChange, leadId, registroId, 
             Banco de Interesse
           </DialogTitle>
           <DialogDescription>
-            Selecione estados e opcionalmente cidades. Suas seleções são mantidas ao trocar de estado.
+            {isEditing
+              ? "Atualize estados e opcionalmente cidades. Suas seleções são mantidas ao trocar de estado."
+              : "Selecione estados e opcionalmente cidades. Suas seleções são mantidas ao trocar de estado."}
           </DialogDescription>
         </DialogHeader>
 
@@ -367,7 +369,7 @@ export function RegiaoInteresseDialog({ open, onOpenChange, leadId, registroId, 
           </Button>
           <Button onClick={handleSubmit} disabled={selectedUfs.length === 0 || submitting} className="gap-2">
             <Send className="h-4 w-4" />
-            {submitting ? "Enviando..." : "Enviar"}
+            {submitting ? (isEditing ? "Salvando..." : "Enviando...") : (isEditing ? "Salvar alterações" : "Enviar")}
           </Button>
         </DialogFooter>
       </DialogContent>
