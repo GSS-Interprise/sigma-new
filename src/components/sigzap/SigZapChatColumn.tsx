@@ -37,6 +37,7 @@ import { SigZapLeadLinkDialog } from "./SigZapLeadLinkDialog";
 import { SigZapLeadAutoMatchDialog } from "./SigZapLeadAutoMatchDialog";
 import { normalizeToE164 } from "@/lib/phoneUtils";
 import { renderMessageWithPhoneLinks } from "./SigZapPhoneLink";
+import { SigZapPhonePopover } from "./SigZapPhoneLink";
 import { formatWhatsappNode } from "@/lib/whatsappFormat";
 
 interface SigZapChatColumnProps {
