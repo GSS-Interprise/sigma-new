@@ -87,14 +87,28 @@ serve(async (req) => {
     }
 
     const staticToken = Deno.env.get("IMPORT_LEADS_TOKEN");
-    const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_PUBLISHABLE_KEY");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     let tokenValid = false;
 
-    // Accept IMPORT_LEADS_TOKEN, SUPABASE_ANON_KEY (for internal cron calls), or api_tokens table
+    console.log("[process-queue] auth debug", {
+      hasStatic: !!staticToken,
+      hasAnon: !!anonKey,
+      hasService: !!serviceRoleKey,
+      headerStart: authHeader?.slice(0, 20),
+      anonStart: anonKey?.slice(0, 20),
+      serviceStart: serviceRoleKey?.slice(0, 20),
+      match_anon: anonKey === authHeader,
+      match_service: serviceRoleKey === authHeader,
+    });
+
+    // Accept IMPORT_LEADS_TOKEN, SUPABASE_ANON_KEY/PUBLISHABLE_KEY, SERVICE_ROLE_KEY (for internal cron calls), or api_tokens table
     if (staticToken && authHeader === staticToken) {
       tokenValid = true;
     } else if (anonKey && authHeader === anonKey) {
       tokenValid = true; // Internal pg_cron calls use the anon key
+    } else if (serviceRoleKey && authHeader === serviceRoleKey) {
+      tokenValid = true; // Internal cron calls can also use the service role key
     } else {
       const tokenId = await supabase.rpc("validate_api_token", { _token: authHeader });
       tokenValid = !!tokenId.data;
