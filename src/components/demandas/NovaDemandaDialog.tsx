@@ -150,6 +150,32 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
     setNovoLinkUrl("");
   };
 
+  const mentionMatch = comentarioInicial.slice(0, comentarioCaret).match(/@([^@\s]*)$/);
+  const mentionQuery = mentionMatch?.[1]?.toLowerCase() ?? "";
+  const mentionStart = mentionMatch
+    ? comentarioCaret - mentionMatch[0].length
+    : -1;
+  const sugestoesMention = useMemo(() => {
+    if (mentionStart < 0) return [];
+    return pessoasSistema
+      .filter((p) => (p.nome_completo || "").toLowerCase().includes(mentionQuery))
+      .filter((p) => !comentarioPessoas.includes(p.id))
+      .slice(0, 6);
+  }, [comentarioPessoas, mentionQuery, mentionStart, pessoasSistema]);
+
+  const selecionarMention = (pessoa: PessoaMention) => {
+    if (mentionStart < 0) return;
+    const nome = pessoa.nome_completo || "pessoa";
+    const antes = comentarioInicial.slice(0, mentionStart);
+    const depois = comentarioInicial.slice(comentarioCaret);
+    const proximoTexto = `${antes}@${nome} ${depois}`;
+    setComentarioInicial(proximoTexto);
+    setComentarioPessoas((prev) =>
+      prev.includes(pessoa.id) ? prev : [...prev, pessoa.id],
+    );
+    setComentarioCaret(antes.length + nome.length + 2);
+  };
+
   const submit = async () => {
     if (!titulo.trim()) {
       toast.error("Informe um título");
