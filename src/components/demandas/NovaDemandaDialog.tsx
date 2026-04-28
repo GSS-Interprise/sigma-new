@@ -432,7 +432,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[59rem] max-h-[92vh] overflow-hidden p-0">
+      <DialogContent className="w-[80vw] max-w-[1400px] max-h-[92vh] overflow-hidden p-0">
         <DialogHeader className="space-y-0">
           <div className="px-4 pt-3 pb-2 pr-12 space-y-2 border-b">
             <div className="flex items-center gap-2">
@@ -509,7 +509,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
           </div>
         </DialogHeader>
 
-        <div className="grid max-h-[calc(92vh-8.5rem)] gap-0 overflow-hidden border-y lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className="grid max-h-[calc(92vh-8.5rem)] gap-0 overflow-hidden border-y lg:grid-cols-[minmax(0,1fr)_24rem]">
           <div className="grid gap-3 overflow-y-auto p-5">
           <div className="grid gap-1.5">
             <Label className="text-xs">Descrição (cole prints com Ctrl+V)</Label>
@@ -901,6 +901,36 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                     {comentarioPessoas.length > 0 && (
                       <div className="mt-2 text-[11px] text-muted-foreground">
                         {comentarioPessoas.length} pessoa(s) marcada(s) no comentário
+                      </div>
+                    )}
+                    {isEditing && (
+                      <div className="mt-2 flex justify-end">
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="h-8 gap-1.5"
+                          disabled={!comentarioInicial.trim() || comentar.isPending}
+                          onClick={async () => {
+                            if (!tarefaId || !comentarioInicial.trim()) return;
+                            try {
+                              await comentar.mutateAsync({
+                                tarefaId,
+                                conteudo: comentarioInicial.trim(),
+                                mencionados: comentarioPessoas,
+                                links,
+                              });
+                              setComentarioInicial("");
+                              setComentarioPessoas([]);
+                              setComentarioCaret(0);
+                              setLinks([]);
+                            } catch {
+                              /* toast no hook */
+                            }
+                          }}
+                        >
+                          <Send className="h-3.5 w-3.5" />
+                          Enviar
+                        </Button>
                       </div>
                     )}
                   </div>
