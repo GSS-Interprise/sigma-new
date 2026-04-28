@@ -7,7 +7,8 @@ const corsHeaders = {
 };
 
 const MAX_ATTEMPTS = 3;
-const BATCH_SIZE = 1000;
+const BATCH_SIZE = 200;
+const PARALLELISM = 10;
 
 // =========================================================
 // ABANDONMENT REASONS
@@ -139,7 +140,7 @@ serve(async (req) => {
 
     const results = { resolved: 0, failed: 0, abandoned: 0 };
 
-    for (const item of queueItems) {
+    const processItem = async (item: any) => {
       try {
         const payload = item.payload as Record<string, any>;
         const nome = (payload.nome || payload.name || "").trim();
@@ -170,7 +171,7 @@ serve(async (req) => {
             .eq("id", item.id);
           results.abandoned++;
           console.warn(`[process-queue] Item ${item.id} abandonado: payload inválido`);
-          continue;
+          return;
         }
 
         // Buscar lead por CPF, CNPJ ou nome
@@ -237,7 +238,7 @@ serve(async (req) => {
               .eq("id", item.id);
             results.abandoned++;
             console.warn(`[process-queue] Item ${item.id} abandonado: sem documento para criar`);
-            continue;
+            return;
           }
 
           const now = new Date().toISOString();
@@ -313,6 +314,17 @@ serve(async (req) => {
 
           if (createError) {
             console.error(`[process-queue] Erro ao criar lead:`, createError);
+            // Duplicate key → abandonar imediatamente, não desperdiçar retries
+            if (createError.code === "23505") {
+              await supabase.from("import_leads_failed_queue").update({
+                status: "abandoned",
+                error_code: createError.code,
+                error_message: createError.message,
+                abandonment_reason: REASON.PHONE_CONFLICT,
+              }).eq("id", item.id);
+              results.abandoned++;
+              return;
+            }
             const newAttempts = item.attempts + 1;
             if (newAttempts > MAX_ATTEMPTS) {
               await supabase.from("import_leads_failed_queue").update({
@@ -329,7 +341,7 @@ serve(async (req) => {
               }).eq("id", item.id);
               results.failed++;
             }
-            continue;
+            return;
           }
 
           // Sucesso — lead criado
@@ -358,7 +370,7 @@ serve(async (req) => {
           }).eq("id", item.id);
           results.resolved++;
           console.log(`[process-queue] Novo lead criado ${created.id} (item ${item.id})`);
-          continue;
+          return;
         }
 
         // Telefones
@@ -415,6 +427,21 @@ serve(async (req) => {
 
         if (updateError) {
           console.error(`[process-queue] Erro ao atualizar lead ${existingLead.id}:`, updateError);
+          // Duplicate key → abandonar imediatamente
+          if (updateError.code === "23505") {
+            await supabase
+              .from("import_leads_failed_queue")
+              .update({
+                status: "abandoned",
+                error_code: updateError.code,
+                error_message: updateError.message,
+                abandonment_reason: REASON.PHONE_CONFLICT,
+                lead_id: existingLead.id,
+              })
+              .eq("id", item.id);
+            results.abandoned++;
+            return;
+          }
           const newAttempts = item.attempts + 1;
 
           if (newAttempts > MAX_ATTEMPTS) {
@@ -514,6 +541,12 @@ serve(async (req) => {
           results.failed++;
         }
       }
+    };
+
+    // Processar em chunks paralelos
+    for (let i = 0; i < queueItems.length; i += PARALLELISM) {
+      const chunk = queueItems.slice(i, i + PARALLELISM);
+      await Promise.all(chunk.map(processItem));
     }
 
     console.log(`[process-queue] Resultado final: ${JSON.stringify(results)}`);
