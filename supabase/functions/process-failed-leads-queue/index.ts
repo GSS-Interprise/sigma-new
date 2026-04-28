@@ -91,6 +91,17 @@ serve(async (req) => {
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     let tokenValid = false;
 
+    console.log("[process-queue] auth debug", {
+      hasStatic: !!staticToken,
+      hasAnon: !!anonKey,
+      hasService: !!serviceRoleKey,
+      headerStart: authHeader?.slice(0, 20),
+      anonStart: anonKey?.slice(0, 20),
+      serviceStart: serviceRoleKey?.slice(0, 20),
+      match_anon: anonKey === authHeader,
+      match_service: serviceRoleKey === authHeader,
+    });
+
     // Accept IMPORT_LEADS_TOKEN, SUPABASE_ANON_KEY/PUBLISHABLE_KEY, SERVICE_ROLE_KEY (for internal cron calls), or api_tokens table
     if (staticToken && authHeader === staticToken) {
       tokenValid = true;
