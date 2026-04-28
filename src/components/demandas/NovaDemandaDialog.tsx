@@ -796,7 +796,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                     size="sm"
                     className="h-8 gap-1.5 text-xs"
                     onClick={() =>
-                      irPara(`/disparos/leads?open=${referencias.lead!.id}`)
+                      irPara(`/disparos/acompanhamento?lead=${referencias.lead!.id}`)
                     }
                   >
                     <UserIcon className="h-3.5 w-3.5" />
