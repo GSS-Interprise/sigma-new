@@ -14,7 +14,8 @@ import { toast } from "sonner";
 import { 
   Send, Loader2, User, RefreshCw, MessageCircle, 
   Phone, FileText, UserCheck, Image, Video, Mic, FileIcon,
-  CheckCheck, Check, Clock, Paperclip, History, X, Ban
+  CheckCheck, Check, Clock, Paperclip, History, X, Ban,
+  MapPin, BarChart3
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
