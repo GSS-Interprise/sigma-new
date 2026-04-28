@@ -9,7 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import RichTextEditor from "@/components/ui/rich-text-editor";
 import {
   Select,
   SelectContent,
@@ -30,6 +30,7 @@ import {
   ListChecks,
   GripVertical,
   Check,
+  Tag as TagIcon,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -74,6 +75,8 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
   const [novoItem, setNovoItem] = useState("");
   const itemRefs = useRef<(HTMLInputElement | null)[]>([]);
   const novoItemRef = useRef<HTMLInputElement>(null);
+  const [tags, setTags] = useState<string[]>([]);
+  const [novaTag, setNovaTag] = useState("");
 
   useEffect(() => {
     if (open) {
@@ -85,20 +88,13 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
       setPendingFiles([]);
       setChecklist([]);
       setNovoItem("");
+      setTags([]);
+      setNovaTag("");
     }
   }, [open, defaultDate]);
 
-  const handlePaste = (e: React.ClipboardEvent) => {
-    const items = Array.from(e.clipboardData.items);
-    const images = items.filter((it) => it.type.startsWith("image/"));
-    if (!images.length) return;
-    const files = images
-      .map((it) => it.getAsFile())
-      .filter((f): f is File => !!f);
-    if (files.length) {
-      setPendingFiles((prev) => [...prev, ...files]);
-      toast.success(`${files.length} print colado(s)`);
-    }
+  const handleImagePaste = (file: File) => {
+    setPendingFiles((prev) => [...prev, file]);
   };
 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -131,6 +127,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
         mencionados: mencionadosFinal,
         data_limite: dataLimite ? format(dataLimite, "yyyy-MM-dd") : null,
         checklist: checklist.filter((c) => c.texto.trim()),
+        tags,
       });
       for (const f of pendingFiles) {
         try {
