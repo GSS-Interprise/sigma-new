@@ -1693,7 +1693,7 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
                       )}
                       <div
                         className={cn(
-                          "relative max-w-[80%] min-w-0 cursor-pointer overflow-hidden rounded-lg px-3 py-2 text-sm",
+                          "relative max-w-[80%] min-w-0 cursor-pointer rounded-lg px-3 py-2 text-sm",
                           isFromMe
                             ? "text-white rounded-br-none"
                             : "bg-muted rounded-bl-none",
