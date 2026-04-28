@@ -260,7 +260,7 @@ export function useCriarDemanda() {
           created_by: user.id,
           checklist: (input.checklist ?? []) as any,
           tags: (input.tags ?? []) as any,
-        })
+        } as any)
         .select("id")
         .single();
       if (error) throw error;
