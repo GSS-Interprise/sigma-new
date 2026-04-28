@@ -1,91 +1,65 @@
-# Corrigir contagem de Disparos Manuais no BI Prospec
+# Corrigir agrupamento por Especialidade no BI Prospec
 
-## Problema
+## De onde vêm os dados hoje (e por que tem variação)
 
-Hoje o BI conta **1 disparo por mensagem** enviada pelo usuário (`sigzap_messages.from_me=true`). Isso infla os números — se a Ester abre uma conversa e envia 5 mensagens no mesmo lead, o BI marca 5 disparos. O correto é **1 disparo manual = 1 conversa aberta pelo usuário** (primeira mensagem `from_me` em uma conversa). Quando o lead é fechado e depois reaberto, conta como **novo disparo**.
+A coluna **Especialidade** do "Detalhamento por Especialidade" vem de `leads.especialidade` — um campo de **texto livre** preenchido em diferentes momentos por diferentes fontes (importações antigas, formulários, planilhas). Isso causa:
 
-## Diagnóstico (dados reais, últimos 60 dias)
-
-| Métrica | Valor |
+| Problema | Exemplo na tela |
 |---|---|
-| Mensagens `from_me` por usuário (lógica atual — errada) | **1.125** |
-| Conversas iniciadas pelo usuário (lógica correta) | **105** |
-| `disparo_manual_envios` (tabela do painel "Disparo Manual") | **0** |
-| Leads com múltiplas reaberturas | sim (1 lead com 7 aberturas) |
+| Mesma especialidade em variações de caixa | `PSIQUIATRIA`, `Psiquiatria`, `psiquiatria` |
+| Mesma especialidade abreviada/com erro | `Pediatria`, `PEDIATRIA`, `Pediatra`, `pediatria` |
+| Texto vazio/nulo | `Sem especialidade` |
+| Nomes longos vs curtos | `Radiologia e Diagnóstico por Imagem` vs `radiologia` |
 
-A tabela `disparo_manual_envios` está vazia porque o fluxo real (botão verde no painel SIG Zap por proposta) grava direto em `sigzap_messages` via `send-sigzap-message`, sem passar pela tabela de auditoria.
+No print que você mandou:
+- `PSIQUIATRIA` (59) e qualquer `Psiquiatria` minúscula seriam linhas separadas
+- `Pediatria` (30) + `PEDIATRIA` (17) + `Pediatra` (2) + `pediatria` (1) = **50 disparos**, mas aparecem como 4 linhas
 
-## Definição correta de "Disparo Manual"
+## A solução já existe no banco — só não está sendo usada
 
-> **Um disparo manual é o ato de abrir/iniciar uma janela de conversa com um lead.**
-> Mensagens subsequentes na mesma conversa **não contam**. Se a conversa for fechada (`status = 'inactive'` ou similar) e o usuário **reabrir** depois enviando nova mensagem, conta como **novo disparo**.
+O sistema **já tem** a estrutura correta:
 
-Operacionalmente: para cada `conversation_id`, considerar como "disparo" cada mensagem `from_me=true` com `sent_by_user_id IS NOT NULL` que seja:
-- a **primeira** mensagem do usuário na conversa, OU
-- a **primeira mensagem após um período de inatividade / fechamento** (heurística: gap ≥ N dias entre mensagens do user na mesma conversa, OU mudança de `status` da conversa entre as duas).
-
-## Pergunta de negócio (preciso confirmar)
-
-Como o sistema atual **não guarda histórico de fechamento/reabertura** de conversa explicitamente, preciso de uma regra para detectar reabertura. Proponho a heurística mais simples:
-
-**Reabertura = nova mensagem do usuário na mesma conversa após gap ≥ 7 dias sem nenhuma mensagem (de nenhum lado).**
-
-Se preferir outro critério (ex.: 3 dias, 14 dias, ou só contar 1 por conversa para sempre), me avise antes de aplicar.
-
-## Solução técnica
-
-### 1. Migration: atualizar a CTE `manuais` em `get_bi_prospec_dashboard`
-
-Substituir a lógica atual (que conta mensagens) por uma que conta "aberturas de conversa":
-
-```sql
-manuais_chat AS (
-  WITH msgs AS (
-    SELECT
-      m.conversation_id,
-      c.lead_id,
-      m.sent_at,
-      m.sent_by_user_id,
-      LAG(m.sent_at) OVER (PARTITION BY m.conversation_id ORDER BY m.sent_at) AS prev_sent_at
-    FROM public.sigzap_messages m
-    JOIN public.sigzap_conversations c ON c.id = m.conversation_id
-    WHERE m.from_me = true
-      AND m.sent_by_user_id IS NOT NULL
-  )
-  SELECT lead_id, sent_at AS created_at, sent_by_user_id
-  FROM msgs
-  WHERE prev_sent_at IS NULL                            -- primeira mensagem da conversa
-     OR sent_at - prev_sent_at >= interval '7 days'     -- reabertura após 7 dias de gap
-)
--- unir com disparo_manual_envios (caso volte a ser usado no futuro)
-```
-
-### 2. Aplicar a mesma lógica em todos os pontos do RPC
-
-- Card "Total Disparos Manuais"
-- Gráfico "Evolução Mensal por Tipo" (série Manual)
-- Donut "Mix por Tipo" (fatia Manual)
-- Aba "Canais" → WhatsApp
-- Ranking por usuário (Ester, Bruna, Amanda, Ewerton)
-
-### 3. Validação esperada após o fix
-
-| Métrica | Antes | Depois (estimado) |
+| Tabela | Conteúdo | Uso atual no BI |
 |---|---|---|
-| Total Manual (60d) | 1.125 | ~105–120 |
-| Ester | 119 | ~10–15 |
-| Bruna | 464 | ~40–50 |
+| `especialidades` (135 ativas) | Nome canônico + `aliases[]` + `area` | ❌ não usado |
+| `lead_especialidades` (junction, 125.050 leads) | `lead_id` ↔ `especialidade_id` | ❌ não usado |
+| `leads.especialidade` (texto livre) | 51.903 leads, sujo | ✅ usado (errado) |
 
-### 4. Observação sobre status da conversa
+A tabela `especialidades.aliases` já contém os mapeamentos (ex.: `PEDIATRIA` tem aliases `[pediatria, pediatra, ped, pediatria/intensiva, pediatrica]`).
 
-Hoje `sigzap_conversations.status` tem valores `open`, `in_progress`, `inactive`, `pending`, mas **não há histórico de transições**. Por isso a heurística de gap temporal é a única forma confiável de detectar reabertura sem mudar o esquema. Se quiser precisão total no futuro, seria necessário criar uma tabela `sigzap_conversation_status_log`.
+## O que vou mudar
+
+Reescrever a CTE `lead_esp` no RPC `get_bi_prospec_dashboard` para resolver a especialidade canônica de cada lead nesta ordem de prioridade:
+
+1. **Junction `lead_especialidades`** (verdade): pega o nome canônico via `especialidade_id → especialidades.nome`. Se um lead tem múltiplas, escolher a primeira (ou a "principal" se houver flag — verificar).
+2. **Fallback por alias**: se o lead **não** está na junction mas tem `leads.especialidade` preenchida, normalizar (lowercase, trim) e procurar em `especialidades.aliases` ou `especialidades.nome`.
+3. **Último fallback**: usar o texto livre `leads.especialidade` como veio (para não perder dado).
+4. **Sem nada**: `'Sem especialidade'`.
+
+Resultado: `PEDIATRIA`, `Pediatria`, `Pediatra`, `pediatria` viram **uma linha só: `PEDIATRIA`** (50 disparos no exemplo).
+
+## Validação prevista após o fix
+
+| Antes (linhas separadas) | Depois (consolidado) |
+|---|---|
+| Pediatria 30, PEDIATRIA 17, Pediatra 2, pediatria 1 | **PEDIATRIA: 50** |
+| PSIQUIATRIA 59 + qualquer Psiquiatria | **PSIQUIATRIA: 59+** |
+| Radiologia e Diagnóstico por Imagem 1 | **RADIOLOGIA E DIAGNÓSTICO POR IMAGEM: 1** |
+
+## Pergunta antes de aplicar
+
+Antes da migration preciso confirmar 1 ponto:
+
+**Quando um lead tem mais de uma especialidade na junction (ex.: pediatra que também é intensivista), como deve aparecer no BI?**
+- (a) Conta **uma vez na principal** (a primeira/única registrada) — recomendado
+- (b) Conta **em todas** que tem (lead aparece em múltiplas linhas, infla o total)
+- (c) Cria categoria combinada `Pediatria + Medicina Intensiva`
+
+Default que vou usar se não responder: **(a) — primeira especialidade da junction por `created_at` ASC**.
 
 ## Arquivos afetados
 
-- **Nova migration**: `supabase/migrations/<timestamp>_fix_bi_prospec_manual_por_conversa.sql` — recria `get_bi_prospec_dashboard` com a CTE corrigida.
-- Nenhum arquivo de frontend muda (o RPC mantém o mesmo contrato de retorno).
+- **Migration**: nova versão do RPC `get_bi_prospec_dashboard` com a CTE `lead_esp` corrigida.
+- Nenhum arquivo de frontend muda.
 
-## Aguardando aprovação
-
-1. Confirmar regra de reabertura: **gap ≥ 7 dias** está bom? (alternativas: 3d, 14d, ou nunca recontar)
-2. Aprovar a migration.
+## Aguardando aprovação para aplicar a migration.
