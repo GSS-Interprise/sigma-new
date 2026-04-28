@@ -23,7 +23,7 @@ const PHONE_REGEX = /(?:\+?55\s?)?(?:\(?\d{2}\)?\s?)?\d{4,5}[\s.-]?\d{4}/g;
 
 type PhoneCheckState = "idle" | "checking" | "found" | "not_found" | "has_whatsapp" | "disconnected";
 
-function SigZapPhonePopover({ phone, isFromMe, currentInstanceId }: PhonePopoverProps) {
+export function SigZapPhonePopover({ phone, isFromMe, currentInstanceId, children }: PhonePopoverProps & { children?: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const [checkState, setCheckState] = useState<PhoneCheckState>("idle");
   const [foundConversaId, setFoundConversaId] = useState<string | null>(null);
@@ -196,16 +196,20 @@ function SigZapPhonePopover({ phone, isFromMe, currentInstanceId }: PhonePopover
   return (
     <Popover open={open} onOpenChange={handleOpen}>
       <PopoverTrigger asChild>
-        <span
-          className={`cursor-pointer underline font-medium ${
-            isFromMe 
-              ? "text-green-200 hover:text-green-100" 
-              : "text-green-600 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300"
-          }`}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {phone}
-        </span>
+        {children ? (
+          <span onClick={(e) => e.stopPropagation()}>{children}</span>
+        ) : (
+          <span
+            className={`cursor-pointer underline font-medium ${
+              isFromMe 
+                ? "text-green-200 hover:text-green-100" 
+                : "text-green-600 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300"
+            }`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {phone}
+          </span>
+        )}
       </PopoverTrigger>
       <PopoverContent
         className="w-64 p-2"
