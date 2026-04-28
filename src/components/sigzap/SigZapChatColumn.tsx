@@ -61,6 +61,10 @@ interface SigZapMessage {
   created_at: string;
   sent_by_user_id: string | null;
   sent_via_instance_name: string | null;
+  contact_data?: any;
+  location_data?: any;
+  poll_data?: any;
+  raw_payload?: any;
 }
 
 interface SenderInfo {
