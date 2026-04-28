@@ -8,11 +8,13 @@ import { ColunaEnviadas } from "@/components/demandas/ColunaEnviadas";
 import { ColunaParaMim } from "@/components/demandas/ColunaParaMim";
 import { ColunaPendenciasSetor } from "@/components/demandas/ColunaPendenciasSetor";
 import { NovaDemandaDialog } from "@/components/demandas/NovaDemandaDialog";
+import { TarefaDetalheDialog } from "@/components/demandas/TarefaDetalheDialog";
 import { useUserSetor } from "@/hooks/useUserSetor";
 import { usePermissions } from "@/hooks/usePermissions";
 
 export default function Demandas() {
   const [novaOpen, setNovaOpen] = useState(false);
+  const [tarefaAbertaId, setTarefaAbertaId] = useState<string | null>(null);
   const { setorNome } = useUserSetor();
   const { isAdmin } = usePermissions();
 
@@ -45,20 +47,25 @@ export default function Demandas() {
       <div className="h-[calc(100vh-8rem)] p-3">
         <div className="grid grid-cols-1 md:grid-cols-3 md:grid-rows-2 gap-3 h-full">
           <div className="md:row-span-2 min-h-0">
-            <ColunaAgenda />
+            <ColunaAgenda onTarefaClick={setTarefaAbertaId} />
           </div>
           <div className="min-h-0">
-            <ColunaEnviadas />
+            <ColunaEnviadas onTarefaClick={setTarefaAbertaId} />
           </div>
           <div className="md:row-span-2 min-h-0">
             <ColunaPendenciasSetor />
           </div>
           <div className="min-h-0">
-            <ColunaParaMim />
+            <ColunaParaMim onTarefaClick={setTarefaAbertaId} />
           </div>
         </div>
       </div>
       <NovaDemandaDialog open={novaOpen} onOpenChange={setNovaOpen} />
+      <TarefaDetalheDialog
+        tarefaId={tarefaAbertaId}
+        open={!!tarefaAbertaId}
+        onOpenChange={(open) => !open && setTarefaAbertaId(null)}
+      />
     </AppLayout>
   );
 }

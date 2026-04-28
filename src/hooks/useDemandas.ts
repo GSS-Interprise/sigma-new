@@ -32,6 +32,28 @@ export interface DemandaTarefa {
   anexos_count?: number;
 }
 
+export interface DemandaComentario {
+  id: string;
+  tarefa_id: string;
+  user_id: string;
+  conteudo: string;
+  mencionados: string[] | null;
+  links: { titulo?: string; url?: string }[] | null;
+  created_at: string;
+  autor_nome?: string | null;
+}
+
+export interface DemandaAtividade {
+  id: string;
+  tarefa_id: string;
+  user_id: string;
+  tipo: string;
+  resumo: string;
+  detalhes: Record<string, unknown> | null;
+  created_at: string;
+  autor_nome?: string | null;
+}
+
 async function enrich(rows: any[]): Promise<DemandaTarefa[]> {
   if (!rows.length) return [];
   const userIds = Array.from(
@@ -333,6 +355,71 @@ export function useAtualizarStatusDemanda() {
       qc.invalidateQueries({ queryKey: ["demandas"] });
     },
     onError: (e: any) => toast.error(e.message ?? "Erro ao atualizar"),
+  });
+}
+
+export function useDemandaDetalhe(tarefaId: string | null) {
+  return useQuery({
+    queryKey: ["demandas", "detalhe", tarefaId],
+    enabled: !!tarefaId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("worklist_tarefas")
+        .select("*")
+        .eq("id", tarefaId!)
+        .single();
+      if (error) throw error;
+      const [tarefa] = await enrich([data]);
+      return tarefa;
+    },
+  });
+}
+
+export function useDemandaComentarios(tarefaId: string | null) {
+  return useQuery({
+    queryKey: ["demandas", "comentarios", tarefaId],
+    enabled: !!tarefaId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("worklist_tarefa_comentarios" as any)
+        .select("*")
+        .eq("tarefa_id", tarefaId!)
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      const rows = (data || []) as unknown as DemandaComentario[];
+      const userIds = Array.from(new Set(rows.map((r) => r.user_id).filter(Boolean)));
+      if (!userIds.length) return rows;
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id, nome_completo")
+        .in("id", userIds);
+      const names = new Map((profiles || []).map((p) => [p.id, p.nome_completo]));
+      return rows.map((r) => ({ ...r, autor_nome: names.get(r.user_id) ?? null }));
+    },
+  });
+}
+
+export function useDemandaAtividades(tarefaId: string | null) {
+  return useQuery({
+    queryKey: ["demandas", "atividades", tarefaId],
+    enabled: !!tarefaId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("worklist_tarefa_atividades" as any)
+        .select("*")
+        .eq("tarefa_id", tarefaId!)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      const rows = (data || []) as unknown as DemandaAtividade[];
+      const userIds = Array.from(new Set(rows.map((r) => r.user_id).filter(Boolean)));
+      if (!userIds.length) return rows;
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id, nome_completo")
+        .in("id", userIds);
+      const names = new Map((profiles || []).map((p) => [p.id, p.nome_completo]));
+      return rows.map((r) => ({ ...r, autor_nome: names.get(r.user_id) ?? null }));
+    },
   });
 }
 
