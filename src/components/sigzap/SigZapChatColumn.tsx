@@ -1399,35 +1399,57 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
       const phone = cd?.phone || null;
       return (
         <div className={cn(
-          "mb-2 rounded-md border p-2 flex items-center gap-3 min-w-[220px]",
+          "mb-2 rounded-md border p-2 flex flex-col gap-2 min-w-[240px]",
           isFromMe ? "bg-white/10 border-white/20" : "bg-background/60 border-border"
         )}>
-          <div className={cn(
-            "h-9 w-9 rounded-full flex items-center justify-center shrink-0",
-            isFromMe ? "bg-white/20" : "bg-muted"
-          )}>
-            <User className="h-5 w-5" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="font-medium truncate">{displayName}</div>
+          <div className="flex items-center gap-3">
+            <div className={cn(
+              "h-9 w-9 rounded-full flex items-center justify-center shrink-0",
+              isFromMe ? "bg-white/20" : "bg-muted"
+            )}>
+              <User className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="font-medium truncate">{displayName}</div>
+              {phone && (
+                <div className={cn("text-xs truncate", isFromMe ? "text-white/80" : "text-muted-foreground")}>
+                  {phone}
+                </div>
+              )}
+            </div>
             {phone && (
-              <div className={cn("text-xs truncate", isFromMe ? "text-white/80" : "text-muted-foreground")}>
-                {phone}
-              </div>
+              <a
+                href={`tel:${phone}`}
+                onClick={(e) => e.stopPropagation()}
+                className={cn(
+                  "shrink-0 h-8 w-8 rounded-full flex items-center justify-center",
+                  isFromMe ? "bg-white/20 hover:bg-white/30" : "bg-primary/10 hover:bg-primary/20"
+                )}
+                title="Ligar"
+              >
+                <Phone className="h-4 w-4" />
+              </a>
             )}
           </div>
           {phone && (
-            <a
-              href={`tel:${phone}`}
-              onClick={(e) => e.stopPropagation()}
-              className={cn(
-                "shrink-0 h-8 w-8 rounded-full flex items-center justify-center",
-                isFromMe ? "bg-white/20 hover:bg-white/30" : "bg-primary/10 hover:bg-primary/20"
-              )}
-              title="Ligar"
+            <SigZapPhonePopover
+              phone={phone}
+              isFromMe={isFromMe}
+              currentInstanceId={(conversa?.instance as any)?.id}
             >
-              <Phone className="h-4 w-4" />
-            </a>
+              <button
+                type="button"
+                className={cn(
+                  "w-full text-xs font-medium rounded-md py-1.5 flex items-center justify-center gap-1.5 transition-colors",
+                  isFromMe
+                    ? "bg-white/20 hover:bg-white/30 text-white"
+                    : "bg-primary/10 hover:bg-primary/20 text-primary"
+                )}
+              >
+                <MessageCircle className="h-3.5 w-3.5" />
+                Iniciar conversa
+              </button>
+            </SigZapPhonePopover>
           )}
         </div>
       );
