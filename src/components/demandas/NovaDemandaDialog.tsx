@@ -176,12 +176,18 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto">
+      <DialogContent className="max-w-[59rem] max-h-[92vh] overflow-hidden p-0">
         <DialogHeader>
-          <DialogTitle>Nova demanda</DialogTitle>
+          <div className="px-5 pt-5 pr-12">
+            <DialogTitle>Nova demanda</DialogTitle>
+            <DialogDescription>
+              Crie a tarefa com responsáveis, tags, comentários, links e histórico inicial.
+            </DialogDescription>
+          </div>
         </DialogHeader>
 
-        <div className="grid gap-3">
+        <div className="grid max-h-[calc(92vh-8.5rem)] gap-0 overflow-hidden border-y lg:grid-cols-[minmax(0,1fr)_20rem]">
+          <div className="grid gap-3 overflow-y-auto p-5">
           <div className="grid gap-1.5">
             <Label className="text-xs">Título *</Label>
             <Input
