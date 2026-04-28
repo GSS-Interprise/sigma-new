@@ -26,7 +26,10 @@ import {
   Paperclip,
   X,
   Send,
+  Plus,
+  ListChecks,
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
@@ -66,6 +69,8 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
   );
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [checklist, setChecklist] = useState<{ texto: string; ok: boolean }[]>([]);
+  const [novoItem, setNovoItem] = useState("");
 
   useEffect(() => {
     if (open) {
@@ -75,6 +80,8 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
       setUrgencia("media");
       setDataLimite(defaultDate ?? undefined);
       setPendingFiles([]);
+      setChecklist([]);
+      setNovoItem("");
     }
   }, [open, defaultDate]);
 
@@ -120,6 +127,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
         responsavel_id: responsavelFinal,
         mencionados: mencionadosFinal,
         data_limite: dataLimite ? format(dataLimite, "yyyy-MM-dd") : null,
+        checklist: checklist.filter((c) => c.texto.trim()),
       });
       for (const f of pendingFiles) {
         try {
