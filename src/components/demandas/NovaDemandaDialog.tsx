@@ -39,11 +39,17 @@ import {
   MessageSquare,
   Activity,
   Link as LinkIcon,
+  ExternalLink,
+  FileText,
+  Briefcase,
+  User as UserIcon,
+  MessageCircle,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
 import { useUserSetor } from "@/hooks/useUserSetor";
 import { useAuth } from "@/contexts/AuthContext";
 import {
