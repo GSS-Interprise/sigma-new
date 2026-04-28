@@ -1,9 +1,10 @@
+import { useEffect } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Calendar, MessageSquare, Activity, Paperclip, Link as LinkIcon, Users } from "lucide-react";
+import { Calendar, MessageSquare, Activity, Link as LinkIcon, Users } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useDemandaAtividades, useDemandaComentarios, useDemandaDetalhe } from "@/hooks/useDemandas";
@@ -32,10 +33,12 @@ export function TarefaDetalheDialog({ tarefaId, open, onOpenChange }: Props) {
   const { data: atividades = [] } = useDemandaAtividades(queryId);
   const tarefaCorreta = !!tarefa && tarefa.id === tarefaId;
 
-  if (open && tarefaId && !tarefaIdValido) {
-    toast.error("Demanda inválida. Abra o card novamente.");
-    onOpenChange(false);
-  }
+  useEffect(() => {
+    if (open && tarefaId && !tarefaIdValido) {
+      toast.error("Demanda inválida. Abra o card novamente.");
+      onOpenChange(false);
+    }
+  }, [open, onOpenChange, tarefaId, tarefaIdValido]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
