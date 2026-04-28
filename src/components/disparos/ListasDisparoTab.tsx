@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Pencil, Trash2, Users, Send, Upload } from "lucide-react";
+import { Plus, Pencil, Trash2, Users, Send, Upload, FilePlus } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -42,6 +42,8 @@ export function ListasDisparoTab() {
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [importNome, setImportNome] = useState("");
   const [importDesc, setImportDesc] = useState("");
+  const [complementarListaId, setComplementarListaId] = useState<string | null>(null);
+  const [complementarOpen, setComplementarOpen] = useState(false);
 
   const handleNova = () => { setSelecionada(null); setFormOpen(true); };
   const handleEditar = (lista: DisparoLista) => { setSelecionada(lista); setFormOpen(true); };
@@ -62,6 +64,11 @@ export function ListasDisparoTab() {
     }
     setImportPromptOpen(false);
     setImportDialogOpen(true);
+  };
+
+  const handleComplementar = (lista: DisparoLista) => {
+    setComplementarListaId(lista.id);
+    setComplementarOpen(true);
   };
 
   return (
@@ -139,6 +146,14 @@ export function ListasDisparoTab() {
                     <div className="flex items-center justify-end gap-1">
                       <Button variant="ghost" size="icon" title="Adicionar leads" onClick={() => handleAddLeads(lista)}>
                         <Users className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title="Complementar lista (importar planilha)"
+                        onClick={() => handleComplementar(lista)}
+                      >
+                        <FilePlus className="h-4 w-4" />
                       </Button>
                       <Button variant="ghost" size="icon" title="Disparar" onClick={() => handleDisparar(lista)}>
                         <Send className="h-4 w-4 text-primary" />
@@ -237,6 +252,23 @@ export function ListasDisparoTab() {
         onSuccess={() => {
           queryClient.invalidateQueries({ queryKey: ["disparo-listas"] });
           toast.success("Importação iniciada — a lista será preenchida em segundo plano.");
+        }}
+      />
+
+      {/* Dialog de importação para complementar uma lista existente */}
+      <ImportarLeadsDialog
+        open={complementarOpen}
+        onOpenChange={(v) => {
+          setComplementarOpen(v);
+          if (!v) setComplementarListaId(null);
+        }}
+        listaDestino={
+          complementarListaId ? { mode: "existing", id: complementarListaId } : undefined
+        }
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ["disparo-listas"] });
+          queryClient.invalidateQueries({ queryKey: ["disparo-lista-itens"] });
+          toast.success("Importação iniciada — novos leads serão adicionados a esta lista.");
         }}
       />
     </div>
