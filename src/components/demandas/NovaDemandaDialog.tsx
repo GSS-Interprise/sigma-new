@@ -30,6 +30,7 @@ import {
   Paperclip,
   X,
   Send,
+  Save,
   Plus,
   ListChecks,
   GripVertical,
@@ -45,15 +46,27 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useUserSetor } from "@/hooks/useUserSetor";
 import { useAuth } from "@/contexts/AuthContext";
-import { useCriarDemanda, useUploadAnexoDemanda } from "@/hooks/useDemandas";
+import {
+  useCriarDemanda,
+  useUploadAnexoDemanda,
+  useAtualizarDemanda,
+  useAdicionarComentarioDemanda,
+  useDemandaDetalhe,
+  useDemandaComentarios,
+  useDemandaAtividades,
+} from "@/hooks/useDemandas";
 import { URGENCIA_LABEL } from "@/lib/setoresAccess";
 import { supabase } from "@/integrations/supabase/client";
 import { PessoasCombobox } from "./PessoasCombobox";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { sanitizeHtml } from "@/lib/sanitizeHtml";
 
 interface Props {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   defaultDate?: Date | null;
+  /** Se informado, abre o modal em modo edição da tarefa. */
+  tarefaId?: string | null;
 }
 
 type Urgencia = "baixa" | "media" | "alta" | "critica";
@@ -67,11 +80,34 @@ type PessoaMention = { id: string; nome_completo: string | null };
  * Para vincular Licitação/Contrato/Lead/SigZap → use o menu (3 pontinhos)
  * dentro do card específico de cada módulo.
  */
-export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function initials(name?: string | null) {
+  if (!name) return "?";
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0])
+    .join("")
+    .toUpperCase();
+}
+
+export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = null }: Props) {
   const { setorId } = useUserSetor();
   const { user } = useAuth();
   const criar = useCriarDemanda();
+  const atualizar = useAtualizarDemanda();
+  const comentar = useAdicionarComentarioDemanda();
   const upload = useUploadAnexoDemanda();
+
+  const tarefaIdValido = !!tarefaId && UUID_RE.test(tarefaId);
+  const isEditing = tarefaIdValido;
+  const queryId = open && tarefaIdValido ? tarefaId : null;
+  const { data: tarefaExistente, isLoading: loadingTarefa } = useDemandaDetalhe(queryId);
+  const { data: comentariosExistentes = [] } = useDemandaComentarios(queryId);
+  const { data: atividadesExistentes = [] } = useDemandaAtividades(queryId);
+  const tarefaCorreta = !!tarefaExistente && tarefaExistente.id === tarefaId;
 
   const [titulo, setTitulo] = useState("");
   const [descricao, setDescricao] = useState("");
@@ -96,7 +132,8 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
   const [novoLinkUrl, setNovoLinkUrl] = useState("");
 
   useEffect(() => {
-    if (open) {
+    if (!open) return;
+    if (!isEditing) {
       setTitulo("");
       setDescricao("");
       setPessoas([]);
@@ -114,7 +151,46 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
       setNovoLinkTitulo("");
       setNovoLinkUrl("");
     }
-  }, [open, defaultDate]);
+  }, [open, defaultDate, isEditing]);
+
+  // Pré-popular ao editar
+  useEffect(() => {
+    if (!open || !isEditing || !tarefaCorreta || !tarefaExistente) return;
+    setTitulo(tarefaExistente.titulo ?? "");
+    setDescricao(tarefaExistente.descricao ?? "");
+    setUrgencia((tarefaExistente.urgencia as Urgencia) ?? "media");
+    setDataLimite(
+      tarefaExistente.data_limite ? new Date(tarefaExistente.data_limite + "T00:00:00") : undefined,
+    );
+    const mencIds = (tarefaExistente.mencionados ?? []).map((m) => m.user_id);
+    const responsavel = tarefaExistente.responsavel_id;
+    const pessoasIniciais = responsavel
+      ? [responsavel, ...mencIds.filter((id) => id !== responsavel)]
+      : mencIds;
+    // Se for tarefa pessoal (somente o próprio usuário), deixar vazio
+    if (
+      pessoasIniciais.length === 1 &&
+      pessoasIniciais[0] === user?.id &&
+      tarefaExistente.escopo === "setor"
+    ) {
+      setPessoas([]);
+    } else {
+      setPessoas(pessoasIniciais);
+    }
+    const cl = (tarefaExistente as any).checklist;
+    setChecklist(Array.isArray(cl) ? cl : []);
+    const tg = (tarefaExistente as any).tags;
+    setTags(Array.isArray(tg) ? tg : []);
+    setComentarioInicial("");
+    setComentarioPessoas([]);
+    setComentarioCaret(0);
+    setLinks([]);
+    setNovoLinkTitulo("");
+    setNovoLinkUrl("");
+    setPendingFiles([]);
+    setNovoItem("");
+    setNovaTag("");
+  }, [open, isEditing, tarefaCorreta, tarefaExistente, user?.id]);
 
   const { data: pessoasSistema = [] } = useQuery({
     queryKey: ["demandas-mentions-pessoas"],
@@ -188,7 +264,31 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
     const responsavelFinal = ehPessoal ? user?.id ?? null : pessoas[0] ?? null;
 
     try {
-      const tarefaId = await criar.mutateAsync({
+      let tarefaIdFinal: string;
+      if (isEditing && tarefaId) {
+        await atualizar.mutateAsync({
+          id: tarefaId,
+          titulo: titulo.trim(),
+          descricao: descricao.trim() || null,
+          urgencia,
+          responsavel_id: responsavelFinal,
+          mencionados: mencionadosFinal,
+          data_limite: dataLimite ? format(dataLimite, "yyyy-MM-dd") : null,
+          checklist: checklist.filter((c) => c.texto.trim()),
+          tags,
+        });
+        tarefaIdFinal = tarefaId;
+        // Se houver comentário novo no campo, adiciona
+        if (comentarioInicial.trim()) {
+          await comentar.mutateAsync({
+            tarefaId,
+            conteudo: comentarioInicial.trim(),
+            mencionados: comentarioPessoas,
+            links,
+          });
+        }
+      } else {
+        tarefaIdFinal = await criar.mutateAsync({
         titulo: titulo.trim(),
         descricao: descricao.trim() || undefined,
         setor_destino_id: null,
@@ -204,10 +304,11 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
         comentario_inicial: comentarioInicial.trim() || null,
         comentario_mencionados: comentarioPessoas,
         comentario_links: links,
-      });
+        });
+      }
       for (const f of pendingFiles) {
         try {
-          await upload.mutateAsync({ tarefaId, file: f, nome: f.name });
+          await upload.mutateAsync({ tarefaId: tarefaIdFinal, file: f, nome: f.name });
         } catch (e) {
           console.error(e);
         }
@@ -225,10 +326,15 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
       <DialogContent className="max-w-[59rem] max-h-[92vh] overflow-hidden p-0">
         <DialogHeader>
           <div className="px-5 pt-5 pr-12">
-            <DialogTitle>Nova demanda</DialogTitle>
+            <DialogTitle>{isEditing ? "Editar demanda" : "Nova demanda"}</DialogTitle>
             <DialogDescription>
-              Crie a tarefa com responsáveis, tags, comentários, links e histórico inicial.
+              {isEditing
+                ? "Atualize título, responsáveis, checklist, prazo e adicione comentários."
+                : "Crie a tarefa com responsáveis, tags, comentários, links e histórico inicial."}
             </DialogDescription>
+            {isEditing && loadingTarefa && (
+              <p className="mt-1 text-xs text-muted-foreground">Carregando demanda…</p>
+            )}
           </div>
         </DialogHeader>
 
