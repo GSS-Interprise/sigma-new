@@ -1,0 +1,1 @@
+ALTER TABLE public.sigzap_messages ADD COLUMN IF NOT EXISTS poll_data jsonb;

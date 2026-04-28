@@ -11398,6 +11398,7 @@ export type Database = {
           message_status: string | null
           message_text: string | null
           message_type: string | null
+          poll_data: Json | null
           quoted_message_id: string | null
           quoted_message_participant: string | null
           quoted_message_text: string | null
@@ -11427,6 +11428,7 @@ export type Database = {
           message_status?: string | null
           message_text?: string | null
           message_type?: string | null
+          poll_data?: Json | null
           quoted_message_id?: string | null
           quoted_message_participant?: string | null
           quoted_message_text?: string | null
@@ -11456,6 +11458,7 @@ export type Database = {
           message_status?: string | null
           message_text?: string | null
           message_type?: string | null
+          poll_data?: Json | null
           quoted_message_id?: string | null
           quoted_message_participant?: string | null
           quoted_message_text?: string | null

@@ -14,7 +14,8 @@ import { toast } from "sonner";
 import { 
   Send, Loader2, User, RefreshCw, MessageCircle, 
   Phone, FileText, UserCheck, Image, Video, Mic, FileIcon,
-  CheckCheck, Check, Clock, Paperclip, History, X, Ban
+  CheckCheck, Check, Clock, Paperclip, History, X, Ban,
+  MapPin, BarChart3
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -61,6 +62,10 @@ interface SigZapMessage {
   created_at: string;
   sent_by_user_id: string | null;
   sent_via_instance_name: string | null;
+  contact_data?: any;
+  location_data?: any;
+  poll_data?: any;
+  raw_payload?: any;
 }
 
 interface SenderInfo {
@@ -1374,6 +1379,154 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
   const renderMediaContent = (msg: SigZapMessage, isFromMe: boolean) => {
     const { message_type, media_url, media_filename, media_mime_type } = msg;
 
+    // ----- Special non-media types: contact, location, poll -----
+    // Reconstruct from raw_payload as fallback for messages saved before the new fields were populated.
+    const evoMsg = msg.raw_payload?.data?.message || msg.raw_payload?.message || {};
+
+    if (message_type === 'contact' || evoMsg.contactMessage) {
+      let cd = msg.contact_data as any;
+      if (!cd && evoMsg.contactMessage) {
+        const vcard: string = evoMsg.contactMessage.vcard || '';
+        const waidMatch = vcard.match(/waid=(\d+)/);
+        const phoneMatch = vcard.match(/TEL[^:]*:([+\d\s\-()]+)/);
+        cd = {
+          displayName: evoMsg.contactMessage.displayName || null,
+          phone: waidMatch ? waidMatch[1] : (phoneMatch ? phoneMatch[1].trim() : null),
+        };
+      }
+      const displayName = cd?.displayName || 'Contato';
+      const phone = cd?.phone || null;
+      return (
+        <div className={cn(
+          "mb-2 rounded-md border p-2 flex items-center gap-3 min-w-[220px]",
+          isFromMe ? "bg-white/10 border-white/20" : "bg-background/60 border-border"
+        )}>
+          <div className={cn(
+            "h-9 w-9 rounded-full flex items-center justify-center shrink-0",
+            isFromMe ? "bg-white/20" : "bg-muted"
+          )}>
+            <User className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="font-medium truncate">{displayName}</div>
+            {phone && (
+              <div className={cn("text-xs truncate", isFromMe ? "text-white/80" : "text-muted-foreground")}>
+                {phone}
+              </div>
+            )}
+          </div>
+          {phone && (
+            <a
+              href={`tel:${phone}`}
+              onClick={(e) => e.stopPropagation()}
+              className={cn(
+                "shrink-0 h-8 w-8 rounded-full flex items-center justify-center",
+                isFromMe ? "bg-white/20 hover:bg-white/30" : "bg-primary/10 hover:bg-primary/20"
+              )}
+              title="Ligar"
+            >
+              <Phone className="h-4 w-4" />
+            </a>
+          )}
+        </div>
+      );
+    }
+
+    if (message_type === 'location' || evoMsg.locationMessage) {
+      let ld = msg.location_data as any;
+      if (!ld && evoMsg.locationMessage) {
+        ld = {
+          latitude: evoMsg.locationMessage.degreesLatitude ?? null,
+          longitude: evoMsg.locationMessage.degreesLongitude ?? null,
+          name: evoMsg.locationMessage.name ?? null,
+          address: evoMsg.locationMessage.address ?? null,
+        };
+      }
+      const lat = ld?.latitude;
+      const lng = ld?.longitude;
+      const mapsUrl = (lat != null && lng != null) ? `https://maps.google.com/?q=${lat},${lng}` : null;
+      return (
+        <div className={cn(
+          "mb-2 rounded-md border p-2 min-w-[220px]",
+          isFromMe ? "bg-white/10 border-white/20" : "bg-background/60 border-border"
+        )}>
+          <div className="flex items-center gap-2 mb-1">
+            <MapPin className="h-4 w-4" />
+            <span className="font-medium text-sm">Localização</span>
+          </div>
+          {ld?.name && <div className="text-sm truncate">{ld.name}</div>}
+          {ld?.address && (
+            <div className={cn("text-xs truncate", isFromMe ? "text-white/80" : "text-muted-foreground")}>
+              {ld.address}
+            </div>
+          )}
+          {lat != null && lng != null && (
+            <div className={cn("text-xs", isFromMe ? "text-white/70" : "text-muted-foreground")}>
+              {Number(lat).toFixed(5)}, {Number(lng).toFixed(5)}
+            </div>
+          )}
+          {mapsUrl && (
+            <a
+              href={mapsUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className={cn("text-xs underline mt-1 inline-block", isFromMe ? "text-white" : "text-primary")}
+            >
+              Abrir no Google Maps
+            </a>
+          )}
+        </div>
+      );
+    }
+
+    const evoPoll = evoMsg.pollCreationMessageV3 || evoMsg.pollCreationMessageV2 || evoMsg.pollCreationMessage;
+    if (message_type === 'poll' || evoPoll) {
+      let pd = msg.poll_data as any;
+      if (!pd && evoPoll) {
+        pd = {
+          name: evoPoll.name || '',
+          options: (evoPoll.options || []).map((o: any) => o?.optionName).filter(Boolean),
+          selectableOptionsCount: evoPoll.selectableOptionsCount ?? 1,
+        };
+      }
+      const isMulti = (pd?.selectableOptionsCount ?? 1) !== 1;
+      return (
+        <div className={cn(
+          "mb-2 rounded-md border p-2 min-w-[240px]",
+          isFromMe ? "bg-white/10 border-white/20" : "bg-background/60 border-border"
+        )}>
+          <div className="flex items-center gap-2 mb-1">
+            <BarChart3 className="h-4 w-4" />
+            <span className="font-medium text-sm">Enquete</span>
+          </div>
+          {pd?.name && <div className="font-medium mb-2 break-words">{pd.name}</div>}
+          <div className={cn("text-xs mb-2", isFromMe ? "text-white/70" : "text-muted-foreground")}>
+            {isMulti ? "Selecione uma ou mais opções" : "Selecione uma opção"}
+          </div>
+          <div className="space-y-1.5">
+            {(pd?.options || []).map((opt: string, i: number) => (
+              <div
+                key={i}
+                className={cn(
+                  "flex items-center gap-2 rounded-md px-2 py-1.5 border",
+                  isFromMe ? "border-white/20" : "border-border"
+                )}
+              >
+                <span className={cn(
+                  "h-3.5 w-3.5 shrink-0 border",
+                  isMulti ? "rounded-sm" : "rounded-full",
+                  isFromMe ? "border-white/60" : "border-muted-foreground/60"
+                )} />
+                <span className="text-sm break-words">{opt}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+    // ----- end special types -----
+
     if (!media_url) {
       // No media URL, show type indicator
       const typeIcon = getMessageTypeIcon(message_type);
@@ -1725,17 +1878,25 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
                             {renderMediaContent(msg, isFromMe)}
                             
                             {/* Message text or caption */}
-                            {(msg.message_text && 
-    // Also hide sticker placeholder text
+                            {(msg.message_text &&
+                            // Hide placeholder texts (rendered as cards or inline)
                             msg.message_text !== '[Sticker]' &&
-                            msg.message_text !== '[Imagem]' && 
-                              msg.message_text !== '[Vídeo]' && 
+                            msg.message_text !== '[Imagem]' &&
+                              msg.message_text !== '[Vídeo]' &&
                               msg.message_text !== '[Áudio]' &&
                               msg.message_text !== '[image]' &&
                               msg.message_text !== '[video]' &&
                               msg.message_text !== '[audio]' &&
                               msg.message_text !== '[document]' &&
-                              msg.message_text !== '[Mensagem apagada]'
+                              msg.message_text !== '[Mensagem apagada]' &&
+                              msg.message_text !== '[Mensagem sem conteúdo]' &&
+                              msg.message_text !== '[Localização]' &&
+                              !(msg.message_text || '').startsWith('[Localização:') &&
+                              !(msg.message_text || '').startsWith('[Contato:') &&
+                              !(msg.message_text || '').startsWith('[Enquete:') &&
+                              msg.message_type !== 'contact' &&
+                              msg.message_type !== 'location' &&
+                              msg.message_type !== 'poll'
                             ) || msg.media_caption ? (
                               <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
                                 {formatWhatsappNode(renderMessageWithPhoneLinks(msg.media_caption || msg.message_text || "", isFromMe, (conversa?.instance as any)?.id))}
