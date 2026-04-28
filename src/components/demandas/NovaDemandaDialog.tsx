@@ -466,6 +466,15 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
               {isEditing && loadingTarefa && (
                 <span className="text-[11px] text-muted-foreground shrink-0">carregando…</span>
               )}
+              {isEditing && tarefaExistente?.created_at && (
+                <span
+                  className="text-[11px] text-muted-foreground shrink-0 inline-flex items-center gap-1"
+                  title={format(new Date(tarefaExistente.created_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                >
+                  <CalendarIcon className="h-3 w-3" />
+                  Iniciada em {format(new Date(tarefaExistente.created_at), "dd MMM yyyy", { locale: ptBR })}
+                </span>
+              )}
             </div>
             {isEditing && temReferencias && (
               <div className="flex flex-wrap items-center gap-1.5">
