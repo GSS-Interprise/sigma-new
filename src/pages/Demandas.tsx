@@ -11,12 +11,23 @@ import { NovaDemandaDialog } from "@/components/demandas/NovaDemandaDialog";
 import { TarefaDetalheDialog } from "@/components/demandas/TarefaDetalheDialog";
 import { useUserSetor } from "@/hooks/useUserSetor";
 import { usePermissions } from "@/hooks/usePermissions";
+import { toast } from "sonner";
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export default function Demandas() {
   const [novaOpen, setNovaOpen] = useState(false);
   const [tarefaAbertaId, setTarefaAbertaId] = useState<string | null>(null);
   const { setorNome } = useUserSetor();
   const { isAdmin } = usePermissions();
+
+  const abrirDetalheTarefa = (id: string) => {
+    if (!UUID_RE.test(id)) {
+      toast.error("Não foi possível abrir esta demanda: ID inválido.");
+      return;
+    }
+    setTarefaAbertaId(id);
+  };
 
   const headerActions = (
     <div className="flex items-center justify-between w-full gap-3">
@@ -47,16 +58,16 @@ export default function Demandas() {
       <div className="h-[calc(100vh-8rem)] p-3">
         <div className="grid grid-cols-1 md:grid-cols-3 md:grid-rows-2 gap-3 h-full">
           <div className="md:row-span-2 min-h-0">
-            <ColunaAgenda onTarefaClick={setTarefaAbertaId} />
+            <ColunaAgenda onTarefaClick={abrirDetalheTarefa} />
           </div>
           <div className="min-h-0">
-            <ColunaEnviadas onTarefaClick={setTarefaAbertaId} />
+            <ColunaEnviadas onTarefaClick={abrirDetalheTarefa} />
           </div>
           <div className="md:row-span-2 min-h-0">
             <ColunaPendenciasSetor />
           </div>
           <div className="min-h-0">
-            <ColunaParaMim onTarefaClick={setTarefaAbertaId} />
+            <ColunaParaMim onTarefaClick={abrirDetalheTarefa} />
           </div>
         </div>
       </div>
