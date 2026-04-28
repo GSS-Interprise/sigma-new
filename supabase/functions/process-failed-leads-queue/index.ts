@@ -314,6 +314,17 @@ serve(async (req) => {
 
           if (createError) {
             console.error(`[process-queue] Erro ao criar lead:`, createError);
+            // Duplicate key → abandonar imediatamente, não desperdiçar retries
+            if (createError.code === "23505") {
+              await supabase.from("import_leads_failed_queue").update({
+                status: "abandoned",
+                error_code: createError.code,
+                error_message: createError.message,
+                abandonment_reason: REASON.PHONE_CONFLICT,
+              }).eq("id", item.id);
+              results.abandoned++;
+              return;
+            }
             const newAttempts = item.attempts + 1;
             if (newAttempts > MAX_ATTEMPTS) {
               await supabase.from("import_leads_failed_queue").update({
@@ -330,7 +341,7 @@ serve(async (req) => {
               }).eq("id", item.id);
               results.failed++;
             }
-            continue;
+            return;
           }
 
           // Sucesso — lead criado
