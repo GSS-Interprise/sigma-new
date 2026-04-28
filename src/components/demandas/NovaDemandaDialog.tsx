@@ -117,6 +117,8 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
   const { data: tarefaExistente, isLoading: loadingTarefa } = useDemandaDetalhe(queryId);
   const { data: comentariosExistentes = [] } = useDemandaComentarios(queryId);
   const { data: atividadesExistentes = [] } = useDemandaAtividades(queryId);
+  const { data: confirmacoes = [] } = useDemandaConfirmacoes(queryId);
+  const toggleConfirmacao = useToggleConfirmacaoDemanda();
   const tarefaCorreta = !!tarefaExistente && tarefaExistente.id === tarefaId;
 
   const [titulo, setTitulo] = useState("");
