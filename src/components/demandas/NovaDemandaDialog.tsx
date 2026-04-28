@@ -119,6 +119,17 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
+  const adicionarLink = () => {
+    const url = novoLinkUrl.trim();
+    if (!url) return;
+    setLinks((p) => [
+      ...p,
+      { titulo: novoLinkTitulo.trim() || url, url },
+    ]);
+    setNovoLinkTitulo("");
+    setNovoLinkUrl("");
+  };
+
   const submit = async () => {
     if (!titulo.trim()) {
       toast.error("Informe um título");
@@ -144,6 +155,9 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
         data_limite: dataLimite ? format(dataLimite, "yyyy-MM-dd") : null,
         checklist: checklist.filter((c) => c.texto.trim()),
         tags,
+        comentario_inicial: comentarioInicial.trim() || null,
+        comentario_mencionados: comentarioPessoas,
+        comentario_links: links,
       });
       for (const f of pendingFiles) {
         try {
