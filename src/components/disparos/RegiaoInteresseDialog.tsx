@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -73,7 +73,7 @@ export function RegiaoInteresseDialog({ open, onOpenChange, leadId, registroId, 
     enabled: open && !!registroId,
   });
 
-  useMemo(() => {
+  useEffect(() => {
     if (!open || !registroExistente) return;
     const next: SelectionMap = {};
     (registroExistente.ufs || []).forEach((uf) => {
@@ -187,7 +187,8 @@ export function RegiaoInteresseDialog({ open, onOpenChange, leadId, registroId, 
       toast.warning("Selecione ao menos um estado");
       return;
     }
-    if (!leadId) {
+    const effectiveLeadId = leadId || registroExistente?.lead_id;
+    if (!effectiveLeadId) {
       toast.error("Lead não encontrado");
       return;
     }
@@ -203,7 +204,7 @@ export function RegiaoInteresseDialog({ open, onOpenChange, leadId, registroId, 
       }
 
       const payload = {
-        lead_id: leadId,
+        lead_id: effectiveLeadId,
         encaminhado_por: user?.id || null,
         encaminhado_por_nome: user?.user_metadata?.nome_completo || user?.email || "Desconhecido",
         ufs: selectedUfs,
