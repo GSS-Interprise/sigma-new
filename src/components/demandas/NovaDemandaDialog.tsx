@@ -509,7 +509,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
           </div>
         </DialogHeader>
 
-        <div className="grid max-h-[calc(92vh-8.5rem)] gap-0 overflow-hidden border-y lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className="grid max-h-[calc(92vh-8.5rem)] gap-0 overflow-hidden border-y lg:grid-cols-[minmax(0,1fr)_24rem]">
           <div className="grid gap-3 overflow-y-auto p-5">
           <div className="grid gap-1.5">
             <Label className="text-xs">Descrição (cole prints com Ctrl+V)</Label>
