@@ -10,6 +10,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { 
   Send, Loader2, User, RefreshCw, MessageCircle, 
@@ -1051,6 +1057,19 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
     }
   };
 
+  const openAttachmentPicker = (accept: string) => {
+    if (!fileInputRef.current) return;
+    fileInputRef.current.accept = accept;
+    fileInputRef.current.multiple = true;
+    fileInputRef.current.click();
+  };
+
+  const showAttachmentComingSoon = (label: string) => {
+    toast.info(`${label} ainda não está disponível para envio`, {
+      description: "Por enquanto, envie documentos, fotos ou vídeos.",
+    });
+  };
+
   // Check if user can send messages - everyone can send, colors identify who is attending
   const assignedUser = conversa?.assigned_user as any;
   const canSendMessages = !!conversa;
@@ -2009,7 +2028,7 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.zip,.rar"
+              accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.zip,.rar"
               className="hidden"
               onChange={handleFileSelect}
               multiple
@@ -2023,21 +2042,48 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
               />
             ) : (
               <>
-                {/* Attachment button */}
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-[44px] w-[44px] text-muted-foreground hover:text-primary flex-shrink-0"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={isUploadingMedia || sendMutation.isPending}
-                >
-                  {isUploadingMedia ? (
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                  ) : (
-                    <Paperclip className="h-5 w-5" />
-                  )}
-                </Button>
+                {/* Attachment menu */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-[44px] w-[44px] text-muted-foreground hover:text-primary flex-shrink-0"
+                      disabled={isUploadingMedia || sendMutation.isPending}
+                    >
+                      {isUploadingMedia ? (
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                      ) : (
+                        <Paperclip className="h-5 w-5" />
+                      )}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" side="top" className="w-56">
+                    <DropdownMenuItem
+                      className="gap-2"
+                      onSelect={() => openAttachmentPicker(".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.zip,.rar,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document")}
+                    >
+                      <FileText className="h-4 w-4" />
+                      Documento
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="gap-2"
+                      onSelect={() => openAttachmentPicker("image/*,video/*")}
+                    >
+                      <Image className="h-4 w-4" />
+                      Fotos e vídeos
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="gap-2" onSelect={() => showAttachmentComingSoon("Enquete")}>
+                      <BarChart3 className="h-4 w-4" />
+                      Enquete
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="gap-2" onSelect={() => showAttachmentComingSoon("Contato")}>
+                      <UserCheck className="h-4 w-4" />
+                      Contato
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
 
                 {/* Message input - NOT disabled when sending text (optimistic UI) */}
                 <Textarea
