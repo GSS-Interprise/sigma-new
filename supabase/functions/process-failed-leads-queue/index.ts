@@ -171,7 +171,7 @@ serve(async (req) => {
             .eq("id", item.id);
           results.abandoned++;
           console.warn(`[process-queue] Item ${item.id} abandonado: payload inválido`);
-          continue;
+          return;
         }
 
         // Buscar lead por CPF, CNPJ ou nome
@@ -238,7 +238,7 @@ serve(async (req) => {
               .eq("id", item.id);
             results.abandoned++;
             console.warn(`[process-queue] Item ${item.id} abandonado: sem documento para criar`);
-            continue;
+            return;
           }
 
           const now = new Date().toISOString();
@@ -370,7 +370,7 @@ serve(async (req) => {
           }).eq("id", item.id);
           results.resolved++;
           console.log(`[process-queue] Novo lead criado ${created.id} (item ${item.id})`);
-          continue;
+          return;
         }
 
         // Telefones
