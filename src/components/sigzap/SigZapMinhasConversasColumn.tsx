@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { User, RefreshCw, Inbox, Unlock, Plus, Loader2, Send, X, MessageCircle, Wifi, WifiOff, AlertCircle, UserX, Tag as TagIcon } from "lucide-react";
+import { User, RefreshCw, Inbox, Unlock, Plus, Loader2, Send, X, MessageCircle, Wifi, WifiOff, AlertCircle, UserX, Search, Tag as TagIcon } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -64,6 +64,7 @@ export function SigZapMinhasConversasColumn({
   const [showNewInput, setShowNewInput] = useState(false);
   const [novoNumero, setNovoNumero] = useState("");
   const [novaInstanciaId, setNovaInstanciaId] = useState<string>("");
+  const [searchTerm, setSearchTerm] = useState("");
   const attemptedPhotoSyncContactIdsRef = useRef<Set<string>>(new Set());
 
   // Filtro: todos | nao_lido | tag:<nome>
@@ -199,8 +200,21 @@ export function SigZapMinhasConversasColumn({
         return Array.isArray(tags) && tags.includes(tagNome);
       });
     }
+    const searchLower = searchTerm.trim().toLowerCase();
+    if (searchLower) {
+      lista = lista.filter((c: any) => {
+        const contact = c.contact as any;
+        const lead = c.lead as any;
+        return (
+          contact?.contact_name?.toLowerCase().includes(searchLower) ||
+          contact?.contact_phone?.includes(searchTerm.trim()) ||
+          c.last_message_text?.toLowerCase().includes(searchLower) ||
+          lead?.nome?.toLowerCase().includes(searchLower)
+        );
+      });
+    }
     return lista;
-  }, [minhasConversas, filtro]);
+  }, [minhasConversas, filtro, searchTerm]);
 
   // Origem das conversas (manual / massa / trafego pago / inbound)
   const conversaIds = useMemo(
@@ -699,6 +713,19 @@ export function SigZapMinhasConversasColumn({
         <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => refetch()}>
           <RefreshCw className="h-3 w-3" />
         </Button>
+      </div>
+
+      {/* Busca */}
+      <div className="p-3 border-b">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar minhas conversas..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-9 h-9"
+          />
+        </div>
       </div>
 
       {/* Filtros */}
