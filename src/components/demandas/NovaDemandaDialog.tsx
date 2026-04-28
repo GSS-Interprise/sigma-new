@@ -44,6 +44,7 @@ import {
   Briefcase,
   User as UserIcon,
   MessageCircle,
+  CheckCircle2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -60,6 +61,8 @@ import {
   useDemandaDetalhe,
   useDemandaComentarios,
   useDemandaAtividades,
+  useDemandaConfirmacoes,
+  useToggleConfirmacaoDemanda,
 } from "@/hooks/useDemandas";
 import { URGENCIA_LABEL } from "@/lib/setoresAccess";
 import { supabase } from "@/integrations/supabase/client";
