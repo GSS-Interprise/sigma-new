@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -19,7 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { MapPin, Send, Search, X } from "lucide-react";
+import { MapPin, Save, Send, Search, X } from "lucide-react";
 
 const normalize = (str: string) =>
   str.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
@@ -28,6 +28,7 @@ interface RegiaoInteresseDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   leadId?: string;
+  registroId?: string;
   onAfterNavigate?: () => void;
 }
 
@@ -45,9 +46,10 @@ interface IBGEMunicipio {
 // Stores selections as UF -> Set of cities
 type SelectionMap = Record<string, Set<string>>;
 
-export function RegiaoInteresseDialog({ open, onOpenChange, leadId, onAfterNavigate }: RegiaoInteresseDialogProps) {
+export function RegiaoInteresseDialog({ open, onOpenChange, leadId, registroId, onAfterNavigate }: RegiaoInteresseDialogProps) {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const isEditing = !!registroId;
   // UF currently being browsed (for city list)
   const [browsingUf, setBrowsingUf] = useState<string>("");
   // All selections: { "SC": Set(["Florianópolis"]), "PR": Set() }
@@ -55,6 +57,36 @@ export function RegiaoInteresseDialog({ open, onOpenChange, leadId, onAfterNavig
   const [cidadeSearch, setCidadeSearch] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const queryClient = useQueryClient();
+
+  const { data: registroExistente } = useQuery({
+    queryKey: ["regiao-interesse-registro", registroId],
+    queryFn: async () => {
+      if (!registroId) return null;
+      const { data, error } = await supabase
+        .from("banco_interesse_leads")
+        .select("id, lead_id, ufs, cidades")
+        .eq("id", registroId)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: open && !!registroId,
+  });
+
+  useEffect(() => {
+    if (!open || !registroExistente) return;
+    const next: SelectionMap = {};
+    (registroExistente.ufs || []).forEach((uf) => {
+      next[uf] = new Set<string>();
+    });
+    const primeiraUf = (registroExistente.ufs || [])[0] || "";
+    if (primeiraUf) {
+      (registroExistente.cidades || []).forEach((cidade) => next[primeiraUf]?.add(cidade));
+    }
+    setSelections(next);
+    setBrowsingUf(primeiraUf);
+    setCidadeSearch("");
+  }, [open, registroExistente]);
 
   const { data: estados } = useQuery({
     queryKey: ["ibge-estados"],
@@ -155,7 +187,8 @@ export function RegiaoInteresseDialog({ open, onOpenChange, leadId, onAfterNavig
       toast.warning("Selecione ao menos um estado");
       return;
     }
-    if (!leadId) {
+    const effectiveLeadId = leadId || registroExistente?.lead_id;
+    if (!effectiveLeadId) {
       toast.error("Lead não encontrado");
       return;
     }
@@ -170,21 +203,30 @@ export function RegiaoInteresseDialog({ open, onOpenChange, leadId, onAfterNavig
         }
       }
 
-      const { error } = await supabase.from("banco_interesse_leads").insert({
-        lead_id: leadId,
+      const payload = {
+        lead_id: effectiveLeadId,
         encaminhado_por: user?.id || null,
         encaminhado_por_nome: user?.user_metadata?.nome_completo || user?.email || "Desconhecido",
         ufs: selectedUfs,
         cidades: allCidades,
-      });
+      };
+
+      const { error } = isEditing
+        ? await supabase
+            .from("banco_interesse_leads")
+            .update({ ufs: payload.ufs, cidades: payload.cidades })
+            .eq("id", registroId)
+        : await supabase.from("banco_interesse_leads").insert(payload);
 
       if (error) throw error;
 
       queryClient.invalidateQueries({ queryKey: ["regiao-interesse-leads"] });
-      toast.success("Lead encaminhado para o Banco de Interesse");
+      queryClient.invalidateQueries({ queryKey: ["regiao-interesse-registro", registroId] });
+      queryClient.invalidateQueries({ queryKey: ["sigzap-banco-interesse-registro", effectiveLeadId] });
+      toast.success(isEditing ? "Alterações salvas" : "Lead encaminhado para o Banco de Interesse");
       onOpenChange(false);
       onAfterNavigate?.();
-      navigate("/disparos/regiao-interesse");
+      if (!isEditing) navigate("/disparos/regiao-interesse");
 
       // Reset
       setBrowsingUf("");
@@ -207,7 +249,9 @@ export function RegiaoInteresseDialog({ open, onOpenChange, leadId, onAfterNavig
             Banco de Interesse
           </DialogTitle>
           <DialogDescription>
-            Selecione estados e opcionalmente cidades. Suas seleções são mantidas ao trocar de estado.
+            {isEditing
+              ? "Atualize estados e opcionalmente cidades. Suas seleções são mantidas ao trocar de estado."
+              : "Selecione estados e opcionalmente cidades. Suas seleções são mantidas ao trocar de estado."}
           </DialogDescription>
         </DialogHeader>
 
@@ -325,8 +369,8 @@ export function RegiaoInteresseDialog({ open, onOpenChange, leadId, onAfterNavig
             Cancelar
           </Button>
           <Button onClick={handleSubmit} disabled={selectedUfs.length === 0 || submitting} className="gap-2">
-            <Send className="h-4 w-4" />
-            {submitting ? "Enviando..." : "Enviar"}
+            {isEditing ? <Save className="h-4 w-4" /> : <Send className="h-4 w-4" />}
+            {submitting ? (isEditing ? "Salvando..." : "Enviando...") : (isEditing ? "Salvar alterações" : "Enviar")}
           </Button>
         </DialogFooter>
       </DialogContent>
