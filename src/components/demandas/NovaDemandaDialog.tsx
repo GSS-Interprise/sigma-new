@@ -54,6 +54,8 @@ interface Props {
   defaultDate?: Date | null;
 }
 
+type Urgencia = "baixa" | "media" | "alta" | "critica";
+
 /**
  * Modal "Nova demanda" da tela Home.
  * Comportamento implícito (sem botões de tipo):
@@ -71,7 +73,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
   const [titulo, setTitulo] = useState("");
   const [descricao, setDescricao] = useState("");
   const [pessoas, setPessoas] = useState<string[]>([]);
-  const [urgencia, setUrgencia] = useState<"baixa" | "media" | "alta" | "critica">("media");
+  const [urgencia, setUrgencia] = useState<Urgencia>("media");
   const [dataLimite, setDataLimite] = useState<Date | undefined>(
     defaultDate ?? undefined,
   );
@@ -435,7 +437,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-1.5">
               <Label className="text-xs">Urgência</Label>
-              <Select value={urgencia} onValueChange={(v: any) => setUrgencia(v)}>
+              <Select value={urgencia} onValueChange={(v) => setUrgencia(v as Urgencia)}>
                 <SelectTrigger className="h-9">
                   <SelectValue />
                 </SelectTrigger>
