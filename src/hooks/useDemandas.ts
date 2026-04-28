@@ -32,6 +32,28 @@ export interface DemandaTarefa {
   anexos_count?: number;
 }
 
+export interface DemandaComentario {
+  id: string;
+  tarefa_id: string;
+  user_id: string;
+  conteudo: string;
+  mencionados: string[] | null;
+  links: { titulo?: string; url?: string }[] | null;
+  created_at: string;
+  autor_nome?: string | null;
+}
+
+export interface DemandaAtividade {
+  id: string;
+  tarefa_id: string;
+  user_id: string;
+  tipo: string;
+  resumo: string;
+  detalhes: Record<string, unknown> | null;
+  created_at: string;
+  autor_nome?: string | null;
+}
+
 async function enrich(rows: any[]): Promise<DemandaTarefa[]> {
   if (!rows.length) return [];
   const userIds = Array.from(
