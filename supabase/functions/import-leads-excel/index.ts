@@ -694,20 +694,27 @@ serve(async (req) => {
       const phones = batchData.map((d) => d.phone_e164).filter(Boolean);
       const phoneVariants = Array.from(new Set(phones.flatMap((phone) => [phone, `+${phone}`])));
       const chaveUnicas = Array.from(new Set(batchData.map(getLeadUniqueKey).filter(Boolean) as string[]));
-      const { data: existentes, error: existingError } = await supabase
+      const { data: existentesPorTelefone, error: existingError } = await supabase
         .from("leads")
         .select("id, phone_e164, chave_unica")
-        .or([
-          phoneVariants.length > 0 ? `phone_e164.in.(${phoneVariants.join(",")})` : "",
-          chaveUnicas.length > 0 ? `chave_unica.in.(${chaveUnicas.map((k) => `\"${k.replace(/\"/g, '\\\"')}\"`).join(",")})` : "",
-        ].filter(Boolean).join(","))
+        .in("phone_e164", phoneVariants)
         .order("created_at", { ascending: true });
 
       if (existingError) throw existingError;
 
+      const { data: existentesPorChave, error: keyError } = chaveUnicas.length > 0
+        ? await supabase
+          .from("leads")
+          .select("id, phone_e164, chave_unica")
+          .in("chave_unica", chaveUnicas)
+          .order("created_at", { ascending: true })
+        : { data: [], error: null };
+
+      if (keyError) throw keyError;
+
       const leadByPhone = new Map<string, string>();
       const leadByUniqueKey = new Map<string, string>();
-      for (const row of existentes || []) {
+      for (const row of [...(existentesPorTelefone || []), ...(existentesPorChave || [])]) {
         const normalizedExistingPhone = String(row.phone_e164 || "").replace(/\D/g, "");
         if (normalizedExistingPhone && !leadByPhone.has(normalizedExistingPhone)) {
           leadByPhone.set(normalizedExistingPhone, row.id);
