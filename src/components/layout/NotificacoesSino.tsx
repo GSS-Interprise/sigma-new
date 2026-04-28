@@ -152,15 +152,15 @@ export function NotificacoesSino() {
               onClick: () => navigateRef.current("/comunicacao"),
             });
 
-            if (document.hasFocus()) {
-              toast.info(`Nova mensagem em #${canalNome}`, {
-                description: `${userNome}: ${mensagem.substring(0, 50)}...`,
-                action: {
-                  label: "Ver",
-                  onClick: () => navigateRef.current("/comunicacao"),
-                },
-              });
-            }
+            // Sempre mostrar toast na tela (independente de foco)
+            toast.info(`Nova mensagem em #${canalNome}`, {
+              description: `${userNome}: ${mensagem.substring(0, 50)}...`,
+              duration: 8000,
+              action: {
+                label: "Ver",
+                onClick: () => navigateRef.current("/comunicacao"),
+              },
+            });
           }
         }
       )
@@ -204,18 +204,18 @@ export function NotificacoesSino() {
             },
           });
 
-          if (document.hasFocus()) {
-            const toastLink = newNotif.tipo?.startsWith('suporte_') && newNotif.referencia_id
-              ? `${newNotif.link}?ticket=${newNotif.referencia_id}`
-              : newNotif.link;
-            toast.info(newNotif.titulo, {
-              description: newNotif.mensagem?.substring(0, 80),
-              action: toastLink ? {
-                label: "Ver",
-                onClick: () => navigateRef.current(toastLink),
-              } : undefined,
-            });
-          }
+          // Sempre mostrar toast na tela (independente de foco)
+          const toastLink = newNotif.tipo?.startsWith('suporte_') && newNotif.referencia_id
+            ? `${newNotif.link}?ticket=${newNotif.referencia_id}`
+            : newNotif.link;
+          toast.info(newNotif.titulo || "Nova notificação", {
+            description: newNotif.mensagem?.substring(0, 100),
+            duration: 8000,
+            action: toastLink ? {
+              label: "Ver",
+              onClick: () => navigateRef.current(toastLink),
+            } : undefined,
+          });
         }
       )
       .on(
