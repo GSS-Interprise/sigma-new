@@ -427,6 +427,21 @@ serve(async (req) => {
 
         if (updateError) {
           console.error(`[process-queue] Erro ao atualizar lead ${existingLead.id}:`, updateError);
+          // Duplicate key → abandonar imediatamente
+          if (updateError.code === "23505") {
+            await supabase
+              .from("import_leads_failed_queue")
+              .update({
+                status: "abandoned",
+                error_code: updateError.code,
+                error_message: updateError.message,
+                abandonment_reason: REASON.PHONE_CONFLICT,
+                lead_id: existingLead.id,
+              })
+              .eq("id", item.id);
+            results.abandoned++;
+            return;
+          }
           const newAttempts = item.attempts + 1;
 
           if (newAttempts > MAX_ATTEMPTS) {
