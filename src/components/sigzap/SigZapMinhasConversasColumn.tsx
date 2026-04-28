@@ -26,7 +26,7 @@ import { normalizeToDigitsOnly, normalizeToE164 } from "@/lib/phoneUtils";
 import { sigzapNormalizePhoneKey } from "@/lib/sigzapPhoneKey";
 import { SigZapConversaContextMenu } from "./SigZapConversaContextMenu";
 import { SigZapOrigemBadge } from "./SigZapOrigemBadge";
-import { useSigzapConversationOrigem, type ConversaOrigem } from "@/hooks/useSigzapConversationOrigem";
+import { useSigzapConversationOrigem } from "@/hooks/useSigzapConversationOrigem";
 
 const tagColorMap: Record<string, { bg: string; text: string }> = {
   red: { bg: 'bg-red-600', text: 'text-white' },
@@ -68,8 +68,6 @@ export function SigZapMinhasConversasColumn({
 
   // Filtro: todos | nao_lido | tag:<nome>
   const [filtro, setFiltro] = useState<string>("todos");
-  // Filtro de origem: all | manual | massa | trafego_pago | inbound
-  const [origemFiltro, setOrigemFiltro] = useState<"all" | ConversaOrigem>("all");
 
   // Tags disponíveis (mesmas do Kanban)
   const { data: tagsConfig } = useQuery({
@@ -210,15 +208,7 @@ export function SigZapMinhasConversasColumn({
     [minhasConversas]
   );
   const { data: origemMap } = useSigzapConversationOrigem(conversaIds);
-
-  // Aplica filtro de origem por cima do filtro de tag/não-lido
-  const conversasFinais = useMemo(() => {
-    if (origemFiltro === "all") return conversasFiltradas;
-    return conversasFiltradas.filter((c: any) => {
-      const o = origemMap?.[c.id]?.origem || "inbound";
-      return o === origemFiltro;
-    });
-  }, [conversasFiltradas, origemFiltro, origemMap]);
+  const conversasFinais = conversasFiltradas;
 
   // Fetch leads by phone numbers (phone_e164 + telefones_adicionais)
   const { data: leadsMap } = useQuery({
@@ -767,27 +757,6 @@ export function SigZapMinhasConversasColumn({
             <X className="h-3 w-3" />
           </Button>
         )}
-      </div>
-
-      {/* Filtro de origem */}
-      <div className="flex items-center gap-1 px-2 py-1.5 border-b bg-muted/5 overflow-x-auto">
-        {([
-          { v: "all", label: "Todas origens" },
-          { v: "manual", label: "Manual" },
-          { v: "massa", label: "Campanha" },
-          { v: "trafego_pago", label: "Anúncio" },
-          { v: "inbound", label: "Inbound" },
-        ] as { v: "all" | ConversaOrigem; label: string }[]).map((opt) => (
-          <Button
-            key={opt.v}
-            variant={origemFiltro === opt.v ? "secondary" : "ghost"}
-            size="sm"
-            className="h-6 px-2 text-[10px] flex-shrink-0"
-            onClick={() => setOrigemFiltro(opt.v)}
-          >
-            {opt.label}
-          </Button>
-        ))}
       </div>
 
       {/* Conversations List */}
