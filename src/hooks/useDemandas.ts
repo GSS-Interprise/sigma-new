@@ -358,6 +358,116 @@ export function useAtualizarStatusDemanda() {
   });
 }
 
+export interface AtualizarDemandaInput {
+  id: string;
+  titulo?: string;
+  descricao?: string | null;
+  urgencia?: "baixa" | "media" | "alta" | "critica";
+  data_limite?: string | null;
+  responsavel_id?: string | null;
+  mencionados?: string[];
+  checklist?: { texto: string; ok: boolean }[];
+  tags?: string[];
+}
+
+export function useAtualizarDemanda() {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: AtualizarDemandaInput) => {
+      if (!user?.id) throw new Error("Sem usuário autenticado");
+      const patch: any = { updated_at: new Date().toISOString() };
+      if (input.titulo !== undefined) patch.titulo = input.titulo;
+      if (input.descricao !== undefined) patch.descricao = input.descricao;
+      if (input.urgencia !== undefined) {
+        patch.urgencia = input.urgencia;
+        patch.prioridade = input.urgencia;
+      }
+      if (input.data_limite !== undefined) patch.data_limite = input.data_limite;
+      if (input.responsavel_id !== undefined) patch.responsavel_id = input.responsavel_id;
+      if (input.checklist !== undefined) patch.checklist = input.checklist as any;
+      if (input.tags !== undefined) patch.tags = input.tags as any;
+
+      const { error } = await supabase
+        .from("worklist_tarefas")
+        .update(patch)
+        .eq("id", input.id);
+      if (error) throw error;
+
+      if (input.mencionados !== undefined) {
+        await supabase
+          .from("worklist_tarefa_mencionados")
+          .delete()
+          .eq("tarefa_id", input.id);
+        if (input.mencionados.length) {
+          const rows = input.mencionados.map((uid) => ({
+            tarefa_id: input.id,
+            user_id: uid,
+          }));
+          const { error: mErr } = await supabase
+            .from("worklist_tarefa_mencionados")
+            .insert(rows);
+          if (mErr) throw mErr;
+        }
+      }
+
+      await supabase.from("worklist_tarefa_atividades" as any).insert({
+        tarefa_id: input.id,
+        user_id: user.id,
+        tipo: "edicao",
+        resumo: "Demanda atualizada",
+        detalhes: patch,
+      } as any);
+
+      return input.id;
+    },
+    onSuccess: (_id) => {
+      toast.success("Alterações salvas");
+      qc.invalidateQueries({ queryKey: ["demandas"] });
+    },
+    onError: (e: any) => toast.error(e.message ?? "Erro ao salvar"),
+  });
+}
+
+export function useAdicionarComentarioDemanda() {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      tarefaId: string;
+      conteudo: string;
+      mencionados?: string[];
+      links?: { titulo: string; url: string }[];
+    }) => {
+      if (!user?.id) throw new Error("Sem usuário autenticado");
+      const conteudo = input.conteudo.trim();
+      if (!conteudo) throw new Error("Comentário vazio");
+      const { error } = await supabase
+        .from("worklist_tarefa_comentarios" as any)
+        .insert({
+          tarefa_id: input.tarefaId,
+          user_id: user.id,
+          conteudo,
+          mencionados: input.mencionados ?? [],
+          links: input.links ?? [],
+        } as any);
+      if (error) throw error;
+      await supabase.from("worklist_tarefa_atividades" as any).insert({
+        tarefa_id: input.tarefaId,
+        user_id: user.id,
+        tipo: "comentario",
+        resumo: "Novo comentário",
+        detalhes: { mencionados: input.mencionados ?? [], links: input.links ?? [] },
+      } as any);
+    },
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ["demandas", "comentarios", vars.tarefaId] });
+      qc.invalidateQueries({ queryKey: ["demandas", "atividades", vars.tarefaId] });
+    },
+    onError: (e: any) => toast.error(e.message ?? "Erro ao comentar"),
+  });
+}
+
 export function useDemandaDetalhe(tarefaId: string | null) {
   return useQuery({
     queryKey: ["demandas", "detalhe", tarefaId],
