@@ -29,9 +29,11 @@ import {
   Stethoscope,
   MapPin,
   ClipboardList,
+  Settings,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { NovaCampanhaProspeccaoDialog } from "@/components/campanhas/NovaCampanhaProspeccaoDialog";
+import { ConfigurarCampanhaDialog } from "@/components/campanhas/ConfigurarCampanhaDialog";
 import { CampanhaProspeccaoKanban } from "@/components/campanhas/CampanhaProspeccaoKanban";
 import { AcompanhamentoView } from "@/components/campanhas/acompanhamento/AcompanhamentoView";
 import { useAdicionarLeadsCampanha } from "@/hooks/useCampanhaLeads";
@@ -60,6 +62,7 @@ interface CampanhaRow {
 export default function CampanhasProspeccao() {
   const [busca, setBusca] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [configurarId, setConfigurarId] = useState<string | null>(null);
   const [selecionada, setSelecionada] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const view = (searchParams.get("view") || "campanhas") as "campanhas" | "acompanhamento";
@@ -395,6 +398,7 @@ export default function CampanhasProspeccao() {
                       key={c.id}
                       campanha={c}
                       onClick={() => setSelecionada(c.id)}
+                      onConfigurar={() => setConfigurarId(c.id)}
                     />
                   ))}
                 </div>
@@ -409,6 +413,12 @@ export default function CampanhasProspeccao() {
         <NovaCampanhaProspeccaoDialog
           open={dialogOpen}
           onOpenChange={setDialogOpen}
+        />
+
+        <ConfigurarCampanhaDialog
+          open={!!configurarId}
+          onOpenChange={(open) => !open && setConfigurarId(null)}
+          campanhaId={configurarId}
         />
       </AppLayout>
     </CaptacaoProtectedRoute>
@@ -485,9 +495,11 @@ function MetricCard({
 function CampanhaCard({
   campanha,
   onClick,
+  onConfigurar,
 }: {
   campanha: CampanhaRow;
   onClick: () => void;
+  onConfigurar: () => void;
 }) {
   const total =
     campanha.total_frio +
@@ -547,16 +559,30 @@ function CampanhaCard({
               )}
             </div>
           </div>
-          <Badge
-            variant={campanha.status === "ativa" ? "default" : "secondary"}
-          >
-            {campanha.status === "ativa" ? (
-              <Play className="h-3 w-3 mr-1" />
-            ) : (
-              <Pause className="h-3 w-3 mr-1" />
-            )}
-            {campanha.status}
-          </Badge>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <Badge
+              variant={campanha.status === "ativa" ? "default" : "secondary"}
+            >
+              {campanha.status === "ativa" ? (
+                <Play className="h-3 w-3 mr-1" />
+              ) : (
+                <Pause className="h-3 w-3 mr-1" />
+              )}
+              {campanha.status}
+            </Badge>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0"
+              onClick={(e) => {
+                e.stopPropagation();
+                onConfigurar();
+              }}
+              title="Configurar campanha"
+            >
+              <Settings className="h-3.5 w-3.5" />
+            </Button>
+          </div>
         </div>
 
         <div className="flex items-center gap-4 text-xs text-muted-foreground">
