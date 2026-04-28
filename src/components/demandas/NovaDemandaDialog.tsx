@@ -434,7 +434,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[59rem] max-h-[92vh] overflow-hidden p-0">
         <DialogHeader>
-          <div className="px-5 pt-5 pr-12">
+          <div className="px-5 pt-5 pr-12 space-y-3">
             <DialogTitle>{isEditing ? "Editar demanda" : "Nova demanda"}</DialogTitle>
             <DialogDescription>
               {isEditing
@@ -444,21 +444,89 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
             {isEditing && loadingTarefa && (
               <p className="mt-1 text-xs text-muted-foreground">Carregando demanda…</p>
             )}
+            <div className="grid gap-1.5">
+              <Label className="text-xs">Título *</Label>
+              <Input
+                value={titulo}
+                onChange={(e) => setTitulo(e.target.value)}
+                placeholder="O que precisa ser feito?"
+                autoFocus
+              />
+            </div>
+            {isEditing && temReferencias && (
+              <div className="grid gap-1.5">
+                <Label className="text-xs flex items-center gap-1.5 text-muted-foreground">
+                  <ExternalLink className="h-3.5 w-3.5" /> Referências
+                </Label>
+                <div className="flex flex-wrap gap-2">
+                  {referencias?.licitacao && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 gap-1.5 text-xs"
+                      onClick={() =>
+                        irPara(`/licitacoes?open=${referencias.licitacao!.id}`)
+                      }
+                    >
+                      <FileText className="h-3.5 w-3.5" />
+                      Licitação: {referencias.licitacao.label}
+                      <ExternalLink className="h-3 w-3 opacity-60" />
+                    </Button>
+                  )}
+                  {referencias?.contrato && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 gap-1.5 text-xs"
+                      onClick={() =>
+                        irPara(`/contratos?open=${referencias.contrato!.id}`)
+                      }
+                    >
+                      <Briefcase className="h-3.5 w-3.5" />
+                      Contrato: {referencias.contrato.label}
+                      <ExternalLink className="h-3 w-3 opacity-60" />
+                    </Button>
+                  )}
+                  {referencias?.lead && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 gap-1.5 text-xs"
+                      onClick={() =>
+                        irPara(`/disparos/acompanhamento?lead=${referencias.lead!.id}`)
+                      }
+                    >
+                      <UserIcon className="h-3.5 w-3.5" />
+                      Lead: {referencias.lead.label}
+                      <ExternalLink className="h-3 w-3 opacity-60" />
+                    </Button>
+                  )}
+                  {referencias?.conversa && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 gap-1.5 text-xs"
+                      onClick={() =>
+                        irPara(`/sigzap?conversa=${referencias.conversa!.id}`)
+                      }
+                    >
+                      <MessageCircle className="h-3.5 w-3.5" />
+                      Conversa: {referencias.conversa.label}
+                      <ExternalLink className="h-3 w-3 opacity-60" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </DialogHeader>
 
         <div className="grid max-h-[calc(92vh-8.5rem)] gap-0 overflow-hidden border-y lg:grid-cols-[minmax(0,1fr)_20rem]">
           <div className="grid gap-3 overflow-y-auto p-5">
-          <div className="grid gap-1.5">
-            <Label className="text-xs">Título *</Label>
-            <Input
-              value={titulo}
-              onChange={(e) => setTitulo(e.target.value)}
-              placeholder="O que precisa ser feito?"
-              autoFocus
-            />
-          </div>
-
           <div className="grid gap-1.5">
             <Label className="text-xs">Descrição (cole prints com Ctrl+V)</Label>
             <RichTextEditor
@@ -752,76 +820,6 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
               </Popover>
             </div>
           </div>
-
-          {isEditing && temReferencias && (
-            <div className="grid gap-1.5 border-t pt-3">
-              <Label className="text-xs flex items-center gap-1.5 text-muted-foreground">
-                <ExternalLink className="h-3.5 w-3.5" /> Referências
-              </Label>
-              <div className="flex flex-wrap gap-2">
-                {referencias?.licitacao && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-8 gap-1.5 text-xs"
-                    onClick={() =>
-                      irPara(`/licitacoes?open=${referencias.licitacao!.id}`)
-                    }
-                  >
-                    <FileText className="h-3.5 w-3.5" />
-                    Licitação: {referencias.licitacao.label}
-                    <ExternalLink className="h-3 w-3 opacity-60" />
-                  </Button>
-                )}
-                {referencias?.contrato && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-8 gap-1.5 text-xs"
-                    onClick={() =>
-                      irPara(`/contratos?open=${referencias.contrato!.id}`)
-                    }
-                  >
-                    <Briefcase className="h-3.5 w-3.5" />
-                    Contrato: {referencias.contrato.label}
-                    <ExternalLink className="h-3 w-3 opacity-60" />
-                  </Button>
-                )}
-                {referencias?.lead && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-8 gap-1.5 text-xs"
-                    onClick={() =>
-                      irPara(`/disparos/acompanhamento?lead=${referencias.lead!.id}`)
-                    }
-                  >
-                    <UserIcon className="h-3.5 w-3.5" />
-                    Lead: {referencias.lead.label}
-                    <ExternalLink className="h-3 w-3 opacity-60" />
-                  </Button>
-                )}
-                {referencias?.conversa && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-8 gap-1.5 text-xs"
-                    onClick={() =>
-                      irPara(`/sigzap?conversa=${referencias.conversa!.id}`)
-                    }
-                  >
-                    <MessageCircle className="h-3.5 w-3.5" />
-                    Conversa: {referencias.conversa.label}
-                    <ExternalLink className="h-3 w-3 opacity-60" />
-                  </Button>
-                )}
-              </div>
-            </div>
-          )}
 
           <p className="text-[11px] text-muted-foreground border-t pt-2">
             💡 Para vincular a uma <strong>licitação, contrato, lead</strong> ou{" "}
