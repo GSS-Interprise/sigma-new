@@ -46,7 +46,7 @@ export function PessoasCombobox({
       if (!modulo) {
         const { data } = await supabase
           .from("profiles")
-          .select("id, nome_completo, avatar_url, setor_id")
+          .select("id, nome_completo, setor_id")
           .order("nome_completo");
         return (data || []).filter((p: any) =>
           excludeSelf ? p.id !== user?.id : true,
@@ -71,7 +71,7 @@ export function PessoasCombobox({
       if (!ids.length) return [];
       const { data: profs } = await supabase
         .from("profiles")
-        .select("id, nome_completo, avatar_url, setor_id")
+        .select("id, nome_completo, setor_id")
         .in("id", ids)
         .order("nome_completo");
       return profs || [];
