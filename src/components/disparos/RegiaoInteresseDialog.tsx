@@ -19,7 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { MapPin, Send, Search, X } from "lucide-react";
+import { MapPin, Save, Send, Search, X } from "lucide-react";
 
 const normalize = (str: string) =>
   str.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
@@ -222,6 +222,7 @@ export function RegiaoInteresseDialog({ open, onOpenChange, leadId, registroId, 
 
       queryClient.invalidateQueries({ queryKey: ["regiao-interesse-leads"] });
       queryClient.invalidateQueries({ queryKey: ["regiao-interesse-registro", registroId] });
+      queryClient.invalidateQueries({ queryKey: ["sigzap-banco-interesse-registro", effectiveLeadId] });
       toast.success(isEditing ? "Alterações salvas" : "Lead encaminhado para o Banco de Interesse");
       onOpenChange(false);
       onAfterNavigate?.();
@@ -368,7 +369,7 @@ export function RegiaoInteresseDialog({ open, onOpenChange, leadId, registroId, 
             Cancelar
           </Button>
           <Button onClick={handleSubmit} disabled={selectedUfs.length === 0 || submitting} className="gap-2">
-            <Send className="h-4 w-4" />
+            {isEditing ? <Save className="h-4 w-4" /> : <Send className="h-4 w-4" />}
             {submitting ? (isEditing ? "Salvando..." : "Enviando...") : (isEditing ? "Salvar alterações" : "Enviar")}
           </Button>
         </DialogFooter>
