@@ -87,6 +87,17 @@ function normalizePhone(phone: string): string | null {
   return null;
 }
 
+function getLeadUniqueKey(data: Record<string, any>): string | null {
+  const cpfDigits = data.cpf ? String(data.cpf).replace(/\D/g, "") : "";
+  if (cpfDigits.length === 11) return `cpf_${cpfDigits}`;
+
+  if (data.nome && data.data_nascimento) {
+    return `${String(data.nome).trim().toLowerCase()}_${data.data_nascimento}`;
+  }
+
+  return null;
+}
+
 // Valida CPF (apenas verifica se tem 11 dígitos) - opcional agora
 function validateCPF(cpf: string): string | null {
   if (!cpf) return null;
@@ -682,19 +693,28 @@ serve(async (req) => {
 
       const phones = batchData.map((d) => d.phone_e164).filter(Boolean);
       const phoneVariants = Array.from(new Set(phones.flatMap((phone) => [phone, `+${phone}`])));
+      const chaveUnicas = Array.from(new Set(batchData.map(getLeadUniqueKey).filter(Boolean) as string[]));
       const { data: existentes, error: existingError } = await supabase
         .from("leads")
-        .select("id, phone_e164")
-        .in("phone_e164", phoneVariants)
+        .select("id, phone_e164, chave_unica")
+        .or([
+          phoneVariants.length > 0 ? `phone_e164.in.(${phoneVariants.join(",")})` : "",
+          chaveUnicas.length > 0 ? `chave_unica.in.(${chaveUnicas.map((k) => `\"${k.replace(/\"/g, '\\\"')}\"`).join(",")})` : "",
+        ].filter(Boolean).join(","))
         .order("created_at", { ascending: true });
 
       if (existingError) throw existingError;
 
       const leadByPhone = new Map<string, string>();
+      const leadByUniqueKey = new Map<string, string>();
       for (const row of existentes || []) {
         const normalizedExistingPhone = String(row.phone_e164 || "").replace(/\D/g, "");
         if (normalizedExistingPhone && !leadByPhone.has(normalizedExistingPhone)) {
           leadByPhone.set(normalizedExistingPhone, row.id);
+        }
+        const uniqueKey = String(row.chave_unica || "");
+        if (uniqueKey && !leadByUniqueKey.has(uniqueKey)) {
+          leadByUniqueKey.set(uniqueKey, row.id);
         }
       }
 
@@ -702,7 +722,7 @@ serve(async (req) => {
       const insertMeta: typeof batch = [];
 
       for (const item of batch) {
-        const existingId = leadByPhone.get(item.data.phone_e164);
+        const existingId = leadByPhone.get(item.data.phone_e164) || leadByUniqueKey.get(getLeadUniqueKey(item.data) || "");
         if (existingId) {
           const { data: updated, error: updateError } = await supabase
             .from("leads")
