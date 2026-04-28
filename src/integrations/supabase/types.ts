@@ -11382,10 +11382,14 @@ export type Database = {
       }
       sigzap_messages: {
         Row: {
+          contact_data: Json | null
           conversation_id: string
           created_at: string | null
+          forward_score: number | null
           from_me: boolean | null
           id: string
+          is_forwarded: boolean | null
+          location_data: Json | null
           media_caption: string | null
           media_filename: string | null
           media_mime_type: string | null
@@ -11395,7 +11399,9 @@ export type Database = {
           message_text: string | null
           message_type: string | null
           quoted_message_id: string | null
+          quoted_message_participant: string | null
           quoted_message_text: string | null
+          quoted_message_type: string | null
           raw_payload: Json | null
           reaction: string | null
           sender_jid: string | null
@@ -11405,10 +11411,14 @@ export type Database = {
           wa_message_id: string | null
         }
         Insert: {
+          contact_data?: Json | null
           conversation_id: string
           created_at?: string | null
+          forward_score?: number | null
           from_me?: boolean | null
           id?: string
+          is_forwarded?: boolean | null
+          location_data?: Json | null
           media_caption?: string | null
           media_filename?: string | null
           media_mime_type?: string | null
@@ -11418,7 +11428,9 @@ export type Database = {
           message_text?: string | null
           message_type?: string | null
           quoted_message_id?: string | null
+          quoted_message_participant?: string | null
           quoted_message_text?: string | null
+          quoted_message_type?: string | null
           raw_payload?: Json | null
           reaction?: string | null
           sender_jid?: string | null
@@ -11428,10 +11440,14 @@ export type Database = {
           wa_message_id?: string | null
         }
         Update: {
+          contact_data?: Json | null
           conversation_id?: string
           created_at?: string | null
+          forward_score?: number | null
           from_me?: boolean | null
           id?: string
+          is_forwarded?: boolean | null
+          location_data?: Json | null
           media_caption?: string | null
           media_filename?: string | null
           media_mime_type?: string | null
@@ -11441,7 +11457,9 @@ export type Database = {
           message_text?: string | null
           message_type?: string | null
           quoted_message_id?: string | null
+          quoted_message_participant?: string | null
           quoted_message_text?: string | null
+          quoted_message_type?: string | null
           raw_payload?: Json | null
           reaction?: string | null
           sender_jid?: string | null
