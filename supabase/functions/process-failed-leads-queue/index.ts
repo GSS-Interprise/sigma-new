@@ -515,6 +515,12 @@ serve(async (req) => {
           results.failed++;
         }
       }
+    };
+
+    // Processar em chunks paralelos
+    for (let i = 0; i < queueItems.length; i += PARALLELISM) {
+      const chunk = queueItems.slice(i, i + PARALLELISM);
+      await Promise.all(chunk.map(processItem));
     }
 
     console.log(`[process-queue] Resultado final: ${JSON.stringify(results)}`);
