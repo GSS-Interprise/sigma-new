@@ -12,16 +12,16 @@ import React from "react";
 
 // Inline: negrito, itálico, tachado, código, bloco mono
 // A ordem importa: bloco ``` antes de ` simples; inline antes de só-texto.
-const INLINE_RE =
-  /(```[\s\S]+?```)|(`[^`\n]+?`)|(\*[^*\n]+?\*)|(_[^_\n]+?_)|(~[^~\n]+?~)/g;
+const INLINE_PATTERN =
+  "(```[\\s\\S]+?```)|(`[^`\\n]+?`)|(\\*[^*\\n]+?\\*)|(_[^_\\n]+?_)|(~[^~\\n]+?~)";
 
 function renderInline(text: string, keyBase: string): React.ReactNode[] {
   const out: React.ReactNode[] = [];
   let last = 0;
   let m: RegExpExecArray | null;
-  INLINE_RE.lastIndex = 0;
+  const inlineRe = new RegExp(INLINE_PATTERN, "g");
   let i = 0;
-  while ((m = INLINE_RE.exec(text)) !== null) {
+  while ((m = inlineRe.exec(text)) !== null) {
     if (m.index > last) out.push(text.slice(last, m.index));
     const token = m[0];
     const k = `${keyBase}-i${i++}`;
