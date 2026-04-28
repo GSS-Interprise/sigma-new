@@ -12371,6 +12371,7 @@ export type Database = {
           setor_origem_id: string | null
           sigzap_conversation_id: string | null
           status: string
+          tags: Json
           tipo: string
           titulo: string
           updated_at: string | null
@@ -12396,6 +12397,7 @@ export type Database = {
           setor_origem_id?: string | null
           sigzap_conversation_id?: string | null
           status: string
+          tags?: Json
           tipo?: string
           titulo: string
           updated_at?: string | null
@@ -12421,6 +12423,7 @@ export type Database = {
           setor_origem_id?: string | null
           sigzap_conversation_id?: string | null
           status?: string
+          tags?: Json
           tipo?: string
           titulo?: string
           updated_at?: string | null
