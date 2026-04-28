@@ -14,15 +14,28 @@ import { ColunaEnviadas } from "@/components/demandas/ColunaEnviadas";
 import { ColunaParaMim } from "@/components/demandas/ColunaParaMim";
 import { ColunaPendenciasSetor } from "@/components/demandas/ColunaPendenciasSetor";
 import { NovaDemandaDialog } from "@/components/demandas/NovaDemandaDialog";
+import { TarefaDetalheDialog } from "@/components/demandas/TarefaDetalheDialog";
 import { useUserSetor } from "@/hooks/useUserSetor";
 import { usePermissions } from "@/hooks/usePermissions";
+import { toast } from "sonner";
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export default function Dashboard() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("home");
   const [novaDemandaOpen, setNovaDemandaOpen] = useState(false);
+  const [tarefaAbertaId, setTarefaAbertaId] = useState<string | null>(null);
   const { setorNome } = useUserSetor();
   const { isAdmin } = usePermissions();
+
+  const abrirDetalheTarefa = (id: string) => {
+    if (!UUID_RE.test(id)) {
+      toast.error("Não foi possível abrir esta demanda: ID inválido.");
+      return;
+    }
+    setTarefaAbertaId(id);
+  };
 
   // Verificar se o usuário é gestor_ages (exclusivo AGES)
   const { data: userRoles, isLoading: isLoadingRoles } = useQuery({
@@ -101,11 +114,11 @@ export default function Dashboard() {
             <div className="grid grid-cols-1 md:grid-cols-[1.15fr_1.15fr_0.7fr] gap-3 h-[calc(100vh-10rem)] md:grid-rows-2">
               {/* Coluna 1 - Agenda (grande, esquerda, 2 linhas) */}
               <div className="md:row-span-2 min-h-0">
-                <ColunaAgenda />
+                <ColunaAgenda onTarefaClick={abrirDetalheTarefa} />
               </div>
               {/* Coluna 2 - Enviadas (meio, topo) */}
               <div className="min-h-0">
-                <ColunaEnviadas />
+                <ColunaEnviadas onTarefaClick={abrirDetalheTarefa} />
               </div>
               {/* Coluna 4 - Pendências (direita, 2 linhas) */}
               <div className="md:row-span-2 min-h-0">
@@ -113,7 +126,7 @@ export default function Dashboard() {
               </div>
               {/* Coluna 3 - Para mim (meio, baixo) */}
               <div className="min-h-0">
-                <ColunaParaMim />
+                <ColunaParaMim onTarefaClick={abrirDetalheTarefa} />
               </div>
             </div>
           </TabsContent>
@@ -127,6 +140,11 @@ export default function Dashboard() {
       <NovaDemandaDialog
         open={novaDemandaOpen}
         onOpenChange={setNovaDemandaOpen}
+      />
+      <TarefaDetalheDialog
+        tarefaId={tarefaAbertaId}
+        open={!!tarefaAbertaId}
+        onOpenChange={(open) => !open && setTarefaAbertaId(null)}
       />
     </AppLayout>
   );
