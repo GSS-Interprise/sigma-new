@@ -59,16 +59,15 @@ export function useSigFincResumo(filters: Filters = {}) {
       const propostaIds = (propostas ?? []).map((p: any) => p.id);
       let itens: any[] = [];
       if (propostaIds.length > 0) {
-        // Supabase IN limit safety: chunk
         const chunkSize = 500;
         for (let i = 0; i < propostaIds.length; i += chunkSize) {
           const slice = propostaIds.slice(i, i + chunkSize);
           const { data, error } = await supabase
             .from("proposta_itens")
-            .select("proposta_id, quantidade, valor_medico, valor_contrato");
+            .select("proposta_id, quantidade, valor_medico, valor_contrato")
+            .in("proposta_id", slice);
           if (error) throw error;
-          itens = itens.concat((data ?? []).filter((it: any) => slice.includes(it.proposta_id)));
-          break; // single fetch above; loop kept for safety pattern
+          itens = itens.concat(data ?? []);
         }
       }
 
