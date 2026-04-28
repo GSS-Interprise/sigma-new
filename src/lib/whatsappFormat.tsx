@@ -139,6 +139,10 @@ export function formatWhatsappNode(node: React.ReactNode): React.ReactNode {
     ));
   }
   if (React.isValidElement(node)) {
+    const element = node as React.ReactElement<{ children?: React.ReactNode }>;
+    if (element.type === React.Fragment) {
+      return <>{formatWhatsappNode(element.props.children)}</>;
+    }
     // Não reformata dentro de elementos já React (ex.: <SigZapPhonePopover/>).
     return node;
   }

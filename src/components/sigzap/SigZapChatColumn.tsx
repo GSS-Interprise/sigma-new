@@ -38,7 +38,7 @@ import { SigZapLeadAutoMatchDialog } from "./SigZapLeadAutoMatchDialog";
 import { normalizeToE164 } from "@/lib/phoneUtils";
 import { renderMessageWithPhoneLinks } from "./SigZapPhoneLink";
 import { SigZapPhonePopover } from "./SigZapPhoneLink";
-import { formatWhatsappNode } from "@/lib/whatsappFormat";
+import { formatWhatsappNode, formatWhatsappText } from "@/lib/whatsappFormat";
 
 interface SigZapChatColumnProps {
   conversaId: string | null;
@@ -1921,13 +1921,13 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
                               msg.message_type !== 'location' &&
                               msg.message_type !== 'poll'
                             ) || msg.media_caption ? (
-                              <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+                              <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
                                 {formatWhatsappNode(renderMessageWithPhoneLinks(msg.media_caption || msg.message_text || "", isFromMe, (conversa?.instance as any)?.id))}
-                              </p>
+                              </div>
                             ) : !msg.media_url && msg.message_type === 'text' ? (
-                              <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+                              <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
                                 {formatWhatsappNode(renderMessageWithPhoneLinks(msg.message_text || "", isFromMe, (conversa?.instance as any)?.id))}
-                              </p>
+                              </div>
                             ) : null}
                           </>
                         )}
@@ -1962,7 +1962,7 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
           {pendingMessages.map((pending) => (
             <div key={pending.id} className="flex justify-end animate-pulse">
               <div className="max-w-[80%] px-3 py-2 rounded-lg bg-primary/70 text-primary-foreground relative">
-                <p className="text-sm whitespace-pre-wrap break-words">{pending.text}</p>
+                <div className="text-sm whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{formatWhatsappText(pending.text)}</div>
                 <div className="flex items-center justify-end gap-1 mt-1 text-primary-foreground/70">
                   <span className="text-[10px]">
                     {format(pending.timestamp, "HH:mm", { locale: ptBR })}
