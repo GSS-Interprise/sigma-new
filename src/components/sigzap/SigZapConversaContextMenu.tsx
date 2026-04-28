@@ -87,6 +87,23 @@ export function SigZapConversaContextMenu({
     enabled: !!phoneE164,
   });
 
+  const { data: bancoInteresseRegistro } = useQuery({
+    queryKey: ['sigzap-banco-interesse-registro', leadExists?.id],
+    queryFn: async () => {
+      if (!leadExists?.id) return null;
+      const { data, error } = await supabase
+        .from('banco_interesse_leads')
+        .select('id')
+        .eq('lead_id', leadExists.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) return null;
+      return data;
+    },
+    enabled: !!leadExists?.id,
+  });
+
   // Tags disponíveis (mesma fonte do Kanban de Acompanhamento)
   const { data: availableTags = [] } = useQuery({
     queryKey: ['leads-etiquetas-config'],
@@ -323,7 +340,7 @@ export function SigZapConversaContextMenu({
             className={!leadExists?.id ? "opacity-50" : ""}
           >
             <MapPin className="h-4 w-4 mr-2" />
-            Banco de Interesse
+            {bancoInteresseRegistro?.id ? "Editar Banco de Interesse" : "Banco de Interesse"}
             {!leadExists?.id && (
               <span className="ml-auto text-[10px] text-muted-foreground">sem lead</span>
             )}
@@ -435,6 +452,7 @@ export function SigZapConversaContextMenu({
         open={showRegiaoDialog}
         onOpenChange={setShowRegiaoDialog}
         leadId={regiaoLeadId}
+        registroId={bancoInteresseRegistro?.id}
       />
 
       {/* Seletor de Tag única */}
