@@ -12324,6 +12324,32 @@ export type Database = {
           },
         ]
       }
+      worklist_tarefa_confirmacoes: {
+        Row: {
+          confirmado_em: string
+          tarefa_id: string
+          user_id: string
+        }
+        Insert: {
+          confirmado_em?: string
+          tarefa_id: string
+          user_id: string
+        }
+        Update: {
+          confirmado_em?: string
+          tarefa_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "worklist_tarefa_confirmacoes_tarefa_id_fkey"
+            columns: ["tarefa_id"]
+            isOneToOne: false
+            referencedRelation: "worklist_tarefas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       worklist_tarefa_mencionados: {
         Row: {
           created_at: string
