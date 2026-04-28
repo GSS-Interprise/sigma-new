@@ -903,6 +903,36 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                         {comentarioPessoas.length} pessoa(s) marcada(s) no comentário
                       </div>
                     )}
+                    {isEditing && (
+                      <div className="mt-2 flex justify-end">
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="h-8 gap-1.5"
+                          disabled={!comentarioInicial.trim() || comentar.isPending}
+                          onClick={async () => {
+                            if (!tarefaId || !comentarioInicial.trim()) return;
+                            try {
+                              await comentar.mutateAsync({
+                                tarefaId,
+                                conteudo: comentarioInicial.trim(),
+                                mencionados: comentarioPessoas,
+                                links,
+                              });
+                              setComentarioInicial("");
+                              setComentarioPessoas([]);
+                              setComentarioCaret(0);
+                              setLinks([]);
+                            } catch {
+                              /* toast no hook */
+                            }
+                          }}
+                        >
+                          <Send className="h-3.5 w-3.5" />
+                          Enviar
+                        </Button>
+                      </div>
+                    )}
                   </div>
 
                   <div className="rounded-md border bg-background p-3 shadow-sm">
