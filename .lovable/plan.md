@@ -1,65 +1,65 @@
-# Corrigir agrupamento por Especialidade no BI Prospec
+## Plano: Drenar e estabilizar a fila de falhas de importação
 
-## De onde vêm os dados hoje (e por que tem variação)
+Hoje a `import_leads_failed_queue` tem **104.187 itens pending** porque ninguém processa a fila depois da falha inicial. Distribuição dos erros:
 
-A coluna **Especialidade** do "Detalhamento por Especialidade" vem de `leads.especialidade` — um campo de **texto livre** preenchido em diferentes momentos por diferentes fontes (importações antigas, formulários, planilhas). Isso causa:
+- **TIMEOUT** — 96.558 (92,7%)
+- **23505** (duplicate key) — 3.969 (3,8%)
+- **42703** (coluna inexistente) — 3.657 (3,5%)
+- **57014** (cancelamento) — 1
+- **null** — 2
 
-| Problema | Exemplo na tela |
-|---|---|
-| Mesma especialidade em variações de caixa | `PSIQUIATRIA`, `Psiquiatria`, `psiquiatria` |
-| Mesma especialidade abreviada/com erro | `Pediatria`, `PEDIATRIA`, `Pediatra`, `pediatria` |
-| Texto vazio/nulo | `Sem especialidade` |
-| Nomes longos vs curtos | `Radiologia e Diagnóstico por Imagem` vs `radiologia` |
+### O que vamos fazer (4 passos)
 
-No print que você mandou:
-- `PSIQUIATRIA` (59) e qualquer `Psiquiatria` minúscula seriam linhas separadas
-- `Pediatria` (30) + `PEDIATRIA` (17) + `Pediatra` (2) + `pediatria` (1) = **50 disparos**, mas aparecem como 4 linhas
+**1. Corrigir o bug de schema (erro 42703)**
+O `import-leads` tenta gravar `leads.api_enrich_status`, coluna que não existe. Hoje toda chamada com payload de enriquecimento bate esse erro. Vamos remover a referência no código de `import-leads` (e qualquer outra função que escreva `api_enrich_status` direto em `leads`) — o status correto já vai para `lead_enrichments`. Isso zera o crescimento de erros 42703.
 
-## A solução já existe no banco — só não está sendo usada
+**2. Auto-resolver duplicatas (erro 23505)**
+Quando o `process-failed-leads-queue` recebe `23505` no INSERT/UPDATE de `leads`, hoje ele só re-tenta. Vamos:
+- Detectar `23505` → marcar imediatamente como `status='abandoned'`, `abandonment_reason='phone_conflict_unresolvable'` (ou `cpf_duplicate`), sem consumir tentativas extras.
+- Antes de abandonar, tentar uma vez fazer merge no lead existente (buscar pelo telefone/CPF que conflitou e atualizar).
 
-O sistema **já tem** a estrutura correta:
+**3. Aumentar capacidade de processamento (erro TIMEOUT)**
+A função processa em batch de 1000 itens sequencialmente, e cada item faz várias chamadas Supabase → estoura os 8s do `import-leads` original. Vamos:
+- Reduzir `BATCH_SIZE` de 1000 → **100** por execução para caber no limite de 150s da edge function.
+- No `process-failed-leads-queue`, paralelizar com `Promise.all` em lotes de 10 itens.
+- Os TIMEOUTs antigos viram retentativas naturais (a função já tem backoff 5/20/60min).
 
-| Tabela | Conteúdo | Uso atual no BI |
-|---|---|---|
-| `especialidades` (135 ativas) | Nome canônico + `aliases[]` + `area` | ❌ não usado |
-| `lead_especialidades` (junction, 125.050 leads) | `lead_id` ↔ `especialidade_id` | ❌ não usado |
-| `leads.especialidade` (texto livre) | 51.903 leads, sujo | ✅ usado (errado) |
+**4. Criar o cron que faltava**
+Agendar `process-failed-leads-queue` para rodar **a cada 1 minuto** via `pg_cron` + `pg_net`, autenticando com a `SUPABASE_ANON_KEY` (a função já aceita esse token).
 
-A tabela `especialidades.aliases` já contém os mapeamentos (ex.: `PEDIATRIA` tem aliases `[pediatria, pediatra, ped, pediatria/intensiva, pediatrica]`).
+A 100 itens/minuto = 6.000/hora → a fila atual drena em ~17h, e novas falhas são processadas quase em tempo real.
 
-## O que vou mudar
+### Detalhes técnicos
 
-Reescrever a CTE `lead_esp` no RPC `get_bi_prospec_dashboard` para resolver a especialidade canônica de cada lead nesta ordem de prioridade:
+```text
+Fluxo após o plano:
+  import-leads (8s)  ──falha──▶  import_leads_failed_queue
+                                          │
+                                          ▼
+                    pg_cron (1min) ──▶ process-failed-leads-queue
+                                          │
+                          ┌───────────────┼───────────────┐
+                          ▼               ▼               ▼
+                       resolved       abandoned        pending
+                                    (23505/max)      (retry 5/20/60min)
+```
 
-1. **Junction `lead_especialidades`** (verdade): pega o nome canônico via `especialidade_id → especialidades.nome`. Se um lead tem múltiplas, escolher a primeira (ou a "principal" se houver flag — verificar).
-2. **Fallback por alias**: se o lead **não** está na junction mas tem `leads.especialidade` preenchida, normalizar (lowercase, trim) e procurar em `especialidades.aliases` ou `especialidades.nome`.
-3. **Último fallback**: usar o texto livre `leads.especialidade` como veio (para não perder dado).
-4. **Sem nada**: `'Sem especialidade'`.
+Arquivos/objetos afetados:
+- `supabase/functions/import-leads/index.ts` — remover escrita de `api_enrich_status` em `leads`
+- `supabase/functions/process-failed-leads-queue/index.ts` — handler 23505, batch 100, paralelismo
+- nova migration: `cron.schedule('process-failed-leads-queue', '* * * * *', net.http_post(...))`
 
-Resultado: `PEDIATRIA`, `Pediatria`, `Pediatra`, `pediatria` viram **uma linha só: `PEDIATRIA`** (50 disparos no exemplo).
+Não tocaremos no schema de `leads` nem em `lead_enrichments` — apenas código + cron.
 
-## Validação prevista após o fix
+### O que NÃO está no escopo
 
-| Antes (linhas separadas) | Depois (consolidado) |
-|---|---|
-| Pediatria 30, PEDIATRIA 17, Pediatra 2, pediatria 1 | **PEDIATRIA: 50** |
-| PSIQUIATRIA 59 + qualquer Psiquiatria | **PSIQUIATRIA: 59+** |
-| Radiologia e Diagnóstico por Imagem 1 | **RADIOLOGIA E DIAGNÓSTICO POR IMAGEM: 1** |
+- Não vamos investigar por que o `import-leads` original estoura 8s (isso é otimização futura — a fila absorve).
+- Não vamos mudar a lógica de matching (CPF/CNPJ/nome) — está correta.
+- Não vamos apagar os 104k itens; eles serão processados/abandonados naturalmente.
 
-## Pergunta antes de aplicar
+### Resultado esperado
 
-Antes da migration preciso confirmar 1 ponto:
-
-**Quando um lead tem mais de uma especialidade na junction (ex.: pediatra que também é intensivista), como deve aparecer no BI?**
-- (a) Conta **uma vez na principal** (a primeira/única registrada) — recomendado
-- (b) Conta **em todas** que tem (lead aparece em múltiplas linhas, infla o total)
-- (c) Cria categoria combinada `Pediatria + Medicina Intensiva`
-
-Default que vou usar se não responder: **(a) — primeira especialidade da junction por `created_at` ASC**.
-
-## Arquivos afetados
-
-- **Migration**: nova versão do RPC `get_bi_prospec_dashboard` com a CTE `lead_esp` corrigida.
-- Nenhum arquivo de frontend muda.
-
-## Aguardando aprovação para aplicar a migration.
+- Em ~24h: fila < 5k itens (apenas as falhas “vivas”).
+- Erro 42703 zera imediatamente.
+- Erro 23505 vira `abandoned` em 1 ciclo em vez de ocupar a fila.
+- Novas falhas resolvidas em < 1 minuto.
