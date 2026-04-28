@@ -22,7 +22,10 @@ interface EvolutionMessage {
     documentMessage?: { fileName?: string; mimetype?: string; url?: string };
     stickerMessage?: { mimetype?: string; url?: string };
     locationMessage?: { degreesLatitude?: number; degreesLongitude?: number };
-    contactMessage?: { displayName?: string };
+    contactMessage?: { displayName?: string; vcard?: string };
+    pollCreationMessage?: { name?: string; options?: Array<{ optionName?: string }>; selectableOptionsCount?: number };
+    pollCreationMessageV2?: { name?: string; options?: Array<{ optionName?: string }>; selectableOptionsCount?: number };
+    pollCreationMessageV3?: { name?: string; options?: Array<{ optionName?: string }>; selectableOptionsCount?: number };
   };
   messageId?: string;
   messageTimestamp?: number;
@@ -52,6 +55,7 @@ interface EvolutionMessage {
   forward_score?: number;
   location_data?: any;
   contact_data?: any;
+  poll_data?: any;
   quoted_message_type?: string;
   quoted_message_participant?: string;
   
@@ -72,6 +76,9 @@ function extractMessageContent(payload: EvolutionMessage): {
   mediaFilename?: string;
   quotedMessageId?: string;
   quotedMessageText?: string;
+  contactData?: any;
+  locationData?: any;
+  pollData?: any;
 } {
   // IMPORTANTE: O n8n pode enviar raw_payload como string JSON que precisa ser parseado
   let rawData: any = null;
@@ -165,19 +172,53 @@ function extractMessageContent(payload: EvolutionMessage): {
   
   // Localização
   if (msgType === 'location' || evolutionMessage.locationMessage) {
-    const locMsg = evolutionMessage.locationMessage || {};
+    const locMsg: any = evolutionMessage.locationMessage || {};
     return {
-      text: `[Localização: ${locMsg.degreesLatitude}, ${locMsg.degreesLongitude}]`,
-      type: 'location'
+      text: `[Localização]`,
+      type: 'location',
+      locationData: {
+        latitude: locMsg.degreesLatitude ?? null,
+        longitude: locMsg.degreesLongitude ?? null,
+        name: locMsg.name ?? null,
+        address: locMsg.address ?? null,
+      },
     };
   }
-  
+
   // Contato
   if (msgType === 'contact' || msgType === 'vcard' || evolutionMessage.contactMessage) {
-    const ctcMsg = evolutionMessage.contactMessage || {};
+    const ctcMsg: any = evolutionMessage.contactMessage || {};
+    const vcard: string = ctcMsg.vcard || '';
+    const phoneMatch = vcard.match(/TEL[^:]*:([+\d\s\-()]+)/);
+    const waidMatch = vcard.match(/waid=(\d+)/);
+    const phone = waidMatch ? waidMatch[1] : (phoneMatch ? phoneMatch[1].trim() : null);
     return {
       text: `[Contato: ${ctcMsg.displayName || 'sem nome'}]`,
-      type: 'contact'
+      type: 'contact',
+      contactData: {
+        displayName: ctcMsg.displayName || null,
+        phone,
+        vcard,
+      },
+    };
+  }
+
+  // Enquete (poll) - aceita V1, V2 e V3
+  const pollMsg: any =
+    evolutionMessage.pollCreationMessageV3 ||
+    evolutionMessage.pollCreationMessageV2 ||
+    evolutionMessage.pollCreationMessage;
+  if (msgType === 'poll' || (msgType && msgType.startsWith('pollCreation')) || pollMsg) {
+    const pm = pollMsg || {};
+    const options = (pm.options || []).map((o: any) => o?.optionName).filter(Boolean);
+    return {
+      text: `[Enquete: ${pm.name || 'sem título'}]`,
+      type: 'poll',
+      pollData: {
+        name: pm.name || '',
+        options,
+        selectableOptionsCount: pm.selectableOptionsCount ?? 1,
+      },
     };
   }
 
@@ -265,9 +306,37 @@ function extractMessageContent(payload: EvolutionMessage): {
 
   // Contato
   if (msg.contactMessage) {
+    const ctcMsg: any = msg.contactMessage;
+    const vcard: string = ctcMsg.vcard || '';
+    const phoneMatch = vcard.match(/TEL[^:]*:([+\d\s\-()]+)/);
+    const waidMatch = vcard.match(/waid=(\d+)/);
+    const phone = waidMatch ? waidMatch[1] : (phoneMatch ? phoneMatch[1].trim() : null);
     return {
-      text: `[Contato: ${msg.contactMessage.displayName || 'sem nome'}]`,
-      type: 'contact'
+      text: `[Contato: ${ctcMsg.displayName || 'sem nome'}]`,
+      type: 'contact',
+      contactData: {
+        displayName: ctcMsg.displayName || null,
+        phone,
+        vcard,
+      },
+    };
+  }
+
+  // Enquete (fallback via msg.*)
+  const pollFromMsg: any =
+    (msg as any).pollCreationMessageV3 ||
+    (msg as any).pollCreationMessageV2 ||
+    (msg as any).pollCreationMessage;
+  if (pollFromMsg) {
+    const options = (pollFromMsg.options || []).map((o: any) => o?.optionName).filter(Boolean);
+    return {
+      text: `[Enquete: ${pollFromMsg.name || 'sem título'}]`,
+      type: 'poll',
+      pollData: {
+        name: pollFromMsg.name || '',
+        options,
+        selectableOptionsCount: pollFromMsg.selectableOptionsCount ?? 1,
+      },
     };
   }
 
@@ -1005,8 +1074,9 @@ serve(async (req) => {
         // Campos do fluxo novo sigma-evo (NULL quando vierem do fluxo antigo)
         is_forwarded: payload.is_forwarded ?? null,
         forward_score: payload.forward_score ?? null,
-        location_data: payload.location_data ?? null,
-        contact_data: payload.contact_data ?? null,
+        location_data: payload.location_data ?? messageContent.locationData ?? null,
+        contact_data: payload.contact_data ?? messageContent.contactData ?? null,
+        poll_data: payload.poll_data ?? messageContent.pollData ?? null,
         quoted_message_type: payload.quoted_message_type ?? null,
         quoted_message_participant: payload.quoted_message_participant ?? null
       })
