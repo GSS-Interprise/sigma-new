@@ -47,6 +47,14 @@ interface EvolutionMessage {
   source?: string;
   sender_lid?: string;
   
+  // Campos novos do fluxo sigma-evo (n8n) - opcionais, ignorados no fluxo antigo
+  is_forwarded?: boolean;
+  forward_score?: number;
+  location_data?: any;
+  contact_data?: any;
+  quoted_message_type?: string;
+  quoted_message_participant?: string;
+  
   // Campos legados
   texto?: string;
   numero?: string;
@@ -993,7 +1001,14 @@ serve(async (req) => {
         media_filename: messageContent.mediaFilename,
         quoted_message_id: messageContent.quotedMessageId,
         quoted_message_text: messageContent.quotedMessageText,
-        sent_at: sentAt
+        sent_at: sentAt,
+        // Campos do fluxo novo sigma-evo (NULL quando vierem do fluxo antigo)
+        is_forwarded: payload.is_forwarded ?? null,
+        forward_score: payload.forward_score ?? null,
+        location_data: payload.location_data ?? null,
+        contact_data: payload.contact_data ?? null,
+        quoted_message_type: payload.quoted_message_type ?? null,
+        quoted_message_participant: payload.quoted_message_participant ?? null
       })
       .select('id')
       .single();
