@@ -28,8 +28,9 @@ import {
   Send,
   Plus,
   ListChecks,
+  GripVertical,
+  Check,
 } from "lucide-react";
-import { Checkbox } from "@/components/ui/checkbox";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
@@ -71,6 +72,8 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [checklist, setChecklist] = useState<{ texto: string; ok: boolean }[]>([]);
   const [novoItem, setNovoItem] = useState("");
+  const itemRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const novoItemRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (open) {
@@ -214,31 +217,47 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
             </div>
           </div>
 
-          <div className="grid gap-1.5">
-            <Label className="text-xs flex items-center gap-1.5">
-              <ListChecks className="h-3.5 w-3.5" /> Checklist
+          <div className="grid gap-1">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs flex items-center gap-1.5 text-muted-foreground">
+                <ListChecks className="h-3.5 w-3.5" /> Checklist
+              </Label>
               {checklist.length > 0 && (
-                <span className="text-muted-foreground tabular-nums">
-                  ({checklist.filter((c) => c.ok).length}/{checklist.length})
+                <span className="text-[11px] text-muted-foreground tabular-nums">
+                  {checklist.filter((c) => c.ok).length}/{checklist.length}
                 </span>
               )}
-            </Label>
+            </div>
+
             {checklist.length > 0 && (
-              <div className="space-y-1.5">
+              <div className="rounded-md bg-muted/30 py-1">
                 {checklist.map((item, idx) => (
                   <div
                     key={idx}
-                    className="flex items-center gap-2 group rounded-md border bg-card px-2 py-1.5"
+                    className="flex items-center gap-1.5 group px-1.5 py-0.5 hover:bg-muted/50 rounded transition-colors"
                   >
-                    <Checkbox
-                      checked={item.ok}
-                      onCheckedChange={(v) =>
+                    <GripVertical className="h-3.5 w-3.5 text-muted-foreground/30 opacity-0 group-hover:opacity-100 cursor-grab shrink-0" />
+                    <button
+                      type="button"
+                      onClick={() =>
                         setChecklist((p) =>
-                          p.map((it, i) => (i === idx ? { ...it, ok: !!v } : it)),
+                          p.map((it, i) =>
+                            i === idx ? { ...it, ok: !it.ok } : it,
+                          ),
                         )
                       }
-                    />
-                    <Input
+                      className={cn(
+                        "h-4 w-4 rounded border flex items-center justify-center shrink-0 transition-colors",
+                        item.ok
+                          ? "bg-primary border-primary text-primary-foreground"
+                          : "border-muted-foreground/40 hover:border-primary",
+                      )}
+                      aria-label={item.ok ? "Desmarcar" : "Marcar"}
+                    >
+                      {item.ok && <Check className="h-3 w-3" strokeWidth={3} />}
+                    </button>
+                    <input
+                      ref={(el) => (itemRefs.current[idx] = el)}
                       value={item.texto}
                       onChange={(e) =>
                         setChecklist((p) =>
@@ -247,8 +266,38 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
                           ),
                         )
                       }
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          setChecklist((p) => {
+                            const next = [...p];
+                            next.splice(idx + 1, 0, { texto: "", ok: false });
+                            return next;
+                          });
+                          setTimeout(() => itemRefs.current[idx + 1]?.focus(), 0);
+                        } else if (
+                          e.key === "Backspace" &&
+                          item.texto === "" &&
+                          checklist.length > 0
+                        ) {
+                          e.preventDefault();
+                          setChecklist((p) => p.filter((_, i) => i !== idx));
+                          setTimeout(() => {
+                            if (idx > 0) itemRefs.current[idx - 1]?.focus();
+                            else novoItemRef.current?.focus();
+                          }, 0);
+                        } else if (e.key === "ArrowDown") {
+                          e.preventDefault();
+                          if (idx < checklist.length - 1)
+                            itemRefs.current[idx + 1]?.focus();
+                          else novoItemRef.current?.focus();
+                        } else if (e.key === "ArrowUp" && idx > 0) {
+                          e.preventDefault();
+                          itemRefs.current[idx - 1]?.focus();
+                        }
+                      }}
                       className={cn(
-                        "h-7 text-xs border-0 shadow-none focus-visible:ring-0 px-1",
+                        "flex-1 bg-transparent border-0 outline-none text-sm py-1 px-1",
                         item.ok && "line-through text-muted-foreground",
                       )}
                     />
@@ -257,7 +306,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
                       onClick={() =>
                         setChecklist((p) => p.filter((_, i) => i !== idx))
                       }
-                      className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
+                      className="opacity-0 group-hover:opacity-100 text-muted-foreground/60 hover:text-destructive transition-opacity shrink-0"
                     >
                       <X className="h-3.5 w-3.5" />
                     </button>
@@ -265,33 +314,33 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
                 ))}
               </div>
             )}
-            <div className="flex gap-1.5">
-              <Input
+
+            <div className="flex items-center gap-1.5 px-1.5 py-1 rounded hover:bg-muted/30 transition-colors">
+              <Plus className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
+              <input
+                ref={novoItemRef}
                 value={novoItem}
                 onChange={(e) => setNovoItem(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && novoItem.trim()) {
                     e.preventDefault();
-                    setChecklist((p) => [...p, { texto: novoItem.trim(), ok: false }]);
+                    setChecklist((p) => [
+                      ...p,
+                      { texto: novoItem.trim(), ok: false },
+                    ]);
                     setNovoItem("");
+                  } else if (
+                    e.key === "Backspace" &&
+                    novoItem === "" &&
+                    checklist.length > 0
+                  ) {
+                    e.preventDefault();
+                    itemRefs.current[checklist.length - 1]?.focus();
                   }
                 }}
-                placeholder="Adicionar item e pressionar Enter…"
-                className="h-8 text-xs"
+                placeholder="Adicionar item…"
+                className="flex-1 bg-transparent border-0 outline-none text-sm py-1 px-1 placeholder:text-muted-foreground/50"
               />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-8 px-2"
-                disabled={!novoItem.trim()}
-                onClick={() => {
-                  setChecklist((p) => [...p, { texto: novoItem.trim(), ok: false }]);
-                  setNovoItem("");
-                }}
-              >
-                <Plus className="h-3.5 w-3.5" />
-              </Button>
             </div>
           </div>
 
