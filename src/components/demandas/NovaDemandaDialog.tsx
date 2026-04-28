@@ -432,7 +432,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[59rem] max-h-[92vh] overflow-hidden p-0">
+      <DialogContent className="w-[80vw] max-w-[1400px] max-h-[92vh] overflow-hidden p-0">
         <DialogHeader className="space-y-0">
           <div className="px-4 pt-3 pb-2 pr-12 space-y-2 border-b">
             <div className="flex items-center gap-2">
