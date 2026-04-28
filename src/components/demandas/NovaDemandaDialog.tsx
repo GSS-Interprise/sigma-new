@@ -1037,7 +1037,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
           </aside>
         </div>
 
-        <DialogFooter className="px-5 pb-5 pt-0">
+        <DialogFooter className="shrink-0 border-t bg-background px-5 py-3">
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
