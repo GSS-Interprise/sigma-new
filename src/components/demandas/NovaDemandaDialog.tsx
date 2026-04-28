@@ -28,8 +28,9 @@ import {
   Send,
   Plus,
   ListChecks,
+  GripVertical,
+  Check,
 } from "lucide-react";
-import { Checkbox } from "@/components/ui/checkbox";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
