@@ -140,7 +140,7 @@ serve(async (req) => {
 
     const results = { resolved: 0, failed: 0, abandoned: 0 };
 
-    for (const item of queueItems) {
+    const processItem = async (item: any) => {
       try {
         const payload = item.payload as Record<string, any>;
         const nome = (payload.nome || payload.name || "").trim();
