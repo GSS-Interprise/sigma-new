@@ -36,6 +36,7 @@ import { SigZapLeadLinkDialog } from "./SigZapLeadLinkDialog";
 import { SigZapLeadAutoMatchDialog } from "./SigZapLeadAutoMatchDialog";
 import { normalizeToE164 } from "@/lib/phoneUtils";
 import { renderMessageWithPhoneLinks } from "./SigZapPhoneLink";
+import { formatWhatsappNode } from "@/lib/whatsappFormat";
 
 interface SigZapChatColumnProps {
   conversaId: string | null;
@@ -1737,11 +1738,11 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
                               msg.message_text !== '[Mensagem apagada]'
                             ) || msg.media_caption ? (
                               <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
-                                {renderMessageWithPhoneLinks(msg.media_caption || msg.message_text || "", isFromMe, (conversa?.instance as any)?.id)}
+                                {formatWhatsappNode(renderMessageWithPhoneLinks(msg.media_caption || msg.message_text || "", isFromMe, (conversa?.instance as any)?.id))}
                               </p>
                             ) : !msg.media_url && msg.message_type === 'text' ? (
                               <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
-                                {renderMessageWithPhoneLinks(msg.message_text || "", isFromMe, (conversa?.instance as any)?.id)}
+                                {formatWhatsappNode(renderMessageWithPhoneLinks(msg.message_text || "", isFromMe, (conversa?.instance as any)?.id))}
                               </p>
                             ) : null}
                           </>
