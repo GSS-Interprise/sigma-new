@@ -342,11 +342,15 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
     : -1;
   const sugestoesMention = useMemo(() => {
     if (mentionStart < 0) return [];
+    // Apenas pessoas envolvidas no card (responsável + mencionados) + o próprio usuário
+    const envolvidosIds = new Set<string>(pessoas);
+    if (user?.id) envolvidosIds.add(user.id);
     return pessoasSistema
+      .filter((p) => envolvidosIds.has(p.id))
       .filter((p) => (p.nome_completo || "").toLowerCase().includes(mentionQuery))
       .filter((p) => !comentarioPessoas.includes(p.id))
       .slice(0, 6);
-  }, [comentarioPessoas, mentionQuery, mentionStart, pessoasSistema]);
+  }, [comentarioPessoas, mentionQuery, mentionStart, pessoasSistema, pessoas, user?.id]);
 
   const selecionarMention = (pessoa: PessoaMention) => {
     if (mentionStart < 0) return;
