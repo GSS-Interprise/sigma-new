@@ -664,8 +664,52 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
 
               <TabsContent value="comentarios" className="mt-0 flex-1 overflow-y-auto px-3 pb-3">
                 <div className="space-y-3">
+                  {isEditing && comentariosExistentes.length > 0 && (
+                    <div className="space-y-2">
+                      {comentariosExistentes.map((c) => (
+                        <div
+                          key={c.id}
+                          className="rounded-md border bg-background p-3 text-sm shadow-sm"
+                        >
+                          <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
+                            <Avatar className="h-5 w-5">
+                              <AvatarFallback className="text-[9px]">
+                                {initials(c.autor_nome)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span>{c.autor_nome ?? "Usuário"}</span>
+                            <span className="ml-auto">
+                              {format(new Date(c.created_at), "dd/MM HH:mm")}
+                            </span>
+                          </div>
+                          <p className="whitespace-pre-wrap text-xs leading-relaxed">
+                            {c.conteudo}
+                          </p>
+                          {!!c.links?.length && (
+                            <div className="mt-2 space-y-1">
+                              {c.links.map((l: any, i: number) => (
+                                <a
+                                  key={i}
+                                  href={l.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="flex items-center gap-1 text-xs text-primary hover:underline"
+                                >
+                                  <LinkIcon className="h-3 w-3" />
+                                  {l.titulo || l.url}
+                                </a>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   <div className="rounded-md border bg-background p-3 shadow-sm">
-                    <Label className="text-xs">Comentário inicial</Label>
+                    <Label className="text-xs">
+                      {isEditing ? "Adicionar comentário" : "Comentário inicial"}
+                    </Label>
                     <div className="relative mt-2">
                       <Textarea
                         value={comentarioInicial}
@@ -749,23 +793,53 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
 
               <TabsContent value="atividades" className="mt-0 flex-1 overflow-y-auto px-3 pb-3">
                 <div className="space-y-3 text-xs">
-                  <div className="rounded-md border bg-background p-3 shadow-sm">
-                    <div className="font-medium">Demanda será criada</div>
-                    <div className="mt-1 text-muted-foreground">Título, descrição, checklist e prazo entram no histórico inicial.</div>
-                  </div>
-                  <div className="rounded-md border bg-background p-3 shadow-sm">
-                    <div className="font-medium">Pessoas</div>
-                    <div className="mt-1 text-muted-foreground">
-                      {pessoas.length ? `${pessoas.length} pessoa(s) envolvida(s)` : "Sem pessoas envolvidas"}
-                      {comentarioPessoas.length ? ` · ${comentarioPessoas.length} menção(ões)` : ""}
-                    </div>
-                  </div>
-                  <div className="rounded-md border bg-background p-3 shadow-sm">
-                    <div className="font-medium">Organização</div>
-                    <div className="mt-1 text-muted-foreground">
-                      {tags.length ? `${tags.length} tag(s)` : "Sem tags"} · {links.length ? `${links.length} link(s)` : "Sem links"}
-                    </div>
-                  </div>
+                  {isEditing ? (
+                    atividadesExistentes.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">
+                        Sem atividades registradas.
+                      </p>
+                    ) : (
+                      atividadesExistentes.map((a) => (
+                        <div
+                          key={a.id}
+                          className="rounded-md border bg-background p-3 text-xs shadow-sm"
+                        >
+                          <div className="font-medium">{a.resumo}</div>
+                          <div className="mt-1 text-muted-foreground">
+                            {a.autor_nome ?? "Usuário"} ·{" "}
+                            {format(new Date(a.created_at), "dd/MM HH:mm")}
+                          </div>
+                        </div>
+                      ))
+                    )
+                  ) : (
+                    <>
+                      <div className="rounded-md border bg-background p-3 shadow-sm">
+                        <div className="font-medium">Demanda será criada</div>
+                        <div className="mt-1 text-muted-foreground">
+                          Título, descrição, checklist e prazo entram no histórico inicial.
+                        </div>
+                      </div>
+                      <div className="rounded-md border bg-background p-3 shadow-sm">
+                        <div className="font-medium">Pessoas</div>
+                        <div className="mt-1 text-muted-foreground">
+                          {pessoas.length
+                            ? `${pessoas.length} pessoa(s) envolvida(s)`
+                            : "Sem pessoas envolvidas"}
+                          {comentarioPessoas.length
+                            ? ` · ${comentarioPessoas.length} menção(ões)`
+                            : ""}
+                        </div>
+                      </div>
+                      <div className="rounded-md border bg-background p-3 shadow-sm">
+                        <div className="font-medium">Organização</div>
+                        <div className="mt-1 text-muted-foreground">
+                          {tags.length ? `${tags.length} tag(s)` : "Sem tags"} ·{" "}
+                          {links.length ? `${links.length} link(s)` : "Sem links"}
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               </TabsContent>
             </Tabs>
@@ -776,8 +850,20 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
-          <Button onClick={submit} disabled={criar.isPending} className="gap-1">
-            <Send className="h-4 w-4" /> Enviar demanda
+          <Button
+            onClick={submit}
+            disabled={criar.isPending || atualizar.isPending || comentar.isPending}
+            className="gap-1"
+          >
+            {isEditing ? (
+              <>
+                <Save className="h-4 w-4" /> Salvar alterações
+              </>
+            ) : (
+              <>
+                <Send className="h-4 w-4" /> Enviar demanda
+              </>
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>
