@@ -229,6 +229,7 @@ export interface NovaDemandaInput {
   setor_origem_id?: string | null;
   modulo?: string;
   checklist?: { texto: string; ok: boolean }[];
+  tags?: string[];
 }
 
 export function useCriarDemanda() {
@@ -258,7 +259,8 @@ export function useCriarDemanda() {
           sigzap_conversation_id: input.sigzap_conversation_id ?? null,
           created_by: user.id,
           checklist: (input.checklist ?? []) as any,
-        })
+          tags: (input.tags ?? []) as any,
+        } as any)
         .select("id")
         .single();
       if (error) throw error;

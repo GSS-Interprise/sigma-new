@@ -9,7 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import {
   Select,
   SelectContent,
@@ -30,6 +30,7 @@ import {
   ListChecks,
   GripVertical,
   Check,
+  Tag as TagIcon,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -74,6 +75,8 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
   const [novoItem, setNovoItem] = useState("");
   const itemRefs = useRef<(HTMLInputElement | null)[]>([]);
   const novoItemRef = useRef<HTMLInputElement>(null);
+  const [tags, setTags] = useState<string[]>([]);
+  const [novaTag, setNovaTag] = useState("");
 
   useEffect(() => {
     if (open) {
@@ -85,20 +88,13 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
       setPendingFiles([]);
       setChecklist([]);
       setNovoItem("");
+      setTags([]);
+      setNovaTag("");
     }
   }, [open, defaultDate]);
 
-  const handlePaste = (e: React.ClipboardEvent) => {
-    const items = Array.from(e.clipboardData.items);
-    const images = items.filter((it) => it.type.startsWith("image/"));
-    if (!images.length) return;
-    const files = images
-      .map((it) => it.getAsFile())
-      .filter((f): f is File => !!f);
-    if (files.length) {
-      setPendingFiles((prev) => [...prev, ...files]);
-      toast.success(`${files.length} print colado(s)`);
-    }
+  const handleImagePaste = (file: File) => {
+    setPendingFiles((prev) => [...prev, file]);
   };
 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -131,6 +127,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
         mencionados: mencionadosFinal,
         data_limite: dataLimite ? format(dataLimite, "yyyy-MM-dd") : null,
         checklist: checklist.filter((c) => c.texto.trim()),
+        tags,
       });
       for (const f of pendingFiles) {
         try {
@@ -149,7 +146,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Nova demanda</DialogTitle>
         </DialogHeader>
@@ -167,12 +164,12 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
 
           <div className="grid gap-1.5">
             <Label className="text-xs">Descrição (cole prints com Ctrl+V)</Label>
-            <Textarea
+            <RichTextEditor
               value={descricao}
-              onChange={(e) => setDescricao(e.target.value)}
-              onPaste={handlePaste}
-              rows={3}
-              placeholder="Detalhe a demanda…"
+              onChange={setDescricao}
+              placeholder="Detalhe a demanda… use a barra para formatar."
+              minHeight="140px"
+              onImagePaste={handleImagePaste}
             />
             {pendingFiles.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
@@ -357,6 +354,46 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
                 ? "Sem ninguém marcado — esta tarefa é só pra você."
                 : "A primeira pessoa marcada é o responsável principal."}
             </p>
+          </div>
+
+          <div className="grid gap-1.5">
+            <Label className="text-xs flex items-center gap-1.5 text-muted-foreground">
+              <TagIcon className="h-3.5 w-3.5" /> Tags
+            </Label>
+            <div className="flex flex-wrap items-center gap-1.5 rounded-md border bg-muted/30 px-2 py-1.5 min-h-9">
+              {tags.map((t, i) => (
+                <Badge key={i} variant="secondary" className="gap-1 pr-1">
+                  #{t}
+                  <button
+                    type="button"
+                    onClick={() => setTags((p) => p.filter((_, idx) => idx !== i))}
+                    className="hover:text-destructive"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              ))}
+              <input
+                value={novaTag}
+                onChange={(e) => setNovaTag(e.target.value)}
+                onKeyDown={(e) => {
+                  if ((e.key === "Enter" || e.key === ",") && novaTag.trim()) {
+                    e.preventDefault();
+                    const t = novaTag.trim().replace(/^#/, "").toLowerCase();
+                    if (!tags.includes(t)) setTags((p) => [...p, t]);
+                    setNovaTag("");
+                  } else if (
+                    e.key === "Backspace" &&
+                    novaTag === "" &&
+                    tags.length > 0
+                  ) {
+                    setTags((p) => p.slice(0, -1));
+                  }
+                }}
+                placeholder={tags.length ? "" : "Adicionar tag e Enter…"}
+                className="flex-1 min-w-[120px] bg-transparent border-0 outline-none text-sm py-0.5"
+              />
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
