@@ -1878,17 +1878,25 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
                             {renderMediaContent(msg, isFromMe)}
                             
                             {/* Message text or caption */}
-                            {(msg.message_text && 
-    // Also hide sticker placeholder text
+                            {(msg.message_text &&
+                            // Hide placeholder texts (rendered as cards or inline)
                             msg.message_text !== '[Sticker]' &&
-                            msg.message_text !== '[Imagem]' && 
-                              msg.message_text !== '[Vídeo]' && 
+                            msg.message_text !== '[Imagem]' &&
+                              msg.message_text !== '[Vídeo]' &&
                               msg.message_text !== '[Áudio]' &&
                               msg.message_text !== '[image]' &&
                               msg.message_text !== '[video]' &&
                               msg.message_text !== '[audio]' &&
                               msg.message_text !== '[document]' &&
-                              msg.message_text !== '[Mensagem apagada]'
+                              msg.message_text !== '[Mensagem apagada]' &&
+                              msg.message_text !== '[Mensagem sem conteúdo]' &&
+                              msg.message_text !== '[Localização]' &&
+                              !(msg.message_text || '').startsWith('[Localização:') &&
+                              !(msg.message_text || '').startsWith('[Contato:') &&
+                              !(msg.message_text || '').startsWith('[Enquete:') &&
+                              msg.message_type !== 'contact' &&
+                              msg.message_type !== 'location' &&
+                              msg.message_type !== 'poll'
                             ) || msg.media_caption ? (
                               <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
                                 {formatWhatsappNode(renderMessageWithPhoneLinks(msg.media_caption || msg.message_text || "", isFromMe, (conversa?.instance as any)?.id))}
