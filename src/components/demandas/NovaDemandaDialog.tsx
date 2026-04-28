@@ -432,8 +432,8 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[80vw] max-w-[1400px] max-h-[92vh] overflow-hidden p-0">
-        <DialogHeader className="space-y-0">
+      <DialogContent className="w-[92vw] max-w-[1400px] h-[92vh] p-0 gap-0 overflow-hidden flex flex-col">
+        <DialogHeader className="space-y-0 shrink-0">
           <div className="px-4 pt-3 pb-2 pr-12 space-y-2 border-b">
             <div className="flex items-center gap-2">
               <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground shrink-0">
@@ -509,8 +509,8 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
           </div>
         </DialogHeader>
 
-        <div className="grid max-h-[calc(92vh-8.5rem)] gap-0 overflow-hidden border-y lg:grid-cols-[minmax(0,1fr)_24rem]">
-          <div className="grid gap-3 overflow-y-auto p-5">
+        <div className="grid flex-1 min-h-0 gap-0 overflow-hidden lg:grid-cols-[minmax(0,1fr)_22rem]">
+          <div className="grid gap-3 overflow-y-auto p-5 content-start">
           <div className="grid gap-1.5">
             <Label className="text-xs">Descrição (cole prints com Ctrl+V)</Label>
             <RichTextEditor
