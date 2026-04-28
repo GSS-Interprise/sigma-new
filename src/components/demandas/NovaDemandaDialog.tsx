@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -9,7 +10,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -31,6 +34,9 @@ import {
   GripVertical,
   Check,
   Tag as TagIcon,
+  MessageSquare,
+  Activity,
+  Link as LinkIcon,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -77,6 +83,11 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
   const novoItemRef = useRef<HTMLInputElement>(null);
   const [tags, setTags] = useState<string[]>([]);
   const [novaTag, setNovaTag] = useState("");
+  const [comentarioInicial, setComentarioInicial] = useState("");
+  const [comentarioPessoas, setComentarioPessoas] = useState<string[]>([]);
+  const [links, setLinks] = useState<{ titulo: string; url: string }[]>([]);
+  const [novoLinkTitulo, setNovoLinkTitulo] = useState("");
+  const [novoLinkUrl, setNovoLinkUrl] = useState("");
 
   useEffect(() => {
     if (open) {
@@ -90,6 +101,11 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
       setNovoItem("");
       setTags([]);
       setNovaTag("");
+      setComentarioInicial("");
+      setComentarioPessoas([]);
+      setLinks([]);
+      setNovoLinkTitulo("");
+      setNovoLinkUrl("");
     }
   }, [open, defaultDate]);
 
