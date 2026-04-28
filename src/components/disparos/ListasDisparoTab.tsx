@@ -192,6 +192,10 @@ export function ListasDisparoTab() {
             onOpenChange={setDetalhesOpen}
             lista={selecionada}
             onAddLeads={() => { setDetalhesOpen(false); setPickerOpen(true); }}
+            onComplementarCsv={() => {
+              setDetalhesOpen(false);
+              handleComplementar(selecionada);
+            }}
           />
         </>
       )}
@@ -276,12 +280,13 @@ export function ListasDisparoTab() {
 }
 
 function ListaDetalhesDialog({
-  open, onOpenChange, lista, onAddLeads,
+  open, onOpenChange, lista, onAddLeads, onComplementarCsv,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   lista: DisparoLista;
   onAddLeads: () => void;
+  onComplementarCsv: () => void;
 }) {
   const [page, setPage] = useState(1);
   const { data, isLoading, isFetching } = useDisparoListaItens(
@@ -323,6 +328,12 @@ function ListaDetalhesDialog({
           </span>
           <Button size="sm" onClick={onAddLeads} className="gap-2">
             <Plus className="h-4 w-4" /> Adicionar leads
+          </Button>
+        </div>
+
+        <div className="flex items-center justify-end">
+          <Button size="sm" variant="outline" onClick={onComplementarCsv} className="gap-2">
+            <Upload className="h-4 w-4" /> Complementar com CSV
           </Button>
         </div>
 
