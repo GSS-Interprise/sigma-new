@@ -215,6 +215,87 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
           </div>
 
           <div className="grid gap-1.5">
+            <Label className="text-xs flex items-center gap-1.5">
+              <ListChecks className="h-3.5 w-3.5" /> Checklist
+              {checklist.length > 0 && (
+                <span className="text-muted-foreground tabular-nums">
+                  ({checklist.filter((c) => c.ok).length}/{checklist.length})
+                </span>
+              )}
+            </Label>
+            {checklist.length > 0 && (
+              <div className="space-y-1.5">
+                {checklist.map((item, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-center gap-2 group rounded-md border bg-card px-2 py-1.5"
+                  >
+                    <Checkbox
+                      checked={item.ok}
+                      onCheckedChange={(v) =>
+                        setChecklist((p) =>
+                          p.map((it, i) => (i === idx ? { ...it, ok: !!v } : it)),
+                        )
+                      }
+                    />
+                    <Input
+                      value={item.texto}
+                      onChange={(e) =>
+                        setChecklist((p) =>
+                          p.map((it, i) =>
+                            i === idx ? { ...it, texto: e.target.value } : it,
+                          ),
+                        )
+                      }
+                      className={cn(
+                        "h-7 text-xs border-0 shadow-none focus-visible:ring-0 px-1",
+                        item.ok && "line-through text-muted-foreground",
+                      )}
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setChecklist((p) => p.filter((_, i) => i !== idx))
+                      }
+                      className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-1.5">
+              <Input
+                value={novoItem}
+                onChange={(e) => setNovoItem(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && novoItem.trim()) {
+                    e.preventDefault();
+                    setChecklist((p) => [...p, { texto: novoItem.trim(), ok: false }]);
+                    setNovoItem("");
+                  }
+                }}
+                placeholder="Adicionar item e pressionar Enter…"
+                className="h-8 text-xs"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 px-2"
+                disabled={!novoItem.trim()}
+                onClick={() => {
+                  setChecklist((p) => [...p, { texto: novoItem.trim(), ok: false }]);
+                  setNovoItem("");
+                }}
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid gap-1.5">
             <Label className="text-xs">Pessoas envolvidas</Label>
             <PessoasCombobox
               value={pessoas}
