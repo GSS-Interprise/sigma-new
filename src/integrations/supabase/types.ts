@@ -12305,6 +12305,7 @@ export type Database = {
       }
       worklist_tarefas: {
         Row: {
+          checklist: Json
           concluida_em: string | null
           contrato_id: string | null
           created_at: string | null
@@ -12329,6 +12330,7 @@ export type Database = {
           urgencia: string
         }
         Insert: {
+          checklist?: Json
           concluida_em?: string | null
           contrato_id?: string | null
           created_at?: string | null
@@ -12353,6 +12355,7 @@ export type Database = {
           urgencia?: string
         }
         Update: {
+          checklist?: Json
           concluida_em?: string | null
           contrato_id?: string | null
           created_at?: string | null
