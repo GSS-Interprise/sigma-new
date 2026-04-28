@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { AppLayout } from "@/components/layout/AppLayout";
@@ -21,7 +21,7 @@ import { ContratosRascunhoTab } from "@/components/contratos/ContratosRascunhoTa
 import { ContratosDrEscalaTab } from "@/components/contratos/ContratosDrEscalaTab";
 import { ContratosDrOportunidadeTab } from "@/components/contratos/ContratosDrOportunidadeTab";
 import { usePermissions } from "@/hooks/usePermissions";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ShieldAlert } from "lucide-react";
 import { addDays, isAfter, isBefore } from "date-fns";
@@ -32,6 +32,7 @@ export default function Contratos() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingContrato, setEditingContrato] = useState<any>(null);
   const [dialogMode, setDialogMode] = useState<'view' | 'edit'>('edit');
+  const [searchParams, setSearchParams] = useSearchParams();
   const [clienteDialogOpen, setClienteDialogOpen] = useState(false);
   const [editingCliente, setEditingCliente] = useState<any>(null);
   const [activeTab, setActiveTab] = useState("contratos");
@@ -78,6 +79,21 @@ export default function Contratos() {
       return data;
     },
   });
+
+  // Deep-link: /contratos?open=<id>
+  useEffect(() => {
+    const openId = searchParams.get("open");
+    if (!openId || !contratos) return;
+    const contrato = (contratos as any[]).find((c) => c.id === openId);
+    if (contrato) {
+      setEditingContrato(contrato);
+      setDialogMode("view");
+      setDialogOpen(true);
+      setActiveTab("contratos");
+      searchParams.delete("open");
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, contratos, setSearchParams]);
 
   const { data: clientes, isLoading: loadingClientes } = useQuery({
     queryKey: ['clientes'],

@@ -39,11 +39,17 @@ import {
   MessageSquare,
   Activity,
   Link as LinkIcon,
+  ExternalLink,
+  FileText,
+  Briefcase,
+  User as UserIcon,
+  MessageCircle,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
 import { useUserSetor } from "@/hooks/useUserSetor";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -96,6 +102,7 @@ function initials(name?: string | null) {
 export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = null }: Props) {
   const { setorId } = useUserSetor();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const criar = useCriarDemanda();
   const atualizar = useAtualizarDemanda();
   const comentar = useAdicionarComentarioDemanda();
@@ -191,6 +198,108 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
     setNovoItem("");
     setNovaTag("");
   }, [open, isEditing, tarefaCorreta, tarefaExistente, user?.id]);
+
+  // Buscar resumos das referências vinculadas
+  const { data: referencias } = useQuery({
+    queryKey: [
+      "demanda-referencias",
+      tarefaExistente?.licitacao_id,
+      tarefaExistente?.contrato_id,
+      tarefaExistente?.lead_id,
+      tarefaExistente?.sigzap_conversation_id,
+    ],
+    enabled:
+      isEditing &&
+      tarefaCorreta &&
+      !!(
+        tarefaExistente?.licitacao_id ||
+        tarefaExistente?.contrato_id ||
+        tarefaExistente?.lead_id ||
+        tarefaExistente?.sigzap_conversation_id
+      ),
+    queryFn: async () => {
+      const out: {
+        licitacao?: { id: string; label: string };
+        contrato?: { id: string; label: string };
+        lead?: { id: string; label: string };
+        conversa?: { id: string; label: string };
+      } = {};
+      if (tarefaExistente?.licitacao_id) {
+        const { data } = await supabase
+          .from("licitacoes")
+          .select("id, numero_edital, orgao, objeto")
+          .eq("id", tarefaExistente.licitacao_id)
+          .maybeSingle();
+        if (data) {
+          out.licitacao = {
+            id: data.id,
+            label:
+              data.numero_edital
+                ? `${data.numero_edital}${data.orgao ? ` · ${data.orgao}` : ""}`
+                : data.orgao || (data.objeto?.slice(0, 60) ?? "Licitação"),
+          };
+        }
+      }
+      if (tarefaExistente?.contrato_id) {
+        const { data } = await supabase
+          .from("contratos")
+          .select("id, codigo_contrato, codigo_interno, objeto_contrato")
+          .eq("id", tarefaExistente.contrato_id)
+          .maybeSingle();
+        if (data) {
+          out.contrato = {
+            id: data.id,
+            label:
+              (data.codigo_contrato ? String(data.codigo_contrato) : "") ||
+              (data.codigo_interno ? String(data.codigo_interno) : "") ||
+              (data.objeto_contrato?.slice(0, 60) ?? "Contrato"),
+          };
+        }
+      }
+      if (tarefaExistente?.lead_id) {
+        const { data } = await supabase
+          .from("captacao_leads")
+          .select("id, nome")
+          .eq("id", tarefaExistente.lead_id)
+          .maybeSingle();
+        if (data) {
+          out.lead = { id: data.id, label: data.nome || "Lead" };
+        } else {
+          out.lead = { id: tarefaExistente.lead_id, label: "Lead" };
+        }
+      }
+      if (tarefaExistente?.sigzap_conversation_id) {
+        const { data } = await supabase
+          .from("sigzap_conversations")
+          .select("id, contact_id")
+          .eq("id", tarefaExistente.sigzap_conversation_id)
+          .maybeSingle();
+        let label = "Conversa SigZap";
+        if (data?.contact_id) {
+          const { data: c } = await supabase
+            .from("sigzap_contacts")
+            .select("contact_name, contact_phone")
+            .eq("id", data.contact_id)
+            .maybeSingle();
+          if (c) label = c.contact_name || c.contact_phone || label;
+        }
+        out.conversa = { id: tarefaExistente.sigzap_conversation_id, label };
+      }
+      return out;
+    },
+  });
+
+  const temReferencias = !!(
+    referencias?.licitacao ||
+    referencias?.contrato ||
+    referencias?.lead ||
+    referencias?.conversa
+  );
+
+  const irPara = (path: string) => {
+    onOpenChange(false);
+    navigate(path);
+  };
 
   const { data: pessoasSistema = [] } = useQuery({
     queryKey: ["demandas-mentions-pessoas"],
@@ -643,6 +752,76 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
               </Popover>
             </div>
           </div>
+
+          {isEditing && temReferencias && (
+            <div className="grid gap-1.5 border-t pt-3">
+              <Label className="text-xs flex items-center gap-1.5 text-muted-foreground">
+                <ExternalLink className="h-3.5 w-3.5" /> Referências
+              </Label>
+              <div className="flex flex-wrap gap-2">
+                {referencias?.licitacao && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 gap-1.5 text-xs"
+                    onClick={() =>
+                      irPara(`/licitacoes?open=${referencias.licitacao!.id}`)
+                    }
+                  >
+                    <FileText className="h-3.5 w-3.5" />
+                    Licitação: {referencias.licitacao.label}
+                    <ExternalLink className="h-3 w-3 opacity-60" />
+                  </Button>
+                )}
+                {referencias?.contrato && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 gap-1.5 text-xs"
+                    onClick={() =>
+                      irPara(`/contratos?open=${referencias.contrato!.id}`)
+                    }
+                  >
+                    <Briefcase className="h-3.5 w-3.5" />
+                    Contrato: {referencias.contrato.label}
+                    <ExternalLink className="h-3 w-3 opacity-60" />
+                  </Button>
+                )}
+                {referencias?.lead && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 gap-1.5 text-xs"
+                    onClick={() =>
+                      irPara(`/disparos/acompanhamento?lead=${referencias.lead!.id}`)
+                    }
+                  >
+                    <UserIcon className="h-3.5 w-3.5" />
+                    Lead: {referencias.lead.label}
+                    <ExternalLink className="h-3 w-3 opacity-60" />
+                  </Button>
+                )}
+                {referencias?.conversa && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 gap-1.5 text-xs"
+                    onClick={() =>
+                      irPara(`/sigzap?conversa=${referencias.conversa!.id}`)
+                    }
+                  >
+                    <MessageCircle className="h-3.5 w-3.5" />
+                    Conversa: {referencias.conversa.label}
+                    <ExternalLink className="h-3 w-3 opacity-60" />
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
 
           <p className="text-[11px] text-muted-foreground border-t pt-2">
             💡 Para vincular a uma <strong>licitação, contrato, lead</strong> ou{" "}

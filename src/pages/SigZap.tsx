@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { MessageCircle, Settings } from "lucide-react";
@@ -11,6 +12,17 @@ export default function SigZap() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedConversaId, setSelectedConversaId] = useState<string | undefined>();
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Deep-link: /sigzap?conversa=<id>
+  useEffect(() => {
+    const conv = searchParams.get("conversa");
+    if (conv) {
+      setSelectedConversaId(conv);
+      searchParams.delete("conversa");
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   const handleTestSuccess = () => {
     queryClient.invalidateQueries({ queryKey: ['conversas'] });
