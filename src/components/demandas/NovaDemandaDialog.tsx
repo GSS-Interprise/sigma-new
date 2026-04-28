@@ -827,10 +827,15 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                 </TabsTrigger>
               </TabsList>
 
-              <TabsContent value="comentarios" className="mt-0 flex-1 overflow-y-auto px-3 pb-3">
-                <div className="space-y-3">
+              <TabsContent value="comentarios" className="mt-0 flex-1 min-h-0 flex flex-col data-[state=inactive]:hidden">
+                <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2 space-y-2">
+                  {isEditing && comentariosExistentes.length === 0 && (
+                    <p className="text-xs text-muted-foreground text-center py-6">
+                      Nenhum comentário ainda.
+                    </p>
+                  )}
                   {isEditing && comentariosExistentes.length > 0 && (
-                    <div className="space-y-2">
+                    <>
                       {comentariosExistentes.map((c) => (
                         <div
                           key={c.id}
@@ -868,14 +873,13 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                           )}
                         </div>
                       ))}
-                    </div>
+                    </>
                   )}
+                </div>
 
-                  <div className="rounded-md border bg-background p-3 shadow-sm">
-                    <Label className="text-xs">
-                      {isEditing ? "Adicionar comentário" : "Comentário inicial"}
-                    </Label>
-                    <div className="relative mt-2">
+                {/* Composer fixo no rodapé */}
+                <div className="shrink-0 border-t bg-background p-3 space-y-2">
+                  <div className="relative">
                       <Textarea
                         value={comentarioInicial}
                         onChange={(e) => {
@@ -884,11 +888,11 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                         }}
                         onClick={(e) => setComentarioCaret(e.currentTarget.selectionStart ?? 0)}
                         onKeyUp={(e) => setComentarioCaret(e.currentTarget.selectionStart ?? 0)}
-                        placeholder="Digite @ para marcar pessoas…"
-                        className="min-h-28 resize-none"
+                        placeholder={isEditing ? "Adicionar comentário… (@ para mencionar)" : "Comentário inicial… (@ para mencionar)"}
+                        className="min-h-20 resize-none text-sm"
                       />
                       {sugestoesMention.length > 0 && (
-                        <div className="absolute left-2 right-2 top-full z-50 mt-1 overflow-hidden rounded-md border bg-popover shadow-lg">
+                        <div className="absolute left-0 right-0 bottom-full z-50 mb-1 overflow-hidden rounded-md border bg-popover shadow-lg">
                           {sugestoesMention.map((p) => (
                             <button
                               key={p.id}
@@ -901,52 +905,12 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                           ))}
                         </div>
                       )}
-                    </div>
-                    {comentarioPessoas.length > 0 && (
-                      <div className="mt-2 text-[11px] text-muted-foreground">
-                        {comentarioPessoas.length} pessoa(s) marcada(s) no comentário
-                      </div>
-                    )}
-                    {isEditing && (
-                      <div className="mt-2 flex justify-end">
-                        <Button
-                          type="button"
-                          size="sm"
-                          className="h-8 gap-1.5"
-                          disabled={!comentarioInicial.trim() || comentar.isPending}
-                          onClick={async () => {
-                            if (!tarefaId || !comentarioInicial.trim()) return;
-                            try {
-                              await comentar.mutateAsync({
-                                tarefaId,
-                                conteudo: comentarioInicial.trim(),
-                                mencionados: comentarioPessoas,
-                                links,
-                              });
-                              setComentarioInicial("");
-                              setComentarioPessoas([]);
-                              setComentarioCaret(0);
-                              setLinks([]);
-                            } catch {
-                              /* toast no hook */
-                            }
-                          }}
-                        >
-                          <Send className="h-3.5 w-3.5" />
-                          Enviar
-                        </Button>
-                      </div>
-                    )}
                   </div>
-
-                  <div className="rounded-md border bg-background p-3 shadow-sm">
-                    <Label className="text-xs flex items-center gap-1.5">
-                      <LinkIcon className="h-3.5 w-3.5" /> Links relacionados
-                    </Label>
-                    <div className="mt-2 grid gap-2">
+                  {links.length > 0 && (
+                    <div className="space-y-1">
                       {links.map((link, idx) => (
-                        <div key={`${link.url}-${idx}`} className="flex items-center gap-2 rounded border bg-muted/30 px-2 py-1.5 text-xs">
-                          <LinkIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        <div key={`${link.url}-${idx}`} className="flex items-center gap-2 rounded border bg-muted/30 px-2 py-1 text-xs">
+                          <LinkIcon className="h-3 w-3 shrink-0 text-muted-foreground" />
                           <span className="min-w-0 flex-1 truncate">{link.titulo}</span>
                           <button
                             type="button"
@@ -954,40 +918,56 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                             className="text-muted-foreground hover:text-destructive"
                             aria-label="Remover link"
                           >
-                            <X className="h-3.5 w-3.5" />
+                            <X className="h-3 w-3" />
                           </button>
                         </div>
                       ))}
-                      <Input
-                        value={novoLinkTitulo}
-                        onChange={(e) => setNovoLinkTitulo(e.target.value)}
-                        placeholder="Nome do link"
-                        className="h-8 text-xs"
-                      />
-                      <div className="flex gap-2">
-                        <Input
-                          value={novoLinkUrl}
-                          onChange={(e) => setNovoLinkUrl(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              adicionarLink();
-                            }
-                          }}
-                          placeholder="https://..."
-                          className="h-8 text-xs"
-                        />
-                        <Button type="button" size="sm" variant="outline" onClick={adicionarLink} className="h-8 px-2">
-                          <Plus className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
                     </div>
+                  )}
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] text-muted-foreground">
+                      {comentarioPessoas.length > 0
+                        ? `${comentarioPessoas.length} marcação(ões)`
+                        : "@ para mencionar envolvidos"}
+                    </span>
+                    {isEditing ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-8 gap-1.5"
+                        disabled={!comentarioInicial.trim() || comentar.isPending}
+                        onClick={async () => {
+                          if (!tarefaId || !comentarioInicial.trim()) return;
+                          try {
+                            await comentar.mutateAsync({
+                              tarefaId,
+                              conteudo: comentarioInicial.trim(),
+                              mencionados: comentarioPessoas,
+                              links,
+                            });
+                            setComentarioInicial("");
+                            setComentarioPessoas([]);
+                            setComentarioCaret(0);
+                            setLinks([]);
+                          } catch {
+                            /* toast no hook */
+                          }
+                        }}
+                      >
+                        <Send className="h-3.5 w-3.5" />
+                        Enviar
+                      </Button>
+                    ) : (
+                      <span className="text-[11px] text-muted-foreground italic">
+                        Será enviado ao criar a demanda
+                      </span>
+                    )}
                   </div>
                 </div>
               </TabsContent>
 
-              <TabsContent value="atividades" className="mt-0 flex-1 overflow-y-auto px-3 pb-3">
-                <div className="space-y-3 text-xs">
+              <TabsContent value="atividades" className="mt-0 flex-1 min-h-0 overflow-y-auto px-3 py-2 data-[state=inactive]:hidden">
+                <div className="space-y-2 text-xs">
                   {isEditing ? (
                     atividadesExistentes.length === 0 ? (
                       <p className="text-xs text-muted-foreground">
