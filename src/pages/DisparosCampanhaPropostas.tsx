@@ -14,6 +14,8 @@ import { AdicionarListaCampanhaDialog } from "@/components/disparos/AdicionarLis
 import { CampanhaPropostaModal } from "@/components/disparos/CampanhaPropostaModal";
 import { usePermissions } from "@/hooks/usePermissions";
 import { toast } from "sonner";
+import { exportCampanhaPropostasPDF } from "@/lib/campanhaPdfExport";
+import { FileDown } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -37,6 +39,7 @@ export default function DisparosCampanhaPropostas() {
   const [listaOpen, setListaOpen] = useState(false);
   const [cpAberto, setCpAberto] = useState<string | null>(null);
   const [desvincularId, setDesvincularId] = useState<string | null>(null);
+  const [exportando, setExportando] = useState(false);
   const { isAdmin } = usePermissions();
   const qc = useQueryClient();
 
@@ -76,6 +79,52 @@ export default function DisparosCampanhaPropostas() {
   const ativas = vinculos.filter((v: any) => v.status === "ativa").length;
   const encerradas = vinculos.filter((v: any) => v.status === "encerrada").length;
 
+  const handleExportPDF = async () => {
+    if (!campanha) return;
+    setExportando(true);
+    try {
+      const cpIds = vinculos.map((v: any) => v.id);
+      const listaIds = Array.from(
+        new Set(vinculos.map((v: any) => v.lista_id).filter(Boolean))
+      );
+      let disparos = 0;
+      let enviados = 0;
+      let falhas = 0;
+      if (cpIds.length > 0) {
+        const { data: dc } = await supabase
+          .from("disparos_campanhas")
+          .select("total_contatos, enviados, falhas")
+          .in("campanha_proposta_id", cpIds);
+        (dc || []).forEach((r: any) => {
+          disparos += r.total_contatos || 0;
+          enviados += r.enviados || 0;
+          falhas += r.falhas || 0;
+        });
+      }
+      const totalLeads = vinculos.reduce(
+        (acc: number, v: any) => acc + (v.lista_leads_count || 0),
+        0
+      );
+      exportCampanhaPropostasPDF({
+        campanha,
+        vinculos,
+        totais: {
+          propostas: totalPropostas,
+          listas: listaIds.length,
+          leads: totalLeads,
+          disparos,
+          enviados,
+          falhas,
+        },
+      });
+      toast.success("Relatório gerado");
+    } catch (e: any) {
+      toast.error(e.message || "Erro ao gerar relatório");
+    } finally {
+      setExportando(false);
+    }
+  };
+
   return (
     <CaptacaoProtectedRoute permission="disparos_zap">
       <AppLayout>
@@ -111,6 +160,18 @@ export default function DisparosCampanhaPropostas() {
               </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
+              <Button
+                variant="outline"
+                onClick={handleExportPDF}
+                disabled={exportando || !campanha}
+              >
+                {exportando ? (
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                ) : (
+                  <FileDown className="h-4 w-4 mr-1" />
+                )}
+                Extrair relatório
+              </Button>
               <Button variant="outline" onClick={() => setListaOpen(true)}>
                 <Users className="h-4 w-4 mr-1" />
                 Vincular lista à proposta
