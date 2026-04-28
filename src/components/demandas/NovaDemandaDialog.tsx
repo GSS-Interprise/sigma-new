@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Dialog,
   DialogContent,
@@ -46,6 +47,7 @@ import { useUserSetor } from "@/hooks/useUserSetor";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCriarDemanda, useUploadAnexoDemanda } from "@/hooks/useDemandas";
 import { URGENCIA_LABEL } from "@/lib/setoresAccess";
+import { supabase } from "@/integrations/supabase/client";
 import { PessoasCombobox } from "./PessoasCombobox";
 
 interface Props {
@@ -55,6 +57,7 @@ interface Props {
 }
 
 type Urgencia = "baixa" | "media" | "alta" | "critica";
+type PessoaMention = { id: string; nome_completo: string | null };
 
 /**
  * Modal "Nova demanda" da tela Home.
@@ -87,6 +90,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
   const [novaTag, setNovaTag] = useState("");
   const [comentarioInicial, setComentarioInicial] = useState("");
   const [comentarioPessoas, setComentarioPessoas] = useState<string[]>([]);
+  const [comentarioCaret, setComentarioCaret] = useState(0);
   const [links, setLinks] = useState<{ titulo: string; url: string }[]>([]);
   const [novoLinkTitulo, setNovoLinkTitulo] = useState("");
   const [novoLinkUrl, setNovoLinkUrl] = useState("");
@@ -105,11 +109,25 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate }: Props) {
       setNovaTag("");
       setComentarioInicial("");
       setComentarioPessoas([]);
+      setComentarioCaret(0);
       setLinks([]);
       setNovoLinkTitulo("");
       setNovoLinkUrl("");
     }
   }, [open, defaultDate]);
+
+  const { data: pessoasSistema = [] } = useQuery({
+    queryKey: ["demandas-mentions-pessoas"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, nome_completo")
+        .order("nome_completo");
+      if (error) throw error;
+      return (data || []) as PessoaMention[];
+    },
+    staleTime: 1000 * 60 * 5,
+  });
 
   const handleImagePaste = (file: File) => {
     setPendingFiles((prev) => [...prev, file]);
