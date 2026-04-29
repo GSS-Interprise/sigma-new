@@ -36,8 +36,8 @@ export function VincularPropostaCampanhaDialog({ campanhaId, open, onOpenChange 
         .from("proposta")
         .select("id, id_proposta, descricao, status")
         .eq("status", "geral")
-        .order("criado_em", { ascending: false })
-        .limit(500);
+        .order("id_proposta", { ascending: true, nullsFirst: false })
+        .limit(10000);
       if (error) throw error;
       return (data || []).filter(
         (p: any) => !/personalizada/i.test(p.descricao || "")
