@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -102,6 +102,77 @@ export function DisparosCampanhasTab() {
       return data as Campanha[];
     },
   });
+
+  // === Notificações de status (toast + observação contínua) ===
+  // Snapshot anterior para detectar transições (status, falhas, nozap, conclusão).
+  const prevSnapshotRef = useRef<Map<string, { status: string; nozap: number; falhas: number; enviados: number; total: number }>>(new Map());
+  useEffect(() => {
+    const prev = prevSnapshotRef.current;
+    const next = new Map<string, { status: string; nozap: number; falhas: number; enviados: number; total: number }>();
+    for (const c of campanhas) {
+      const cur = {
+        status: c.status || "",
+        nozap: c.nozap || 0,
+        falhas: c.falhas || 0,
+        enviados: c.enviados || 0,
+        total: c.total_contatos || 0,
+      };
+      next.set(c.id, cur);
+      const before = prev.get(c.id);
+      if (!before) continue; // ignora primeira renderização
+
+      // Mudança de status
+      if (before.status !== cur.status) {
+        if (cur.status === "em_andamento") {
+          toast.info(`Disparo "${c.nome}" em andamento.`);
+        } else if (cur.status === "pausado") {
+          toast.warning(`Disparo "${c.nome}" pausado.`);
+        } else if (cur.status === "concluido") {
+          toast.success(`Disparo "${c.nome}" concluído (${cur.enviados}/${cur.total}).`);
+        } else if (cur.status === "cancelado") {
+          toast.error(`Disparo "${c.nome}" cancelado.`);
+        }
+      }
+
+      // Conclusão por progresso (mesmo sem mudar status)
+      if (
+        before.status !== "concluido" &&
+        cur.status !== "concluido" &&
+        cur.total > 0 &&
+        before.enviados < cur.total &&
+        cur.enviados >= cur.total
+      ) {
+        toast.success(`Disparo "${c.nome}" finalizou todos os ${cur.total} envios.`);
+      }
+
+      // Spike de bloqueadora (jump de NOZAP) — heurística simples
+      const deltaNozap = cur.nozap - before.nozap;
+      if (deltaNozap >= 5) {
+        toast.error(`Possível bloqueadora em "${c.nome}": +${deltaNozap} NOZAP detectado.`);
+      }
+      // Spike de falhas
+      const deltaFalhas = cur.falhas - before.falhas;
+      if (deltaFalhas >= 5) {
+        toast.error(`Falhas em "${c.nome}": +${deltaFalhas} novas falhas.`);
+      }
+    }
+    prevSnapshotRef.current = next;
+  }, [campanhas]);
+
+  // Limpa o flag local "iniciando" quando a campanha já entrou em execução real
+  // (status em_andamento) ou foi finalizada/pausada — evita spinner travado.
+  useEffect(() => {
+    setDisparandoIds((prev) => {
+      if (prev.size === 0) return prev;
+      const next = new Set(prev);
+      for (const c of campanhas) {
+        if (!next.has(c.id)) continue;
+        const terminouOuRodando = ["em_andamento", "pausado", "concluido", "cancelado"].includes(c.status || "");
+        if (terminouOuRodando) next.delete(c.id);
+      }
+      return next.size === prev.size ? prev : next;
+    });
+  }, [campanhas]);
 
   const { data: propostasParaMensagem = [] } = useQuery({
     queryKey: ["propostas-mensagens", campanhas.map(c => c.proposta_id)],
@@ -225,13 +296,10 @@ export function DisparosCampanhasTab() {
     },
     onSuccess: (_data, campanhaId) => {
       queryClient.invalidateQueries({ queryKey: ["disparos-campanhas"] });
-      toast.success("Disparo iniciado.");
-      // Mantém o botão travado até o status real chegar via refetch
-      setDisparandoIds((prev) => {
-        const next = new Set(prev);
-        next.delete(campanhaId);
-        return next;
-      });
+      toast.success("Disparo iniciado. O botão fica travado até concluir ou bloquear.");
+      // NÃO removemos do disparandoIds aqui — o botão segue travado pelo cálculo
+      // de execução (status/progresso). Liberamos automaticamente quando o status
+      // virar 'concluido', 'pausado' ou 'cancelado', ou quando enviados >= total.
     },
     onError: (error: Error, campanhaId) => {
       toast.error(error.message);
@@ -308,6 +376,17 @@ export function DisparosCampanhasTab() {
             const mensagemProposta = propostasParaMensagem.find(p => p.id === campanha.proposta_id)?.observacoes;
             const mensagemExibir = campanha.texto_ia || mensagemProposta;
 
+            // === Regra: botão Disparar fica travado enquanto a execução não termina ===
+            // Termina quando: status vira 'concluido' / 'pausado' / 'cancelado',
+            // OU enviados >= total_contatos (todos enviados),
+            // OU campanha foi inativada manualmente.
+            const totaisEnviados = (campanha.enviados || 0) + (campanha.nozap || 0) + (campanha.falhas || 0);
+            const restamContatos = (campanha.total_contatos || 0) > totaisEnviados;
+            const statusEmExecucao = campanha.status === "em_andamento" || campanha.status === "pendente";
+            const emExecucao =
+              disparandoIds.has(campanha.id) ||
+              (campanha.ativo && restamContatos && statusEmExecucao && (campanha.total_contatos || 0) > 0);
+
             return (
               <Card key={campanha.id} className={`p-4 ${!campanha.ativo ? 'opacity-60 bg-muted/50' : ''}`}>
                 <div className="flex items-center justify-between flex-wrap gap-2">
@@ -383,16 +462,20 @@ export function DisparosCampanhasTab() {
                         dispararMutation.mutate(campanha.id);
                       }}
                       disabled={
-                        disparandoIds.has(campanha.id) ||
+                        emExecucao ||
                         !campanha.ativo ||
                         campanha.total_contatos === 0
                       }
-                      title="Disparar agora (envia lote ao n8n)"
+                      title={
+                        emExecucao
+                          ? "Disparo em execução — aguarde concluir, pausar ou bloquear"
+                          : "Disparar agora (envia lote ao n8n)"
+                      }
                     >
-                      {disparandoIds.has(campanha.id) ? (
+                      {emExecucao ? (
                         <>
                           <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                          Disparando...
+                          {disparandoIds.has(campanha.id) ? "Iniciando..." : "Disparando..."}
                         </>
                       ) : (
                         <>
