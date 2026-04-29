@@ -159,6 +159,21 @@ export function DisparosCampanhasTab() {
     prevSnapshotRef.current = next;
   }, [campanhas]);
 
+  // Limpa o flag local "iniciando" quando a campanha já entrou em execução real
+  // (status em_andamento) ou foi finalizada/pausada — evita spinner travado.
+  useEffect(() => {
+    setDisparandoIds((prev) => {
+      if (prev.size === 0) return prev;
+      const next = new Set(prev);
+      for (const c of campanhas) {
+        if (!next.has(c.id)) continue;
+        const terminouOuRodando = ["em_andamento", "pausado", "concluido", "cancelado"].includes(c.status || "");
+        if (terminouOuRodando) next.delete(c.id);
+      }
+      return next.size === prev.size ? prev : next;
+    });
+  }, [campanhas]);
+
   const { data: propostasParaMensagem = [] } = useQuery({
     queryKey: ["propostas-mensagens", campanhas.map(c => c.proposta_id)],
     queryFn: async () => {
