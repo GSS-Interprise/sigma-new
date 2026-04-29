@@ -2,7 +2,6 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import logoSigma from "@/assets/gss-logo.png";
 
 // Sigma brand colors (HSL --primary: 123 63% 23%  ≈ #155F1E)
 const SIGMA_GREEN: [number, number, number] = [21, 95, 30];
@@ -41,11 +40,13 @@ export const exportCampanhaPropostasPDF = (data: CampanhaResumo) => {
   doc.rect(0, 0, pageWidth, 32, "F");
 
   // Logo
-  try {
-    doc.addImage(logoSigma, "PNG", 12, 6, 20, 20);
-  } catch {
-    /* ignore */
-  }
+  // Marca SIGMA desenhada (placeholder até logo oficial ser fornecido)
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(12, 8, 18, 18, 3, 3, "F");
+  doc.setTextColor(...SIGMA_GREEN);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(14);
+  doc.text("S", 21, 20, { align: "center" });
 
   doc.setTextColor(255, 255, 255);
   doc.setFont("helvetica", "bold");
