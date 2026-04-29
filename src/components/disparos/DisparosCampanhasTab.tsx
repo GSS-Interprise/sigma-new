@@ -361,6 +361,17 @@ export function DisparosCampanhasTab() {
             const mensagemProposta = propostasParaMensagem.find(p => p.id === campanha.proposta_id)?.observacoes;
             const mensagemExibir = campanha.texto_ia || mensagemProposta;
 
+            // === Regra: botão Disparar fica travado enquanto a execução não termina ===
+            // Termina quando: status vira 'concluido' / 'pausado' / 'cancelado',
+            // OU enviados >= total_contatos (todos enviados),
+            // OU campanha foi inativada manualmente.
+            const totaisEnviados = (campanha.enviados || 0) + (campanha.nozap || 0) + (campanha.falhas || 0);
+            const restamContatos = (campanha.total_contatos || 0) > totaisEnviados;
+            const statusEmExecucao = campanha.status === "em_andamento" || campanha.status === "pendente";
+            const emExecucao =
+              disparandoIds.has(campanha.id) ||
+              (campanha.ativo && restamContatos && statusEmExecucao && (campanha.total_contatos || 0) > 0);
+
             return (
               <Card key={campanha.id} className={`p-4 ${!campanha.ativo ? 'opacity-60 bg-muted/50' : ''}`}>
                 <div className="flex items-center justify-between flex-wrap gap-2">
@@ -436,16 +447,20 @@ export function DisparosCampanhasTab() {
                         dispararMutation.mutate(campanha.id);
                       }}
                       disabled={
-                        disparandoIds.has(campanha.id) ||
+                        emExecucao ||
                         !campanha.ativo ||
                         campanha.total_contatos === 0
                       }
-                      title="Disparar agora (envia lote ao n8n)"
+                      title={
+                        emExecucao
+                          ? "Disparo em execução — aguarde concluir, pausar ou bloquear"
+                          : "Disparar agora (envia lote ao n8n)"
+                      }
                     >
-                      {disparandoIds.has(campanha.id) ? (
+                      {emExecucao ? (
                         <>
                           <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                          Disparando...
+                          {disparandoIds.has(campanha.id) ? "Iniciando..." : "Disparando..."}
                         </>
                       ) : (
                         <>
