@@ -10,7 +10,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Eye, Trash2, Users, CheckCircle, XCircle, AlertTriangle, Send, Power, PowerOff, Bot, Info, Rocket, Clock, Loader2 } from "lucide-react";
+import { Eye, Trash2, Users, CheckCircle, XCircle, AlertTriangle, Send, Power, PowerOff, Bot, Info, Rocket, Clock, Loader2, Pause } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
@@ -328,6 +328,26 @@ export function DisparosCampanhasTab() {
     onError: (error: Error) => toast.error(error.message),
   });
 
+  const pausarMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from("disparos_campanhas")
+        .update({ status: "pausado", updated_at: new Date().toISOString() })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: (_, id) => {
+      queryClient.invalidateQueries({ queryKey: ["disparos-campanhas"] });
+      setDisparandoIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      toast.success("Disparo pausado. Botão Disparar liberado.");
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
   if (selectedCampanha) {
     return <DisparosContatosPanel campanha={selectedCampanha} onBack={() => setSelectedCampanha(null)} />;
   }
@@ -484,6 +504,37 @@ export function DisparosCampanhasTab() {
                         </>
                       )}
                     </Button>
+                    {emExecucao && (
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            title="Pausar disparo e liberar o botão Disparar"
+                          >
+                            <Pause className="h-4 w-4 mr-1" />
+                            Pausar
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Pausar disparo?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Isto interrompe o envio em andamento e libera o botão "Disparar" para que você possa disparar manualmente de novo.
+                              Os contatos já enviados não serão reenviados. Deseja continuar?
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => pausarMutation.mutate(campanha.id)}
+                            >
+                              Pausar e liberar
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    )}
                     <Button
                       variant={campanha.status === "agendado" ? "secondary" : "outline"}
                       size="sm"
