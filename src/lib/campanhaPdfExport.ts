@@ -21,6 +21,7 @@ interface CampanhaResumo {
     data_termino?: string | null;
   };
   vinculos: any[];
+  disparosDetalhe?: any[];
   totais: {
     propostas: number;
     listas: number;
@@ -95,7 +96,7 @@ export const exportCampanhaPropostasPDF = (data: CampanhaResumo) => {
     { label: "Propostas", value: data.totais.propostas },
     { label: "Listas", value: data.totais.listas },
     { label: "Leads", value: data.totais.leads },
-    { label: "Disparos", value: data.totais.disparos },
+    { label: "Mensagens enviadas", value: data.totais.enviados },
   ];
   const cardW = (pageWidth - 28 - 9) / 4;
   const cardH = 22;
@@ -119,9 +120,34 @@ export const exportCampanhaPropostasPDF = (data: CampanhaResumo) => {
   doc.setFontSize(10);
   doc.text("Execução dos disparos", 14, y);
   y += 4;
+
+  // Período coberto pelos disparos
+  const detalhe = data.disparosDetalhe || [];
+  let periodoLabel = "—";
+  if (detalhe.length) {
+    const datas = detalhe
+      .flatMap((d: any) => [d.created_at, d.updated_at])
+      .filter(Boolean)
+      .map((d: string) => new Date(d).getTime());
+    if (datas.length) {
+      const min = new Date(Math.min(...datas));
+      const max = new Date(Math.max(...datas));
+      periodoLabel =
+        format(min, "dd/MM/yyyy", { locale: ptBR }) +
+        " a " +
+        format(max, "dd/MM/yyyy", { locale: ptBR });
+    }
+  }
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(...SIGMA_MUTED);
+  doc.text(`Período dos disparos: ${periodoLabel}`, 14, y);
+  doc.setTextColor(...SIGMA_DARK);
+  y += 2;
+
   autoTable(doc, {
     startY: y,
-    head: [["Total de disparos", "Mensagens enviadas", "Falhas"]],
+    head: [["Contatos programados", "Mensagens enviadas", "Falhas"]],
     body: [[
       String(data.totais.disparos),
       String(data.totais.enviados),
@@ -133,6 +159,34 @@ export const exportCampanhaPropostasPDF = (data: CampanhaResumo) => {
     margin: { left: 14, right: 14 },
   });
   y = (doc as any).lastAutoTable.finalY + 8;
+
+  // Detalhe dos disparos (com datas)
+  if (detalhe.length) {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.text("Detalhe dos disparos", 14, y);
+    y += 2;
+    const detRows = detalhe.map((d: any) => [
+      d.nome || "—",
+      String(d.total_contatos ?? 0),
+      String(d.enviados ?? 0),
+      String(d.falhas ?? 0),
+      d.status || "—",
+      d.created_at ? format(new Date(d.created_at), "dd/MM/yyyy HH:mm") : "—",
+      d.updated_at ? format(new Date(d.updated_at), "dd/MM/yyyy HH:mm") : "—",
+    ]);
+    autoTable(doc, {
+      startY: y + 2,
+      head: [["Disparo", "Programados", "Enviados", "Falhas", "Status", "Criado em", "Atualizado em"]],
+      body: detRows,
+      theme: "striped",
+      styles: { fontSize: 8, cellPadding: 2.5 },
+      headStyles: { fillColor: SIGMA_GREEN, textColor: 255, fontStyle: "bold" },
+      alternateRowStyles: { fillColor: [245, 250, 245] },
+      margin: { left: 14, right: 14 },
+    });
+    y = (doc as any).lastAutoTable.finalY + 8;
+  }
 
   // Tabela de propostas
   doc.setFont("helvetica", "bold");

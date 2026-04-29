@@ -90,16 +90,18 @@ export default function DisparosCampanhaPropostas() {
       let disparos = 0;
       let enviados = 0;
       let falhas = 0;
+      let disparosDetalhe: any[] = [];
       if (cpIds.length > 0) {
         const { data: dc } = await supabase
           .from("disparos_campanhas")
-          .select("total_contatos, enviados, falhas")
+          .select("id, nome, campanha_proposta_id, total_contatos, enviados, falhas, status, created_at, updated_at")
           .in("campanha_proposta_id", cpIds);
         (dc || []).forEach((r: any) => {
           disparos += r.total_contatos || 0;
           enviados += r.enviados || 0;
           falhas += r.falhas || 0;
         });
+        disparosDetalhe = dc || [];
       }
       const totalLeads = vinculos.reduce(
         (acc: number, v: any) => acc + (v.lista_leads_count || 0),
@@ -108,6 +110,7 @@ export default function DisparosCampanhaPropostas() {
       exportCampanhaPropostasPDF({
         campanha,
         vinculos,
+        disparosDetalhe,
         totais: {
           propostas: totalPropostas,
           listas: listaIds.length,
