@@ -1414,6 +1414,16 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
           phone: waidMatch ? waidMatch[1] : (phoneMatch ? phoneMatch[1].trim() : null),
         };
       }
+      // If phone is missing but vcard is present (saved messages), parse vcard now.
+      if (cd && !cd.phone && cd.vcard) {
+        const vcard: string = cd.vcard || '';
+        const waidMatch = vcard.match(/waid=(\d+)/);
+        const phoneMatch = vcard.match(/TEL[^:]*:([+\d\s\-()]+)/);
+        cd = {
+          ...cd,
+          phone: waidMatch ? waidMatch[1] : (phoneMatch ? phoneMatch[1].trim() : null),
+        };
+      }
       const displayName = cd?.displayName || 'Contato';
       const phone = cd?.phone || null;
       return (
