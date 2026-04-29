@@ -35,11 +35,12 @@ export function VincularPropostaCampanhaDialog({ campanhaId, open, onOpenChange 
       const { data, error } = await supabase
         .from("proposta")
         .select("id, id_proposta, descricao, status")
+        .eq("status", "geral")
         .order("criado_em", { ascending: false })
         .limit(500);
       if (error) throw error;
       return (data || []).filter(
-        (p: any) => p.status === "geral" && !/personalizada/i.test(p.descricao || "")
+        (p: any) => !/personalizada/i.test(p.descricao || "")
       );
     },
   });
