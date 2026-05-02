@@ -12878,6 +12878,7 @@ export type Database = {
         Args: { lead_destino_id: string; proposta_origem_id: string }
         Returns: string
       }
+      current_user_is_active: { Args: never; Returns: boolean }
       enviar_lead_proxima_fase: {
         Args: {
           p_campanha_proposta_id: string
