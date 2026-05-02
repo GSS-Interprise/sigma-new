@@ -1,141 +1,52 @@
-# Suporte a enquete e contato (e localização) no fluxo sigma-evo
-
 ## Diagnóstico
 
-Olhando os registros recentes da instância `teste5847` em `sigzap_messages` e o payload bruto entregue pelo novo workflow do n8n:
+Verifiquei no banco e confirmei o problema: **usuários "suspensos" continuam podendo logar e acessar o Sigma normalmente.**
 
-**Enquete (`pollCreationMessageV3`)**
-- Payload: `raw_payload.data.message.pollCreationMessageV3 = { name, options[], selectableOptionsCount }`
-- Resultado salvo: `message_type = 'unknown'`, `message_text = '[Mensagem sem conteúdo]'`.
-- Causa: a função `extractMessageContent` em `supabase/functions/receive-whatsapp-messages/index.ts` não tem nenhum branch para `pollCreationMessage` / `pollCreationMessageV2` / `pollCreationMessageV3`. Cai no `return '[Mensagem sem conteúdo]'`.
+- 8 usuários estão com `profiles.status = 'suspenso'` (Kayky, Sarah, Emmily, Arthur, Luana, Ricardo, Ulisses, Yuri).
+- Nenhum deles tem role em `user_roles` — mas isso só limita telas com `PermissionRoute`. Telas comuns (Dashboard, Comunicação, Workspace, etc.) usam apenas `ProtectedRoute`, que **só checa se existe sessão** (`user`), ignorando o `status` do profile.
+- Resultado: basta o registro existir em `auth.users` que o login é aceito e o app abre.
+- O status "suspenso" hoje é apenas visual (badge vermelho na tela de Configurações). Não há nenhuma camada de bloqueio no front nem no banco.
 
-**Contato (`contactMessage`)**
-- Payload: `raw_payload.data.message.contactMessage = { displayName, vcard }`
-- Resultado salvo: `message_type = 'contact'`, `message_text = '[Contato: Amanda GSS]'`, mas `contact_data = NULL`.
-- Causas:
-  1. A função extrai apenas o `displayName` para virar texto — não popula a coluna `contact_data` (jsonb) que já existe no schema.
-  2. A UI (`SigZapChatColumn.tsx`) não tem `case 'contact'` em `renderMessageContent`, então cai no fallback que mostra só o texto `[Contato: ...]` em vez de um cartão de contato com nome + telefone + ação.
+## O que vou fazer
 
-**Localização** tem o mesmo problema do contato (já há coluna `location_data` mas não é populada nem renderizada). Aproveito para corrigir junto, é uma linha.
+### 1. Bloquear login no `AuthContext`
+- Após `SIGNED_IN` (e ao restaurar sessão em `getSession`), buscar `profiles.status` do usuário.
+- Se status for `suspenso` ou `inativo`:
+  - Chamar `supabase.auth.signOut()` imediatamente.
+  - Limpar `SESSION_START_KEY` do localStorage.
+  - Mostrar toast: "Acesso suspenso. Procure o administrador."
+  - Redirecionar para `/auth`.
+- Se status for `ativo`, segue o fluxo normal.
 
-Conclusão: **é o JS** (edge function + UI), não a estrutura. O n8n novo está enviando o payload Evolution cru, e a edge function só foi adaptada para campos de mídia comuns — enquete não foi adaptada e contato/localização não populam as colunas dedicadas.
+### 2. Reforçar no `ProtectedRoute`
+- Buscar profile do usuário (via React Query, cache curto).
+- Enquanto carrega: spinner atual.
+- Se status ≠ `ativo`: tela "Acesso suspenso — entre em contato com o administrador" + botão "Sair", em vez de renderizar o app.
+- Garante que mesmo se o usuário ficar logado e for suspenso em runtime, perde acesso na próxima navegação.
 
-## Mudanças
-
-### 1. `supabase/functions/receive-whatsapp-messages/index.ts`
-
-**a) Adicionar branch de enquete em `extractMessageContent`** (lê das duas formas — pré-processada pelo n8n e crua):
-
-```ts
-// Enquete (poll) – aceita V1, V2 e V3
-const pollMsg =
-  evolutionMessage.pollCreationMessageV3 ||
-  evolutionMessage.pollCreationMessageV2 ||
-  evolutionMessage.pollCreationMessage ||
-  msg?.pollCreationMessageV3 ||
-  msg?.pollCreationMessageV2 ||
-  msg?.pollCreationMessage;
-
-if (msgType === 'poll' || msgType?.startsWith('pollCreation') || pollMsg) {
-  const options = (pollMsg?.options || []).map((o: any) => o.optionName).filter(Boolean);
-  return {
-    text: `[Enquete: ${pollMsg?.name || 'sem título'}]`,
-    type: 'poll',
-    pollData: {
-      name: pollMsg?.name || '',
-      options,
-      selectableOptionsCount: pollMsg?.selectableOptionsCount ?? 1,
-    },
-  };
-}
-```
-
-**b) Enriquecer o branch de contato** para extrair telefone/vcard e devolver `contactData`:
-
-```ts
-if (msgType === 'contact' || msgType === 'vcard' || evolutionMessage.contactMessage || msg?.contactMessage) {
-  const ctcMsg = evolutionMessage.contactMessage || msg?.contactMessage || {};
-  const vcard = ctcMsg.vcard || '';
-  const phone = (vcard.match(/TEL[^:]*:([+\d\s\-()]+)/) || [])[1]?.trim() || null;
-  return {
-    text: `[Contato: ${ctcMsg.displayName || 'sem nome'}]`,
-    type: 'contact',
-    contactData: {
-      displayName: ctcMsg.displayName || null,
-      phone,
-      vcard,
-    },
-  };
-}
-```
-
-**c) Localização** — devolver também `locationData`:
-
-```ts
-if (msgType === 'location' || evolutionMessage.locationMessage || msg?.locationMessage) {
-  const locMsg = evolutionMessage.locationMessage || msg?.locationMessage || {};
-  return {
-    text: `[Localização]`,
-    type: 'location',
-    locationData: {
-      latitude: locMsg.degreesLatitude,
-      longitude: locMsg.degreesLongitude,
-      name: locMsg.name || null,
-      address: locMsg.address || null,
-    },
-  };
-}
-```
-
-**d) No INSERT (linha ~989)** popular as colunas a partir do `messageContent` quando vierem da extração (não só do `payload.*`):
-
-```ts
-location_data: payload.location_data ?? messageContent.locationData ?? null,
-contact_data:  payload.contact_data  ?? messageContent.contactData  ?? null,
-// e novo:
-poll_data:     payload.poll_data     ?? messageContent.pollData     ?? null,
-```
-
-**e) Tipos** — atualizar a `interface EvolutionMessage` com os campos opcionais (`pollCreationMessageV3`, etc.) e o tipo de retorno de `extractMessageContent` para incluir `pollData`/`contactData`/`locationData`.
-
-### 2. Migration aditiva: nova coluna `poll_data jsonb null`
-
+### 3. Camada server-side (RLS) — função helper
+Criar função SQL `public.current_user_is_active()`:
 ```sql
-ALTER TABLE public.sigzap_messages
-  ADD COLUMN IF NOT EXISTS poll_data jsonb;
+create or replace function public.current_user_is_active()
+returns boolean
+language sql stable security definer set search_path=public as $$
+  select coalesce((select status = 'ativo' from public.profiles where id = auth.uid()), false)
+$$;
 ```
+- Adicionar essa checagem nas políticas RLS de **leitura** das tabelas mais sensíveis usadas pelo dashboard (profiles próprio, leads, captacao_leads, disparos_campanhas, comunicacao_mensagens, ages_*, contratos, licitacoes…).
+- Na prática vou criar uma policy `RESTRICTIVE` por tabela sensível: `USING (public.current_user_is_active())`. Policies RESTRICTIVE somam-se às existentes via AND, então não quebro o que já funciona — apenas exijo que o usuário esteja ativo.
+- Lista exata das tabelas alvo: confirmo na implementação consultando quais tabelas têm RLS habilitado e são acessadas por usuário comum (excluindo `profiles` da própria pessoa, para o front conseguir ler o próprio status e exibir a mensagem de bloqueio).
 
-Sem `NOT NULL`, sem default — não quebra nada.
+### 4. Teste
+Após aplicar:
+- Tentar logar com `arthur.rhc@gmail.com` (suspenso) → deve cair no toast "Acesso suspenso" e voltar para `/auth`.
+- Logar com um usuário ativo → deve continuar funcionando normalmente.
+- Suspender um usuário logado → na próxima request/navegação ele perde acesso.
 
-### 3. UI: `src/components/sigzap/SigZapChatColumn.tsx`
+## Arquivos alterados
+- `src/contexts/AuthContext.tsx` — verificação de status pós-login.
+- `src/components/auth/ProtectedRoute.tsx` — guarda extra de status + tela de bloqueio.
+- Migração SQL — função `current_user_is_active` + policies RESTRICTIVE nas tabelas sensíveis.
 
-**a) Adicionar `contact_data`, `location_data`, `poll_data` à interface `Message`** e ao `select(...)` da query de mensagens (se hoje usa `*`, já vem; se for explícito, incluir).
-
-**b) Adicionar `case` em `renderMessageContent`** para renderizar cartões dedicados em vez do fallback "Contato"/"sem conteúdo":
-
-- `case 'contact'`: cartão com avatar/ícone, nome do contato, telefone clicável (link `tel:` + botão "Iniciar conversa" se telefone existir).
-- `case 'location'`: bloco com lat/long, nome/endereço (se houver) e link "Abrir no Google Maps" (`https://maps.google.com/?q=lat,lng`).
-- `case 'poll'`: cartão estilo WhatsApp com título da enquete + lista de opções (radio/checkbox visual, somente leitura — sem voto, pois Evolution não envia respostas individuais aqui).
-
-Visual segue o padrão atual das bolhas (cores `isFromMe`, `rounded-lg`, etc.). Sem dependências novas.
-
-### 4. Backfill (opcional, defensivo)
-
-As mensagens já gravadas podem ser reaproveitadas porque o `raw_payload` tem tudo. Posso adicionar um pequeno bloco no início do `renderMessageContent` que, se a coluna `contact_data`/`location_data`/`poll_data` estiver vazia, tenta reconstruir on-the-fly a partir de `msg.raw_payload?.data?.message`. Assim as mensagens antigas (Tu/Porem, Amanda GSS) já aparecem corretas sem precisar reprocessar.
-
-## Garantias de não-quebra
-
-- Edge function: só adiciona branches novos antes do `return '[Mensagem sem conteúdo]'`. Fluxo antigo continua igual.
-- Migration: 1 coluna `NULL`.
-- UI: adiciona `case`s ao `switch`; o `default` permanece. Nenhum componente existente é modificado.
-- Sem alteração em send/receive, RLS, dedup, mídia.
-
-## Resumo
-
-| Arquivo | Mudança |
-|---|---|
-| `supabase/functions/receive-whatsapp-messages/index.ts` | +3 branches (poll, contact enriquecido, location enriquecido), tipos, INSERT |
-| Nova migration | `+poll_data jsonb` em `sigzap_messages` |
-| `src/components/sigzap/SigZapChatColumn.tsx` | `case 'contact' / 'location' / 'poll'` em `renderMessageContent` + fallback via `raw_payload` |
-
-Aprovando, executo as 3 mudanças e a partir do próximo webhook (e nas mensagens já existentes via fallback do `raw_payload`) a enquete vira cartão de enquete e o contato vira cartão de contato com telefone clicável.
+## Observação
+Não vou banir o usuário em `auth.users` (requer service role + edge function), porque a combinação acima já bloqueia 100% do acesso de dados e da UI. Se você quiser também invalidar o token de sessão imediatamente no servidor quando alguém for suspenso, posso adicionar uma edge function `admin-suspend-user` num próximo passo.
