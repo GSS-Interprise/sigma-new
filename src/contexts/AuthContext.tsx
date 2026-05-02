@@ -66,6 +66,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (!localStorage.getItem(SESSION_START_KEY)) {
             localStorage.setItem(SESSION_START_KEY, Date.now().toString());
           }
+          // Verificar status do profile (não pode ser suspenso/inativo)
+          setTimeout(() => {
+            checkUserStatus(session.user.id);
+          }, 0);
         }
 
         // Ao fazer logout, limpar
@@ -91,6 +95,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           localStorage.setItem(SESSION_START_KEY, Date.now().toString());
         }
         checkSessionExpiry();
+        checkUserStatus(session.user.id);
       }
     });
 
@@ -99,6 +104,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearTimeout(sessionTimer);
     };
   }, [navigate]);
+
+  const checkUserStatus = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('status')
+        .eq('id', userId)
+        .maybeSingle();
+      if (error) {
+        console.error('Erro ao verificar status do usuário:', error);
+        return;
+      }
+      const status = (data?.status || 'ativo').toLowerCase();
+      if (status === 'suspenso' || status === 'inativo') {
+        toast.error(
+          status === 'suspenso'
+            ? 'Acesso suspenso. Procure o administrador do sistema.'
+            : 'Usuário inativo. Procure o administrador do sistema.'
+        );
+        localStorage.removeItem(SESSION_START_KEY);
+        await supabase.auth.signOut();
+        navigate('/auth');
+      }
+    } catch (err) {
+      console.error('Falha na verificação de status:', err);
+    }
+  };
 
   // Gerenciamento de inatividade
   useEffect(() => {
