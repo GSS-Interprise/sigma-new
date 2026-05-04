@@ -5,3 +5,44 @@ verify_jwt = false
 
 [functions.disparos-zap-pendentes]
 verify_jwt = false
+
+# Healthcheck E2E (v2). verify_jwt=false pra ser invocado pelo pg_cron sem header trocado.
+[functions.bridge-healthcheck-v2]
+verify_jwt = false
+
+# Edges chamadas com alta frequência (campanha-ia-responder dispara a cada msg incoming).
+# verify_jwt=false reduz overhead de auth check em chamada interna do bridge N8N.
+[functions.campanha-ia-responder]
+verify_jwt = false
+
+[functions.campanha-disparo-processor]
+verify_jwt = false
+
+[functions.campanha-cadencia-processor]
+verify_jwt = false
+
+[functions.campanha-qa-handoff-handler]
+verify_jwt = false
+
+[functions.campanha-qa-relay]
+verify_jwt = false
+
+[functions.campanha-opt-out-handler]
+verify_jwt = false
+
+[functions.campanha-email-sender]
+verify_jwt = false
+
+[functions.lead-perfil-extrator]
+verify_jwt = false
+
+[functions.bridge-healthcheck]
+verify_jwt = false
+
+[functions.chip-healthcheck]
+verify_jwt = false
+
+# Recebe webhook CONNECTION_UPDATE do bridge N8N — classifica disconnect e
+# atualiza chip_state/chip_health_event. Plano Anti-Ban v1 Sprint 1.
+[functions.chip-disconnect-classifier]
+verify_jwt = false

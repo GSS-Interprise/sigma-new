@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sendWhatsAppText } from "../_shared/evo-sender.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -69,22 +70,30 @@ serve(async (req) => {
     if (evoUrl && evoKey && instance_name) {
       const confirmationMsg =
         "ok, entendido. Não vou mais te chamar por aqui. Se mudar de ideia, é só me avisar. Abraço.";
-      try {
-        const resp = await fetch(
-          `${evoUrl}/message/sendText/${encodeURIComponent(instance_name)}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json", apikey: evoKey },
-            body: JSON.stringify({ number: phoneDigits, text: confirmationMsg }),
-          },
-        );
-        if (resp.ok) {
+      // Resolve chip_id pelo instance_name (helper precisa do uuid)
+      const { data: chipRow } = await supabase
+        .from("chips")
+        .select("id")
+        .eq("instance_name", instance_name)
+        .maybeSingle();
+      if (chipRow?.id) {
+        const r = await sendWhatsAppText({
+          supabase,
+          evo: { url: evoUrl, apiKey: evoKey },
+          chipId: chipRow.id,
+          instanceName: instance_name,
+          toJid: phoneDigits,
+          text: confirmationMsg,
+          eventoOrigem: "opt_out",
+          awaitDelay: true,
+        });
+        if (r.sent) {
           console.log(`[opt-out] ✓ confirmação enviada pra ${phoneE164}`);
         } else {
-          console.warn(`[opt-out] ⚠️ confirmação falhou: ${resp.status}`);
+          console.warn(`[opt-out] ⚠️ confirmação falhou: ${r.reason}`);
         }
-      } catch (e: any) {
-        console.warn(`[opt-out] ⚠️ erro send confirmação: ${e.message}`);
+      } else {
+        console.warn(`[opt-out] ⚠️ chip não encontrado pelo instance_name=${instance_name}`);
       }
     }
 

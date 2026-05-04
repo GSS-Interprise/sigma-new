@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sendWhatsAppText } from "../_shared/evo-sender.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -199,20 +200,19 @@ async function executarWhatsApp(supabase: any, cl: any, lead: any, campanha: any
   const phone = normalizeBrazilPhone(lead.phone_e164 || "");
   if (!phone) return { ok: false, erro: "telefone_invalido", msg: "" };
 
-  try {
-    const resp = await fetch(`${evoUrl}/message/sendText/${encodeURIComponent(chip.instance_name)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", apikey: evoKey },
-      body: JSON.stringify({ number: phone, text: msgFinal }),
-    });
-    if (!resp.ok) {
-      const errText = await resp.text();
-      return { ok: false, erro: `evo_${resp.status}: ${errText.slice(0, 150)}`, msg: msgFinal };
-    }
-    return { ok: true, erro: "", msg: msgFinal };
-  } catch (e: any) {
-    return { ok: false, erro: e.message || "fetch_error", msg: msgFinal };
-  }
+  // Envio via helper anti-ban (warm-up + rate-limit + log automático)
+  const result = await sendWhatsAppText({
+    supabase,
+    evo: { url: evoUrl, apiKey: evoKey },
+    chipId: chip.id,
+    instanceName: chip.instance_name,
+    toJid: phone,
+    text: msgFinal,
+    eventoOrigem: "cadencia",
+    awaitDelay: true,
+  });
+  if (result.sent) return { ok: true, erro: "", msg: msgFinal };
+  return { ok: false, erro: result.reason || "send_failed", msg: msgFinal };
 }
 
 async function executarEmail(supabase: any, cl: any, lead: any, campanha: any, passo: any) {

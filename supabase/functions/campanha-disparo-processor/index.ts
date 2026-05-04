@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sendWhatsAppText } from "../_shared/evo-sender.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -255,7 +256,10 @@ serve(async (req) => {
         continue;
       }
 
-      // ── Enviar via Evolution API com fallback de chip ──
+      // ── Enviar via helper anti-ban (pre_send_check + log + classify) ──
+      // O helper aplica delay gaussian (30-90s base, dobra em health alto),
+      // valida warm-up curve, rate-limit minute/hour, reply ratio.
+      // Fallback de chip mantido: tenta primário, se denied/failed tenta próximo.
       let success = false;
       let chipUsado: any = null;
       let lastError = "";
@@ -263,23 +267,19 @@ serve(async (req) => {
 
       for (const chipTry of chipsParaTentar) {
         tentativas++;
-        try {
-          const endpoint = `${evoUrl}/message/sendText/${encodeURIComponent(chipTry.instance_name)}`;
-          const resp = await fetchWithTimeout(
-            endpoint,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json", apikey: evoKey },
-              body: JSON.stringify({ number: phone, text: msgFinal }),
-            },
-            SEND_TIMEOUT_MS
-          );
+        const result = await sendWhatsAppText({
+          supabase,
+          evo: { url: evoUrl, apiKey: evoKey },
+          chipId: chipTry.id,
+          instanceName: chipTry.instance_name,
+          toJid: phone,
+          text: msgFinal,
+          eventoOrigem: "cold_disparo",
+          awaitDelay: true,
+          timeoutMs: SEND_TIMEOUT_MS,
+        });
 
-          if (!resp.ok) {
-            const errText = await resp.text();
-            throw new Error(`Evolution ${resp.status}: ${errText.slice(0, 200)}`);
-          }
-
+        if (result.sent) {
           success = true;
           chipUsado = chipTry;
           bumpChip(chipTry.id, true);
@@ -289,14 +289,27 @@ serve(async (req) => {
             );
           }
           break;
-        } catch (err: any) {
-          lastError = err.message || String(err);
-          bumpChip(chipTry.id, false);
+        }
+
+        // Não enviou. Pode ser denied (warm-up/rate/health) ou erro HTTP.
+        lastError = result.reason || "unknown";
+        bumpChip(chipTry.id, false);
+        const isRateOrWarmup =
+          result.reason?.startsWith("rate_") ||
+          result.reason?.startsWith("warmup_") ||
+          result.reason?.startsWith("paused") ||
+          result.reason === "health_critical" ||
+          result.reason === "reply_rate_critical";
+        if (isRateOrWarmup) {
+          console.log(
+            `[disparo] ⏸ ${chipTry.nome} bloqueado (${result.reason}), tentando próximo chip`
+          );
+        } else {
           console.warn(
             `[disparo] ⚠️ ${chipTry.nome} falhou pra ${lead.nome}: ${lastError}`
           );
-          // tenta próximo chip
         }
+        // tenta próximo chip
       }
 
       if (success && chipUsado) {

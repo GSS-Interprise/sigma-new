@@ -3,6 +3,7 @@
 // natural pro médico, envia via chip da campanha, marca como respondida+relayed, libera lead.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sendWhatsAppText } from "../_shared/evo-sender.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -112,20 +113,23 @@ Reformula isso em 1-2 msgs naturais pro médico.`;
     try { parsed = JSON.parse(rawOut); } catch { parsed = { messages: [resposta_humana] }; }
     const messages: string[] = Array.isArray(parsed.messages) && parsed.messages.length > 0 ? parsed.messages : [resposta_humana];
 
-    // Envia pro médico via chip original
+    // Envia pro médico via chip original (helper anti-ban)
     const phoneDigits = (lead.phone_e164 || "").replace(/\D/g, "");
-    const sendUrl = `${evoUrl}/message/sendText/${encodeURIComponent(chip.instance_name)}`;
     let relayedText = "";
     for (let i = 0; i < messages.length; i++) {
       if (i > 0) await sleep(1500 + Math.random() * 1500);
-      try {
-        const r = await fetch(sendUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", apikey: evoKey },
-          body: JSON.stringify({ number: phoneDigits, text: messages[i] }),
-        });
-        if (r.ok) relayedText += (relayedText ? "\n" : "") + messages[i];
-      } catch (e: any) { console.error(`[qa-relay] send err: ${e.message}`); }
+      const r = await sendWhatsAppText({
+        supabase,
+        evo: { url: evoUrl, apiKey: evoKey },
+        chipId: chip.id,
+        instanceName: chip.instance_name,
+        toJid: phoneDigits,
+        text: messages[i],
+        eventoOrigem: "qa_relay",
+        awaitDelay: true,
+      });
+      if (r.sent) relayedText += (relayedText ? "\n" : "") + messages[i];
+      else console.error(`[qa-relay] send err: ${r.reason}`);
     }
 
     // Atualiza histórico do lead

@@ -3,6 +3,7 @@
 // campanha_perguntas_pendentes. Responsável responderá quotando a msg.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sendWhatsAppText } from "../_shared/evo-sender.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -88,21 +89,21 @@ serve(async (req) => {
       `👉 *Responda ESTA mensagem (toque e "Responder") com a resposta.*\n` +
       `A IA vai encaminhar a resposta pro médico automaticamente e continuar a conversa.`;
 
-    // Envia pro responsável
-    const sendUrl = `${evoUrl}/message/sendText/${encodeURIComponent(chip.instance_name)}`;
-    const evoResp = await fetch(sendUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", apikey: evoKey },
-      body: JSON.stringify({ number: handoffTel, text: alertMsg }),
+    // Envia pro responsável via helper anti-ban
+    const sendResult = await sendWhatsAppText({
+      supabase,
+      evo: { url: evoUrl, apiKey: evoKey },
+      chipId: chip.id,
+      instanceName: chip.instance_name,
+      toJid: handoffTel,
+      text: alertMsg,
+      eventoOrigem: "qa_relay",
+      awaitDelay: true,
     });
-
-    if (!evoResp.ok) {
-      const errText = await evoResp.text();
-      throw new Error(`evolution ${evoResp.status}: ${errText.slice(0, 200)}`);
+    if (!sendResult.sent) {
+      throw new Error(`qa_handoff_send_failed: ${sendResult.reason}`);
     }
-
-    // Captura wa_message_id retornado
-    const evoData = await evoResp.json();
+    const evoData = (sendResult.evolutionResponse as any) || {};
     const waMsgId = evoData?.key?.id || evoData?.messageId || evoData?.id || "";
     if (!waMsgId) {
       console.warn(`[qa] ⚠️ wa_message_id não veio na resposta — quote não vai funcionar! Resp: ${JSON.stringify(evoData).slice(0, 300)}`);

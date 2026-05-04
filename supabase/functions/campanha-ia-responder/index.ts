@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sendWhatsAppText } from "../_shared/evo-sender.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -226,6 +227,8 @@ serve(async (req) => {
     const conversaEncerrada = parsed.conversa_encerrada === true;
     const aguardaHumano = parsed.AGUARDA_RESPOSTA_HUMANA === true;
     const perguntaResumo = String(parsed.pergunta_para_responsavel || "").trim();
+    // JA_NO_QUADRO: médico já trabalha no projeto/hospital — não é lead, é colaborador
+    const jaNoQuadro = parsed.JA_NO_QUADRO === true;
 
     // Salvar respostas no histórico
     for (const msg of messages) {
@@ -233,8 +236,19 @@ serve(async (req) => {
     }
 
     // ── 7. Enviar via Evolution (creds já buscadas no passo 3) ──
+    // Resolve chip_id pelo instance_name (1x). Helper anti-ban faz pre_send_check
+    // com origem='resposta_ia' que tem rate-limit mais permissivo (10/min, 30/h)
+    // e delay=0 (edge controla typing/sleep como antes pra parecer humano).
+    let chipIaId: string | null = null;
     if (evoUrl && evoKey && instance_name) {
-      const sendUrl = `${evoUrl}/message/sendText/${encodeURIComponent(instance_name)}`;
+      const { data: chipRow } = await supabase
+        .from("chips")
+        .select("id")
+        .eq("instance_name", instance_name)
+        .maybeSingle();
+      chipIaId = chipRow?.id || null;
+    }
+    if (evoUrl && evoKey && instance_name && chipIaId) {
       const presenceUrl = `${evoUrl}/chat/sendPresence/${encodeURIComponent(instance_name)}`;
       for (let i = 0; i < messages.length; i++) {
         if (i > 0) await sleep(1500 + Math.random() * 1500);
@@ -248,29 +262,43 @@ serve(async (req) => {
           });
         } catch (_) { /* presence é best-effort */ }
         await sleep(typingDelay);
-        try {
-          const resp = await fetch(sendUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", apikey: evoKey },
-            body: JSON.stringify({ number: phoneDigits, text: messages[i] }),
-          });
-          const respText = await resp.text();
-          if (!resp.ok) console.error(`[ia] ❌ Evolution ${resp.status}: ${respText.slice(0, 200)}`);
-          else console.log(`[ia] ✅ Msg ${i + 1}/${messages.length} enviada`);
-        } catch (e: any) { console.error(`[ia] ❌ Fetch: ${e.message}`); }
+        const result = await sendWhatsAppText({
+          supabase,
+          evo: { url: evoUrl, apiKey: evoKey },
+          chipId: chipIaId,
+          instanceName: instance_name,
+          toJid: phoneDigits,
+          text: messages[i],
+          eventoOrigem: "resposta_ia",
+          awaitDelay: true,
+        });
+        if (result.sent) {
+          console.log(`[ia] ✅ Msg ${i + 1}/${messages.length} enviada`);
+        } else {
+          console.error(
+            `[ia] ❌ Msg ${i + 1}/${messages.length} bloqueada/erro: ${result.reason}`
+          );
+        }
       }
     }
 
     // ── 8. Status + histórico ──
     let novoStatus = campLead.status;
-    if (alertaLead) novoStatus = "quente";
+    if (jaNoQuadro) novoStatus = "convertido";
+    else if (alertaLead) novoStatus = "quente";
     else if (conversaEncerrada) novoStatus = "descartado";
     else if (campLead.status === "contatado") novoStatus = "em_conversa";
 
-    await supabase.from("campanha_leads").update({
+    // Se JA_NO_QUADRO: cancela cadência + marca humano_assumiu pra parar qualquer touch automático
+    const updatePayload: Record<string, unknown> = {
       historico_conversa: historico,
       data_ultimo_contato: new Date().toISOString(),
-    }).eq("id", campLead.id);
+    };
+    if (jaNoQuadro) {
+      updatePayload.proximo_touch_em = null;
+      updatePayload.humano_assumiu = true;
+    }
+    await supabase.from("campanha_leads").update(updatePayload).eq("id", campLead.id);
 
     if (novoStatus !== campLead.status) {
       await supabase.rpc("atualizar_status_lead_campanha", {
@@ -288,7 +316,7 @@ serve(async (req) => {
 
       console.log(`[ia] 🔥 LEAD QUENTE: ${lead.nome} — ${resumo}`);
 
-      if (evoUrl && evoKey && instance_name && handoffTel) {
+      if (evoUrl && evoKey && instance_name && handoffTel && chipIaId) {
         const alertMsg =
           `🔥 *LEAD QUENTE — AÇÃO NECESSÁRIA* 🔥\n\n` +
           `*Médico:* ${lead.nome}\n` +
@@ -304,14 +332,21 @@ serve(async (req) => {
           `3. Apresente valores, escala e condições\n` +
           `4. Se fechar, converta o lead no Sigma`;
 
-        try {
-          await fetch(`${evoUrl}/message/sendText/${encodeURIComponent(instance_name)}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", apikey: evoKey },
-            body: JSON.stringify({ number: handoffTel.replace(/\D/g, ""), text: alertMsg }),
-          });
+        const alertResult = await sendWhatsAppText({
+          supabase,
+          evo: { url: evoUrl, apiKey: evoKey },
+          chipId: chipIaId,
+          instanceName: instance_name,
+          toJid: handoffTel.replace(/\D/g, ""),
+          text: alertMsg,
+          eventoOrigem: "handoff",
+          awaitDelay: true,
+        });
+        if (alertResult.sent) {
           console.log(`[ia] 📢 Alerta enviado para ${handoffNome}`);
-        } catch (e: any) { console.error(`[ia] Falha alerta: ${e.message}`); }
+        } else {
+          console.error(`[ia] Falha alerta: ${alertResult.reason}`);
+        }
       }
     }
 
@@ -612,6 +647,25 @@ O MÉDICO dirige a conversa. Seu fluxo é um guia, não um script fechado.
 - Pressa é bot. Calma é humano.
 </medico_dirige>
 
+<medico_ja_no_quadro>
+🟢 SINAL CRÍTICO — médico que diz "já estou dentro", "já trabalho aqui", "já sou da equipe", "já falei com a coordenação", "já estou nesse projeto", "já atuo nesse hospital", "já fechei", "já assinei", ou similar = ele JÁ É colaborador ativo do projeto, NÃO é lead pra prospectar.
+
+QUANDO DETECTAR ESSE SINAL:
+- NÃO ofereça vaga (ele já tem)
+- NÃO peça contato (ele já tá no time)
+- NÃO faça handoff
+- NÃO dispare ALERTA_LEAD
+- NÃO insista em apresentar a oportunidade
+
+RESPOSTA CALIBRADA: reconheça humanamente, peça desculpa pelo disparo automatizado, encerre amigável.
+
+Exemplos de tom (varie as palavras, mantenha o significado):
+- "Show, Dr.! Que ótimo saber que já tá no projeto. Foi disparo automatizado nosso pra mapear médicos interessados — desculpa o ruído. Bom te ter no time. Qualquer coisa, fica em contato com ${handoffNome}."
+- "ah pô, que massa! Disparo automático aqui da equipe — não te identifiquei na lista. Bom saber que tá com a gente. Abraço!"
+
+NO JSON, marque OBRIGATORIAMENTE: "JA_NO_QUADRO": true e "conversa_encerrada": true. Maturidade fica "morno" (não é frio nem quente, caso especial). NÃO marque ALERTA_LEAD.
+</medico_ja_no_quadro>
+
 ${b.info_extra ? `<info_adicional>\n${b.info_extra}\n</info_adicional>` : ""}
 
 ${perfil ? `<perfil_conhecido>
@@ -709,15 +763,17 @@ JSON válido apenas:
   "alerta_resumo": "",
   "conversa_encerrada": false,
   "AGUARDA_RESPOSTA_HUMANA": false,
-  "pergunta_para_responsavel": ""
+  "pergunta_para_responsavel": "",
+  "JA_NO_QUADRO": false
 }
 
 Regras:
 - maturidade_lead: SEMPRE preencha
 - ALERTA_LEAD=true SÓ com maturidade_lead="quente" E sinais explícitos de fechamento
-- conversa_encerrada=true quando: sem perfil OU recusou explicitamente
+- conversa_encerrada=true quando: sem perfil OU recusou explicitamente OU JA_NO_QUADRO=true
 - AGUARDA_RESPOSTA_HUMANA=true quando pergunta escapa do briefing
 - pergunta_para_responsavel: texto curto (1-2 frases) do que precisa confirmar. Ex: "Médico perguntou se a UTI tem ECMO disponível"
+- JA_NO_QUADRO=true quando médico sinaliza que já trabalha/já está no projeto/já é da equipe (ver <medico_ja_no_quadro>). NUNCA combinar com ALERTA_LEAD=true.
 </saida>
 </prompt>`;
 }
