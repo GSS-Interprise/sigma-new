@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sendWhatsAppText, sendWhatsAppMedia } from "../_shared/evo-sender.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -279,8 +280,8 @@ serve(async (req) => {
         break;
 
       case 'send':
-      default:
-        // Regular message sending
+      default: {
+        // Regular message sending — usa helper anti-ban (pre_send_check + log + retry)
         if (!conversationId) {
           return new Response(JSON.stringify({ error: 'conversationId é obrigatório para enviar mensagem' }), {
             status: 400,
@@ -295,33 +296,42 @@ serve(async (req) => {
           });
         }
 
-        // Construir payload baseado no tipo de mensagem
-        if (mediaType && (mediaUrl || mediaBase64)) {
-          // Mensagem com mídia
-          evolutionEndpoint = `${evolutionUrl}/message/sendMedia/${encodeURIComponent(instanceName)}`;
-          
-          // Strategy: upload media to Supabase Storage and send public URL to Evolution API
-          let publicMediaUrl: string | null = null;
+        // Resolve chip_id via instance_name (helper precisa do uuid)
+        const { data: chipRow, error: chipErr } = await supabase
+          .from('chips')
+          .select('id')
+          .eq('instance_name', instanceName)
+          .maybeSingle();
+        if (chipErr || !chipRow?.id) {
+          return new Response(JSON.stringify({ error: `Chip não encontrado: ${instanceName}` }), {
+            status: 404,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+        const chipId = chipRow.id as string;
+
+        // Upload de mídia pra Storage (se for envio com mídia)
+        let publicMediaUrl: string | null = null;
+        const isMediaSend = !!(mediaType && (mediaUrl || mediaBase64));
+
+        if (isMediaSend) {
           const fileName = mediaFilename || `media_${Date.now()}`;
           const filePath = `media-temp/${Date.now()}-${fileName}`;
-          
+
           if (mediaBase64) {
-            // Convert base64 to Uint8Array and upload to Storage
             const cleanBase64 = sanitizeBase64Media(mediaBase64);
             const binaryString = atob(cleanBase64);
             const bytes = new Uint8Array(binaryString.length);
             for (let i = 0; i < binaryString.length; i++) {
               bytes[i] = binaryString.charCodeAt(i);
             }
-            
             console.log('📤 Uploading base64 media to Supabase Storage:', filePath);
             const { error: uploadError } = await supabase.storage
               .from('sigzap-media')
               .upload(filePath, bytes, {
                 contentType: mediaMimeType || 'application/octet-stream',
-                upsert: true
+                upsert: true,
               });
-            
             if (uploadError) {
               console.error('❌ Erro ao fazer upload para Storage:', uploadError);
               return new Response(JSON.stringify({ error: 'Falha ao fazer upload da mídia', details: uploadError }), {
@@ -329,86 +339,140 @@ serve(async (req) => {
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' },
               });
             }
-            
-            const { data: { publicUrl } } = supabase.storage
-              .from('sigzap-media')
-              .getPublicUrl(filePath);
+            const { data: { publicUrl } } = supabase.storage.from('sigzap-media').getPublicUrl(filePath);
             publicMediaUrl = publicUrl;
             console.log('✅ Mídia uploaded, URL pública:', publicMediaUrl);
-            
           } else if (mediaUrl) {
-            // Se já é URL do Supabase Storage, usa diretamente
             if (mediaUrl.includes('supabase.co/storage')) {
-              console.log('✅ URL já é do Supabase Storage, usando diretamente:', mediaUrl);
               publicMediaUrl = mediaUrl;
             } else {
-              // URL externa — baixa e faz re-upload
               try {
-                console.log('⬇️ Baixando mídia externa para re-upload:', mediaUrl);
                 const mediaResponse = await fetch(mediaUrl);
                 if (mediaResponse.ok) {
                   const arrayBuffer = await mediaResponse.arrayBuffer();
                   const fileBuffer = new Uint8Array(arrayBuffer);
-                  
                   const { error: uploadError } = await supabase.storage
                     .from('sigzap-media')
                     .upload(filePath, fileBuffer, {
                       contentType: mediaMimeType || mediaResponse.headers.get('content-type') || 'application/octet-stream',
-                      upsert: true
+                      upsert: true,
                     });
-                  
                   if (uploadError) {
-                    console.warn('⚠️ Upload falhou, usando URL original:', uploadError);
                     publicMediaUrl = mediaUrl;
                   } else {
-                    const { data: { publicUrl } } = supabase.storage
-                      .from('sigzap-media')
-                      .getPublicUrl(filePath);
+                    const { data: { publicUrl } } = supabase.storage.from('sigzap-media').getPublicUrl(filePath);
                     publicMediaUrl = publicUrl;
-                    console.log('✅ Mídia re-uploaded, URL pública:', publicMediaUrl);
                   }
                 } else {
                   publicMediaUrl = mediaUrl;
                 }
-              } catch (downloadErr) {
-                console.warn('⚠️ Falha no download, usando URL original:', downloadErr);
+              } catch (_e) {
                 publicMediaUrl = mediaUrl;
               }
             }
           }
-          
+
           if (!publicMediaUrl) {
             return new Response(JSON.stringify({ error: 'Nenhuma mídia disponível para envio' }), {
               status: 400,
               headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             });
           }
-          
-          evolutionBody = {
-            number,
-            mediatype: mediaType,
-            mimetype: mediaMimeType,
-            caption: mediaCaption || '',
-            fileName: mediaFilename,
-            media: publicMediaUrl, // Always send public URL, never base64
-          };
-
-          if (quotedMessageId) {
-            evolutionBody.quoted = { key: { id: quotedMessageId } };
-          }
-        } else {
-          // Mensagem de texto
-          evolutionEndpoint = `${evolutionUrl}/message/sendText/${encodeURIComponent(instanceName)}`;
-          evolutionBody = {
-            number,
-            text: message
-          };
-
-          if (quotedMessageId) {
-            evolutionBody.quoted = { key: { id: quotedMessageId } };
-          }
         }
-        break;
+
+        // Envio via helper anti-ban (passa por pre_send_check + log + retry)
+        const evoCfg = { url: evolutionUrl, apiKey: evolutionKey };
+        const helperResult = isMediaSend
+          ? await sendWhatsAppMedia({
+              supabase,
+              evo: evoCfg,
+              chipId,
+              instanceName,
+              toJid: number,
+              mediaType: mediaType as 'image' | 'video' | 'audio' | 'document',
+              mediaUrl: publicMediaUrl!,
+              mediaMimeType,
+              mediaCaption,
+              mediaFilename,
+              quotedMessageId,
+              eventoOrigem: 'manual',
+              awaitDelay: true,
+            })
+          : await sendWhatsAppText({
+              supabase,
+              evo: evoCfg,
+              chipId,
+              instanceName,
+              toJid: number,
+              text: message!,
+              quotedMessageId,
+              eventoOrigem: 'manual',
+              awaitDelay: true,
+            });
+
+        if (!helperResult.sent) {
+          console.error('❌ Helper rejeitou envio:', helperResult.reason);
+          return new Response(JSON.stringify({
+            error: 'send_blocked',
+            reason: helperResult.reason,
+            details: helperResult.evolutionResponse,
+            preSendCheck: helperResult.preSendCheck,
+          }), {
+            status: helperResult.errorCode || 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Sucesso → grava em sigzap_messages + atualiza conversa
+        const evolutionResult = helperResult.evolutionResponse || {};
+        const waMessageId = evolutionResult.key?.id || evolutionResult.id || `sent_${Date.now()}`;
+        const messageText = message || mediaCaption || `[${mediaType || 'Mídia'}]`;
+        const messageType = mediaType || 'text';
+
+        const { data: savedMessage, error: saveError } = await supabase
+          .from('sigzap_messages')
+          .insert({
+            conversation_id: conversationId,
+            wa_message_id: waMessageId,
+            from_me: true,
+            message_text: messageText,
+            message_type: messageType,
+            message_status: 'sent',
+            raw_payload: evolutionResult,
+            media_url: mediaUrl,
+            media_mime_type: mediaMimeType,
+            media_caption: mediaCaption,
+            media_filename: mediaFilename,
+            quoted_message_id: quotedMessageId,
+            sent_at: new Date().toISOString(),
+            sent_by_user_id: user.id,
+            sent_via_instance_name: instanceName,
+          })
+          .select('id')
+          .single();
+        if (saveError) console.error('⚠️ Erro ao salvar mensagem:', saveError);
+
+        await supabase
+          .from('sigzap_conversations')
+          .update({
+            last_message_text: messageText,
+            last_message_at: new Date().toISOString(),
+            unread_count: 0,
+          })
+          .eq('id', conversationId);
+
+        console.log('✅ Mensagem enviada via helper anti-ban:', waMessageId);
+        return new Response(JSON.stringify({
+          success: true,
+          messageId: savedMessage?.id,
+          waMessageId,
+          evolutionResponse: evolutionResult,
+          delayApplicadoMs: helperResult.delayApplicadoMs,
+          retriesAttempted: helperResult.retriesAttempted,
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
     }
 
     console.log(`📡 Chamando Evolution API (${httpMethod}):`, evolutionEndpoint);
@@ -514,55 +578,9 @@ serve(async (req) => {
       });
     }
 
-    // For send action - save message to database
-    const waMessageId = evolutionResult.key?.id || evolutionResult.id || `sent_${Date.now()}`;
-    const messageText = message || mediaCaption || `[${mediaType || 'Mídia'}]`;
-    const messageType = mediaType || 'text';
-
-    const { data: savedMessage, error: saveError } = await supabase
-      .from('sigzap_messages')
-      .insert({
-        conversation_id: conversationId,
-        wa_message_id: waMessageId,
-        from_me: true,
-        message_text: messageText,
-        message_type: messageType,
-        message_status: 'sent',
-        raw_payload: evolutionResult,
-        media_url: mediaUrl,
-        media_mime_type: mediaMimeType,
-        media_caption: mediaCaption,
-        media_filename: mediaFilename,
-        quoted_message_id: quotedMessageId,
-        sent_at: new Date().toISOString(),
-        sent_by_user_id: user.id,
-        sent_via_instance_name: instanceName
-      })
-      .select('id')
-      .single();
-
-    if (saveError) {
-      console.error('⚠️ Erro ao salvar mensagem:', saveError);
-    }
-
-    // Atualizar conversa
-    await supabase
-      .from('sigzap_conversations')
-      .update({
-        last_message_text: messageText,
-        last_message_at: new Date().toISOString(),
-        unread_count: 0
-      })
-      .eq('id', conversationId);
-
-    console.log('✅ Mensagem enviada com sucesso:', waMessageId);
-
-    return new Response(JSON.stringify({ 
-      success: true, 
-      messageId: savedMessage?.id,
-      waMessageId,
-      evolutionResponse: evolutionResult
-    }), {
+    // Fallback: action desconhecida (não deveria chegar aqui se action é send/react/delete/edit)
+    return new Response(JSON.stringify({ error: 'Action não tratada' }), {
+      status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 

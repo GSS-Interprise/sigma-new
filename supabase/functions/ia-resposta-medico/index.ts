@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sendWhatsAppText } from "../_shared/evo-sender.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -410,14 +411,13 @@ Nome do médico: ${nome_medico || contato.nome || 'Não informado'}
   }
 });
 
-// Envia mensagem via Evolution API
+// Envia mensagem via Evolution API (helper anti-ban)
 async function enviarMensagemWhatsApp(
   supabase: any,
   instanceName: string,
   telefone: string,
   mensagem: string
 ) {
-  // Buscar config da Evolution API
   const { data: evolutionConfig } = await supabase
     .from('config_lista_items')
     .select('campo_nome, valor')
@@ -425,38 +425,41 @@ async function enviarMensagemWhatsApp(
 
   const evolutionUrl = evolutionConfig?.find((c: any) => c.campo_nome === 'evolution_api_url')?.valor || Deno.env.get('EVOLUTION_API_URL');
   const evolutionKey = evolutionConfig?.find((c: any) => c.campo_nome === 'evolution_api_key')?.valor || Deno.env.get('EVOLUTION_API_KEY');
-
   if (!evolutionUrl || !evolutionKey) {
-    console.error('[ia-resposta-medico] Evolution API não configurada');
     throw new Error('Evolution API não configurada');
   }
 
-  const number = telefone.replace(/\D/g, '');
-  const endpoint = `${evolutionUrl}/message/sendText/${instanceName}`;
-
-  console.log('[ia-resposta-medico] Enviando msg para:', number, 'via', instanceName);
-
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'apikey': evolutionKey,
-    },
-    body: JSON.stringify({
-      number,
-      text: mensagem,
-    }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('[ia-resposta-medico] Erro Evolution:', response.status, errorText);
-    throw new Error(`Erro ao enviar WhatsApp: ${response.status}`);
+  // Resolve chip_id pelo instance_name (helper precisa do uuid)
+  const { data: chipRow } = await supabase
+    .from('chips')
+    .select('id')
+    .eq('instance_name', instanceName)
+    .maybeSingle();
+  if (!chipRow?.id) {
+    throw new Error(`Chip não encontrado: ${instanceName}`);
   }
 
-  const result = await response.json();
-  console.log('[ia-resposta-medico] Mensagem enviada:', result?.key?.id || 'OK');
-  return result;
+  const number = telefone.replace(/\D/g, '');
+  console.log('[ia-resposta-medico] Enviando msg para:', number, 'via', instanceName);
+
+  const result = await sendWhatsAppText({
+    supabase,
+    evo: { url: evolutionUrl.replace(/\/+$/, ''), apiKey: evolutionKey },
+    chipId: chipRow.id,
+    instanceName,
+    toJid: number,
+    text: mensagem,
+    eventoOrigem: 'resposta_ia',
+    awaitDelay: true,
+  });
+
+  if (!result.sent) {
+    console.error('[ia-resposta-medico] Helper rejeitou envio:', result.reason);
+    throw new Error(`Erro ao enviar WhatsApp: ${result.reason}`);
+  }
+
+  console.log('[ia-resposta-medico] Mensagem enviada:', (result.evolutionResponse as any)?.key?.id || 'OK');
+  return result.evolutionResponse;
 }
 
 // Notifica responsável da campanha sobre transferência

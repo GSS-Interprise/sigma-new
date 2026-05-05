@@ -1,10 +1,16 @@
 // =====================================================================
-// Plano Aquecimento + Anti-Ban v1 — Sprint 1
-// Single point of send: TODA chamada `/message/sendText` deve passar por
-// sendWhatsAppText(). Internamente chama pre_send_check, aplica delay,
-// faz POST na Evolution, loga em chip_send_log e em caso de erro registra
-// em chip_health_event com classificação.
+// Plano Aquecimento + Anti-Ban v1 — Sprint 1 (refatorado em 2026-05-05)
+// Single point of send: TODA chamada Evolution `/message/*` deve passar
+// por sendWhatsAppText() ou sendWhatsAppMedia().
+//
+// Internamente:
+//  - Chama pre_send_check no Postgres (warm-up + rate limit + health + reply)
+//  - Aplica delay sugerido (gaussian)
+//  - POST na Evolution com retry exponencial pra erros transitórios (P5)
+//  - Loga em chip_send_log e em chip_health_event quando relevante
+//
 // Doc: .claude/plano-aquecimento-anti-ban-v1.md §3.3
+//      .claude/plano-melhorias-whatsapp-sigma-v1.md §1 P3 P5
 // =====================================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -22,25 +28,36 @@ export type EventoOrigem =
   | "handoff"
   | "healthcheck";
 
+export type ConteudoTipo = "text" | "audio" | "image" | "sticker" | "reaction" | "status" | "forward";
+
 export interface EvoConfig {
   url: string;
   apiKey: string;
 }
 
-export interface SendTextOpts {
+interface BaseOpts {
   supabase: SupabaseClient;
   evo: EvoConfig;
   chipId: string;
   instanceName: string;
-  toJid: string;        // pode ser "5511999999999" ou "5511999999999@s.whatsapp.net" — Evolution normaliza
-  text: string;
+  toJid: string;
   eventoOrigem: EventoOrigem;
-  // opcional: respeitar delay sugerido pelo pre_send_check.
-  // false = retorna { sent: false, retryInMs } pra caller agendar.
-  // true (default) = await sleep(delay_ms) antes do POST.
   awaitDelay?: boolean;
-  // opcional: timeout da requisição POST. Default 15s.
   timeoutMs?: number;
+  maxRetries?: number;        // default 3 pra códigos transitórios
+  quotedMessageId?: string;
+}
+
+export interface SendTextOpts extends BaseOpts {
+  text: string;
+}
+
+export interface SendMediaOpts extends BaseOpts {
+  mediaType: "image" | "video" | "audio" | "document";
+  mediaUrl: string;           // URL pública (não base64)
+  mediaMimeType?: string;
+  mediaCaption?: string;
+  mediaFilename?: string;
 }
 
 export interface SendResult {
@@ -51,12 +68,14 @@ export interface SendResult {
   preSendCheck?: any;
   retryInMs?: number;
   delayApplicadoMs?: number;
+  retriesAttempted?: number;
 }
 
 const DEFAULT_TIMEOUT = 15_000;
+const DEFAULT_MAX_RETRIES = 3;
+const TRANSIENT_CODES = new Set([429, 500, 502, 503, 504]);
 
 function hashContent(text: string): string {
-  // Hash simples FNV-1a 32 bits — não criptográfico, só pra detectar repetição
   let h = 0x811c9dc5;
   for (let i = 0; i < text.length; i++) {
     h ^= text.charCodeAt(i);
@@ -84,33 +103,35 @@ async function fetchWithTimeout(
 }
 
 /**
- * sendWhatsAppText — único caminho permitido pra mandar texto via Evolution.
- *
- * Fluxo:
- *  1. Hash do conteúdo
- *  2. Chama pre_send_check no Postgres
- *  3. Se denied → loga em chip_send_log com status apropriado, retorna { sent:false }
- *  4. Se allowed → opcionalmente aguarda delay_ms
- *  5. POST /message/sendText
- *  6. Em sucesso: loga em chip_send_log status='sent' + atualiza chip_state.last_send_at
- *  7. Em erro HTTP: classifica, loga em chip_send_log status='failed', registra
- *     chip_health_event correspondente
+ * Internal: executa pre_send_check + delay + POST com retry + log.
+ * Usado pelos wrappers públicos sendWhatsAppText e sendWhatsAppMedia.
  */
-export async function sendWhatsAppText(opts: SendTextOpts): Promise<SendResult> {
+async function executeEvolutionSend(args: {
+  base: BaseOpts;
+  conteudoTipo: ConteudoTipo;
+  conteudoHash: string;
+  conteudoSize: number;
+  endpoint: string;            // já com instance encoded
+  body: Record<string, unknown>;
+}): Promise<SendResult> {
   const {
-    supabase,
-    evo,
-    chipId,
-    instanceName,
-    toJid,
-    text,
-    eventoOrigem,
-    awaitDelay = true,
-    timeoutMs = DEFAULT_TIMEOUT,
-  } = opts;
-
-  const conteudoHash = hashContent(text);
-  const conteudoSize = text.length;
+    base: {
+      supabase,
+      evo,
+      chipId,
+      instanceName,
+      toJid,
+      eventoOrigem,
+      awaitDelay = true,
+      timeoutMs = DEFAULT_TIMEOUT,
+      maxRetries = DEFAULT_MAX_RETRIES,
+    },
+    conteudoTipo,
+    conteudoHash,
+    conteudoSize,
+    endpoint,
+    body,
+  } = args;
 
   // 1. pre_send_check
   const { data: checkData, error: checkErr } = await supabase.rpc("pre_send_check", {
@@ -129,11 +150,10 @@ export async function sendWhatsAppText(opts: SendTextOpts): Promise<SendResult> 
 
   // 2. Denied
   if (!check?.allow) {
-    // Log da tentativa bloqueada (status = rate_limited ou blocked)
     await supabase.from("chip_send_log").insert({
       chip_id: chipId,
       to_jid: toJid,
-      conteudo_tipo: "text",
+      conteudo_tipo: conteudoTipo,
       conteudo_hash: conteudoHash,
       conteudo_size: conteudoSize,
       evento_origem: eventoOrigem,
@@ -153,7 +173,6 @@ export async function sendWhatsAppText(opts: SendTextOpts): Promise<SendResult> 
   if (awaitDelay && delayMs > 0) {
     await sleep(delayMs);
   } else if (!awaitDelay && delayMs > 0) {
-    // Caller decide agendar — retorna info sem enviar
     return {
       sent: false,
       reason: "delay_pending",
@@ -162,129 +181,227 @@ export async function sendWhatsAppText(opts: SendTextOpts): Promise<SendResult> 
     };
   }
 
-  // 4. POST Evolution
-  const endpoint = `${evo.url}/message/sendText/${encodeURIComponent(instanceName)}`;
-  let resp: Response;
-  try {
-    resp = await fetchWithTimeout(
-      endpoint,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: evo.apiKey,
+  // 4. POST com retry exponencial pra erros transitórios
+  let lastErrCode: number | undefined;
+  let lastErrSlice: string | undefined;
+  let lastNetworkErr: any;
+  let evoBody: any = null;
+  let attempt = 0;
+
+  while (attempt <= maxRetries) {
+    let resp: Response;
+    try {
+      resp = await fetchWithTimeout(
+        endpoint,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", apikey: evo.apiKey },
+          body: JSON.stringify(body),
         },
-        body: JSON.stringify({ number: toJid, text }),
-      },
-      timeoutMs
-    );
-  } catch (e: any) {
-    // Erro de rede / timeout — registra como failed_send (score baixo)
+        timeoutMs
+      );
+    } catch (e: any) {
+      lastNetworkErr = e;
+      // Network error é tratado como transitório
+      if (attempt < maxRetries) {
+        const backoff = Math.min(8000, 1000 * Math.pow(2, attempt));
+        console.warn(`[evo-sender] network error attempt ${attempt + 1}/${maxRetries + 1}, retrying in ${backoff}ms:`, e?.message);
+        await sleep(backoff);
+        attempt++;
+        continue;
+      }
+      break;
+    }
+
+    if (resp.ok) {
+      try {
+        evoBody = await resp.json();
+      } catch { /* sem body json */ }
+      break; // sucesso
+    }
+
+    const errText = await resp.text();
+    lastErrCode = resp.status;
+    lastErrSlice = errText.slice(0, 500);
+
+    // Transitório → retry
+    if (TRANSIENT_CODES.has(resp.status) && attempt < maxRetries) {
+      const backoff = Math.min(8000, 1000 * Math.pow(2, attempt));
+      console.warn(`[evo-sender] HTTP ${resp.status} attempt ${attempt + 1}/${maxRetries + 1}, retrying in ${backoff}ms`);
+      await sleep(backoff);
+      attempt++;
+      continue;
+    }
+
+    // Fatal ou esgotou retries → break
+    break;
+  }
+
+  // 5a. Sucesso
+  if (evoBody !== null || (lastErrCode === undefined && !lastNetworkErr)) {
     await supabase.from("chip_send_log").insert({
       chip_id: chipId,
       to_jid: toJid,
-      conteudo_tipo: "text",
+      conteudo_tipo: conteudoTipo,
+      conteudo_hash: conteudoHash,
+      conteudo_size: conteudoSize,
+      evento_origem: eventoOrigem,
+      status: "sent",
+      evolution_response: evoBody,
+      delay_aplicado_ms: delayMs,
+      pre_send_check_result: check,
+    });
+    await supabase.rpc("chip_state_bump_send", {
+      p_chip_id: chipId,
+      p_success: true,
+    });
+    return {
+      sent: true,
+      evolutionResponse: evoBody,
+      preSendCheck: check,
+      delayApplicadoMs: delayMs,
+      retriesAttempted: attempt,
+    };
+  }
+
+  // 5b. Erro de rede (todos retries esgotados)
+  if (lastNetworkErr && lastErrCode === undefined) {
+    await supabase.from("chip_send_log").insert({
+      chip_id: chipId,
+      to_jid: toJid,
+      conteudo_tipo: conteudoTipo,
       conteudo_hash: conteudoHash,
       conteudo_size: conteudoSize,
       evento_origem: eventoOrigem,
       status: "failed",
-      evolution_error: e?.message || String(e),
+      evolution_error: lastNetworkErr?.message || String(lastNetworkErr),
       delay_aplicado_ms: delayMs,
       pre_send_check_result: check,
     });
     await supabase.from("chip_health_event").insert({
       chip_id: chipId,
       tipo: "failed_send",
-      detalhe: { error: e?.message, endpoint },
+      detalhe: { error: lastNetworkErr?.message, endpoint, retries: attempt },
       score_delta: 5,
     });
-    return { sent: false, reason: "network_error: " + (e?.message || e), preSendCheck: check };
-  }
-
-  if (!resp.ok) {
-    const errText = await resp.text();
-    const errCode = resp.status;
-    const errSlice = errText.slice(0, 500);
-
-    // Classifica HTTP error
-    let healthTipo: string = "failed_send";
-    let scoreDelta = 5;
-    if (errCode === 401) {
-      healthTipo = "disconnect_401";
-      scoreDelta = 60;
-    } else if (errCode === 403) {
-      healthTipo = "http_403";
-      scoreDelta = 40;
-    } else if (errCode === 429) {
-      healthTipo = "http_429";
-      scoreDelta = 25;
-    } else if (errCode === 463) {
-      healthTipo = "463_timelock";
-      scoreDelta = 35;
-    }
-
-    await supabase.from("chip_send_log").insert({
-      chip_id: chipId,
-      to_jid: toJid,
-      conteudo_tipo: "text",
-      conteudo_hash: conteudoHash,
-      conteudo_size: conteudoSize,
-      evento_origem: eventoOrigem,
-      status: "failed",
-      evolution_error: errSlice,
-      error_code: errCode,
-      delay_aplicado_ms: delayMs,
-      pre_send_check_result: check,
-    });
-    await supabase.from("chip_health_event").insert({
-      chip_id: chipId,
-      tipo: healthTipo,
-      detalhe: { http_status: errCode, body: errSlice, endpoint },
-      score_delta: scoreDelta,
-    });
-
     return {
       sent: false,
-      reason: `evolution_${errCode}`,
-      errorCode: errCode,
-      evolutionResponse: errSlice,
+      reason: "network_error: " + (lastNetworkErr?.message || lastNetworkErr),
       preSendCheck: check,
+      retriesAttempted: attempt,
     };
   }
 
-  // 5. Sucesso
-  let evoBody: any = null;
-  try {
-    evoBody = await resp.json();
-  } catch {
-    /* sem body json */
+  // 5c. Erro HTTP
+  let healthTipo: string = "failed_send";
+  let scoreDelta = 5;
+  if (lastErrCode === 401) {
+    healthTipo = "disconnect_401";
+    scoreDelta = 60;
+  } else if (lastErrCode === 403) {
+    healthTipo = "http_403";
+    scoreDelta = 40;
+  } else if (lastErrCode === 429) {
+    healthTipo = "http_429";
+    scoreDelta = 25;
+  } else if (lastErrCode === 463) {
+    healthTipo = "463_timelock";
+    scoreDelta = 35;
   }
 
   await supabase.from("chip_send_log").insert({
     chip_id: chipId,
     to_jid: toJid,
-    conteudo_tipo: "text",
+    conteudo_tipo: conteudoTipo,
     conteudo_hash: conteudoHash,
     conteudo_size: conteudoSize,
     evento_origem: eventoOrigem,
-    status: "sent",
-    evolution_response: evoBody,
+    status: "failed",
+    evolution_error: lastErrSlice,
+    error_code: lastErrCode,
     delay_aplicado_ms: delayMs,
     pre_send_check_result: check,
   });
-
-  // Atualiza chip_state.last_send_at + lifetime counter (atômico via RPC)
-  await supabase.rpc("chip_state_bump_send", {
-    p_chip_id: chipId,
-    p_success: true,
+  await supabase.from("chip_health_event").insert({
+    chip_id: chipId,
+    tipo: healthTipo,
+    detalhe: { http_status: lastErrCode, body: lastErrSlice, endpoint, retries: attempt },
+    score_delta: scoreDelta,
   });
 
   return {
-    sent: true,
-    evolutionResponse: evoBody,
+    sent: false,
+    reason: `evolution_${lastErrCode}`,
+    errorCode: lastErrCode,
+    evolutionResponse: lastErrSlice,
     preSendCheck: check,
-    delayApplicadoMs: delayMs,
+    retriesAttempted: attempt,
   };
+}
+
+/**
+ * sendWhatsAppText — único caminho permitido pra mandar texto via Evolution.
+ */
+export async function sendWhatsAppText(opts: SendTextOpts): Promise<SendResult> {
+  const { evo, instanceName, toJid, text, quotedMessageId } = opts;
+  const conteudoHash = hashContent(text);
+  const conteudoSize = text.length;
+  const endpoint = `${evo.url}/message/sendText/${encodeURIComponent(instanceName)}`;
+  const body: Record<string, unknown> = { number: toJid, text };
+  if (quotedMessageId) body.quoted = { key: { id: quotedMessageId } };
+
+  return executeEvolutionSend({
+    base: opts,
+    conteudoTipo: "text",
+    conteudoHash,
+    conteudoSize,
+    endpoint,
+    body,
+  });
+}
+
+/**
+ * sendWhatsAppMedia — caminho pra mandar imagem/vídeo/áudio/documento.
+ * Espera URL pública da mídia (não base64). Caller faz upload pra Storage antes.
+ */
+export async function sendWhatsAppMedia(opts: SendMediaOpts): Promise<SendResult> {
+  const {
+    evo,
+    instanceName,
+    toJid,
+    mediaType,
+    mediaUrl,
+    mediaMimeType,
+    mediaCaption,
+    mediaFilename,
+    quotedMessageId,
+  } = opts;
+
+  const hashSeed = mediaUrl + (mediaCaption || "") + (mediaFilename || "");
+  const conteudoHash = hashContent(hashSeed);
+  const conteudoSize = (mediaCaption?.length || 0) + (mediaFilename?.length || 0);
+  const endpoint = `${evo.url}/message/sendMedia/${encodeURIComponent(instanceName)}`;
+  const body: Record<string, unknown> = {
+    number: toJid,
+    mediatype: mediaType,
+    mimetype: mediaMimeType,
+    caption: mediaCaption || "",
+    fileName: mediaFilename,
+    media: mediaUrl,
+  };
+  if (quotedMessageId) body.quoted = { key: { id: quotedMessageId } };
+
+  // Mapeia tipo Evolution → conteudoTipo do log
+  const conteudoTipo: ConteudoTipo = mediaType === "video" ? "image" : (mediaType as ConteudoTipo);
+
+  return executeEvolutionSend({
+    base: opts,
+    conteudoTipo,
+    conteudoHash,
+    conteudoSize,
+    endpoint,
+    body,
+  });
 }
 
 /**
