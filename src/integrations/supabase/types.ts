@@ -1479,6 +1479,13 @@ export type Database = {
             foreignKeyName: "campanha_lead_touches_chip_usado_id_fkey"
             columns: ["chip_usado_id"]
             isOneToOne: false
+            referencedRelation: "vw_chip_health"
+            referencedColumns: ["chip_id"]
+          },
+          {
+            foreignKeyName: "campanha_lead_touches_chip_usado_id_fkey"
+            columns: ["chip_usado_id"]
+            isOneToOne: false
             referencedRelation: "vw_chip_performance_7d"
             referencedColumns: ["chip_id"]
           },
@@ -2317,6 +2324,13 @@ export type Database = {
             foreignKeyName: "campanhas_chip_fallback_id_fkey"
             columns: ["chip_fallback_id"]
             isOneToOne: false
+            referencedRelation: "vw_chip_health"
+            referencedColumns: ["chip_id"]
+          },
+          {
+            foreignKeyName: "campanhas_chip_fallback_id_fkey"
+            columns: ["chip_fallback_id"]
+            isOneToOne: false
             referencedRelation: "vw_chip_performance_7d"
             referencedColumns: ["chip_id"]
           },
@@ -2326,6 +2340,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "chips"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campanhas_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: false
+            referencedRelation: "vw_chip_health"
+            referencedColumns: ["chip_id"]
           },
           {
             foreignKeyName: "campanhas_chip_id_fkey"
@@ -2627,6 +2648,262 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      chip_health_event: {
+        Row: {
+          chip_id: string
+          detalhe: Json | null
+          id: number
+          occurred_at: string
+          score_delta: number
+          tipo: string
+        }
+        Insert: {
+          chip_id: string
+          detalhe?: Json | null
+          id?: number
+          occurred_at?: string
+          score_delta?: number
+          tipo: string
+        }
+        Update: {
+          chip_id?: string
+          detalhe?: Json | null
+          id?: number
+          occurred_at?: string
+          score_delta?: number
+          tipo?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chip_health_event_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: false
+            referencedRelation: "chips"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chip_health_event_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: false
+            referencedRelation: "vw_chip_health"
+            referencedColumns: ["chip_id"]
+          },
+          {
+            foreignKeyName: "chip_health_event_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: false
+            referencedRelation: "vw_chip_performance_7d"
+            referencedColumns: ["chip_id"]
+          },
+        ]
+      }
+      chip_receive_log: {
+        Row: {
+          chip_id: string
+          conteudo_hash: string | null
+          conteudo_tipo: string
+          from_jid: string
+          id: number
+          is_resposta_a_disparo: boolean | null
+          metadata: Json | null
+          origem: string | null
+          recebido_em: string
+        }
+        Insert: {
+          chip_id: string
+          conteudo_hash?: string | null
+          conteudo_tipo: string
+          from_jid: string
+          id?: number
+          is_resposta_a_disparo?: boolean | null
+          metadata?: Json | null
+          origem?: string | null
+          recebido_em?: string
+        }
+        Update: {
+          chip_id?: string
+          conteudo_hash?: string | null
+          conteudo_tipo?: string
+          from_jid?: string
+          id?: number
+          is_resposta_a_disparo?: boolean | null
+          metadata?: Json | null
+          origem?: string | null
+          recebido_em?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chip_receive_log_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: false
+            referencedRelation: "chips"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chip_receive_log_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: false
+            referencedRelation: "vw_chip_health"
+            referencedColumns: ["chip_id"]
+          },
+          {
+            foreignKeyName: "chip_receive_log_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: false
+            referencedRelation: "vw_chip_performance_7d"
+            referencedColumns: ["chip_id"]
+          },
+        ]
+      }
+      chip_send_log: {
+        Row: {
+          chip_id: string
+          conteudo_hash: string
+          conteudo_size: number | null
+          conteudo_tipo: string
+          delay_aplicado_ms: number | null
+          error_code: number | null
+          evento_origem: string
+          evolution_error: string | null
+          evolution_response: Json | null
+          id: number
+          pre_send_check_result: Json | null
+          sent_at: string
+          status: string
+          to_jid: string
+        }
+        Insert: {
+          chip_id: string
+          conteudo_hash: string
+          conteudo_size?: number | null
+          conteudo_tipo: string
+          delay_aplicado_ms?: number | null
+          error_code?: number | null
+          evento_origem: string
+          evolution_error?: string | null
+          evolution_response?: Json | null
+          id?: number
+          pre_send_check_result?: Json | null
+          sent_at?: string
+          status?: string
+          to_jid: string
+        }
+        Update: {
+          chip_id?: string
+          conteudo_hash?: string
+          conteudo_size?: number | null
+          conteudo_tipo?: string
+          delay_aplicado_ms?: number | null
+          error_code?: number | null
+          evento_origem?: string
+          evolution_error?: string | null
+          evolution_response?: Json | null
+          id?: number
+          pre_send_check_result?: Json | null
+          sent_at?: string
+          status?: string
+          to_jid?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chip_send_log_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: false
+            referencedRelation: "chips"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chip_send_log_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: false
+            referencedRelation: "vw_chip_health"
+            referencedColumns: ["chip_id"]
+          },
+          {
+            foreignKeyName: "chip_send_log_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: false
+            referencedRelation: "vw_chip_performance_7d"
+            referencedColumns: ["chip_id"]
+          },
+        ]
+      }
+      chip_state: {
+        Row: {
+          chip_id: string
+          created_at: string
+          fase: string
+          fase_inicio_at: string
+          health_score: number
+          last_receive_at: string | null
+          last_send_at: string | null
+          pause_reason: string | null
+          paused_until: string | null
+          reply_rate_24h: number | null
+          total_disparos_lifetime: number
+          total_falhas_lifetime: number
+          updated_at: string
+          warmup_start_date: string | null
+          warmup_target_days: number
+        }
+        Insert: {
+          chip_id: string
+          created_at?: string
+          fase?: string
+          fase_inicio_at?: string
+          health_score?: number
+          last_receive_at?: string | null
+          last_send_at?: string | null
+          pause_reason?: string | null
+          paused_until?: string | null
+          reply_rate_24h?: number | null
+          total_disparos_lifetime?: number
+          total_falhas_lifetime?: number
+          updated_at?: string
+          warmup_start_date?: string | null
+          warmup_target_days?: number
+        }
+        Update: {
+          chip_id?: string
+          created_at?: string
+          fase?: string
+          fase_inicio_at?: string
+          health_score?: number
+          last_receive_at?: string | null
+          last_send_at?: string | null
+          pause_reason?: string | null
+          paused_until?: string | null
+          reply_rate_24h?: number | null
+          total_disparos_lifetime?: number
+          total_falhas_lifetime?: number
+          updated_at?: string
+          warmup_start_date?: string | null
+          warmup_target_days?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chip_state_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: true
+            referencedRelation: "chips"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chip_state_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: true
+            referencedRelation: "vw_chip_health"
+            referencedColumns: ["chip_id"]
+          },
+          {
+            foreignKeyName: "chip_state_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: true
+            referencedRelation: "vw_chip_performance_7d"
+            referencedColumns: ["chip_id"]
+          },
+        ]
       }
       chips: {
         Row: {
@@ -4353,6 +4630,13 @@ export type Database = {
             foreignKeyName: "disparo_manual_envios_instance_id_fkey"
             columns: ["instance_id"]
             isOneToOne: false
+            referencedRelation: "vw_chip_health"
+            referencedColumns: ["chip_id"]
+          },
+          {
+            foreignKeyName: "disparo_manual_envios_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
             referencedRelation: "vw_chip_performance_7d"
             referencedColumns: ["chip_id"]
           },
@@ -4525,6 +4809,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "chips"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "disparos_campanhas_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: false
+            referencedRelation: "vw_chip_health"
+            referencedColumns: ["chip_id"]
           },
           {
             foreignKeyName: "disparos_campanhas_chip_id_fkey"
@@ -4792,6 +5083,13 @@ export type Database = {
             foreignKeyName: "disparos_log_chip_id_fkey"
             columns: ["chip_id"]
             isOneToOne: false
+            referencedRelation: "vw_chip_health"
+            referencedColumns: ["chip_id"]
+          },
+          {
+            foreignKeyName: "disparos_log_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: false
             referencedRelation: "vw_chip_performance_7d"
             referencedColumns: ["chip_id"]
           },
@@ -4875,6 +5173,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "chips"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "disparos_programados_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: false
+            referencedRelation: "vw_chip_health"
+            referencedColumns: ["chip_id"]
           },
           {
             foreignKeyName: "disparos_programados_chip_id_fkey"
@@ -6295,6 +6600,13 @@ export type Database = {
             isOneToOne: true
             referencedRelation: "chips"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "instance_proxy_settings_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: true
+            referencedRelation: "vw_chip_health"
+            referencedColumns: ["chip_id"]
           },
           {
             foreignKeyName: "instance_proxy_settings_instance_id_fkey"
@@ -11375,6 +11687,13 @@ export type Database = {
             foreignKeyName: "sigzap_instances_chip_id_fkey"
             columns: ["chip_id"]
             isOneToOne: false
+            referencedRelation: "vw_chip_health"
+            referencedColumns: ["chip_id"]
+          },
+          {
+            foreignKeyName: "sigzap_instances_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: false
             referencedRelation: "vw_chip_performance_7d"
             referencedColumns: ["chip_id"]
           },
@@ -12613,6 +12932,27 @@ export type Database = {
         }
         Relationships: []
       }
+      vw_chip_health: {
+        Row: {
+          chip_id: string | null
+          connection_state: string | null
+          failed_24h: number | null
+          fase: string | null
+          health_events_24h: number | null
+          health_score: number | null
+          instance_name: string | null
+          last_receive_at: string | null
+          last_send_at: string | null
+          nome: string | null
+          numero: string | null
+          paused_until: string | null
+          reply_rate_24h: number | null
+          sent_24h: number | null
+          warmup_day: number | null
+          warmup_start_date: string | null
+        }
+        Relationships: []
+      }
       vw_chip_performance_7d: {
         Row: {
           chip_id: string | null
@@ -12872,6 +13212,30 @@ export type Database = {
         Args: { _tarefa_id: string; _user_id: string }
         Returns: boolean
       }
+      chip_health_monitor_tick: { Args: never; Returns: Json }
+      chip_health_score: { Args: { p_chip_id: string }; Returns: number }
+      chip_register_disconnect: {
+        Args: { p_chip_id: string; p_code: number; p_reason?: string }
+        Returns: Json
+      }
+      chip_reply_rate_24h: { Args: { p_chip_id: string }; Returns: number }
+      chip_state_bump_receive: {
+        Args: { p_chip_id: string }
+        Returns: undefined
+      }
+      chip_state_bump_send: {
+        Args: { p_chip_id: string; p_success: boolean }
+        Returns: undefined
+      }
+      chip_warmup_limit: { Args: { p_chip_id: string }; Returns: number }
+      chip_window_count: {
+        Args: { p_chip_id: string; p_origem?: string; p_window: string }
+        Returns: number
+      }
+      classify_disconnect: {
+        Args: { p_code: number; p_reason?: string }
+        Returns: Json
+      }
       cleanup_expired_edit_locks: { Args: never; Returns: undefined }
       cleanup_whatsapp_rate_limit: { Args: never; Returns: undefined }
       clonar_proposta_para_lead: {
@@ -13057,6 +13421,15 @@ export type Database = {
       norm_phone: { Args: { p: string }; Returns: string }
       pode_encerrar_campanha: { Args: { _user_id: string }; Returns: boolean }
       popular_qualidade_metricas: { Args: { p_data?: string }; Returns: Json }
+      pre_send_check: {
+        Args: {
+          p_chip_id: string
+          p_conteudo_hash: string
+          p_evento_origem: string
+          p_to_jid: string
+        }
+        Returns: Json
+      }
       processar_disparos_agendados: { Args: never; Returns: undefined }
       prospeccao_aprovar: {
         Args: { p_campanha_lead_id: string }
