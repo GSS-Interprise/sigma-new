@@ -1,7 +1,7 @@
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
-import { Send, Plus } from "lucide-react";
+import { Send, Plus, Eye, EyeOff } from "lucide-react";
 import { useState } from "react";
 import { useDemandasMinhasEnviadas, useAtualizarStatusDemanda } from "@/hooks/useDemandas";
 import { TarefaCard } from "./TarefaCard";
@@ -15,6 +15,11 @@ export function ColunaEnviadas({ onTarefaClick }: Props) {
   const { data: tarefas = [], isLoading } = useDemandasMinhasEnviadas();
   const concluir = useAtualizarStatusDemanda();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [mostrarConcluidas, setMostrarConcluidas] = useState(false);
+
+  const abertas = tarefas.filter((t: any) => t.status !== "concluida");
+  const concluidas = tarefas.filter((t: any) => t.status === "concluida");
+  const visiveis = mostrarConcluidas ? tarefas : abertas;
 
   return (
     <Card className="flex flex-col h-full bg-gradient-to-b from-card to-card/60 backdrop-blur-sm">
@@ -23,9 +28,25 @@ export function ColunaEnviadas({ onTarefaClick }: Props) {
           <Send className="h-4 w-4 text-primary" />
           <h3 className="font-semibold text-sm">Enviadas por mim</h3>
           <span className="text-[11px] text-muted-foreground">
-            ({tarefas.length})
+            ({abertas.length})
           </span>
         </div>
+        <div className="flex items-center gap-1">
+        {concluidas.length > 0 && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 gap-1 px-2 text-[11px]"
+            onClick={() => setMostrarConcluidas((v) => !v)}
+          >
+            {mostrarConcluidas ? (
+              <EyeOff className="h-3.5 w-3.5" />
+            ) : (
+              <Eye className="h-3.5 w-3.5" />
+            )}
+            {mostrarConcluidas ? "Ocultar" : "Concluídas"} ({concluidas.length})
+          </Button>
+        )}
         <Button
           size="sm"
           className="h-7 gap-1 px-2 text-xs"
@@ -33,6 +54,7 @@ export function ColunaEnviadas({ onTarefaClick }: Props) {
         >
           <Plus className="h-3.5 w-3.5" /> Nova
         </Button>
+        </div>
       </div>
       <ScrollArea className="flex-1 p-2">
         <div className="space-y-2">
@@ -46,7 +68,7 @@ export function ColunaEnviadas({ onTarefaClick }: Props) {
               Você ainda não enviou demandas. Clique em <b>Nova</b> para começar.
             </div>
           )}
-          {tarefas.map((t) => (
+          {visiveis.map((t) => (
             <TarefaCard
               key={t.id}
               tarefa={t}
