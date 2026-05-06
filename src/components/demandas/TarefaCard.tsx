@@ -145,21 +145,44 @@ export function TarefaCard({ tarefa, onConcluir, onClick, compact }: Props) {
           )}
         </div>
         <div className="flex items-center gap-1">
-          {tarefa.responsavel_nome && (
-            <Avatar className="h-5 w-5">
-              <AvatarFallback className="text-[9px] bg-primary/15 text-primary">
-                {initials(tarefa.responsavel_nome)}
-              </AvatarFallback>
-            </Avatar>
-          )}
-          {(tarefa.mencionados ?? []).slice(0, 3).map((m) => (
+          {(() => {
+            const envolvidos = [
+              tarefa.criador_nome
+                ? { id: tarefa.created_by ?? "criador", nome: tarefa.criador_nome, destaque: true }
+                : null,
+              tarefa.responsavel_nome
+                ? { id: tarefa.responsavel_id ?? "responsavel", nome: tarefa.responsavel_nome, destaque: false }
+                : null,
+              ...(tarefa.mencionados ?? []).map((m) => ({ id: m.user_id, nome: m.nome, destaque: false })),
+            ].filter((p): p is { id: string; nome?: string | null; destaque: boolean } => !!p);
+            const unicos = Array.from(new Map(envolvidos.map((p) => [p.id, p])).values());
+            return unicos.slice(0, 4).map((p) => (
+              <Avatar key={p.id} className="h-5 w-5 -ml-1.5 first:ml-0 ring-2 ring-card" title={p.nome ?? undefined}>
+                <AvatarFallback className={cn("text-[9px] bg-accent/40", p.destaque && "bg-primary/15 text-primary")}>
+                  {initials(p.nome)}
+                </AvatarFallback>
+              </Avatar>
+            ));
+          })()}
+          {(() => {
+            const envolvidos = [
+              tarefa.created_by,
+              tarefa.responsavel_id,
+              ...(tarefa.mencionados ?? []).map((m) => m.user_id),
+            ].filter((id): id is string => !!id);
+            const total = new Set(envolvidos).size;
+            return total > 4 ? (
+              <span className="text-[10px] text-muted-foreground ml-1">+{total - 4}</span>
+            ) : null;
+          })()}
+          {false && (tarefa.mencionados ?? []).slice(0, 3).map((m) => (
             <Avatar key={m.user_id} className="h-5 w-5 -ml-1.5 ring-2 ring-card">
               <AvatarFallback className="text-[9px] bg-accent/40">
                 {initials(m.nome)}
               </AvatarFallback>
             </Avatar>
           ))}
-          {(tarefa.mencionados?.length ?? 0) > 3 && (
+          {false && (tarefa.mencionados?.length ?? 0) > 3 && (
             <span className="text-[10px] text-muted-foreground ml-1">
               +{(tarefa.mencionados!.length - 3)}
             </span>
