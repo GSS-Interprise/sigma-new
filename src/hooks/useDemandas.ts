@@ -352,6 +352,27 @@ export function useCriarDemanda() {
             links: input.comentario_links ?? [],
           },
         } as any);
+        // Notificar pessoas mencionadas no comentário inicial (exceto o autor)
+        try {
+          const destCom = (input.comentario_mencionados ?? []).filter(
+            (uid) => uid && uid !== user.id,
+          );
+          if (destCom.length) {
+            const link = `/demandas?tarefa=${tarefaId}`;
+            await supabase.from("system_notifications").insert(
+              destCom.map((uid) => ({
+                user_id: uid,
+                tipo: "demanda_comentario_mencao",
+                titulo: `Você foi marcado em um comentário: ${input.titulo}`,
+                mensagem: comentarioInicial.slice(0, 160),
+                link,
+                referencia_id: tarefaId,
+              })),
+            );
+          }
+        } catch (e) {
+          console.error("[demandas] erro ao notificar menções do comentário inicial", e);
+        }
       }
       return tarefaId;
     },
@@ -512,6 +533,32 @@ export function useAdicionarComentarioDemanda() {
         resumo: "Novo comentário",
         detalhes: { mencionados: input.mencionados ?? [], links: input.links ?? [] },
       } as any);
+      // Notificar pessoas mencionadas no comentário (exceto o autor)
+      try {
+        const destCom = (input.mencionados ?? []).filter(
+          (uid) => uid && uid !== user.id,
+        );
+        if (destCom.length) {
+          const { data: tarefa } = await supabase
+            .from("worklist_tarefas")
+            .select("titulo")
+            .eq("id", input.tarefaId)
+            .maybeSingle();
+          const link = `/demandas?tarefa=${input.tarefaId}`;
+          await supabase.from("system_notifications").insert(
+            destCom.map((uid) => ({
+              user_id: uid,
+              tipo: "demanda_comentario_mencao",
+              titulo: `Você foi marcado em um comentário: ${tarefa?.titulo ?? "demanda"}`,
+              mensagem: conteudo.slice(0, 160),
+              link,
+              referencia_id: input.tarefaId,
+            })),
+          );
+        }
+      } catch (e) {
+        console.error("[demandas] erro ao notificar menções do comentário", e);
+      }
     },
     onSuccess: (_d, vars) => {
       qc.invalidateQueries({ queryKey: ["demandas", "comentarios", vars.tarefaId] });
