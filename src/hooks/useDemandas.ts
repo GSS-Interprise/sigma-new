@@ -297,6 +297,27 @@ export function useCriarDemanda() {
           .insert(rows);
         if (mErr) throw mErr;
       }
+      // Notificações para responsável + mencionados (exceto o próprio criador)
+      try {
+        const destinatarios = new Set<string>();
+        if (input.responsavel_id) destinatarios.add(input.responsavel_id);
+        (input.mencionados ?? []).forEach((uid) => destinatarios.add(uid));
+        destinatarios.delete(user.id);
+        if (destinatarios.size) {
+          const link = `/demandas?tarefa=${tarefaId}`;
+          const notifs = Array.from(destinatarios).map((uid) => ({
+            user_id: uid,
+            tipo: "demanda_nova",
+            titulo: `Nova demanda: ${input.titulo}`,
+            mensagem: input.descricao?.slice(0, 160) ?? "Você foi marcado em uma demanda",
+            link,
+            referencia_id: tarefaId,
+          }));
+          await supabase.from("system_notifications").insert(notifs);
+        }
+      } catch (e) {
+        console.error("[demandas] erro ao notificar mencionados", e);
+      }
       await supabase.from("worklist_tarefa_atividades" as any).insert({
         tarefa_id: tarefaId,
         user_id: user.id,
