@@ -46,3 +46,14 @@ verify_jwt = false
 # atualiza chip_state/chip_health_event. Plano Anti-Ban v1 Sprint 1.
 [functions.chip-disconnect-classifier]
 verify_jwt = false
+
+# Sprint 2 antiban — persona-generator gera persona BR aleatória pra novo chip.
+# verify_jwt=false pra ser invocada internamente pelo chip-bootstrap.
+[functions.persona-generator]
+verify_jwt = false
+
+# Sprint 2 antiban — chip-bootstrap orquestra criação completa:
+# Evolution instance + proxy Bright Data + webhook + chip_state + persona.
+# Chamada pela UI quando admin cria chip novo.
+[functions.chip-bootstrap]
+verify_jwt = false
