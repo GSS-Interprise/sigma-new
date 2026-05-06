@@ -3,6 +3,17 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
   Calendar,
   Paperclip,
   Users,
@@ -12,6 +23,7 @@ import {
   MessageCircle,
   CheckCircle2,
   Clock,
+  RotateCcw,
 } from "lucide-react";
 import { format, isPast } from "date-fns";
 import { parseLocalDate } from "@/lib/dateUtils";
@@ -19,10 +31,12 @@ import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { URGENCIA_CLASS, URGENCIA_LABEL, TIPO_LABEL } from "@/lib/setoresAccess";
 import type { DemandaTarefa } from "@/hooks/useDemandas";
+import { usePermissions } from "@/hooks/usePermissions";
 
 interface Props {
   tarefa: DemandaTarefa;
   onConcluir?: (id: string) => void;
+  onReabrir?: (id: string) => void;
   onClick?: (t: DemandaTarefa) => void;
   compact?: boolean;
 }
@@ -38,7 +52,8 @@ function initials(name?: string | null) {
     .toUpperCase();
 }
 
-export function TarefaCard({ tarefa, onConcluir, onClick, compact }: Props) {
+export function TarefaCard({ tarefa, onConcluir, onReabrir, onClick, compact }: Props) {
+  const { isAdmin } = usePermissions();
   const atrasada =
     tarefa.data_limite &&
     tarefa.status !== "concluida" &&
@@ -183,17 +198,47 @@ export function TarefaCard({ tarefa, onConcluir, onClick, compact }: Props) {
       </div>
 
       {onConcluir && tarefa.status !== "concluida" && (
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="absolute bottom-1 right-1 h-6 w-6 p-0 opacity-0 group-hover:opacity-100 bg-card/80 hover:bg-card"
+              onClick={(e) => e.stopPropagation()}
+              title="Marcar como concluída"
+            >
+              <CheckCircle2 className="h-4 w-4 text-green-600" />
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Marcar como concluída?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Esta tarefa será marcada como concluída. Apenas administradores poderão reabri-la depois.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction onClick={() => onConcluir(tarefa.id)}>
+                Concluir
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
+
+      {onReabrir && tarefa.status === "concluida" && isAdmin && (
         <Button
           size="sm"
           variant="ghost"
-          className="absolute top-1 right-1 h-6 w-6 p-0 opacity-0 group-hover:opacity-100"
+          className="absolute bottom-1 right-1 h-6 w-6 p-0 opacity-0 group-hover:opacity-100 bg-card/80 hover:bg-card"
           onClick={(e) => {
             e.stopPropagation();
-            onConcluir(tarefa.id);
+            onReabrir(tarefa.id);
           }}
-          title="Marcar como concluída"
+          title="Reabrir tarefa (admin)"
         >
-          <CheckCircle2 className="h-4 w-4 text-green-600" />
+          <RotateCcw className="h-4 w-4 text-primary" />
         </Button>
       )}
     </Card>
