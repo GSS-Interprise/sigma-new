@@ -146,16 +146,19 @@ export function TarefaCard({ tarefa, onConcluir, onClick, compact }: Props) {
         </div>
         <div className="flex items-center gap-1">
           {(() => {
-            const envolvidos = [
+            const envolvidos: Array<{ id: string; nome: string | null; destaque: boolean } | null> = [
               tarefa.criador_nome
                 ? { id: tarefa.created_by ?? "criador", nome: tarefa.criador_nome, destaque: true }
                 : null,
               tarefa.responsavel_nome
                 ? { id: tarefa.responsavel_id ?? "responsavel", nome: tarefa.responsavel_nome, destaque: false }
                 : null,
-              ...(tarefa.mencionados ?? []).map((m) => ({ id: m.user_id, nome: m.nome, destaque: false })),
-            ].filter((p): p is { id: string; nome?: string | null; destaque: boolean } => !!p);
-            const unicos = Array.from(new Map(envolvidos.map((p) => [p.id, p])).values());
+              ...(tarefa.mencionados ?? []).map((m) => ({ id: m.user_id, nome: m.nome ?? null, destaque: false })),
+            ];
+            const envolvidosValidos = envolvidos.filter(
+              (p): p is { id: string; nome: string | null; destaque: boolean } => !!p,
+            );
+            const unicos = Array.from(new Map(envolvidosValidos.map((p) => [p.id, p])).values());
             return unicos.slice(0, 4).map((p) => (
               <Avatar key={p.id} className="h-5 w-5 -ml-1.5 first:ml-0 ring-2 ring-card" title={p.nome ?? undefined}>
                 <AvatarFallback className={cn("text-[9px] bg-accent/40", p.destaque && "bg-primary/15 text-primary")}>
