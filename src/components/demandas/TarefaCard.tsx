@@ -46,7 +46,7 @@ export function TarefaCard({ tarefa, onConcluir, onClick, compact }: Props) {
   const urgClass =
     URGENCIA_CLASS[tarefa.urgencia] ?? URGENCIA_CLASS.media;
 
-  const refs: { icon: any; label: string }[] = [];
+  const refs: { icon: typeof Gavel; label: string }[] = [];
   if (tarefa.licitacao_id) refs.push({ icon: Gavel, label: "Licitação" });
   if (tarefa.contrato_id) refs.push({ icon: FileText, label: "Contrato" });
   if (tarefa.lead_id) refs.push({ icon: UserSearch, label: "Lead" });
@@ -178,18 +178,6 @@ export function TarefaCard({ tarefa, onConcluir, onClick, compact }: Props) {
               <span className="text-[10px] text-muted-foreground ml-1">+{total - 4}</span>
             ) : null;
           })()}
-          {false && (tarefa.mencionados ?? []).slice(0, 3).map((m) => (
-            <Avatar key={m.user_id} className="h-5 w-5 -ml-1.5 ring-2 ring-card">
-              <AvatarFallback className="text-[9px] bg-accent/40">
-                {initials(m.nome)}
-              </AvatarFallback>
-            </Avatar>
-          ))}
-          {false && (tarefa.mencionados?.length ?? 0) > 3 && (
-            <span className="text-[10px] text-muted-foreground ml-1">
-              +{(tarefa.mencionados!.length - 3)}
-            </span>
-          )}
         </div>
       </div>
 
