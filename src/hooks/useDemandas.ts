@@ -297,6 +297,27 @@ export function useCriarDemanda() {
           .insert(rows);
         if (mErr) throw mErr;
       }
+      // Notificações para responsável + mencionados (exceto o próprio criador)
+      try {
+        const destinatarios = new Set<string>();
+        if (input.responsavel_id) destinatarios.add(input.responsavel_id);
+        (input.mencionados ?? []).forEach((uid) => destinatarios.add(uid));
+        destinatarios.delete(user.id);
+        if (destinatarios.size) {
+          const link = `/demandas?tarefa=${tarefaId}`;
+          const notifs = Array.from(destinatarios).map((uid) => ({
+            user_id: uid,
+            tipo: "demanda_nova",
+            titulo: `Nova demanda: ${input.titulo}`,
+            mensagem: input.descricao?.slice(0, 160) ?? "Você foi marcado em uma demanda",
+            link,
+            referencia_id: tarefaId,
+          }));
+          await supabase.from("system_notifications").insert(notifs);
+        }
+      } catch (e) {
+        console.error("[demandas] erro ao notificar mencionados", e);
+      }
       await supabase.from("worklist_tarefa_atividades" as any).insert({
         tarefa_id: tarefaId,
         user_id: user.id,
@@ -395,6 +416,12 @@ export function useAtualizarDemanda() {
       if (error) throw error;
 
       if (input.mencionados !== undefined) {
+        // Buscar mencionados atuais para detectar novos
+        const { data: existentes } = await supabase
+          .from("worklist_tarefa_mencionados")
+          .select("user_id")
+          .eq("tarefa_id", input.id);
+        const existentesSet = new Set((existentes ?? []).map((r: any) => r.user_id));
         await supabase
           .from("worklist_tarefa_mencionados")
           .delete()
@@ -408,6 +435,32 @@ export function useAtualizarDemanda() {
             .from("worklist_tarefa_mencionados")
             .insert(rows);
           if (mErr) throw mErr;
+          // Notificar apenas os novos
+          const novos = input.mencionados.filter(
+            (uid) => !existentesSet.has(uid) && uid !== user.id,
+          );
+          if (novos.length) {
+            try {
+              const { data: tarefa } = await supabase
+                .from("worklist_tarefas")
+                .select("titulo")
+                .eq("id", input.id)
+                .maybeSingle();
+              const link = `/demandas?tarefa=${input.id}`;
+              await supabase.from("system_notifications").insert(
+                novos.map((uid) => ({
+                  user_id: uid,
+                  tipo: "demanda_mencao",
+                  titulo: `Você foi marcado: ${tarefa?.titulo ?? "demanda"}`,
+                  mensagem: "Você foi adicionado a uma demanda",
+                  link,
+                  referencia_id: input.id,
+                })),
+              );
+            } catch (e) {
+              console.error("[demandas] erro ao notificar novos mencionados", e);
+            }
+          }
         }
       }
 
