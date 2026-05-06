@@ -115,6 +115,7 @@ export function PessoasCombobox({
   const toggle = (id: string) => {
     if (value.includes(id)) onChange(value.filter((x) => x !== id));
     else onChange([...value, id]);
+    setSearch("");
   };
 
   return (
