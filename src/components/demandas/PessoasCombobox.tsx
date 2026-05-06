@@ -78,9 +78,30 @@ export function PessoasCombobox({
     },
   });
 
+  // Buscar profiles dos IDs já marcados que não estão na lista (ex.: sem permissão no módulo, ou self)
+  const missingIds = useMemo(
+    () => value.filter((id) => !(pessoas as any[]).some((p) => p.id === id)),
+    [value, pessoas],
+  );
+  const { data: extraPessoas = [] } = useQuery({
+    queryKey: ["pessoas-combobox-extra", missingIds.sort().join(",")],
+    queryFn: async () => {
+      if (!missingIds.length) return [];
+      const { data } = await supabase
+        .from("profiles")
+        .select("id, nome_completo, setor_id")
+        .in("id", missingIds);
+      return data || [];
+    },
+    enabled: missingIds.length > 0,
+  });
+
   const byId = useMemo(
-    () => new Map((pessoas as any[]).map((p) => [p.id, p])),
-    [pessoas],
+    () =>
+      new Map(
+        [...(pessoas as any[]), ...(extraPessoas as any[])].map((p) => [p.id, p]),
+      ),
+    [pessoas, extraPessoas],
   );
 
   const filtered = useMemo(() => {
