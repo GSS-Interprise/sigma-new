@@ -1,6 +1,8 @@
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Inbox } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Inbox, Eye, EyeOff } from "lucide-react";
+import { useState } from "react";
 import { useDemandasParaMim, useAtualizarStatusDemanda } from "@/hooks/useDemandas";
 import { TarefaCard } from "./TarefaCard";
 
@@ -11,18 +13,36 @@ interface Props {
 export function ColunaParaMim({ onTarefaClick }: Props) {
   const { data: tarefas = [], isLoading } = useDemandasParaMim();
   const concluir = useAtualizarStatusDemanda();
+  const [mostrarConcluidas, setMostrarConcluidas] = useState(false);
 
   const abertas = tarefas.filter((t) => t.status !== "concluida");
   const concluidas = tarefas.filter((t) => t.status === "concluida");
 
   return (
     <Card className="flex flex-col h-full bg-gradient-to-b from-card to-card/60 backdrop-blur-sm">
-      <div className="p-3 border-b flex items-center gap-2">
-        <Inbox className="h-4 w-4 text-primary" />
-        <h3 className="font-semibold text-sm">Para mim</h3>
-        <span className="text-[11px] text-muted-foreground">
-          ({abertas.length} aberta{abertas.length === 1 ? "" : "s"})
-        </span>
+      <div className="p-3 border-b flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Inbox className="h-4 w-4 text-primary" />
+          <h3 className="font-semibold text-sm">Para mim</h3>
+          <span className="text-[11px] text-muted-foreground">
+            ({abertas.length} aberta{abertas.length === 1 ? "" : "s"})
+          </span>
+        </div>
+        {concluidas.length > 0 && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 gap-1 px-2 text-[11px]"
+            onClick={() => setMostrarConcluidas((v) => !v)}
+          >
+            {mostrarConcluidas ? (
+              <EyeOff className="h-3.5 w-3.5" />
+            ) : (
+              <Eye className="h-3.5 w-3.5" />
+            )}
+            {mostrarConcluidas ? "Ocultar" : "Concluídas"} ({concluidas.length})
+          </Button>
+        )}
       </div>
       <ScrollArea className="flex-1 p-2">
         <div className="space-y-2">
@@ -44,7 +64,7 @@ export function ColunaParaMim({ onTarefaClick }: Props) {
               onClick={() => onTarefaClick?.(t.id)}
             />
           ))}
-          {concluidas.length > 0 && (
+          {mostrarConcluidas && concluidas.length > 0 && (
             <div className="pt-3 mt-3 border-t">
               <p className="text-[11px] text-muted-foreground mb-2 px-1">
                 Concluídas ({concluidas.length})
