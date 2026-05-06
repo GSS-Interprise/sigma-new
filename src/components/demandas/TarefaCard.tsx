@@ -14,6 +14,7 @@ import {
   Clock,
 } from "lucide-react";
 import { format, isPast } from "date-fns";
+import { parseLocalDate } from "@/lib/dateUtils";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { URGENCIA_CLASS, URGENCIA_LABEL, TIPO_LABEL } from "@/lib/setoresAccess";
