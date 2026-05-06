@@ -215,7 +215,7 @@ serve(async (req) => {
       .from("chips")
       .select(`
         id, instance_name, numero, connection_state,
-        state:chip_state!chip_state_chip_id_fkey(fase, warmup_start_date, paused_until, health_score),
+        state:chip_state!chip_state_chip_id_fkey(fase, warmup_start_date, paused_until, health_score, aquecedor_ativo),
         persona:chip_persona!chip_persona_chip_id_fkey(*)
       `)
       .eq("connection_state", "open");
@@ -228,6 +228,8 @@ serve(async (req) => {
         const s = Array.isArray(c.state) ? c.state[0] : c.state;
         const p = Array.isArray(c.persona) ? c.persona[0] : c.persona;
         if (!s || !p) return false;
+        // Opt-in obrigatório: chips antigos têm aquecedor_ativo=false e ficam intactos
+        if (!s.aquecedor_ativo) return false;
         if (!["aquecimento", "pronto", "producao"].includes(s.fase)) return false;
         if (s.health_score >= 60) return false;
         if (s.paused_until && new Date(s.paused_until) > new Date()) return false;

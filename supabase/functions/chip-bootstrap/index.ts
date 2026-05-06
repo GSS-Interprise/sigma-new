@@ -202,12 +202,15 @@ serve(async (req) => {
       }
     }
 
-    // ── 7. Cria chip_state em fase='setup' ──
+    // ── 7. Cria chip_state em fase='setup' com aquecedor ATIVO ──
+    // aquecedor_ativo=true marca chip como elegível pro aquecedor automatizado
+    // (chips antigos em produção têm aquecedor_ativo=false, ficam intactos).
     await supabase.from("chip_state").insert({
       chip_id: chipId,
       fase: "setup",
       warmup_start_date: null, // só seta quando chip parear (open)
       health_score: 0,
+      aquecedor_ativo: true,
     }).then(() => null).catch(async () => {
       // Já existe? upsert manual
       await supabase.from("chip_state").update({
@@ -215,6 +218,7 @@ serve(async (req) => {
         warmup_start_date: null,
         paused_until: null,
         pause_reason: null,
+        aquecedor_ativo: true,
       }).eq("chip_id", chipId);
     });
 
