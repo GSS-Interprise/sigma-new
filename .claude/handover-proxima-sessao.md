@@ -1,6 +1,60 @@
 # Handover — Próxima Sessão Claude Code
 **Criado:** 2026-04-23
+**Atualizado:** 2026-05-05 (sessão Bright Data + Sprint 2 antiban + P9 WhatsApp)
 **Contexto:** cold-start. Esta sessão termina aqui. Próxima sessão lê este doc primeiro.
+
+---
+
+## 🆕 Update 2026-05-05 (LEIA PRIMEIRO)
+
+**Estado pós-sessão 05/05:**
+
+**Trilhas em paralelo (ambas ativas):**
+1. **Anti-Ban (Plano `.claude/plano-aquecimento-anti-ban-v1.md`)** — Sprints 1-2 mergeadas
+2. **Melhorias WhatsApp (Plano `.claude/plano-melhorias-whatsapp-sigma-v1.md`)** — Sprint 1 + P9 mergeadas
+
+**Commits relevantes em `main`:**
+- `17954c0` Sprint 1 antiban (foundation pre_send_check + helper único)
+- `cc070e3` Sprint 1 WhatsApp (3 edges migradas pro helper, retry exponencial, ChatView órfã deletada)
+- `f14e5be` Sprint 2 antiban camada 1 (chip-bootstrap automatizado)
+- `c80ce7c` Sprint 2 antiban camada 2 (aquecedor-tick + graduator + pair-rotator)
+- `b498c14` P9 WhatsApp (UI legada `/sigzap` deletada, redirect)
+- `a2558c9` Aquecedor opt-in flag (chips antigos intactos)
+
+**Proxy ativo:**
+- **Bright Data ISP Compartilhado, 20 IPs Brasil** (zone `isp_proxy1`, customer `hl_10d829af`, $1.60/IP × 20 = ~$32/mês)
+- Endpoint: `brd.superproxy.io:33335`
+- Username: `brd-customer-hl_10d829af-zone-isp_proxy1-country-br-session-{chip_id}`
+- Senha: `BRIGHT_DATA_PROXY_PASSWORD` (Supabase Secrets) + Bitwarden item `Bright Data — ISP BR (GSS)`
+- Configs não-sensíveis: `config_lista_items` (proxy_provider/host/port/zone/customer_id/country)
+- Webshare ainda contratado ($28.95/mo) mas inútil (US/EU). **Raul precisa cancelar manualmente.**
+
+**Aquecedor automatizado rodando (3 crons agendados):**
+- `chip-aquecimento-graduator-hourly`  `5 * * * *`  (move setup→aquecimento→pronto)
+- `chip-pair-rotator-daily`            `0 3 * * *`  (re-sorteia pares power-law)
+- `aquecedor-tick-2min`                `*/2 * * * *` (HTTP POST → edge `aquecedor-tick`)
+
+**Opt-in obrigatório:** chip só entra no aquecedor se `chip_state.aquecedor_ativo=true`. Os 46 chips antigos têm `false` (intactos). `chip-bootstrap` seta `true` automaticamente em chips novos.
+
+**Pra Ewerton subir chips novos:**
+1. Cadastrar via UI ou chamar `chip-bootstrap` com `{nome: "X"}`
+2. Em 2s: instância Evolution + proxy BR + persona BR aleatória + webhook + QR base64
+3. Ewerton escaneia QR no celular do número
+4. Após 5min connection_state=open, cron graduator move pra fase=aquecimento
+5. Cron pair-rotator (próxima madrugada) cria pares power-law
+6. Cron aquecedor-tick (2min) gera mensagens orgânicas via OpenAI gpt-4o-mini
+7. Após 7d, cron promove pra fase=pronto. Ativa em campanha.
+
+**Pendências críticas pra próxima sessão:**
+- [ ] Confirmar chips do Ewerton entraram no fluxo (query: `SELECT nome, fase FROM vw_chip_health WHERE EXISTS (SELECT 1 FROM chip_state WHERE chip_state.chip_id=chips.id AND aquecedor_ativo=true)`)
+- [ ] Sprint 2 WhatsApp (P2 typing robusto + P6 read receipts + P8 dashboard saúde) — ~10h
+- [ ] Sprint 3 antiban (TTS áudio + stickers + circadian fino) — ~36h, não bloqueante
+- [ ] Cancelar Webshare ($28.95/mo) — Raul faz manual
+- [ ] JIDs Bruna/Ramone/Ewerton pra `isca_externa` (não bloqueia)
+- [ ] Bug task #20 handoff LEAD QUENTE pra Bruna
+- [ ] Vault `Decisoes/08-Page-Sigzap-Legacy-Decommission.md` (sugestão, não urgente)
+
+**Detalhes plenos no Vault:** `C:\Users\rauls\cofre-obsidian\Projetos\SigmaGSS.md` entrada 2026-05-05.
 
 ---
 
@@ -10,17 +64,19 @@ Raul Seixas (Pulse ID) contratado pela **GSS Saúde** (agência de plantões mé
 
 **Contrato:** 4 blocos (Disparo, Pipeline Prospecção, Perfil Médico, Inteligência Campanha). 23/03–20/06/2026.
 
-**Hoje:** Bloco 2 tecnicamente fechado, Bloco 3 antecipado em 55%, Bloco 4 não iniciado.
+**Hoje:** Bloco 2 tecnicamente fechado, Bloco 3 antecipado em 55%, Bloco 4 não iniciado. Plano Anti-Ban v1 + Plano Melhorias WhatsApp em execução paralela.
 
 **Stakeholders:** Ramone (diretora), Maikon (gestor, cirurgião cardiovascular), Bruna (prospecção operacional), Ewerton (dev GSS — escopo reduzido).
 
 ---
 
-## 1. Primeiras 3 coisas a ler (ordem)
+## 1. Primeiras 5 coisas a ler (ordem)
 
-1. `.claude/plano-master-prospeccao.md` — plano mestre v2 canônico (4 trilhas)
-2. `plan/relatorios/status-projeto-geral.md` — status com percentuais
-3. `memory/project_bloco2_estado_atual.md` — estado detalhado Bloco 2
+1. **Esta seção "Update 2026-05-05" acima** — estado pós-sessão Sprint 2 antiban
+2. `.claude/plano-aquecimento-anti-ban-v1.md` — plano antiban completo
+3. `.claude/plano-melhorias-whatsapp-sigma-v1.md` — plano WhatsApp (P1-P9)
+4. `.claude/plano-master-prospeccao.md` — plano mestre v2 canônico (4 trilhas)
+5. `plan/relatorios/status-projeto-geral.md` — status com percentuais
 
 Se a pergunta do Raul for operacional (não-codificação), ler primeiro `plan/relatorios/sessao-19-23-abril-resumo.md` pra contexto recente.
 
@@ -42,14 +98,16 @@ Tudo em `C:\Users\rauls\.claude\projects\C--Users-rauls-sigma-new\memory\`:
 
 ## 3. Credenciais e acessos (em memory)
 
-- Supabase: `sbp_8d4054320a47568a3dff37053938bb5e7e269d94` (access token)
-- Service role JWT (em config): `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSI...`
+- **Supabase Management API:** `$SBP_TOKEN_FROM_BITWARDEN` (atualizado 24/04 — anterior expirou). **Sempre verificar `reference_supabase_token.md`** antes de usar — pode rotacionar.
+- **Service role JWT** (runtime das edges + pg_cron, válido até ~2036): `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSI...DyapBTSccnh-0I7am5EP-VsqguKmr0VP95FeGjbXitI`
 - Project: `zupsbgtoeoixfokzkjro.supabase.co`
 - Evolution API: `https://disparador-evolution-api.r0pfyf.easypanel.host/` + key `Gss-Wpp-Evolution-@2025-S3guR0`
 - N8N: `https://disparador-n8n.r0pfyf.easypanel.host/`
 - VPS: `ssh root@147.93.71.48` (chave rauls@Alfred configurada)
 - OpenAI: configurada como env var `OPENAI_API_KEY` nas edge functions
 - Resend: key temporária (do Raul) salva em `config_lista_items.resend_api_key`. Domínio GSS ainda não verificado — from é sandbox `onboarding@resend.dev`.
+
+**Importante:** se Management API der 401, é porque o `sbp_` rotacionou. Pegar novo em `reference_supabase_token.md` ou pedir pro Raul gerar em `supabase.com/dashboard/account/tokens`. O **service_role JWT é separado** e continua funcionando — só o sbp_ rotaciona.
 
 ---
 
@@ -211,7 +269,7 @@ Trilhas completas (não precisa mexer):
 - ✅ D — Urgência + IA refinada parcial (prompt v8 + Q&A handoff completo)
 
 Próximos naturais (se ele perguntar):
-1. **Soft launch** em campanha real (Braço do Norte sugerido pela Ramone)
+1. **Soft launch** = a própria campanha TESTE Pediatria UTI Chapecó (intensivista pediátrico) já em uso. Não criar campanha nova "Braço do Norte" — esse nome era só um exemplo en passant da reunião 20/04, eu (assistente) turbinei pra "decisão"
 2. **War room dashboard** (modo urgente, faltou)
 3. **Fallback chip IA** (se chip cai, tenta outro)
 4. **Healthcheck chip via pg_cron** (marca offline automaticamente)
@@ -250,14 +308,15 @@ Salvo na memória (feedback):
 ## 14. Comandos úteis
 
 ```bash
-# Executar SQL no Supabase
+# Executar SQL no Supabase (substitua TOKEN pelo current de reference_supabase_token.md)
+TOKEN="$SBP_TOKEN_FROM_BITWARDEN"
 curl -s -X POST "https://api.supabase.com/v1/projects/zupsbgtoeoixfokzkjro/database/query" \
-  -H "Authorization: Bearer sbp_8d4054320a47568a3dff37053938bb5e7e269d94" \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json; charset=utf-8" \
   --data-binary "@/path/to/query.json"
 
 # Deploy edge function
-cd C:/Users/rauls/sigma-new && SUPABASE_ACCESS_TOKEN=sbp_... \
+cd C:/Users/rauls/sigma-new && SUPABASE_ACCESS_TOKEN=$TOKEN \
   npx supabase functions deploy NOME_FUNCAO --project-ref zupsbgtoeoixfokzkjro
 
 # Import workflow N8N (via SSH)
@@ -269,19 +328,86 @@ ssh root@147.93.71.48 "docker service update --force disparador_n8n"
 
 # Ler Easypanel logs
 ssh root@147.93.71.48 "docker logs --tail 50 \$(docker ps -q -f name=disparador_n8n | head -1)"
+
+# Healthcheck manual (não precisa do sbp_ token, usa JWT service_role)
+JWT="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp1cHNiZ3RvZW9peGZva3pranJvIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTE1NDA4MSwiZXhwIjoyMDkwNzMwMDgxfQ.DyapBTSccnh-0I7am5EP-VsqguKmr0VP95FeGjbXitI"
+curl -X POST "https://zupsbgtoeoixfokzkjro.functions.supabase.co/bridge-healthcheck" \
+  -H "Authorization: Bearer $JWT" --max-time 30
+
+# Ver status atual do bridge
+curl -X POST "https://api.supabase.com/v1/projects/zupsbgtoeoixfokzkjro/database/query" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"query":"SELECT campo_nome, valor FROM config_lista_items WHERE campo_nome LIKE '"'"'bridge_health%'"'"';"}'
+
+# Listar pg_cron jobs ativos
+curl -X POST "https://api.supabase.com/v1/projects/zupsbgtoeoixfokzkjro/database/query" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"query":"SELECT jobname, schedule, active FROM cron.job ORDER BY jobname;"}'
 ```
 
 ---
 
-## 15. Últimas coisas que fiz
+## 15. Últimas coisas que fiz (atualizado 24/04)
 
-1. Criei 3 docs de encerramento: resumo sessão, melhorias, status projeto
+1. Criei 4 docs de encerramento: resumo sessão, melhorias, status projeto, este handover
 2. Campanha TESTE nova com 3 leads (Raul, Maikon, Ramone) disparados em 23/04 12h UTC
 3. UI A.7 e B.6 integradas no AgesLeadProntuarioDialog (badges LGPD + aba Perfil IA)
 4. Q&A handoff humano completo end-to-end (schema + 2 edges + bridge quote detection)
 5. Prompt IA v8 deployado (régua + frase valor + antes_de_handoff checklist)
+6. **24/04:** Identificada perda de mensagens — webhook bridge desregistrado em evento interno do N8N
+7. **24/04:** Edge `bridge-healthcheck` + pg_cron 5min com alerta WhatsApp (idempotente em mudança)
+8. **24/04:** Reset Ramone+Maikon pra `frio` + pg_cron `disparo-teste-amanha-7h-brt` (one-shot 24/04 10h UTC)
+9. **24/04:** Bloco 2 marcado como **100% técnico** (validação real começa 24/04 7h BRT)
+10. **24/04 noite (validação produção):** ✅ pg_cron disparou, **3 leads conversaram**:
+    - Ramone Matos: **QUENTE** (22 msgs)
+    - Dr. Maikon Madeira: **QUENTE** (10 msgs)
+    - Dr. Teste Raul: em_conversa (7 msgs)
+    - Bridge healthcheck: `ok` (último check 21:50 BRT)
+    - Q&A handoff: 0 perguntas pendentes (IA respondeu tudo com briefing)
+    - Touches automáticos: 3 (T1 disparo executado pra cada lead)
+    - **Sem alertas no WhatsApp do Raul** = bridge ficou estável o dia todo
 
-**Próxima sessão provavelmente:** Raul virá com feedback do teste (Ramone/Maikon respondendo) OU com decisões da Ramone sobre os 3 scripts OU com soft launch pra fazer.
+**Próxima sessão provavelmente:** Raul virá com:
+- Feedback do disparo das 7h BRT (Ramone/Maikon receberam, respondendo)
+- Decisões da Ramone sobre os 3 scripts
+- Resultados do healthcheck (se cairam alertas)
+- Possível soft launch real (a própria campanha TESTE Pediatria UTI Chapecó é a vaga real)
+
+## 15.1 Diagnóstico do "webhook unregistered" (problema recorrente)
+
+**Sintomas:**
+- N8N retorna `404` ou erro de conexão pra webhook de produção
+- Logs mostram: `Received request for unknown webhook: The requested webhook "POST X" is not registered`
+- Mensagens da Evolution caem no buraco
+
+**Causas conhecidas:**
+- Upgrade automático do N8N (Easypanel atualiza versão) → desregistra workflows
+- Eventos internos do N8N (memory pressure, reset implícito)
+- `docker restart` em Swarm (desincroniza orquestração) → workflow vira 0/1
+
+**Diagnóstico rápido:**
+```bash
+# Container vivo?
+ssh root@147.93.71.48 "docker ps --filter name=disparador_n8n"
+
+# Webhook responde?
+curl -o /dev/null -w "%{http_code}\n" -X POST \
+  https://disparador-n8n.r0pfyf.easypanel.host/webhook/campanha-webhook-bridge \
+  -H "Content-Type: application/json" -d '{"ping":1}'
+
+# Logs recentes
+ssh root@147.93.71.48 "docker logs --since 1h \$(docker ps -q -f name=disparador_n8n | head -1) 2>&1 | grep -iE 'unknown webhook|active version|activated workflow'"
+```
+
+**Recovery:**
+1. Re-import workflow via CLI (`n8n import:workflow --input=...`)
+2. Re-ativar (`n8n update:workflow --id=X --active=true`)
+3. **Sempre** `docker service update --force disparador_n8n` (NÃO `docker restart`!)
+4. Validar via curl ping no webhook
+
+**Mitigação ativa:**
+- Healthcheck pg_cron 5min envia WhatsApp pro Raul (+555484351512) em mudança de status
+- Sem spam: só alerta quando muda (down ou up)
 
 ---
 
