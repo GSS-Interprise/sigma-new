@@ -14,6 +14,7 @@ import {
   Clock,
 } from "lucide-react";
 import { format, isPast } from "date-fns";
+import { parseLocalDate } from "@/lib/dateUtils";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { URGENCIA_CLASS, URGENCIA_LABEL, TIPO_LABEL } from "@/lib/setoresAccess";
@@ -41,7 +42,7 @@ export function TarefaCard({ tarefa, onConcluir, onClick, compact }: Props) {
   const atrasada =
     tarefa.data_limite &&
     tarefa.status !== "concluida" &&
-    isPast(new Date(tarefa.data_limite));
+    isPast(parseLocalDate(tarefa.data_limite) ?? new Date(tarefa.data_limite));
 
   const urgClass =
     URGENCIA_CLASS[tarefa.urgencia] ?? URGENCIA_CLASS.media;
@@ -135,7 +136,7 @@ export function TarefaCard({ tarefa, onConcluir, onClick, compact }: Props) {
               )}
             >
               <Calendar className="h-3 w-3" />
-              {format(new Date(tarefa.data_limite), "dd MMM", { locale: ptBR })}
+              {format(parseLocalDate(tarefa.data_limite) ?? new Date(tarefa.data_limite), "dd MMM", { locale: ptBR })}
             </span>
           ) : (
             <span className="inline-flex items-center gap-1 text-muted-foreground">
