@@ -73,6 +73,7 @@ export function ColunaEnviadas({ onTarefaClick }: Props) {
               key={t.id}
               tarefa={t}
               onConcluir={(id) => concluir.mutate({ id, status: "concluida" })}
+              onReabrir={(id) => concluir.mutate({ id, status: "aberta" })}
               onClick={() => onTarefaClick?.(t.id)}
             />
           ))}
