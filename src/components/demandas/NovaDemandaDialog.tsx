@@ -176,9 +176,10 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
     );
     const mencIds = (tarefaExistente.mencionados ?? []).map((m) => m.user_id);
     const responsavel = tarefaExistente.responsavel_id;
-    const pessoasIniciais = responsavel
-      ? [responsavel, ...mencIds.filter((id) => id !== responsavel)]
-      : mencIds;
+    const criador = tarefaExistente.created_by;
+    const pessoasIniciais = Array.from(
+      new Set([responsavel, ...mencIds, criador].filter((id): id is string => !!id)),
+    );
     // Se for tarefa pessoal (somente o próprio usuário), deixar vazio
     if (
       pessoasIniciais.length === 1 &&
@@ -347,7 +348,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
     : -1;
   const sugestoesMention = useMemo(() => {
     if (mentionStart < 0) return [];
-    // Apenas pessoas envolvidas no card (responsável + mencionados) + o próprio usuário
+    // Apenas pessoas envolvidas no card (criador + responsável + mencionados) + o próprio usuário
     const envolvidosIds = new Set<string>(pessoas);
     if (user?.id) envolvidosIds.add(user.id);
     return pessoasSistema
@@ -1038,6 +1039,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
         <DialogFooter className="shrink-0 border-t bg-background px-5 py-3 sm:justify-between gap-2">
           {isEditing && tarefaExistente ? (() => {
             const envolvidosIds = Array.from(new Set([
+              tarefaExistente.created_by,
               tarefaExistente.responsavel_id,
               ...(tarefaExistente.mencionados ?? []).map((m) => m.user_id),
             ].filter((x): x is string => !!x)));
