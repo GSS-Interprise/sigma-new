@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,7 +17,8 @@ import {
   ArrowRight,
   X,
   Paperclip,
-  Link2
+  Link2,
+  RefreshCw
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -50,6 +53,86 @@ export function ContratoRascunhoDialog({
     }
   }, [preenchimentoLicitacao]);
   const { rascunho, anexos, licitacao, isLoading } = useContratoRascunho(rascunhoId);
+  const queryClient = useQueryClient();
+
+  const sincronizarMutation = useMutation({
+    mutationFn: async () => {
+      if (!rascunho?.licitacao_id) throw new Error("Rascunho sem licitação vinculada");
+
+      // Buscar dados atuais da licitação
+      const { data: lic, error: licErr } = await supabase
+        .from("licitacoes")
+        .select("*")
+        .eq("id", rascunho.licitacao_id)
+        .single();
+      if (licErr) throw licErr;
+
+      const overlayJson = {
+        titulo: (lic as any).titulo || null,
+        numero_edital: (lic as any).numero_edital || null,
+        orgao: (lic as any).orgao || null,
+        objeto: (lic as any).objeto || null,
+        valor_estimado: (lic as any).valor_estimado || null,
+        municipio_uf: (lic as any).municipio_uf || null,
+        modalidade: (lic as any).modalidade || null,
+        tipo_modalidade: (lic as any).tipo_modalidade || null,
+        subtipo_modalidade: (lic as any).subtipo_modalidade || null,
+        data_disputa: (lic as any).data_disputa || null,
+        etiquetas: (lic as any).etiquetas || [],
+        observacoes: (lic as any).observacoes || null,
+      };
+
+      const servicosJson = (lic as any).servicos_contrato || [];
+
+      const { error: updErr } = await supabase
+        .from("contrato_rascunho")
+        .update({
+          overlay_json: overlayJson,
+          servicos_json: servicosJson,
+        })
+        .eq("id", rascunho.id);
+      if (updErr) throw updErr;
+
+      // Re-sincronizar anexos do bucket
+      const { data: arquivosBucket } = await supabase.storage
+        .from("licitacoes-anexos")
+        .list(rascunho.licitacao_id);
+
+      if (arquivosBucket && arquivosBucket.length > 0) {
+        const { data: existentes } = await supabase
+          .from("contrato_rascunho_anexos")
+          .select("arquivo_nome")
+          .eq("contrato_rascunho_id", rascunho.id);
+        const existentesSet = new Set((existentes || []).map((a: any) => a.arquivo_nome));
+
+        const novos = arquivosBucket
+          .filter((arq) => !existentesSet.has(arq.name))
+          .map((arq) => ({
+            contrato_rascunho_id: rascunho.id,
+            arquivo_url: `${rascunho.licitacao_id}/${arq.name}`,
+            arquivo_nome: arq.name,
+            arquivo_path: `licitacoes-anexos/${rascunho.licitacao_id}/${arq.name}`,
+            mime_type: (arq as any).metadata?.mimetype || null,
+            origem: "licitacao_card",
+          }));
+
+        if (novos.length > 0) {
+          await supabase.from("contrato_rascunho_anexos").insert(novos);
+        }
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["contrato-rascunho", rascunhoId] });
+      queryClient.invalidateQueries({ queryKey: ["contrato-rascunho-anexos", rascunhoId] });
+      queryClient.invalidateQueries({ queryKey: ["licitacao-rascunho"] });
+      queryClient.invalidateQueries({ queryKey: ["contratos-rascunho"] });
+      queryClient.invalidateQueries({ queryKey: ["contratos-temporarios"] });
+      toast.success("Pré-contrato sincronizado com a licitação");
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Erro ao sincronizar com a licitação");
+    },
+  });
 
   const handleOpenAnexo = async (anexo: any) => {
     try {
@@ -337,6 +420,17 @@ export function ContratoRascunhoDialog({
               Fechar
             </Button>
             <div className="flex gap-2">
+              {rascunho?.licitacao_id && (
+                <Button
+                  variant="outline"
+                  onClick={() => sincronizarMutation.mutate()}
+                  disabled={sincronizarMutation.isPending}
+                  title="Re-importar dados, serviços e anexos da licitação atual"
+                >
+                  <RefreshCw className={`h-4 w-4 mr-2 ${sincronizarMutation.isPending ? "animate-spin" : ""}`} />
+                  Sincronizar c/ Licitação
+                </Button>
+              )}
               <Button variant="outline" onClick={() => setVincularOpen(true)}>
                 <Link2 className="h-4 w-4 mr-2" />
                 Vincular a Contrato Existente
