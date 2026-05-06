@@ -43,6 +43,7 @@ import Marketing from "./pages/Marketing";
 import Auditoria from "./pages/Auditoria";
 import Ages from "./pages/Ages";
 import Workspace from "./pages/Workspace";
+import Demandas from "./pages/Demandas";
 import Auth from "./pages/Auth";
 import ResetPassword from "./pages/ResetPassword";
 import AdminImport from "./pages/AdminImport";
