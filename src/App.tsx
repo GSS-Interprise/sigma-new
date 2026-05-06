@@ -3,7 +3,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { PermissionRoute } from "@/components/auth/PermissionRoute";
@@ -38,7 +38,7 @@ import Configuracoes from "./pages/Configuracoes";
 import Radiologia from "./pages/Radiologia";
 import Suporte from "./pages/Suporte";
 import Comunicacao from "./pages/Comunicacao";
-import SigZap from "./pages/SigZap";
+// SigZap legado removido — `/sigzap` agora redireciona pra `/disparos/sigzap` (P9)
 import Marketing from "./pages/Marketing";
 import Auditoria from "./pages/Auditoria";
 import Ages from "./pages/Ages";
@@ -100,7 +100,7 @@ const App = () => (
             <Route path="/patrimonio" element={<ProtectedRoute><PermissionRoute modulo="patrimonio"><Patrimonio /></PermissionRoute></ProtectedRoute>} />
             <Route path="/radiologia" element={<ProtectedRoute><PermissionRoute modulo="radiologia"><Radiologia /></PermissionRoute></ProtectedRoute>} />
             <Route path="/bi" element={<ProtectedRoute><PermissionRoute modulo="bi"><BI /></PermissionRoute></ProtectedRoute>} />
-            <Route path="/sigzap" element={<ProtectedRoute><PermissionRoute modulo="sigzap"><SigZap /></PermissionRoute></ProtectedRoute>} />
+            <Route path="/sigzap" element={<Navigate to="/disparos/sigzap" replace />} />
             <Route path="/suporte" element={<ProtectedRoute><PermissionRoute modulo="suporte"><Suporte /></PermissionRoute></ProtectedRoute>} />
             <Route path="/auditoria" element={<ProtectedRoute><PermissionRoute adminOnly><Auditoria /></PermissionRoute></ProtectedRoute>} />
             <Route path="/ages" element={<ProtectedRoute><PermissionRoute modulo="ages"><Ages /></PermissionRoute></ProtectedRoute>} />
