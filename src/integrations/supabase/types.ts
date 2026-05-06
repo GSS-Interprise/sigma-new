@@ -988,6 +988,79 @@ export type Database = {
         }
         Relationships: []
       }
+      aquecedor_par: {
+        Row: {
+          ativado_em: string
+          chip_a_id: string
+          chip_b_id: string
+          desativado_em: string | null
+          fase: string
+          id: number
+          intensidade: number
+        }
+        Insert: {
+          ativado_em?: string
+          chip_a_id: string
+          chip_b_id: string
+          desativado_em?: string | null
+          fase?: string
+          id?: number
+          intensidade: number
+        }
+        Update: {
+          ativado_em?: string
+          chip_a_id?: string
+          chip_b_id?: string
+          desativado_em?: string | null
+          fase?: string
+          id?: number
+          intensidade?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "aquecedor_par_chip_a_id_fkey"
+            columns: ["chip_a_id"]
+            isOneToOne: false
+            referencedRelation: "chips"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "aquecedor_par_chip_a_id_fkey"
+            columns: ["chip_a_id"]
+            isOneToOne: false
+            referencedRelation: "vw_chip_health"
+            referencedColumns: ["chip_id"]
+          },
+          {
+            foreignKeyName: "aquecedor_par_chip_a_id_fkey"
+            columns: ["chip_a_id"]
+            isOneToOne: false
+            referencedRelation: "vw_chip_performance_7d"
+            referencedColumns: ["chip_id"]
+          },
+          {
+            foreignKeyName: "aquecedor_par_chip_b_id_fkey"
+            columns: ["chip_b_id"]
+            isOneToOne: false
+            referencedRelation: "chips"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "aquecedor_par_chip_b_id_fkey"
+            columns: ["chip_b_id"]
+            isOneToOne: false
+            referencedRelation: "vw_chip_health"
+            referencedColumns: ["chip_id"]
+          },
+          {
+            foreignKeyName: "aquecedor_par_chip_b_id_fkey"
+            columns: ["chip_b_id"]
+            isOneToOne: false
+            referencedRelation: "vw_chip_performance_7d"
+            referencedColumns: ["chip_id"]
+          },
+        ]
+      }
       auditoria_logs: {
         Row: {
           acao: string
@@ -2698,6 +2771,85 @@ export type Database = {
           },
         ]
       }
+      chip_persona: {
+        Row: {
+          chip_id: string
+          cidade: string
+          created_at: string
+          estado: string
+          estilo_escrita: Json
+          foto_url: string | null
+          idade: number
+          interesses: string[]
+          llm_system_prompt: string
+          nome_completo: string
+          primeiro_nome: string
+          profissao: string
+          schedule_pattern: Json
+          status_message: string | null
+          vida_familiar: string | null
+          voz_tts: string | null
+        }
+        Insert: {
+          chip_id: string
+          cidade: string
+          created_at?: string
+          estado: string
+          estilo_escrita?: Json
+          foto_url?: string | null
+          idade: number
+          interesses?: string[]
+          llm_system_prompt: string
+          nome_completo: string
+          primeiro_nome: string
+          profissao: string
+          schedule_pattern?: Json
+          status_message?: string | null
+          vida_familiar?: string | null
+          voz_tts?: string | null
+        }
+        Update: {
+          chip_id?: string
+          cidade?: string
+          created_at?: string
+          estado?: string
+          estilo_escrita?: Json
+          foto_url?: string | null
+          idade?: number
+          interesses?: string[]
+          llm_system_prompt?: string
+          nome_completo?: string
+          primeiro_nome?: string
+          profissao?: string
+          schedule_pattern?: Json
+          status_message?: string | null
+          vida_familiar?: string | null
+          voz_tts?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chip_persona_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: true
+            referencedRelation: "chips"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chip_persona_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: true
+            referencedRelation: "vw_chip_health"
+            referencedColumns: ["chip_id"]
+          },
+          {
+            foreignKeyName: "chip_persona_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: true
+            referencedRelation: "vw_chip_performance_7d"
+            referencedColumns: ["chip_id"]
+          },
+        ]
+      }
       chip_receive_log: {
         Row: {
           chip_id: string
@@ -2831,6 +2983,7 @@ export type Database = {
       }
       chip_state: {
         Row: {
+          aquecedor_ativo: boolean
           chip_id: string
           created_at: string
           fase: string
@@ -2848,6 +3001,7 @@ export type Database = {
           warmup_target_days: number
         }
         Insert: {
+          aquecedor_ativo?: boolean
           chip_id: string
           created_at?: string
           fase?: string
@@ -2865,6 +3019,7 @@ export type Database = {
           warmup_target_days?: number
         }
         Update: {
+          aquecedor_ativo?: boolean
           chip_id?: string
           created_at?: string
           fase?: string
@@ -6617,6 +6772,39 @@ export type Database = {
           },
         ]
       }
+      isca_externa: {
+        Row: {
+          ativo: boolean
+          created_at: string
+          id: string
+          jid: string
+          nome_referencia: string
+          observacoes: string | null
+          pode_simular_forward: boolean
+          tipo: string
+        }
+        Insert: {
+          ativo?: boolean
+          created_at?: string
+          id?: string
+          jid: string
+          nome_referencia: string
+          observacoes?: string | null
+          pode_simular_forward?: boolean
+          tipo: string
+        }
+        Update: {
+          ativo?: boolean
+          created_at?: string
+          id?: string
+          jid?: string
+          nome_referencia?: string
+          observacoes?: string | null
+          pode_simular_forward?: boolean
+          tipo?: string
+        }
+        Relationships: []
+      }
       kanban_status_config: {
         Row: {
           ativo: boolean | null
@@ -9805,6 +9993,42 @@ export type Database = {
           notes?: string | null
           processed_at?: string | null
           status?: string | null
+        }
+        Relationships: []
+      }
+      midia_aquecimento: {
+        Row: {
+          added_at: string
+          ativo: boolean
+          id: number
+          mime_type: string
+          storage_path: string
+          tags: string[] | null
+          tamanho_bytes: number | null
+          tipo: string
+          uso_total: number
+        }
+        Insert: {
+          added_at?: string
+          ativo?: boolean
+          id?: number
+          mime_type: string
+          storage_path: string
+          tags?: string[] | null
+          tamanho_bytes?: number | null
+          tipo: string
+          uso_total?: number
+        }
+        Update: {
+          added_at?: string
+          ativo?: boolean
+          id?: number
+          mime_type?: string
+          storage_path?: string
+          tags?: string[] | null
+          tamanho_bytes?: number | null
+          tipo?: string
+          uso_total?: number
         }
         Relationships: []
       }
@@ -13212,8 +13436,10 @@ export type Database = {
         Args: { _tarefa_id: string; _user_id: string }
         Returns: boolean
       }
+      chip_aquecimento_graduator: { Args: never; Returns: Json }
       chip_health_monitor_tick: { Args: never; Returns: Json }
       chip_health_score: { Args: { p_chip_id: string }; Returns: number }
+      chip_pair_rotator: { Args: never; Returns: Json }
       chip_register_disconnect: {
         Args: { p_chip_id: string; p_code: number; p_reason?: string }
         Returns: Json
