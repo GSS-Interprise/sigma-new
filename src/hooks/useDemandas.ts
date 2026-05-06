@@ -533,31 +533,64 @@ export function useAdicionarComentarioDemanda() {
         resumo: "Novo comentário",
         detalhes: { mencionados: input.mencionados ?? [], links: input.links ?? [] },
       } as any);
-      // Notificar pessoas mencionadas no comentário (exceto o autor)
+      // Notificações: menções no comentário + envolvidos da tarefa
       try {
-        const destCom = (input.mencionados ?? []).filter(
-          (uid) => uid && uid !== user.id,
+        const { data: tarefa } = await supabase
+          .from("worklist_tarefas")
+          .select("titulo, created_by, responsavel_id")
+          .eq("id", input.tarefaId)
+          .maybeSingle();
+        const { data: mencs } = await supabase
+          .from("worklist_tarefa_mencionados" as any)
+          .select("user_id")
+          .eq("tarefa_id", input.tarefaId);
+        const { data: autorProfile } = await supabase
+          .from("profiles")
+          .select("nome_completo")
+          .eq("id", user.id)
+          .maybeSingle();
+        const autorNome = (autorProfile as any)?.nome_completo?.split(" ")?.[0] ?? "Alguém";
+        const link = `/demandas?tarefa=${input.tarefaId}`;
+
+        const mencionadosComentario = new Set(
+          (input.mencionados ?? []).filter((uid) => uid && uid !== user.id),
         );
-        if (destCom.length) {
-          const { data: tarefa } = await supabase
-            .from("worklist_tarefas")
-            .select("titulo")
-            .eq("id", input.tarefaId)
-            .maybeSingle();
-          const link = `/demandas?tarefa=${input.tarefaId}`;
-          await supabase.from("system_notifications").insert(
-            destCom.map((uid) => ({
-              user_id: uid,
-              tipo: "demanda_comentario_mencao",
-              titulo: `Você foi marcado em um comentário: ${tarefa?.titulo ?? "demanda"}`,
-              mensagem: conteudo.slice(0, 160),
-              link,
-              referencia_id: input.tarefaId,
-            })),
-          );
+        const envolvidos = new Set<string>();
+        if (tarefa?.created_by && tarefa.created_by !== user.id) envolvidos.add(tarefa.created_by);
+        if (tarefa?.responsavel_id && tarefa.responsavel_id !== user.id)
+          envolvidos.add(tarefa.responsavel_id);
+        (mencs ?? []).forEach((m: any) => {
+          if (m.user_id && m.user_id !== user.id) envolvidos.add(m.user_id);
+        });
+        // remove quem já vai receber notificação de menção
+        mencionadosComentario.forEach((uid) => envolvidos.delete(uid));
+
+        const rows: any[] = [];
+        mencionadosComentario.forEach((uid) =>
+          rows.push({
+            user_id: uid,
+            tipo: "demanda_comentario_mencao",
+            titulo: `Você foi marcado em um comentário: ${tarefa?.titulo ?? "demanda"}`,
+            mensagem: conteudo.slice(0, 160),
+            link,
+            referencia_id: input.tarefaId,
+          }),
+        );
+        envolvidos.forEach((uid) =>
+          rows.push({
+            user_id: uid,
+            tipo: "demanda_comentario_novo",
+            titulo: `${autorNome} comentou em: ${tarefa?.titulo ?? "demanda"}`,
+            mensagem: conteudo.slice(0, 160),
+            link,
+            referencia_id: input.tarefaId,
+          }),
+        );
+        if (rows.length) {
+          await supabase.from("system_notifications").insert(rows);
         }
       } catch (e) {
-        console.error("[demandas] erro ao notificar menções do comentário", e);
+        console.error("[demandas] erro ao notificar comentário", e);
       }
     },
     onSuccess: (_d, vars) => {
