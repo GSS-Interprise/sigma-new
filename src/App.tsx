@@ -43,6 +43,7 @@ import Marketing from "./pages/Marketing";
 import Auditoria from "./pages/Auditoria";
 import Ages from "./pages/Ages";
 import Workspace from "./pages/Workspace";
+import Demandas from "./pages/Demandas";
 import Auth from "./pages/Auth";
 import ResetPassword from "./pages/ResetPassword";
 import AdminImport from "./pages/AdminImport";
@@ -105,6 +106,7 @@ const App = () => (
             <Route path="/auditoria" element={<ProtectedRoute><PermissionRoute adminOnly><Auditoria /></PermissionRoute></ProtectedRoute>} />
             <Route path="/ages" element={<ProtectedRoute><PermissionRoute modulo="ages"><Ages /></PermissionRoute></ProtectedRoute>} />
             <Route path="/workspace" element={<ProtectedRoute><Workspace /></ProtectedRoute>} />
+            <Route path="/demandas" element={<ProtectedRoute><Demandas /></ProtectedRoute>} />
             <Route path="/configuracoes" element={<ProtectedRoute><PermissionRoute adminOnly><Configuracoes /></PermissionRoute></ProtectedRoute>} />
             <Route path="/admin-import" element={<ProtectedRoute><PermissionRoute adminOnly><AdminImport /></PermissionRoute></ProtectedRoute>} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
