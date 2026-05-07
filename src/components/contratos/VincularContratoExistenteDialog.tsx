@@ -149,13 +149,28 @@ export function VincularContratoExistenteDialog({
       }
 
       // 5. Deletar o pré-contrato automático (já foi substituído pelo contrato real).
-      //    Só fazemos isso quando temos certeza de que é um pré-contrato gerado
-      //    automaticamente — nunca apagar um contrato real escolhido pelo usuário.
-      if (ehPreContratoAutomatico && codigoInternoPreContrato !== null) {
-        await supabase
+      //    Removemos sempre que for pré-contrato automático (status 'Pre-Contrato'
+      //    sem cliente), mesmo quando o codigo_interno não pôde ser transferido,
+      //    para evitar órfãos na listagem.
+      if (ehPreContratoAutomatico) {
+        const { data: preCheck } = await supabase
           .from("contratos")
-          .delete()
-          .eq("id", preContratoId!);
+          .select("id, status_contrato, cliente_id, codigo_interno")
+          .eq("id", preContratoId!)
+          .maybeSingle();
+        if (preCheck && preCheck.status_contrato === "Pre-Contrato" && !preCheck.cliente_id) {
+          await supabase.from("contratos").delete().eq("id", preContratoId!);
+          await registrarAuditoria({
+            modulo: "Contratos",
+            tabela: "contratos",
+            acao: "excluir",
+            registroId: preContratoId!,
+            registroDescricao: `Pré-contrato órfão #${preCheck.codigo_interno ?? ''} removido após vinculação ao contrato #${contratoSelecionado.codigo_interno}`,
+            detalhes: codigoInternoPreContrato === null
+              ? "Codigo_interno NÃO foi transferido (contrato destino já tinha o seu)."
+              : "Codigo_interno transferido para o contrato destino.",
+          });
+        }
       }
 
       // 6. Log de auditoria

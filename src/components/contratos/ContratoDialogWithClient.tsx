@@ -797,9 +797,15 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
           .eq('id', contrato.id)
           .single();
         
+        // Se estamos consolidando sobre um pré-contrato automático, forçar Ativo
+        const dadosUpdate: any = { ...contratoData };
+        if (rascunhoId && (contratoAntigo as any)?.status_contrato === 'Pre-Contrato') {
+          dadosUpdate.status_contrato = 'Ativo';
+        }
+
         const { error: contratoError } = await supabase
           .from(tables.contratos as any)
-          .update(contratoData)
+          .update(dadosUpdate)
           .eq('id', contrato.id);
 
         if (contratoError) {
