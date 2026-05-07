@@ -54,6 +54,7 @@ export function ContratoList({ contratos, isLoading, onEdit, onView, onDelete }:
           if (u.includes('/contratos-documentos/')) return 'contratos-documentos';
           if (u.includes('/licitacoes-anexos/')) return 'licitacoes-anexos';
           if (u.includes('/contrato-rascunho-anexos/')) return 'contrato-rascunho-anexos';
+          if (/^[0-9a-f-]{36}\//i.test(u)) return 'licitacoes-anexos';
           return 'contratos-documentos';
         };
         const bucket = getBucket(url);
@@ -203,11 +204,22 @@ export function ContratoList({ contratos, isLoading, onEdit, onView, onDelete }:
   const getKeyFromUrl = (urlOrKey: string) => {
     if (!urlOrKey) return '';
     if (urlOrKey.startsWith('http')) {
-      const marker = '/contratos-documentos/';
-      const idx = urlOrKey.indexOf(marker);
-      return idx !== -1 ? urlOrKey.substring(idx + marker.length) : '';
+      const markers = ['/contratos-documentos/', '/licitacoes-anexos/', '/contrato-rascunho-anexos/'];
+      for (const marker of markers) {
+        const idx = urlOrKey.indexOf(marker);
+        if (idx !== -1) return urlOrKey.substring(idx + marker.length);
+      }
+      return '';
     }
     return urlOrKey; // already a key
+  };
+
+  const getBucketFromUrl = (urlOrKey: string): string => {
+    if (urlOrKey.includes('/contratos-documentos/')) return 'contratos-documentos';
+    if (urlOrKey.includes('/licitacoes-anexos/')) return 'licitacoes-anexos';
+    if (urlOrKey.includes('/contrato-rascunho-anexos/')) return 'contrato-rascunho-anexos';
+    if (/^[0-9a-f-]{36}\//i.test(urlOrKey)) return 'licitacoes-anexos';
+    return 'contratos-documentos';
   };
 
 
@@ -244,7 +256,8 @@ export function ContratoList({ contratos, isLoading, onEdit, onView, onDelete }:
     try {
       const key = getKeyFromUrl(urlOrKey);
       if (!key) throw new Error('Caminho do arquivo inválido');
-      const { data, error } = await supabase.storage.from('contratos-documentos').download(key);
+      const bucket = getBucketFromUrl(urlOrKey);
+      const { data, error } = await supabase.storage.from(bucket).download(key);
       if (error) throw error;
       const blob = data as Blob;
       const url = URL.createObjectURL(blob);
