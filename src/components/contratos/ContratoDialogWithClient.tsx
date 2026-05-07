@@ -1296,23 +1296,29 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
     try {
       console.log('📄 Abrindo arquivo:', doc.arquivo_nome);
       
-      // Extrair a chave do arquivo da URL
-      const getKeyFromUrl = (url: string) => {
-        if (!url) return '';
+      // Extrair a chave do arquivo da URL e detectar o bucket real.
+      // Anexos herdados de licitação ficam como "licitacaoId/arquivo" no bucket licitacoes-anexos.
+      const getStorageInfo = (url: string) => {
+        if (!url) return { bucket: tables.storageBucket, key: '' };
         if (url.startsWith('http')) {
-          const marker = `/${tables.storageBucket}/`;
-          const idx = url.indexOf(marker);
-          return idx !== -1 ? url.substring(idx + marker.length) : '';
+          const buckets = [tables.storageBucket, 'licitacoes-anexos', 'contrato-rascunho-anexos'];
+          for (const bucket of buckets) {
+            const marker = `/${bucket}/`;
+            const idx = url.indexOf(marker);
+            if (idx !== -1) return { bucket, key: url.substring(idx + marker.length) };
+          }
+          return { bucket: tables.storageBucket, key: '' };
         }
-        return url;
+        const bucket = /^[0-9a-f-]{36}\//i.test(url) ? 'licitacoes-anexos' : tables.storageBucket;
+        return { bucket, key: url };
       };
 
-      const key = getKeyFromUrl(doc.arquivo_url);
+      const { bucket, key } = getStorageInfo(doc.arquivo_url);
       if (!key) throw new Error('Caminho do arquivo inválido');
 
       // Criar URL assinada (válida por 10 minutos)
       const { data, error } = await supabase.storage
-        .from(tables.storageBucket)
+        .from(bucket)
         .createSignedUrl(key, 60 * 10);
 
       if (error) throw error;
@@ -1354,15 +1360,28 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
 
   const handleDownloadFile = async (doc: any) => {
     try {
-      const urlParts = doc.arquivo_url.split(`/${tables.storageBucket}/`);
-      if (urlParts.length < 2) {
-        toast.error('URL do arquivo inválida');
-        return;
+      const getStorageInfo = (url: string) => {
+        if (!url) return { bucket: tables.storageBucket, key: '' };
+        if (url.startsWith('http')) {
+          const buckets = [tables.storageBucket, 'licitacoes-anexos', 'contrato-rascunho-anexos'];
+          for (const bucket of buckets) {
+            const marker = `/${bucket}/`;
+            const idx = url.indexOf(marker);
+            if (idx !== -1) return { bucket, key: decodeURIComponent(url.substring(idx + marker.length)) };
+          }
+          return { bucket: tables.storageBucket, key: '' };
+        }
+        const bucket = /^[0-9a-f-]{36}\//i.test(url) ? 'licitacoes-anexos' : tables.storageBucket;
+        return { bucket, key: url };
+      };
+
+      const { bucket, key: filePath } = getStorageInfo(doc.arquivo_url);
+      if (!filePath) {
+        throw new Error('URL do arquivo inválida');
       }
-      
-      const filePath = decodeURIComponent(urlParts[1]);
+
       const { data, error } = await supabase.storage
-        .from(tables.storageBucket)
+        .from(bucket)
         .download(filePath);
 
       if (error) {

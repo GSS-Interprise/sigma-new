@@ -54,6 +54,8 @@ export function ContratoFileViewerDialog({
     if (url.includes('/contratos-documentos/')) return 'contratos-documentos';
     if (url.includes('/licitacoes-anexos/')) return 'licitacoes-anexos';
     if (url.includes('/contrato-rascunho-anexos/')) return 'contrato-rascunho-anexos';
+    // Anexos herdados de licitação são salvos como "licitacaoId/arquivo" mesmo após virar contrato.
+    if (/^[0-9a-f-]{36}\//i.test(url)) return 'licitacoes-anexos';
     return 'contratos-documentos';
   };
 
