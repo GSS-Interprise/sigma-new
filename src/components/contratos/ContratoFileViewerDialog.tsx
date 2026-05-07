@@ -27,11 +27,8 @@ export function ContratoFileViewerDialog({
   // Verifica se a URL é externa (não do Supabase storage)
   const isExternalUrl = (url: string) => {
     if (!url) return false;
-    // Se não contém o domínio do Supabase ou não contém os buckets conhecidos
-    const supabaseDomain = 'qyapnxtghhdcfafnogii.supabase.co';
     const knownBuckets = ['/contratos-documentos/', '/licitacoes-anexos/', '/contrato-rascunho-anexos/'];
-    
-    if (!url.includes(supabaseDomain)) return true;
+    // Considera interno se a URL referenciar qualquer bucket conhecido (independente do domínio Supabase)
     return !knownBuckets.some(bucket => url.includes(bucket));
   };
 
