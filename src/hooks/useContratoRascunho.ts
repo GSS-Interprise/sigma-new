@@ -344,14 +344,47 @@ export function useContratosRascunho() {
   // Cancelar rascunho
   const cancelarMutation = useMutation({
     mutationFn: async (rascunhoId: string) => {
+      // Buscar rascunho para identificar pré-contrato órfão
+      const { data: rascunho } = await supabase
+        .from('contrato_rascunho')
+        .select('contrato_id, licitacao_id')
+        .eq('id', rascunhoId)
+        .maybeSingle();
+
       const { error } = await supabase
         .from('contrato_rascunho')
-        .update({ status: 'cancelado' })
+        .update({ status: 'cancelado', contrato_id: null })
         .eq('id', rascunhoId);
       if (error) throw error;
+
+      // Deletar pré-contrato automático (sem cliente) vinculado a essa licitação
+      if (rascunho?.licitacao_id) {
+        const { data: preContratos } = await supabase
+          .from('contratos')
+          .select('id, codigo_interno')
+          .eq('licitacao_origem_id', rascunho.licitacao_id)
+          .eq('status_contrato', 'Pre-Contrato')
+          .is('cliente_id', null);
+
+        if (preContratos && preContratos.length > 0) {
+          const ids = preContratos.map(p => p.id);
+          await supabase.from('contratos').delete().in('id', ids);
+
+          await registrarAuditoria({
+            modulo: 'Contratos',
+            tabela: 'contratos',
+            acao: 'excluir',
+            registroId: ids[0],
+            registroDescricao: `Pré-contrato(s) órfão(s) removido(s) ao cancelar rascunho ${rascunhoId}`,
+            detalhes: `IDs removidos: ${ids.join(', ')}`,
+          });
+        }
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['contratos-rascunho'] });
+      queryClient.invalidateQueries({ queryKey: ['contratos'] });
+      queryClient.invalidateQueries({ queryKey: ['contratos-temporarios'] });
       toast.success('Rascunho cancelado');
     },
     onError: (error: any) => {
