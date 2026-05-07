@@ -1299,7 +1299,7 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
       // Extrair a chave do arquivo da URL e detectar o bucket real.
       // Anexos herdados de licitação ficam como "licitacaoId/arquivo" no bucket licitacoes-anexos.
       const getStorageInfo = (url: string) => {
-        if (!url) return '';
+        if (!url) return { bucket: tables.storageBucket, key: '' };
         if (url.startsWith('http')) {
           const buckets = [tables.storageBucket, 'licitacoes-anexos', 'contrato-rascunho-anexos'];
           for (const bucket of buckets) {
