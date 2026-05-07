@@ -27,6 +27,8 @@ export function ContratoFileViewerDialog({
   // Verifica se a URL é externa (não do Supabase storage)
   const isExternalUrl = (url: string) => {
     if (!url) return false;
+    // Apenas URLs http(s) podem ser externas. Chaves puras (sem protocolo) são sempre internas.
+    if (!url.startsWith('http')) return false;
     const knownBuckets = ['/contratos-documentos/', '/licitacoes-anexos/', '/contrato-rascunho-anexos/'];
     // Considera interno se a URL referenciar qualquer bucket conhecido (independente do domínio Supabase)
     return !knownBuckets.some(bucket => url.includes(bucket));
