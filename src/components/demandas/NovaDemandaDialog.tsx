@@ -613,6 +613,43 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                 <Paperclip className="h-3 w-3" /> Anexar arquivo
               </Button>
             </div>
+            {isEditing && anexosExistentes.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {anexosExistentes.map((a) => (
+                  <Badge
+                    key={a.id}
+                    variant="outline"
+                    className="gap-1 pr-1 max-w-full"
+                  >
+                    {a.mime_type?.startsWith("image/") ? (
+                      <ImageIcon className="h-3 w-3 shrink-0" />
+                    ) : (
+                      <Paperclip className="h-3 w-3 shrink-0" />
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => abrirAnexoExistente(a.storage_path)}
+                      className="truncate max-w-[180px] text-left hover:underline"
+                      title={a.nome || a.storage_path}
+                    >
+                      {a.nome || a.storage_path.split("/").pop()}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (confirm("Remover este anexo?")) {
+                          removerAnexo.mutate({ id: a.id, storage_path: a.storage_path });
+                        }
+                      }}
+                      className="hover:text-destructive ml-0.5"
+                      aria-label="Remover anexo"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="grid gap-1">
