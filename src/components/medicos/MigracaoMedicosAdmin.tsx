@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -43,6 +43,7 @@ interface MigrationResponse {
 }
 
 export function MigracaoMedicosAdmin() {
+  const queryClient = useQueryClient();
   const [dryRun, setDryRun] = useState(true);
   const [limit, setLimit] = useState(10);
   const [offset, setOffset] = useState(0);
@@ -96,6 +97,13 @@ export function MigracaoMedicosAdmin() {
     onSuccess: (data) => {
       setLastResponse(data);
       refetchStats();
+      // Invalida caches que dependem de medico.lead_id para que a UI
+      // (Corpo Clínico, Leads, etc.) reflita imediatamente os médicos migrados.
+      if (!dryRun && data.success) {
+        queryClient.invalidateQueries({ queryKey: ['corpo-clinico'] });
+        queryClient.invalidateQueries({ queryKey: ['medicos'] });
+        queryClient.invalidateQueries({ queryKey: ['leads'] });
+      }
       
       if (data.success) {
         const mode = dryRun ? 'DRY RUN' : 'MIGRAÇÃO';
