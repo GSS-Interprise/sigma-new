@@ -1015,6 +1015,37 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                         ? `${comentarioPessoas.length} marcação(ões)`
                         : "@ para mencionar envolvidos"}
                     </span>
+                    <div className="flex items-center gap-1.5">
+                      {isEditing && (
+                        <>
+                          <input
+                            id="anexo-comentario-input"
+                            type="file"
+                            multiple
+                            hidden
+                            onChange={(e) => {
+                              const files = Array.from(e.target.files || []);
+                              if (files.length) void enviarArquivos(files);
+                              e.currentTarget.value = "";
+                            }}
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 gap-1 text-xs"
+                            onClick={() =>
+                              document
+                                .getElementById("anexo-comentario-input")
+                                ?.click()
+                            }
+                            title="Anexar arquivo"
+                          >
+                            <Paperclip className="h-3.5 w-3.5" />
+                            Anexar
+                          </Button>
+                        </>
+                      )}
                     {isEditing ? (
                       <Button
                         type="button"
@@ -1047,6 +1078,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                         Será enviado ao criar a demanda
                       </span>
                     )}
+                    </div>
                   </div>
                 </div>
               </TabsContent>
