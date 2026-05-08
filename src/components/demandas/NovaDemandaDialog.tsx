@@ -63,6 +63,9 @@ import {
   useDemandaAtividades,
   useDemandaConfirmacoes,
   useToggleConfirmacaoDemanda,
+  useDemandaAnexos,
+  useDeleteAnexoDemanda,
+  getDemandaAnexoSignedUrl,
 } from "@/hooks/useDemandas";
 import { URGENCIA_LABEL } from "@/lib/setoresAccess";
 import { supabase } from "@/integrations/supabase/client";
@@ -110,6 +113,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
   const atualizar = useAtualizarDemanda();
   const comentar = useAdicionarComentarioDemanda();
   const upload = useUploadAnexoDemanda();
+  const removerAnexo = useDeleteAnexoDemanda();
 
   const tarefaIdValido = !!tarefaId && UUID_RE.test(tarefaId);
   const isEditing = tarefaIdValido;
@@ -118,6 +122,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
   const { data: comentariosExistentes = [] } = useDemandaComentarios(queryId);
   const { data: atividadesExistentes = [] } = useDemandaAtividades(queryId);
   const { data: confirmacoes = [] } = useDemandaConfirmacoes(queryId);
+  const { data: anexosExistentes = [] } = useDemandaAnexos(queryId);
   const toggleConfirmacao = useToggleConfirmacaoDemanda();
   const tarefaCorreta = !!tarefaExistente && tarefaExistente.id === tarefaId;
 
@@ -320,14 +325,42 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
     staleTime: 1000 * 60 * 5,
   });
 
+  // Em modo edição faz upload imediato; em modo criação acumula em pendingFiles
+  // para subir depois que a tarefa for criada.
+  const enviarArquivos = async (files: File[]) => {
+    if (!files.length) return;
+    if (isEditing && tarefaId) {
+      for (const f of files) {
+        try {
+          await upload.mutateAsync({ tarefaId, file: f, nome: f.name });
+        } catch (e: any) {
+          console.error("Erro upload anexo demanda:", e);
+          toast.error(e?.message || `Falha ao anexar ${f.name}`);
+        }
+      }
+      toast.success(files.length > 1 ? "Anexos enviados" : "Anexo enviado");
+    } else {
+      setPendingFiles((p) => [...p, ...files]);
+    }
+  };
+
   const handleImagePaste = (file: File) => {
-    setPendingFiles((prev) => [...prev, file]);
+    void enviarArquivos([file]);
   };
 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    if (files.length) setPendingFiles((p) => [...p, ...files]);
+    if (files.length) void enviarArquivos(files);
     if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const abrirAnexoExistente = async (storage_path: string) => {
+    try {
+      const url = await getDemandaAnexoSignedUrl(storage_path);
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (e: any) {
+      toast.error(e?.message || "Não foi possível abrir o anexo");
+    }
   };
 
   const adicionarLink = () => {
@@ -580,6 +613,43 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                 <Paperclip className="h-3 w-3" /> Anexar arquivo
               </Button>
             </div>
+            {isEditing && anexosExistentes.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {anexosExistentes.map((a) => (
+                  <Badge
+                    key={a.id}
+                    variant="outline"
+                    className="gap-1 pr-1 max-w-full"
+                  >
+                    {a.mime_type?.startsWith("image/") ? (
+                      <ImageIcon className="h-3 w-3 shrink-0" />
+                    ) : (
+                      <Paperclip className="h-3 w-3 shrink-0" />
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => abrirAnexoExistente(a.storage_path)}
+                      className="truncate max-w-[180px] text-left hover:underline"
+                      title={a.nome || a.storage_path}
+                    >
+                      {a.nome || a.storage_path.split("/").pop()}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (confirm("Remover este anexo?")) {
+                          removerAnexo.mutate({ id: a.id, storage_path: a.storage_path });
+                        }
+                      }}
+                      className="hover:text-destructive ml-0.5"
+                      aria-label="Remover anexo"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="grid gap-1">
@@ -945,6 +1015,37 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                         ? `${comentarioPessoas.length} marcação(ões)`
                         : "@ para mencionar envolvidos"}
                     </span>
+                    <div className="flex items-center gap-1.5">
+                      {isEditing && (
+                        <>
+                          <input
+                            id="anexo-comentario-input"
+                            type="file"
+                            multiple
+                            hidden
+                            onChange={(e) => {
+                              const files = Array.from(e.target.files || []);
+                              if (files.length) void enviarArquivos(files);
+                              e.currentTarget.value = "";
+                            }}
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 gap-1 text-xs"
+                            onClick={() =>
+                              document
+                                .getElementById("anexo-comentario-input")
+                                ?.click()
+                            }
+                            title="Anexar arquivo"
+                          >
+                            <Paperclip className="h-3.5 w-3.5" />
+                            Anexar
+                          </Button>
+                        </>
+                      )}
                     {isEditing ? (
                       <Button
                         type="button"
@@ -977,6 +1078,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                         Será enviado ao criar a demanda
                       </span>
                     )}
+                    </div>
                   </div>
                 </div>
               </TabsContent>
