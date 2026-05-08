@@ -700,8 +700,70 @@ export function useUploadAnexoDemanda() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["demandas"] });
+      qc.invalidateQueries({ queryKey: ["demandas", "anexos"] });
     },
   });
+}
+
+// =============================================================
+// Listagem / remoção de anexos da demanda
+// =============================================================
+
+export interface DemandaAnexo {
+  id: string;
+  tarefa_id: string;
+  storage_path: string;
+  nome: string | null;
+  mime_type: string | null;
+  tamanho_bytes: number | null;
+  created_at: string;
+  created_by: string | null;
+}
+
+export function useDemandaAnexos(tarefaId: string | null) {
+  return useQuery({
+    queryKey: ["demandas", "anexos", tarefaId],
+    enabled: !!tarefaId,
+    queryFn: async (): Promise<DemandaAnexo[]> => {
+      const { data, error } = await supabase
+        .from("worklist_tarefa_anexos")
+        .select("id, tarefa_id, storage_path, nome, mime_type, tamanho_bytes, created_at, created_by")
+        .eq("tarefa_id", tarefaId!)
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      return (data || []) as DemandaAnexo[];
+    },
+  });
+}
+
+export function useDeleteAnexoDemanda() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, storage_path }: { id: string; storage_path: string }) => {
+      const { error: delErr } = await supabase
+        .from("worklist_tarefa_anexos")
+        .delete()
+        .eq("id", id);
+      if (delErr) throw delErr;
+      await supabase.storage.from("worklist-anexos").remove([storage_path]).catch(() => {});
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["demandas"] });
+      qc.invalidateQueries({ queryKey: ["demandas", "anexos"] });
+      toast.success("Anexo removido");
+    },
+    onError: (e: any) => {
+      toast.error(e?.message || "Erro ao remover anexo");
+    },
+  });
+}
+
+export async function getDemandaAnexoSignedUrl(storage_path: string, expiresIn = 3600) {
+  const { data, error } = await supabase.storage
+    .from("worklist-anexos")
+    .createSignedUrl(storage_path, expiresIn);
+  if (error) throw error;
+  return data.signedUrl;
 }
 
 // =============================================================
