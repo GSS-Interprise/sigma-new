@@ -573,16 +573,33 @@ export function CorpoClinicoTab() {
                               variant="ghost" 
                               size="icon"
                               className="h-8 w-8"
-                              onClick={() => {
+                              onClick={async () => {
                                 // If medico has lead_id, open LeadProntuarioDialog
                                 if (medico.lead_id) {
                                   setSelectedLeadId(medico.lead_id);
                                   setProntuarioDialogOpen(true);
-                                } else {
-                                  // Legacy medicos without lead_id use MedicoDialog
-                                  setSelectedMedico(medico);
-                                  setMedicoDialogOpen(true);
+                                  return;
                                 }
+                                // Defesa contra cache desatualizado: se o médico foi
+                                // migrado mas o objeto local ainda não tem lead_id,
+                                // procura por CPF antes de cair no MedicoDialog antigo.
+                                const cpfDigits = (medico.cpf || '').replace(/\D/g, '');
+                                if (cpfDigits) {
+                                  const { data: leadByCpf } = await supabase
+                                    .from('leads')
+                                    .select('id')
+                                    .or(`cpf.eq.${cpfDigits},cpf.eq.${medico.cpf}`)
+                                    .maybeSingle();
+                                  if (leadByCpf?.id) {
+                                    queryClient.invalidateQueries({ queryKey: ['corpo-clinico'] });
+                                    setSelectedLeadId(leadByCpf.id);
+                                    setProntuarioDialogOpen(true);
+                                    return;
+                                  }
+                                }
+                                // Legacy medicos without lead_id use MedicoDialog
+                                setSelectedMedico(medico);
+                                setMedicoDialogOpen(true);
                               }}
                             >
                               <Pencil className="h-4 w-4" />
