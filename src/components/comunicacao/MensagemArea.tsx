@@ -10,6 +10,9 @@ import { usePermissions } from "@/hooks/usePermissions";
 interface MensagemAreaProps {
   canalId: string;
   onOpenDM?: (targetUserId: string) => void;
+  /** Se informado, dá scroll na mensagem assim que a lista carrega. */
+  targetMensagemId?: string | null;
+  onTargetMensagemHandled?: () => void;
 }
 
 interface ReplyingTo {
@@ -18,7 +21,7 @@ interface ReplyingTo {
   mensagem: string;
 }
 
-export function MensagemArea({ canalId, onOpenDM }: MensagemAreaProps) {
+export function MensagemArea({ canalId, onOpenDM, targetMensagemId, onTargetMensagemHandled }: MensagemAreaProps) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { isAdmin } = usePermissions();
@@ -309,6 +312,9 @@ export function MensagemArea({ canalId, onOpenDM }: MensagemAreaProps) {
           onReply={handleReply}
           onEdit={handleEdit}
           onUserNameClick={onOpenDM}
+          canalId={canalId}
+          targetMensagemId={targetMensagemId}
+          onTargetMensagemHandled={onTargetMensagemHandled}
         />
         <div ref={messagesEndRef} />
       </div>
