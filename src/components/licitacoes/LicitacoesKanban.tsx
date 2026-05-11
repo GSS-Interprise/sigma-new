@@ -15,6 +15,7 @@ import { LicitacaoResultadoItensDialog } from "./LicitacaoResultadoItensDialog";
 import { LicitacaoDescarteDialog } from "./LicitacaoDescarteDialog";
 import { Button } from "@/components/ui/button";
 import { CardActionsMenu } from "@/components/demandas/CardActionsMenu";
+import { copiarAnexosLicitacaoParaRascunho, copiarAnexosLicitacaoParaContrato } from "@/hooks/useContratoRascunho";
 
 // Status que requerem resultado obrigatório (Inteligência Competitiva)
 const STATUS_REQUER_RESULTADO = ['arrematados', 'nao_ganhamos'];
@@ -580,31 +581,13 @@ export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filt
             .select()
             .single();
 
-          // Copiar anexos da licitação para rascunho
+          // Copiar anexos da licitação (3 origens) para o rascunho
           if (novoRascunho) {
-            const { data: anexosLicitacao } = await supabase.storage
-              .from('licitacoes-anexos')
-              .list(id);
-
-            if (anexosLicitacao && anexosLicitacao.length > 0) {
-              const anexosParaInserir = anexosLicitacao.map(arquivo => ({
-                contrato_rascunho_id: novoRascunho.id,
-                arquivo_url: `${id}/${arquivo.name}`,
-                arquivo_nome: arquivo.name,
-                arquivo_path: `licitacoes-anexos/${id}/${arquivo.name}`,
-                mime_type: arquivo.metadata?.mimetype || null,
-                origem: 'licitacao_card',
-                uploaded_by: user?.id,
-              }));
-
-              await supabase
-                .from('contrato_rascunho_anexos')
-                .insert(anexosParaInserir);
-            }
+            await copiarAnexosLicitacaoParaRascunho(id, novoRascunho.id, user?.id);
           }
         }
 
-        // Copiar anexos para o pré-contrato real (tabela contratos)
+        // Copiar anexos das 3 origens para o pré-contrato real (sem duplicar)
         const { data: preContrato } = await supabase
           .from('contratos')
           .select('id')
@@ -613,32 +596,7 @@ export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filt
           .maybeSingle();
 
         if (preContrato) {
-          // Verificar se já tem anexos copiados
-          const { data: anexosExistentes } = await supabase
-            .from('contrato_anexos')
-            .select('id')
-            .eq('contrato_id', preContrato.id)
-            .limit(1);
-
-          if (!anexosExistentes || anexosExistentes.length === 0) {
-            const { data: anexosLicitacao } = await supabase.storage
-              .from('licitacoes-anexos')
-              .list(id);
-
-            if (anexosLicitacao && anexosLicitacao.length > 0) {
-              const anexosParaContrato = anexosLicitacao.map(arquivo => ({
-                contrato_id: preContrato.id,
-                arquivo_url: `licitacoes-anexos/${id}/${arquivo.name}`,
-                arquivo_nome: arquivo.name,
-                usuario_id: user?.id,
-                usuario_nome: 'Sistema (arrematação automática)',
-              }));
-
-              await supabase
-                .from('contrato_anexos')
-                .insert(anexosParaContrato);
-            }
-          }
+          await copiarAnexosLicitacaoParaContrato(id, preContrato.id, user?.id);
         }
         
         toast.success('Contrato rascunho criado/atualizado automaticamente!');

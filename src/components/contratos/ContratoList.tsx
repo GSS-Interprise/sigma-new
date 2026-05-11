@@ -54,6 +54,8 @@ export function ContratoList({ contratos, isLoading, onEdit, onView, onDelete }:
           if (u.includes('/contratos-documentos/')) return 'contratos-documentos';
           if (u.includes('/licitacoes-anexos/')) return 'licitacoes-anexos';
           if (u.includes('/contrato-rascunho-anexos/')) return 'contrato-rascunho-anexos';
+          if (u.includes('/editais-pdfs/') || u.startsWith('editais-pdfs/')) return 'editais-pdfs';
+          if (u.startsWith('licitacoes-anexos/')) return 'licitacoes-anexos';
           if (/^[0-9a-f-]{36}\//i.test(u)) return 'licitacoes-anexos';
           return 'contratos-documentos';
         };
@@ -204,13 +206,17 @@ export function ContratoList({ contratos, isLoading, onEdit, onView, onDelete }:
   const getKeyFromUrl = (urlOrKey: string) => {
     if (!urlOrKey) return '';
     if (urlOrKey.startsWith('http')) {
-      const markers = ['/contratos-documentos/', '/licitacoes-anexos/', '/contrato-rascunho-anexos/'];
+      const markers = ['/contratos-documentos/', '/licitacoes-anexos/', '/contrato-rascunho-anexos/', '/editais-pdfs/'];
       for (const marker of markers) {
         const idx = urlOrKey.indexOf(marker);
         if (idx !== -1) return urlOrKey.substring(idx + marker.length);
       }
       return '';
     }
+    if (urlOrKey.startsWith('editais-pdfs/')) return urlOrKey.substring('editais-pdfs/'.length);
+    if (urlOrKey.startsWith('licitacoes-anexos/')) return urlOrKey.substring('licitacoes-anexos/'.length);
+    if (urlOrKey.startsWith('contrato-rascunho-anexos/')) return urlOrKey.substring('contrato-rascunho-anexos/'.length);
+    if (urlOrKey.startsWith('contratos-documentos/')) return urlOrKey.substring('contratos-documentos/'.length);
     return urlOrKey; // already a key
   };
 
@@ -218,6 +224,8 @@ export function ContratoList({ contratos, isLoading, onEdit, onView, onDelete }:
     if (urlOrKey.includes('/contratos-documentos/')) return 'contratos-documentos';
     if (urlOrKey.includes('/licitacoes-anexos/')) return 'licitacoes-anexos';
     if (urlOrKey.includes('/contrato-rascunho-anexos/')) return 'contrato-rascunho-anexos';
+    if (urlOrKey.includes('/editais-pdfs/') || urlOrKey.startsWith('editais-pdfs/')) return 'editais-pdfs';
+    if (urlOrKey.startsWith('licitacoes-anexos/')) return 'licitacoes-anexos';
     if (/^[0-9a-f-]{36}\//i.test(urlOrKey)) return 'licitacoes-anexos';
     return 'contratos-documentos';
   };

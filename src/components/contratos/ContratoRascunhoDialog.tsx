@@ -23,6 +23,7 @@ import {
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useContratoRascunho } from "@/hooks/useContratoRascunho";
+import { copiarAnexosLicitacaoParaRascunho, copiarAnexosLicitacaoParaContrato } from "@/hooks/useContratoRascunho";
 import { ConsolidarContratoDialog } from "./ConsolidarContratoDialog";
 import { VincularContratoExistenteDialog } from "./VincularContratoExistenteDialog";
 import { ContratoDialogWithClient } from "./ContratoDialogWithClient";
@@ -93,31 +94,32 @@ export function ContratoRascunhoDialog({
         .eq("id", rascunho.id);
       if (updErr) throw updErr;
 
-      // Re-sincronizar anexos do bucket
-      const { data: arquivosBucket } = await supabase.storage
-        .from("licitacoes-anexos")
-        .list(rascunho.licitacao_id);
+      // Re-sincronizar anexos das 3 origens (tabela + bucket licitacoes-anexos + bucket editais-pdfs)
+      const { data: userData } = await supabase.auth.getUser();
+      await copiarAnexosLicitacaoParaRascunho(rascunho.licitacao_id, rascunho.id, userData.user?.id);
 
-      if (arquivosBucket && arquivosBucket.length > 0) {
-        const { data: existentes } = await supabase
-          .from("contrato_rascunho_anexos")
-          .select("arquivo_nome")
-          .eq("contrato_rascunho_id", rascunho.id);
-        const existentesSet = new Set((existentes || []).map((a: any) => a.arquivo_nome));
-
-        const novos = arquivosBucket
-          .filter((arq) => !existentesSet.has(arq.name))
-          .map((arq) => ({
-            contrato_rascunho_id: rascunho.id,
-            arquivo_url: `${rascunho.licitacao_id}/${arq.name}`,
-            arquivo_nome: arq.name,
-            arquivo_path: `licitacoes-anexos/${rascunho.licitacao_id}/${arq.name}`,
-            mime_type: (arq as any).metadata?.mimetype || null,
-            origem: "licitacao_card",
-          }));
-
-        if (novos.length > 0) {
-          await supabase.from("contrato_rascunho_anexos").insert(novos);
+      // Se já existir pré-contrato vinculado, sincronizar também
+      if (rascunho.contrato_id) {
+        await copiarAnexosLicitacaoParaContrato(
+          rascunho.licitacao_id,
+          rascunho.contrato_id,
+          userData.user?.id,
+          'Sistema (sincronização manual)'
+        );
+      } else {
+        const { data: preContrato } = await supabase
+          .from('contratos')
+          .select('id')
+          .eq('licitacao_origem_id', rascunho.licitacao_id)
+          .eq('status_contrato', 'Pre-Contrato')
+          .maybeSingle();
+        if (preContrato) {
+          await copiarAnexosLicitacaoParaContrato(
+            rascunho.licitacao_id,
+            preContrato.id,
+            userData.user?.id,
+            'Sistema (sincronização manual)'
+          );
         }
       }
     },
@@ -136,11 +138,23 @@ export function ContratoRascunhoDialog({
 
   const handleOpenAnexo = async (anexo: any) => {
     try {
-      // Tentar abrir do bucket licitacoes-anexos
+      // Detectar bucket pelo arquivo_path/arquivo_url
+      const ref: string = anexo.arquivo_path || anexo.arquivo_url || '';
+      let bucket = 'licitacoes-anexos';
+      let key = anexo.arquivo_url as string;
+      if (ref.startsWith('editais-pdfs/')) {
+        bucket = 'editais-pdfs';
+        key = ref.substring('editais-pdfs/'.length);
+      } else if (ref.startsWith('licitacoes-anexos/')) {
+        bucket = 'licitacoes-anexos';
+        key = ref.substring('licitacoes-anexos/'.length);
+      } else if (ref.startsWith('contrato-rascunho-anexos/')) {
+        bucket = 'contrato-rascunho-anexos';
+        key = ref.substring('contrato-rascunho-anexos/'.length);
+      }
       const { data: urlData } = await supabase.storage
-        .from('licitacoes-anexos')
-        .createSignedUrl(anexo.arquivo_url, 3600);
-
+        .from(bucket)
+        .createSignedUrl(key, 3600);
       if (urlData?.signedUrl) {
         window.open(urlData.signedUrl, "_blank");
       }
