@@ -193,9 +193,10 @@ export function useDemandasParaMim() {
 }
 
 export function useDemandasDoSetor(setorId: string | null | undefined) {
+  const { user } = useAuth();
   return useQuery({
-    queryKey: ["demandas", "agenda-setor", setorId],
-    enabled: !!setorId,
+    queryKey: ["demandas", "agenda-setor", setorId, user?.id],
+    enabled: !!user?.id,
     queryFn: async () => {
       // Para o calendário trazemos tudo que o usuário consegue ver e que tem data_limite
       const { data, error } = await supabase
