@@ -79,6 +79,10 @@ interface Props {
   defaultDate?: Date | null;
   /** Se informado, abre o modal em modo edição da tarefa. */
   tarefaId?: string | null;
+  /** Pré-popula título ao criar (ignorado em modo edição). */
+  prefillTitulo?: string;
+  /** Pré-popula descrição (HTML) ao criar (ignorado em modo edição). */
+  prefillDescricao?: string;
 }
 
 type Urgencia = "baixa" | "media" | "alta" | "critica";
@@ -105,7 +109,7 @@ function initials(name?: string | null) {
     .toUpperCase();
 }
 
-export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = null }: Props) {
+export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = null, prefillTitulo, prefillDescricao }: Props) {
   const { setorId } = useUserSetor();
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -151,8 +155,8 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
   useEffect(() => {
     if (!open) return;
     if (!isEditing) {
-      setTitulo("");
-      setDescricao("");
+      setTitulo(prefillTitulo ?? "");
+      setDescricao(prefillDescricao ?? "");
       setPessoas([]);
       setUrgencia("media");
       setDataLimite(defaultDate ?? undefined);
@@ -168,7 +172,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
       setNovoLinkTitulo("");
       setNovoLinkUrl("");
     }
-  }, [open, defaultDate, isEditing]);
+  }, [open, defaultDate, isEditing, prefillTitulo, prefillDescricao]);
 
   // Pré-popular ao editar
   useEffect(() => {
