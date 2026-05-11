@@ -227,7 +227,7 @@ export function MensagemList({ mensagens, currentUserId, onReply, onEdit, onUser
             >
               {/* Action Buttons - visible on hover */}
               <div className={cn(
-                "mt-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0",
+                "mt-2 flex gap-1 opacity-60 group-hover:opacity-100 transition-opacity shrink-0",
                 isOwn ? "flex-row-reverse" : ""
               )}>
                 {onReply && !isEditing && (
