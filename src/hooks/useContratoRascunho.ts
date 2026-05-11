@@ -210,26 +210,8 @@ export function useContratosRascunho() {
 
       if (error) throw error;
 
-      // Copiar anexos da licitação para o rascunho
-      const { data: anexosLicitacao } = await supabase.storage
-        .from('licitacoes-anexos')
-        .list(licitacao.id);
-
-      if (anexosLicitacao && anexosLicitacao.length > 0) {
-        const anexosParaInserir = anexosLicitacao.map(arquivo => ({
-          contrato_rascunho_id: novoRascunho.id,
-          arquivo_url: `${licitacao.id}/${arquivo.name}`,
-          arquivo_nome: arquivo.name,
-          arquivo_path: `licitacoes-anexos/${licitacao.id}/${arquivo.name}`,
-          mime_type: arquivo.metadata?.mimetype || null,
-          origem: 'licitacao_card',
-          uploaded_by: userId,
-        }));
-
-        await supabase
-          .from('contrato_rascunho_anexos')
-          .insert(anexosParaInserir);
-      }
+      // Copiar anexos da licitação (3 origens: tabela + 2 buckets) para o rascunho, sem duplicar
+      await copiarAnexosLicitacaoParaRascunho(licitacao.id, novoRascunho.id, userId);
 
       // Log de auditoria
       await registrarAuditoria({
