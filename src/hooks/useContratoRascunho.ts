@@ -3,6 +3,154 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { registrarAuditoria } from "@/lib/auditLogger";
 
+// Helper: copia anexos da licitação (tabela licitacoes_anexos + buckets licitacoes-anexos e editais-pdfs)
+// para contrato_rascunho_anexos, sem duplicar.
+export async function copiarAnexosLicitacaoParaRascunho(
+  licitacaoId: string,
+  rascunhoId: string,
+  userId?: string | null
+) {
+  const novos: Array<{
+    contrato_rascunho_id: string;
+    arquivo_url: string;
+    arquivo_nome: string;
+    arquivo_path: string;
+    mime_type: string | null;
+    origem: string;
+    uploaded_by: string | null;
+  }> = [];
+  const seenPaths = new Set<string>();
+  const seenNomes = new Set<string>();
+
+  // Anexos já existentes no rascunho (para deduplicar)
+  const { data: existentes } = await supabase
+    .from('contrato_rascunho_anexos')
+    .select('arquivo_path, arquivo_url, arquivo_nome')
+    .eq('contrato_rascunho_id', rascunhoId);
+  (existentes || []).forEach((a: any) => {
+    if (a.arquivo_path) seenPaths.add(a.arquivo_path);
+    if (a.arquivo_url) seenPaths.add(a.arquivo_url);
+    if (a.arquivo_nome) seenNomes.add(a.arquivo_nome);
+  });
+
+  const push = (item: typeof novos[number]) => {
+    if (seenPaths.has(item.arquivo_path) || seenPaths.has(item.arquivo_url) || seenNomes.has(item.arquivo_nome)) return;
+    seenPaths.add(item.arquivo_path);
+    seenPaths.add(item.arquivo_url);
+    seenNomes.add(item.arquivo_nome);
+    novos.push(item);
+  };
+
+  // 1) Tabela licitacoes_anexos (uploads manuais antigos)
+  const { data: anexosTabela } = await supabase
+    .from('licitacoes_anexos')
+    .select('arquivo_nome, arquivo_url')
+    .eq('licitacao_id', licitacaoId);
+  (anexosTabela || []).forEach((a: any) => {
+    push({
+      contrato_rascunho_id: rascunhoId,
+      arquivo_url: a.arquivo_url,
+      arquivo_nome: a.arquivo_nome,
+      arquivo_path: `licitacoes-anexos/${a.arquivo_url}`,
+      mime_type: null,
+      origem: 'licitacao_card',
+      uploaded_by: userId ?? null,
+    });
+  });
+
+  // 2) Bucket licitacoes-anexos
+  const { data: filesLic } = await supabase.storage
+    .from('licitacoes-anexos')
+    .list(licitacaoId);
+  (filesLic || []).forEach((arquivo: any) => {
+    push({
+      contrato_rascunho_id: rascunhoId,
+      arquivo_url: `${licitacaoId}/${arquivo.name}`,
+      arquivo_nome: arquivo.name,
+      arquivo_path: `licitacoes-anexos/${licitacaoId}/${arquivo.name}`,
+      mime_type: arquivo.metadata?.mimetype || null,
+      origem: 'licitacao_card',
+      uploaded_by: userId ?? null,
+    });
+  });
+
+  // 3) Bucket editais-pdfs (anexos automáticos do edital)
+  const { data: filesEdital } = await supabase.storage
+    .from('editais-pdfs')
+    .list(licitacaoId);
+  (filesEdital || []).forEach((arquivo: any) => {
+    push({
+      contrato_rascunho_id: rascunhoId,
+      arquivo_url: `editais-pdfs/${licitacaoId}/${arquivo.name}`,
+      arquivo_nome: arquivo.name,
+      arquivo_path: `editais-pdfs/${licitacaoId}/${arquivo.name}`,
+      mime_type: arquivo.metadata?.mimetype || null,
+      origem: 'licitacao_edital',
+      uploaded_by: userId ?? null,
+    });
+  });
+
+  if (novos.length > 0) {
+    await supabase.from('contrato_rascunho_anexos').insert(novos);
+  }
+}
+
+// Helper: copia anexos da licitação para contrato_anexos do pré-contrato, sem duplicar.
+export async function copiarAnexosLicitacaoParaContrato(
+  licitacaoId: string,
+  contratoId: string,
+  userId?: string | null,
+  usuarioNome = 'Sistema (arrematação automática)'
+) {
+  const novos: Array<{
+    contrato_id: string;
+    arquivo_url: string;
+    arquivo_nome: string;
+    usuario_id: string | null;
+    usuario_nome: string;
+  }> = [];
+  const seenUrl = new Set<string>();
+  const seenNome = new Set<string>();
+
+  const { data: existentes } = await supabase
+    .from('contrato_anexos')
+    .select('arquivo_url, arquivo_nome')
+    .eq('contrato_id', contratoId);
+  (existentes || []).forEach((a: any) => {
+    if (a.arquivo_url) seenUrl.add(a.arquivo_url);
+    if (a.arquivo_nome) seenNome.add(a.arquivo_nome);
+  });
+
+  const push = (arquivo_url: string, arquivo_nome: string) => {
+    if (seenUrl.has(arquivo_url) || seenNome.has(arquivo_nome)) return;
+    seenUrl.add(arquivo_url);
+    seenNome.add(arquivo_nome);
+    novos.push({
+      contrato_id: contratoId,
+      arquivo_url,
+      arquivo_nome,
+      usuario_id: userId ?? null,
+      usuario_nome: usuarioNome,
+    });
+  };
+
+  const { data: anexosTabela } = await supabase
+    .from('licitacoes_anexos')
+    .select('arquivo_nome, arquivo_url')
+    .eq('licitacao_id', licitacaoId);
+  (anexosTabela || []).forEach((a: any) => push(`licitacoes-anexos/${a.arquivo_url}`, a.arquivo_nome));
+
+  const { data: filesLic } = await supabase.storage.from('licitacoes-anexos').list(licitacaoId);
+  (filesLic || []).forEach((arquivo: any) => push(`licitacoes-anexos/${licitacaoId}/${arquivo.name}`, arquivo.name));
+
+  const { data: filesEdital } = await supabase.storage.from('editais-pdfs').list(licitacaoId);
+  (filesEdital || []).forEach((arquivo: any) => push(`editais-pdfs/${licitacaoId}/${arquivo.name}`, arquivo.name));
+
+  if (novos.length > 0) {
+    await supabase.from('contrato_anexos').insert(novos);
+  }
+}
+
 export interface ContratoRascunho {
   id: string;
   licitacao_id: string;
