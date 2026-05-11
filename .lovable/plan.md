@@ -1,52 +1,48 @@
 ## Diagnóstico
 
-Verifiquei no banco e confirmei o problema: **usuários "suspensos" continuam podendo logar e acessar o Sigma normalmente.**
+O problema está confirmado no fluxo de arrematação/pré-contrato:
 
-- 8 usuários estão com `profiles.status = 'suspenso'` (Kayky, Sarah, Emmily, Arthur, Luana, Ricardo, Ulisses, Yuri).
-- Nenhum deles tem role em `user_roles` — mas isso só limita telas com `PermissionRoute`. Telas comuns (Dashboard, Comunicação, Workspace, etc.) usam apenas `ProtectedRoute`, que **só checa se existe sessão** (`user`), ignorando o `status` do profile.
-- Resultado: basta o registro existir em `auth.users` que o login é aceito e o app abre.
-- O status "suspenso" hoje é apenas visual (badge vermelho na tela de Configurações). Não há nenhuma camada de bloqueio no front nem no banco.
+- A tela de licitação mostra anexos de duas origens:
+  - tabela/bucket `licitacoes_anexos` + `licitacoes-anexos` para uploads posteriores;
+  - bucket `editais-pdfs` para anexos criados automaticamente junto com a licitação.
+- O fluxo que cria/sincroniza o rascunho e o pré-contrato hoje copia só `licitacoes-anexos`.
+- Além disso, quando o pré-contrato já tem algum anexo, o código pula a cópia inteira; isso deixa anexos novos sem entrar depois.
 
-## O que vou fazer
+Exemplos encontrados no banco:
 
-### 1. Bloquear login no `AuthContext`
-- Após `SIGNED_IN` (e ao restaurar sessão em `getSession`), buscar `profiles.status` do usuário.
-- Se status for `suspenso` ou `inativo`:
-  - Chamar `supabase.auth.signOut()` imediatamente.
-  - Limpar `SESSION_START_KEY` do localStorage.
-  - Mostrar toast: "Acesso suspenso. Procure o administrador."
-  - Redirecionar para `/auth`.
-- Se status for `ativo`, segue o fluxo normal.
+- Pré-contrato `#98`, licitação `7425614`: origem tem 7 anexos, pré-contrato tem 4. Os 3 faltantes estão em `editais-pdfs`.
+- Pré-contrato `#100`, licitação `7484234`: origem tem 3 anexos, pré-contrato tem 0.
+- Pré-contrato `#96`, licitação `7370538`: origem tem 5 anexos, pré-contrato tem 0.
 
-### 2. Reforçar no `ProtectedRoute`
-- Buscar profile do usuário (via React Query, cache curto).
-- Enquanto carrega: spinner atual.
-- Se status ≠ `ativo`: tela "Acesso suspenso — entre em contato com o administrador" + botão "Sair", em vez de renderizar o app.
-- Garante que mesmo se o usuário ficar logado e for suspenso em runtime, perde acesso na próxima navegação.
+## Plano de correção
 
-### 3. Camada server-side (RLS) — função helper
-Criar função SQL `public.current_user_is_active()`:
-```sql
-create or replace function public.current_user_is_active()
-returns boolean
-language sql stable security definer set search_path=public as $$
-  select coalesce((select status = 'ativo' from public.profiles where id = auth.uid()), false)
-$$;
-```
-- Adicionar essa checagem nas políticas RLS de **leitura** das tabelas mais sensíveis usadas pelo dashboard (profiles próprio, leads, captacao_leads, disparos_campanhas, comunicacao_mensagens, ages_*, contratos, licitacoes…).
-- Na prática vou criar uma policy `RESTRICTIVE` por tabela sensível: `USING (public.current_user_is_active())`. Policies RESTRICTIVE somam-se às existentes via AND, então não quebro o que já funciona — apenas exijo que o usuário esteja ativo.
-- Lista exata das tabelas alvo: confirmo na implementação consultando quais tabelas têm RLS habilitado e são acessadas por usuário comum (excluindo `profiles` da própria pessoa, para o front conseguir ler o próprio status e exibir a mensagem de bloqueio).
+1. Centralizar a leitura de anexos de licitação no frontend
+   - Criar/ajustar helper para montar uma lista única com:
+     - registros da tabela `licitacoes_anexos`;
+     - arquivos do bucket `licitacoes-anexos`;
+     - arquivos do bucket `editais-pdfs`.
+   - Deduplicar por caminho/nome para evitar anexos repetidos.
 
-### 4. Teste
-Após aplicar:
-- Tentar logar com `arthur.rhc@gmail.com` (suspenso) → deve cair no toast "Acesso suspenso" e voltar para `/auth`.
-- Logar com um usuário ativo → deve continuar funcionando normalmente.
-- Suspender um usuário logado → na próxima request/navegação ele perde acesso.
+2. Corrigir a criação/sincronização do rascunho
+   - Atualizar `useContratoRascunho.ts` e o botão “sincronizar” do `ContratoRascunhoDialog` para copiar anexos das duas origens.
+   - Guardar `arquivo_path` com o bucket completo, por exemplo:
+     - `licitacoes-anexos/<licitacaoId>/<arquivo>`
+     - `editais-pdfs/<licitacaoId>/<arquivo>`
 
-## Arquivos alterados
-- `src/contexts/AuthContext.tsx` — verificação de status pós-login.
-- `src/components/auth/ProtectedRoute.tsx` — guarda extra de status + tela de bloqueio.
-- Migração SQL — função `current_user_is_active` + policies RESTRICTIVE nas tabelas sensíveis.
+3. Corrigir o fluxo de arrematação no Kanban
+   - Em `LicitacoesKanban.tsx`, ao mover para `arrematados`, inserir no rascunho e no pré-contrato apenas os anexos que ainda não existem.
+   - Remover a regra atual que só copia se o pré-contrato não tiver nenhum anexo, pois ela impede sincronizações parciais.
 
-## Observação
-Não vou banir o usuário em `auth.users` (requer service role + edge function), porque a combinação acima já bloqueia 100% do acesso de dados e da UI. Se você quiser também invalidar o token de sessão imediatamente no servidor quando alguém for suspenso, posso adicionar uma edge function `admin-suspend-user` num próximo passo.
+4. Corrigir abertura/visualização dos anexos do pré-contrato
+   - Ajustar `ContratoList.tsx`, `ContratoFileViewerDialog.tsx` e `ContratoRascunhoDialog.tsx` para reconhecer também `editais-pdfs`.
+   - Assim os anexos copiados do bucket automático abrem corretamente.
+
+5. Corrigir os dados já existentes
+   - Criar migração SQL para:
+     - inserir em `contrato_rascunho_anexos` os anexos ausentes vindos de `licitacoes_anexos`, `licitacoes-anexos` e `editais-pdfs`;
+     - inserir em `contrato_anexos` os anexos ausentes dos pré-contratos existentes;
+     - evitar duplicatas por `contrato_id + arquivo_url` / `rascunho_id + arquivo_path`.
+
+## Validação
+
+Depois da implementação, vou consultar novamente o banco para conferir que os pré-contratos com origem em licitação passaram a ter a mesma quantidade de anexos disponíveis na origem, incluindo os arquivos de `editais-pdfs`.
