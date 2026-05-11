@@ -1121,7 +1121,7 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
           // Buscar o rascunho para verificar se há pré-contrato automático vinculado
           const { data: rascunho } = await supabase
             .from('contrato_rascunho')
-            .select('contrato_id, status')
+            .select('contrato_id, status, licitacao_id')
             .eq('id', rascunhoId)
             .maybeSingle();
 
@@ -1158,7 +1158,19 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
 
           // Se havia um pré-contrato automático diferente do contrato novo,
           // transferir o codigo_interno e remover o pré-contrato
-          const preContratoId = rascunho?.contrato_id;
+          let preContratoId = rascunho?.contrato_id as string | null | undefined;
+          // Fallback: se rascunho.contrato_id estiver vazio, localizar o pré-contrato órfão
+          // pela licitacao_origem_id (status Pre-Contrato e sem cliente)
+          if (!preContratoId && (rascunho as any)?.licitacao_id) {
+            const { data: pcFallback } = await supabase
+              .from('contratos')
+              .select('id')
+              .eq('licitacao_origem_id', (rascunho as any).licitacao_id)
+              .eq('status_contrato', 'Pre-Contrato')
+              .is('cliente_id', null)
+              .maybeSingle();
+            if (pcFallback?.id) preContratoId = pcFallback.id;
+          }
           if (preContratoId && preContratoId !== result.contratoId) {
             const { data: preContrato } = await supabase
               .from('contratos')

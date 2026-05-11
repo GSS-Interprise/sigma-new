@@ -447,6 +447,26 @@ export function useContratosRascunho() {
         })
         .eq('id', rascunhoId);
 
+      // Remover pré-contrato órfão (se existir) e transferir codigo_interno
+      if (rascunho.licitacao_id) {
+        const { data: preContrato } = await supabase
+          .from('contratos')
+          .select('id, codigo_interno')
+          .eq('licitacao_origem_id', rascunho.licitacao_id)
+          .eq('status_contrato', 'Pre-Contrato')
+          .is('cliente_id', null)
+          .maybeSingle();
+        if (preContrato && preContrato.id !== novoContrato.id) {
+          if (preContrato.codigo_interno) {
+            await supabase
+              .from('contratos')
+              .update({ codigo_interno: preContrato.codigo_interno })
+              .eq('id', novoContrato.id);
+          }
+          await supabase.from('contratos').delete().eq('id', preContrato.id);
+        }
+      }
+
       // Log de auditoria
       await registrarAuditoria({
         modulo: 'Contratos',
