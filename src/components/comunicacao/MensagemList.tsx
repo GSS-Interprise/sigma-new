@@ -2,11 +2,18 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { format, differenceInSeconds } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
-import { Check, CheckCheck, Paperclip, Reply, Pencil, X, Check as CheckIcon, FileText, Download, Play } from "lucide-react";
+import { Check, CheckCheck, Paperclip, Reply, Pencil, X, Check as CheckIcon, FileText, Download, Play, MoreVertical, ListTodo } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ComunicacaoFileViewerDialog } from "./ComunicacaoFileViewerDialog";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { NovaDemandaDialog } from "@/components/demandas/NovaDemandaDialog";
 
 const IMAGE_EXTS = ["jpg", "jpeg", "png", "gif", "bmp", "webp", "svg"];
 const VIDEO_EXTS = ["mp4", "webm", "ogg", "mov"];
@@ -39,11 +46,16 @@ interface MensagemListProps {
   onReply?: (mensagem: Mensagem) => void;
   onEdit?: (mensagemId: string, novoTexto: string) => void;
   onUserNameClick?: (userId: string) => void;
+  canalId?: string;
+  /** Se informado, dá scroll e destaca a mensagem assim que ela aparecer na lista. */
+  targetMensagemId?: string | null;
+  /** Disparado após realizar o scroll (para limpar o param da URL no pai). */
+  onTargetMensagemHandled?: () => void;
 }
 
 const EDIT_TIME_LIMIT_SECONDS = 300; // 5 minutos
 
-export function MensagemList({ mensagens, currentUserId, onReply, onEdit, onUserNameClick }: MensagemListProps) {
+export function MensagemList({ mensagens, currentUserId, onReply, onEdit, onUserNameClick, canalId, targetMensagemId, onTargetMensagemHandled }: MensagemListProps) {
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [fileViewerOpen, setFileViewerOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -51,6 +63,8 @@ export function MensagemList({ mensagens, currentUserId, onReply, onEdit, onUser
   const [, setTick] = useState(0); // Force re-render for time check
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const [demandaPrefill, setDemandaPrefill] = useState<{ titulo: string; descricao: string } | null>(null);
+  const [demandaOpen, setDemandaOpen] = useState(false);
 
   // Re-render every second to update edit button visibility
   useEffect(() => {
@@ -81,6 +95,38 @@ export function MensagemList({ mensagens, currentUserId, onReply, onEdit, onUser
       setTimeout(() => setHighlightedId(null), 2000);
     }
   }, []);
+
+  // Scroll automático quando uma mensagem-alvo é passada via prop (deep-link de demanda)
+  const lastTargetRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!targetMensagemId) return;
+    if (lastTargetRef.current === targetMensagemId) return;
+    const exists = mensagens.some((m) => m.id === targetMensagemId);
+    if (!exists) return;
+    lastTargetRef.current = targetMensagemId;
+    // Pequeno timeout para garantir que o ref já foi anexado
+    const t = setTimeout(() => {
+      scrollToMessage(targetMensagemId);
+      onTargetMensagemHandled?.();
+    }, 150);
+    return () => clearTimeout(t);
+  }, [targetMensagemId, mensagens, scrollToMessage, onTargetMensagemHandled]);
+
+  const handleCriarDemandaDaMensagem = (mensagem: Mensagem) => {
+    const trecho = (mensagem.mensagem || "").trim().replace(/\s+/g, " ");
+    const resumo = trecho.length > 60 ? trecho.slice(0, 60) + "..." : (trecho || "Mensagem do canal");
+    const titulo = `Demanda da mensagem: ${resumo}`;
+    const origem = `${window.location.origin}/comunicacao?canal=${canalId ?? ""}&mensagem=${mensagem.id}`;
+    const data = format(new Date(mensagem.data_envio), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR });
+    const safe = (s: string) =>
+      s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const descricao =
+      `<p><strong>Mensagem original</strong> de ${safe(mensagem.user_nome || "Usuário")} (${data}):</p>` +
+      `<blockquote>${safe(trecho || "(sem texto)")}</blockquote>` +
+      `<p><a href="${origem}" target="_blank" rel="noopener noreferrer">Abrir mensagem no canal</a></p>`;
+    setDemandaPrefill({ titulo, descricao });
+    setDemandaOpen(true);
+  };
 
   // Callback ref para armazenar referências aos elementos
   const setMessageRef = useCallback((id: string, element: HTMLDivElement | null) => {
@@ -201,6 +247,24 @@ export function MensagemList({ mensagens, currentUserId, onReply, onEdit, onUser
                   >
                     <Pencil className="h-4 w-4 text-muted-foreground" />
                   </button>
+                )}
+                {!isEditing && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        className="p-1.5 rounded hover:bg-muted"
+                        title="Mais ações"
+                      >
+                        <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align={isOwn ? "end" : "start"} className="w-52">
+                      <DropdownMenuItem onClick={() => handleCriarDemandaDaMensagem(mensagem)}>
+                        <ListTodo className="h-4 w-4 mr-2" />
+                        Criar demanda dessa mensagem
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 )}
               </div>
 
@@ -407,6 +471,16 @@ export function MensagemList({ mensagens, currentUserId, onReply, onEdit, onUser
         filePath={selectedFile}
         open={fileViewerOpen}
         onOpenChange={setFileViewerOpen}
+      />
+
+      <NovaDemandaDialog
+        open={demandaOpen}
+        onOpenChange={(o) => {
+          setDemandaOpen(o);
+          if (!o) setDemandaPrefill(null);
+        }}
+        prefillTitulo={demandaPrefill?.titulo}
+        prefillDescricao={demandaPrefill?.descricao}
       />
     </>
   );

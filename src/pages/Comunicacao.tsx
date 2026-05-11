@@ -14,6 +14,7 @@ import { useSearchParams } from "react-router-dom";
 export default function Comunicacao() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [canalSelecionado, setCanalSelecionado] = useState<string | null>(null);
+  const [mensagemAlvo, setMensagemAlvo] = useState<string | null>(null);
   const [novoCanalOpen, setNovoCanalOpen] = useState(false);
   const [novaDMOpen, setNovaDMOpen] = useState(false);
   const { isAdmin } = usePermissions();
@@ -22,8 +23,10 @@ export default function Comunicacao() {
   // Handle canal from URL query param
   useEffect(() => {
     const canalFromUrl = searchParams.get("canal");
+    const mensagemFromUrl = searchParams.get("mensagem");
     if (canalFromUrl) {
       setCanalSelecionado(canalFromUrl);
+      if (mensagemFromUrl) setMensagemAlvo(mensagemFromUrl);
       setSearchParams({}, { replace: true }); // Clean URL
     }
   }, [searchParams, setSearchParams]);
@@ -204,6 +207,8 @@ export default function Comunicacao() {
             <MensagemArea 
               canalId={canalSelecionado} 
               onOpenDM={openDMWithUser}
+              targetMensagemId={mensagemAlvo}
+              onTargetMensagemHandled={() => setMensagemAlvo(null)}
             />
           ) : (
             <div className="flex-1 flex items-center justify-center text-muted-foreground">
