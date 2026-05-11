@@ -55,12 +55,18 @@ interface CampanhaRow {
   total_quente: number;
   total_convertido: number;
   created_at: string;
+  chip_id: string | null;
+  chip_ids: string[] | null;
+  briefing_ia: Record<string, unknown> | null;
   especialidade?: { nome: string } | null;
   especialidades_nomes?: string[];
 }
 
+type StatusFiltro = "ativa" | "rascunho" | "pausada" | "todas";
+
 export default function CampanhasProspeccao() {
   const [busca, setBusca] = useState("");
+  const [statusFiltro, setStatusFiltro] = useState<StatusFiltro>("ativa");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [configurarId, setConfigurarId] = useState<string | null>(null);
   const [selecionada, setSelecionada] = useState<string | null>(null);
@@ -94,7 +100,7 @@ export default function CampanhasProspeccao() {
       let q = (supabase as any)
         .from("campanhas")
         .select(
-          "id, nome, status, tipo_campanha, especialidade_id, especialidade_ids, regiao_estado, limite_diario_campanha, total_frio, total_contatado, total_em_conversa, total_aquecido, total_quente, total_convertido, created_at, especialidade:especialidade_id(nome)"
+          "id, nome, status, tipo_campanha, especialidade_id, especialidade_ids, regiao_estado, limite_diario_campanha, total_frio, total_contatado, total_em_conversa, total_aquecido, total_quente, total_convertido, created_at, chip_id, chip_ids, briefing_ia, especialidade:especialidade_id(nome)"
         )
         .eq("tipo_campanha", "prospeccao")
         .order("created_at", { ascending: false });
@@ -129,7 +135,27 @@ export default function CampanhasProspeccao() {
 
   const campanhaSelecionada = campanhas.find((c) => c.id === selecionada);
 
-  const totalLeads = campanhas.reduce(
+  // Contagens por status (sempre sobre o universo total, não respeitam filtro)
+  const countAtivas = campanhas.filter((c) => c.status === "ativa").length;
+  const countRascunhos = campanhas.filter((c) => c.status === "rascunho").length;
+  const countPausadas = campanhas.filter((c) => c.status === "pausada").length;
+  const countTotal = campanhas.length;
+
+  // Campanhas "ativa fantasma" = status ativa mas sem chip e/ou sem briefing
+  const isCampanhaFantasma = (c: CampanhaRow) =>
+    c.status === "ativa" &&
+    (!c.chip_id && (!c.chip_ids || c.chip_ids.length === 0) ||
+      !c.briefing_ia ||
+      Object.keys(c.briefing_ia || {}).length === 0);
+  const countFantasmas = campanhas.filter(isCampanhaFantasma).length;
+
+  // Aplica filtro de status
+  const campanhasFiltradas =
+    statusFiltro === "todas"
+      ? campanhas
+      : campanhas.filter((c) => c.status === statusFiltro);
+
+  const totalLeads = campanhasFiltradas.reduce(
     (sum, c) =>
       sum +
       c.total_frio +
@@ -140,12 +166,11 @@ export default function CampanhasProspeccao() {
       c.total_convertido,
     0
   );
-  const totalQuentes = campanhas.reduce((sum, c) => sum + c.total_quente, 0);
-  const totalConvertidos = campanhas.reduce(
+  const totalQuentes = campanhasFiltradas.reduce((sum, c) => sum + c.total_quente, 0);
+  const totalConvertidos = campanhasFiltradas.reduce(
     (sum, c) => sum + c.total_convertido,
     0
   );
-  const campanhasAtivas = campanhas.filter((c) => c.status === "ativa").length;
 
   if (selecionada && campanhaSelecionada) {
     return (
@@ -335,7 +360,7 @@ export default function CampanhasProspeccao() {
                 <DashboardCard
                   icon={Rocket}
                   label="Campanhas Ativas"
-                  value={campanhasAtivas}
+                  value={countAtivas}
                   color="text-primary"
                 />
                 <DashboardCard
@@ -355,6 +380,44 @@ export default function CampanhasProspeccao() {
                   label="Convertidos"
                   value={totalConvertidos}
                   color="text-green-600"
+                />
+              </div>
+
+              {countFantasmas > 0 && statusFiltro === "ativa" && (
+                <Card className="border-amber-300 bg-amber-50">
+                  <CardContent className="p-3 flex items-center gap-2 text-sm text-amber-900">
+                    <span className="font-medium">
+                      ⚠️ {countFantasmas} campanhas marcadas como ativas mas sem chip ou briefing IA configurado
+                    </span>
+                    <span className="text-amber-700">— elas não disparam. Configure ou mova pra rascunho.</span>
+                  </CardContent>
+                </Card>
+              )}
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <StatusChip
+                  label="Ativas"
+                  count={countAtivas}
+                  active={statusFiltro === "ativa"}
+                  onClick={() => setStatusFiltro("ativa")}
+                />
+                <StatusChip
+                  label="Rascunhos"
+                  count={countRascunhos}
+                  active={statusFiltro === "rascunho"}
+                  onClick={() => setStatusFiltro("rascunho")}
+                />
+                <StatusChip
+                  label="Pausadas"
+                  count={countPausadas}
+                  active={statusFiltro === "pausada"}
+                  onClick={() => setStatusFiltro("pausada")}
+                />
+                <StatusChip
+                  label="Todas"
+                  count={countTotal}
+                  active={statusFiltro === "todas"}
+                  onClick={() => setStatusFiltro("todas")}
                 />
               </div>
 
@@ -391,12 +454,20 @@ export default function CampanhasProspeccao() {
                     Criar primeira campanha
                   </Button>
                 </Card>
+              ) : campanhasFiltradas.length === 0 ? (
+                <Card className="p-12 text-center">
+                  <Rocket className="h-12 w-12 text-muted-foreground/30 mx-auto mb-3" />
+                  <p className="text-muted-foreground">
+                    Nenhuma campanha {statusFiltro === "todas" ? "" : `em ${statusFiltro}`}.
+                  </p>
+                </Card>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {campanhas.map((c) => (
+                  {campanhasFiltradas.map((c) => (
                     <CampanhaCard
                       key={c.id}
                       campanha={c}
+                      fantasma={isCampanhaFantasma(c)}
                       onClick={() => setSelecionada(c.id)}
                       onConfigurar={() => setConfigurarId(c.id)}
                     />
@@ -422,6 +493,38 @@ export default function CampanhasProspeccao() {
         />
       </AppLayout>
     </CaptacaoProtectedRoute>
+  );
+}
+
+function StatusChip({
+  label,
+  count,
+  active,
+  onClick,
+}: {
+  label: string;
+  count: number;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+        active
+          ? "bg-primary text-primary-foreground border-primary"
+          : "bg-background text-muted-foreground border-border hover:text-foreground hover:border-muted-foreground/40"
+      }`}
+    >
+      {label}
+      <Badge
+        variant={active ? "secondary" : "outline"}
+        className="h-5 px-1.5 text-[11px]"
+      >
+        {count}
+      </Badge>
+    </button>
   );
 }
 
@@ -494,10 +597,12 @@ function MetricCard({
 
 function CampanhaCard({
   campanha,
+  fantasma,
   onClick,
   onConfigurar,
 }: {
   campanha: CampanhaRow;
+  fantasma?: boolean;
   onClick: () => void;
   onConfigurar: () => void;
 }) {
@@ -516,15 +621,27 @@ function CampanhaCard({
         )
       : 0;
 
+  const isRascunho = campanha.status === "rascunho";
+
   return (
     <Card
-      className="cursor-pointer hover:shadow-md transition-shadow"
+      className={`cursor-pointer hover:shadow-md transition-shadow ${
+        fantasma ? "border-amber-300 bg-amber-50/30" : ""
+      } ${isRascunho ? "opacity-70" : ""}`}
       onClick={onClick}
     >
       <CardContent className="p-4 space-y-3">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <h3 className="font-semibold truncate">{campanha.nome}</h3>
+            {fantasma && (
+              <Badge
+                variant="outline"
+                className="mt-1 text-xs border-amber-400 text-amber-800 bg-amber-100"
+              >
+                ⚠️ Falta configurar (chip ou briefing IA)
+              </Badge>
+            )}
             <div className="flex items-center gap-2 mt-1 flex-wrap">
               {campanha.especialidades_nomes && campanha.especialidades_nomes.length > 0 ? (
                 campanha.especialidades_nomes.length === 1 ? (

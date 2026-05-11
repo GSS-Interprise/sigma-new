@@ -229,6 +229,8 @@ serve(async (req) => {
     const perguntaResumo = String(parsed.pergunta_para_responsavel || "").trim();
     // JA_NO_QUADRO: médico já trabalha no projeto/hospital — não é lead, é colaborador
     const jaNoQuadro = parsed.JA_NO_QUADRO === true;
+    // NUMERO_ERRADO: pessoa que respondeu não é o destinatário do disparo
+    const numeroErrado = parsed.NUMERO_ERRADO === true;
 
     // Salvar respostas no histórico
     for (const msg of messages) {
@@ -284,12 +286,14 @@ serve(async (req) => {
 
     // ── 8. Status + histórico ──
     let novoStatus = campLead.status;
-    if (jaNoQuadro) novoStatus = "convertido";
+    if (numeroErrado) novoStatus = "descartado";
+    else if (jaNoQuadro) novoStatus = "convertido";
     else if (alertaLead) novoStatus = "quente";
     else if (conversaEncerrada) novoStatus = "descartado";
     else if (campLead.status === "contatado") novoStatus = "em_conversa";
 
-    // Se JA_NO_QUADRO: cancela cadência + marca humano_assumiu pra parar qualquer touch automático
+    // Sinais que travam touches futuros (JA_NO_QUADRO / NUMERO_ERRADO):
+    // ambos zeram proximo_touch_em pra cadência não tentar de novo neste lead/campanha.
     const updatePayload: Record<string, unknown> = {
       historico_conversa: historico,
       data_ultimo_contato: new Date().toISOString(),
@@ -297,6 +301,10 @@ serve(async (req) => {
     if (jaNoQuadro) {
       updatePayload.proximo_touch_em = null;
       updatePayload.humano_assumiu = true;
+    }
+    if (numeroErrado) {
+      updatePayload.proximo_touch_em = null;
+      updatePayload.motivo_perdido = "numero_errado";
     }
     await supabase.from("campanha_leads").update(updatePayload).eq("id", campLead.id);
 
@@ -647,6 +655,27 @@ O MÉDICO dirige a conversa. Seu fluxo é um guia, não um script fechado.
 - Pressa é bot. Calma é humano.
 </medico_dirige>
 
+<numero_errado>
+🔴 SINAL CRÍTICO — médico/pessoa diz que não é o destinatário do disparo: "não é meu número", "número errado", "aqui não é o Dr. X", "não sou o Dr. X", "sou a secretária mas o telefone não é dele", "pessoa errada", "tem o número errado", "não conheço essa pessoa", "engano", "não, isso aqui é meu pessoal/particular".
+
+🟡 OBS: secretária respondendo PELO médico ("sou a secretária do Dr. X, vou passar pra ele") NÃO é número errado — é intermediação. Trate como conversa normal.
+
+QUANDO DETECTAR NÚMERO ERRADO:
+- NÃO ofereça vaga (não é a pessoa certa)
+- NÃO pergunte se ele tem interesse em outra coisa
+- NÃO insista, não tente vender
+- NÃO peça pra repassar (a base do disparo é específica)
+
+RESPOSTA CALIBRADA: pede desculpa breve, agradece o aviso, encerra.
+
+Exemplos de tom (varie as palavras, mantenha o significado curto):
+- "Opa, foi mal! Erro de cadastro aqui do nosso lado. Vou tirar esse número da base. Obrigado pelo aviso!"
+- "Desculpa o transtorno, foi disparo automatizado. Já corrijo aqui. Abraço!"
+- "Pô, foi mal o engano! Vou remover esse contato. Obrigado por avisar."
+
+NO JSON, marque OBRIGATORIAMENTE: "NUMERO_ERRADO": true e "conversa_encerrada": true. Maturidade fica "frio". NÃO marque ALERTA_LEAD. NÃO marque JA_NO_QUADRO.
+</numero_errado>
+
 <medico_ja_no_quadro>
 🟢 SINAL CRÍTICO — médico que diz "já estou dentro", "já trabalho aqui", "já sou da equipe", "já falei com a coordenação", "já estou nesse projeto", "já atuo nesse hospital", "já fechei", "já assinei", ou similar = ele JÁ É colaborador ativo do projeto, NÃO é lead pra prospectar.
 
@@ -764,16 +793,18 @@ JSON válido apenas:
   "conversa_encerrada": false,
   "AGUARDA_RESPOSTA_HUMANA": false,
   "pergunta_para_responsavel": "",
-  "JA_NO_QUADRO": false
+  "JA_NO_QUADRO": false,
+  "NUMERO_ERRADO": false
 }
 
 Regras:
 - maturidade_lead: SEMPRE preencha
 - ALERTA_LEAD=true SÓ com maturidade_lead="quente" E sinais explícitos de fechamento
-- conversa_encerrada=true quando: sem perfil OU recusou explicitamente OU JA_NO_QUADRO=true
+- conversa_encerrada=true quando: sem perfil OU recusou explicitamente OU JA_NO_QUADRO=true OU NUMERO_ERRADO=true
 - AGUARDA_RESPOSTA_HUMANA=true quando pergunta escapa do briefing
 - pergunta_para_responsavel: texto curto (1-2 frases) do que precisa confirmar. Ex: "Médico perguntou se a UTI tem ECMO disponível"
 - JA_NO_QUADRO=true quando médico sinaliza que já trabalha/já está no projeto/já é da equipe (ver <medico_ja_no_quadro>). NUNCA combinar com ALERTA_LEAD=true.
+- NUMERO_ERRADO=true quando a pessoa que respondeu informa que o número não é do destinatário do disparo (ver <numero_errado>). NUNCA combinar com ALERTA_LEAD=true nem JA_NO_QUADRO=true.
 </saida>
 </prompt>`;
 }
