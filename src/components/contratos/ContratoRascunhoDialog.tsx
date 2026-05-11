@@ -138,11 +138,23 @@ export function ContratoRascunhoDialog({
 
   const handleOpenAnexo = async (anexo: any) => {
     try {
-      // Tentar abrir do bucket licitacoes-anexos
+      // Detectar bucket pelo arquivo_path/arquivo_url
+      const ref: string = anexo.arquivo_path || anexo.arquivo_url || '';
+      let bucket = 'licitacoes-anexos';
+      let key = anexo.arquivo_url as string;
+      if (ref.startsWith('editais-pdfs/')) {
+        bucket = 'editais-pdfs';
+        key = ref.substring('editais-pdfs/'.length);
+      } else if (ref.startsWith('licitacoes-anexos/')) {
+        bucket = 'licitacoes-anexos';
+        key = ref.substring('licitacoes-anexos/'.length);
+      } else if (ref.startsWith('contrato-rascunho-anexos/')) {
+        bucket = 'contrato-rascunho-anexos';
+        key = ref.substring('contrato-rascunho-anexos/'.length);
+      }
       const { data: urlData } = await supabase.storage
-        .from('licitacoes-anexos')
-        .createSignedUrl(anexo.arquivo_url, 3600);
-
+        .from(bucket)
+        .createSignedUrl(key, 3600);
       if (urlData?.signedUrl) {
         window.open(urlData.signedUrl, "_blank");
       }
