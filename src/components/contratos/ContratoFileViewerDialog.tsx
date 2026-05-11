@@ -29,7 +29,7 @@ export function ContratoFileViewerDialog({
     if (!url) return false;
     // Apenas URLs http(s) podem ser externas. Chaves puras (sem protocolo) são sempre internas.
     if (!url.startsWith('http')) return false;
-    const knownBuckets = ['/contratos-documentos/', '/licitacoes-anexos/', '/contrato-rascunho-anexos/'];
+    const knownBuckets = ['/contratos-documentos/', '/licitacoes-anexos/', '/contrato-rascunho-anexos/', '/editais-pdfs/', 'editais-pdfs/'];
     // Considera interno se a URL referenciar qualquer bucket conhecido (independente do domínio Supabase)
     return !knownBuckets.some(bucket => url.includes(bucket));
   };
@@ -38,7 +38,7 @@ export function ContratoFileViewerDialog({
     if (!urlOrKey) return '';
     if (urlOrKey.startsWith('http')) {
       // Tentar múltiplos buckets
-      const buckets = ['/contratos-documentos/', '/licitacoes-anexos/', '/contrato-rascunho-anexos/'];
+      const buckets = ['/contratos-documentos/', '/licitacoes-anexos/', '/contrato-rascunho-anexos/', '/editais-pdfs/'];
       for (const marker of buckets) {
         const idx = urlOrKey.indexOf(marker);
         if (idx !== -1) {
@@ -47,6 +47,11 @@ export function ContratoFileViewerDialog({
       }
       return '';
     }
+    // Chave armazenada como "editais-pdfs/<licId>/<arq>" — remove prefixo do bucket
+    if (urlOrKey.startsWith('editais-pdfs/')) return urlOrKey.substring('editais-pdfs/'.length);
+    if (urlOrKey.startsWith('licitacoes-anexos/')) return urlOrKey.substring('licitacoes-anexos/'.length);
+    if (urlOrKey.startsWith('contrato-rascunho-anexos/')) return urlOrKey.substring('contrato-rascunho-anexos/'.length);
+    if (urlOrKey.startsWith('contratos-documentos/')) return urlOrKey.substring('contratos-documentos/'.length);
     return urlOrKey;
   };
 
@@ -54,6 +59,8 @@ export function ContratoFileViewerDialog({
     if (url.includes('/contratos-documentos/')) return 'contratos-documentos';
     if (url.includes('/licitacoes-anexos/')) return 'licitacoes-anexos';
     if (url.includes('/contrato-rascunho-anexos/')) return 'contrato-rascunho-anexos';
+    if (url.includes('/editais-pdfs/') || url.startsWith('editais-pdfs/')) return 'editais-pdfs';
+    if (url.startsWith('licitacoes-anexos/')) return 'licitacoes-anexos';
     // Anexos herdados de licitação são salvos como "licitacaoId/arquivo" mesmo após virar contrato.
     if (/^[0-9a-f-]{36}\//i.test(url)) return 'licitacoes-anexos';
     return 'contratos-documentos';
