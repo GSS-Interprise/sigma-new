@@ -1028,6 +1028,13 @@ export type Database = {
             foreignKeyName: "aquecedor_par_chip_a_id_fkey"
             columns: ["chip_a_id"]
             isOneToOne: false
+            referencedRelation: "vw_campanhas_dashboard"
+            referencedColumns: ["chip_principal_id"]
+          },
+          {
+            foreignKeyName: "aquecedor_par_chip_a_id_fkey"
+            columns: ["chip_a_id"]
+            isOneToOne: false
             referencedRelation: "vw_chip_health"
             referencedColumns: ["chip_id"]
           },
@@ -1044,6 +1051,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "chips"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "aquecedor_par_chip_b_id_fkey"
+            columns: ["chip_b_id"]
+            isOneToOne: false
+            referencedRelation: "vw_campanhas_dashboard"
+            referencedColumns: ["chip_principal_id"]
           },
           {
             foreignKeyName: "aquecedor_par_chip_b_id_fkey"
@@ -1552,6 +1566,13 @@ export type Database = {
             foreignKeyName: "campanha_lead_touches_chip_usado_id_fkey"
             columns: ["chip_usado_id"]
             isOneToOne: false
+            referencedRelation: "vw_campanhas_dashboard"
+            referencedColumns: ["chip_principal_id"]
+          },
+          {
+            foreignKeyName: "campanha_lead_touches_chip_usado_id_fkey"
+            columns: ["chip_usado_id"]
+            isOneToOne: false
             referencedRelation: "vw_chip_health"
             referencedColumns: ["chip_id"]
           },
@@ -1688,6 +1709,13 @@ export type Database = {
             referencedColumns: ["campanha_id"]
           },
           {
+            foreignKeyName: "campanha_leads_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "vw_campanhas_dashboard"
+            referencedColumns: ["campanha_id"]
+          },
+          {
             foreignKeyName: "campanha_leads_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
@@ -1752,6 +1780,13 @@ export type Database = {
             columns: ["campanha_id"]
             isOneToOne: false
             referencedRelation: "vw_campanha_metricas"
+            referencedColumns: ["campanha_id"]
+          },
+          {
+            foreignKeyName: "campanha_listas_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "vw_campanhas_dashboard"
             referencedColumns: ["campanha_id"]
           },
           {
@@ -1873,6 +1908,13 @@ export type Database = {
             columns: ["campanha_id"]
             isOneToOne: false
             referencedRelation: "vw_campanha_metricas"
+            referencedColumns: ["campanha_id"]
+          },
+          {
+            foreignKeyName: "campanha_perguntas_pendentes_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "vw_campanhas_dashboard"
             referencedColumns: ["campanha_id"]
           },
           {
@@ -2095,6 +2137,13 @@ export type Database = {
             referencedColumns: ["campanha_id"]
           },
           {
+            foreignKeyName: "campanha_propostas_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "vw_campanhas_dashboard"
+            referencedColumns: ["campanha_id"]
+          },
+          {
             foreignKeyName: "campanha_propostas_lista_id_fkey"
             columns: ["lista_id"]
             isOneToOne: false
@@ -2178,6 +2227,13 @@ export type Database = {
             columns: ["campanha_id"]
             isOneToOne: false
             referencedRelation: "vw_campanha_metricas"
+            referencedColumns: ["campanha_id"]
+          },
+          {
+            foreignKeyName: "campanha_qualidade_metricas_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "vw_campanhas_dashboard"
             referencedColumns: ["campanha_id"]
           },
         ]
@@ -2397,6 +2453,13 @@ export type Database = {
             foreignKeyName: "campanhas_chip_fallback_id_fkey"
             columns: ["chip_fallback_id"]
             isOneToOne: false
+            referencedRelation: "vw_campanhas_dashboard"
+            referencedColumns: ["chip_principal_id"]
+          },
+          {
+            foreignKeyName: "campanhas_chip_fallback_id_fkey"
+            columns: ["chip_fallback_id"]
+            isOneToOne: false
             referencedRelation: "vw_chip_health"
             referencedColumns: ["chip_id"]
           },
@@ -2413,6 +2476,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "chips"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campanhas_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: false
+            referencedRelation: "vw_campanhas_dashboard"
+            referencedColumns: ["chip_principal_id"]
           },
           {
             foreignKeyName: "campanhas_chip_id_fkey"
@@ -2503,6 +2573,13 @@ export type Database = {
             columns: ["campanha_id"]
             isOneToOne: false
             referencedRelation: "vw_campanha_metricas"
+            referencedColumns: ["campanha_id"]
+          },
+          {
+            foreignKeyName: "campanhas_envios_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "vw_campanhas_dashboard"
             referencedColumns: ["campanha_id"]
           },
         ]
@@ -2759,6 +2836,13 @@ export type Database = {
             foreignKeyName: "chip_health_event_chip_id_fkey"
             columns: ["chip_id"]
             isOneToOne: false
+            referencedRelation: "vw_campanhas_dashboard"
+            referencedColumns: ["chip_principal_id"]
+          },
+          {
+            foreignKeyName: "chip_health_event_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: false
             referencedRelation: "vw_chip_health"
             referencedColumns: ["chip_id"]
           },
@@ -2838,6 +2922,13 @@ export type Database = {
             foreignKeyName: "chip_persona_chip_id_fkey"
             columns: ["chip_id"]
             isOneToOne: true
+            referencedRelation: "vw_campanhas_dashboard"
+            referencedColumns: ["chip_principal_id"]
+          },
+          {
+            foreignKeyName: "chip_persona_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: true
             referencedRelation: "vw_chip_health"
             referencedColumns: ["chip_id"]
           },
@@ -2891,6 +2982,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "chips"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chip_receive_log_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: false
+            referencedRelation: "vw_campanhas_dashboard"
+            referencedColumns: ["chip_principal_id"]
           },
           {
             foreignKeyName: "chip_receive_log_chip_id_fkey"
@@ -2964,6 +3062,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "chips"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chip_send_log_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: false
+            referencedRelation: "vw_campanhas_dashboard"
+            referencedColumns: ["chip_principal_id"]
           },
           {
             foreignKeyName: "chip_send_log_chip_id_fkey"
@@ -3043,6 +3148,13 @@ export type Database = {
             isOneToOne: true
             referencedRelation: "chips"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chip_state_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: true
+            referencedRelation: "vw_campanhas_dashboard"
+            referencedColumns: ["chip_principal_id"]
           },
           {
             foreignKeyName: "chip_state_chip_id_fkey"
@@ -4785,6 +4897,13 @@ export type Database = {
             foreignKeyName: "disparo_manual_envios_instance_id_fkey"
             columns: ["instance_id"]
             isOneToOne: false
+            referencedRelation: "vw_campanhas_dashboard"
+            referencedColumns: ["chip_principal_id"]
+          },
+          {
+            foreignKeyName: "disparo_manual_envios_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
             referencedRelation: "vw_chip_health"
             referencedColumns: ["chip_id"]
           },
@@ -4945,6 +5064,13 @@ export type Database = {
             referencedColumns: ["campanha_id"]
           },
           {
+            foreignKeyName: "disparos_campanhas_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "vw_campanhas_dashboard"
+            referencedColumns: ["campanha_id"]
+          },
+          {
             foreignKeyName: "disparos_campanhas_campanha_proposta_id_fkey"
             columns: ["campanha_proposta_id"]
             isOneToOne: false
@@ -4964,6 +5090,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "chips"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "disparos_campanhas_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: false
+            referencedRelation: "vw_campanhas_dashboard"
+            referencedColumns: ["chip_principal_id"]
           },
           {
             foreignKeyName: "disparos_campanhas_chip_id_fkey"
@@ -5238,6 +5371,13 @@ export type Database = {
             foreignKeyName: "disparos_log_chip_id_fkey"
             columns: ["chip_id"]
             isOneToOne: false
+            referencedRelation: "vw_campanhas_dashboard"
+            referencedColumns: ["chip_principal_id"]
+          },
+          {
+            foreignKeyName: "disparos_log_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: false
             referencedRelation: "vw_chip_health"
             referencedColumns: ["chip_id"]
           },
@@ -5328,6 +5468,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "chips"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "disparos_programados_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: false
+            referencedRelation: "vw_campanhas_dashboard"
+            referencedColumns: ["chip_principal_id"]
           },
           {
             foreignKeyName: "disparos_programados_chip_id_fkey"
@@ -6755,6 +6902,13 @@ export type Database = {
             isOneToOne: true
             referencedRelation: "chips"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "instance_proxy_settings_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: true
+            referencedRelation: "vw_campanhas_dashboard"
+            referencedColumns: ["chip_principal_id"]
           },
           {
             foreignKeyName: "instance_proxy_settings_instance_id_fkey"
@@ -8825,6 +8979,13 @@ export type Database = {
             referencedRelation: "vw_campanha_metricas"
             referencedColumns: ["campanha_id"]
           },
+          {
+            foreignKeyName: "marketing_conteudos_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "vw_campanhas_dashboard"
+            referencedColumns: ["campanha_id"]
+          },
         ]
       }
       marketing_endomarketing: {
@@ -8883,6 +9044,13 @@ export type Database = {
             columns: ["campanha_id"]
             isOneToOne: false
             referencedRelation: "vw_campanha_metricas"
+            referencedColumns: ["campanha_id"]
+          },
+          {
+            foreignKeyName: "marketing_endomarketing_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "vw_campanhas_dashboard"
             referencedColumns: ["campanha_id"]
           },
         ]
@@ -8964,6 +9132,13 @@ export type Database = {
             columns: ["campanha_id"]
             isOneToOne: false
             referencedRelation: "vw_campanha_metricas"
+            referencedColumns: ["campanha_id"]
+          },
+          {
+            foreignKeyName: "marketing_eventos_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "vw_campanhas_dashboard"
             referencedColumns: ["campanha_id"]
           },
         ]
@@ -9080,6 +9255,13 @@ export type Database = {
             referencedRelation: "vw_campanha_metricas"
             referencedColumns: ["campanha_id"]
           },
+          {
+            foreignKeyName: "marketing_leads_origem_campanha_id_fkey"
+            columns: ["origem_campanha_id"]
+            isOneToOne: false
+            referencedRelation: "vw_campanhas_dashboard"
+            referencedColumns: ["campanha_id"]
+          },
         ]
       }
       marketing_planejamentos: {
@@ -9138,6 +9320,13 @@ export type Database = {
             columns: ["campanha_id"]
             isOneToOne: false
             referencedRelation: "vw_campanha_metricas"
+            referencedColumns: ["campanha_id"]
+          },
+          {
+            foreignKeyName: "marketing_planejamentos_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "vw_campanhas_dashboard"
             referencedColumns: ["campanha_id"]
           },
         ]
@@ -9249,6 +9438,13 @@ export type Database = {
             columns: ["campanha_id"]
             isOneToOne: false
             referencedRelation: "vw_campanha_metricas"
+            referencedColumns: ["campanha_id"]
+          },
+          {
+            foreignKeyName: "marketing_trafego_pago_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "vw_campanhas_dashboard"
             referencedColumns: ["campanha_id"]
           },
         ]
@@ -11911,6 +12107,13 @@ export type Database = {
             foreignKeyName: "sigzap_instances_chip_id_fkey"
             columns: ["chip_id"]
             isOneToOne: false
+            referencedRelation: "vw_campanhas_dashboard"
+            referencedColumns: ["chip_principal_id"]
+          },
+          {
+            foreignKeyName: "sigzap_instances_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: false
             referencedRelation: "vw_chip_health"
             referencedColumns: ["chip_id"]
           },
@@ -13112,6 +13315,13 @@ export type Database = {
             referencedColumns: ["campanha_id"]
           },
           {
+            foreignKeyName: "campanha_leads_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "vw_campanhas_dashboard"
+            referencedColumns: ["campanha_id"]
+          },
+          {
             foreignKeyName: "campanha_leads_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
@@ -13153,6 +13363,48 @@ export type Database = {
           taxa_conversao_pct: number | null
           taxa_qualificacao_pct: number | null
           total_leads: number | null
+        }
+        Relationships: []
+      }
+      vw_campanhas_dashboard: {
+        Row: {
+          aquecido: number | null
+          campanha_id: string | null
+          chip_aquecedor_ativo: boolean | null
+          chip_capacidade_restante: number | null
+          chip_conexao: string | null
+          chip_envios_24h: number | null
+          chip_fase: string | null
+          chip_health: number | null
+          chip_limite_dia: number | null
+          chip_pausado_ate: string | null
+          chip_pause_motivo: string | null
+          chip_pode_disparar: boolean | null
+          chip_principal: string | null
+          chip_principal_id: string | null
+          contatado: number | null
+          convertidos: number | null
+          created_at: string | null
+          dias_no_ar: number | null
+          disparos_24h: number | null
+          disparos_7d: number | null
+          disparos_hoje: number | null
+          disparos_ontem: number | null
+          em_conversa: number | null
+          limite_diario_campanha: number | null
+          next_batch_at: string | null
+          nome: string | null
+          pool_pendentes: number | null
+          pool_total: number | null
+          quente_mais_antigo_h: number | null
+          quentes: number | null
+          regiao_estado: string | null
+          status: Database["public"]["Enums"]["status_campanha"] | null
+          taxa_contato_pct: number | null
+          tipo_campanha: string | null
+          total_disparos: number | null
+          total_falhas: number | null
+          updated_at: string | null
         }
         Relationships: []
       }
@@ -13317,6 +13569,13 @@ export type Database = {
             referencedRelation: "vw_campanha_metricas"
             referencedColumns: ["campanha_id"]
           },
+          {
+            foreignKeyName: "campanha_leads_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "vw_campanhas_dashboard"
+            referencedColumns: ["campanha_id"]
+          },
         ]
       }
       vw_produtividade_disparos: {
@@ -13374,6 +13633,13 @@ export type Database = {
             columns: ["campanha_id"]
             isOneToOne: false
             referencedRelation: "vw_campanha_metricas"
+            referencedColumns: ["campanha_id"]
+          },
+          {
+            foreignKeyName: "campanha_propostas_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "vw_campanhas_dashboard"
             referencedColumns: ["campanha_id"]
           },
           {
@@ -13647,15 +13913,20 @@ export type Database = {
       norm_phone: { Args: { p: string }; Returns: string }
       pode_encerrar_campanha: { Args: { _user_id: string }; Returns: boolean }
       popular_qualidade_metricas: { Args: { p_data?: string }; Returns: Json }
-      pre_send_check: {
-        Args: {
-          p_chip_id: string
-          p_conteudo_hash: string
-          p_evento_origem: string
-          p_to_jid: string
-        }
-        Returns: Json
-      }
+      pre_send_check:
+        | {
+            Args: { p_chip_id: string; p_evento_origem?: string }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_chip_id: string
+              p_conteudo_hash: string
+              p_evento_origem: string
+              p_to_jid: string
+            }
+            Returns: Json
+          }
       processar_disparos_agendados: { Args: never; Returns: undefined }
       prospeccao_aprovar: {
         Args: { p_campanha_lead_id: string }

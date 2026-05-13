@@ -45,8 +45,9 @@ Deno.serve(async (req) => {
 
     const lista: any = cp.lista;
     if (!lista) {
-      await marcarCanal(supabase, cp.id, "falha", { erro: "Lista não vinculada" });
-      return json({ error: "Lista não vinculada" }, 400);
+      // Sem lista vinculada não há o que disparar — retorna ok silenciosamente
+      // (o vínculo proposta×campanha pode ser criado sem lista de prospecção).
+      return json({ ok: true, skipped: true, reason: "lista_nao_vinculada" });
     }
 
     // 2. Resolve contatos (réplica de resolverContatosDaLista)
