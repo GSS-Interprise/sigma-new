@@ -135,6 +135,78 @@ const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorProps>(
       }
     }, [value]);
 
+    // Enable column-resize drag on tables inside the editor
+    React.useEffect(() => {
+      const root = editorRef.current;
+      if (!root) return;
+      const EDGE = 6;
+
+      const findCellNearRightEdge = (e: MouseEvent): HTMLTableCellElement | null => {
+        const target = e.target as HTMLElement;
+        const cell = target?.closest('td, th') as HTMLTableCellElement | null;
+        if (!cell) return null;
+        const rect = cell.getBoundingClientRect();
+        if (rect.right - e.clientX <= EDGE && rect.right - e.clientX >= -2) return cell;
+        return null;
+      };
+
+      const onMove = (e: MouseEvent) => {
+        const cell = findCellNearRightEdge(e);
+        root.style.cursor = cell ? 'col-resize' : '';
+      };
+
+      const onDown = (e: MouseEvent) => {
+        const cell = findCellNearRightEdge(e);
+        if (!cell) return;
+        const table = cell.closest('table') as HTMLTableElement | null;
+        if (!table) return;
+        const row = cell.parentElement as HTMLTableRowElement;
+        const cellIndex = Array.from(row.children).indexOf(cell);
+        const colgroup = table.querySelector('colgroup');
+        if (!colgroup) return;
+        const cols = Array.from(colgroup.querySelectorAll('col')) as HTMLTableColElement[];
+        const col = cols[cellIndex];
+        const nextCol = cols[cellIndex + 1];
+        if (!col) return;
+
+        e.preventDefault();
+        const tableRect = table.getBoundingClientRect();
+        const startX = e.clientX;
+        const startCellW = cell.getBoundingClientRect().width;
+        const startNextW = nextCol
+          ? (row.children[cellIndex + 1] as HTMLElement).getBoundingClientRect().width
+          : 0;
+
+        const drag = (ev: MouseEvent) => {
+          const dx = ev.clientX - startX;
+          const newW = Math.max(30, startCellW + dx);
+          const pct = (newW / tableRect.width) * 100;
+          col.style.width = pct.toFixed(4) + '%';
+          if (nextCol) {
+            const newNextW = Math.max(30, startNextW - dx);
+            const nextPct = (newNextW / tableRect.width) * 100;
+            nextCol.style.width = nextPct.toFixed(4) + '%';
+          }
+        };
+        const up = () => {
+          document.removeEventListener('mousemove', drag);
+          document.removeEventListener('mouseup', up);
+          document.body.style.userSelect = '';
+          handleInput();
+        };
+        document.body.style.userSelect = 'none';
+        document.addEventListener('mousemove', drag);
+        document.addEventListener('mouseup', up);
+      };
+
+      root.addEventListener('mousemove', onMove);
+      root.addEventListener('mousedown', onDown);
+      return () => {
+        root.removeEventListener('mousemove', onMove);
+        root.removeEventListener('mousedown', onDown);
+      };
+    }, []);
+
     const saveSelection = () => {
       const sel = window.getSelection();
       if (sel && sel.rangeCount > 0) {
