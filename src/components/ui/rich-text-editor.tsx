@@ -255,7 +255,17 @@ const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorProps>(
       if (pastedHtml) {
         e.preventDefault();
         const sanitized = sanitizeExternalHtml(pastedHtml);
-        document.execCommand('insertHTML', false, sanitized);
+        const enhanced = enhanceTablesForResize(sanitized);
+        document.execCommand('insertHTML', false, enhanced);
+        return;
+      }
+
+      // No HTML — check for tab-separated text (Excel/Sheets without HTML clipboard)
+      const pastedText = e.clipboardData?.getData('text/plain');
+      if (pastedText && /\t/.test(pastedText) && /\n/.test(pastedText.trim())) {
+        e.preventDefault();
+        const tableHtml = textToTable(pastedText);
+        document.execCommand('insertHTML', false, enhanceTablesForResize(tableHtml));
       }
     };
 
