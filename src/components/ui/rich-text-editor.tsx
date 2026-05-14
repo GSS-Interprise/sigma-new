@@ -144,7 +144,7 @@ const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorProps>(
 
     React.useEffect(() => {
       if (editorRef.current && value !== undefined) {
-        const sanitized = sanitizeExternalHtml(value);
+        const sanitized = enhanceTablesForResize(sanitizeExternalHtml(value));
         if (editorRef.current.innerHTML !== sanitized) {
           editorRef.current.innerHTML = sanitized;
         }
