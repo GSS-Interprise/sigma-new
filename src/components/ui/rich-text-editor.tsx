@@ -56,6 +56,69 @@ const TEXT_COLORS = [
   { name: "Cinza", color: "#6b7280" },
 ];
 
+// Convert tab-separated plain text into an HTML table
+const textToTable = (text: string): string => {
+  const rows = text.replace(/\r/g, '').split('\n').filter((r) => r.length > 0);
+  if (rows.length === 0) return '';
+  const escape = (s: string) =>
+    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const cells = rows.map((r) => r.split('\t'));
+  const cols = Math.max(...cells.map((c) => c.length));
+  const body = cells
+    .map(
+      (row) =>
+        '<tr>' +
+        Array.from({ length: cols })
+          .map(
+            (_, i) =>
+              `<td style="border:1px solid #d1d5db;padding:4px 8px;">${escape(row[i] ?? '')}</td>`
+          )
+          .join('') +
+        '</tr>'
+    )
+    .join('');
+  return `<table style="border-collapse:collapse;width:100%;margin:8px 0;">${body}</table>`;
+};
+
+// Add table-layout:fixed + colgroup so columns can be resized via <col> widths
+const enhanceTablesForResize = (html: string): string => {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  doc.querySelectorAll('table').forEach((table) => {
+    const t = table as HTMLTableElement;
+    const firstRow = t.querySelector('tr');
+    if (!firstRow) return;
+    const colCount = Array.from(firstRow.children).reduce(
+      (sum, c) => sum + ((c as HTMLTableCellElement).colSpan || 1),
+      0
+    );
+    if (!colCount) return;
+    t.style.tableLayout = 'fixed';
+    t.style.borderCollapse = 'collapse';
+    if (!t.style.width) t.style.width = '100%';
+    t.setAttribute('data-resizable-table', 'true');
+    // Remove existing colgroup, rebuild fresh with equal widths
+    t.querySelectorAll('colgroup').forEach((c) => c.remove());
+    const colgroup = doc.createElement('colgroup');
+    const w = (100 / colCount).toFixed(4) + '%';
+    for (let i = 0; i < colCount; i++) {
+      const col = doc.createElement('col');
+      col.style.width = w;
+      colgroup.appendChild(col);
+    }
+    t.insertBefore(colgroup, t.firstChild);
+    // Cells: word-wrap + relative positioning for resize handle
+    t.querySelectorAll('td, th').forEach((cell) => {
+      const c = cell as HTMLElement;
+      c.style.wordWrap = 'break-word';
+      c.style.overflowWrap = 'break-word';
+      c.style.position = 'relative';
+      if (!c.style.border) c.style.border = '1px solid #d1d5db';
+      if (!c.style.padding) c.style.padding = '4px 8px';
+    });
+  });
+  return doc.body.innerHTML;
+};
+
 const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorProps>(
   ({ value, onChange, placeholder, className, disabled, minHeight = "300px", onImagePaste }, ref) => {
     const editorRef = React.useRef<HTMLDivElement>(null);
