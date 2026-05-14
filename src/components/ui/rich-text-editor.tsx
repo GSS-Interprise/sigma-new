@@ -157,26 +157,54 @@ const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorProps>(
       if (!root) return;
       const EDGE = 6;
 
-      const findCellNearRightEdge = (e: MouseEvent): HTMLTableCellElement | null => {
+      const findResizeTarget = (
+        e: MouseEvent
+      ): { cell: HTMLTableCellElement; mode: 'col' | 'row' } | null => {
         const target = e.target as HTMLElement;
         const cell = target?.closest('td, th') as HTMLTableCellElement | null;
         if (!cell) return null;
         const rect = cell.getBoundingClientRect();
-        if (rect.right - e.clientX <= EDGE && rect.right - e.clientX >= -2) return cell;
+        if (rect.right - e.clientX <= EDGE && rect.right - e.clientX >= -2)
+          return { cell, mode: 'col' };
+        if (rect.bottom - e.clientY <= EDGE && rect.bottom - e.clientY >= -2)
+          return { cell, mode: 'row' };
         return null;
       };
 
       const onMove = (e: MouseEvent) => {
-        const cell = findCellNearRightEdge(e);
-        root.style.cursor = cell ? 'col-resize' : '';
+        const t = findResizeTarget(e);
+        root.style.cursor = t ? (t.mode === 'col' ? 'col-resize' : 'row-resize') : '';
       };
 
       const onDown = (e: MouseEvent) => {
-        const cell = findCellNearRightEdge(e);
-        if (!cell) return;
+        const target = findResizeTarget(e);
+        if (!target) return;
+        const { cell, mode } = target;
         const table = cell.closest('table') as HTMLTableElement | null;
         if (!table) return;
         const row = cell.parentElement as HTMLTableRowElement;
+
+        e.preventDefault();
+
+        if (mode === 'row') {
+          const startY = e.clientY;
+          const startH = row.getBoundingClientRect().height;
+          const dragRow = (ev: MouseEvent) => {
+            const newH = Math.max(20, startH + (ev.clientY - startY));
+            row.style.height = newH + 'px';
+          };
+          const upRow = () => {
+            document.removeEventListener('mousemove', dragRow);
+            document.removeEventListener('mouseup', upRow);
+            document.body.style.userSelect = '';
+            handleInput();
+          };
+          document.body.style.userSelect = 'none';
+          document.addEventListener('mousemove', dragRow);
+          document.addEventListener('mouseup', upRow);
+          return;
+        }
+
         const cellIndex = Array.from(row.children).indexOf(cell);
         const colgroup = table.querySelector('colgroup');
         if (!colgroup) return;
@@ -185,7 +213,6 @@ const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorProps>(
         const nextCol = cols[cellIndex + 1];
         if (!col) return;
 
-        e.preventDefault();
         const tableRect = table.getBoundingClientRect();
         const startX = e.clientX;
         const startCellW = cell.getBoundingClientRect().width;
