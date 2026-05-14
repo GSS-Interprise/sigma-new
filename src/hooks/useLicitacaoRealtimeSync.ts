@@ -68,7 +68,7 @@ export function useLicitacaoRealtimeSync(
     console.log('[RealtimeSync] Subscribing to licitacao:', licitacaoId);
 
     const channel = supabase
-      .channel(`licitacao-sync-${licitacaoId}`)
+      .channel(`licitacao-sync-${licitacaoId}-${Math.random().toString(36).slice(2)}`)
       .on(
         'postgres_changes',
         {
