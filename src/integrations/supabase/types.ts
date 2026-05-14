@@ -13922,7 +13922,7 @@ export type Database = {
             Args: {
               p_chip_id: string
               p_conteudo_hash: string
-              p_evento_origem: string
+              p_evento_origem?: string
               p_to_jid: string
             }
             Returns: Json
