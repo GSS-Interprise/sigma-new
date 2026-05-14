@@ -109,11 +109,27 @@ const enhanceTablesForResize = (html: string): string => {
     // Cells: word-wrap + relative positioning for resize handle
     t.querySelectorAll('td, th').forEach((cell) => {
       const c = cell as HTMLElement;
+      // Strip inline widths/heights/nowrap that block resizing & wrapping
+      c.style.removeProperty('width');
+      c.style.removeProperty('min-width');
+      c.style.removeProperty('max-width');
+      c.style.removeProperty('height');
+      c.style.removeProperty('white-space');
+      c.removeAttribute('width');
+      c.removeAttribute('height');
+      c.removeAttribute('nowrap');
       c.style.wordWrap = 'break-word';
       c.style.overflowWrap = 'break-word';
+      c.style.whiteSpace = 'normal';
+      c.style.verticalAlign = 'top';
       c.style.position = 'relative';
       if (!c.style.border) c.style.border = '1px solid #d1d5db';
       if (!c.style.padding) c.style.padding = '4px 8px';
+    });
+    // Strip width/height from rows too
+    t.querySelectorAll('tr').forEach((r) => {
+      (r as HTMLElement).style.removeProperty('height');
+      (r as HTMLElement).removeAttribute('height');
     });
   });
   return doc.body.innerHTML;
