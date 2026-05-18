@@ -955,6 +955,111 @@ export type Database = {
           },
         ]
       }
+      antiban_config_history: {
+        Row: {
+          changed_at: string
+          changed_by: string | null
+          config_tipo: string
+          evento_origem: string | null
+          id: string
+          motivo: string | null
+          snapshot_antes: Json | null
+          snapshot_depois: Json
+        }
+        Insert: {
+          changed_at?: string
+          changed_by?: string | null
+          config_tipo: string
+          evento_origem?: string | null
+          id?: string
+          motivo?: string | null
+          snapshot_antes?: Json | null
+          snapshot_depois: Json
+        }
+        Update: {
+          changed_at?: string
+          changed_by?: string | null
+          config_tipo?: string
+          evento_origem?: string | null
+          id?: string
+          motivo?: string | null
+          snapshot_antes?: Json | null
+          snapshot_depois?: Json
+        }
+        Relationships: []
+      }
+      antiban_global_config: {
+        Row: {
+          health_pause_hours: number
+          health_pause_threshold: number
+          id: number
+          motivo: string | null
+          reply_rate_min_samples: number
+          reply_rate_pause_hours: number
+          reply_rate_threshold: number
+          updated_at: string
+          updated_by: string | null
+          warmup_curve: number[]
+        }
+        Insert: {
+          health_pause_hours?: number
+          health_pause_threshold?: number
+          id?: number
+          motivo?: string | null
+          reply_rate_min_samples?: number
+          reply_rate_pause_hours?: number
+          reply_rate_threshold?: number
+          updated_at?: string
+          updated_by?: string | null
+          warmup_curve?: number[]
+        }
+        Update: {
+          health_pause_hours?: number
+          health_pause_threshold?: number
+          id?: number
+          motivo?: string | null
+          reply_rate_min_samples?: number
+          reply_rate_pause_hours?: number
+          reply_rate_threshold?: number
+          updated_at?: string
+          updated_by?: string | null
+          warmup_curve?: number[]
+        }
+        Relationships: []
+      }
+      antiban_rate_config: {
+        Row: {
+          evento_origem: string
+          max_delay_ms: number
+          max_per_hour: number
+          max_per_min: number
+          min_delay_ms: number
+          motivo: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          evento_origem: string
+          max_delay_ms: number
+          max_per_hour: number
+          max_per_min: number
+          min_delay_ms: number
+          motivo?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          evento_origem?: string
+          max_delay_ms?: number
+          max_per_hour?: number
+          max_per_min?: number
+          min_delay_ms?: number
+          motivo?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       api_tokens: {
         Row: {
           ativo: boolean | null
@@ -3094,6 +3199,8 @@ export type Database = {
           fase: string
           fase_inicio_at: string
           health_score: number
+          last_alert_at: string | null
+          last_alert_type: string | null
           last_receive_at: string | null
           last_send_at: string | null
           pause_reason: string | null
@@ -3112,6 +3219,8 @@ export type Database = {
           fase?: string
           fase_inicio_at?: string
           health_score?: number
+          last_alert_at?: string | null
+          last_alert_type?: string | null
           last_receive_at?: string | null
           last_send_at?: string | null
           pause_reason?: string | null
@@ -3130,6 +3239,8 @@ export type Database = {
           fase?: string
           fase_inicio_at?: string
           health_score?: number
+          last_alert_at?: string | null
+          last_alert_type?: string | null
           last_receive_at?: string | null
           last_send_at?: string | null
           pause_reason?: string | null
@@ -13913,20 +14024,15 @@ export type Database = {
       norm_phone: { Args: { p: string }; Returns: string }
       pode_encerrar_campanha: { Args: { _user_id: string }; Returns: boolean }
       popular_qualidade_metricas: { Args: { p_data?: string }; Returns: Json }
-      pre_send_check:
-        | {
-            Args: { p_chip_id: string; p_evento_origem?: string }
-            Returns: Json
-          }
-        | {
-            Args: {
-              p_chip_id: string
-              p_conteudo_hash: string
-              p_evento_origem?: string
-              p_to_jid: string
-            }
-            Returns: Json
-          }
+      pre_send_check: {
+        Args: {
+          p_chip_id: string
+          p_conteudo_hash: string
+          p_evento_origem?: string
+          p_to_jid: string
+        }
+        Returns: Json
+      }
       processar_disparos_agendados: { Args: never; Returns: undefined }
       prospeccao_aprovar: {
         Args: { p_campanha_lead_id: string }
