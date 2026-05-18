@@ -97,6 +97,11 @@ const handler = async (req: Request): Promise<Response> => {
         </div>
 
         <div style="border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 12px 12px; padding: 24px 28px;">
+          <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 12px 16px; border-radius: 6px; margin-bottom: 18px;">
+            <p style="margin: 0; font-size: 13px; color: #78350f;">
+              <strong>👤 Enviado por:</strong> ${remetente_nome || 'Sistema SIGMA'}${remetente_email ? ` &lt;${remetente_email}&gt;` : ''}
+            </p>
+          </div>
           <p style="color: #374151; font-size: 15px; margin-top: 0;">Segue o resumo completo do contrato cadastrado no sistema.</p>
 
           <!-- Dados do Cliente -->
