@@ -229,12 +229,33 @@ export function AbaAtividadesContrato({ contratoId }: AbaAtividadesContratoProps
         .or(`registro_id.eq.${contratoId},detalhes.ilike.%${contratoId}%`)
         .order("created_at", { ascending: false });
 
+      // Buscar acessos (visualizações, downloads, etc.)
+      const { data: acessosData } = await supabase
+        .from("contrato_acessos")
+        .select("*")
+        .eq("contrato_id", contratoId)
+        .order("created_at", { ascending: false })
+        .limit(500);
+
+      const acessosLogs: AtividadeLog[] = (acessosData || []).map((a: any) => ({
+        id: `acesso-${a.id}`,
+        created_at: a.created_at,
+        usuario_nome: a.usuario_nome,
+        acao: a.tipo_acesso,
+        tabela: "contrato_acessos",
+        campos_alterados: null,
+        dados_antigos: null,
+        dados_novos: a.anexo_nome ? { arquivo_nome: a.anexo_nome } : null,
+        detalhes: a.user_agent || null,
+      }));
+
       const allLogs = [
         ...(contratoLogs || []),
         ...(anexosLogs || []),
         ...(itensLogs || []),
         ...(aditivosLogs || []),
         ...(renovacoesLogs || []),
+        ...acessosLogs,
       ]
         // Filtrar logs duplicados do trigger de banco (acao em maiúsculo como INSERT/UPDATE/DELETE)
         .filter(log => !['INSERT', 'UPDATE', 'DELETE'].includes(log.acao))
