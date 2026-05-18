@@ -404,6 +404,16 @@ export function AbaAtividadesContrato({ contratoId }: AbaAtividadesContratoProps
                   </div>
                 </div>
 
+                {/* Para acessos com anexo, mostrar nome do arquivo */}
+                {isAcesso && acessoAnexo && (
+                  <div className="mt-2 flex items-center gap-2 text-xs bg-muted/30 px-2 py-1.5 rounded">
+                    <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="font-medium text-foreground truncate" title={acessoAnexo}>
+                      {acessoAnexo}
+                    </span>
+                  </div>
+                )}
+
                 {/* Campos alterados */}
                 {camposRelevantes.length > 0 && (
                   <div className="mt-2 space-y-2">
