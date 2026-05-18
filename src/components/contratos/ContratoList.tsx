@@ -10,6 +10,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { useState, useMemo } from "react";
 import { ContratoFileViewerDialog } from "./ContratoFileViewerDialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { registrarAcessoContrato } from "@/lib/contratoAcessoLogger";
 
 import pdfIcon from "@/assets/file-icons/pdf.png";
 import docIcon from "@/assets/file-icons/doc.png";
@@ -44,8 +45,17 @@ export function ContratoList({ contratos, isLoading, onEdit, onView, onDelete }:
   const [viewerFile, setViewerFile] = useState<{ url: string; name: string } | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
-  const openFileViewer = async (url: string, name: string) => {
+  const openFileViewer = async (url: string, name: string, contratoId?: string, anexoId?: string) => {
     const extension = name?.split('.').pop()?.toLowerCase() || '';
+
+    if (contratoId) {
+      registrarAcessoContrato({
+        contratoId,
+        tipoAcesso: 'visualizar_anexo',
+        anexoId: anexoId && anexoId !== 'principal' ? anexoId : null,
+        anexoNome: name,
+      });
+    }
 
     if (extension === 'pdf') {
       try {
@@ -260,8 +270,16 @@ export function ContratoList({ contratos, isLoading, onEdit, onView, onDelete }:
     }
   };
 
-  const downloadAttachment = async (urlOrKey: string, filename?: string) => {
+  const downloadAttachment = async (urlOrKey: string, filename?: string, contratoId?: string, anexoId?: string) => {
     try {
+      if (contratoId) {
+        registrarAcessoContrato({
+          contratoId,
+          tipoAcesso: 'baixar_anexo',
+          anexoId: anexoId && anexoId !== 'principal' ? anexoId : null,
+          anexoNome: filename || null,
+        });
+      }
       const key = getKeyFromUrl(urlOrKey);
       if (!key) throw new Error('Caminho do arquivo inválido');
       const bucket = getBucketFromUrl(urlOrKey);
