@@ -26,6 +26,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ShieldAlert } from "lucide-react";
 import { addDays, isAfter, isBefore } from "date-fns";
 import { parseLocalDate } from "@/lib/dateUtils";
+import { registrarAcessoContrato } from "@/lib/contratoAcessoLogger";
 
 export default function Contratos() {
   const { canView, isAdmin } = usePermissions();
