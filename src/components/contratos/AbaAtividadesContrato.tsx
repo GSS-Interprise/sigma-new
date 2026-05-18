@@ -367,6 +367,8 @@ export function AbaAtividadesContrato({ contratoId }: AbaAtividadesContratoProps
         const dadosNovos = atividade.dados_novos || {};
         const camposRelevantes = getRelevantChanges(atividade.campos_alterados, dadosAntigos, dadosNovos);
         const isLegacy = isLegacyLog(atividade.dados_novos);
+        const isAcesso = atividade.tabela === "contrato_acessos";
+        const acessoAnexo = isAcesso ? (dadosNovos.arquivo_nome as string | undefined) : undefined;
 
         return (
           <div 
