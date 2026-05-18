@@ -10,6 +10,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { useState, useMemo } from "react";
 import { ContratoFileViewerDialog } from "./ContratoFileViewerDialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { registrarAcessoContrato } from "@/lib/contratoAcessoLogger";
 
 import pdfIcon from "@/assets/file-icons/pdf.png";
 import docIcon from "@/assets/file-icons/doc.png";
@@ -44,8 +45,17 @@ export function ContratoList({ contratos, isLoading, onEdit, onView, onDelete }:
   const [viewerFile, setViewerFile] = useState<{ url: string; name: string } | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
-  const openFileViewer = async (url: string, name: string) => {
+  const openFileViewer = async (url: string, name: string, contratoId?: string, anexoId?: string) => {
     const extension = name?.split('.').pop()?.toLowerCase() || '';
+
+    if (contratoId) {
+      registrarAcessoContrato({
+        contratoId,
+        tipoAcesso: 'visualizar_anexo',
+        anexoId: anexoId && anexoId !== 'principal' ? anexoId : null,
+        anexoNome: name,
+      });
+    }
 
     if (extension === 'pdf') {
       try {
@@ -260,8 +270,16 @@ export function ContratoList({ contratos, isLoading, onEdit, onView, onDelete }:
     }
   };
 
-  const downloadAttachment = async (urlOrKey: string, filename?: string) => {
+  const downloadAttachment = async (urlOrKey: string, filename?: string, contratoId?: string, anexoId?: string) => {
     try {
+      if (contratoId) {
+        registrarAcessoContrato({
+          contratoId,
+          tipoAcesso: 'baixar_anexo',
+          anexoId: anexoId && anexoId !== 'principal' ? anexoId : null,
+          anexoNome: filename || null,
+        });
+      }
       const key = getKeyFromUrl(urlOrKey);
       if (!key) throw new Error('Caminho do arquivo inválido');
       const bucket = getBucketFromUrl(urlOrKey);
@@ -540,7 +558,7 @@ export function ContratoList({ contratos, isLoading, onEdit, onView, onDelete }:
                               <div 
                                 key={ax.id} 
                                 className="border rounded-lg p-3 flex flex-col items-center gap-2 hover:bg-muted/50 transition-colors cursor-pointer"
-                                onClick={(e) => { e.stopPropagation(); openFileViewer(ax.url, ax.name); }}
+                                onClick={(e) => { e.stopPropagation(); openFileViewer(ax.url, ax.name, contrato.id, ax.id); }}
                               >
                                 <img src={getFileIconImage(ax.name)} alt="" className="h-16 w-16 object-contain" />
                                 <span className="text-xs font-medium text-center truncate w-full px-1" title={ax.name}>
@@ -551,7 +569,7 @@ export function ContratoList({ contratos, isLoading, onEdit, onView, onDelete }:
                                     variant="ghost"
                                     size="icon"
                                     className="h-8 w-8"
-                                    onClick={(e) => { e.stopPropagation(); openFileViewer(ax.url, ax.name); }}
+                                    onClick={(e) => { e.stopPropagation(); openFileViewer(ax.url, ax.name, contrato.id, ax.id); }}
                                   >
                                     <Eye className="h-4 w-4" />
                                   </Button>
@@ -559,7 +577,7 @@ export function ContratoList({ contratos, isLoading, onEdit, onView, onDelete }:
                                     variant="ghost"
                                     size="icon"
                                     className="h-8 w-8"
-                                    onClick={(e) => { e.stopPropagation(); downloadAttachment(ax.url, ax.name); }}
+                                    onClick={(e) => { e.stopPropagation(); downloadAttachment(ax.url, ax.name, contrato.id, ax.id); }}
                                   >
                                     <Download className="h-4 w-4" />
                                   </Button>

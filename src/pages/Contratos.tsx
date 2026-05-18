@@ -26,6 +26,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ShieldAlert } from "lucide-react";
 import { addDays, isAfter, isBefore } from "date-fns";
 import { parseLocalDate } from "@/lib/dateUtils";
+import { registrarAcessoContrato } from "@/lib/contratoAcessoLogger";
 
 export default function Contratos() {
   const { canView, isAdmin } = usePermissions();
@@ -152,6 +153,13 @@ export default function Contratos() {
     setEditingContrato(contrato);
     setDialogMode('view');
     setDialogOpen(true);
+    if (contrato?.id) {
+      registrarAcessoContrato({
+        contratoId: contrato.id,
+        tipoAcesso: 'visualizar_contrato',
+        detalhes: { codigo_contrato: contrato.codigo_contrato || null },
+      });
+    }
   };
 
   const handleDialogChange = (open: boolean) => {

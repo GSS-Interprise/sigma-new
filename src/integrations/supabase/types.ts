@@ -3695,6 +3695,48 @@ export type Database = {
         }
         Relationships: []
       }
+      contrato_acessos: {
+        Row: {
+          anexo_id: string | null
+          anexo_nome: string | null
+          contrato_id: string
+          created_at: string
+          detalhes: Json | null
+          id: string
+          ip: string | null
+          tipo_acesso: string
+          user_agent: string | null
+          usuario_id: string
+          usuario_nome: string
+        }
+        Insert: {
+          anexo_id?: string | null
+          anexo_nome?: string | null
+          contrato_id: string
+          created_at?: string
+          detalhes?: Json | null
+          id?: string
+          ip?: string | null
+          tipo_acesso: string
+          user_agent?: string | null
+          usuario_id: string
+          usuario_nome: string
+        }
+        Update: {
+          anexo_id?: string | null
+          anexo_nome?: string | null
+          contrato_id?: string
+          created_at?: string
+          detalhes?: Json | null
+          id?: string
+          ip?: string | null
+          tipo_acesso?: string
+          user_agent?: string | null
+          usuario_id?: string
+          usuario_nome?: string
+        }
+        Relationships: []
+      }
       contrato_aditivos_tempo: {
         Row: {
           contrato_id: string

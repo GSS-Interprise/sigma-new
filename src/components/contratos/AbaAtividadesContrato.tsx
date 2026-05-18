@@ -4,7 +4,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Loader2, History, FileText, Edit, Trash2, Plus, User, Building2, FileCheck, Clock, DollarSign, Calendar, MapPin, Tag } from "lucide-react";
+import { Loader2, History, FileText, Edit, Trash2, Plus, User, Building2, FileCheck, Clock, DollarSign, Calendar, MapPin, Tag, Eye, Download, Printer, FileDown, Monitor, Smartphone } from "lucide-react";
 
 interface AbaAtividadesContratoProps {
   contratoId?: string;
@@ -91,6 +91,11 @@ const ACTION_CONFIG: Record<string, { label: string; icon: typeof Edit; color: s
   excluir: { label: "excluiu", icon: Trash2, color: "text-red-600", bgColor: "bg-red-50 dark:bg-red-900/20" },
   anexar: { label: "anexou arquivo", icon: FileText, color: "text-purple-600", bgColor: "bg-purple-50 dark:bg-purple-900/20" },
   remover_anexo: { label: "removeu arquivo", icon: Trash2, color: "text-orange-600", bgColor: "bg-orange-50 dark:bg-orange-900/20" },
+  visualizar_contrato: { label: "visualizou o contrato", icon: Eye, color: "text-sky-600", bgColor: "bg-sky-50 dark:bg-sky-900/20" },
+  visualizar_anexo: { label: "visualizou anexo", icon: Eye, color: "text-cyan-600", bgColor: "bg-cyan-50 dark:bg-cyan-900/20" },
+  baixar_anexo: { label: "baixou anexo", icon: Download, color: "text-indigo-600", bgColor: "bg-indigo-50 dark:bg-indigo-900/20" },
+  imprimir: { label: "imprimiu", icon: Printer, color: "text-slate-600", bgColor: "bg-slate-50 dark:bg-slate-900/20" },
+  exportar_pdf: { label: "exportou PDF", icon: FileDown, color: "text-emerald-600", bgColor: "bg-emerald-50 dark:bg-emerald-900/20" },
 };
 
 // Configuração por tabela
@@ -100,6 +105,7 @@ const TABLE_CONFIG: Record<string, { label: string; icon: typeof FileText }> = {
   contrato_itens: { label: "Item", icon: Tag },
   contrato_aditivos_tempo: { label: "Aditivo", icon: Clock },
   contrato_renovacoes: { label: "Renovação", icon: Calendar },
+  contrato_acessos: { label: "Acesso", icon: Eye },
 };
 
 // Campos que são IDs e precisam de resolução de nomes
@@ -223,12 +229,33 @@ export function AbaAtividadesContrato({ contratoId }: AbaAtividadesContratoProps
         .or(`registro_id.eq.${contratoId},detalhes.ilike.%${contratoId}%`)
         .order("created_at", { ascending: false });
 
+      // Buscar acessos (visualizações, downloads, etc.)
+      const { data: acessosData } = await supabase
+        .from("contrato_acessos")
+        .select("*")
+        .eq("contrato_id", contratoId)
+        .order("created_at", { ascending: false })
+        .limit(500);
+
+      const acessosLogs: AtividadeLog[] = (acessosData || []).map((a: any) => ({
+        id: `acesso-${a.id}`,
+        created_at: a.created_at,
+        usuario_nome: a.usuario_nome,
+        acao: a.tipo_acesso,
+        tabela: "contrato_acessos",
+        campos_alterados: null,
+        dados_antigos: null,
+        dados_novos: a.anexo_nome ? { arquivo_nome: a.anexo_nome } : null,
+        detalhes: null,
+      }));
+
       const allLogs = [
         ...(contratoLogs || []),
         ...(anexosLogs || []),
         ...(itensLogs || []),
         ...(aditivosLogs || []),
         ...(renovacoesLogs || []),
+        ...acessosLogs,
       ]
         // Filtrar logs duplicados do trigger de banco (acao em maiúsculo como INSERT/UPDATE/DELETE)
         .filter(log => !['INSERT', 'UPDATE', 'DELETE'].includes(log.acao))
@@ -340,6 +367,8 @@ export function AbaAtividadesContrato({ contratoId }: AbaAtividadesContratoProps
         const dadosNovos = atividade.dados_novos || {};
         const camposRelevantes = getRelevantChanges(atividade.campos_alterados, dadosAntigos, dadosNovos);
         const isLegacy = isLegacyLog(atividade.dados_novos);
+        const isAcesso = atividade.tabela === "contrato_acessos";
+        const acessoAnexo = isAcesso ? (dadosNovos.arquivo_nome as string | undefined) : undefined;
 
         return (
           <div 
@@ -374,6 +403,16 @@ export function AbaAtividadesContrato({ contratoId }: AbaAtividadesContratoProps
                     <span>{tableConfig.label}</span>
                   </div>
                 </div>
+
+                {/* Para acessos com anexo, mostrar nome do arquivo */}
+                {isAcesso && acessoAnexo && (
+                  <div className="mt-2 flex items-center gap-2 text-xs bg-muted/30 px-2 py-1.5 rounded">
+                    <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="font-medium text-foreground truncate" title={acessoAnexo}>
+                      {acessoAnexo}
+                    </span>
+                  </div>
+                )}
 
                 {/* Campos alterados */}
                 {camposRelevantes.length > 0 && (
