@@ -246,7 +246,7 @@ export function AbaAtividadesContrato({ contratoId }: AbaAtividadesContratoProps
         campos_alterados: null,
         dados_antigos: null,
         dados_novos: a.anexo_nome ? { arquivo_nome: a.anexo_nome } : null,
-        detalhes: a.user_agent || null,
+        detalhes: null,
       }));
 
       const allLogs = [
