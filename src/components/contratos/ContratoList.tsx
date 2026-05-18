@@ -558,7 +558,7 @@ export function ContratoList({ contratos, isLoading, onEdit, onView, onDelete }:
                               <div 
                                 key={ax.id} 
                                 className="border rounded-lg p-3 flex flex-col items-center gap-2 hover:bg-muted/50 transition-colors cursor-pointer"
-                                onClick={(e) => { e.stopPropagation(); openFileViewer(ax.url, ax.name); }}
+                                onClick={(e) => { e.stopPropagation(); openFileViewer(ax.url, ax.name, contrato.id, ax.id); }}
                               >
                                 <img src={getFileIconImage(ax.name)} alt="" className="h-16 w-16 object-contain" />
                                 <span className="text-xs font-medium text-center truncate w-full px-1" title={ax.name}>
@@ -569,7 +569,7 @@ export function ContratoList({ contratos, isLoading, onEdit, onView, onDelete }:
                                     variant="ghost"
                                     size="icon"
                                     className="h-8 w-8"
-                                    onClick={(e) => { e.stopPropagation(); openFileViewer(ax.url, ax.name); }}
+                                    onClick={(e) => { e.stopPropagation(); openFileViewer(ax.url, ax.name, contrato.id, ax.id); }}
                                   >
                                     <Eye className="h-4 w-4" />
                                   </Button>
@@ -577,7 +577,7 @@ export function ContratoList({ contratos, isLoading, onEdit, onView, onDelete }:
                                     variant="ghost"
                                     size="icon"
                                     className="h-8 w-8"
-                                    onClick={(e) => { e.stopPropagation(); downloadAttachment(ax.url, ax.name); }}
+                                    onClick={(e) => { e.stopPropagation(); downloadAttachment(ax.url, ax.name, contrato.id, ax.id); }}
                                   >
                                     <Download className="h-4 w-4" />
                                   </Button>
