@@ -73,7 +73,7 @@ export function EnviarResumoEmailModal({
 
       const { data, error } = await supabase
         .from('profiles')
-        .select('email, nome_completo')
+        .select('id, email, nome_completo')
         .eq('status', 'ativo')
         .in('id', userIds);
 
@@ -156,6 +156,28 @@ export function EnviarResumoEmailModal({
         });
       } catch (auditErr) {
         console.warn('Falha ao registrar auditoria de envio de email:', auditErr);
+      }
+
+      // Criar notificação no sino para cada destinatário
+      try {
+        const destinatarios = (usuarios || []).filter((u: any) => selectedEmails.includes(u.email));
+        const remetenteNome = profileData?.nome_completo || user?.email || 'Sistema';
+        const contratoLabel = codigoContrato ? `contrato ${codigoContrato}` : 'contrato';
+        const notifsBell = destinatarios
+          .filter((u: any) => u.id && u.id !== user?.id)
+          .map((u: any) => ({
+            user_id: u.id,
+            tipo: 'contrato_resumo_email',
+            titulo: `${remetenteNome} enviou o resumo do ${contratoLabel}`,
+            mensagem: `Cliente: ${clienteNome}. Acesse o contrato para mais detalhes.`,
+            link: `/contratos?contrato=${contratoId}`,
+            referencia_id: contratoId,
+          }));
+        if (notifsBell.length > 0) {
+          await supabase.from('system_notifications').insert(notifsBell);
+        }
+      } catch (notifErr) {
+        console.warn('Falha ao criar notificações no sino:', notifErr);
       }
 
       toast.success(`Resumo enviado para ${selectedEmails.length} destinatário(s)`);
