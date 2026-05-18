@@ -153,6 +153,13 @@ export default function Contratos() {
     setEditingContrato(contrato);
     setDialogMode('view');
     setDialogOpen(true);
+    if (contrato?.id) {
+      registrarAcessoContrato({
+        contratoId: contrato.id,
+        tipoAcesso: 'visualizar_contrato',
+        detalhes: { codigo_contrato: contrato.codigo_contrato || null },
+      });
+    }
   };
 
   const handleDialogChange = (open: boolean) => {
