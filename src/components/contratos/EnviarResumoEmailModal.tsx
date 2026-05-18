@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Mail, Loader2, Search, Send, Users } from "lucide-react";
+import { registrarAuditoria } from "@/lib/auditLogger";
 
 interface EnviarResumoEmailModalProps {
   open: boolean;
@@ -133,6 +134,29 @@ export function EnviarResumoEmailModal({
       });
 
       if (error) throw error;
+
+      // Registrar nas atividades do contrato quem enviou e para quem
+      try {
+        const nomesDestinatarios = (usuarios || [])
+          .filter(u => selectedEmails.includes(u.email))
+          .map(u => u.nome_completo || u.email);
+        await registrarAuditoria({
+          modulo: 'contratos',
+          tabela: 'contratos',
+          acao: 'editar',
+          registroId: contratoId,
+          registroDescricao: `Contrato ${codigoContrato || ''}`.trim(),
+          dadosNovos: {
+            destinatarios: nomesDestinatarios.length ? nomesDestinatarios : selectedEmails,
+            quantidade: selectedEmails.length,
+            remetente: profileData?.nome_completo || user?.email || 'Sistema',
+          },
+          camposAlterados: ['envio_resumo_email'],
+          detalhes: `Enviou resumo do contrato por e-mail para ${selectedEmails.length} destinatário(s)`,
+        });
+      } catch (auditErr) {
+        console.warn('Falha ao registrar auditoria de envio de email:', auditErr);
+      }
 
       toast.success(`Resumo enviado para ${selectedEmails.length} destinatário(s)`);
       setSelectedEmails([]);
