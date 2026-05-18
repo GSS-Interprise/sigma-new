@@ -4,7 +4,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Loader2, History, FileText, Edit, Trash2, Plus, User, Building2, FileCheck, Clock, DollarSign, Calendar, MapPin, Tag } from "lucide-react";
+import { Loader2, History, FileText, Edit, Trash2, Plus, User, Building2, FileCheck, Clock, DollarSign, Calendar, MapPin, Tag, Eye, Download, Printer, FileDown, Monitor, Smartphone } from "lucide-react";
 
 interface AbaAtividadesContratoProps {
   contratoId?: string;
@@ -91,6 +91,11 @@ const ACTION_CONFIG: Record<string, { label: string; icon: typeof Edit; color: s
   excluir: { label: "excluiu", icon: Trash2, color: "text-red-600", bgColor: "bg-red-50 dark:bg-red-900/20" },
   anexar: { label: "anexou arquivo", icon: FileText, color: "text-purple-600", bgColor: "bg-purple-50 dark:bg-purple-900/20" },
   remover_anexo: { label: "removeu arquivo", icon: Trash2, color: "text-orange-600", bgColor: "bg-orange-50 dark:bg-orange-900/20" },
+  visualizar_contrato: { label: "visualizou o contrato", icon: Eye, color: "text-sky-600", bgColor: "bg-sky-50 dark:bg-sky-900/20" },
+  visualizar_anexo: { label: "visualizou anexo", icon: Eye, color: "text-cyan-600", bgColor: "bg-cyan-50 dark:bg-cyan-900/20" },
+  baixar_anexo: { label: "baixou anexo", icon: Download, color: "text-indigo-600", bgColor: "bg-indigo-50 dark:bg-indigo-900/20" },
+  imprimir: { label: "imprimiu", icon: Printer, color: "text-slate-600", bgColor: "bg-slate-50 dark:bg-slate-900/20" },
+  exportar_pdf: { label: "exportou PDF", icon: FileDown, color: "text-emerald-600", bgColor: "bg-emerald-50 dark:bg-emerald-900/20" },
 };
 
 // Configuração por tabela
@@ -100,6 +105,7 @@ const TABLE_CONFIG: Record<string, { label: string; icon: typeof FileText }> = {
   contrato_itens: { label: "Item", icon: Tag },
   contrato_aditivos_tempo: { label: "Aditivo", icon: Clock },
   contrato_renovacoes: { label: "Renovação", icon: Calendar },
+  contrato_acessos: { label: "Acesso", icon: Eye },
 };
 
 // Campos que são IDs e precisam de resolução de nomes
