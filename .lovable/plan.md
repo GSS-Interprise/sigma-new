@@ -1,105 +1,95 @@
-## Diagnóstico do fluxo atual
+## Diagnóstico — Rastreio e Auditoria de Contratos
 
-Investiguei o fluxo completo (Kanban → arrematados → Pré-Contrato → Consolidação) e encontrei **1 bug crítico** que causa **duplicação de contratos** ao consolidar.
+### 1) O que JÁ está implementado hoje
 
-### Como o fluxo deveria funcionar
+**Tabela `auditoria_logs`** (registra `usuario_id`, `usuario_nome`, `usuario_perfil`, `created_at`, `acao`, `dados_antigos`, `dados_novos`, `campos_alterados`):
 
-```text
-Licitação → arrematados (Kanban)
-    │
-    ├── Trigger SQL cria automaticamente:
-    │     • contrato_rascunho (status='rascunho')
-    │     • contratos (status_contrato='Pre-Contrato', cliente_id=NULL, codigo_interno=N)
-    │     • copia anexos das 3 origens (tabela + 2 buckets) para ambos
-    │
-    └── Usuário abre rascunho → "Consolidar Contrato"
-          → preenche cliente/datas no ContratoDialogWithClient
-          → cria contrato Ativo (cliente_id preenchido)
-          → marca rascunho consolidado
-          → transfere codigo_interno do Pré-Contrato para o Ativo
-          → DELETA o Pré-Contrato órfão
-```
+| Evento | Status | Onde |
+|---|---|---|
+| Criar contrato | ✅ | `auditoria_logs` (acao=`criar`) |
+| Editar contrato (qualquer campo) | ✅ | `auditoria_logs` (acao=`editar`) com diff antigo→novo |
+| Anexar arquivo ao contrato | ✅ | `auditoria_logs` (acao=`anexar`) |
+| Remover anexo | ✅ | `auditoria_logs` (acao=`remover_anexo`) |
+| Criar/editar/excluir itens | ✅ | `contrato_itens` |
+| Criar/excluir renovações | ✅ | `contrato_renovacoes` |
+| Editar aditivos de tempo | ✅ | `contrato_aditivos_tempo` |
+| Envio de resumo por e-mail | ✅ (recente) | `auditoria_logs` + `system_notifications` + e-mail com "Enviado por: Nome" |
+| Aba "Atividades" no contrato | ✅ | `AbaAtividadesContrato.tsx` mostra timeline com avatar, ação, campos antes/depois e horário |
+| Notificação no sino para destinatários do e-mail | ✅ (recente) | `system_notifications` |
 
-### Bug identificado: Pré-Contrato fica órfão após consolidar
+**O que NÃO temos hoje (gaps):**
 
-**Sintoma real (banco):** licitação `7425614` tem Contrato Ativo `#99` consolidado **e** Pré-Contrato `#98` ainda existindo (mesma `licitacao_origem_id`). Vai acontecer também com `#96` e `#100` na próxima consolidação.
-
-**Causa:** em `ContratoDialogWithClient.tsx` (linhas 1161-1180), a remoção do Pré-Contrato só ocorre se `rascunho.contrato_id` apontar para ele. Mas:
-
-- O trigger `create_captacao_card_on_licitacao_arrematada` **não** preenche `contrato_rascunho.contrato_id` com o ID do Pré-Contrato criado.
-- Logo, no momento da consolidação, `rascunho.contrato_id` é `NULL` → o lookup falha → o Pré-Contrato antigo (`#98`) fica para sempre, e o novo Ativo (`#99`) recebe um codigo_interno novo em vez de herdar o `#98`.
-
-### Outros pontos verificados (OK)
-
-- Cópia de anexos das 3 origens (`licitacoes_anexos`, bucket `licitacoes-anexos`, bucket `editais-pdfs`) está consistente em trigger, helpers de hook, Kanban e re-sincronização do dialog.
-- `consolidarMutation` em `useContratoRascunho.ts` é código morto no fluxo atual (sempre passa pelo `ContratoDialogWithClient` via `onAvancarParaContrato`). Funciona como fallback, mas tem o mesmo problema (cria contrato novo sem deletar Pré-Contrato).
-- Cancelamento do rascunho já remove Pré-Contrato órfão corretamente.
-- Trigger de revogação (`cleanup_pre_contrato_on_licitacao_revogada`) está correto.
+| Evento | Hoje | Gap |
+|---|---|---|
+| **Quem visualizou o contrato** (abriu a ficha) | ❌ | Sem registro |
+| **Quem visualizou um anexo** (abriu PDF no viewer) | ❌ | Sem registro |
+| **Quem baixou um anexo** | ❌ | Sem registro (download direto pelo Storage não é logado) |
+| **IP / User-Agent / Dispositivo** | ❌ | Não capturamos |
+| **Visualização do e-mail enviado** (open tracking) | ❌ | Resend suporta, mas não está ativado |
+| **Clique no link do e-mail** | ❌ | Sem tracking pixel/redirect |
+| **Tempo gasto / duração da visualização** | ❌ | Não capturado |
+| **Exportação / impressão / cópia para área de transferência** | ❌ | Não capturado |
+| **Log de exclusão de contrato inteiro** | ⚠️ Parcial | Trigger DB grava `DELETE` em maiúsculo, mas a aba filtra isso — não aparece para o usuário |
+| **Quem reenviou / encaminhou anexo externamente** | ❌ | Fora do nosso escopo (impossível) |
 
 ---
 
-## Plano de correção
+### 2) Plano de implementação proposto (em fases)
 
-### 1. Migration SQL — vincular Pré-Contrato ao rascunho na criação
+#### Fase 1 — Tracking de visualização e download (essencial)
 
-Atualizar a função `create_captacao_card_on_licitacao_arrematada` para, após criar (ou reaproveitar) o Pré-Contrato e o rascunho, executar:
+1. Criar tabela `contrato_acessos`:
+   ```
+   id, contrato_id, usuario_id, usuario_nome, tipo_acesso
+   ('visualizar_contrato' | 'visualizar_anexo' | 'baixar_anexo' | 'imprimir' | 'exportar_pdf'),
+   anexo_id (nullable), ip, user_agent, created_at
+   ```
+   Com RLS: leitura para usuários do módulo contratos; insert para autenticados.
 
-```sql
-UPDATE public.contrato_rascunho
-SET contrato_id = v_pre_contrato_id
-WHERE id = v_rascunho_id
-  AND (contrato_id IS NULL OR contrato_id = v_pre_contrato_id);
-```
+2. **Frontend — disparar registro** em:
+   - `ContratoDialog` / `AbaCadastroContrato`: ao abrir → `visualizar_contrato`
+   - `ContratoFileViewerDialog`: ao abrir → `visualizar_anexo`
+   - Botão de download de anexo: → `baixar_anexo`
+   - Botões de export PDF / imprimir: → `exportar_pdf` / `imprimir`
 
-Isso garante que toda nova arrematação já deixa o rascunho apontando para o Pré-Contrato órfão correto.
+3. Captura de IP/UA via edge function leve `registrar-acesso-contrato` (lê `x-forwarded-for` e `user-agent` do request).
 
-### 2. Migration SQL — backfill dos rascunhos existentes
+4. Integrar esses eventos na **Aba Atividades** com ícones próprios (olho, download, impressora) e badge "visualização" (sem antes/depois).
 
-Para os 3 casos já no banco (rascunhos `bf4c6f65`, `758ff913` e similares), preencher `contrato_rascunho.contrato_id` com o Pré-Contrato existente:
+#### Fase 2 — Tracking de e-mail
 
-```sql
-UPDATE public.contrato_rascunho cr
-SET contrato_id = c.id
-FROM public.contratos c
-WHERE cr.status = 'rascunho'
-  AND cr.contrato_id IS NULL
-  AND c.licitacao_origem_id = cr.licitacao_id
-  AND c.status_contrato = 'Pre-Contrato'
-  AND c.cliente_id IS NULL;
-```
+1. Ativar **Resend webhooks** (`email.opened`, `email.clicked`, `email.delivered`, `email.bounced`).
+2. Edge function `resend-webhook` que grava em `sigma_email_log` os eventos com timestamp.
+3. Mostrar no histórico: "✉️ Bianca abriu o e-mail às 14:32" / "🔗 clicou no link".
 
-E, para limpar a duplicata existente da licitação `7425614` (Pré-Contrato `#98` órfão paralelo ao Ativo `#99`), transferir `codigo_interno` e deletar o órfão se confirmado pelo usuário.
+#### Fase 3 — Painel "Quem viu este contrato"
 
-### 3. Frontend — fortalecer o lookup do Pré-Contrato na consolidação
+1. Card lateral no `ContratoDialog` listando últimos 20 acessos: foto, nome, ação, data/hora, IP mascarado.
+2. Filtro na lista geral de contratos: "Contratos sem visualização nos últimos 30 dias".
+3. Métrica em `ContratosMetrics`: total de visualizações / downloads no período.
 
-Em `ContratoDialogWithClient.tsx` (linha ~1161), além de usar `rascunho.contrato_id`, fazer fallback adicional:
+#### Fase 4 — Hardening e logs administrativos
 
-```ts
-let preContratoId = rascunho?.contrato_id;
-if (!preContratoId && rascunho?.licitacao_id) {
-  const { data: pc } = await supabase
-    .from('contratos')
-    .select('id, codigo_interno')
-    .eq('licitacao_origem_id', rascunho.licitacao_id)
-    .eq('status_contrato', 'Pre-Contrato')
-    .is('cliente_id', null)
-    .maybeSingle();
-  if (pc) preContratoId = pc.id;
-}
-```
+1. Mostrar logs `INSERT/UPDATE/DELETE` (triggers DB) num modo "auditor" oculto por permissão.
+2. Exportar histórico do contrato em CSV/PDF para fins legais.
+3. Reter logs com retenção configurável (ex.: 5 anos) — política de purge.
 
-E garantir que, se `preContratoId !== result.contratoId`, o codigo_interno é transferido **antes** do delete (já está) e o delete é executado.
+---
 
-### 4. Frontend — aplicar o mesmo lookup em `useContratoRascunho.consolidarMutation`
+### 3) Detalhes técnicos relevantes
 
-Para que o fallback funcione mesmo se o fluxo alternativo (sem `onAvancarParaContrato`) for usado.
+- A função `registrarAuditoria` em `src/lib/auditLogger.ts` já é o ponto central — basta criar `registrarAcesso(...)` análogo, ou estender com novos valores de `acao` no enum (`visualizar`, `baixar`, `imprimir`).
+- Hoje o tipo de `acao` é uma union TS (`'criar' | 'editar' | 'excluir' | 'anexar' | 'remover_anexo'`); precisaria estender.
+- A coluna `dados_novos` já é JSONB livre, então pode receber `{ anexo_nome, anexo_id, ip, user_agent }` sem migração de schema — porém uma tabela própria `contrato_acessos` escala melhor (relatórios, índices, RLS específica).
+- O viewer `ContratoFileViewerDialog` precisa expor o `anexo_id` para registrar com precisão.
 
-### 5. Verificação
+---
 
-- Rodar query confirmando que todos os rascunhos `status='rascunho'` têm `contrato_id` preenchido.
-- Testar arrematação nova → consolidar → conferir que sobra apenas 1 contrato (Ativo), com `codigo_interno` herdado do Pré-Contrato.
-- Conferir contagem de anexos preservada após consolidação.
+### 4) Recomendação de ordem
 
-### Resumo
+1. **Fase 1** (alto valor, baixo custo) — resolve "quem viu, quem baixou, quando" para usuários internos.
+2. **Fase 2** (médio custo) — exige Resend webhook configurado; resolve "quem viu o e-mail externamente".
+3. **Fase 3** (UI) — torna tudo visível.
+4. **Fase 4** (compliance) — opcional, sob demanda.
 
-Com 2 ajustes pequenos (1 trigger + 1 fallback no frontend) e 1 backfill, o fluxo Pré-Contrato → Consolidação fica determinístico, sem duplicatas e preservando o `codigo_interno` original.
+Diga qual fase quer que eu implemente primeiro (sugiro Fase 1 completa).
