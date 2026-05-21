@@ -6,8 +6,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Search, User, MessageCircle, Inbox, UserCircle } from "lucide-react";
+import { Search, User, MessageCircle, Inbox, UserCircle, Archive, MessageSquare } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { normalizeToE164 } from "@/lib/phoneUtils";
@@ -28,6 +29,7 @@ export function MonitorConversasList({
 }: MonitorConversasListProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [isSearching, setIsSearching] = useState(false);
+  const [showInactive, setShowInactive] = useState(false);
 
   const thirtyDaysAgo = useMemo(() => {
     const d = new Date();
@@ -37,7 +39,7 @@ export function MonitorConversasList({
 
   // Only fetch conversations when a captador is selected
   const { data: conversas, isLoading } = useQuery({
-    queryKey: ["monitor-conversations", captadorId],
+    queryKey: ["monitor-conversations", captadorId, showInactive],
     queryFn: async () => {
       if (!captadorId) return [];
 
@@ -50,7 +52,7 @@ export function MonitorConversasList({
         const from = page * PAGE_SIZE;
         const to = from + PAGE_SIZE - 1;
 
-        const { data, error } = await supabase
+        let query = supabase
           .from("sigzap_conversations")
           .select(`
             *,
@@ -59,10 +61,17 @@ export function MonitorConversasList({
             assigned_user:profiles!sigzap_conversations_assigned_user_id_fkey(id, nome_completo)
           `)
           .eq("assigned_user_id", captadorId)
-          .neq("status", "inactive")
-          .gte("last_message_at", thirtyDaysAgo)
           .order("last_message_at", { ascending: false, nullsFirst: false })
           .range(from, to);
+
+        if (showInactive) {
+          // Inactive = status inactive OR last message older than 30 days
+          query = query.or(`status.eq.inactive,last_message_at.lt.${thirtyDaysAgo}`);
+        } else {
+          query = query.neq("status", "inactive").gte("last_message_at", thirtyDaysAgo);
+        }
+
+        const { data, error } = await query;
 
         if (error) throw error;
 
@@ -220,11 +229,31 @@ export function MonitorConversasList({
     <div className="flex flex-col h-full border-r overflow-hidden">
       <div className="p-3 border-b bg-muted/30 flex items-center gap-2 h-12">
         <MessageCircle className="h-4 w-4 text-primary" />
-        <h3 className="font-semibold text-sm flex-1">Conversas</h3>
+        <h3 className="font-semibold text-sm flex-1">
+          {showInactive ? "Conversas Inativas" : "Conversas"}
+        </h3>
         <Badge variant="secondary" className="text-xs">{displayList.length}</Badge>
       </div>
 
       <div className="p-2 border-b">
+        <Button
+          variant={showInactive ? "default" : "outline"}
+          size="sm"
+          className="w-full h-8 mb-2 gap-2 text-xs"
+          onClick={() => setShowInactive((v) => !v)}
+        >
+          {showInactive ? (
+            <>
+              <MessageSquare className="h-3.5 w-3.5" />
+              Ver conversas ativas
+            </>
+          ) : (
+            <>
+              <Archive className="h-3.5 w-3.5" />
+              Ver conversas inativas
+            </>
+          )}
+        </Button>
         <div className="relative">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
