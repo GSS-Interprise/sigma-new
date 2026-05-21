@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MessageCircle, Instagram, Linkedin, Loader2, Construction } from "lucide-react";
@@ -15,6 +15,7 @@ interface LeadChannelsSidebarProps {
 export function LeadChannelsSidebar({ leadId, activeConversaIdOverride }: LeadChannelsSidebarProps) {
   const [selectedConversaId, setSelectedConversaId] = useState<string | null>(null);
   const [activeChannelTab, setActiveChannelTab] = useState("whatsapp");
+  const queryClient = useQueryClient();
 
   // When parent sets a conversation, switch to whatsapp tab and select it
   useEffect(() => {
@@ -23,6 +24,19 @@ export function LeadChannelsSidebar({ leadId, activeConversaIdOverride }: LeadCh
       setActiveChannelTab("whatsapp");
     }
   }, [activeConversaIdOverride]);
+
+  // Listen for global "open conversa" events (ex: clique no ícone WhatsApp do prontuário)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail || {};
+      if (!detail.conversaId) return;
+      setActiveChannelTab("whatsapp");
+      setSelectedConversaId(detail.conversaId);
+      queryClient.invalidateQueries({ queryKey: ['lead-sigzap-conversas-sidebar', leadId] });
+    };
+    window.addEventListener("sigzap-open-conversa", handler as EventListener);
+    return () => window.removeEventListener("sigzap-open-conversa", handler as EventListener);
+  }, [leadId, queryClient]);
 
   // Fetch conversations for this lead
   const { data: conversas, isLoading } = useQuery({
