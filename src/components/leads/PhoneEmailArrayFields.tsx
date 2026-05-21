@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Phone, Mail, Plus, Pencil, X, Check, MessageCircle, Loader2, BanIcon, RotateCcw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { SigZapPhonePopover } from "@/components/sigzap/SigZapPhoneLink";
 
 // Convenção: números inativos são prefixados com "INATIVO:"
 const INATIVO_PREFIX = "INATIVO:";
@@ -38,15 +39,36 @@ export function PhoneEmailArrayFields({
   const [editingPhoneIdx, setEditingPhoneIdx] = useState<number | null>(null);
   const [editingPhoneValue, setEditingPhoneValue] = useState("");
   const [newPhone, setNewPhone] = useState("");
-  // Initialize status from persisted whatsappPhones
-  const [whatsappStatus, setWhatsappStatus] = useState<Record<string, WhatsAppStatus>>(() => {
-    const initial: Record<string, WhatsAppStatus> = {};
-    for (const p of whatsappPhones) {
-      initial[p] = "has_whatsapp";
-    }
-    return initial;
-  });
+  // Status local atual (resultado da última verificação)
+  const [whatsappStatus, setWhatsappStatus] = useState<Record<string, WhatsAppStatus>>({});
   const [checkingAll, setCheckingAll] = useState(false);
+
+  // Set normalizado dos telefones já confirmados (persistidos no banco)
+  const confirmedDigitsSet = useMemo(() => {
+    const s = new Set<string>();
+    for (const p of whatsappPhones || []) {
+      const d = (p || "").replace(/\D/g, "");
+      if (!d) continue;
+      // Guarda variações com e sem o "9" para casar mesmo se vier formatado
+      s.add(d);
+      const noCountry = d.startsWith("55") && d.length > 11 ? d.slice(2) : d;
+      s.add(noCountry);
+      if (noCountry.length === 11 && noCountry[2] === "9") s.add(noCountry.slice(0,2)+noCountry.slice(3));
+      if (noCountry.length === 10) s.add(noCountry.slice(0,2)+"9"+noCountry.slice(2));
+    }
+    return s;
+  }, [whatsappPhones]);
+
+  const isConfirmedWhatsapp = (phone: string) => {
+    const d = (phone || "").replace(/\D/g, "");
+    if (!d) return false;
+    if (confirmedDigitsSet.has(d)) return true;
+    const noCountry = d.startsWith("55") && d.length > 11 ? d.slice(2) : d;
+    if (confirmedDigitsSet.has(noCountry)) return true;
+    if (noCountry.length === 11 && noCountry[2] === "9" && confirmedDigitsSet.has(noCountry.slice(0,2)+noCountry.slice(3))) return true;
+    if (noCountry.length === 10 && confirmedDigitsSet.has(noCountry.slice(0,2)+"9"+noCountry.slice(2))) return true;
+    return false;
+  };
 
   const [editingEmail, setEditingEmail] = useState(false);
   const [editingEmailValue, setEditingEmailValue] = useState("");
@@ -208,7 +230,8 @@ export function PhoneEmailArrayFields({
 
   const getWhatsAppIcon = (phone: string) => {
     const status = whatsappStatus[phone];
-    if (status === "has_whatsapp") {
+    // Sempre verde se já confirmado anteriormente (persistido)
+    if (status === "has_whatsapp" || isConfirmedWhatsapp(phone)) {
       return <MessageCircle className="h-4 w-4 text-green-500 fill-green-500" />;
     }
     if (status === "no_whatsapp") {
@@ -273,7 +296,22 @@ export function PhoneEmailArrayFields({
                       title={inativo ? "Número inativo — não entra nos disparos" : undefined}
                       className={`h-7 text-xs flex-1 cursor-default bg-background ${inativo ? "line-through text-muted-foreground" : ""}`}
                     />
-                    {!inativo && getWhatsAppIcon(phone)}
+                    {!inativo && (
+                      (whatsappStatus[phone] === "has_whatsapp" || isConfirmedWhatsapp(phone)) ? (
+                        <SigZapPhonePopover phone={raw} isFromMe={false}>
+                          <button
+                            type="button"
+                            title="Iniciar / abrir conversa no WhatsApp"
+                            className="inline-flex items-center justify-center h-6 w-6 rounded hover:bg-muted"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {getWhatsAppIcon(phone)}
+                          </button>
+                        </SigZapPhonePopover>
+                      ) : (
+                        getWhatsAppIcon(phone)
+                      )
+                    )}
                     <Button
                       type="button"
                       variant="ghost"
