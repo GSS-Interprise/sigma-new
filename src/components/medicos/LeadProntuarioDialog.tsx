@@ -24,7 +24,7 @@ import { DocumentacaoTab } from "./DocumentacaoTab";
 import { ProntuarioTab } from "./ProntuarioTab";
 import { ImportarLeadTextoDialog } from "./ImportarLeadTextoDialog";
 import { RegiaoInteresseDialog } from "@/components/disparos/RegiaoInteresseDialog";
-import { formatPhoneForDisplay, normalizeToE164 } from "@/lib/phoneUtils";
+import { formatPhoneForDisplay, normalizeToE164, splitPhonesForStorage, isInativoPhone, stripInativoPrefix, INATIVO_PREFIX } from "@/lib/phoneUtils";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -1704,7 +1704,14 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                                 <PhoneEmailArrayFields
                                   phones={(() => {
                                     const allPhones: string[] = [];
-                                    if (editedData.phone_e164) allPhones.push(formatPhoneForDisplay(editedData.phone_e164));
+                                    if (editedData.phone_e164) {
+                                      const raw = editedData.phone_e164;
+                                      if (isInativoPhone(raw)) {
+                                        allPhones.push(`${INATIVO_PREFIX}${formatPhoneForDisplay(stripInativoPrefix(raw))}`);
+                                      } else {
+                                        allPhones.push(formatPhoneForDisplay(raw));
+                                      }
+                                    }
                                     if (editedData.telefones_adicionais?.length) {
                                       allPhones.push(...editedData.telefones_adicionais);
                                     }
@@ -1712,13 +1719,9 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                                   })()}
                                   email={editedData.email || ''}
                                   onPhonesChange={(phones) => {
-                                    if (phones.length > 0) {
-                                      handleFieldChange('phone_e164', normalizeToE164(phones[0]));
-                                      handleFieldChange('telefones_adicionais', phones.slice(1));
-                                    } else {
-                                      handleFieldChange('phone_e164', '');
-                                      handleFieldChange('telefones_adicionais', []);
-                                    }
+                                    const split = splitPhonesForStorage(phones);
+                                    handleFieldChange('phone_e164', split.phone_e164 ?? '');
+                                    handleFieldChange('telefones_adicionais', split.telefones_adicionais);
                                   }}
                                   onEmailChange={(email) => handleFieldChange('email', email)}
                                   whatsappPhones={editedData.whatsapp_phones || []}
