@@ -162,28 +162,27 @@ export function DisparoManualLeadPanel({ campanhaPropostaId, leadId, onOpenChat 
     }
   }, [travado, primeiroEnvio]);
 
-  // Toggle inativo
+  // Toggle inativo — rebuild via splitPhonesForStorage para manter prontuário sincronizado
   const toggleInativo = useMutation({
     mutationFn: async (phoneOriginal: string) => {
       if (!lead) return;
-      const isAtivo = !isInativo(phoneOriginal);
-      const novo = isAtivo ? `INATIVO: ${clean(phoneOriginal)}` : clean(phoneOriginal);
-      // Se for o phone_e164 principal, move para telefones_adicionais com prefixo
-      if (phoneOriginal === lead.phone_e164) {
-        const novosAdic = [novo, ...(lead.telefones_adicionais || [])];
-        await supabase
-          .from("leads")
-          .update({ phone_e164: null, telefones_adicionais: novosAdic })
-          .eq("id", lead.id);
-      } else {
-        const novosAdic = (lead.telefones_adicionais || []).map((p: string) =>
-          p === phoneOriginal ? novo : p
-        );
-        await supabase
-          .from("leads")
-          .update({ telefones_adicionais: novosAdic })
-          .eq("id", lead.id);
-      }
+      const all: string[] = [];
+      if (lead.phone_e164) all.push(lead.phone_e164);
+      (lead.telefones_adicionais || []).forEach((p: string) => {
+        if (p && !all.includes(p)) all.push(p);
+      });
+      const updated = all.map((p) => {
+        if (p !== phoneOriginal) return p;
+        return isInativo(p) ? clean(p) : `${INATIVO_PREFIX}${clean(p)}`;
+      });
+      const split = splitPhonesForStorage(updated);
+      await supabase
+        .from("leads")
+        .update({
+          phone_e164: split.phone_e164,
+          telefones_adicionais: split.telefones_adicionais,
+        })
+        .eq("id", lead.id);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["dm-lead", leadId] });
