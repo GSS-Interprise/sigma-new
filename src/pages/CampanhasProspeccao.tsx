@@ -36,6 +36,7 @@ import { NovaCampanhaProspeccaoDialog } from "@/components/campanhas/NovaCampanh
 import { ConfigurarCampanhaDialog } from "@/components/campanhas/ConfigurarCampanhaDialog";
 import { CampanhaProspeccaoKanban } from "@/components/campanhas/CampanhaProspeccaoKanban";
 import { AcompanhamentoView } from "@/components/campanhas/acompanhamento/AcompanhamentoView";
+import { ErrorBoundary } from "@/components/common/ErrorBoundary";
 import { useAdicionarLeadsCampanha } from "@/hooks/useCampanhaLeads";
 import { toast } from "sonner";
 
@@ -476,7 +477,9 @@ export default function CampanhasProspeccao() {
               )}
             </>
           ) : (
-            <AcompanhamentoView />
+            <ErrorBoundary label="AcompanhamentoView">
+              <AcompanhamentoView />
+            </ErrorBoundary>
           )}
 
         </div>
