@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils";
 import { useDisparoManual } from "@/hooks/useDisparoManual";
 import { LiberarLeadDialog } from "@/components/disparos/LiberarLeadDialog";
 import { usePermissions } from "@/hooks/usePermissions";
+import { splitPhonesForStorage, INATIVO_PREFIX } from "@/lib/phoneUtils";
 import {
   AlertDialog,
   AlertDialogAction,
