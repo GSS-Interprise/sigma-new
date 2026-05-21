@@ -76,6 +76,62 @@ export function formatPhoneForDisplay(e164Phone: string): string {
 }
 
 /**
+ * Convenção compartilhada: telefones marcados como inativos têm prefixo "INATIVO:".
+ * Aceita também a variação "INATIVO: " (com espaço) usada em algumas telas.
+ */
+export const INATIVO_PREFIX = "INATIVO:";
+
+export function isInativoPhone(p: string | null | undefined): boolean {
+  return !!p && /^INATIVO:\s*/i.test(p);
+}
+
+export function stripInativoPrefix(p: string): string {
+  return p.replace(/^INATIVO:\s*/i, "").trim();
+}
+
+export function withInativoPrefix(p: string): string {
+  return isInativoPhone(p) ? p : `${INATIVO_PREFIX}${stripInativoPrefix(p)}`;
+}
+
+/**
+ * Divide um array plano de telefones (alguns possivelmente marcados como INATIVO:)
+ * em { phone_e164, telefones_adicionais } mantendo consistência:
+ * - phone_e164 = primeiro telefone ATIVO normalizado para E.164 (ou null)
+ * - telefones_adicionais = restante, preservando o prefixo INATIVO:
+ *   nos números inativos.
+ */
+export function splitPhonesForStorage(phones: string[]): {
+  phone_e164: string | null;
+  telefones_adicionais: string[];
+} {
+  const cleaned = (phones || [])
+    .map((p) => (p ?? "").trim())
+    .filter((p) => p.length > 0);
+
+  const ativos: string[] = [];
+  const inativos: string[] = [];
+  for (const p of cleaned) {
+    if (isInativoPhone(p)) {
+      const raw = stripInativoPrefix(p);
+      if (raw) inativos.push(`${INATIVO_PREFIX}${raw}`);
+    } else {
+      ativos.push(p);
+    }
+  }
+
+  const principalRaw = ativos.shift() ?? null;
+  const principal = principalRaw ? normalizeToE164(principalRaw) : null;
+
+  // Se o principal não normaliza, devolve raw mesmo para não perder dado
+  const phone_e164 = principal ?? principalRaw;
+
+  return {
+    phone_e164,
+    telefones_adicionais: [...ativos, ...inativos],
+  };
+}
+
+/**
  * Valida se um telefone está no formato E.164 válido
  * @param phone - Telefone a ser validado
  * @returns true se válido, false caso contrário
