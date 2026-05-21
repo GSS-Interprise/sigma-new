@@ -2358,6 +2358,8 @@ export type Database = {
           chip_ids: string[] | null
           corpo_html: string | null
           created_at: string | null
+          created_by: string | null
+          created_by_name: string | null
           criado_por: string | null
           custo_total: number | null
           data_agendamento: string | null
@@ -2407,6 +2409,8 @@ export type Database = {
           total_quente: number | null
           total_respostas: number | null
           updated_at: string | null
+          updated_by: string | null
+          updated_by_name: string | null
           variaveis_dinamicas: string[] | null
         }
         Insert: {
@@ -2423,6 +2427,8 @@ export type Database = {
           chip_ids?: string[] | null
           corpo_html?: string | null
           created_at?: string | null
+          created_by?: string | null
+          created_by_name?: string | null
           criado_por?: string | null
           custo_total?: number | null
           data_agendamento?: string | null
@@ -2472,6 +2478,8 @@ export type Database = {
           total_quente?: number | null
           total_respostas?: number | null
           updated_at?: string | null
+          updated_by?: string | null
+          updated_by_name?: string | null
           variaveis_dinamicas?: string[] | null
         }
         Update: {
@@ -2488,6 +2496,8 @@ export type Database = {
           chip_ids?: string[] | null
           corpo_html?: string | null
           created_at?: string | null
+          created_by?: string | null
+          created_by_name?: string | null
           criado_por?: string | null
           custo_total?: number | null
           data_agendamento?: string | null
@@ -2537,6 +2547,8 @@ export type Database = {
           total_quente?: number | null
           total_respostas?: number | null
           updated_at?: string | null
+          updated_by?: string | null
+          updated_by_name?: string | null
           variaveis_dinamicas?: string[] | null
         }
         Relationships: [
@@ -2688,6 +2700,45 @@ export type Database = {
             referencedColumns: ["campanha_id"]
           },
         ]
+      }
+      campanhas_history: {
+        Row: {
+          action: string
+          campanha_id: string
+          campanha_nome: string | null
+          changed_at: string
+          changed_by: string | null
+          changed_by_name: string | null
+          changed_fields: string[] | null
+          id: string
+          snapshot_antes: Json | null
+          snapshot_depois: Json | null
+        }
+        Insert: {
+          action: string
+          campanha_id: string
+          campanha_nome?: string | null
+          changed_at?: string
+          changed_by?: string | null
+          changed_by_name?: string | null
+          changed_fields?: string[] | null
+          id?: string
+          snapshot_antes?: Json | null
+          snapshot_depois?: Json | null
+        }
+        Update: {
+          action?: string
+          campanha_id?: string
+          campanha_nome?: string | null
+          changed_at?: string
+          changed_by?: string | null
+          changed_by_name?: string | null
+          changed_fields?: string[] | null
+          id?: string
+          snapshot_antes?: Json | null
+          snapshot_depois?: Json | null
+        }
+        Relationships: []
       }
       captacao_contratos_board: {
         Row: {
@@ -13516,6 +13567,18 @@ export type Database = {
           taxa_conversao_pct: number | null
           taxa_qualificacao_pct: number | null
           total_leads: number | null
+        }
+        Relationships: []
+      }
+      vw_campanhas_audit_recent: {
+        Row: {
+          action: string | null
+          campanha_id: string | null
+          campanha_nome: string | null
+          campos_alterados: string | null
+          changed_at: string | null
+          changed_by: string | null
+          quem: string | null
         }
         Relationships: []
       }
