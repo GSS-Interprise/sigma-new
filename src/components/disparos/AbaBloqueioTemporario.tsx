@@ -202,6 +202,7 @@ export function AbaBloqueioTemporario() {
       queryClient.invalidateQueries({ queryKey: ["bloqueios-temporarios"] });
       queryClient.invalidateQueries({ queryKey: ["leads-search-bloqueio", searchTerm] });
       queryClient.invalidateQueries({ queryKey: ["bloqueio-temporario-entry", selectedLead?.id] });
+      queryClient.invalidateQueries({ queryKey: ["leads-a-contactar"] });
       const catLabel = CATEGORIAS.find(c => c.value === categoria)?.label || 'Bloqueado';
       toast.success(`Lead marcado como ${catLabel}`);
       setMotivo("");
@@ -224,6 +225,7 @@ export function AbaBloqueioTemporario() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["bloqueios-temporarios"] });
       queryClient.invalidateQueries({ queryKey: ["leads-search-bloqueio", searchTerm] });
+      queryClient.invalidateQueries({ queryKey: ["leads-a-contactar"] });
       toast.success("Bloqueio removido");
       setDesbloquearId(null);
       doSearch();

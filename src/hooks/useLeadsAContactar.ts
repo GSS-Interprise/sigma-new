@@ -71,6 +71,27 @@ export function useLeadsAContactar(campanhaPropostaId: string | null | undefined
 
       if (leadIds.length === 0) return [];
 
+      // 1b. Remove leads com bloqueio temporário ativo (proibido / VIP / opt-out / etc.)
+      const chunkIds = <T,>(arr: T[], size: number): T[][] => {
+        const out: T[][] = [];
+        for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+        return out;
+      };
+      const bloqIdChunks = chunkIds(leadIds, 200);
+      const bloqueadosSet = new Set<string>();
+      for (const ids of bloqIdChunks) {
+        const { data: bloqRows } = await (supabase as any)
+          .from("leads_bloqueio_temporario")
+          .select("lead_id")
+          .in("lead_id", ids)
+          .is("removed_at", null);
+        for (const r of bloqRows || []) bloqueadosSet.add(r.lead_id);
+      }
+      if (bloqueadosSet.size > 0) {
+        leadIds = leadIds.filter((id) => !bloqueadosSet.has(id));
+      }
+      if (leadIds.length === 0) return [];
+
       // 2. Busca dados dos leads em lotes (URL fica gigante com milhares de UUIDs)
       const chunk = <T,>(arr: T[], size: number): T[][] => {
         const out: T[][] = [];
