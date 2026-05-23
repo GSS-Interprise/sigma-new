@@ -14,6 +14,7 @@ import { CaptacaoProtectedRoute } from "@/components/auth/CaptacaoProtectedRoute
 import { DisparoManualHeader } from "@/components/sigzap/manual/DisparoManualHeader";
 import { DisparoManualLeadsColumn } from "@/components/sigzap/manual/DisparoManualLeadsColumn";
 import { DisparoManualLeadPanel } from "@/components/sigzap/manual/DisparoManualLeadPanel";
+import { RealtimeStatusBadge } from "@/components/sigzap/RealtimeStatusBadge";
 
 const STORAGE_KEY = 'sigzap-selected-instances';
 
@@ -186,6 +187,7 @@ export default function DisparosSigZap() {
           <h1 className="text-2xl font-bold">SIG Zap</h1>
           <p className="text-sm text-muted-foreground">Atendimento WhatsApp</p>
         </div>
+        <RealtimeStatusBadge />
       </div>
       <div className="flex items-center gap-2">
         <Button

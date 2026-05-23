@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import {
+  setChannelStatus,
+  removeChannelStatus,
+} from '@/lib/realtimeStatusStore';
 
 /**
  * Status do canal realtime do Supabase. Espelha REALTIME_SUBSCRIBE_STATES.
@@ -95,6 +99,7 @@ export function useSupabaseRealtimeChannel(options: Options): {
       .subscribe((newStatus, err) => {
         const s = newStatus as RealtimeChannelStatus;
         setStatus(s);
+        setChannelStatus(channelName, s);
 
         if (s === 'SUBSCRIBED') {
           // eslint-disable-next-line no-console
@@ -131,6 +136,7 @@ export function useSupabaseRealtimeChannel(options: Options): {
         clearTimeout(retryTimeoutRef.current);
         retryTimeoutRef.current = null;
       }
+      removeChannelStatus(channelName);
       supabase.removeChannel(channel);
     };
     // retryTrigger nas deps força re-subscribe após backoff
