@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { ChevronDown, ChevronRight, Flame, ClipboardCheck, CheckCircle2, Calendar, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { AcompanhamentoCard } from "./AcompanhamentoCard";
@@ -10,6 +10,7 @@ import {
   type AcompanhamentoLead,
   type FiltroAcompanhamento,
 } from "@/hooks/useAcompanhamentoLeads";
+import { useLeadsCrossCampanha } from "@/hooks/useLeadsCrossCampanha";
 
 interface Props {
   filtro: FiltroAcompanhamento;
@@ -36,6 +37,10 @@ export function AcompanhamentoKanban({ filtro, onLeadClick }: Props) {
   const [dragOverEtapa, setDragOverEtapa] = useState<EtapaAcompanhamento | null>(null);
   const moverEtapa = useMoverEtapa();
   const aprovarLead = useAprovarLead();
+
+  // F2.7 — busca em qual outras campanhas cada lead está, pra mostrar badge "em N campanhas"
+  const leadIds = useMemo(() => todosLeads.map((l) => l.lead_id), [todosLeads]);
+  const { data: crossCampanhasMap } = useLeadsCrossCampanha(leadIds);
 
   const handleDragStart = (campanhaLeadId: string) => setDraggingId(campanhaLeadId);
   const handleDragEnd = () => {
@@ -85,6 +90,7 @@ export function AcompanhamentoKanban({ filtro, onLeadClick }: Props) {
             color={col.color}
             bg={col.bg}
             leads={porEtapa[col.etapa] || []}
+            crossCampanhasMap={crossCampanhasMap}
             onLeadClick={onLeadClick}
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
@@ -119,6 +125,7 @@ export function AcompanhamentoKanban({ filtro, onLeadClick }: Props) {
                 <AcompanhamentoCard
                   key={l.campanha_lead_id}
                   lead={l}
+                  crossCampanhas={crossCampanhasMap?.get(l.lead_id)}
                   onClick={() => onLeadClick(l)}
                   onDragStart={() => handleDragStart(l.campanha_lead_id)}
                   onDragEnd={handleDragEnd}
@@ -139,6 +146,7 @@ interface ColunaProps {
   color: string;
   bg: string;
   leads: AcompanhamentoLead[];
+  crossCampanhasMap?: Map<string, Array<{ id: string; nome: string }>>;
   onLeadClick: (lead: AcompanhamentoLead) => void;
   onDragStart: (id: string) => void;
   onDragEnd: () => void;
@@ -154,6 +162,7 @@ function Coluna({
   color,
   bg,
   leads,
+  crossCampanhasMap,
   onLeadClick,
   onDragStart,
   onDragEnd,
@@ -184,6 +193,7 @@ function Coluna({
             <AcompanhamentoCard
               key={l.campanha_lead_id}
               lead={l}
+              crossCampanhas={crossCampanhasMap?.get(l.lead_id)}
               onClick={() => onLeadClick(l)}
               onDragStart={() => onDragStart(l.campanha_lead_id)}
               onDragEnd={onDragEnd}

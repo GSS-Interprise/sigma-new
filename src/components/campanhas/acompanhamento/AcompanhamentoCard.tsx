@@ -1,6 +1,6 @@
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Flame, MessageSquare, MapPin, Stethoscope, Clock } from "lucide-react";
+import { Flame, MessageSquare, MapPin, Stethoscope, Clock, Layers } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { AcompanhamentoLead } from "@/hooks/useAcompanhamentoLeads";
@@ -8,12 +8,14 @@ import { CardActionsMenu } from "@/components/demandas/CardActionsMenu";
 
 interface Props {
   lead: AcompanhamentoLead;
+  /** Lista das campanhas onde o lead também está (incluindo a atual). F2.7 */
+  crossCampanhas?: Array<{ id: string; nome: string }>;
   onClick: () => void;
   onDragStart: () => void;
   onDragEnd: () => void;
 }
 
-export function AcompanhamentoCard({ lead, onClick, onDragStart, onDragEnd }: Props) {
+export function AcompanhamentoCard({ lead, crossCampanhas, onClick, onDragStart, onDragEnd }: Props) {
   const idade = lead.data_status
     ? formatDistanceToNow(new Date(lead.data_status), { addSuffix: false, locale: ptBR })
     : null;
@@ -62,9 +64,24 @@ export function AcompanhamentoCard({ lead, onClick, onDragStart, onDragEnd }: Pr
         </p>
       )}
 
-      <p className="text-[11px] text-muted-foreground mb-2 truncate" title={lead.campanha_nome}>
-        {lead.campanha_nome}
-      </p>
+      <div className="flex items-center gap-1.5 mb-2">
+        <p className="text-[11px] text-muted-foreground truncate flex-1" title={lead.campanha_nome}>
+          {lead.campanha_nome}
+        </p>
+        {crossCampanhas && crossCampanhas.length > 1 && (
+          <Badge
+            variant="outline"
+            className="text-[10px] h-4 px-1 gap-0.5 shrink-0 border-indigo-200 bg-indigo-50 text-indigo-700"
+            title={`Este lead também está em: ${crossCampanhas
+              .filter((c) => c.nome !== lead.campanha_nome)
+              .map((c) => c.nome)
+              .join(", ")}`}
+          >
+            <Layers className="h-2.5 w-2.5" />
+            {crossCampanhas.length}
+          </Badge>
+        )}
+      </div>
 
       <div className="flex items-center gap-1 mb-2">
         {[0, 1, 2, 3].map((i) => (
