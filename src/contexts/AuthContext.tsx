@@ -103,7 +103,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       subscription.unsubscribe();
       clearTimeout(sessionTimer);
     };
-  }, [navigate]);
+  // Sem deps de propósito: navigate é estável; listar como dep dispara cascata
+  // de re-subscribes do gotrue → lock contention (bug 15/05 sigzap realtime).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const checkUserStatus = async (userId: string) => {
     try {
