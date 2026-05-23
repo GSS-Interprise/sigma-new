@@ -11,6 +11,8 @@ import { useKanbanColumns } from "@/hooks/useKanbanColumns";
 import { cn } from "@/lib/utils";
 import { MedicoKanbanCardDialog } from "./MedicoKanbanCardDialog";
 import { CardActionsMenu } from "@/components/demandas/CardActionsMenu";
+import { MaskedField } from "@/components/common/MaskedField";
+import { maskCPF, maskPhone, maskEmail } from "@/lib/maskSensitiveData";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -396,12 +398,17 @@ export function MedicosKanban({ searchTerm = "" }: { searchTerm?: string }) {
                               </div>
                             </div>
 
-                            {/* Informações */}
+                            {/* Informações — dados sensíveis mascarados por padrão (LGPD) */}
                             <div className="space-y-1.5 text-xs">
                               {card.cpf && (
                                 <div className="flex items-center gap-1 text-muted-foreground">
                                   <CreditCard className="h-3 w-3 flex-shrink-0" />
-                                  <span className="truncate">{card.cpf}</span>
+                                  <MaskedField
+                                    value={card.cpf}
+                                    mask={maskCPF}
+                                    revealLabel="Mostrar CPF"
+                                    className="truncate"
+                                  />
                                 </div>
                               )}
 
@@ -415,14 +422,24 @@ export function MedicosKanban({ searchTerm = "" }: { searchTerm?: string }) {
                               {card.telefone && (
                                 <div className="flex items-center gap-1 text-muted-foreground">
                                   <Phone className="h-3 w-3 flex-shrink-0" />
-                                  <span className="truncate">{card.telefone}</span>
+                                  <MaskedField
+                                    value={card.telefone}
+                                    mask={maskPhone}
+                                    revealLabel="Mostrar telefone"
+                                    className="truncate"
+                                  />
                                 </div>
                               )}
 
                               {card.email && (
                                 <div className="flex items-center gap-1 text-muted-foreground">
                                   <Mail className="h-3 w-3 flex-shrink-0" />
-                                  <span className="truncate">{card.email}</span>
+                                  <MaskedField
+                                    value={card.email}
+                                    mask={maskEmail}
+                                    revealLabel="Mostrar email"
+                                    className="truncate"
+                                  />
                                 </div>
                               )}
 
