@@ -1,18 +1,41 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { ClipboardList } from "lucide-react";
 import { AcompanhamentoKanban } from "./AcompanhamentoKanban";
 import { AcompanhamentoLeadPainel } from "./AcompanhamentoLeadPainel";
+import { usePermissions } from "@/hooks/usePermissions";
 import {
   useAcompanhamentoLeads,
   type AcompanhamentoLead,
   type FiltroAcompanhamento,
 } from "@/hooks/useAcompanhamentoLeads";
 
+const FILTRO_STORAGE_KEY = "acompanhamento-filtro";
+
+function carregarFiltroInicial(isAdmin: boolean): FiltroAcompanhamento {
+  // Persistido no localStorage tem prioridade (preferência explícita do user)
+  if (typeof window !== "undefined") {
+    const saved = localStorage.getItem(FILTRO_STORAGE_KEY);
+    if (saved && ["todos", "minha_fila", "sem_dono", "aguarda_maikon", "aguarda_equipe"].includes(saved)) {
+      return saved as FiltroAcompanhamento;
+    }
+  }
+  // Default por role (F2.10): admin vê tudo, operadora vê só dela
+  return isAdmin ? "todos" : "minha_fila";
+}
+
 export function AcompanhamentoView() {
-  const [filtro, setFiltro] = useState<FiltroAcompanhamento>("todos");
+  const { isAdmin } = usePermissions();
+  const [filtro, setFiltro] = useState<FiltroAcompanhamento>(() => carregarFiltroInicial(isAdmin));
   const [leadAberto, setLeadAberto] = useState<AcompanhamentoLead | null>(null);
   const { counts, todosLeads, isLoading } = useAcompanhamentoLeads(filtro);
+
+  // Persiste mudanças no localStorage
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem(FILTRO_STORAGE_KEY, filtro);
+    }
+  }, [filtro]);
 
   // Pega lead atualizado do todosLeads (após mutações)
   const leadAtualizado = leadAberto
