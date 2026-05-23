@@ -117,15 +117,20 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange }: Props) {
     queryFn: async () => {
       // Se há especialidades selecionadas, conta DISTINCT lead_id em lead_especialidades
       // (filtrando por região no JOIN com leads se houver)
+      // F2.8: alinha preview com filtros do RPC selecionar_leads_campanha
+      // (exclui classificacao protegido/proibido + cooldown ativo)
+      const nowIso = new Date().toISOString();
       if (especialidadeIds.length > 0) {
         let q = supabase
           .from("lead_especialidades")
-          .select("lead_id, leads!inner(uf, phone_e164, merged_into_id, opt_out, classificacao)", { count: "exact", head: true })
+          .select("lead_id, leads!inner(uf, phone_e164, merged_into_id, opt_out, classificacao, cooldown_ate)", { count: "exact", head: true })
           .in("especialidade_id", especialidadeIds)
           .is("leads.merged_into_id", null)
           .not("leads.phone_e164", "is", null)
           .neq("leads.phone_e164", "")
-          .eq("leads.opt_out", false);
+          .eq("leads.opt_out", false)
+          .not("leads.classificacao", "in", "(protegido,proibido)")
+          .or(`cooldown_ate.is.null,cooldown_ate.lt.${nowIso}`, { foreignTable: "leads" });
         if (regiaoEstado) q = q.eq("leads.uf", regiaoEstado);
         const { count } = await q;
         return count || 0;
@@ -136,7 +141,9 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange }: Props) {
         .select("id", { count: "exact", head: true })
         .is("merged_into_id", null)
         .not("phone_e164", "is", null)
-        .neq("phone_e164", "");
+        .neq("phone_e164", "")
+        .not("classificacao", "in", "(protegido,proibido)")
+        .or(`cooldown_ate.is.null,cooldown_ate.lt.${nowIso}`);
       if (regiaoEstado) q = q.eq("uf", regiaoEstado);
       const { count } = await q;
       return count || 0;
