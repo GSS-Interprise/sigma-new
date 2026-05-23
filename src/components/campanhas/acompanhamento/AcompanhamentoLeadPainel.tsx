@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
+  ClipboardList,
   MessageSquare,
   History,
   ClipboardCheck,
@@ -29,6 +30,7 @@ import { LeadPerfilIaSection } from "@/components/medicos/LeadPerfilIaSection";
 import { LeadTimelineUnificadoSection } from "@/components/medicos/LeadTimelineUnificadoSection";
 import { ValidacaoChecklist } from "./ValidacaoChecklist";
 import { MarcarPerdidoDialog } from "./MarcarPerdidoDialog";
+import { LeadCampanhaTasks } from "./LeadCampanhaTasks";
 import {
   useAssumirLead,
   useAprovarLead,
@@ -44,7 +46,7 @@ interface Props {
 
 export function AcompanhamentoLeadPainel({ lead, onClose }: Props) {
   const { user } = useAuth();
-  const [tab, setTab] = useState<"conversa" | "historico" | "validacao">("validacao");
+  const [tab, setTab] = useState<"conversa" | "historico" | "validacao" | "tasks">("validacao");
   const [perdidoDialogOpen, setPerdidoDialogOpen] = useState(false);
   const assumir = useAssumirLead();
   const aprovar = useAprovarLead();
@@ -142,11 +144,15 @@ export function AcompanhamentoLeadPainel({ lead, onClose }: Props) {
           </SheetHeader>
 
           <Tabs value={tab} onValueChange={(v) => setTab(v as any)} className="flex-1 flex flex-col overflow-hidden">
-            <TabsList className="grid grid-cols-3 mx-5 mt-3 flex-shrink-0">
+            <TabsList className="grid grid-cols-4 mx-5 mt-3 flex-shrink-0">
               <TabsTrigger value="validacao" className="gap-1.5 text-xs">
                 <ClipboardCheck className="h-3.5 w-3.5" />
                 Validação
                 <span className="text-muted-foreground tabular-nums">{validacoesOk}/4</span>
+              </TabsTrigger>
+              <TabsTrigger value="tasks" className="gap-1.5 text-xs">
+                <ClipboardList className="h-3.5 w-3.5" />
+                Tasks
               </TabsTrigger>
               <TabsTrigger value="conversa" className="gap-1.5 text-xs">
                 <MessageSquare className="h-3.5 w-3.5" />
@@ -182,6 +188,12 @@ export function AcompanhamentoLeadPainel({ lead, onClose }: Props) {
                       </div>
                     )}
                   </div>
+                </ScrollArea>
+              </TabsContent>
+
+              <TabsContent value="tasks" className="m-0 h-full">
+                <ScrollArea className="h-full">
+                  <LeadCampanhaTasks campanhaLeadId={lead.campanha_lead_id} />
                 </ScrollArea>
               </TabsContent>
 
