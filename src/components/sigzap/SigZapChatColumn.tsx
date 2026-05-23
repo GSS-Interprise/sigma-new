@@ -123,7 +123,21 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const queryClient = useQueryClient();
+
+  // Autosize: textarea cresce com o conteúdo até max-height (resolve achado heurística)
+  const adjustTextareaHeight = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+  }, []);
+
+  // Reajusta altura quando mensagem é limpa (após envio) ou setada externamente
+  useEffect(() => {
+    adjustTextareaHeight();
+  }, [mensagem, adjustTextareaHeight]);
   const { user } = useAuth();
   // Fetch conversation details
   const { data: conversa, isLoading: loadingConversa } = useQuery({
@@ -2068,14 +2082,18 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
                   </DropdownMenuContent>
                 </DropdownMenu>
 
-                {/* Message input - NOT disabled when sending text (optimistic UI) */}
+                {/* Message input — autosize cresce com o conteudo ate 200px (achado heuristica #013) */}
                 <Textarea
+                  ref={textareaRef}
                   value={mensagem}
-                  onChange={(e) => setMensagem(e.target.value)}
+                  onChange={(e) => {
+                    setMensagem(e.target.value);
+                    adjustTextareaHeight();
+                  }}
                   onKeyDown={handleKeyDown}
                   onPaste={handlePaste}
                   placeholder={stagedFiles.length > 0 ? "Adicione uma legenda..." : "Digite sua mensagem..."}
-                  className="min-h-[44px] max-h-32 resize-none flex-1"
+                  className="min-h-[44px] max-h-[200px] resize-none flex-1 overflow-y-auto"
                   rows={1}
                   disabled={isUploadingMedia}
                 />
