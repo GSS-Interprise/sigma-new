@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -68,9 +68,17 @@ export function useAcompanhamentoLeads(filtro: FiltroAcompanhamento = "todos") {
   });
 
   // Realtime: atualizações em campanha_leads invalidam a lista
+  // Nome único por mount evita colisão quando hook é chamado em paralelo
+  // por componentes diferentes (AcompanhamentoView + AcompanhamentoKanban) —
+  // antes dava erro 'cannot add postgres_changes callbacks after subscribe()'
+  const channelIdRef = useRef(
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? `acompanhamento-realtime-${crypto.randomUUID()}`
+      : `acompanhamento-realtime-${Math.random().toString(36).slice(2)}`
+  );
   useEffect(() => {
     const channel = (supabase as any)
-      .channel("acompanhamento-realtime")
+      .channel(channelIdRef.current)
       .on(
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "campanha_leads" },
