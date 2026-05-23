@@ -184,7 +184,7 @@ export default function DisparosSigZap() {
           <MessageCircle className="h-5 w-5 text-primary" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold">SIG Zap</h1>
+          <h1 className="text-2xl font-bold">Conversas</h1>
           <p className="text-sm text-muted-foreground">Atendimento WhatsApp</p>
         </div>
         <RealtimeStatusBadge />

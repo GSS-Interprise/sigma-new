@@ -11,8 +11,8 @@ const MODULOS = [
   { key: "contratos_servicos", label: "Contratos Captação" },
   { key: "blacklist", label: "Black List" },
   { key: "regiao_interesse", label: "Banco de Interesse" },
-  { key: "sigzap", label: "SIG Zap" },
-  { key: "config_instancia", label: "Config Instância" },
+  { key: "sigzap", label: "Conversas WhatsApp" },
+  { key: "config_instancia", label: "Chips & Instâncias" },
   { key: "captadores", label: "Captadores" },
   { key: "monitor", label: "Monitor" },
 ];
