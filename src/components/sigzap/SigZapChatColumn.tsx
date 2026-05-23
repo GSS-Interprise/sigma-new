@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useAuth } from "@/contexts/AuthContext";
+import { useSupabaseRealtimeChannel } from "@/hooks/useSupabaseRealtimeChannel";
 import { SigZapAudioRecorder, SigZapMicButton } from "./SigZapAudioRecorder";
 import { SigZapAudioPlayer, SigZapVideoPlayer } from "./SigZapMediaPlayer";
 import { SigZapDocumentCard } from "./SigZapDocumentCard";
@@ -122,12 +123,6 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
-  const realtimeChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
-  const realtimeChannelInstanceIdRef = useRef(
-    typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? crypto.randomUUID()
-      : Math.random().toString(36).slice(2)
-  );
   const queryClient = useQueryClient();
   const { user } = useAuth();
   // Fetch conversation details
@@ -461,40 +456,18 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
   // Show loading skeleton only on initial load or conversation switch with no data
   const showLoadingSkeleton = loadingMensagens || (isConversationSwitch && isFetching && !mensagens?.length);
 
-  // Subscribe to realtime updates
-  useEffect(() => {
-    if (realtimeChannelRef.current) {
-      supabase.removeChannel(realtimeChannelRef.current);
-      realtimeChannelRef.current = null;
-    }
-
-    if (!conversaId) return;
-
-    const channel = supabase
-      .channel(`sigzap-messages-${conversaId}-${realtimeChannelInstanceIdRef.current}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'sigzap_messages',
-          filter: `conversation_id=eq.${conversaId}`
-        },
-        () => {
-          queryClient.invalidateQueries({ queryKey: ['sigzap-messages', conversaId] });
-        }
-      )
-      .subscribe();
-
-    realtimeChannelRef.current = channel;
-
-    return () => {
-      if (realtimeChannelRef.current === channel) {
-        realtimeChannelRef.current = null;
-      }
-      supabase.removeChannel(channel);
-    };
-  }, [conversaId, queryClient]);
+  // Subscribe to realtime updates de mensagens novas nesta conversa.
+  // Hook trata retry exponencial + log estruturado (resolve bug 15/05 silencioso).
+  useSupabaseRealtimeChannel({
+    channelName: `sigzap-messages-${conversaId}`,
+    table: 'sigzap_messages',
+    event: 'INSERT',
+    filter: conversaId ? `conversation_id=eq.${conversaId}` : undefined,
+    enabled: !!conversaId,
+    onChange: () => {
+      queryClient.invalidateQueries({ queryKey: ['sigzap-messages', conversaId] });
+    },
+  });
 
   // Scroll to bottom when messages change
   useEffect(() => {

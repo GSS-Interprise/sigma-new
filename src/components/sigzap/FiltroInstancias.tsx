@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Smartphone, Wifi, WifiOff, CheckCircle2 } from "lucide-react";
-import { useEffect } from "react";
+import { useSupabaseRealtimeChannel } from "@/hooks/useSupabaseRealtimeChannel";
 
 interface FiltroInstanciasProps {
   selectedInstanceId: string | null;
@@ -28,27 +28,16 @@ export function FiltroInstancias({ selectedInstanceId, onSelectInstance }: Filtr
     },
   });
 
-  // Realtime subscription for chips table
-  useEffect(() => {
-    const channel = supabase
-      .channel('chips-realtime-sigzap')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'chips'
-        },
-        () => {
-          queryClient.invalidateQueries({ queryKey: ['chips-instances'] });
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [queryClient]);
+  // Realtime subscription for chips table.
+  // Hook trata retry exponencial + log estruturado.
+  useSupabaseRealtimeChannel({
+    channelName: 'chips-realtime-sigzap',
+    table: 'chips',
+    event: '*',
+    onChange: () => {
+      queryClient.invalidateQueries({ queryKey: ['chips-instances'] });
+    },
+  });
 
   if (isLoading) {
     return (

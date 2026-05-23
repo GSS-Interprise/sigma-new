@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useSupabaseRealtimeChannel } from "@/hooks/useSupabaseRealtimeChannel";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card } from "@/components/ui/card";
@@ -319,30 +320,16 @@ export function SigZapMinhasConversasColumn({
     enabled: !!user?.id,
   });
 
-  // Subscribe to realtime updates
-  const refetchRef = useRef(refetch);
-  refetchRef.current = refetch;
-
-  useEffect(() => {
-    const channel = supabase
-      .channel('sigzap-minhas-conversas-realtime')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'sigzap_conversations'
-        },
-        () => {
-          refetchRef.current();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
+  // Subscribe to realtime updates das minhas conversas.
+  // Hook trata retry exponencial + log estruturado (resolve bug 15/05 silencioso).
+  useSupabaseRealtimeChannel({
+    channelName: 'sigzap-minhas-conversas-realtime',
+    table: 'sigzap_conversations',
+    event: '*',
+    onChange: () => {
+      refetch();
+    },
+  });
 
   // Release conversation mutation
   const releaseMutation = useMutation({
