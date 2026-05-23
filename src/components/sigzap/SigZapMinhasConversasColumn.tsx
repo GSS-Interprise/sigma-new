@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useSupabaseRealtimeChannel } from "@/hooks/useSupabaseRealtimeChannel";
+import { useSigzapPinnedConversations } from "@/hooks/useSigzapPinnedConversations";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card } from "@/components/ui/card";
@@ -223,7 +224,17 @@ export function SigZapMinhasConversasColumn({
     [minhasConversas]
   );
   const { data: origemMap } = useSigzapConversationOrigem(conversaIds);
-  const conversasFinais = conversasFiltradas;
+
+  // Pinned: conversas fixadas pelo user atual vao pro topo (F1.4b)
+  const { data: pinnedSet } = useSigzapPinnedConversations();
+  const conversasFinais = useMemo(() => {
+    if (!pinnedSet || pinnedSet.size === 0) return conversasFiltradas;
+    return [...conversasFiltradas].sort((a: any, b: any) => {
+      const aPin = pinnedSet.has(a.id) ? 1 : 0;
+      const bPin = pinnedSet.has(b.id) ? 1 : 0;
+      return bPin - aPin;
+    });
+  }, [conversasFiltradas, pinnedSet]);
 
   // Fetch leads by phone numbers (phone_e164 + telefones_adicionais)
   const { data: leadsMap } = useQuery({

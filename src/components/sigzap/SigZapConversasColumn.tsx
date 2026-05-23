@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSupabaseRealtimeChannel } from "@/hooks/useSupabaseRealtimeChannel";
+import { useSigzapPinnedConversations } from "@/hooks/useSigzapPinnedConversations";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -404,7 +405,17 @@ export function SigZapConversasColumn({
     [filteredConversas]
   );
   const { data: origemMap } = useSigzapConversationOrigem(conversaIdsParaOrigem);
-  const filteredConversasFinal = filteredConversas;
+
+  // Pinned: conversas fixadas pelo user atual vao pro topo (F1.4b)
+  const { data: pinnedSet } = useSigzapPinnedConversations();
+  const filteredConversasFinal = useMemo(() => {
+    if (!pinnedSet || pinnedSet.size === 0) return filteredConversas;
+    return [...filteredConversas].sort((a: any, b: any) => {
+      const aPin = pinnedSet.has(a.id) ? 1 : 0;
+      const bPin = pinnedSet.has(b.id) ? 1 : 0;
+      return bPin - aPin;
+    });
+  }, [filteredConversas, pinnedSet]);
 
   // Single unified list - no more split between Livres/Atribuídas
 

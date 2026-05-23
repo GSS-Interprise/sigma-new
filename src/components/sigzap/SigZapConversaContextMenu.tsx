@@ -286,11 +286,50 @@ export function SigZapConversaContextMenu({
     },
   });
 
-  // Pin conversation mutation (toggle)
+  // Pin conversation mutation (toggle individual por usuário)
+  const { data: pinnedSet } = useQuery({
+    queryKey: ['sigzap-pinned', user?.id],
+    queryFn: async (): Promise<Set<string>> => {
+      if (!user?.id) return new Set();
+      const { data } = await supabase
+        .from('sigzap_pinned_conversations' as any)
+        .select('conversation_id');
+      return new Set((data ?? []).map((r: any) => r.conversation_id as string));
+    },
+    enabled: !!user?.id,
+    staleTime: 30_000,
+  });
+
+  const isPinned = pinnedSet?.has(conversaId) ?? false;
+
   const pinMutation = useMutation({
     mutationFn: async () => {
-      // For now, pin is a simple toast feedback - can be extended with a pinned column
-      toast.info('Funcionalidade de fixar conversa em breve!');
+      if (!user?.id) throw new Error('Usuário não autenticado');
+
+      if (isPinned) {
+        const { error } = await supabase
+          .from('sigzap_pinned_conversations' as any)
+          .delete()
+          .eq('user_id', user.id)
+          .eq('conversation_id', conversaId);
+        if (error) throw error;
+        return { action: 'unpinned' as const };
+      } else {
+        const { error } = await supabase
+          .from('sigzap_pinned_conversations' as any)
+          .insert({ user_id: user.id, conversation_id: conversaId });
+        if (error) throw error;
+        return { action: 'pinned' as const };
+      }
+    },
+    onSuccess: ({ action }) => {
+      toast.success(action === 'pinned' ? 'Conversa fixada no topo' : 'Conversa desfixada');
+      queryClient.invalidateQueries({ queryKey: ['sigzap-pinned'] });
+      queryClient.invalidateQueries({ queryKey: ['sigzap-conversations'] });
+      queryClient.invalidateQueries({ queryKey: ['sigzap-minhas-conversas'] });
+    },
+    onError: (e: any) => {
+      toast.error(e.message || 'Erro ao alterar fixação');
     },
   });
 
@@ -320,9 +359,9 @@ export function SigZapConversaContextMenu({
 
           <DropdownMenuSeparator />
 
-          <DropdownMenuItem onClick={() => pinMutation.mutate()}>
-            <Pin className="h-4 w-4 mr-2" />
-            Fixar conversa
+          <DropdownMenuItem onClick={() => pinMutation.mutate()} disabled={pinMutation.isPending}>
+            <Pin className={cn("h-4 w-4 mr-2", isPinned && "fill-current")} />
+            {isPinned ? 'Desfixar conversa' : 'Fixar conversa'}
           </DropdownMenuItem>
 
           <DropdownMenuItem onClick={() => onTransfer?.(conversaId)}>
