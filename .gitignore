@@ -22,3 +22,18 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Scratch / temp dirs
+.scratch/
+supabase/.temp/
+.claude/scheduled_tasks.lock
+
+# Arquivos pessoais (planilhas, briefings, prints, vagas)
+*.xlsx
+*.docx
+prints/
+vagas/
+plan/
+
+# Planos de trabalho pessoais do Claude (Raul)
+.claude/plano-*.md
