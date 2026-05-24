@@ -52,6 +52,23 @@ export function DashboardCampanhas() {
     refetchInterval: 60_000,
   });
 
+  // Métrica acionável: quantos leads únicos foram descartados por phone inválido.
+  // Mostra qualidade da base de leads (NÃO é "erro do sistema" — é dado da fonte).
+  const { data: descartadosPhone = 0 } = useQuery({
+    queryKey: ["dashboard-descartados-phone"],
+    queryFn: async (): Promise<number> => {
+      const { count } = await (supabase as any)
+        .from("campanha_leads")
+        .select("lead_id", { count: "exact", head: false })
+        .eq("status", "descartado")
+        .or(
+          "erro_envio.ilike.%phone%inexistente%,erro_envio.ilike.%Telefone inv%,erro_envio.ilike.%Sem telefone%,erro_envio.ilike.%exists%false%"
+        );
+      return count ?? 0;
+    },
+    refetchInterval: 5 * 60_000,
+  });
+
   if (isLoading) {
     return (
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -63,6 +80,9 @@ export function DashboardCampanhas() {
   }
 
   // Agregados pra cards de topo
+  // Removido 'falhas' cumulativo — métrica enganosa pra equipe não-técnica
+  // (inclui pausas anti-ban como se fossem erro). Substituído por
+  // "Médicos sem WhatsApp" (descartadosPhone) que é dado de qualidade da base.
   const agg = (rows ?? []).reduce(
     (acc, r) => ({
       campanhas: acc.campanhas + 1,
@@ -73,7 +93,6 @@ export function DashboardCampanhas() {
       convertidos: acc.convertidos + (r.convertidos ?? 0),
       disparos_24h: acc.disparos_24h + (r.disparos_24h ?? 0),
       disparos_7d: acc.disparos_7d + (r.disparos_7d ?? 0),
-      falhas: acc.falhas + (r.total_falhas ?? 0),
     }),
     {
       campanhas: 0,
@@ -84,7 +103,6 @@ export function DashboardCampanhas() {
       convertidos: 0,
       disparos_24h: 0,
       disparos_7d: 0,
-      falhas: 0,
     }
   );
 
@@ -133,13 +151,24 @@ export function DashboardCampanhas() {
         />
       </div>
 
-      {/* Cards secundários (operação) */}
+      {/* Cards secundários (operação) — métricas acionáveis pra equipe não-técnica */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <SmallStat icon={Rocket} label="Campanhas ativas" value={agg.campanhas} />
         <SmallStat icon={Send} label="Disparos 24h" value={agg.disparos_24h.toLocaleString("pt-BR")} />
         <SmallStat icon={Send} label="Disparos 7 dias" value={agg.disparos_7d.toLocaleString("pt-BR")} />
-        <SmallStat icon={AlertCircle} label="Falhas (total)" value={agg.falhas.toLocaleString("pt-BR")} />
+        <SmallStat
+          icon={AlertCircle}
+          label="Médicos sem WhatsApp"
+          value={descartadosPhone.toLocaleString("pt-BR")}
+          tooltip="Leads descartados automaticamente porque o telefone não tem WhatsApp ativo. Vale revisar a fonte desses contatos."
+        />
       </div>
+
+      {/* Nota contextual: dá tranquilidade sobre o sistema anti-ban funcionar como freio, não como erro */}
+      <p className="text-xs text-muted-foreground italic px-1 -mt-2">
+        Quando um chip está em pausa anti-ban (esperando o ritmo natural pra não ser bloqueado pelo WhatsApp), as tentativas
+        ficam em fila até ele voltar. Isso é proteção, não erro — não aparece nas métricas acima.
+      </p>
 
       {/* Alerta destacado */}
       {quentesAtrasados.length > 0 && (
@@ -267,14 +296,22 @@ interface SmallStatProps {
   icon: React.ElementType;
   label: string;
   value: string | number;
+  /** Texto explicativo no hover — pra contexto a quem não conhece a métrica. */
+  tooltip?: string;
 }
 
-function SmallStat({ icon: Icon, label, value }: SmallStatProps) {
+function SmallStat({ icon: Icon, label, value, tooltip }: SmallStatProps) {
   return (
-    <div className="bg-muted/20 border border-border rounded-md px-3 py-2 flex items-center gap-2.5">
+    <div
+      className="bg-muted/20 border border-border rounded-md px-3 py-2 flex items-center gap-2.5"
+      title={tooltip}
+    >
       <Icon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
       <div className="min-w-0">
-        <div className="text-xs text-muted-foreground truncate">{label}</div>
+        <div className="text-xs text-muted-foreground truncate flex items-center gap-1">
+          {label}
+          {tooltip && <span className="text-[10px] opacity-50">ⓘ</span>}
+        </div>
         <div className="text-sm font-semibold tabular-nums">{value}</div>
       </div>
     </div>
