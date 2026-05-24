@@ -258,6 +258,15 @@ All colors MUST be HSL.
     @apply border-border;
   }
 
+  /* Garante que html/body NÃO scrollam — apenas o <main> do AppLayout faz
+     o scroll vertical do app. Sem isso, conteúdo extenso (tabelas /leads
+     com 50 rows, dashboards) cria scroll duplo (window + main) e a
+     paginação acaba ficando fora do alcance visual. */
+  html, body, #root {
+    height: 100%;
+    overflow: hidden;
+  }
+
   body {
     @apply bg-background text-foreground;
   }
