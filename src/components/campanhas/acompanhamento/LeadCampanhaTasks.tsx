@@ -19,8 +19,11 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import {
   MessageCircle,
   Mail,
@@ -32,6 +35,7 @@ import {
   MoreHorizontal,
   CheckCircle2,
   ClipboardList,
+  CalendarIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -118,8 +122,8 @@ export function LeadCampanhaTasks({ campanhaLeadId }: Props) {
   });
 
   const snooze = useMutation({
-    mutationFn: async ({ taskId, horas }: { taskId: string; horas: number }) => {
-      const novoPrazo = new Date(Date.now() + horas * 60 * 60 * 1000).toISOString();
+    mutationFn: async ({ taskId, ate }: { taskId: string; ate: Date }) => {
+      const novoPrazo = ate.toISOString();
       const { error } = await supabase
         .from("campanha_lead_tasks" as any)
         .update({ status: "snooze", snooze_ate: novoPrazo, prazo_at: novoPrazo })
@@ -127,7 +131,7 @@ export function LeadCampanhaTasks({ campanhaLeadId }: Props) {
       if (error) throw error;
     },
     onSuccess: (_, vars) => {
-      toast.success(`Adiada por ${vars.horas / 24} dia(s)`);
+      toast.success(`Adiada para ${format(vars.ate, "dd/MM 'às' HH'h'", { locale: ptBR })}`);
       queryClient.invalidateQueries({ queryKey: ["campanha-lead-tasks", campanhaLeadId] });
     },
     onError: (e: any) => toast.error(e.message || "Erro ao adiar"),
@@ -203,7 +207,7 @@ export function LeadCampanhaTasks({ campanhaLeadId }: Props) {
               key={task.id}
               task={task}
               onMarcarFeita={() => setFeitaTaskId(task.id)}
-              onSnooze={(horas) => snooze.mutate({ taskId: task.id, horas })}
+              onSnooze={(ate) => snooze.mutate({ taskId: task.id, ate })}
               onDescartar={() => setDescartarTaskId(task.id)}
             />
           ))}
@@ -279,11 +283,12 @@ export function LeadCampanhaTasks({ campanhaLeadId }: Props) {
 interface TaskRowProps {
   task: Task;
   onMarcarFeita: () => void;
-  onSnooze: (horas: number) => void;
+  onSnooze: (ate: Date) => void;
   onDescartar: () => void;
 }
 
 function TaskRow({ task, onMarcarFeita, onSnooze, onDescartar }: TaskRowProps) {
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
   const meta = TIPO_META[task.tipo];
   const Icon = meta.icon;
   const prazo = new Date(task.prazo_at);
@@ -364,13 +369,49 @@ function TaskRow({ task, onMarcarFeita, onSnooze, onDescartar }: TaskRowProps) {
                 <MoreHorizontal className="h-3.5 w-3.5" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44">
+            <DropdownMenuContent align="end" className="w-48">
               {SNOOZE_OPCOES.map((op) => (
-                <DropdownMenuItem key={op.horas} onClick={() => onSnooze(op.horas)}>
+                <DropdownMenuItem
+                  key={op.horas}
+                  onClick={() =>
+                    onSnooze(new Date(Date.now() + op.horas * 60 * 60 * 1000))
+                  }
+                >
                   <Clock className="h-3.5 w-3.5 mr-2" />
                   Adiar {op.label}
                 </DropdownMenuItem>
               ))}
+              <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
+                <PopoverTrigger asChild>
+                  <DropdownMenuItem
+                    onSelect={(e) => {
+                      e.preventDefault();
+                      setDatePickerOpen(true);
+                    }}
+                  >
+                    <CalendarIcon className="h-3.5 w-3.5 mr-2" />
+                    Escolher data...
+                  </DropdownMenuItem>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="end">
+                  <Calendar
+                    mode="single"
+                    selected={undefined}
+                    onSelect={(date) => {
+                      if (date) {
+                        const d = new Date(date);
+                        d.setHours(9, 0, 0, 0); // adiar pra 9h da manhã
+                        onSnooze(d);
+                        setDatePickerOpen(false);
+                      }
+                    }}
+                    disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+                    locale={ptBR}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+              <DropdownMenuSeparator />
               <DropdownMenuItem onClick={onDescartar} className="text-destructive focus:text-destructive">
                 <X className="h-3.5 w-3.5 mr-2" />
                 Descartar
