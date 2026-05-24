@@ -143,11 +143,16 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead }: Pr
         },
       );
       if (error) throw error;
-      return data as { count: number; sample: any[] };
+      return data as {
+        count: number;
+        count_em_outras_campanhas?: number;
+        sample: any[];
+      };
     },
     staleTime: 30_000,
   });
   const poolCount = previewData?.count;
+  const poolCrossCampanha = previewData?.count_em_outras_campanhas ?? 0;
 
   const criar = useMutation({
     mutationFn: async () => {
@@ -445,29 +450,44 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead }: Pr
             </div>
 
             {(especialidadeIds.length > 0 || regiaoEstado) && poolCount !== undefined && (
-              <div className="bg-muted/50 rounded-lg p-3 text-sm flex items-center justify-between gap-3">
-                <div>
-                  <span className="font-medium text-primary">
-                    ~{poolCount.toLocaleString("pt-BR")} leads
-                  </span>{" "}
-                  disponíveis para esses filtros
-                  {especialidadeIds.length > 1 && (
-                    <span className="text-xs text-muted-foreground ml-1">
-                      ({especialidadeIds.length} especialidades combinadas)
-                    </span>
+              <div className="space-y-2">
+                <div className="bg-muted/50 rounded-lg p-3 text-sm flex items-center justify-between gap-3">
+                  <div>
+                    <span className="font-medium text-primary">
+                      ~{poolCount.toLocaleString("pt-BR")} leads
+                    </span>{" "}
+                    disponíveis para esses filtros
+                    {especialidadeIds.length > 1 && (
+                      <span className="text-xs text-muted-foreground ml-1">
+                        ({especialidadeIds.length} especialidades combinadas)
+                      </span>
+                    )}
+                  </div>
+                  {poolCount > 0 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5 shrink-0"
+                      onClick={() => setPreviewOpen(true)}
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                      Ver lista
+                    </Button>
                   )}
                 </div>
-                {poolCount > 0 && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="gap-1.5 shrink-0"
-                    onClick={() => setPreviewOpen(true)}
-                  >
-                    <Eye className="h-3.5 w-3.5" />
-                    Ver lista
-                  </Button>
+                {/* Bloco G — alerta cross-campanha */}
+                {poolCrossCampanha > 0 && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800 flex items-start gap-2">
+                    <span className="text-amber-600 text-base leading-none">⚠</span>
+                    <div className="flex-1">
+                      <strong>{poolCrossCampanha.toLocaleString("pt-BR")}</strong>{" "}
+                      desses leads <strong>já estão em outra campanha ativa ou pausada</strong>.
+                      Se incluir nesta, o médico vai receber abordagem de dois lugares ao
+                      mesmo tempo. Considere excluí-los manualmente na lista abaixo
+                      ou aceitar (operadora decide).
+                    </div>
+                  </div>
                 )}
               </div>
             )}

@@ -126,6 +126,30 @@ export function PreviewLeadsCampanhaModal({
   const leads = data || [];
   const temMaisPaginas = leads.length === PAGE_SIZE;
 
+  // Bloco G — pra cada lead visível, descobre se ele já está em outra campanha ativa/pausada
+  const leadIds = leads.map((l) => l.id);
+  const { data: crossMap } = useQuery({
+    queryKey: ["preview-leads-cross", leadIds.join(",")],
+    enabled: leadIds.length > 0,
+    queryFn: async () => {
+      const { data: rows } = await (supabase as any)
+        .from("campanha_leads")
+        .select("lead_id, campanhas!inner(nome, status)")
+        .in("lead_id", leadIds)
+        .in("campanhas.status", ["ativa", "pausada"]);
+      const map = new Map<string, string[]>();
+      for (const r of rows || []) {
+        const lid = r.lead_id;
+        const nome = r.campanhas?.nome;
+        if (!nome) continue;
+        if (!map.has(lid)) map.set(lid, []);
+        map.get(lid)!.push(nome);
+      }
+      return map;
+    },
+    staleTime: 30_000,
+  });
+
   const toggleExclude = (leadId: string) => {
     const next = new Set(excludedIds);
     if (next.has(leadId)) next.delete(leadId);
@@ -258,6 +282,16 @@ export function PreviewLeadsCampanhaModal({
                         {lead.classificacao && lead.classificacao !== "normal" && (
                           <Badge variant="outline" className="text-[10px] uppercase">
                             {lead.classificacao}
+                          </Badge>
+                        )}
+                        {/* Bloco G — badge se lead já está em outra campanha */}
+                        {crossMap?.get(lead.id) && crossMap.get(lead.id)!.length > 0 && (
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] gap-1 border-amber-300 bg-amber-50 text-amber-800"
+                            title={`Já em: ${crossMap.get(lead.id)!.join(" · ")}`}
+                          >
+                            ⚠ em {crossMap.get(lead.id)!.length} outra{crossMap.get(lead.id)!.length === 1 ? "" : "s"}
                           </Badge>
                         )}
                       </div>
