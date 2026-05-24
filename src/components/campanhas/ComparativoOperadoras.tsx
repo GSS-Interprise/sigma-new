@@ -34,55 +34,23 @@ export function ComparativoOperadoras() {
   const { data: rows, isLoading } = useQuery({
     queryKey: ["comparativo-operadoras"],
     queryFn: async (): Promise<OperadoraRow[]> => {
-      // Query SQL agregada via RPC seria mais limpa, mas como não temos a RPC,
-      // fazemos com 2 queries leves e combinamos no client.
-      const { data: convs } = await (supabase as any)
-        .from("sigzap_conversations")
-        .select("assigned_user_id, last_message_at")
-        .not("assigned_user_id", "is", null);
-
-      const { data: msgs } = await (supabase as any)
-        .from("sigzap_messages")
-        .select("sent_by_user_id")
-        .eq("from_me", true)
-        .not("sent_by_user_id", "is", null);
-
-      const conversasMap = new Map<string, { qtd: number; ultima: string | null }>();
-      for (const c of convs ?? []) {
-        const cur = conversasMap.get(c.assigned_user_id) ?? { qtd: 0, ultima: null };
-        cur.qtd += 1;
-        if (c.last_message_at && (!cur.ultima || c.last_message_at > cur.ultima)) {
-          cur.ultima = c.last_message_at;
-        }
-        conversasMap.set(c.assigned_user_id, cur);
+      // Usa view SQL agregada — evita limit 1000 do client que estava
+      // omitindo operadoras com muitas msgs (Amanda, Letícia, etc.)
+      const { data, error } = await (supabase as any)
+        .from("vw_sigzap_atividade_equipe")
+        .select("*");
+      if (error) {
+        // eslint-disable-next-line no-console
+        console.error("[comparativo-operadoras] erro:", error);
+        return [];
       }
-
-      const msgsMap = new Map<string, number>();
-      for (const m of msgs ?? []) {
-        msgsMap.set(m.sent_by_user_id, (msgsMap.get(m.sent_by_user_id) ?? 0) + 1);
-      }
-
-      const userIds = Array.from(conversasMap.keys());
-      if (userIds.length === 0) return [];
-
-      const { data: profs } = await (supabase as any)
-        .from("profiles")
-        .select("id, nome_completo")
-        .in("id", userIds);
-
-      const profMap = new Map<string, string>(
-        (profs ?? []).map((p: any) => [p.id, p.nome_completo])
-      );
-
-      return userIds
-        .map((id) => ({
-          user_id: id,
-          nome_completo: profMap.get(id) ?? "Sem nome",
-          conversas_atribuidas: conversasMap.get(id)?.qtd ?? 0,
-          msgs_enviadas: msgsMap.get(id) ?? 0,
-          ultima_atividade: conversasMap.get(id)?.ultima ?? null,
-        }))
-        .sort((a, b) => b.conversas_atribuidas - a.conversas_atribuidas);
+      return (data ?? []).map((r: any) => ({
+        user_id: r.user_id,
+        nome_completo: r.nome_completo ?? "Sem nome",
+        conversas_atribuidas: Number(r.conversas_atribuidas) || 0,
+        msgs_enviadas: Number(r.msgs_enviadas) || 0,
+        ultima_atividade: r.ultima_atividade ?? null,
+      })) as OperadoraRow[];
     },
     refetchInterval: 5 * 60_000,
   });
