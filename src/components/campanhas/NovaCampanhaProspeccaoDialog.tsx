@@ -80,6 +80,7 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange }: Props) {
   const [bHandoffGatilhos, setBHandoffGatilhos] = useState(""); // Regras explícitas de quando acionar handoff
   const [bPalavrasProibidas, setBPalavrasProibidas] = useState(""); // Termos que a IA não pode usar
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [excludedLeadIds, setExcludedLeadIds] = useState<Set<string>>(new Set());
   const qc = useQueryClient();
 
   const { data: especialidades = [] } = useQuery({
@@ -210,6 +211,8 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange }: Props) {
           briefing_ia: briefing,
           cadencia_ativa: cadenciaAtiva,
           tipo_envio: tipoEnvio,
+          leads_excluidos_ids:
+            excludedLeadIds.size > 0 ? Array.from(excludedLeadIds) : null,
           criado_por: user.user?.id,
         })
         .select()
@@ -266,6 +269,7 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange }: Props) {
     setBHandoffFrase("");
     setBHandoffGatilhos("");
     setBPalavrasProibidas("");
+    setExcludedLeadIds(new Set());
     setTab("basico");
   };
 
@@ -454,7 +458,28 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange }: Props) {
               especialidadeIds={especialidadeIds}
               uf={regiaoEstado}
               poolCount={poolCount}
+              excludedIds={excludedLeadIds}
+              onExcludedChange={setExcludedLeadIds}
             />
+
+            {excludedLeadIds.size > 0 && (
+              <div className="flex items-center justify-between rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
+                <span className="text-amber-800">
+                  <strong>{excludedLeadIds.size.toLocaleString("pt-BR")}</strong>{" "}
+                  médico{excludedLeadIds.size === 1 ? "" : "s"} excluído
+                  {excludedLeadIds.size === 1 ? "" : "s"} do disparo
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7"
+                  onClick={() => setExcludedLeadIds(new Set())}
+                >
+                  Limpar
+                </Button>
+              </div>
+            )}
 
             <div className="space-y-1.5">
               <Label className="flex items-center gap-1.5">
