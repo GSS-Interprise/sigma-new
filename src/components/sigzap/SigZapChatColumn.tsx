@@ -1073,30 +1073,31 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
   };
 
   // Get status icon — normaliza valores do Evolution (mistura uppercase/lowercase)
+  // Cores estilo WhatsApp Web (#667781 default, #53bdeb azul WA pra read)
   const getStatusIcon = (status: string | null, fromMe: boolean) => {
     if (!fromMe) return null;
     const s = (status || "").toLowerCase();
     // PENDING = aguardando server (Clock)
     if (s === "pending" || !s) {
-      return <Clock className="h-3 w-3 opacity-60" />;
+      return <Clock className="h-3.5 w-3.5" />;
     }
     // SERVER_ACK / sent = chegou no server WhatsApp (1 check)
     if (s === "server_ack" || s === "sent") {
-      return <Check className="h-3 w-3" />;
+      return <Check className="h-3.5 w-3.5" />;
     }
     // DELIVERY_ACK / delivered = chegou no celular do destinatário (2 checks cinza)
     if (s === "delivery_ack" || s === "delivered") {
-      return <CheckCheck className="h-3 w-3" />;
+      return <CheckCheck className="h-3.5 w-3.5" />;
     }
-    // READ / read = médico abriu a conversa (2 checks azul WhatsApp style)
+    // READ / read = médico abriu a conversa (2 checks azul WA #53bdeb)
     if (s === "read" || s === "played") {
-      return <CheckCheck className="h-3 w-3 text-blue-500" />;
+      return <CheckCheck className="h-3.5 w-3.5" style={{ color: "#53bdeb" }} />;
     }
-    // deleted (raro) — vamos representar como X riscado
+    // deleted (raro)
     if (s === "deleted") {
-      return <X className="h-3 w-3 text-red-400" />;
+      return <X className="h-3.5 w-3.5 text-red-400" />;
     }
-    return <Clock className="h-3 w-3 opacity-40" />;
+    return <Clock className="h-3.5 w-3.5 opacity-40" />;
   };
 
   // Handle Lead button click - check if lead exists or create new
@@ -1788,8 +1789,15 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
       </div>
 
       {/* Messages */}
-      <ScrollArea className="flex-1 min-h-0 min-w-0 overflow-hidden p-4">
-        <div className="space-y-3">
+      <ScrollArea
+        className="flex-1 min-h-0 min-w-0 overflow-hidden p-4"
+        style={{
+          backgroundColor: "#efeae2",
+          backgroundImage:
+            "radial-gradient(circle at 20% 30%, rgba(255,255,255,0.4) 0%, transparent 50%), radial-gradient(circle at 80% 70%, rgba(255,255,255,0.3) 0%, transparent 50%)",
+        }}
+      >
+        <div className="space-y-1.5">
           {/* Load more history button - top of messages */}
           {conversa && historyHasMore && (
             <div className="flex justify-center py-2">
@@ -1889,11 +1897,11 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
                     canDelete={canSendMessages && !isDeleted}
                     hasLinkedLead={!!linkedLead?.id}
                   >
-                    <div className={cn("flex min-w-0 gap-2", isFromMe ? "justify-end" : "justify-start")}>
-                      {/* Sender avatar for from_me messages */}
+                    <div className={cn("flex min-w-0 gap-2 my-0.5", isFromMe ? "justify-end" : "justify-start")}>
+                      {/* Sender avatar for from_me messages — dot colorido pequeno (identifica operadora sem invadir bolha) */}
                       {isFromMe && sender && (
-                        <div 
-                          className="h-7 w-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0 mt-1"
+                        <div
+                          className="h-6 w-6 rounded-full flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0 mt-1 shadow-sm"
                           style={{ backgroundColor: msgColor }}
                           title={sender.nome}
                         >
@@ -1902,23 +1910,25 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
                       )}
                       <div
                         className={cn(
-                          "relative max-w-[80%] min-w-0 cursor-pointer rounded-lg px-3 py-2 text-sm",
+                          "relative max-w-[78%] min-w-0 cursor-pointer rounded-lg px-2.5 py-1.5 text-sm shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]",
                           isFromMe
-                            ? "text-white rounded-br-none"
-                            : "bg-muted rounded-bl-none",
+                            ? "bg-[#d9fdd3] text-[#111b21] rounded-tr-sm"
+                            : "bg-white text-[#111b21] rounded-tl-sm",
                           isDeleted && "opacity-60 italic",
                           msg.reaction && "mb-3"
                         )}
-                        style={isFromMe ? { backgroundColor: msgColor } : undefined}
                       >
-                        {/* Sender name + instance for from_me messages */}
+                        {/* Sender name + instance for from_me messages — pequeno, com cor da operadora */}
                         {isFromMe && sender && (
-                          <div className="flex items-center gap-1.5 mb-1">
-                            <span className="text-[11px] font-semibold text-white/90">
+                          <div className="flex items-center gap-1.5 mb-0.5">
+                            <span
+                              className="text-[11px] font-semibold"
+                              style={{ color: msgColor }}
+                            >
                               {sender.nome.split(' ')[0]}
                             </span>
                             {msg.sent_via_instance_name && (
-                              <span className="text-[9px] text-white/60 bg-white/15 rounded px-1 py-0.5">
+                              <span className="text-[9px] text-[#667781] bg-black/5 rounded px-1 py-0.5">
                                 {msg.sent_via_instance_name}
                               </span>
                             )}
@@ -1971,11 +1981,8 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
                           </div>
                         )}
                         
-                        {/* Time and status */}
-                        <div className={cn(
-                          "flex items-center justify-end gap-1 mt-1",
-                          isFromMe ? "text-white/70" : "text-muted-foreground"
-                        )}>
+                        {/* Time and status — estilo WhatsApp Web: cinza escuro discreto */}
+                        <div className="flex items-center justify-end gap-1 mt-0.5 text-[#667781]">
                           <span className="text-[10px]">
                             {format(new Date(msg.sent_at), "HH:mm", { locale: ptBR })}
                           </span>
