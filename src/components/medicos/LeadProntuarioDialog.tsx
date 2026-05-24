@@ -1575,43 +1575,99 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
             </DialogHeader>
 
             <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
-              <TabsList className={`grid ${canViewOld ? "grid-cols-7" : "grid-cols-6"} mx-4 mt-2 flex-shrink-0 w-auto`}>
-                <TabsTrigger value="dados" className="gap-1.5 text-xs">
-                  <User className="h-3.5 w-3.5" />
-                  Dados
-                </TabsTrigger>
-                <TabsTrigger value="propostas" className="gap-1.5 text-xs">
-                  <FileText className="h-3.5 w-3.5" />
-                  Propostas
-                </TabsTrigger>
-                <TabsTrigger value="historico" className="gap-1.5 text-xs relative">
-                  <History className="h-3.5 w-3.5" />
-                  Histórico
-                  {historicoUnreadCount > 0 && (
-                    <span className="absolute -top-1 -right-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground">
-                      {historicoUnreadCount > 99 ? '99+' : historicoUnreadCount}
-                    </span>
-                  )}
-                </TabsTrigger>
-                <TabsTrigger value="perfil-ia" className="gap-1.5 text-xs" disabled={!leadId || isNewLead}>
-                  <Brain className="h-3.5 w-3.5" />
-                  Perfil IA
-                </TabsTrigger>
-                {canViewOld && (
-                  <TabsTrigger value="old" className="gap-1.5 text-xs">
-                    <FolderArchive className="h-3.5 w-3.5" />
-                    OLD
-                  </TabsTrigger>
-                )}
-                <TabsTrigger value="conversao" className="gap-1.5 text-xs">
-                  <UserCheck className="h-3.5 w-3.5" />
-                  Conversão
-                </TabsTrigger>
-                <TabsTrigger value="atividades" className="gap-1.5 text-xs">
-                  <Activity className="h-3.5 w-3.5" />
-                  Atividades
-                </TabsTrigger>
-              </TabsList>
+              {/* Fase C — Agrupamento de 7 abas em 2 grupos pra reduzir carga cognitiva.
+                  Perfil = quem é o medico. Atividade = o que ele fez / vamos fazer. */}
+              {(() => {
+                const abasPerfil = ["dados", "propostas", "perfil-ia"];
+                const grupoAtivo = abasPerfil.includes(activeTab) ? "perfil" : "atividade";
+                return (
+                  <div className="px-4 mt-2 mb-1 flex gap-1 flex-shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("dados")}
+                      className={`px-3 py-1 text-xs font-medium rounded-md transition-colors flex items-center gap-1.5 ${
+                        grupoAtivo === "perfil"
+                          ? "bg-primary/10 text-primary"
+                          : "text-muted-foreground hover:bg-muted"
+                      }`}
+                    >
+                      <User className="h-3.5 w-3.5" />
+                      Perfil do médico
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("historico")}
+                      className={`px-3 py-1 text-xs font-medium rounded-md transition-colors flex items-center gap-1.5 relative ${
+                        grupoAtivo === "atividade"
+                          ? "bg-primary/10 text-primary"
+                          : "text-muted-foreground hover:bg-muted"
+                      }`}
+                    >
+                      <Activity className="h-3.5 w-3.5" />
+                      Atividade & histórico
+                      {historicoUnreadCount > 0 && grupoAtivo !== "atividade" && (
+                        <span className="absolute -top-1 -right-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground">
+                          {historicoUnreadCount > 99 ? "99+" : historicoUnreadCount}
+                        </span>
+                      )}
+                    </button>
+                  </div>
+                );
+              })()}
+              {(() => {
+                const abasPerfil = ["dados", "propostas", "perfil-ia"];
+                const isPerfil = abasPerfil.includes(activeTab);
+                const cols = isPerfil ? 3 : canViewOld ? 4 : 3;
+                return (
+                  <TabsList
+                    className="grid mx-4 flex-shrink-0 w-auto"
+                    style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+                  >
+                    {isPerfil ? (
+                      <>
+                        <TabsTrigger value="dados" className="gap-1.5 text-xs">
+                          <User className="h-3.5 w-3.5" />
+                          Dados
+                        </TabsTrigger>
+                        <TabsTrigger value="propostas" className="gap-1.5 text-xs">
+                          <FileText className="h-3.5 w-3.5" />
+                          Propostas
+                        </TabsTrigger>
+                        <TabsTrigger value="perfil-ia" className="gap-1.5 text-xs" disabled={!leadId || isNewLead}>
+                          <Brain className="h-3.5 w-3.5" />
+                          Perfil IA
+                        </TabsTrigger>
+                      </>
+                    ) : (
+                      <>
+                        <TabsTrigger value="historico" className="gap-1.5 text-xs relative">
+                          <History className="h-3.5 w-3.5" />
+                          Histórico
+                          {historicoUnreadCount > 0 && (
+                            <span className="absolute -top-1 -right-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground">
+                              {historicoUnreadCount > 99 ? "99+" : historicoUnreadCount}
+                            </span>
+                          )}
+                        </TabsTrigger>
+                        <TabsTrigger value="atividades" className="gap-1.5 text-xs">
+                          <Activity className="h-3.5 w-3.5" />
+                          Atividades
+                        </TabsTrigger>
+                        <TabsTrigger value="conversao" className="gap-1.5 text-xs">
+                          <UserCheck className="h-3.5 w-3.5" />
+                          Conversão
+                        </TabsTrigger>
+                        {canViewOld && (
+                          <TabsTrigger value="old" className="gap-1.5 text-xs">
+                            <FolderArchive className="h-3.5 w-3.5" />
+                            OLD
+                          </TabsTrigger>
+                        )}
+                      </>
+                    )}
+                  </TabsList>
+                );
+              })()}
 
               <div className="flex-1 overflow-hidden min-w-0">
                 {/* Dados do Lead - Layout compacto */}
