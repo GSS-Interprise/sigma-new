@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
+import { usePermissions } from "@/hooks/usePermissions";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { CaptacaoProtectedRoute } from "@/components/auth/CaptacaoProtectedRoute";
 import { Card, CardContent } from "@/components/ui/card";
@@ -61,15 +63,40 @@ interface CampanhaRow {
   chip_id: string | null;
   chip_ids: string[] | null;
   briefing_ia: Record<string, unknown> | null;
+  criado_por: string | null;
+  criador_nome?: string | null;
   especialidade?: { nome: string } | null;
   especialidades_nomes?: string[];
 }
 
 type StatusFiltro = "ativa" | "rascunho" | "pausada" | "todas";
+type ResponsavelFiltro = "todos" | "minhas";
+
+const RESPONSAVEL_STORAGE_KEY = "campanhas-prospeccao-responsavel";
+
+function carregarResponsavelInicial(isAdmin: boolean): ResponsavelFiltro {
+  if (typeof window !== "undefined") {
+    const saved = localStorage.getItem(RESPONSAVEL_STORAGE_KEY);
+    if (saved === "todos" || saved === "minhas") return saved;
+  }
+  // Default por role: admin vê todas, operadora vê só as dela
+  return isAdmin ? "todos" : "minhas";
+}
 
 export default function CampanhasProspeccao() {
+  const { user } = useAuth();
+  const { isAdmin } = usePermissions();
   const [busca, setBusca] = useState("");
   const [statusFiltro, setStatusFiltro] = useState<StatusFiltro>("ativa");
+  const [responsavelFiltro, setResponsavelFiltro] = useState<ResponsavelFiltro>(
+    () => carregarResponsavelInicial(isAdmin),
+  );
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem(RESPONSAVEL_STORAGE_KEY, responsavelFiltro);
+    }
+  }, [responsavelFiltro]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [configurarId, setConfigurarId] = useState<string | null>(null);
   const [selecionada, setSelecionada] = useState<string | null>(null);
@@ -106,7 +133,7 @@ export default function CampanhasProspeccao() {
       let q = (supabase as any)
         .from("campanhas")
         .select(
-          "id, nome, status, tipo_campanha, especialidade_id, especialidade_ids, regiao_estado, limite_diario_campanha, total_frio, total_contatado, total_em_conversa, total_aquecido, total_quente, total_convertido, created_at, chip_id, chip_ids, briefing_ia, especialidade:especialidade_id(nome)"
+          "id, nome, status, tipo_campanha, especialidade_id, especialidade_ids, regiao_estado, limite_diario_campanha, total_frio, total_contatado, total_em_conversa, total_aquecido, total_quente, total_convertido, created_at, chip_id, chip_ids, briefing_ia, criado_por, especialidade:especialidade_id(nome)"
         )
         .eq("tipo_campanha", "prospeccao")
         .order("created_at", { ascending: false });
@@ -155,11 +182,16 @@ export default function CampanhasProspeccao() {
       Object.keys(c.briefing_ia || {}).length === 0);
   const countFantasmas = campanhas.filter(isCampanhaFantasma).length;
 
-  // Aplica filtro de status
-  const campanhasFiltradas =
-    statusFiltro === "todas"
-      ? campanhas
-      : campanhas.filter((c) => c.status === statusFiltro);
+  // Aplica filtro de status + responsável
+  const campanhasFiltradas = campanhas
+    .filter((c) => statusFiltro === "todas" || c.status === statusFiltro)
+    .filter((c) => {
+      if (responsavelFiltro === "todos") return true;
+      // "minhas" = criadas por mim
+      return c.criado_por === user?.id;
+    });
+
+  const countMinhas = campanhas.filter((c) => c.criado_por === user?.id).length;
 
   const totalLeads = campanhasFiltradas.reduce(
     (sum, c) =>
@@ -429,6 +461,23 @@ export default function CampanhasProspeccao() {
                   active={statusFiltro === "todas"}
                   onClick={() => setStatusFiltro("todas")}
                 />
+
+                {/* F2.10 — filtro responsável */}
+                <div className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <span>Responsável:</span>
+                  <StatusChip
+                    label="Todas"
+                    count={countTotal}
+                    active={responsavelFiltro === "todos"}
+                    onClick={() => setResponsavelFiltro("todos")}
+                  />
+                  <StatusChip
+                    label="Minhas"
+                    count={countMinhas}
+                    active={responsavelFiltro === "minhas"}
+                    onClick={() => setResponsavelFiltro("minhas")}
+                  />
+                </div>
               </div>
 
               <Card>
