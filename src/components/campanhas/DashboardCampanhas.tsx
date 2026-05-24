@@ -39,6 +39,11 @@ import {
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import {
+  exportarDashboardPDF,
+  exportarDashboardExcel,
+  type DashboardExportData,
+} from "@/lib/exportDashboard";
 
 const UF_LIST = [
   "AC","AL","AM","AP","BA","CE","DF","ES","GO","MA","MG","MS","MT",
@@ -220,46 +225,34 @@ export function DashboardCampanhas() {
   const taxaDescartePct =
     agg.contatado > 0 ? (descartadosPhone / Math.max(agg.contatado + descartadosPhone, 1)) * 100 : 0;
 
-  // F3.3 — Export PDF (via print do navegador, salva como PDF) e CSV
-  const exportPDF = () => window.print();
-  const exportCSV = () => {
-    const dataHoje = format(new Date(), "yyyy-MM-dd_HHmm", { locale: ptBR });
-    const linhas: string[] = [];
-    linhas.push("Sigma GSS — Dashboard de Prospeccao — " + format(new Date(), "dd/MM/yyyy HH:mm", { locale: ptBR }));
-    linhas.push("");
-    linhas.push("RESUMO GERAL");
-    linhas.push(`Campanhas ativas/pausadas;${agg.campanhas}`);
-    linhas.push(`Cobertura da base;${coberturaPct.toFixed(1)}%`);
-    linhas.push(`Contatado;${agg.contatado}`);
-    linhas.push(`Base total;${agg.pool_total}`);
-    linhas.push(`Taxa de resposta;${responseRatePct.toFixed(1)}%`);
-    linhas.push(`Em conversa;${agg.em_conversa}`);
-    linhas.push(`Quentes em aberto;${agg.quentes}`);
-    linhas.push(`Convertidos;${agg.convertidos}`);
-    linhas.push(`Disparos 24h;${agg.disparos_24h}`);
-    linhas.push(`Disparos 7 dias;${agg.disparos_7d}`);
-    linhas.push("");
-    linhas.push("PERFORMANCE POR CAMPANHA");
-    linhas.push("Campanha;Estado;Base;Contatado;% Cobertura;Em conversa;Quentes;Convertidos;Disparos 24h;Status");
-    rowsFiltradas.forEach((r) => {
-      const pct = r.pool_total ? ((r.contatado ?? 0) / r.pool_total) * 100 : 0;
-      const nome = (r.nome ?? "").replace(/;/g, ",");
-      linhas.push(
-        `${nome};${r.regiao_estado ?? ""};${r.pool_total ?? 0};${r.contatado ?? 0};${pct.toFixed(1)}%;${r.em_conversa ?? 0};${r.quentes ?? 0};${r.convertidos ?? 0};${r.disparos_24h ?? 0};${r.status}`
-      );
-    });
-    // BOM pra Excel reconhecer UTF-8
-    const csv = "﻿" + linhas.join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `dashboard-prospeccao_${dataHoje}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+  // F3.3 — Export real de PDF e Excel via jspdf + xlsx (client-side)
+  // Substitui o window.print + CSV anterior. Os dados respeitam os filtros
+  // ativos (campanha/estado/especialidade) — exporta o que está sendo visto.
+  const buildExportData = (): DashboardExportData => {
+    const filtrosLabels = {
+      campanha:
+        filtroCampanha !== "todas"
+          ? (rows ?? []).find((r) => r.campanha_id === filtroCampanha)?.nome
+          : undefined,
+      estado: filtroEstado !== "todos" ? filtroEstado : undefined,
+      especialidade:
+        filtroEspecialidade !== "todas"
+          ? especialidades.find((e) => e.id === filtroEspecialidade)?.nome
+          : undefined,
+    };
+    return {
+      agg,
+      coberturaPct,
+      conversionPct,
+      responseRatePct,
+      tempoMedioQuente,
+      descartadosPhone,
+      rows: rowsFiltradas,
+      filtros: filtrosLabels,
+    };
   };
+  const exportPDF = () => exportarDashboardPDF(buildExportData());
+  const exportExcel = () => exportarDashboardExcel(buildExportData());
 
   return (
     <div className="space-y-6 dashboard-print">
@@ -278,11 +271,11 @@ export function DashboardCampanhas() {
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={exportPDF}>
               <Printer className="h-3.5 w-3.5 mr-2" />
-              Imprimir / Salvar PDF
+              Baixar PDF
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={exportCSV}>
+            <DropdownMenuItem onClick={exportExcel}>
               <FileSpreadsheet className="h-3.5 w-3.5 mr-2" />
-              Baixar CSV (Excel)
+              Baixar Excel
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
