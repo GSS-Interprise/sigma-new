@@ -32,6 +32,7 @@ import { ValidacaoChecklist } from "./ValidacaoChecklist";
 import { MarcarPerdidoDialog } from "./MarcarPerdidoDialog";
 import { LeadCampanhaTasks } from "./LeadCampanhaTasks";
 import { LeadConversaUnificada } from "./LeadConversaUnificada";
+import { LeadIdentidadeCard } from "./LeadIdentidadeCard";
 import {
   useAssumirLead,
   useAprovarLead,
@@ -142,6 +143,9 @@ export function AcompanhamentoLeadPainel({ lead, onClose }: Props) {
                 )}
               </div>
             </div>
+
+            {/* F2.9 — Contexto 360º (badges de sinais relevantes do lead) */}
+            <LeadIdentidadeCard leadId={lead.lead_id} />
           </SheetHeader>
 
           <Tabs value={tab} onValueChange={(v) => setTab(v as any)} className="flex-1 flex flex-col overflow-hidden">
