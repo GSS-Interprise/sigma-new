@@ -3,10 +3,22 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Users, MessageCircle, Clock, TrendingUp } from "lucide-react";
+import { Users, MessageCircle, Clock, TrendingUp, BarChart3, Table as TableIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { useState } from "react";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RTooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
+import { Button } from "@/components/ui/button";
 
 interface OperadoraRow {
   user_id: string;
@@ -31,6 +43,7 @@ interface OperadoraRow {
  *   - Última atividade (recência — quem está ativo essa semana)
  */
 export function ComparativoOperadoras() {
+  const [visualizacao, setVisualizacao] = useState<"grafico" | "tabela">("grafico");
   const { data: rows, isLoading } = useQuery({
     queryKey: ["comparativo-operadoras"],
     queryFn: async (): Promise<OperadoraRow[]> => {
@@ -73,17 +86,84 @@ export function ComparativoOperadoras() {
   return (
     <Card className="p-0 overflow-hidden">
       <div className="px-4 py-3 border-b bg-muted/30">
-        <h3 className="text-sm font-semibold flex items-center gap-2">
-          <Users className="h-4 w-4 text-muted-foreground" />
-          Atividade geral da equipe nas Conversas
-        </h3>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          Conversas atendidas e mensagens enviadas (qualquer origem — não só campanhas).
-          Quando a equipe começar a usar &quot;Assumir lead&quot; no Acompanhamento, vai aparecer aqui métrica específica de campanha também.
-          <br />
-          <span className="italic">Não é ranking — é visibilidade pra coordenar carga e saber quem está ativo na semana.</span>
-        </p>
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <h3 className="text-sm font-semibold flex items-center gap-2">
+              <Users className="h-4 w-4 text-muted-foreground" />
+              Atividade geral da equipe nas Conversas
+            </h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Conversas atendidas e mensagens enviadas (qualquer origem — não só campanhas).
+              Quando a equipe começar a usar &quot;Assumir lead&quot; no Acompanhamento, vai aparecer aqui métrica específica de campanha também.
+              <br />
+              <span className="italic">Não é ranking — é visibilidade pra coordenar carga e saber quem está ativo na semana.</span>
+            </p>
+          </div>
+          <div className="flex gap-1 shrink-0">
+            <Button
+              variant={visualizacao === "grafico" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setVisualizacao("grafico")}
+              className="h-7 px-2 gap-1"
+              aria-label="Visualizar como gráfico"
+            >
+              <BarChart3 className="h-3.5 w-3.5" />
+              Gráfico
+            </Button>
+            <Button
+              variant={visualizacao === "tabela" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setVisualizacao("tabela")}
+              className="h-7 px-2 gap-1"
+              aria-label="Visualizar como tabela"
+            >
+              <TableIcon className="h-3.5 w-3.5" />
+              Tabela
+            </Button>
+          </div>
+        </div>
       </div>
+
+      {visualizacao === "grafico" && (
+        <div className="p-4">
+          <ResponsiveContainer width="100%" height={Math.max(180, rows.length * 36)}>
+            <BarChart
+              data={rows.map((r) => ({
+                nome: r.nome_completo.split(" ").slice(0, 2).join(" "),
+                Conversas: r.conversas_atribuidas,
+                Mensagens: r.msgs_enviadas,
+              }))}
+              layout="vertical"
+              margin={{ left: 8, right: 12, top: 8, bottom: 8 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" horizontal={false} className="opacity-30" />
+              <XAxis type="number" tick={{ fontSize: 11 }} />
+              <YAxis
+                type="category"
+                dataKey="nome"
+                width={120}
+                tick={{ fontSize: 11 }}
+                interval={0}
+              />
+              <RTooltip
+                contentStyle={{
+                  fontSize: 12,
+                  borderRadius: 6,
+                  border: "1px solid hsl(var(--border))",
+                }}
+              />
+              <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+              <Bar dataKey="Conversas" fill="hsl(217 91% 60%)" radius={[0, 4, 4, 0]} />
+              <Bar dataKey="Mensagens" fill="hsl(160 70% 45%)" radius={[0, 4, 4, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+          <p className="text-[10px] text-muted-foreground text-center mt-2">
+            Mostrando {rows.length} operadora(s). Use Tabela pra ver engajamento e última atividade.
+          </p>
+        </div>
+      )}
+
+      {visualizacao === "tabela" && (
       <ScrollArea className="max-h-[420px]">
         <table className="w-full text-sm">
           <thead className="bg-muted/20 sticky top-0">
@@ -190,6 +270,7 @@ export function ComparativoOperadoras() {
           </tbody>
         </table>
       </ScrollArea>
+      )}
     </Card>
   );
 }
