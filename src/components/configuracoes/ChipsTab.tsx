@@ -7,11 +7,20 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
+
+const CATEGORIAS_USO = [
+  { value: "prospeccao_ia", label: "Prospecção IA", desc: "Chip usado pela IA pra prospecção automática" },
+  { value: "manual", label: "Manual", desc: "Operador envia manualmente, IA não responde" },
+  { value: "pessoal_restrito", label: "Pessoal Restrito", desc: "Chip pessoal — privacidade alta (use com Privado)" },
+  { value: "suporte", label: "Suporte", desc: "Atendimento, dúvidas pós-venda" },
+  { value: "inbound", label: "Inbound", desc: "Recebe leads de tráfego pago / site" },
+] as const;
 
 const chipSchema = z.object({
   nome: z.string().trim().min(1, "Nome é obrigatório").max(100),
@@ -19,6 +28,12 @@ const chipSchema = z.object({
   provedor: z.string().trim().max(100).optional(),
   limite_diario: z.number().min(1).max(10000),
   status: z.enum(["ativo", "inativo"]),
+  dono_id: z.string().uuid().nullable().optional(),
+  categoria_uso: z
+    .enum(["prospeccao_ia", "manual", "pessoal_restrito", "suporte", "inbound"])
+    .nullable()
+    .optional(),
+  privado: z.boolean().optional(),
 });
 
 type ChipForm = z.infer<typeof chipSchema>;
@@ -32,6 +47,9 @@ export function ChipsTab() {
     provedor: "",
     limite_diario: 1000,
     status: "ativo",
+    dono_id: null,
+    categoria_uso: null,
+    privado: false,
   });
   const queryClient = useQueryClient();
 
@@ -47,6 +65,18 @@ export function ChipsTab() {
     },
   });
 
+  const { data: profiles = [] } = useQuery({
+    queryKey: ["profiles-operadores-chip"],
+    queryFn: async () => {
+      const { data } = await (supabase as any)
+        .from("profiles")
+        .select("id, nome_completo, email")
+        .order("nome_completo", { ascending: true });
+      return (data || []) as Array<{ id: string; nome_completo: string | null; email: string | null }>;
+    },
+    staleTime: 60_000,
+  });
+
   const saveMutation = useMutation({
     mutationFn: async (data: ChipForm) => {
       const validated = chipSchema.parse(data);
@@ -57,6 +87,9 @@ export function ChipsTab() {
         provedor: validated.provedor || null,
         limite_diario: validated.limite_diario,
         status: validated.status,
+        dono_id: validated.dono_id ?? null,
+        categoria_uso: validated.categoria_uso ?? null,
+        privado: validated.privado ?? false,
       };
       
       if (editingChip) {
@@ -102,6 +135,9 @@ export function ChipsTab() {
       provedor: "",
       limite_diario: 1000,
       status: "ativo",
+      dono_id: null,
+      categoria_uso: null,
+      privado: false,
     });
     setEditingChip(null);
   };
@@ -114,6 +150,9 @@ export function ChipsTab() {
       provedor: chip.provedor || "",
       limite_diario: chip.limite_diario,
       status: chip.status,
+      dono_id: chip.dono_id ?? null,
+      categoria_uso: chip.categoria_uso ?? null,
+      privado: chip.privado ?? false,
     });
     setOpen(true);
   };
@@ -192,8 +231,8 @@ export function ChipsTab() {
 
               <div className="space-y-2">
                 <Label htmlFor="status">Status *</Label>
-                <Select 
-                  value={formData.status} 
+                <Select
+                  value={formData.status}
                   onValueChange={(value: "ativo" | "inativo") => setFormData({ ...formData, status: value })}
                 >
                   <SelectTrigger>
@@ -204,6 +243,81 @@ export function ChipsTab() {
                     <SelectItem value="inativo">Inativo</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="dono">Dono / Operador responsável</Label>
+                <Select
+                  value={formData.dono_id ?? "__null"}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, dono_id: value === "__null" ? null : value })
+                  }
+                >
+                  <SelectTrigger id="dono">
+                    <SelectValue placeholder="Sem dono atribuído" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__null">— Sem dono —</SelectItem>
+                    {profiles.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.nome_completo || p.email || p.id.slice(0, 8)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Quem é responsável por esse chip. Importante pra organizar quem fala por qual número.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="categoria">Categoria de uso</Label>
+                <Select
+                  value={formData.categoria_uso ?? "__null"}
+                  onValueChange={(value) =>
+                    setFormData({
+                      ...formData,
+                      categoria_uso:
+                        value === "__null"
+                          ? null
+                          : (value as ChipForm["categoria_uso"]),
+                    })
+                  }
+                >
+                  <SelectTrigger id="categoria">
+                    <SelectValue placeholder="Selecionar categoria" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__null">— Não classificado —</SelectItem>
+                    {CATEGORIAS_USO.map((c) => (
+                      <SelectItem key={c.value} value={c.value}>
+                        {c.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {formData.categoria_uso && (
+                  <p className="text-xs text-muted-foreground">
+                    {CATEGORIAS_USO.find((c) => c.value === formData.categoria_uso)?.desc}
+                  </p>
+                )}
+              </div>
+
+              <div className="flex items-start gap-3 rounded-lg border bg-muted/40 p-3">
+                <Switch
+                  id="privado"
+                  checked={formData.privado ?? false}
+                  onCheckedChange={(checked) => setFormData({ ...formData, privado: checked })}
+                />
+                <div className="space-y-1 leading-tight">
+                  <Label htmlFor="privado" className="flex items-center gap-1.5 cursor-pointer">
+                    <Lock className="h-3.5 w-3.5" />
+                    Chip privado
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Só o dono e admins enxergam esse chip e suas conversas no SigZap. Use pra chips pessoais.
+                  </p>
+                </div>
               </div>
 
               <div className="flex gap-2">
@@ -227,44 +341,70 @@ export function ChipsTab() {
             <TableRow>
               <TableHead>Nome</TableHead>
               <TableHead>Número</TableHead>
-              <TableHead>Provedor</TableHead>
+              <TableHead>Dono</TableHead>
+              <TableHead>Categoria</TableHead>
               <TableHead>Limite Diário</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Ações</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {chips.map((chip) => (
-              <TableRow key={chip.id}>
-                <TableCell className="font-medium">{chip.nome}</TableCell>
-                <TableCell>{chip.numero}</TableCell>
-                <TableCell>{chip.provedor || "-"}</TableCell>
-                <TableCell>{chip.limite_diario}</TableCell>
-                <TableCell>
-                  <Badge variant={chip.status === "ativo" ? "default" : "secondary"}>
-                    {chip.status}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleEdit(chip)}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => deleteMutation.mutate(chip.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
+            {chips.map((chip: any) => {
+              const dono = profiles.find((p) => p.id === chip.dono_id);
+              const cat = CATEGORIAS_USO.find((c) => c.value === chip.categoria_uso);
+              return (
+                <TableRow key={chip.id}>
+                  <TableCell className="font-medium">
+                    <div className="flex items-center gap-2">
+                      {chip.privado && (
+                        <Lock
+                          className="h-3.5 w-3.5 text-amber-600"
+                          aria-label="Chip privado"
+                        />
+                      )}
+                      <span>{chip.nome}</span>
+                    </div>
+                  </TableCell>
+                  <TableCell>{chip.numero}</TableCell>
+                  <TableCell>
+                    {dono ? (
+                      <span className="text-sm">{dono.nome_completo || dono.email}</span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">Sem dono</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {cat ? (
+                      <Badge variant="outline" className="text-xs">
+                        {cat.label}
+                      </Badge>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell>{chip.limite_diario}</TableCell>
+                  <TableCell>
+                    <Badge variant={chip.status === "ativo" ? "default" : "secondary"}>
+                      {chip.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex gap-2">
+                      <Button variant="ghost" size="sm" onClick={() => handleEdit(chip)}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => deleteMutation.mutate(chip.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       )}
