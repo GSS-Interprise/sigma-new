@@ -49,6 +49,9 @@ const navigationTop = [
   // Toda nova prospecção/disparo vive em /prospeccao.
   { name: "Prospecção", href: "/prospeccao", icon: Rocket },
   { name: "Leads", href: "/leads", icon: UserSearch },
+  // Conversas (ex-SigZap) — antes ficava acessível via "Disparos e Captação".
+  // Como aquele item virou legado, expusemos Conversas diretamente.
+  { name: "Conversas", href: "/disparos/sigzap", icon: MessageCircle },
   { name: "Marketing", href: "/marketing", icon: Megaphone },
   { name: "Clientes e Contratos", href: "/contratos", icon: FileText },
   { name: "Relacionamento Médico", href: "/relacionamento-medico", icon: Activity },
@@ -101,6 +104,7 @@ export function Sidebar() {
               '/workspace': 'workspace',
               '/licitacoes': 'licitacoes',
               '/disparos': 'disparos',
+              '/disparos/sigzap': 'disparos',
               '/prospeccao': 'disparos',
               '/leads': 'disparos',
               '/marketing': 'marketing',
