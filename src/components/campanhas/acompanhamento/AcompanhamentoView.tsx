@@ -3,6 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ClipboardList } from "lucide-react";
 import { AcompanhamentoKanban } from "./AcompanhamentoKanban";
 import { AcompanhamentoLeadPainel } from "./AcompanhamentoLeadPainel";
+import { AcompanhamentoAgingBanner } from "./AcompanhamentoAgingBanner";
 import { usePermissions } from "@/hooks/usePermissions";
 import {
   useAcompanhamentoLeads,
@@ -44,6 +45,9 @@ export function AcompanhamentoView() {
 
   return (
     <div className="space-y-3">
+      {/* F3.4 — Banner de aging de leads quentes (>12h sem dono) */}
+      <AcompanhamentoAgingBanner leads={todosLeads} onLeadClick={setLeadAberto} />
+
       {/* Filtros chip */}
       <div className="flex flex-wrap gap-1.5">
         <FiltroChip ativo={filtro === "todos"} onClick={() => setFiltro("todos")}>
