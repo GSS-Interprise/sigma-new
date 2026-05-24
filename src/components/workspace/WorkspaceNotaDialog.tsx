@@ -390,7 +390,7 @@ export function WorkspaceNotaDialog({
           <DialogTitle>{nota ? "Editar Nota" : "Nova Nota"}</DialogTitle>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 pr-4">
+        <ScrollArea className="flex-1 min-h-0 pr-4">
           <div className="space-y-4 pb-4">
             {/* Título */}
             <div className="space-y-2">

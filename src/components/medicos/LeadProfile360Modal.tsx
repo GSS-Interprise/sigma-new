@@ -257,7 +257,7 @@ export function LeadProfile360Modal({ open, onOpenChange, leadId }: Props) {
           </div>
         ) : (
           <>
-            <ScrollArea className="flex-1 px-6 py-4">
+            <ScrollArea className="flex-1 min-h-0 px-6 py-4">
               <div className="space-y-5">
                 {/* 1. Cabecalho com nome + badges */}
                 <div className="space-y-2">
