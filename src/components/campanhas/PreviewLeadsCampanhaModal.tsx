@@ -12,7 +12,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Users,
@@ -214,7 +213,7 @@ export function PreviewLeadsCampanhaModal({
           </div>
         )}
 
-        <ScrollArea className="flex-1 min-h-0 -mx-6 px-6">
+        <div className="flex-1 min-h-0 overflow-y-auto -mx-6 px-6">
           {isLoading ? (
             <div className="space-y-2">
               {Array.from({ length: 8 }).map((_, i) => (
@@ -288,7 +287,7 @@ export function PreviewLeadsCampanhaModal({
               })}
             </ul>
           )}
-        </ScrollArea>
+        </div>
 
         <div className="flex items-center justify-between pt-2 border-t">
           <p className="text-xs text-muted-foreground">

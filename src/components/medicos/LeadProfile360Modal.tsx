@@ -12,7 +12,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
@@ -257,7 +256,7 @@ export function LeadProfile360Modal({ open, onOpenChange, leadId }: Props) {
           </div>
         ) : (
           <>
-            <ScrollArea className="flex-1 min-h-0 px-6 py-4">
+            <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4">
               <div className="space-y-5">
                 {/* 1. Cabecalho com nome + badges */}
                 <div className="space-y-2">
@@ -515,7 +514,7 @@ export function LeadProfile360Modal({ open, onOpenChange, leadId }: Props) {
                   )}
                 </Card>
               </div>
-            </ScrollArea>
+            </div>
 
             {/* 5. Acoes no footer */}
             <div className="border-t bg-muted/30 px-6 py-3 flex flex-wrap items-center justify-end gap-2">
