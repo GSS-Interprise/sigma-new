@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Plus, Pencil, Trash2, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
+import { ConfirmDestructive } from "@/components/common/ConfirmDestructive";
 
 const CATEGORIAS_USO = [
   { value: "prospeccao_ia", label: "Prospecção IA", desc: "Chip usado pela IA pra prospecção automática" },
@@ -393,13 +394,24 @@ export function ChipsTab() {
                       <Button variant="ghost" size="sm" onClick={() => handleEdit(chip)}>
                         <Pencil className="h-4 w-4" />
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => deleteMutation.mutate(chip.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <ConfirmDestructive
+                        title={`Apagar chip "${chip.nome}"?`}
+                        description={
+                          <>
+                            Isso vai remover o chip do sistema. Campanhas que usam esse
+                            chip vão parar de funcionar até serem reconfiguradas. Histórico
+                            de conversas permanece.
+                          </>
+                        }
+                        confirmLabel="Apagar chip"
+                        requireType={chip.nome}
+                        onConfirm={() => deleteMutation.mutate(chip.id)}
+                        trigger={
+                          <Button variant="ghost" size="sm">
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        }
+                      />
                     </div>
                   </TableCell>
                 </TableRow>

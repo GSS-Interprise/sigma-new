@@ -2,6 +2,7 @@ import { ReactNode } from "react";
 import { Sidebar } from "./Sidebar";
 import { NotificacoesSino } from "./NotificacoesSino";
 import { Footer } from "./Footer";
+import { GlobalBreadcrumb } from "./GlobalBreadcrumb";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { useLicitacoesRealtimeAccess } from "@/hooks/useLicitacoesRealtimeAccess";
 import { useLicitacoesRealtimeNotifications } from "@/hooks/useLicitacoesRealtimeNotifications";
@@ -27,11 +28,16 @@ function AppLayoutContent({ children, headerActions, hideFooter }: AppLayoutProp
     <div className="flex h-screen bg-background overflow-hidden w-full">
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-16 border-b bg-card flex items-center justify-between px-4 md:px-6 sticky top-0 z-40 flex-shrink-0">
-          <div className="flex-1 min-w-0">
-            {headerActions}
+        <header className="border-b bg-card sticky top-0 z-40 flex-shrink-0">
+          <div className="h-16 flex items-center justify-between px-4 md:px-6 gap-4">
+            <div className="flex-1 min-w-0">
+              {headerActions}
+            </div>
+            <NotificacoesSino />
           </div>
-          <NotificacoesSino />
+          <div className="px-4 md:px-6 pb-1.5 -mt-1">
+            <GlobalBreadcrumb />
+          </div>
         </header>
         <main className="flex-1 overflow-auto flex flex-col min-h-0">
           {children}
