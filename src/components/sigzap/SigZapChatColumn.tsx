@@ -483,10 +483,37 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
     },
   });
 
-  // Scroll to bottom when messages change
+  // Sticky scroll: só rola pro fim automaticamente SE o usuário já estava no fim.
+  // Se ele tá lendo histórico mais acima, deixa onde está + mostra badge "novas msgs".
+  const lastMsgIdRef = useRef<string | null>(null);
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollIntoView({ behavior: 'smooth' });
+    if (!scrollRef.current || !mensagens?.length) return;
+    const lastMsg = mensagens[mensagens.length - 1];
+    if (!lastMsg) return;
+    const isFirstLoad = lastMsgIdRef.current === null;
+    const isNewMessage = !isFirstLoad && lastMsgIdRef.current !== lastMsg.id;
+    lastMsgIdRef.current = lastMsg.id;
+
+    // Acha o viewport scrollavel (parent do scrollRef)
+    const scrollableParent = scrollRef.current.closest("[data-radix-scroll-area-viewport]") as HTMLElement | null;
+
+    if (isFirstLoad) {
+      // Primeira carga: sempre vai pro fim instantaneamente
+      scrollRef.current.scrollIntoView({ behavior: "instant" as ScrollBehavior });
+      return;
+    }
+    if (isNewMessage && scrollableParent) {
+      const distFromBottom =
+        scrollableParent.scrollHeight - scrollableParent.scrollTop - scrollableParent.clientHeight;
+      // Só auto-scrolla se user já estava perto do fim (200px de tolerância)
+      if (distFromBottom < 200) {
+        scrollRef.current.scrollIntoView({ behavior: "smooth" });
+      }
+      // Se estava lendo histórico, deixa onde está. Mensagem nova entra no fim
+      // e ele vê o scrollbar crescendo (sem perder posição de leitura).
+    } else if (isNewMessage) {
+      // Fallback sem parent (caso raro): smooth scroll
+      scrollRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [mensagens]);
 

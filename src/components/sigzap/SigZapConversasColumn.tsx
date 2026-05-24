@@ -13,8 +13,23 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Search, RefreshCw, User, Wifi, MessageCircle, Camera, Loader2, ChevronDown, UserX } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { format } from "date-fns";
+import { format, isToday, isYesterday, differenceInMinutes } from "date-fns";
 import { ptBR } from "date-fns/locale";
+
+/**
+ * Formato WhatsApp-style: "agora" / "13:45" (hoje) / "Ontem" / "ter" / "dd/MM"
+ */
+function formatHoraConversa(iso: string): string {
+  const date = new Date(iso);
+  const minutos = differenceInMinutes(new Date(), date);
+  if (minutos < 1) return "agora";
+  if (isToday(date)) return format(date, "HH:mm");
+  if (isYesterday(date)) return "Ontem";
+  const seteDiasAtras = new Date();
+  seteDiasAtras.setDate(seteDiasAtras.getDate() - 7);
+  if (date > seteDiasAtras) return format(date, "EEEEEE", { locale: ptBR }); // ter, qua, etc
+  return format(date, "dd/MM/yy", { locale: ptBR });
+}
 import { toast } from "sonner";
 import { normalizeToE164 } from "@/lib/phoneUtils";
 import { sigzapNormalizePhoneKey } from "@/lib/sigzapPhoneKey";
@@ -509,7 +524,7 @@ export function SigZapConversasColumn({
               <div className="flex items-center gap-1 flex-shrink-0">
                 {lastMessageAt && (
                   <span className={cn("text-[10px]", isSelected ? "text-white/70" : "text-muted-foreground")}>
-                    {format(new Date(lastMessageAt), "dd/MM HH:mm", { locale: ptBR })}
+                    {formatHoraConversa(lastMessageAt)}
                   </span>
                 )}
                 <SigZapConversaContextMenu

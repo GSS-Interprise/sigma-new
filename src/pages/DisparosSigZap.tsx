@@ -24,6 +24,27 @@ export default function DisparosSigZap() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedConversaId, setSelectedConversaId] = useState<string | null>(null);
 
+  // Atalho de teclado: ESC fecha a conversa atual (desseleciona)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      // Não dispara se o user tá digitando em um input/textarea/contenteditable
+      const target = e.target as HTMLElement;
+      if (
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable
+      ) {
+        return;
+      }
+      if (selectedConversaId) {
+        setSelectedConversaId(null);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedConversaId]);
+
   // F2.6 — Abrir conversa do lead direto via ?lead=X
   // Usado pelo botão "Abrir conversa" no LeadProfile360Modal.
   useEffect(() => {
