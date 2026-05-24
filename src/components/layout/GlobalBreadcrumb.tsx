@@ -38,7 +38,7 @@ const ROUTE_LABELS: Record<string, string> = {
   auditoria: "Auditoria",
   configuracoes: "Configurações",
   workspace: "Workspace",
-  sigzap: "SigZap",
+  sigzap: "Conversas",
 };
 
 // Sub-views via query param ?view=xxx ou ?tab=xxx

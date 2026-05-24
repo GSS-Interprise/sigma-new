@@ -67,7 +67,7 @@ export function TarefaCard({ tarefa, onConcluir, onReabrir, onClick, compact }: 
   if (tarefa.contrato_id) refs.push({ icon: FileText, label: "Contrato" });
   if (tarefa.lead_id) refs.push({ icon: UserSearch, label: "Lead" });
   if (tarefa.sigzap_conversation_id)
-    refs.push({ icon: MessageCircle, label: "SigZap" });
+    refs.push({ icon: MessageCircle, label: "Conversa" });
 
   return (
     <Card

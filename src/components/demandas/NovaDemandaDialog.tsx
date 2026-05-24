@@ -289,7 +289,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
           .select("id, contact_id")
           .eq("id", tarefaExistente.sigzap_conversation_id)
           .maybeSingle();
-        let label = "Conversa SigZap";
+        let label = "Conversa";
         if (data?.contact_id) {
           const { data: c } = await supabase
             .from("sigzap_contacts")

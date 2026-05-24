@@ -75,10 +75,10 @@ export function ComparativoOperadoras() {
       <div className="px-4 py-3 border-b bg-muted/30">
         <h3 className="text-sm font-semibold flex items-center gap-2">
           <Users className="h-4 w-4 text-muted-foreground" />
-          Atividade geral da equipe no SigZap
+          Atividade geral da equipe nas Conversas
         </h3>
         <p className="text-xs text-muted-foreground mt-0.5">
-          Conversas atendidas e mensagens enviadas pelo SigZap (qualquer origem — não só campanhas).
+          Conversas atendidas e mensagens enviadas (qualquer origem — não só campanhas).
           Quando a equipe começar a usar &quot;Assumir lead&quot; no Acompanhamento, vai aparecer aqui métrica específica de campanha também.
           <br />
           <span className="italic">Não é ranking — é visibilidade pra coordenar carga e saber quem está ativo na semana.</span>
@@ -97,7 +97,7 @@ export function ComparativoOperadoras() {
               <th className="text-left px-3 py-2 font-medium">
                 <span
                   className="inline-flex items-center gap-1"
-                  title="Mensagens enviadas pela operadora no Sigma SigZap"
+                  title="Mensagens enviadas pela operadora no Sigma"
                 >
                   <TrendingUp className="h-3 w-3" /> Mensagens enviadas
                 </span>

@@ -57,7 +57,7 @@ export default function DisparosSigZap() {
       if (!chip?.instance_name) { toast.error("Instância não encontrada"); return; }
 
       const { data: inst } = await supabase.from("sigzap_instances").select("id, name").eq("name", chip.instance_name).single();
-      if (!inst) { toast.error("Instância SigZap não encontrada"); return; }
+      if (!inst) { toast.error("Instância de Conversas não encontrada"); return; }
 
       const contactJid = `${normalizedPhone}@s.whatsapp.net`;
       const { data: u } = await supabase.auth.getUser();

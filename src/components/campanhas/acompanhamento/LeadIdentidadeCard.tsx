@@ -193,7 +193,7 @@ export function LeadIdentidadeCard({ leadId }: Props) {
         key="ultima"
         variant="outline"
         className="gap-1 text-[10px]"
-        title={`Última mensagem no SigZap em ${new Date(perfil.ultima_msg_sigzap).toLocaleString("pt-BR")}`}
+        title={`Última conversa em ${new Date(perfil.ultima_msg_sigzap).toLocaleString("pt-BR")}`}
       >
         <MessageCircle className="h-3 w-3" />
         Conversa {formatDistanceToNow(new Date(perfil.ultima_msg_sigzap), { addSuffix: true, locale: ptBR })}

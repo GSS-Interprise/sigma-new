@@ -459,8 +459,8 @@ export function InstanciaConfigTab({ tipo = "disparos" }: InstanciaConfigTabProp
           </h2>
           <p className="text-muted-foreground">
             {tipo === "trafego_pago"
-              ? "Instâncias dedicadas a receber mensagens de campanhas de tráfego pago. Não participam de disparos nem iniciam novas conversas no SigZap."
-              : "Instâncias usadas para disparos em massa e início de conversas no SigZap."}
+              ? "Instâncias dedicadas a receber mensagens de campanhas de tráfego pago. Não participam de disparos nem iniciam novas conversas."
+              : "Instâncias usadas para disparos em massa e início de conversas."}
           </p>
         </div>
         <div className="flex items-center gap-2">

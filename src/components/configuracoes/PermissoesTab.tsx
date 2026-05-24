@@ -82,7 +82,7 @@ const MODULOS: { value: Modulo; label: string; icon: any; description: string }[
   { value: 'patrimonio', label: 'Patrimônio', icon: Package, description: 'Controle de patrimônio' },
   { value: 'radiologia', label: 'Radiologia', icon: Stethoscope, description: 'Produção e pendências' },
   { value: 'bi', label: 'Business Intelligence', icon: BarChart3, description: 'Relatórios e análises' },
-  { value: 'sigzap', label: 'SigZap', icon: MessageCircle, description: 'WhatsApp integrado' },
+  { value: 'sigzap', label: 'Conversas', icon: MessageCircle, description: 'WhatsApp integrado' },
   { value: 'suporte', label: 'Suporte', icon: Headset, description: 'Tickets de suporte' },
   { value: 'comunicacao', label: 'Comunicação', icon: MessageSquare, description: 'Comunicação interna' },
   { value: 'demandas', label: 'Demandas', icon: ListTodo, description: 'Gestão de demandas' },

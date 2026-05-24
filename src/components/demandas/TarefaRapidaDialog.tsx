@@ -80,10 +80,10 @@ const TIPO_META: Record<
     prefix: "Lead",
   },
   sigzap: {
-    label: "Conversa SigZap",
+    label: "Conversa",
     icon: MessageCircle,
     modulo: "sigzap",
-    prefix: "SigZap",
+    prefix: "Conversa",
   },
   livre: {
     label: "Tarefa",

@@ -34,7 +34,7 @@ const TIPO_META: Record<
   licitacao: { label: "Licitação", icon: Gavel, field: "licitacao_id" },
   contrato: { label: "Contrato", icon: FileText, field: "contrato_id" },
   lead: { label: "Lead", icon: UserSearch, field: "lead_id" },
-  sigzap: { label: "Conversa SigZap", icon: MessageCircle, field: "sigzap_conversation_id" },
+  sigzap: { label: "Conversa", icon: MessageCircle, field: "sigzap_conversation_id" },
   campanha: { label: "Campanha", icon: MessageCircle, field: "sigzap_conversation_id" },
 };
 

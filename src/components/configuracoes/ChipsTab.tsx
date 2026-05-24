@@ -316,7 +316,7 @@ export function ChipsTab() {
                     Chip privado
                   </Label>
                   <p className="text-xs text-muted-foreground">
-                    Só o dono e admins enxergam esse chip e suas conversas no SigZap. Use pra chips pessoais.
+                    Só o dono e admins enxergam esse chip e suas conversas. Use pra chips pessoais.
                   </p>
                 </div>
               </div>
