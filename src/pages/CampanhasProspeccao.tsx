@@ -350,8 +350,8 @@ export default function CampanhasProspeccao() {
               Campanhas
             </ToggleTab>
             <ToggleTab active={view === "acompanhamento"} onClick={() => setView("acompanhamento")}>
-              <ClipboardList className="h-3.5 w-3.5" />
-              Acompanhamento
+              <Flame className="h-3.5 w-3.5" />
+              Quentes (IA)
               {quentesSemDono > 0 && (
                 <Badge variant="destructive" className="ml-1 h-5 px-1.5 text-[10px]">
                   {quentesSemDono}
