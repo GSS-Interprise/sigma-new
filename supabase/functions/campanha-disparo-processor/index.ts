@@ -263,6 +263,7 @@ serve(async (req) => {
       let success = false;
       let chipUsado: any = null;
       let lastError = "";
+      let phoneInvalid = false;  // sinaliza exists:false → descartar (não cair no else genérico)
       let tentativas = 0;
 
       for (const chipTry of chipsParaTentar) {
@@ -293,13 +294,30 @@ serve(async (req) => {
 
         // Não enviou. Pode ser denied (warm-up/rate/health) ou erro HTTP.
         lastError = result.reason || "unknown";
-        bumpChip(chipTry.id, false);
+        const evoBody = typeof result.evolutionResponse === "string"
+          ? result.evolutionResponse
+          : JSON.stringify(result.evolutionResponse || "");
+
+        // exists:false → phone não existe no WhatsApp. Descartar imediato e não tentar
+        // próximos chips (todos vão retornar o mesmo erro pro mesmo número).
+        // Incidentes 07/05 e 11/05: 60+ tentativas no mesmo número morto sem auto-cleanup.
+        if (evoBody.includes('"exists":false')) {
+          phoneInvalid = true;
+          break;
+        }
+
         const isRateOrWarmup =
           result.reason?.startsWith("rate_") ||
           result.reason?.startsWith("warmup_") ||
           result.reason?.startsWith("paused") ||
           result.reason === "health_critical" ||
           result.reason === "reply_rate_critical";
+        // Anti-ban/rate-limit NÃO é "erro do chip" pra fins de marcar suspeito.
+        // Só conta como erro real do chip: erros HTTP do Evolution não relacionados
+        // a phone invalid nem a pausa (network, timeout, server error).
+        if (!isRateOrWarmup) {
+          bumpChip(chipTry.id, false);
+        }
         if (isRateOrWarmup) {
           console.log(
             `[disparo] ⏸ ${chipTry.nome} bloqueado (${result.reason}), tentando próximo chip`
@@ -367,6 +385,17 @@ serve(async (req) => {
 
         sent++;
         console.log(`[disparo] ✅ ${lead.nome} (${phone}) via ${chipUsado.nome}${proximoTouchEm ? ` (T${passoSeguinte?.ordem} em ${new Date(proximoTouchEm).toISOString().slice(0,10)})` : ""}`);
+      } else if (phoneInvalid) {
+        failed++;
+        await supabase
+          .from("campanha_leads")
+          .update({
+            status: "descartado",
+            erro_envio: "phone_whatsapp_inexistente",
+            tentativas,
+          })
+          .eq("id", cl.id);
+        console.warn(`[disparo] 🚫 ${lead.nome} (${phone}) descartado: phone não existe no WhatsApp`);
       } else {
         failed++;
         await supabase

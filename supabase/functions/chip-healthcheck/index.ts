@@ -61,8 +61,25 @@ serve(async (req) => {
         updated_at: new Date().toISOString(),
       }).eq("id", chip.id);
 
-      // Alerta só em mudança (wasHealthy -> isHealthy)
-      if (wasHealthy && !r.healthy) {
+      // Alerta só em mudança + cooldown 30min (evita spam quando chip oscila
+      // suspeito↔ativo por interação com disparo-processor).
+      const ALERT_COOLDOWN_MS = 30 * 60 * 1000;
+      const { data: cs } = await supabase
+        .from("chip_state")
+        .select("last_alert_at, last_alert_type")
+        .eq("chip_id", chip.id)
+        .maybeSingle();
+      const lastAlertMs = cs?.last_alert_at ? new Date(cs.last_alert_at).getTime() : 0;
+      const elapsedMs = Date.now() - lastAlertMs;
+      const cooldownActive = elapsedMs < ALERT_COOLDOWN_MS;
+      const lastType = cs?.last_alert_type;
+
+      const shouldAlertCaiu = wasHealthy && !r.healthy;
+      const shouldAlertVoltou = !wasHealthy && r.healthy;
+      const dedupVoltou = shouldAlertVoltou && cooldownActive && lastType === "voltou";
+      const dedupCaiu = shouldAlertCaiu && cooldownActive && lastType === "caiu";
+
+      if (shouldAlertCaiu && !dedupCaiu) {
         const title = `🚨 Chip ${chip.nome} CAIU`;
         const body =
           `Instance: ${chip.instance_name}\n` +
@@ -70,11 +87,23 @@ serve(async (req) => {
           `Restart: ${r.restart_attempted ? (r.restart_worked ? "tentou e voltou" : "tentou mas falhou") : "não tentado"}\n` +
           `Hora: ${new Date().toISOString()}\n` +
           `Campanhas vão começar a falhar até reconectar manualmente.`;
-        if (await sendAlert(supabase, evoUrl, evoKey, title, body, chip.id)) alertsSent++;
-      } else if (!wasHealthy && r.healthy) {
+        if (await sendAlert(supabase, evoUrl, evoKey, title, body, chip.id)) {
+          alertsSent++;
+          await supabase.from("chip_state").update({
+            last_alert_at: new Date().toISOString(),
+            last_alert_type: "caiu",
+          }).eq("chip_id", chip.id);
+        }
+      } else if (shouldAlertVoltou && !dedupVoltou) {
         const title = `✅ Chip ${chip.nome} VOLTOU`;
         const body = `Instance: ${chip.instance_name}\nHora: ${new Date().toISOString()}\nDisparos voltam a funcionar.`;
-        if (await sendAlert(supabase, evoUrl, evoKey, title, body, chip.id)) alertsSent++;
+        if (await sendAlert(supabase, evoUrl, evoKey, title, body, chip.id)) {
+          alertsSent++;
+          await supabase.from("chip_state").update({
+            last_alert_at: new Date().toISOString(),
+            last_alert_type: "voltou",
+          }).eq("chip_id", chip.id);
+        }
       }
 
       results.push({

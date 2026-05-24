@@ -64,6 +64,55 @@ serve(async (req) => {
     if (!campLead) return json({ ok: false, reason: "not_in_campaign" });
     if (campLead.humano_assumiu) return json({ ok: true, reason: "humano_assumiu" });
 
+    // ── Guard: o chip que recebeu a mensagem precisa estar na campanha do lead ──
+    // Sem isso, a IA responde por QUALQUER chip que o lead messagear (ex: chip
+    // pessoal de um operador), independente da campanha — incidente 18/05 com
+    // chip da Amanda, que ela cadastrou pra outro fim mas a IA usou pra
+    // continuar conversa de prospecção.
+    if (instance_name) {
+      const { data: receivingChip } = await supabase
+        .from("chips")
+        .select("id")
+        .eq("instance_name", instance_name)
+        .maybeSingle();
+      const receivingChipId = receivingChip?.id;
+
+      if (!receivingChipId) {
+        console.log(`[ia] ⚠️ instance ${instance_name} não corresponde a nenhum chip. Ignorando.`);
+        return json({ ok: false, reason: "instance_not_a_chip" });
+      }
+
+      const { data: campChips } = await supabase
+        .from("campanhas")
+        .select("chip_id, chip_ids")
+        .eq("id", campLead.campanha_id)
+        .maybeSingle();
+
+      const allowed = new Set<string>();
+      if (campChips?.chip_id) allowed.add(campChips.chip_id);
+      if (Array.isArray(campChips?.chip_ids)) {
+        for (const id of campChips!.chip_ids as string[]) if (id) allowed.add(id);
+      }
+
+      if (!allowed.has(receivingChipId)) {
+        console.log(
+          `[ia] 🚫 chip ${receivingChipId} (${instance_name}) recebeu msg do lead ${lead.nome}, mas não pertence à campanha ${campLead.campanha_id}. IA NÃO responde.`
+        );
+        // Registra a mensagem no histórico pra rastreabilidade, mas não responde
+        const histTmp: any[] = campLead.historico_conversa || [];
+        histTmp.push({
+          role: "medico",
+          text: finalText,
+          ts: new Date().toISOString(),
+          chip_fora_da_campanha: instance_name,
+        });
+        await supabase.from("campanha_leads")
+          .update({ historico_conversa: histTmp, data_ultimo_contato: new Date().toISOString() })
+          .eq("id", campLead.id);
+        return json({ ok: false, reason: "chip_not_in_campaign", chip: receivingChipId });
+      }
+    }
+
     // Se lead está aguardando resposta do responsável, registra msg no histórico mas não responde ainda
     if (campLead.aguarda_resposta_humana) {
       const histTmp: any[] = campLead.historico_conversa || [];
