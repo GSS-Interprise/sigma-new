@@ -2,7 +2,14 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { ComparativoOperadoras } from "./ComparativoOperadoras";
 import {
   Rocket,
@@ -13,8 +20,13 @@ import {
   TrendingUp,
   Clock,
   AlertCircle,
+  Download,
+  Printer,
+  FileSpreadsheet,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 interface DashboardRow {
   campanha_id: string;
@@ -114,8 +126,82 @@ export function DashboardCampanhas() {
   // Alertas: leads quentes muito antigos
   const quentesAtrasados = (rows ?? []).filter((r) => (r.quente_mais_antigo_h ?? 0) > 24);
 
+  // F3.3 — Export PDF (via print do navegador, salva como PDF) e CSV
+  const exportPDF = () => window.print();
+  const exportCSV = () => {
+    const dataHoje = format(new Date(), "yyyy-MM-dd_HHmm", { locale: ptBR });
+    const linhas: string[] = [];
+    linhas.push("Sigma GSS — Dashboard de Prospeccao — " + format(new Date(), "dd/MM/yyyy HH:mm", { locale: ptBR }));
+    linhas.push("");
+    linhas.push("RESUMO GERAL");
+    linhas.push(`Campanhas ativas/pausadas;${agg.campanhas}`);
+    linhas.push(`Cobertura da base;${coberturaPct.toFixed(1)}%`);
+    linhas.push(`Contatado;${agg.contatado}`);
+    linhas.push(`Base total;${agg.pool_total}`);
+    linhas.push(`Taxa de resposta;${responseRatePct.toFixed(1)}%`);
+    linhas.push(`Em conversa;${agg.em_conversa}`);
+    linhas.push(`Quentes em aberto;${agg.quentes}`);
+    linhas.push(`Convertidos;${agg.convertidos}`);
+    linhas.push(`Disparos 24h;${agg.disparos_24h}`);
+    linhas.push(`Disparos 7 dias;${agg.disparos_7d}`);
+    linhas.push("");
+    linhas.push("PERFORMANCE POR CAMPANHA");
+    linhas.push("Campanha;Estado;Base;Contatado;% Cobertura;Em conversa;Quentes;Convertidos;Disparos 24h;Status");
+    (rows ?? []).forEach((r) => {
+      const pct = r.pool_total ? ((r.contatado ?? 0) / r.pool_total) * 100 : 0;
+      const nome = (r.nome ?? "").replace(/;/g, ",");
+      linhas.push(
+        `${nome};${r.regiao_estado ?? ""};${r.pool_total ?? 0};${r.contatado ?? 0};${pct.toFixed(1)}%;${r.em_conversa ?? 0};${r.quentes ?? 0};${r.convertidos ?? 0};${r.disparos_24h ?? 0};${r.status}`
+      );
+    });
+    // BOM pra Excel reconhecer UTF-8
+    const csv = "﻿" + linhas.join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `dashboard-prospeccao_${dataHoje}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 dashboard-print">
+      {/* Header de ações — só visivel na tela, escondido no print */}
+      <div className="flex items-center justify-between flex-wrap gap-2 no-print">
+        <p className="text-xs text-muted-foreground">
+          Atualizado às {format(new Date(), "HH:mm", { locale: ptBR })} · atualiza sozinho a cada minuto
+        </p>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="sm" variant="outline" className="gap-2">
+              <Download className="h-3.5 w-3.5" />
+              Exportar
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={exportPDF}>
+              <Printer className="h-3.5 w-3.5 mr-2" />
+              Imprimir / Salvar PDF
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={exportCSV}>
+              <FileSpreadsheet className="h-3.5 w-3.5 mr-2" />
+              Baixar CSV (Excel)
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
+      {/* Título visivel apenas no print, dá contexto pra quem recebe o PDF */}
+      <div className="hidden print:block mb-4">
+        <h1 className="text-2xl font-bold">Sigma GSS — Dashboard de Prospecção</h1>
+        <p className="text-sm text-gray-600">
+          Gerado em {format(new Date(), "dd 'de' MMMM 'de' yyyy 'às' HH:mm", { locale: ptBR })}
+        </p>
+      </div>
+
       {/* Cards principais (4 KPIs executivos) */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <KpiCard

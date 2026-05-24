@@ -262,3 +262,47 @@ All colors MUST be HSL.
     @apply bg-background text-foreground;
   }
 }
+
+/* F3.3 — CSS de impressão pra exportar Dashboard em PDF
+   Esconde sidebar/header/navegação e foca só no conteúdo do dashboard.
+   Usado em window.print() chamado pelo botão Exportar > Imprimir/PDF. */
+@media print {
+  /* Esconde tudo que não é conteúdo de print */
+  .no-print,
+  nav,
+  aside,
+  [data-sidebar],
+  [data-radix-popper-content-wrapper] {
+    display: none !important;
+  }
+
+  /* Página em formato útil pra A4 paisagem */
+  @page {
+    size: A4 landscape;
+    margin: 1cm;
+  }
+
+  body {
+    background: white !important;
+    color: black !important;
+    font-size: 11pt;
+  }
+
+  /* Cards e tabelas com bordas visíveis no PDF */
+  .dashboard-print [class*="bg-card"],
+  .dashboard-print [class*="border"] {
+    border-color: #ddd !important;
+    box-shadow: none !important;
+  }
+
+  /* Garante que cores de tom (info/warning/success) imprimam */
+  .dashboard-print * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Não corta cards no meio da página se possível */
+  .dashboard-print > * {
+    page-break-inside: avoid;
+  }
+}
