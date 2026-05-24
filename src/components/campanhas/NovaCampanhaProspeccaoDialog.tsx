@@ -33,9 +33,11 @@ const UF_LIST = [
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** F2.9 — Lead pré-selecionado vindo do perfil 360. Após criar campanha, INSERT direto em campanha_leads pra incluir esse lead manualmente. */
+  preLead?: { id: string; nome: string } | null;
 }
 
-export function NovaCampanhaProspeccaoDialog({ open, onOpenChange }: Props) {
+export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead }: Props) {
   const [tab, setTab] = useState("basico");
   const [nome, setNome] = useState("");
   const [especialidadeIds, setEspecialidadeIds] = useState<string[]>([]);
@@ -218,6 +220,23 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange }: Props) {
         .select()
         .single();
       if (error) throw error;
+
+      // F2.9: se veio com preLead, insere manualmente em campanha_leads
+      if (preLead?.id && data?.id) {
+        const { error: clError } = await (supabase as any)
+          .from("campanha_leads")
+          .insert({
+            campanha_id: data.id,
+            lead_id: preLead.id,
+            status: "pendente",
+            etapa_acompanhamento: "frio",
+          });
+        if (clError) {
+          // Não falha a criação — só avisa
+          console.warn("Falha ao incluir preLead na campanha:", clError.message);
+        }
+      }
+
       return data;
     },
     onSuccess: () => {
@@ -287,6 +306,15 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange }: Props) {
             Nova Campanha de Prospecção
           </DialogTitle>
         </DialogHeader>
+
+        {preLead && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-md px-3 py-2 text-sm">
+            <p className="text-emerald-800">
+              <strong>{preLead.nome}</strong> será incluído manualmente nesta campanha após você criá-la.
+              Configure os filtros normalmente — o pool da especialidade vai juntar com este lead extra.
+            </p>
+          </div>
+        )}
 
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList className="grid grid-cols-4 w-full">

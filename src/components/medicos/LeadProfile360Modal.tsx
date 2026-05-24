@@ -51,6 +51,7 @@ import { formatPhoneForDisplay } from "@/lib/phoneUtils";
 import { MaskedField } from "@/components/common/MaskedField";
 import { maskCPF } from "@/lib/maskSensitiveData";
 import { toast } from "sonner";
+import { NovaCampanhaProspeccaoDialog } from "@/components/campanhas/NovaCampanhaProspeccaoDialog";
 
 /**
  * F2.9 — Modal de perfil 360 do lead.
@@ -122,6 +123,7 @@ export function LeadProfile360Modal({ open, onOpenChange, leadId }: Props) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [exportLoading, setExportLoading] = useState(false);
+  const [novaCampanhaOpen, setNovaCampanhaOpen] = useState(false);
 
   const { data: perfil, isLoading: perfilLoading } = useQuery<Perfil360 | null>({
     queryKey: ["lead-perfil-360-modal", leadId],
@@ -531,9 +533,7 @@ export function LeadProfile360Modal({ open, onOpenChange, leadId }: Props) {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => {
-                  toast.info("Wizard pré-populado com este lead — em breve");
-                }}
+                onClick={() => setNovaCampanhaOpen(true)}
                 className="gap-1.5"
               >
                 <Plus className="h-4 w-4" />
@@ -573,6 +573,19 @@ export function LeadProfile360Modal({ open, onOpenChange, leadId }: Props) {
           </>
         )}
       </DialogContent>
+
+      {/* F2.9: dialog de nova campanha com lead pré-incluído */}
+      <NovaCampanhaProspeccaoDialog
+        open={novaCampanhaOpen}
+        onOpenChange={(open) => {
+          setNovaCampanhaOpen(open);
+          if (!open) {
+            // Fecha o modal 360 também pra voltar à listagem
+            onOpenChange(false);
+          }
+        }}
+        preLead={perfil ? { id: perfil.lead_id, nome: perfil.nome } : null}
+      />
     </Dialog>
   );
 }
