@@ -281,7 +281,7 @@ export default function CampanhasProspeccao() {
                 <UserPlus className="h-4 w-4 mr-1" />
                 {adicionarLeads.isPending
                   ? "Adicionando..."
-                  : "Adicionar Leads ao Pool"}
+                  : "Adicionar Leads à Base"}
               </Button>
               <Button
                 size="sm"

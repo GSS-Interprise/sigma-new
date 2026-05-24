@@ -405,10 +405,10 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
                   />
                   <CheckItem
                     ok={totalLeads > 0}
-                    label={`Pool com leads (${totalLeads} no momento)`}
+                    label={`Base de leads carregada (${totalLeads} no momento)`}
                     sublabel={
                       totalLeads === 0
-                        ? "Use o botão 'Adicionar Leads ao Pool' na campanha"
+                        ? "Use o botão 'Adicionar Leads à Base' na campanha"
                         : undefined
                     }
                   />

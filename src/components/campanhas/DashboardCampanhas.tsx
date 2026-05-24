@@ -101,9 +101,9 @@ export function DashboardCampanhas() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <KpiCard
           icon={Send}
-          label="Cobertura do pool"
+          label="Cobertura da base"
           value={`${coberturaPct.toFixed(1)}%`}
-          sub={`${agg.contatado.toLocaleString("pt-BR")} de ${agg.pool_total.toLocaleString("pt-BR")} leads`}
+          sub={`${agg.contatado.toLocaleString("pt-BR")} de ${agg.pool_total.toLocaleString("pt-BR")} leads contatados`}
           tone="info"
         />
         <KpiCard
@@ -171,7 +171,7 @@ export function DashboardCampanhas() {
             <thead className="bg-muted/20 sticky top-0">
               <tr className="text-xs text-muted-foreground border-b">
                 <th className="text-left px-4 py-2 font-medium">Campanha</th>
-                <th className="text-right px-3 py-2 font-medium">Pool</th>
+                <th className="text-right px-3 py-2 font-medium">Base</th>
                 <th className="text-right px-3 py-2 font-medium">Contatado</th>
                 <th className="text-right px-3 py-2 font-medium">% Cobertura</th>
                 <th className="text-right px-3 py-2 font-medium">Em conv.</th>
