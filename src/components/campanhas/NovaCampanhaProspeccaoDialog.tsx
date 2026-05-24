@@ -22,7 +22,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Rocket, MapPin, Stethoscope, Smartphone, Brain, Settings2, Zap, Shield } from "lucide-react";
+import { Rocket, MapPin, Stethoscope, Smartphone, Brain, Settings2, Zap, Shield, ClipboardList } from "lucide-react";
 
 const UF_LIST = [
   "AC","AL","AM","AP","BA","CE","DF","ES","GO","MA","MG","MS","MT",
@@ -49,6 +49,8 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange }: Props) {
   const [delayBatchMax, setDelayBatchMax] = useState(10);
   const [mensagemInicial, setMensagemInicial] = useState("");
   const [cadenciaAtiva, setCadenciaAtiva] = useState(true);
+  // F2.2: tipo de envio (default IA pra manter comportamento atual)
+  const [tipoEnvio, setTipoEnvio] = useState<"ia" | "manual">("ia");
   // Briefing IA — campos estruturados (anti-burro)
   const [bNomeServico, setBNomeServico] = useState(""); // Ex: "Plantão UTI Pediátrica"
   const [bHospital, setBHospital] = useState(""); // Ex: "Hospital Regional do Oeste"
@@ -205,6 +207,7 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange }: Props) {
           mensagem_inicial: mensagemInicial || null,
           briefing_ia: briefing,
           cadencia_ativa: cadenciaAtiva,
+          tipo_envio: tipoEnvio,
           criado_por: user.user?.id,
         })
         .select()
@@ -235,6 +238,7 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange }: Props) {
     setDelayBatchMax(10);
     setMensagemInicial("");
     setCadenciaAtiva(true);
+    setTipoEnvio("ia");
     setBNomeServico("");
     setBHospital("");
     setBCidade("");
@@ -299,6 +303,47 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange }: Props) {
           </TabsList>
 
           <TabsContent value="basico" className="space-y-4 mt-4">
+            {/* F2.2: tipo de envio — define se IA conduz ou operadora executa tasks manuais */}
+            <div className="space-y-2">
+              <Label>Como a campanha funciona? *</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTipoEnvio("ia")}
+                  className={`text-left border rounded-md p-3 transition-colors ${
+                    tipoEnvio === "ia"
+                      ? "border-primary bg-primary/5 ring-1 ring-primary"
+                      : "border-border hover:border-muted-foreground/40"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 font-medium text-sm">
+                    <Brain className="h-4 w-4" />
+                    IA conduz
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1 leading-snug">
+                    Sistema dispara, responde médicos automaticamente e faz cadência. Operadora só recebe lead quente.
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTipoEnvio("manual")}
+                  className={`text-left border rounded-md p-3 transition-colors ${
+                    tipoEnvio === "manual"
+                      ? "border-primary bg-primary/5 ring-1 ring-primary"
+                      : "border-border hover:border-muted-foreground/40"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 font-medium text-sm">
+                    <ClipboardList className="h-4 w-4" />
+                    Manual (operadora)
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1 leading-snug">
+                    Cada lead gera 6 tarefas (WhatsApp×3, email, Instagram, telefone) pra operadora executar e marcar feita.
+                  </p>
+                </button>
+              </div>
+            </div>
+
             <div className="space-y-1.5">
               <Label>Nome da campanha *</Label>
               <Input
