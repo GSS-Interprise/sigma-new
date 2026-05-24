@@ -1,5 +1,6 @@
 import { AppLayout } from "@/components/layout/AppLayout";
 import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { SigZapConversasColumn } from "@/components/sigzap/SigZapConversasColumn";
@@ -20,7 +21,35 @@ const STORAGE_KEY = 'sigzap-selected-instances';
 
 export default function DisparosSigZap() {
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [selectedConversaId, setSelectedConversaId] = useState<string | null>(null);
+
+  // F2.6 — Abrir conversa do lead direto via ?lead=X
+  // Usado pelo botão "Abrir conversa" no LeadProfile360Modal.
+  useEffect(() => {
+    const leadId = searchParams.get("lead");
+    if (!leadId) return;
+    (async () => {
+      // Pega a conversa mais recente do lead (pode ter +1 em chips diferentes — pega a com última atividade)
+      const { data: convs } = await (supabase as any)
+        .from("sigzap_conversations")
+        .select("id, last_message_at")
+        .eq("lead_id", leadId)
+        .order("last_message_at", { ascending: false, nullsFirst: false })
+        .limit(1);
+      const conv = convs?.[0];
+      if (conv?.id) {
+        setSelectedConversaId(conv.id);
+        // Remove o param da URL pra não voltar a abrir se navegar dentro
+        const next = new URLSearchParams(searchParams);
+        next.delete("lead");
+        setSearchParams(next, { replace: true });
+      } else {
+        toast.info("Esse médico não tem conversa ainda no SigZap");
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams.get("lead")]);
   const [selectedInstanceIds, setSelectedInstanceIds] = useState<string[]>(() => {
     // Load from localStorage on mount
     const stored = localStorage.getItem(STORAGE_KEY);

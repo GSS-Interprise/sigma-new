@@ -1072,15 +1072,31 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
     }
   };
 
-  // Get status icon
+  // Get status icon — normaliza valores do Evolution (mistura uppercase/lowercase)
   const getStatusIcon = (status: string | null, fromMe: boolean) => {
     if (!fromMe) return null;
-    switch (status) {
-      case 'sent': return <Check className="h-3 w-3" />;
-      case 'delivered': return <CheckCheck className="h-3 w-3" />;
-      case 'read': return <CheckCheck className="h-3 w-3 text-blue-400" />;
-      default: return <Clock className="h-3 w-3" />;
+    const s = (status || "").toLowerCase();
+    // PENDING = aguardando server (Clock)
+    if (s === "pending" || !s) {
+      return <Clock className="h-3 w-3 opacity-60" />;
     }
+    // SERVER_ACK / sent = chegou no server WhatsApp (1 check)
+    if (s === "server_ack" || s === "sent") {
+      return <Check className="h-3 w-3" />;
+    }
+    // DELIVERY_ACK / delivered = chegou no celular do destinatário (2 checks cinza)
+    if (s === "delivery_ack" || s === "delivered") {
+      return <CheckCheck className="h-3 w-3" />;
+    }
+    // READ / read = médico abriu a conversa (2 checks azul WhatsApp style)
+    if (s === "read" || s === "played") {
+      return <CheckCheck className="h-3 w-3 text-blue-500" />;
+    }
+    // deleted (raro) — vamos representar como X riscado
+    if (s === "deleted") {
+      return <X className="h-3 w-3 text-red-400" />;
+    }
+    return <Clock className="h-3 w-3 opacity-40" />;
   };
 
   // Handle Lead button click - check if lead exists or create new
