@@ -1,9 +1,18 @@
+import { useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,10 +32,18 @@ import {
   Download,
   Printer,
   FileSpreadsheet,
+  Filter,
+  X,
+  Timer,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+
+const UF_LIST = [
+  "AC","AL","AM","AP","BA","CE","DF","ES","GO","MA","MG","MS","MT",
+  "PA","PB","PE","PI","PR","RJ","RN","RO","RR","RS","SC","SE","SP","TO",
+];
 
 interface DashboardRow {
   campanha_id: string;
@@ -34,6 +51,7 @@ interface DashboardRow {
   status: string;
   tipo_campanha: string;
   regiao_estado: string | null;
+  especialidade_id: string | null;
   dias_no_ar: number | null;
   pool_total: number | null;
   pool_pendentes: number | null;
@@ -51,6 +69,30 @@ interface DashboardRow {
 }
 
 export function DashboardCampanhas() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const filtroCampanha = searchParams.get("dash_campanha") || "todas";
+  const filtroEstado = searchParams.get("dash_estado") || "todos";
+  const filtroEspecialidade = searchParams.get("dash_esp") || "todas";
+
+  const setFiltro = (key: string, value: string) => {
+    const next = new URLSearchParams(searchParams);
+    if (!value || value === "todos" || value === "todas") next.delete(key);
+    else next.set(key, value);
+    setSearchParams(next, { replace: true });
+  };
+
+  const limparFiltros = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("dash_campanha");
+    next.delete("dash_estado");
+    next.delete("dash_esp");
+    setSearchParams(next, { replace: true });
+  };
+
+  const temFiltro =
+    filtroCampanha !== "todas" || filtroEstado !== "todos" || filtroEspecialidade !== "todas";
+
+  // Lista de campanhas pra dropdown filtro (puxa do mesmo lugar do dashboard)
   const { data: rows, isLoading } = useQuery({
     queryKey: ["dashboard-campanhas"],
     queryFn: async (): Promise<DashboardRow[]> => {
@@ -64,6 +106,45 @@ export function DashboardCampanhas() {
     },
     refetchInterval: 60_000,
   });
+
+  // Lista de especialidades das campanhas existentes (pra dropdown)
+  const { data: especialidades = [] } = useQuery({
+    queryKey: ["dashboard-especialidades"],
+    queryFn: async () => {
+      const { data } = await (supabase as any)
+        .from("especialidades")
+        .select("id, nome")
+        .eq("ativo", true)
+        .order("nome");
+      return (data ?? []) as Array<{ id: string; nome: string }>;
+    },
+    staleTime: 5 * 60_000,
+  });
+
+  // Aplica filtros nas linhas (campanha + estado + especialidade)
+  const rowsFiltradas = useMemo(() => {
+    return (rows ?? []).filter((r) => {
+      if (filtroCampanha !== "todas" && r.campanha_id !== filtroCampanha) return false;
+      if (filtroEstado !== "todos" && r.regiao_estado !== filtroEstado) return false;
+      if (filtroEspecialidade !== "todas" && r.especialidade_id !== filtroEspecialidade)
+        return false;
+      return true;
+    });
+  }, [rows, filtroCampanha, filtroEstado, filtroEspecialidade]);
+
+  // Especialidades disponíveis nas campanhas atuais (subset de todas)
+  const especialidadesDisponiveis = useMemo(() => {
+    const idsEmUso = new Set((rows ?? []).map((r) => r.especialidade_id).filter(Boolean));
+    return especialidades.filter((e) => idsEmUso.has(e.id));
+  }, [especialidades, rows]);
+
+  // Estados disponíveis nas campanhas atuais
+  const estadosDisponiveis = useMemo(() => {
+    const ufsEmUso = new Set(
+      (rows ?? []).map((r) => r.regiao_estado).filter(Boolean) as string[],
+    );
+    return UF_LIST.filter((uf) => ufsEmUso.has(uf));
+  }, [rows]);
 
   // Métrica acionável: quantos leads únicos foram descartados por phone inválido.
   // Mostra qualidade da base de leads (NÃO é "erro do sistema" — é dado da fonte).
@@ -92,11 +173,11 @@ export function DashboardCampanhas() {
     );
   }
 
-  // Agregados pra cards de topo
+  // Agregados pra cards de topo — respeita filtros
   // Removido 'falhas' cumulativo — métrica enganosa pra equipe não-técnica
   // (inclui pausas anti-ban como se fossem erro). Substituído por
   // "Médicos sem WhatsApp" (descartadosPhone) que é dado de qualidade da base.
-  const agg = (rows ?? []).reduce(
+  const agg = rowsFiltradas.reduce(
     (acc, r) => ({
       campanhas: acc.campanhas + 1,
       pool_total: acc.pool_total + (r.pool_total ?? 0),
@@ -123,8 +204,21 @@ export function DashboardCampanhas() {
   const conversionPct = agg.contatado > 0 ? (agg.convertidos / agg.contatado) * 100 : 0;
   const responseRatePct = agg.contatado > 0 ? (agg.em_conversa / agg.contatado) * 100 : 0;
 
-  // Alertas: leads quentes muito antigos
-  const quentesAtrasados = (rows ?? []).filter((r) => (r.quente_mais_antigo_h ?? 0) > 24);
+  // Alertas: leads quentes muito antigos (respeita filtros)
+  const quentesAtrasados = rowsFiltradas.filter((r) => (r.quente_mais_antigo_h ?? 0) > 24);
+
+  // Indicador novo: tempo médio do quente mais antigo (entre campanhas com quentes)
+  const tempoMedioQuente = (() => {
+    const valores = rowsFiltradas
+      .filter((r) => (r.quentes ?? 0) > 0 && (r.quente_mais_antigo_h ?? 0) > 0)
+      .map((r) => r.quente_mais_antigo_h as number);
+    if (valores.length === 0) return null;
+    return valores.reduce((a, b) => a + b, 0) / valores.length;
+  })();
+
+  // Indicador novo: taxa de descarte (sem WhatsApp) sobre o total contatado
+  const taxaDescartePct =
+    agg.contatado > 0 ? (descartadosPhone / Math.max(agg.contatado + descartadosPhone, 1)) * 100 : 0;
 
   // F3.3 — Export PDF (via print do navegador, salva como PDF) e CSV
   const exportPDF = () => window.print();
@@ -147,7 +241,7 @@ export function DashboardCampanhas() {
     linhas.push("");
     linhas.push("PERFORMANCE POR CAMPANHA");
     linhas.push("Campanha;Estado;Base;Contatado;% Cobertura;Em conversa;Quentes;Convertidos;Disparos 24h;Status");
-    (rows ?? []).forEach((r) => {
+    rowsFiltradas.forEach((r) => {
       const pct = r.pool_total ? ((r.contatado ?? 0) / r.pool_total) * 100 : 0;
       const nome = (r.nome ?? "").replace(/;/g, ",");
       linhas.push(
@@ -194,6 +288,89 @@ export function DashboardCampanhas() {
         </DropdownMenu>
       </div>
 
+      {/* Filtros globais do dashboard — campanha, estado, especialidade */}
+      <Card className="p-3 no-print">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+          <div>
+            <label className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1 block">
+              Campanha
+            </label>
+            <Select value={filtroCampanha} onValueChange={(v) => setFiltro("dash_campanha", v)}>
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="Todas as campanhas" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todas">Todas as campanhas</SelectItem>
+                {(rows ?? []).map((r) => (
+                  <SelectItem key={r.campanha_id} value={r.campanha_id}>
+                    {r.nome}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1 block">
+              Estado
+            </label>
+            <Select value={filtroEstado} onValueChange={(v) => setFiltro("dash_estado", v)}>
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="Todos os estados" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos os estados</SelectItem>
+                {estadosDisponiveis.map((uf) => (
+                  <SelectItem key={uf} value={uf}>
+                    {uf}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1 block">
+              Especialidade
+            </label>
+            <Select
+              value={filtroEspecialidade}
+              onValueChange={(v) => setFiltro("dash_esp", v)}
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="Todas as especialidades" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todas">Todas as especialidades</SelectItem>
+                {especialidadesDisponiveis.map((e) => (
+                  <SelectItem key={e.id} value={e.id}>
+                    {e.nome}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        {temFiltro && (
+          <div className="flex items-center justify-between mt-2 pt-2 border-t">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Filter className="h-3.5 w-3.5" />
+              <span>
+                Mostrando <strong className="text-foreground">{rowsFiltradas.length}</strong> de{" "}
+                {(rows ?? []).length} campanha(s) com os filtros aplicados
+              </span>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={limparFiltros}
+              className="h-7 gap-1.5 text-xs"
+            >
+              <X className="h-3 w-3" />
+              Limpar filtros
+            </Button>
+          </div>
+        )}
+      </Card>
+
       {/* Título visivel apenas no print, dá contexto pra quem recebe o PDF */}
       <div className="hidden print:block mb-4">
         <h1 className="text-2xl font-bold">Sigma GSS — Dashboard de Prospecção</h1>
@@ -239,10 +416,16 @@ export function DashboardCampanhas() {
       </div>
 
       {/* Cards secundários (operação) — métricas acionáveis pra equipe não-técnica */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <SmallStat icon={Rocket} label="Campanhas ativas" value={agg.campanhas} />
         <SmallStat icon={Send} label="Disparos 24h" value={agg.disparos_24h.toLocaleString("pt-BR")} />
         <SmallStat icon={Send} label="Disparos 7 dias" value={agg.disparos_7d.toLocaleString("pt-BR")} />
+        <SmallStat
+          icon={Timer}
+          label="Tempo médio quente"
+          value={tempoMedioQuente !== null ? `${tempoMedioQuente.toFixed(0)}h` : "—"}
+          tooltip="Quanto tempo em média os leads ficam quentes esperando atendimento. Quanto menor, mais ágil o time."
+        />
         <SmallStat
           icon={AlertCircle}
           label="Médicos sem WhatsApp"
@@ -298,14 +481,16 @@ export function DashboardCampanhas() {
               </tr>
             </thead>
             <tbody>
-              {(rows ?? []).length === 0 ? (
+              {rowsFiltradas.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="text-center py-8 text-muted-foreground">
-                    Nenhuma campanha ativa ou pausada.
+                    {temFiltro
+                      ? "Nenhuma campanha bate com os filtros aplicados."
+                      : "Nenhuma campanha ativa ou pausada."}
                   </td>
                 </tr>
               ) : (
-                (rows ?? []).map((r) => {
+                rowsFiltradas.map((r) => {
                   const pct = r.pool_total ? ((r.contatado ?? 0) / r.pool_total) * 100 : 0;
                   return (
                     <tr key={r.campanha_id} className="border-b hover:bg-muted/30">
