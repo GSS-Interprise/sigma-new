@@ -31,6 +31,7 @@ import { LeadTimelineUnificadoSection } from "@/components/medicos/LeadTimelineU
 import { ValidacaoChecklist } from "./ValidacaoChecklist";
 import { MarcarPerdidoDialog } from "./MarcarPerdidoDialog";
 import { LeadCampanhaTasks } from "./LeadCampanhaTasks";
+import { LeadConversaUnificada } from "./LeadConversaUnificada";
 import {
   useAssumirLead,
   useAprovarLead,
@@ -199,16 +200,11 @@ export function AcompanhamentoLeadPainel({ lead, onClose }: Props) {
 
               <TabsContent value="conversa" className="m-0 h-full">
                 <ScrollArea className="h-full">
-                  <div className="p-5 space-y-2">
-                    {historicoConversa.length === 0 ? (
-                      <p className="text-sm text-muted-foreground text-center py-8">
-                        Nenhuma conversa registrada nesta campanha ainda.
-                      </p>
-                    ) : (
-                      historicoConversa.map((msg, i) => (
-                        <BubbleMsg key={i} msg={msg} />
-                      ))
-                    )}
+                  <div className="p-5">
+                    <LeadConversaUnificada
+                      leadId={lead.lead_id}
+                      historicoCampanhaFallback={historicoConversa}
+                    />
                   </div>
                 </ScrollArea>
               </TabsContent>
