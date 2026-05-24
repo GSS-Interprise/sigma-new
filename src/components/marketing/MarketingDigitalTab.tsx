@@ -429,7 +429,7 @@ export function MarketingDigitalTab() {
                 </div>
 
                 {/* Column Content */}
-                <ScrollArea className="flex-1 p-2">
+                <ScrollArea className="flex-1 min-h-0 p-2">
                   <div className="space-y-2">
                     {columnItems.map((item) => (
                       <Card

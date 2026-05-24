@@ -169,7 +169,7 @@ export function AcompanhamentoLeadPainel({ lead, onClose }: Props) {
               </TabsTrigger>
             </TabsList>
 
-            <div className="flex-1 overflow-hidden">
+            <div className="flex-1 min-h-0 overflow-hidden">
               <TabsContent value="validacao" className="m-0 h-full">
                 <ScrollArea className="h-full">
                   <div className="p-5 space-y-4">
