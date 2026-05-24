@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { ConfirmDestructive } from "@/components/common/ConfirmDestructive";
 
 interface Props {
   open: boolean;
@@ -432,15 +433,28 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
                       Campanha em execução. Em até 1 minuto após qualquer mudança, o sistema
                       pega o próximo lote.
                     </p>
-                    <Button
-                      variant="outline"
-                      className="w-full"
-                      onClick={() => togglePausa.mutate("pausada")}
-                      disabled={togglePausa.isPending}
-                    >
-                      <Pause className="h-4 w-4 mr-2" />
-                      Pausar campanha
-                    </Button>
+                    <ConfirmDestructive
+                      title={`Pausar a campanha "${campanha?.nome ?? "selecionada"}"?`}
+                      description={
+                        <>
+                          Os disparos param em até 1 minuto e leads pendentes ficam parados. Você
+                          pode retomar a qualquer momento — leads em conversa com a IA continuam
+                          respondendo normalmente.
+                        </>
+                      }
+                      confirmLabel="Pausar campanha"
+                      onConfirm={() => togglePausa.mutate("pausada")}
+                      trigger={
+                        <Button
+                          variant="outline"
+                          className="w-full"
+                          disabled={togglePausa.isPending}
+                        >
+                          <Pause className="h-4 w-4 mr-2" />
+                          Pausar campanha
+                        </Button>
+                      }
+                    />
                   </div>
                 )}
 

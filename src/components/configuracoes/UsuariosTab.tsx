@@ -9,6 +9,7 @@ import { FiltroUsuarios } from "./FiltroUsuarios";
 import { UsuarioDialog } from "./UsuarioDialog";
 import { toast } from "sonner";
 import { getRoleLabel } from "@/lib/roleLabels";
+import { ConfirmDestructive } from "@/components/common/ConfirmDestructive";
 
 export function UsuariosTab() {
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -162,14 +163,28 @@ export function UsuariosTab() {
                       <Button variant="ghost" size="sm" onClick={() => handleEditUsuario(usuario)}>
                         <Pencil className="h-4 w-4" />
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleResetPassword(usuario.email, usuario.id)}
-                        disabled={resettingPassword === usuario.id}
-                      >
-                        <KeyRound className="h-4 w-4" />
-                      </Button>
+                      <ConfirmDestructive
+                        title={`Enviar email de redefinição de senha para ${usuario.nome_completo || usuario.email}?`}
+                        description={
+                          <>
+                            Vai mandar um email pra <strong>{usuario.email}</strong> com um link
+                            pra escolher senha nova. A senha atual continua valendo até ele clicar
+                            no link.
+                          </>
+                        }
+                        confirmLabel="Enviar email"
+                        onConfirm={() => handleResetPassword(usuario.email, usuario.id)}
+                        trigger={
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={resettingPassword === usuario.id}
+                            title="Resetar senha"
+                          >
+                            <KeyRound className="h-4 w-4" />
+                          </Button>
+                        }
+                      />
                     </div>
                   </TableCell>
                 </TableRow>
