@@ -32,7 +32,7 @@ import {
   Stethoscope,
   ShieldOff,
 } from "lucide-react";
-import { LeadProntuarioDialog } from "@/components/medicos/LeadProntuarioDialog";
+import { LeadProfile360Modal } from "@/components/medicos/LeadProfile360Modal";
 import { useLeadsPaginated, useLeadsFilterCounts, LEADS_PAGE_SIZE } from "@/hooks/useLeadsPaginated";
 import { LeadsTablePagination } from "@/components/medicos/LeadsTablePagination";
 import { formatPhoneForDisplay } from "@/lib/phoneUtils";
@@ -431,7 +431,7 @@ export default function Leads() {
         </Card>
       </div>
 
-      <LeadProntuarioDialog
+      <LeadProfile360Modal
         open={prontuarioOpen}
         onOpenChange={setProntuarioOpen}
         leadId={selectedLeadId}
