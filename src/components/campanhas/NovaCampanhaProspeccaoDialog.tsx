@@ -22,7 +22,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Rocket, MapPin, Stethoscope, Smartphone, Brain, Settings2, Zap, Shield, ClipboardList } from "lucide-react";
+import { Rocket, MapPin, Stethoscope, Smartphone, Brain, Settings2, Zap, Shield, ClipboardList, Eye } from "lucide-react";
+import { PreviewLeadsCampanhaModal } from "./PreviewLeadsCampanhaModal";
 
 const UF_LIST = [
   "AC","AL","AM","AP","BA","CE","DF","ES","GO","MA","MG","MS","MT",
@@ -78,6 +79,7 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange }: Props) {
   const [bHandoffFrase, setBHandoffFrase] = useState(""); // Frase do handoff
   const [bHandoffGatilhos, setBHandoffGatilhos] = useState(""); // Regras explícitas de quando acionar handoff
   const [bPalavrasProibidas, setBPalavrasProibidas] = useState(""); // Termos que a IA não pode usar
+  const [previewOpen, setPreviewOpen] = useState(false);
   const qc = useQueryClient();
 
   const { data: especialidades = [] } = useQuery({
@@ -419,18 +421,40 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange }: Props) {
             </div>
 
             {(especialidadeIds.length > 0 || regiaoEstado) && poolCount !== undefined && (
-              <div className="bg-muted/50 rounded-lg p-3 text-sm">
-                <span className="font-medium text-primary">
-                  ~{poolCount.toLocaleString("pt-BR")} leads
-                </span>{" "}
-                disponíveis para esses filtros
-                {especialidadeIds.length > 1 && (
-                  <span className="text-xs text-muted-foreground ml-1">
-                    ({especialidadeIds.length} especialidades combinadas)
-                  </span>
+              <div className="bg-muted/50 rounded-lg p-3 text-sm flex items-center justify-between gap-3">
+                <div>
+                  <span className="font-medium text-primary">
+                    ~{poolCount.toLocaleString("pt-BR")} leads
+                  </span>{" "}
+                  disponíveis para esses filtros
+                  {especialidadeIds.length > 1 && (
+                    <span className="text-xs text-muted-foreground ml-1">
+                      ({especialidadeIds.length} especialidades combinadas)
+                    </span>
+                  )}
+                </div>
+                {poolCount > 0 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5 shrink-0"
+                    onClick={() => setPreviewOpen(true)}
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                    Ver lista
+                  </Button>
                 )}
               </div>
             )}
+
+            <PreviewLeadsCampanhaModal
+              open={previewOpen}
+              onOpenChange={setPreviewOpen}
+              especialidadeIds={especialidadeIds}
+              uf={regiaoEstado}
+              poolCount={poolCount}
+            />
 
             <div className="space-y-1.5">
               <Label className="flex items-center gap-1.5">
