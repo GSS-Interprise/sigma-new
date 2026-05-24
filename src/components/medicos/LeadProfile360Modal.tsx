@@ -95,7 +95,6 @@ interface CampanhaDoLead {
   etapa_acompanhamento: string | null;
   status_lead: string | null;
   created_at: string;
-  ultima_atividade_em: string | null;
 }
 
 interface LeadBasico {
@@ -140,7 +139,7 @@ export function LeadProfile360Modal({ open, onOpenChange, leadId }: Props) {
       const { data } = await (supabase as any)
         .from("campanha_leads")
         .select(
-          "campanha_id, etapa_acompanhamento, status, created_at, ultima_atividade_em, campanhas(nome, status)",
+          "campanha_id, etapa_acompanhamento, status, created_at, campanhas(nome, status)",
         )
         .eq("lead_id", leadId)
         .order("created_at", { ascending: false })
@@ -152,7 +151,6 @@ export function LeadProfile360Modal({ open, onOpenChange, leadId }: Props) {
         etapa_acompanhamento: r.etapa_acompanhamento,
         status_lead: r.status,
         created_at: r.created_at,
-        ultima_atividade_em: r.ultima_atividade_em,
       }));
     },
   });
