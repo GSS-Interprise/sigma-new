@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -13,6 +13,15 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { ConfirmDestructive } from "@/components/common/ConfirmDestructive";
 import {
   User,
@@ -102,8 +111,16 @@ interface LeadBasico {
   especialidade: string | null;
 }
 
+const CLASSIFICACOES = [
+  { value: "normal", label: "Normal" },
+  { value: "vip", label: "VIP — alta prioridade" },
+  { value: "protegido", label: "Protegido — não dispara" },
+  { value: "proibido", label: "Proibido — bloqueio total" },
+] as const;
+
 export function LeadProfile360Modal({ open, onOpenChange, leadId }: Props) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [exportLoading, setExportLoading] = useState(false);
 
   const { data: perfil, isLoading: perfilLoading } = useQuery<Perfil360 | null>({
@@ -153,6 +170,23 @@ export function LeadProfile360Modal({ open, onOpenChange, leadId }: Props) {
         created_at: r.created_at,
       }));
     },
+  });
+
+  const updateLead = useMutation({
+    mutationFn: async (patch: { classificacao?: string; opt_out?: boolean }) => {
+      const { error } = await (supabase as any)
+        .from("leads")
+        .update(patch)
+        .eq("id", leadId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["lead-perfil-360-modal", leadId] });
+      queryClient.invalidateQueries({ queryKey: ["lead-perfil-360", leadId] });
+      queryClient.invalidateQueries({ queryKey: ["leads-paginated"] });
+      toast.success("Lead atualizado");
+    },
+    onError: (e: any) => toast.error("Erro: " + e.message),
   });
 
   const addBlacklist = async () => {
@@ -405,7 +439,60 @@ export function LeadProfile360Modal({ open, onOpenChange, leadId }: Props) {
                   )}
                 </Card>
 
-                {/* 4. Conversa */}
+                {/* 4. Classificação LGPD editável */}
+                <Card className="p-4 space-y-3">
+                  <h3 className="text-sm font-semibold flex items-center gap-2">
+                    <ShieldOff className="h-4 w-4 text-muted-foreground" />
+                    Classificação e LGPD
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="classif" className="text-xs">
+                        Classificação
+                      </Label>
+                      <Select
+                        value={perfil.classificacao ?? "normal"}
+                        onValueChange={(v) =>
+                          updateLead.mutate({ classificacao: v })
+                        }
+                      >
+                        <SelectTrigger id="classif">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {CLASSIFICACOES.map((c) => (
+                            <SelectItem key={c.value} value={c.value}>
+                              {c.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-[10px] text-muted-foreground leading-tight">
+                        VIP recebe prioridade. Protegido e Proibido são excluídos
+                        automaticamente dos novos disparos.
+                      </p>
+                    </div>
+                    <div className="flex items-start gap-3 rounded-md border bg-muted/30 p-3">
+                      <Switch
+                        id="opt-out"
+                        checked={perfil.opt_out ?? false}
+                        onCheckedChange={(checked) =>
+                          updateLead.mutate({ opt_out: checked })
+                        }
+                      />
+                      <div className="space-y-0.5">
+                        <Label htmlFor="opt-out" className="text-xs cursor-pointer">
+                          Opt-out (não contactar)
+                        </Label>
+                        <p className="text-[10px] text-muted-foreground leading-tight">
+                          Médico pediu pra parar. LGPD — não envia nada.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+
+                {/* 5. Conversa */}
                 <Card className="p-4 space-y-3">
                   <h3 className="text-sm font-semibold flex items-center gap-2">
                     <MessageCircle className="h-4 w-4 text-muted-foreground" />
