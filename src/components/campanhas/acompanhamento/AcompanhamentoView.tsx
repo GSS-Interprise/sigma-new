@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
-import { ClipboardList } from "lucide-react";
+import { ClipboardList, Clock } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AcompanhamentoKanban } from "./AcompanhamentoKanban";
 import { AcompanhamentoLeadPainel } from "./AcompanhamentoLeadPainel";
 import { AcompanhamentoAgingBanner } from "./AcompanhamentoAgingBanner";
@@ -12,6 +13,24 @@ import {
 } from "@/hooks/useAcompanhamentoLeads";
 
 const FILTRO_STORAGE_KEY = "acompanhamento-filtro";
+const AGING_THRESHOLD_STORAGE_KEY = "acompanhamento-aging-threshold";
+
+const THRESHOLD_OPCOES = [
+  { value: 6, label: "6 horas" },
+  { value: 12, label: "12 horas" },
+  { value: 24, label: "24 horas" },
+  { value: 48, label: "48 horas" },
+];
+
+function carregarAgingThresholdInicial(): number {
+  if (typeof window !== "undefined") {
+    const saved = parseInt(localStorage.getItem(AGING_THRESHOLD_STORAGE_KEY) || "", 10);
+    if (!Number.isNaN(saved) && THRESHOLD_OPCOES.some((o) => o.value === saved)) {
+      return saved;
+    }
+  }
+  return 12;
+}
 
 function carregarFiltroInicial(isAdmin: boolean): FiltroAcompanhamento {
   // Persistido no localStorage tem prioridade (preferência explícita do user)
@@ -28,6 +47,7 @@ function carregarFiltroInicial(isAdmin: boolean): FiltroAcompanhamento {
 export function AcompanhamentoView() {
   const { isAdmin } = usePermissions();
   const [filtro, setFiltro] = useState<FiltroAcompanhamento>(() => carregarFiltroInicial(isAdmin));
+  const [agingThreshold, setAgingThreshold] = useState<number>(() => carregarAgingThresholdInicial());
   const [leadAberto, setLeadAberto] = useState<AcompanhamentoLead | null>(null);
   const { counts, todosLeads, isLoading } = useAcompanhamentoLeads(filtro);
 
@@ -38,6 +58,12 @@ export function AcompanhamentoView() {
     }
   }, [filtro]);
 
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem(AGING_THRESHOLD_STORAGE_KEY, String(agingThreshold));
+    }
+  }, [agingThreshold]);
+
   // Pega lead atualizado do todosLeads (após mutações)
   const leadAtualizado = leadAberto
     ? todosLeads.find((l) => l.campanha_lead_id === leadAberto.campanha_lead_id) || null
@@ -45,8 +71,33 @@ export function AcompanhamentoView() {
 
   return (
     <div className="space-y-3">
-      {/* F3.4 — Banner de aging de leads quentes (>12h sem dono) */}
-      <AcompanhamentoAgingBanner leads={todosLeads} onLeadClick={setLeadAberto} />
+      {/* F3.4 — Banner de aging de leads quentes (threshold configurável) */}
+      <AcompanhamentoAgingBanner
+        leads={todosLeads}
+        thresholdHoras={agingThreshold}
+        onLeadClick={setLeadAberto}
+      />
+
+      {/* F3.4 — Seletor de threshold (persistido em localStorage) */}
+      <div className="flex items-center justify-end gap-2 text-xs">
+        <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+        <span className="text-muted-foreground">Alertar quentes esperando há mais de:</span>
+        <Select
+          value={String(agingThreshold)}
+          onValueChange={(v) => setAgingThreshold(Number(v))}
+        >
+          <SelectTrigger className="h-7 w-32 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {THRESHOLD_OPCOES.map((o) => (
+              <SelectItem key={o.value} value={String(o.value)} className="text-xs">
+                {o.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
       {/* Filtros chip */}
       <div className="flex flex-wrap gap-1.5">
