@@ -24,6 +24,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Rocket, MapPin, Stethoscope, Smartphone, Brain, Settings2, Zap, Shield, ClipboardList, Eye } from "lucide-react";
 import { PreviewLeadsCampanhaModal } from "./PreviewLeadsCampanhaModal";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 
 const UF_LIST = [
   "AC","AL","AM","AP","BA","CE","DF","ES","GO","MA","MG","MS","MT",
@@ -118,44 +119,35 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead }: Pr
     },
   });
 
-  const { data: poolCount } = useQuery({
-    queryKey: ["pool-count", especialidadeIds.join(","), regiaoEstado],
-    enabled: especialidadeIds.length > 0 || !!regiaoEstado,
+  // F2.2 — preview via RPC server-side com debounce de 300ms.
+  // Reduz N queries por keystroke pra 1 e centraliza a lógica
+  // dos filtros (mesmos do selecionar_leads_campanha).
+  const debouncedEspIds = useDebouncedValue(especialidadeIds, 300);
+  const debouncedUf = useDebouncedValue(regiaoEstado, 300);
+
+  const { data: previewData } = useQuery({
+    queryKey: [
+      "campanha-wizard-preview",
+      debouncedEspIds.join(","),
+      debouncedUf,
+    ],
+    enabled: debouncedEspIds.length > 0 || !!debouncedUf,
     queryFn: async () => {
-      // Se há especialidades selecionadas, conta DISTINCT lead_id em lead_especialidades
-      // (filtrando por região no JOIN com leads se houver)
-      // F2.8: alinha preview com filtros do RPC selecionar_leads_campanha
-      // (exclui classificacao protegido/proibido + cooldown ativo)
-      const nowIso = new Date().toISOString();
-      if (especialidadeIds.length > 0) {
-        let q = supabase
-          .from("lead_especialidades")
-          .select("lead_id, leads!inner(uf, phone_e164, merged_into_id, opt_out, classificacao, cooldown_ate)", { count: "exact", head: true })
-          .in("especialidade_id", especialidadeIds)
-          .is("leads.merged_into_id", null)
-          .not("leads.phone_e164", "is", null)
-          .neq("leads.phone_e164", "")
-          .eq("leads.opt_out", false)
-          .not("leads.classificacao", "in", "(protegido,proibido)")
-          .or(`cooldown_ate.is.null,cooldown_ate.lt.${nowIso}`, { foreignTable: "leads" });
-        if (regiaoEstado) q = q.eq("leads.uf", regiaoEstado);
-        const { count } = await q;
-        return count || 0;
-      }
-      // Sem especialidade, só conta leads pela região
-      let q = supabase
-        .from("leads")
-        .select("id", { count: "exact", head: true })
-        .is("merged_into_id", null)
-        .not("phone_e164", "is", null)
-        .neq("phone_e164", "")
-        .not("classificacao", "in", "(protegido,proibido)")
-        .or(`cooldown_ate.is.null,cooldown_ate.lt.${nowIso}`);
-      if (regiaoEstado) q = q.eq("uf", regiaoEstado);
-      const { count } = await q;
-      return count || 0;
+      const { data, error } = await (supabase as any).rpc(
+        "campanha_wizard_preview",
+        {
+          p_especialidade_ids: debouncedEspIds.length > 0 ? debouncedEspIds : null,
+          p_uf: debouncedUf || null,
+          p_exclude_lead_ids: null,
+          p_sample_limit: 0,
+        },
+      );
+      if (error) throw error;
+      return data as { count: number; sample: any[] };
     },
+    staleTime: 30_000,
   });
+  const poolCount = previewData?.count;
 
   const criar = useMutation({
     mutationFn: async () => {
