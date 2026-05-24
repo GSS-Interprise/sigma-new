@@ -48,7 +48,10 @@ interface Props {
 
 export function AcompanhamentoLeadPainel({ lead, onClose }: Props) {
   const { user } = useAuth();
-  const [tab, setTab] = useState<"conversa" | "historico" | "validacao" | "tasks">("validacao");
+  // Mobile: 4 tabs (Validacao/Tasks/Conversa/Historico)
+  // Desktop: master-detail — coluna E tem 3 tabs (Tasks/Validacao/Historico),
+  // coluna D mostra Conversa sempre. F2.4 master-detail real.
+  const [tab, setTab] = useState<"conversa" | "historico" | "validacao" | "tasks">("tasks");
   const [perdidoDialogOpen, setPerdidoDialogOpen] = useState(false);
   const assumir = useAssumirLead();
   const aprovar = useAprovarLead();
@@ -95,7 +98,7 @@ export function AcompanhamentoLeadPainel({ lead, onClose }: Props) {
   return (
     <>
       <Sheet open={!!lead} onOpenChange={(open) => !open && onClose()}>
-        <SheetContent side="right" className="w-full sm:max-w-2xl p-0 flex flex-col">
+        <SheetContent side="right" className="w-full sm:max-w-2xl md:max-w-5xl lg:max-w-6xl p-0 flex flex-col">
           <SheetHeader className="px-5 pt-5 pb-4 border-b">
             <div className="flex items-start gap-3">
               <div className="min-w-0 flex-1">
@@ -148,7 +151,12 @@ export function AcompanhamentoLeadPainel({ lead, onClose }: Props) {
             <LeadIdentidadeCard leadId={lead.lead_id} />
           </SheetHeader>
 
-          <Tabs value={tab} onValueChange={(v) => setTab(v as any)} className="flex-1 flex flex-col overflow-hidden">
+          {/* MOBILE (< md): 4 tabs como antes */}
+          <Tabs
+            value={tab}
+            onValueChange={(v) => setTab(v as any)}
+            className="flex-1 flex flex-col overflow-hidden md:hidden"
+          >
             <TabsList className="grid grid-cols-4 mx-5 mt-3 flex-shrink-0">
               <TabsTrigger value="validacao" className="gap-1.5 text-xs">
                 <ClipboardCheck className="h-3.5 w-3.5" />
@@ -174,19 +182,13 @@ export function AcompanhamentoLeadPainel({ lead, onClose }: Props) {
                 <ScrollArea className="h-full">
                   <div className="p-5 space-y-4">
                     <ValidacaoChecklist lead={lead} profilesMap={profilesMap} />
-
-                    {/* Perfil IA resumo */}
                     {lead.perfil_resumo && (
                       <div className="border rounded-md p-3 bg-indigo-50/50 border-indigo-200">
                         <div className="flex items-center gap-1.5 mb-1.5">
                           <Bot className="h-4 w-4 text-indigo-700" />
-                          <span className="text-xs font-semibold text-indigo-700 uppercase">
-                            Perfil IA
-                          </span>
+                          <span className="text-xs font-semibold text-indigo-700 uppercase">Perfil IA</span>
                           {lead.perfil_confianca && (
-                            <Badge variant="outline" className="text-xs">
-                              {lead.perfil_confianca}% confiança
-                            </Badge>
+                            <Badge variant="outline" className="text-xs">{lead.perfil_confianca}% confiança</Badge>
                           )}
                         </div>
                         <p className="text-sm">{lead.perfil_resumo}</p>
@@ -195,24 +197,18 @@ export function AcompanhamentoLeadPainel({ lead, onClose }: Props) {
                   </div>
                 </ScrollArea>
               </TabsContent>
-
               <TabsContent value="tasks" className="m-0 h-full">
                 <ScrollArea className="h-full">
                   <LeadCampanhaTasks campanhaLeadId={lead.campanha_lead_id} />
                 </ScrollArea>
               </TabsContent>
-
               <TabsContent value="conversa" className="m-0 h-full">
                 <ScrollArea className="h-full">
                   <div className="p-5">
-                    <LeadConversaUnificada
-                      leadId={lead.lead_id}
-                      historicoCampanhaFallback={historicoConversa}
-                    />
+                    <LeadConversaUnificada leadId={lead.lead_id} historicoCampanhaFallback={historicoConversa} />
                   </div>
                 </ScrollArea>
               </TabsContent>
-
               <TabsContent value="historico" className="m-0 h-full">
                 <ScrollArea className="h-full">
                   <div className="p-5">
@@ -225,6 +221,90 @@ export function AcompanhamentoLeadPainel({ lead, onClose }: Props) {
               </TabsContent>
             </div>
           </Tabs>
+
+          {/* DESKTOP (≥ md): master-detail real lado-a-lado */}
+          <div className="hidden md:grid md:grid-cols-[42%_58%] flex-1 min-h-0 overflow-hidden">
+            {/* Coluna esquerda: 3 tabs (Tasks / Validação / Histórico) */}
+            <div className="border-r flex flex-col min-h-0 overflow-hidden">
+              <Tabs
+                value={tab === "conversa" ? "tasks" : tab}
+                onValueChange={(v) => setTab(v as any)}
+                className="flex-1 flex flex-col overflow-hidden"
+              >
+                <TabsList className="grid grid-cols-3 mx-4 mt-3 flex-shrink-0">
+                  <TabsTrigger value="tasks" className="gap-1.5 text-xs">
+                    <ClipboardList className="h-3.5 w-3.5" />
+                    Tasks
+                  </TabsTrigger>
+                  <TabsTrigger value="validacao" className="gap-1.5 text-xs">
+                    <ClipboardCheck className="h-3.5 w-3.5" />
+                    Validação
+                    <span className="text-muted-foreground tabular-nums">{validacoesOk}/4</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="historico" className="gap-1.5 text-xs">
+                    <History className="h-3.5 w-3.5" />
+                    Histórico
+                  </TabsTrigger>
+                </TabsList>
+
+                <div className="flex-1 min-h-0 overflow-hidden">
+                  <TabsContent value="tasks" className="m-0 h-full">
+                    <ScrollArea className="h-full">
+                      <LeadCampanhaTasks campanhaLeadId={lead.campanha_lead_id} />
+                    </ScrollArea>
+                  </TabsContent>
+                  <TabsContent value="validacao" className="m-0 h-full">
+                    <ScrollArea className="h-full">
+                      <div className="p-4 space-y-4">
+                        <ValidacaoChecklist lead={lead} profilesMap={profilesMap} />
+                        {lead.perfil_resumo && (
+                          <div className="border rounded-md p-3 bg-indigo-50/50 border-indigo-200">
+                            <div className="flex items-center gap-1.5 mb-1.5">
+                              <Bot className="h-4 w-4 text-indigo-700" />
+                              <span className="text-xs font-semibold text-indigo-700 uppercase">Perfil IA</span>
+                              {lead.perfil_confianca && (
+                                <Badge variant="outline" className="text-xs">
+                                  {lead.perfil_confianca}% confiança
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-sm">{lead.perfil_resumo}</p>
+                          </div>
+                        )}
+                      </div>
+                    </ScrollArea>
+                  </TabsContent>
+                  <TabsContent value="historico" className="m-0 h-full">
+                    <ScrollArea className="h-full">
+                      <div className="p-4">
+                        <p className="text-xs text-muted-foreground mb-3">
+                          Cross-canal: outras campanhas, conversas manuais e touchpoints.
+                        </p>
+                        <LeadTimelineUnificadoSection leadId={lead.lead_id} />
+                      </div>
+                    </ScrollArea>
+                  </TabsContent>
+                </div>
+              </Tabs>
+            </div>
+
+            {/* Coluna direita: Conversa SEMPRE visível */}
+            <div className="flex flex-col min-h-0 overflow-hidden bg-muted/10">
+              <div className="px-4 py-2 border-b flex items-center gap-2 text-xs text-muted-foreground bg-background flex-shrink-0">
+                <MessageSquare className="h-3.5 w-3.5" />
+                <span className="font-semibold">Conversa unificada</span>
+                <span className="opacity-60">— últimas mensagens cross-campanha</span>
+              </div>
+              <ScrollArea className="flex-1 min-h-0">
+                <div className="p-4">
+                  <LeadConversaUnificada
+                    leadId={lead.lead_id}
+                    historicoCampanhaFallback={historicoConversa}
+                  />
+                </div>
+              </ScrollArea>
+            </div>
+          </div>
 
           {/* Footer com ações */}
           <div className="border-t p-4 bg-muted/20 flex items-center gap-2 flex-wrap">
