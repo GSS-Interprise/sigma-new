@@ -43,7 +43,9 @@ import {
 const navigationTop = [
   { name: "Home", href: "/", icon: LayoutDashboard },
   { name: "Licitações", href: "/licitacoes", icon: Gavel },
-  { name: "Disparos e Captação", href: "/disparos", icon: Send },
+  // "Disparos e Captação" (/disparos) é módulo legado — escondido do sidebar
+  // mas a rota continua viva pra preservar deep links antigos.
+  // Toda nova prospecção/disparo vive em /prospeccao.
   { name: "Prospecção", href: "/prospeccao", icon: Rocket },
   { name: "Marketing", href: "/marketing", icon: Megaphone },
   { name: "Clientes e Contratos", href: "/contratos", icon: FileText },
