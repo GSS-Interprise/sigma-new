@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { ComparativoOperadoras } from "./ComparativoOperadoras";
 import {
   Rocket,
   Users,
@@ -254,6 +255,9 @@ export function DashboardCampanhas() {
           </table>
         </ScrollArea>
       </Card>
+
+      {/* F3.5 — Comparativo entre operadoras (atividade geral SigZap por enquanto) */}
+      <ComparativoOperadoras />
     </div>
   );
 }
