@@ -1,10 +1,10 @@
 import { Link, useLocation } from "react-router-dom";
-import { 
-  LayoutDashboard, 
+import {
+  LayoutDashboard,
   Building2,
-  Users, 
+  Users,
   Activity,
-  FileText, 
+  FileText,
   Send,
   Settings,
   LogOut,
@@ -21,7 +21,8 @@ import {
   Megaphone,
   Shield,
   Briefcase,
-  Rocket
+  Rocket,
+  UserSearch,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -47,6 +48,7 @@ const navigationTop = [
   // mas a rota continua viva pra preservar deep links antigos.
   // Toda nova prospecção/disparo vive em /prospeccao.
   { name: "Prospecção", href: "/prospeccao", icon: Rocket },
+  { name: "Leads", href: "/leads", icon: UserSearch },
   { name: "Marketing", href: "/marketing", icon: Megaphone },
   { name: "Clientes e Contratos", href: "/contratos", icon: FileText },
   { name: "Relacionamento Médico", href: "/relacionamento-medico", icon: Activity },
@@ -100,6 +102,7 @@ export function Sidebar() {
               '/licitacoes': 'licitacoes',
               '/disparos': 'disparos',
               '/prospeccao': 'disparos',
+              '/leads': 'disparos',
               '/marketing': 'marketing',
               '/contratos': 'contratos',
               '/relacionamento-medico': 'relacionamento',

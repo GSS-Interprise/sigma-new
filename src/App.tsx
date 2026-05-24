@@ -31,6 +31,7 @@ import CampanhasProspeccao from "./pages/CampanhasProspeccao";
 import Contratos from "./pages/Contratos";
 import RelacionamentoMedico from "./pages/RelacionamentoMedico";
 import Medicos from "./pages/Medicos";
+import Leads from "./pages/Leads";
 import Escalas from "./pages/Escalas";
 import Financeiro from "./pages/Financeiro";
 import Patrimonio from "./pages/Patrimonio";
@@ -98,6 +99,7 @@ const App = () => (
             <Route path="/contratos" element={<ProtectedRoute><PermissionRoute modulo="contratos"><Contratos /></PermissionRoute></ProtectedRoute>} />
             <Route path="/relacionamento-medico" element={<ProtectedRoute><PermissionRoute modulo="relacionamento"><RelacionamentoMedico /></PermissionRoute></ProtectedRoute>} />
             <Route path="/medicos" element={<ProtectedRoute><PermissionRoute modulo="medicos"><Medicos /></PermissionRoute></ProtectedRoute>} />
+            <Route path="/leads" element={<ProtectedRoute><PermissionRoute modulo="disparos"><Leads /></PermissionRoute></ProtectedRoute>} />
             <Route path="/escalas" element={<ProtectedRoute><PermissionRoute modulo="escalas"><Escalas /></PermissionRoute></ProtectedRoute>} />
             <Route path="/financeiro" element={<ProtectedRoute><PermissionRoute modulo="financeiro"><Financeiro /></PermissionRoute></ProtectedRoute>} />
             <Route path="/patrimonio" element={<ProtectedRoute><PermissionRoute modulo="patrimonio"><Patrimonio /></PermissionRoute></ProtectedRoute>} />
