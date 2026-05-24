@@ -423,6 +423,7 @@ export default function Leads() {
               <LeadsTablePagination
                 currentPage={page}
                 totalPages={totalPages}
+                totalCount={totalCount}
                 onPageChange={setPage}
               />
             </div>
