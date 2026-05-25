@@ -126,12 +126,14 @@ function initials(name?: string | null) {
 export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = null, prefillTitulo, prefillDescricao }: Props) {
   const { setorId } = useUserSetor();
   const { user } = useAuth();
+  const { isAdmin } = usePermissions();
   const navigate = useNavigate();
   const criar = useCriarDemanda();
   const atualizar = useAtualizarDemanda();
   const comentar = useAdicionarComentarioDemanda();
   const upload = useUploadAnexoDemanda();
   const removerAnexo = useDeleteAnexoDemanda();
+  const atualizarStatus = useAtualizarStatusDemanda();
 
   const tarefaIdValido = !!tarefaId && UUID_RE.test(tarefaId);
   const isEditing = tarefaIdValido;
