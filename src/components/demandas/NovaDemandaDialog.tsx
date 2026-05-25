@@ -8,6 +8,17 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -45,6 +56,7 @@ import {
   User as UserIcon,
   MessageCircle,
   CheckCircle2,
+  Lock,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -53,6 +65,7 @@ import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { useUserSetor } from "@/hooks/useUserSetor";
 import { useAuth } from "@/contexts/AuthContext";
+import { usePermissions } from "@/hooks/usePermissions";
 import {
   useCriarDemanda,
   useUploadAnexoDemanda,
@@ -65,6 +78,7 @@ import {
   useToggleConfirmacaoDemanda,
   useDemandaAnexos,
   useDeleteAnexoDemanda,
+  useAtualizarStatusDemanda,
   getDemandaAnexoSignedUrl,
 } from "@/hooks/useDemandas";
 import { URGENCIA_LABEL } from "@/lib/setoresAccess";
