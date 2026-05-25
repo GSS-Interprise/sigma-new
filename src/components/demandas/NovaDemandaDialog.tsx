@@ -241,6 +241,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
     setPendingFiles([]);
     setNovoItem("");
     setNovaTag("");
+    setPastedImages([]);
   }, [open, isEditing, tarefaCorreta, tarefaExistente, user?.id]);
 
   // Buscar resumos das referências vinculadas
