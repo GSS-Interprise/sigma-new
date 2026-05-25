@@ -993,6 +993,37 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                         }}
                         onClick={(e) => setComentarioCaret(e.currentTarget.selectionStart ?? 0)}
                         onKeyUp={(e) => setComentarioCaret(e.currentTarget.selectionStart ?? 0)}
+                        onPaste={(e) => {
+                          const items = e.clipboardData?.items;
+                          if (!items) return;
+                          const files: File[] = [];
+                          for (const item of Array.from(items)) {
+                            if (item.kind === "file") {
+                              const f = item.getAsFile();
+                              if (f) {
+                                const ext = f.type.split("/")[1] || "png";
+                                const named =
+                                  f.name && f.name !== "image.png"
+                                    ? f
+                                    : new File(
+                                        [f],
+                                        `colado-${Date.now()}.${ext}`,
+                                        { type: f.type },
+                                      );
+                                files.push(named);
+                              }
+                            }
+                          }
+                          if (files.length) {
+                            e.preventDefault();
+                            void enviarArquivos(files);
+                            toast.success(
+                              files.length > 1
+                                ? `${files.length} imagens coladas`
+                                : "Imagem colada anexada",
+                            );
+                          }
+                        }}
                         placeholder={isEditing ? "Adicionar comentário… (@ para mencionar)" : "Comentário inicial… (@ para mencionar)"}
                         className="min-h-20 resize-none text-sm"
                       />
