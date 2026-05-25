@@ -933,7 +933,7 @@ const AgesContratoDialog = ({ open, onOpenChange, contrato }: AgesContratoDialog
               </Button>
               <Button
                 onClick={() => saveMutation.mutate()}
-                disabled={saveMutation.isPending || !formData.data_inicio}
+                disabled={saveMutation.isPending}
               >
                 {saveMutation.isPending ? "Salvando..." : "Salvar"}
               </Button>
@@ -951,7 +951,7 @@ const AgesContratoDialog = ({ open, onOpenChange, contrato }: AgesContratoDialog
               </Button>
               <Button
                 onClick={() => saveMutation.mutate()}
-                disabled={saveMutation.isPending || !formData.data_inicio}
+                disabled={saveMutation.isPending}
               >
                 {saveMutation.isPending ? "Salvando..." : "Salvar"}
               </Button>
@@ -969,7 +969,7 @@ const AgesContratoDialog = ({ open, onOpenChange, contrato }: AgesContratoDialog
               </Button>
               <Button
                 onClick={() => saveMutation.mutate()}
-                disabled={saveMutation.isPending || !formData.data_inicio}
+                disabled={saveMutation.isPending}
               >
                 {saveMutation.isPending ? "Salvando..." : "Salvar"}
               </Button>
