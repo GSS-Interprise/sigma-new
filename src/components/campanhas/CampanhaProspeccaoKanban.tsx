@@ -24,6 +24,7 @@ import {
   type CampanhaLead,
   type StatusLeadCampanha,
 } from "@/hooks/useCampanhaLeads";
+import { LeadProfile360Modal } from "@/components/medicos/LeadProfile360Modal";
 
 interface KanbanColumn {
   id: StatusLeadCampanha;
@@ -99,6 +100,7 @@ interface Props {
 export function CampanhaProspeccaoKanban({ campanhaId }: Props) {
   const [searchTerm, setSearchTerm] = useState("");
   const [draggedLead, setDraggedLead] = useState<string | null>(null);
+  const [leadAbertoId, setLeadAbertoId] = useState<string | null>(null);
   const { byStatus, leads, isLoading } = useCampanhaLeadsByStatus(campanhaId);
   const atualizarStatus = useAtualizarStatusLead();
 
@@ -194,6 +196,7 @@ export function CampanhaProspeccaoKanban({ campanhaId }: Props) {
                       key={cl.id}
                       campLead={cl}
                       onDragStart={() => handleDragStart(cl.lead_id)}
+                      onClick={() => setLeadAbertoId(cl.lead_id)}
                     />
                   ))}
                   {colLeads.length === 0 && (
@@ -207,6 +210,12 @@ export function CampanhaProspeccaoKanban({ campanhaId }: Props) {
           );
         })}
       </div>
+
+      <LeadProfile360Modal
+        open={!!leadAbertoId}
+        onOpenChange={(open) => !open && setLeadAbertoId(null)}
+        leadId={leadAbertoId}
+      />
     </div>
   );
 }
@@ -214,18 +223,21 @@ export function CampanhaProspeccaoKanban({ campanhaId }: Props) {
 function LeadCard({
   campLead,
   onDragStart,
+  onClick,
 }: {
   campLead: CampanhaLead;
   onDragStart: () => void;
+  onClick: () => void;
 }) {
   const lead = campLead.lead;
   if (!lead) return null;
 
   return (
     <Card
-      className="cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow"
+      className="cursor-pointer hover:shadow-md hover:border-primary/50 transition-all"
       draggable
       onDragStart={onDragStart}
+      onClick={onClick}
     >
       <CardContent className="p-3 space-y-1.5">
         <div className="flex items-start gap-2">
