@@ -44,14 +44,13 @@ import {
 const navigationTop = [
   { name: "Home", href: "/", icon: LayoutDashboard },
   { name: "Licitações", href: "/licitacoes", icon: Gavel },
-  // "Disparos e Captação" (/disparos) é módulo legado — escondido do sidebar
-  // mas a rota continua viva pra preservar deep links antigos.
-  // Toda nova prospecção/disparo vive em /prospeccao.
   { name: "Prospecção", href: "/prospeccao", icon: Rocket },
   { name: "Leads", href: "/leads", icon: UserSearch },
-  // Conversas (ex-SigZap) — antes ficava acessível via "Disparos e Captação".
-  // Como aquele item virou legado, expusemos Conversas diretamente.
   { name: "Conversas", href: "/disparos/sigzap", icon: MessageCircle },
+  // Hub de Disparos contém Chips & Instâncias, Captadores, BI-Prospec,
+  // Banco de Interesse, Residentes, Email, etc. Enquanto o Bloco T (sub-rotas
+  // /prospeccao/{sub}) não fica pronto, este é o caminho que a equipe usa.
+  { name: "Disparos & Chips", href: "/disparos", icon: Send },
   { name: "Marketing", href: "/marketing", icon: Megaphone },
   { name: "Clientes e Contratos", href: "/contratos", icon: FileText },
   { name: "Relacionamento Médico", href: "/relacionamento-medico", icon: Activity },
