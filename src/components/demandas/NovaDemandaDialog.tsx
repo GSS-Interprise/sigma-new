@@ -1030,12 +1030,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                           }
                           if (files.length) {
                             e.preventDefault();
-                            void enviarArquivos(files);
-                            toast.success(
-                              files.length > 1
-                                ? `${files.length} imagens coladas`
-                                : "Imagem colada anexada",
-                            );
+                            setPastedImages((prev) => [...prev, ...files]);
                           }
                         }}
                         placeholder={isEditing ? "Adicionar comentário… (@ para mencionar)" : "Comentário inicial… (@ para mencionar)"}
