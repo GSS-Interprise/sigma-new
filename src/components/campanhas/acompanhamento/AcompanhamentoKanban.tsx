@@ -1,11 +1,30 @@
 import { useState, useMemo } from "react";
-import { ChevronDown, ChevronRight, Flame, ClipboardCheck, CheckCircle2, Calendar, XCircle } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Flame,
+  ClipboardCheck,
+  CheckCircle2,
+  Calendar,
+  XCircle,
+  X,
+  CheckSquare,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { toast } from "sonner";
 import { AcompanhamentoCard } from "./AcompanhamentoCard";
 import {
   useAcompanhamentoLeads,
   useMoverEtapa,
   useAprovarLead,
+  useMarcarPerdido,
   type EtapaAcompanhamento,
   type AcompanhamentoLead,
   type FiltroAcompanhamento,
@@ -35,8 +54,77 @@ export function AcompanhamentoKanban({ filtro, onLeadClick }: Props) {
   const [perdidoExpanded, setPerdidoExpanded] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverEtapa, setDragOverEtapa] = useState<EtapaAcompanhamento | null>(null);
+  // Bloco C — bulk selection
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
   const moverEtapa = useMoverEtapa();
   const aprovarLead = useAprovarLead();
+  const marcarPerdido = useMarcarPerdido();
+
+  const toggleSelect = (campanhaLeadId: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(campanhaLeadId)) next.delete(campanhaLeadId);
+      else next.add(campanhaLeadId);
+      return next;
+    });
+  };
+  const clearSelection = () => setSelectedIds(new Set());
+
+  const bulkMover = async (etapa: EtapaAcompanhamento) => {
+    if (selectedIds.size === 0) return;
+    setBulkBusy(true);
+    const ids = Array.from(selectedIds);
+    let ok = 0;
+    let fail = 0;
+    const erros: string[] = [];
+    for (const id of ids) {
+      try {
+        if (etapa === "aprovado") {
+          await aprovarLead.mutateAsync(id);
+        } else {
+          await moverEtapa.mutateAsync({ campanha_lead_id: id, etapa });
+        }
+        ok++;
+      } catch (e: any) {
+        fail++;
+        if (erros.length < 3) erros.push(e?.message || "erro");
+      }
+    }
+    setBulkBusy(false);
+    if (fail === 0) {
+      toast.success(`${ok} lead(s) movidos pra ${etapa.replace("_", " ")}`);
+      clearSelection();
+    } else {
+      toast.warning(`${ok} movidos, ${fail} falharam — ${erros.join("; ")}`);
+    }
+  };
+
+  const bulkPerdido = async () => {
+    if (selectedIds.size === 0) return;
+    setBulkBusy(true);
+    const ids = Array.from(selectedIds);
+    let ok = 0;
+    let fail = 0;
+    for (const id of ids) {
+      try {
+        await marcarPerdido.mutateAsync({
+          campanha_lead_id: id,
+          motivo: "Marcado em massa via Kanban",
+        });
+        ok++;
+      } catch {
+        fail++;
+      }
+    }
+    setBulkBusy(false);
+    if (fail === 0) {
+      toast.success(`${ok} lead(s) marcados como perdido`);
+      clearSelection();
+    } else {
+      toast.warning(`${ok} marcados, ${fail} falharam`);
+    }
+  };
 
   // F2.7 — busca em qual outras campanhas cada lead está, pra mostrar badge "em N campanhas"
   const leadIds = useMemo(() => todosLeads.map((l) => l.lead_id), [todosLeads]);
@@ -97,9 +185,60 @@ export function AcompanhamentoKanban({ filtro, onLeadClick }: Props) {
             onDragOver={handleDragOver}
             onDrop={handleDrop}
             isOver={dragOverEtapa === col.etapa}
+            selectedIds={selectedIds}
+            onToggleSelect={toggleSelect}
           />
         ))}
       </div>
+
+      {/* Bloco C — barra flutuante de bulk actions */}
+      {selectedIds.size > 0 && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 bg-background border shadow-lg rounded-lg px-3 py-2 flex items-center gap-2 animate-in slide-in-from-bottom-2">
+          <div className="flex items-center gap-1.5 px-2">
+            <CheckSquare className="h-4 w-4 text-primary" />
+            <span className="text-sm font-medium tabular-nums">
+              {selectedIds.size} selecionado{selectedIds.size === 1 ? "" : "s"}
+            </span>
+          </div>
+          <div className="h-5 w-px bg-border" />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="outline" disabled={bulkBusy}>
+                Mover para...
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="center">
+              <DropdownMenuItem onClick={() => bulkMover("quente")}>
+                <Flame className="h-3.5 w-3.5 mr-2 text-red-600" /> Quente
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => bulkMover("em_analise")}>
+                <ClipboardCheck className="h-3.5 w-3.5 mr-2 text-amber-600" /> Em análise
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => bulkMover("aprovado")}>
+                <CheckCircle2 className="h-3.5 w-3.5 mr-2 text-blue-600" /> Aprovado
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => bulkMover("na_escala")}>
+                <Calendar className="h-3.5 w-3.5 mr-2 text-emerald-600" /> Na escala
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={bulkPerdido}
+            disabled={bulkBusy}
+            className="text-destructive hover:text-destructive"
+          >
+            <XCircle className="h-3.5 w-3.5 mr-1.5" />
+            Perdido
+          </Button>
+          <div className="h-5 w-px bg-border" />
+          <Button size="sm" variant="ghost" onClick={clearSelection} disabled={bulkBusy}>
+            <X className="h-3.5 w-3.5 mr-1" />
+            Limpar
+          </Button>
+        </div>
+      )}
 
       <div className="mt-4 border rounded-md bg-muted/20">
         <button
@@ -153,6 +292,8 @@ interface ColunaProps {
   onDragOver: (e: React.DragEvent, etapa: EtapaAcompanhamento) => void;
   onDrop: (etapa: EtapaAcompanhamento) => void;
   isOver: boolean;
+  selectedIds: Set<string>;
+  onToggleSelect: (id: string) => void;
 }
 
 function Coluna({
@@ -169,6 +310,8 @@ function Coluna({
   onDragOver,
   onDrop,
   isOver,
+  selectedIds,
+  onToggleSelect,
 }: ColunaProps) {
   return (
     <div
@@ -197,6 +340,8 @@ function Coluna({
               onClick={() => onLeadClick(l)}
               onDragStart={() => onDragStart(l.campanha_lead_id)}
               onDragEnd={onDragEnd}
+              selected={selectedIds.has(l.campanha_lead_id)}
+              onToggleSelect={() => onToggleSelect(l.campanha_lead_id)}
             />
           ))
         )}

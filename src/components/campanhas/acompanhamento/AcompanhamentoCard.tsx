@@ -1,5 +1,6 @@
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Flame, MessageSquare, MapPin, Stethoscope, Clock, Layers } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -13,9 +14,20 @@ interface Props {
   onClick: () => void;
   onDragStart: () => void;
   onDragEnd: () => void;
+  /** Bloco C — bulk actions: estado de seleção e callback de toggle. Quando undefined, sem checkbox. */
+  selected?: boolean;
+  onToggleSelect?: () => void;
 }
 
-export function AcompanhamentoCard({ lead, crossCampanhas, onClick, onDragStart, onDragEnd }: Props) {
+export function AcompanhamentoCard({
+  lead,
+  crossCampanhas,
+  onClick,
+  onDragStart,
+  onDragEnd,
+  selected,
+  onToggleSelect,
+}: Props) {
   const idade = lead.data_status
     ? formatDistanceToNow(new Date(lead.data_status), { addSuffix: false, locale: ptBR })
     : null;
@@ -30,12 +42,35 @@ export function AcompanhamentoCard({ lead, crossCampanhas, onClick, onDragStart,
       draggable
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
-      onClick={onClick}
+      onClick={(e) => {
+        // Se clicou no checkbox, deixa o handler do checkbox cuidar
+        if ((e.target as HTMLElement).closest('[data-bulk-checkbox]')) return;
+        onClick();
+      }}
       className={`group bg-card border rounded-md p-3 cursor-pointer hover:border-primary/50 hover:shadow-sm transition-all ${
         semDono && lead.etapa_acompanhamento === "quente" ? "border-l-4 border-l-red-500" : ""
-      }`}
+      } ${selected ? "ring-2 ring-primary border-primary" : ""}`}
     >
       <div className="flex items-start justify-between gap-2 mb-1.5">
+        {/* Bloco C — checkbox de seleção (aparece on hover OU quando algum tá selecionado) */}
+        {onToggleSelect !== undefined && (
+          <div
+            data-bulk-checkbox
+            className={`shrink-0 transition-opacity ${
+              selected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+            }`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleSelect();
+            }}
+          >
+            <Checkbox
+              checked={selected ?? false}
+              onCheckedChange={() => onToggleSelect()}
+              aria-label={`Selecionar ${lead.lead_nome}`}
+            />
+          </div>
+        )}
         <div className="min-w-0 flex-1">
           <h4 className="text-sm font-medium leading-tight truncate">{lead.lead_nome}</h4>
           {lead.lead_especialidade && (

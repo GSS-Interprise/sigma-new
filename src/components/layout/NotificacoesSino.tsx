@@ -380,7 +380,24 @@ export function NotificacoesSino() {
         </ScrollArea>
 
         <Separator />
-        
+
+        {/* Link pra página dedicada */}
+        <div className="p-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full text-xs"
+            onClick={() => {
+              setIsOpen(false);
+              navigate("/notificacoes");
+            }}
+          >
+            Ver todas as notificações
+          </Button>
+        </div>
+
+        <Separator />
+
         {/* Configurações de notificação */}
         <div className="p-3 space-y-3">
           <div className="flex items-center justify-between">

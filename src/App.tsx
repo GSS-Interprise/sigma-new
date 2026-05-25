@@ -49,6 +49,7 @@ import Demandas from "./pages/Demandas";
 import Auth from "./pages/Auth";
 import ResetPassword from "./pages/ResetPassword";
 import AdminImport from "./pages/AdminImport";
+import Notificacoes from "./pages/Notificacoes";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -113,6 +114,7 @@ const App = () => (
             <Route path="/demandas" element={<ProtectedRoute><Demandas /></ProtectedRoute>} />
             <Route path="/configuracoes" element={<ProtectedRoute><PermissionRoute adminOnly><Configuracoes /></PermissionRoute></ProtectedRoute>} />
             <Route path="/admin-import" element={<ProtectedRoute><PermissionRoute adminOnly><AdminImport /></PermissionRoute></ProtectedRoute>} />
+            <Route path="/notificacoes" element={<ProtectedRoute><Notificacoes /></ProtectedRoute>} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
             </Routes>
