@@ -488,6 +488,13 @@ const AgesContratoDialog = ({ open, onOpenChange, contrato }: AgesContratoDialog
 
   const saveMutation = useMutation({
     mutationFn: async () => {
+      // Validações obrigatórias com mensagem clara
+      if (!formData.ages_cliente_id) {
+        throw new Error('Selecione o Cliente AGES antes de salvar');
+      }
+      if (!formData.data_inicio) {
+        throw new Error('Informe a Data de Início do contrato antes de salvar');
+      }
       // Normalizar e validar status
       const statusNormalizado = normalizeStatus(formData.status);
       const statusValidos = ['Ativo', 'Inativo', 'Suspenso', 'Em Processo de Renovação'];
