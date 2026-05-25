@@ -5,8 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Plus, Sparkles, LayoutGrid, Kanban } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ColunaAgenda } from "@/components/demandas/ColunaAgenda";
-import { ColunaEnviadas } from "@/components/demandas/ColunaEnviadas";
-import { ColunaParaMim } from "@/components/demandas/ColunaParaMim";
+import { ColunaMinhasTarefas } from "@/components/demandas/ColunaMinhasTarefas";
 import { ColunaPendenciasSetor } from "@/components/demandas/ColunaPendenciasSetor";
 import { NovaDemandaDialog } from "@/components/demandas/NovaDemandaDialog";
 import { KanbanTarefas } from "@/components/demandas/KanbanTarefas";
@@ -68,18 +67,15 @@ export default function Demandas() {
           </TabsList>
         </div>
         <TabsContent value="home" className="flex-1 min-h-0 p-3 mt-2">
-          <div className="grid grid-cols-1 md:grid-cols-3 md:grid-rows-2 gap-3 h-full">
-            <div className="md:row-span-2 min-h-0">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 h-full">
+            <div className="min-h-0">
               <ColunaAgenda onTarefaClick={abrirDetalheTarefa} />
             </div>
             <div className="min-h-0">
-              <ColunaEnviadas onTarefaClick={abrirDetalheTarefa} />
-            </div>
-            <div className="md:row-span-2 min-h-0">
-              <ColunaPendenciasSetor />
+              <ColunaMinhasTarefas onTarefaClick={abrirDetalheTarefa} />
             </div>
             <div className="min-h-0">
-              <ColunaParaMim onTarefaClick={abrirDetalheTarefa} />
+              <ColunaPendenciasSetor />
             </div>
           </div>
         </TabsContent>
