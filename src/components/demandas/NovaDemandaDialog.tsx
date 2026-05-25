@@ -167,6 +167,18 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
   const [links, setLinks] = useState<{ titulo: string; url: string }[]>([]);
   const [novoLinkTitulo, setNovoLinkTitulo] = useState("");
   const [novoLinkUrl, setNovoLinkUrl] = useState("");
+  const [pastedImages, setPastedImages] = useState<File[]>([]);
+  const [pastedPreviews, setPastedPreviews] = useState<string[]>([]);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+
+  // Object URLs para preview local; libera ao desmontar/alterar
+  useEffect(() => {
+    const urls = pastedImages.map((f) => URL.createObjectURL(f));
+    setPastedPreviews(urls);
+    return () => {
+      urls.forEach((u) => URL.revokeObjectURL(u));
+    };
+  }, [pastedImages]);
 
   useEffect(() => {
     if (!open) return;
@@ -187,6 +199,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
       setLinks([]);
       setNovoLinkTitulo("");
       setNovoLinkUrl("");
+      setPastedImages([]);
     }
   }, [open, defaultDate, isEditing, prefillTitulo, prefillDescricao]);
 
@@ -228,6 +241,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
     setPendingFiles([]);
     setNovoItem("");
     setNovaTag("");
+    setPastedImages([]);
   }, [open, isEditing, tarefaCorreta, tarefaExistente, user?.id]);
 
   // Buscar resumos das referências vinculadas
@@ -494,6 +508,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
   const ehPessoal = pessoas.length === 0;
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[92vw] max-w-[1400px] h-[92vh] p-0 gap-0 overflow-hidden flex flex-col">
         <DialogHeader className="space-y-0 shrink-0">
@@ -962,18 +977,34 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                           </p>
                           {!!c.links?.length && (
                             <div className="mt-2 space-y-1">
-                              {c.links.map((l: any, i: number) => (
-                                <a
-                                  key={i}
-                                  href={l.url}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="flex items-center gap-1 text-xs text-primary hover:underline"
-                                >
-                                  <LinkIcon className="h-3 w-3" />
-                                  {l.titulo || l.url}
-                                </a>
-                              ))}
+                              {c.links.some((l: any) => l?.tipo === "image") && (
+                                <div className="flex flex-wrap gap-2 mb-1">
+                                  {c.links
+                                    .filter((l: any) => l?.tipo === "image")
+                                    .map((l: any, i: number) => (
+                                      <CommentImageThumb
+                                        key={`img-${i}`}
+                                        storagePath={l.url}
+                                        nome={l.titulo}
+                                        onOpen={(u) => setLightboxUrl(u)}
+                                      />
+                                    ))}
+                                </div>
+                              )}
+                              {c.links
+                                .filter((l: any) => l?.tipo !== "image")
+                                .map((l: any, i: number) => (
+                                  <a
+                                    key={`lnk-${i}`}
+                                    href={l.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="flex items-center gap-1 text-xs text-primary hover:underline"
+                                  >
+                                    <LinkIcon className="h-3 w-3" />
+                                    {l.titulo || l.url}
+                                  </a>
+                                ))}
                             </div>
                           )}
                         </div>
@@ -1016,12 +1047,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                           }
                           if (files.length) {
                             e.preventDefault();
-                            void enviarArquivos(files);
-                            toast.success(
-                              files.length > 1
-                                ? `${files.length} imagens coladas`
-                                : "Imagem colada anexada",
-                            );
+                            setPastedImages((prev) => [...prev, ...files]);
                           }
                         }}
                         placeholder={isEditing ? "Adicionar comentário… (@ para mencionar)" : "Comentário inicial… (@ para mencionar)"}
@@ -1053,6 +1079,35 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                             onClick={() => setLinks((p) => p.filter((_, i) => i !== idx))}
                             className="text-muted-foreground hover:text-destructive"
                             aria-label="Remover link"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {pastedImages.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {pastedImages.map((f, idx) => (
+                        <div
+                          key={`${f.name}-${idx}`}
+                          className="relative group h-16 w-16 rounded-md overflow-hidden border bg-muted"
+                        >
+                          {pastedPreviews[idx] && (
+                            <img
+                              src={pastedPreviews[idx]}
+                              alt={f.name}
+                              className="h-full w-full object-cover cursor-zoom-in"
+                              onClick={() => setLightboxUrl(pastedPreviews[idx])}
+                            />
+                          )}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setPastedImages((p) => p.filter((_, i) => i !== idx))
+                            }
+                            className="absolute top-0.5 right-0.5 rounded-full bg-background/80 p-0.5 opacity-0 group-hover:opacity-100 transition"
+                            aria-label="Remover imagem"
                           >
                             <X className="h-3 w-3" />
                           </button>
@@ -1102,20 +1157,35 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                         type="button"
                         size="sm"
                         className="h-8 gap-1.5"
-                        disabled={!comentarioInicial.trim() || comentar.isPending}
+                        disabled={
+                          (!comentarioInicial.trim() && pastedImages.length === 0) ||
+                          comentar.isPending ||
+                          upload.isPending
+                        }
                         onClick={async () => {
-                          if (!tarefaId || !comentarioInicial.trim()) return;
+                          if (!tarefaId) return;
+                          if (!comentarioInicial.trim() && pastedImages.length === 0) return;
                           try {
+                            const imageLinks: { titulo: string; url: string; tipo?: string }[] = [];
+                            for (const f of pastedImages) {
+                              const path = await upload.mutateAsync({
+                                tarefaId,
+                                file: f,
+                                nome: f.name,
+                              });
+                              imageLinks.push({ titulo: f.name, url: path, tipo: "image" });
+                            }
                             await comentar.mutateAsync({
                               tarefaId,
-                              conteudo: comentarioInicial.trim(),
+                              conteudo: comentarioInicial.trim() || "(imagem)",
                               mencionados: comentarioPessoas,
-                              links,
+                              links: [...links, ...imageLinks],
                             });
                             setComentarioInicial("");
                             setComentarioPessoas([]);
                             setComentarioCaret(0);
                             setLinks([]);
+                            setPastedImages([]);
                           } catch {
                             /* toast no hook */
                           }
@@ -1314,5 +1384,61 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    <Dialog
+      open={!!lightboxUrl}
+      onOpenChange={(o) => !o && setLightboxUrl(null)}
+    >
+      <DialogContent className="max-w-5xl p-2 bg-background">
+        <DialogHeader className="sr-only">
+          <DialogTitle>Visualizar imagem</DialogTitle>
+        </DialogHeader>
+        {lightboxUrl && (
+          <img
+            src={lightboxUrl}
+            alt="Imagem"
+            className="w-full max-h-[85vh] object-contain rounded"
+          />
+        )}
+      </DialogContent>
+    </Dialog>
+    </>
+  );
+}
+
+function CommentImageThumb({
+  storagePath,
+  nome,
+  onOpen,
+}: {
+  storagePath: string;
+  nome?: string;
+  onOpen: (url: string) => void;
+}) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let cancel = false;
+    getDemandaAnexoSignedUrl(storagePath)
+      .then((u) => {
+        if (!cancel) setUrl(u);
+      })
+      .catch(() => {});
+    return () => {
+      cancel = true;
+    };
+  }, [storagePath]);
+  if (!url) {
+    return (
+      <div className="h-20 w-20 rounded border bg-muted animate-pulse" />
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(url)}
+      className="h-20 w-20 rounded border overflow-hidden bg-muted hover:ring-2 hover:ring-primary/40 transition"
+      title={nome || "Imagem"}
+    >
+      <img src={url} alt={nome || "Imagem"} className="h-full w-full object-cover" />
+    </button>
   );
 }
