@@ -211,6 +211,24 @@ export function useDemandasDoSetor(setorId: string | null | undefined) {
   });
 }
 
+export function useDemandasTodas() {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: ["demandas", "todas-kanban", user?.id],
+    enabled: !!user?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("worklist_tarefas")
+        .select("*")
+        .eq("modulo", "demandas")
+        .order("data_limite", { ascending: true, nullsFirst: false })
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return enrich(data || []);
+    },
+  });
+}
+
 export function usePendenciasSetor(setorId: string | null | undefined, isAdmin = false) {
   return useQuery({
     queryKey: ["demandas", "pendencias-setor", setorId, isAdmin],
