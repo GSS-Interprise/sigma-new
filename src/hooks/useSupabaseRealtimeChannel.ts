@@ -89,7 +89,6 @@ export function useSupabaseRealtimeChannel(options: Options): {
     const channel = supabase
       .channel(channelName)
       .on(
-        // @ts-expect-error — tipos do Supabase exigem narrowing dinâmico complexo aqui
         'postgres_changes',
         { event, schema, table, ...(filter ? { filter } : {}) },
         (payload: unknown) => {
