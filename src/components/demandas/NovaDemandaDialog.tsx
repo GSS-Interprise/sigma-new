@@ -976,18 +976,34 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                           </p>
                           {!!c.links?.length && (
                             <div className="mt-2 space-y-1">
-                              {c.links.map((l: any, i: number) => (
-                                <a
-                                  key={i}
-                                  href={l.url}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="flex items-center gap-1 text-xs text-primary hover:underline"
-                                >
-                                  <LinkIcon className="h-3 w-3" />
-                                  {l.titulo || l.url}
-                                </a>
-                              ))}
+                              {c.links.some((l: any) => l?.tipo === "image") && (
+                                <div className="flex flex-wrap gap-2 mb-1">
+                                  {c.links
+                                    .filter((l: any) => l?.tipo === "image")
+                                    .map((l: any, i: number) => (
+                                      <CommentImageThumb
+                                        key={`img-${i}`}
+                                        storagePath={l.url}
+                                        nome={l.titulo}
+                                        onOpen={(u) => setLightboxUrl(u)}
+                                      />
+                                    ))}
+                                </div>
+                              )}
+                              {c.links
+                                .filter((l: any) => l?.tipo !== "image")
+                                .map((l: any, i: number) => (
+                                  <a
+                                    key={`lnk-${i}`}
+                                    href={l.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="flex items-center gap-1 text-xs text-primary hover:underline"
+                                  >
+                                    <LinkIcon className="h-3 w-3" />
+                                    {l.titulo || l.url}
+                                  </a>
+                                ))}
                             </div>
                           )}
                         </div>
