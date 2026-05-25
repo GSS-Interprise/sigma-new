@@ -508,6 +508,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
   const ehPessoal = pessoas.length === 0;
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[92vw] max-w-[1400px] h-[92vh] p-0 gap-0 overflow-hidden flex flex-col">
         <DialogHeader className="space-y-0 shrink-0">
