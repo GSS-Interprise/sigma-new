@@ -1383,5 +1383,61 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    <Dialog
+      open={!!lightboxUrl}
+      onOpenChange={(o) => !o && setLightboxUrl(null)}
+    >
+      <DialogContent className="max-w-5xl p-2 bg-background">
+        <DialogHeader className="sr-only">
+          <DialogTitle>Visualizar imagem</DialogTitle>
+        </DialogHeader>
+        {lightboxUrl && (
+          <img
+            src={lightboxUrl}
+            alt="Imagem"
+            className="w-full max-h-[85vh] object-contain rounded"
+          />
+        )}
+      </DialogContent>
+    </Dialog>
+    </>
+  );
+}
+
+function CommentImageThumb({
+  storagePath,
+  nome,
+  onOpen,
+}: {
+  storagePath: string;
+  nome?: string;
+  onOpen: (url: string) => void;
+}) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let cancel = false;
+    getDemandaAnexoSignedUrl(storagePath)
+      .then((u) => {
+        if (!cancel) setUrl(u);
+      })
+      .catch(() => {});
+    return () => {
+      cancel = true;
+    };
+  }, [storagePath]);
+  if (!url) {
+    return (
+      <div className="h-20 w-20 rounded border bg-muted animate-pulse" />
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(url)}
+      className="h-20 w-20 rounded border overflow-hidden bg-muted hover:ring-2 hover:ring-primary/40 transition"
+      title={nome || "Imagem"}
+    >
+      <img src={url} alt={nome || "Imagem"} className="h-full w-full object-cover" />
+    </button>
   );
 }
