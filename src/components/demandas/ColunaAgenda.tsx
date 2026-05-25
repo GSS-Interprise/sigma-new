@@ -131,6 +131,13 @@ export function ColunaAgenda({ onTarefaClick }: Props) {
           const fora = !isSameMonth(d, monthCursor);
           const sel = isSameDay(d, date);
           const hoje = isToday(d);
+          const temAtrasada = eventos.some(
+            (t) =>
+              t.status !== "concluida" &&
+              t.data_limite &&
+              isPast(parseISO(t.data_limite)) &&
+              !isToday(parseISO(t.data_limite)),
+          );
           const isLastCol = (i + 1) % 7 === 0;
           const isLastRow = i >= days.length - 7;
           return (
@@ -145,7 +152,9 @@ export function ColunaAgenda({ onTarefaClick }: Props) {
                 "border-border/60",
                 fora && "bg-muted/20 text-muted-foreground/50",
                 !fora && "hover:bg-accent/40",
+                !fora && temAtrasada && "bg-destructive/10 hover:bg-destructive/15",
                 sel && "bg-primary/10 ring-1 ring-inset ring-primary/40",
+                sel && temAtrasada && "ring-destructive/50 bg-destructive/15",
               )}
             >
               <div className="flex items-center justify-start mb-0.5">
@@ -153,7 +162,8 @@ export function ColunaAgenda({ onTarefaClick }: Props) {
                   className={cn(
                     "inline-flex items-center justify-center text-[11px] font-semibold h-5 min-w-5 px-1 rounded-full",
                     hoje && "bg-primary text-primary-foreground",
-                    !hoje && "text-foreground",
+                    !hoje && !temAtrasada && "text-foreground",
+                    !hoje && temAtrasada && "text-destructive",
                     fora && "text-muted-foreground/50",
                   )}
                 >
