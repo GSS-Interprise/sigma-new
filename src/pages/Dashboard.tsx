@@ -10,8 +10,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ColunaAgenda } from "@/components/demandas/ColunaAgenda";
-import { ColunaEnviadas } from "@/components/demandas/ColunaEnviadas";
-import { ColunaParaMim } from "@/components/demandas/ColunaParaMim";
+import { ColunaMinhasTarefas } from "@/components/demandas/ColunaMinhasTarefas";
 import { ColunaPendenciasSetor } from "@/components/demandas/ColunaPendenciasSetor";
 import { NovaDemandaDialog } from "@/components/demandas/NovaDemandaDialog";
 import { KanbanTarefas } from "@/components/demandas/KanbanTarefas";
@@ -115,22 +114,15 @@ export default function Dashboard() {
           </div>
 
           <TabsContent value="home" className="flex-1 mt-0">
-            <div className="grid grid-cols-1 md:grid-cols-[1.15fr_1.15fr_0.7fr] gap-3 h-[calc(100vh-10rem)] md:grid-rows-2">
-              {/* Coluna 1 - Agenda (grande, esquerda, 2 linhas) */}
-              <div className="md:row-span-2 min-h-0">
+            <div className="grid grid-cols-1 md:grid-cols-[1.15fr_1.15fr_0.7fr] gap-3 h-[calc(100vh-10rem)]">
+              <div className="min-h-0">
                 <ColunaAgenda onTarefaClick={abrirDetalheTarefa} />
               </div>
-              {/* Coluna 2 - Enviadas (meio, topo) */}
               <div className="min-h-0">
-                <ColunaEnviadas onTarefaClick={abrirDetalheTarefa} />
+                <ColunaMinhasTarefas onTarefaClick={abrirDetalheTarefa} />
               </div>
-              {/* Coluna 4 - Pendências (direita, 2 linhas) */}
-              <div className="md:row-span-2 min-h-0">
+              <div className="min-h-0">
                 <ColunaPendenciasSetor />
-              </div>
-              {/* Coluna 3 - Para mim (meio, baixo) */}
-              <div className="min-h-0">
-                <ColunaParaMim onTarefaClick={abrirDetalheTarefa} />
               </div>
             </div>
           </TabsContent>
