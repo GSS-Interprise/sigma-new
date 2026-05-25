@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { LayoutDashboard, Briefcase, Plus, Sparkles } from "lucide-react";
+import { LayoutDashboard, Briefcase, Plus, Sparkles, Kanban } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +14,7 @@ import { ColunaEnviadas } from "@/components/demandas/ColunaEnviadas";
 import { ColunaParaMim } from "@/components/demandas/ColunaParaMim";
 import { ColunaPendenciasSetor } from "@/components/demandas/ColunaPendenciasSetor";
 import { NovaDemandaDialog } from "@/components/demandas/NovaDemandaDialog";
+import { KanbanTarefas } from "@/components/demandas/KanbanTarefas";
 import { useUserSetor } from "@/hooks/useUserSetor";
 import { usePermissions } from "@/hooks/usePermissions";
 import { toast } from "sonner";
@@ -87,6 +88,10 @@ export default function Dashboard() {
                   <Briefcase className="h-4 w-4" />
                   Minha Área
                 </TabsTrigger>
+                <TabsTrigger value="kanban" className="flex items-center gap-2">
+                  <Kanban className="h-4 w-4" />
+                  Kanban de tarefas
+                </TabsTrigger>
               </TabsList>
               {activeTab === "home" && (
                 <div className="flex items-center gap-2">
@@ -132,6 +137,12 @@ export default function Dashboard() {
 
           <TabsContent value="minha-area" className="mt-0">
             <WorkspaceArea />
+          </TabsContent>
+
+          <TabsContent value="kanban" className="flex-1 mt-0">
+            <div className="h-[calc(100vh-10rem)]">
+              <KanbanTarefas onTarefaClick={abrirDetalheTarefa} />
+            </div>
           </TabsContent>
         </Tabs>
       </div>
