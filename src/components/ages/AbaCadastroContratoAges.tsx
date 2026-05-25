@@ -290,13 +290,22 @@ export function AbaCadastroContratoAges({
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label>CNPJ</Label>
-              <Input
-                placeholder="00.000.000/0000-00"
-                value={formData.cnpj}
-                maxLength={18}
-                onChange={(e) => setFormData({ ...formData, cnpj: formatCNPJ(e.target.value) })}
-              />
+              <Label className="text-destructive">Cliente AGES *</Label>
+              <Select
+                value={formData.ages_cliente_id}
+                onValueChange={handleClienteChange}
+              >
+                <SelectTrigger className={!formData.ages_cliente_id ? 'border-destructive' : ''}>
+                  <SelectValue placeholder="Selecione o cliente" />
+                </SelectTrigger>
+                <SelectContent>
+                  {clientes.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.nome_empresa}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div>
@@ -312,6 +321,36 @@ export function AbaCadastroContratoAges({
                 disabled={!formData.ages_cliente_id}
                 placeholder={formData.ages_cliente_id ? "Selecionar unidades..." : "Selecione cliente primeiro"}
               />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label>CNPJ</Label>
+              <Input
+                placeholder="00.000.000/0000-00"
+                value={formData.cnpj}
+                maxLength={18}
+                onChange={(e) => setFormData({ ...formData, cnpj: formatCNPJ(e.target.value) })}
+              />
+            </div>
+            <div>
+              <Label>Estado</Label>
+              <Select
+                value={formData.uf}
+                onValueChange={(v) => setFormData({ ...formData, uf: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o estado" />
+                </SelectTrigger>
+                <SelectContent>
+                  {ESTADOS_BR.map((uf) => (
+                    <SelectItem key={uf} value={uf}>
+                      {uf}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
@@ -386,46 +425,6 @@ export function AbaCadastroContratoAges({
                 maxLength={15}
                 onChange={(e) => setFormData({ ...formData, telefone_financeiro: formatTelefone(e.target.value) })}
               />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label>Cliente AGES *</Label>
-              <Select
-                value={formData.ages_cliente_id}
-                onValueChange={handleClienteChange}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o cliente" />
-                </SelectTrigger>
-                <SelectContent>
-                  {clientes.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.nome_empresa}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <Label>Estado</Label>
-              <Select
-                value={formData.uf}
-                onValueChange={(v) => setFormData({ ...formData, uf: v })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o estado" />
-                </SelectTrigger>
-                <SelectContent>
-                  {ESTADOS_BR.map((uf) => (
-                    <SelectItem key={uf} value={uf}>
-                      {uf}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
             </div>
           </div>
         </CardContent>
