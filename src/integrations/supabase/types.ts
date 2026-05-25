@@ -1367,6 +1367,13 @@ export type Database = {
             foreignKeyName: "regiao_interesse_leads_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: true
+            referencedRelation: "vw_lead_perfil_360"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "regiao_interesse_leads_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: true
             referencedRelation: "vw_leads_duplicados"
             referencedColumns: ["id"]
           },
@@ -1597,6 +1604,90 @@ export type Database = {
           nome?: string
         }
         Relationships: []
+      }
+      campanha_lead_tasks: {
+        Row: {
+          campanha_lead_id: string
+          created_at: string
+          descarte_motivo: string | null
+          feita_em: string | null
+          feita_por: string | null
+          id: string
+          observacao: string | null
+          ordem: number
+          prazo_at: string
+          snooze_ate: string | null
+          status: string
+          tipo: string
+          updated_at: string
+        }
+        Insert: {
+          campanha_lead_id: string
+          created_at?: string
+          descarte_motivo?: string | null
+          feita_em?: string | null
+          feita_por?: string | null
+          id?: string
+          observacao?: string | null
+          ordem: number
+          prazo_at: string
+          snooze_ate?: string | null
+          status?: string
+          tipo: string
+          updated_at?: string
+        }
+        Update: {
+          campanha_lead_id?: string
+          created_at?: string
+          descarte_motivo?: string | null
+          feita_em?: string | null
+          feita_por?: string | null
+          id?: string
+          observacao?: string | null
+          ordem?: number
+          prazo_at?: string
+          snooze_ate?: string | null
+          status?: string
+          tipo?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campanha_lead_tasks_campanha_lead_id_fkey"
+            columns: ["campanha_lead_id"]
+            isOneToOne: false
+            referencedRelation: "campanha_leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campanha_lead_tasks_campanha_lead_id_fkey"
+            columns: ["campanha_lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_acompanhamento_kanban"
+            referencedColumns: ["campanha_lead_id"]
+          },
+          {
+            foreignKeyName: "campanha_lead_tasks_campanha_lead_id_fkey"
+            columns: ["campanha_lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_leads_quentes_esperando"
+            referencedColumns: ["campanha_lead_id"]
+          },
+          {
+            foreignKeyName: "campanha_lead_tasks_feita_por_fkey"
+            columns: ["feita_por"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campanha_lead_tasks_feita_por_fkey"
+            columns: ["feita_por"]
+            isOneToOne: false
+            referencedRelation: "vw_produtividade_disparos"
+            referencedColumns: ["user_id"]
+          },
+        ]
       }
       campanha_lead_touches: {
         Row: {
@@ -1831,6 +1922,13 @@ export type Database = {
             foreignKeyName: "campanha_leads_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
+            referencedRelation: "vw_lead_perfil_360"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "campanha_leads_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
             referencedRelation: "vw_leads_duplicados"
             referencedColumns: ["id"]
           },
@@ -2049,6 +2147,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "leads"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campanha_perguntas_pendentes_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_lead_perfil_360"
+            referencedColumns: ["lead_id"]
           },
           {
             foreignKeyName: "campanha_perguntas_pendentes_lead_id_fkey"
@@ -2377,6 +2482,7 @@ export type Database = {
           especialidade_ids: string[] | null
           horario_inteligente: boolean | null
           id: string
+          leads_excluidos_ids: string[] | null
           limite_diario_campanha: number | null
           mensagem: string | null
           mensagem_inicial: string | null
@@ -2396,6 +2502,7 @@ export type Database = {
           status: Database["public"]["Enums"]["status_campanha"]
           tamanho_lote: number | null
           tipo_campanha: string | null
+          tipo_envio: string
           total_aberturas: number | null
           total_aquecido: number | null
           total_cliques: number | null
@@ -2446,6 +2553,7 @@ export type Database = {
           especialidade_ids?: string[] | null
           horario_inteligente?: boolean | null
           id?: string
+          leads_excluidos_ids?: string[] | null
           limite_diario_campanha?: number | null
           mensagem?: string | null
           mensagem_inicial?: string | null
@@ -2465,6 +2573,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["status_campanha"]
           tamanho_lote?: number | null
           tipo_campanha?: string | null
+          tipo_envio?: string
           total_aberturas?: number | null
           total_aquecido?: number | null
           total_cliques?: number | null
@@ -2515,6 +2624,7 @@ export type Database = {
           especialidade_ids?: string[] | null
           horario_inteligente?: boolean | null
           id?: string
+          leads_excluidos_ids?: string[] | null
           limite_diario_campanha?: number | null
           mensagem?: string | null
           mensagem_inicial?: string | null
@@ -2534,6 +2644,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["status_campanha"]
           tamanho_lote?: number | null
           tipo_campanha?: string | null
+          tipo_envio?: string
           total_aberturas?: number | null
           total_aquecido?: number | null
           total_cliques?: number | null
@@ -3337,10 +3448,12 @@ export type Database = {
       chips: {
         Row: {
           behavior_config: Json | null
+          categoria_uso: string | null
           connection_state: string | null
           created_at: string | null
           created_by: string | null
           created_by_name: string | null
+          dono_id: string | null
           engine: string | null
           id: string
           instance_id: string | null
@@ -3351,6 +3464,7 @@ export type Database = {
           numero: string | null
           origem_padrao_inbound: string | null
           pode_disparar: boolean | null
+          privado: boolean
           profile_name: string | null
           profile_picture_url: string | null
           provedor: string | null
@@ -3362,10 +3476,12 @@ export type Database = {
         }
         Insert: {
           behavior_config?: Json | null
+          categoria_uso?: string | null
           connection_state?: string | null
           created_at?: string | null
           created_by?: string | null
           created_by_name?: string | null
+          dono_id?: string | null
           engine?: string | null
           id?: string
           instance_id?: string | null
@@ -3376,6 +3492,7 @@ export type Database = {
           numero?: string | null
           origem_padrao_inbound?: string | null
           pode_disparar?: boolean | null
+          privado?: boolean
           profile_name?: string | null
           profile_picture_url?: string | null
           provedor?: string | null
@@ -3387,10 +3504,12 @@ export type Database = {
         }
         Update: {
           behavior_config?: Json | null
+          categoria_uso?: string | null
           connection_state?: string | null
           created_at?: string | null
           created_by?: string | null
           created_by_name?: string | null
+          dono_id?: string | null
           engine?: string | null
           id?: string
           instance_id?: string | null
@@ -3401,6 +3520,7 @@ export type Database = {
           numero?: string | null
           origem_padrao_inbound?: string | null
           pode_disparar?: boolean | null
+          privado?: boolean
           profile_name?: string | null
           profile_picture_url?: string | null
           provedor?: string | null
@@ -3410,7 +3530,22 @@ export type Database = {
           updated_at?: string | null
           webhook_url?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "chips_dono_id_fkey"
+            columns: ["dono_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chips_dono_id_fkey"
+            columns: ["dono_id"]
+            isOneToOne: false
+            referencedRelation: "vw_produtividade_disparos"
+            referencedColumns: ["user_id"]
+          },
+        ]
       }
       clientes: {
         Row: {
@@ -4951,6 +5086,13 @@ export type Database = {
             foreignKeyName: "disparo_lista_itens_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
+            referencedRelation: "vw_lead_perfil_360"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "disparo_lista_itens_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
             referencedRelation: "vw_leads_duplicados"
             referencedColumns: ["id"]
           },
@@ -5124,6 +5266,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "leads"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "disparo_manual_envios_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_lead_perfil_360"
+            referencedColumns: ["lead_id"]
           },
           {
             foreignKeyName: "disparo_manual_envios_lead_id_fkey"
@@ -5401,6 +5550,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "leads"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "disparos_contatos_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_lead_perfil_360"
+            referencedColumns: ["lead_id"]
           },
           {
             foreignKeyName: "disparos_contatos_lead_id_fkey"
@@ -5867,6 +6023,13 @@ export type Database = {
             foreignKeyName: "email_contatos_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
+            referencedRelation: "vw_lead_perfil_360"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "email_contatos_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
             referencedRelation: "vw_leads_duplicados"
             referencedColumns: ["id"]
           },
@@ -5941,6 +6104,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "leads"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_interacoes_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_lead_perfil_360"
+            referencedColumns: ["lead_id"]
           },
           {
             foreignKeyName: "email_interacoes_lead_id_fkey"
@@ -7041,6 +7211,13 @@ export type Database = {
             foreignKeyName: "import_leads_failed_queue_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
+            referencedRelation: "vw_lead_perfil_360"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "import_leads_failed_queue_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
             referencedRelation: "vw_leads_duplicados"
             referencedColumns: ["id"]
           },
@@ -7248,6 +7425,13 @@ export type Database = {
             foreignKeyName: "lead_anexos_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
+            referencedRelation: "vw_lead_perfil_360"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "lead_anexos_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
             referencedRelation: "vw_leads_duplicados"
             referencedColumns: ["id"]
           },
@@ -7307,6 +7491,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "leads"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_anotacoes_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_lead_perfil_360"
+            referencedColumns: ["lead_id"]
           },
           {
             foreignKeyName: "lead_anotacoes_lead_id_fkey"
@@ -7374,6 +7565,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "leads"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_contatos_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_lead_perfil_360"
+            referencedColumns: ["lead_id"]
           },
           {
             foreignKeyName: "lead_contatos_lead_id_fkey"
@@ -7497,6 +7695,13 @@ export type Database = {
             foreignKeyName: "lead_enrichments_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: true
+            referencedRelation: "vw_lead_perfil_360"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "lead_enrichments_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: true
             referencedRelation: "vw_leads_duplicados"
             referencedColumns: ["id"]
           },
@@ -7555,6 +7760,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "leads"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_especialidades_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_lead_perfil_360"
+            referencedColumns: ["lead_id"]
           },
           {
             foreignKeyName: "lead_especialidades_lead_id_fkey"
@@ -7652,6 +7864,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "leads"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_historico_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_lead_perfil_360"
+            referencedColumns: ["lead_id"]
           },
           {
             foreignKeyName: "lead_historico_lead_id_fkey"
@@ -7848,6 +8067,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "leads"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_liberacoes_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_lead_perfil_360"
+            referencedColumns: ["lead_id"]
           },
           {
             foreignKeyName: "lead_liberacoes_lead_id_fkey"
@@ -8170,6 +8396,13 @@ export type Database = {
             foreignKeyName: "leads_merged_into_id_fkey"
             columns: ["merged_into_id"]
             isOneToOne: false
+            referencedRelation: "vw_lead_perfil_360"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "leads_merged_into_id_fkey"
+            columns: ["merged_into_id"]
+            isOneToOne: false
             referencedRelation: "vw_leads_duplicados"
             referencedColumns: ["id"]
           },
@@ -8407,6 +8640,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "leads"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_bloqueio_temporario_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_lead_perfil_360"
+            referencedColumns: ["lead_id"]
           },
           {
             foreignKeyName: "leads_bloqueio_temporario_lead_id_fkey"
@@ -10280,6 +10520,13 @@ export type Database = {
             foreignKeyName: "medicos_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
+            referencedRelation: "vw_lead_perfil_360"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "medicos_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
             referencedRelation: "vw_leads_duplicados"
             referencedColumns: ["id"]
           },
@@ -10838,6 +11085,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "leads"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "proposta_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_lead_perfil_360"
+            referencedColumns: ["lead_id"]
           },
           {
             foreignKeyName: "proposta_lead_id_fkey"
@@ -12215,6 +12469,13 @@ export type Database = {
             foreignKeyName: "sigzap_conversations_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
+            referencedRelation: "vw_lead_perfil_360"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "sigzap_conversations_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
             referencedRelation: "vw_leads_duplicados"
             referencedColumns: ["id"]
           },
@@ -12431,6 +12692,42 @@ export type Database = {
           },
           {
             foreignKeyName: "sigzap_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sigzap_conversation_origem"
+            referencedColumns: ["conversation_id"]
+          },
+        ]
+      }
+      sigzap_pinned_conversations: {
+        Row: {
+          conversation_id: string
+          id: string
+          pinned_at: string
+          user_id: string
+        }
+        Insert: {
+          conversation_id: string
+          id?: string
+          pinned_at?: string
+          user_id: string
+        }
+        Update: {
+          conversation_id?: string
+          id?: string
+          pinned_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sigzap_pinned_conversations_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "sigzap_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sigzap_pinned_conversations_conversation_id_fkey"
             columns: ["conversation_id"]
             isOneToOne: false
             referencedRelation: "vw_sigzap_conversation_origem"
@@ -12768,6 +13065,13 @@ export type Database = {
             foreignKeyName: "tarefas_captacao_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
+            referencedRelation: "vw_lead_perfil_360"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "tarefas_captacao_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
             referencedRelation: "vw_leads_duplicados"
             referencedColumns: ["id"]
           },
@@ -12846,6 +13150,13 @@ export type Database = {
             foreignKeyName: "trafego_pago_conversoes_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
+            referencedRelation: "vw_lead_perfil_360"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "trafego_pago_conversoes_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
             referencedRelation: "vw_leads_duplicados"
             referencedColumns: ["id"]
           },
@@ -12919,6 +13230,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "leads"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trafego_pago_envios_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_lead_perfil_360"
+            referencedColumns: ["lead_id"]
           },
           {
             foreignKeyName: "trafego_pago_envios_lead_id_fkey"
@@ -13536,6 +13854,13 @@ export type Database = {
             foreignKeyName: "campanha_leads_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
+            referencedRelation: "vw_lead_perfil_360"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "campanha_leads_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
             referencedRelation: "vw_leads_duplicados"
             referencedColumns: ["id"]
           },
@@ -13569,6 +13894,110 @@ export type Database = {
           total_leads: number | null
         }
         Relationships: []
+      }
+      vw_campanha_tasks_dashboard: {
+        Row: {
+          campanha_id: string | null
+          campanha_lead_id: string | null
+          campanha_nome: string | null
+          feita_em: string | null
+          feita_por: string | null
+          lead_id: string | null
+          lead_nome: string | null
+          lead_phone: string | null
+          ordem: number | null
+          prazo_at: string | null
+          situacao: string | null
+          status: string | null
+          task_id: string | null
+          tipo: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campanha_lead_tasks_campanha_lead_id_fkey"
+            columns: ["campanha_lead_id"]
+            isOneToOne: false
+            referencedRelation: "campanha_leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campanha_lead_tasks_campanha_lead_id_fkey"
+            columns: ["campanha_lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_acompanhamento_kanban"
+            referencedColumns: ["campanha_lead_id"]
+          },
+          {
+            foreignKeyName: "campanha_lead_tasks_campanha_lead_id_fkey"
+            columns: ["campanha_lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_leads_quentes_esperando"
+            referencedColumns: ["campanha_lead_id"]
+          },
+          {
+            foreignKeyName: "campanha_lead_tasks_feita_por_fkey"
+            columns: ["feita_por"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campanha_lead_tasks_feita_por_fkey"
+            columns: ["feita_por"]
+            isOneToOne: false
+            referencedRelation: "vw_produtividade_disparos"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "campanha_leads_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "campanhas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campanha_leads_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "vw_campanha_metricas"
+            referencedColumns: ["campanha_id"]
+          },
+          {
+            foreignKeyName: "campanha_leads_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "vw_campanhas_dashboard"
+            referencedColumns: ["campanha_id"]
+          },
+          {
+            foreignKeyName: "campanha_leads_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campanha_leads_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_lead_perfil_360"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "campanha_leads_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_leads_duplicados"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campanha_leads_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_leads_quentes_esperando"
+            referencedColumns: ["lead_id"]
+          },
+        ]
       }
       vw_campanhas_audit_recent: {
         Row: {
@@ -13607,6 +14036,7 @@ export type Database = {
           disparos_hoje: number | null
           disparos_ontem: number | null
           em_conversa: number | null
+          especialidade_id: string | null
           limite_diario_campanha: number | null
           next_batch_at: string | null
           nome: string | null
@@ -13622,7 +14052,22 @@ export type Database = {
           total_falhas: number | null
           updated_at: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "campanhas_especialidade_id_fkey"
+            columns: ["especialidade_id"]
+            isOneToOne: false
+            referencedRelation: "especialidades"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campanhas_especialidade_id_fkey"
+            columns: ["especialidade_id"]
+            isOneToOne: false
+            referencedRelation: "vw_especialidade_pool_count"
+            referencedColumns: ["especialidade_id"]
+          },
+        ]
       }
       vw_chip_health: {
         Row: {
@@ -13665,6 +14110,78 @@ export type Database = {
           especialidade_id: string | null
           especialidade_nome: string | null
           total_leads: number | null
+        }
+        Relationships: []
+      }
+      vw_lead_perfil_360: {
+        Row: {
+          campanhas_ativas: number | null
+          cidade: string | null
+          classificacao: string | null
+          convertido_por: string | null
+          cooldown_ate: string | null
+          cpf: string | null
+          crm: string | null
+          data_conversao: string | null
+          em_blacklist: boolean | null
+          lead_criado_em: string | null
+          lead_id: string | null
+          nome: string | null
+          opt_out: boolean | null
+          phone_e164: string | null
+          tags: string[] | null
+          total_campanhas: number | null
+          uf: string | null
+          ultima_msg_sigzap: string | null
+          vezes_convertido: number | null
+          vezes_perdido: number | null
+          vezes_quente: number | null
+        }
+        Insert: {
+          campanhas_ativas?: never
+          cidade?: string | null
+          classificacao?: string | null
+          convertido_por?: string | null
+          cooldown_ate?: string | null
+          cpf?: string | null
+          crm?: string | null
+          data_conversao?: string | null
+          em_blacklist?: never
+          lead_criado_em?: string | null
+          lead_id?: string | null
+          nome?: string | null
+          opt_out?: boolean | null
+          phone_e164?: string | null
+          tags?: string[] | null
+          total_campanhas?: never
+          uf?: string | null
+          ultima_msg_sigzap?: never
+          vezes_convertido?: never
+          vezes_perdido?: never
+          vezes_quente?: never
+        }
+        Update: {
+          campanhas_ativas?: never
+          cidade?: string | null
+          classificacao?: string | null
+          convertido_por?: string | null
+          cooldown_ate?: string | null
+          cpf?: string | null
+          crm?: string | null
+          data_conversao?: string | null
+          em_blacklist?: never
+          lead_criado_em?: string | null
+          lead_id?: string | null
+          nome?: string | null
+          opt_out?: boolean | null
+          phone_e164?: string | null
+          tags?: string[] | null
+          total_campanhas?: never
+          uf?: string | null
+          ultima_msg_sigzap?: never
+          vezes_convertido?: never
+          vezes_perdido?: never
+          vezes_quente?: never
         }
         Relationships: []
       }
@@ -13755,6 +14272,20 @@ export type Database = {
         }
         Relationships: []
       }
+      vw_leads_funil_stats: {
+        Row: {
+          blacklist: number | null
+          convertidos: number | null
+          em_campanha: number | null
+          novos_7d: number | null
+          opt_out: number | null
+          proibidos: number | null
+          quentes: number | null
+          sem_telefone: number | null
+          total: number | null
+        }
+        Relationships: []
+      }
       vw_leads_quentes_esperando: {
         Row: {
           campanha_id: string | null
@@ -13809,6 +14340,31 @@ export type Database = {
           user_id: string | null
         }
         Relationships: []
+      }
+      vw_sigzap_atividade_equipe: {
+        Row: {
+          conversas_atribuidas: number | null
+          msgs_enviadas: number | null
+          nome_completo: string | null
+          ultima_atividade: string | null
+          user_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sigzap_conversations_assigned_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sigzap_conversations_assigned_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "vw_produtividade_disparos"
+            referencedColumns: ["user_id"]
+          },
+        ]
       }
       vw_sigzap_conversation_origem: {
         Row: {
@@ -13909,6 +14465,15 @@ export type Database = {
       calcular_status_resposta_atividade: {
         Args: { p_respondido_em: string; p_resposta_esperada_ate: string }
         Returns: string
+      }
+      campanha_wizard_preview: {
+        Args: {
+          p_especialidade_ids?: string[]
+          p_exclude_lead_ids?: string[]
+          p_sample_limit?: number
+          p_uf?: string
+        }
+        Returns: Json
       }
       can_manage_disparo_listas: {
         Args: { _user_id: string }

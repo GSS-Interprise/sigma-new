@@ -8,6 +8,17 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -45,6 +56,7 @@ import {
   User as UserIcon,
   MessageCircle,
   CheckCircle2,
+  Lock,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -53,6 +65,7 @@ import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { useUserSetor } from "@/hooks/useUserSetor";
 import { useAuth } from "@/contexts/AuthContext";
+import { usePermissions } from "@/hooks/usePermissions";
 import {
   useCriarDemanda,
   useUploadAnexoDemanda,
@@ -65,6 +78,7 @@ import {
   useToggleConfirmacaoDemanda,
   useDemandaAnexos,
   useDeleteAnexoDemanda,
+  useAtualizarStatusDemanda,
   getDemandaAnexoSignedUrl,
 } from "@/hooks/useDemandas";
 import { URGENCIA_LABEL } from "@/lib/setoresAccess";
@@ -112,12 +126,14 @@ function initials(name?: string | null) {
 export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = null, prefillTitulo, prefillDescricao }: Props) {
   const { setorId } = useUserSetor();
   const { user } = useAuth();
+  const { isAdmin } = usePermissions();
   const navigate = useNavigate();
   const criar = useCriarDemanda();
   const atualizar = useAtualizarDemanda();
   const comentar = useAdicionarComentarioDemanda();
   const upload = useUploadAnexoDemanda();
   const removerAnexo = useDeleteAnexoDemanda();
+  const atualizarStatus = useAtualizarStatusDemanda();
 
   const tarefaIdValido = !!tarefaId && UUID_RE.test(tarefaId);
   const isEditing = tarefaIdValido;
@@ -1143,57 +1159,107 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
         </div>
 
         <DialogFooter className="shrink-0 border-t bg-background px-5 py-3 sm:justify-between gap-2">
-          {isEditing && tarefaExistente ? (() => {
-            const envolvidosIds = Array.from(new Set([
-              tarefaExistente.created_by,
-              tarefaExistente.responsavel_id,
-              ...(tarefaExistente.mencionados ?? []).map((m) => m.user_id),
-            ].filter((x): x is string => !!x)));
-            const confirmadosSet = new Set(confirmacoes.map((c) => c.user_id));
-            const total = envolvidosIds.length;
-            const feitas = envolvidosIds.filter((id) => confirmadosSet.has(id)).length;
-            const eEnvolvido = !!user?.id && envolvidosIds.includes(user.id);
-            const jaConfirmou = !!user?.id && confirmadosSet.has(user.id);
-            const jaConcluida = tarefaExistente.status === "concluida";
-            if (!eEnvolvido && total > 0) {
+          <div className="flex items-center gap-2">
+            {isEditing && tarefaExistente ? (() => {
+              const envolvidosIds = Array.from(new Set([
+                tarefaExistente.created_by,
+                tarefaExistente.responsavel_id,
+                ...(tarefaExistente.mencionados ?? []).map((m) => m.user_id),
+              ].filter((x): x is string => !!x)));
+              const confirmadosSet = new Set(confirmacoes.map((c) => c.user_id));
+              const total = envolvidosIds.length;
+              const feitas = envolvidosIds.filter((id) => confirmadosSet.has(id)).length;
+              const eEnvolvido = !!user?.id && envolvidosIds.includes(user.id);
+              const jaConfirmou = !!user?.id && confirmadosSet.has(user.id);
+              const jaConcluida = tarefaExistente.status === "concluida";
+              if (!eEnvolvido && total >  0) {
+                return (
+                  <span className="text-[11px] text-muted-foreground">
+                    {feitas}/{total} confirmaram conclusão
+                  </span>
+                );
+              }
+              if (!eEnvolvido) return <span />;
               return (
-                <span className="text-[11px] text-muted-foreground">
-                  {feitas}/{total} confirmaram conclusão
-                </span>
+                <>
+                  <Button
+                    type="button"
+                    variant={jaConfirmou ? "outline" : "default"}
+                    size="sm"
+                    disabled={toggleConfirmacao.isPending || jaConcluida}
+                    onClick={() =>
+                      toggleConfirmacao.mutate({
+                        tarefaId: tarefaExistente.id,
+                        confirmar: !jaConfirmou,
+                        envolvidosIds,
+                      })
+                    }
+                    className={cn("gap-1", jaConfirmou && "text-green-600 border-green-600/40")}
+                    title={
+                      jaConfirmou
+                        ? "Você confirmou. Clique para desfazer."
+                        : "Marcar minha parte como realizada"
+                    }
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                    {jaConfirmou ? "Confirmado por você" : "Marcar como realizada"}
+                  </Button>
+                  <span className="text-[11px] text-muted-foreground">
+                    {feitas}/{total} confirmaram
+                    {jaConcluida && " · concluída"}
+                  </span>
+                </>
               );
-            }
-            if (!eEnvolvido) return <span />;
-            return (
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant={jaConfirmou ? "outline" : "default"}
-                  size="sm"
-                  disabled={toggleConfirmacao.isPending || jaConcluida}
-                  onClick={() =>
-                    toggleConfirmacao.mutate({
-                      tarefaId: tarefaExistente.id,
-                      confirmar: !jaConfirmou,
-                      envolvidosIds,
-                    })
-                  }
-                  className={cn("gap-1", jaConfirmou && "text-green-600 border-green-600/40")}
-                  title={
-                    jaConfirmou
-                      ? "Você confirmou. Clique para desfazer."
-                      : "Marcar minha parte como realizada"
-                  }
-                >
-                  <CheckCircle2 className="h-4 w-4" />
-                  {jaConfirmou ? "Confirmado por você" : "Marcar como realizada"}
-                </Button>
-                <span className="text-[11px] text-muted-foreground">
-                  {feitas}/{total} confirmaram
-                  {jaConcluida && " · concluída"}
-                </span>
-              </div>
-            );
-          })() : <span />}
+            })() : <span />}
+            {isEditing && tarefaExistente && isAdmin && tarefaExistente.status !== "concluida" && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    className="gap-1"
+                    disabled={atualizarStatus.isPending}
+                    title="Encerrar tarefa (admin)"
+                  >
+                    <Lock className="h-4 w-4" />
+                    Encerrar tarefa
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Encerrar esta tarefa?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Esta ação marca a tarefa como concluída imediatamente, sem esperar confirmações.
+                      Apenas administradores podem realizar essa operação.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={() => {
+                        atualizarStatus.mutate(
+                          { id: tarefaExistente.id, status: "concluida" },
+                          {
+                            onSuccess: () => {
+                              toast.success("Tarefa encerrada pelo administrador");
+                            },
+                          }
+                        );
+                      }}
+                    >
+                      Encerrar
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
+            {isEditing && tarefaExistente && isAdmin && tarefaExistente.status === "concluida" && (
+              <span className="text-[11px] text-muted-foreground">
+                Encerrada · apenas admin pode reabrir
+              </span>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             <Button variant="ghost" onClick={() => onOpenChange(false)}>
               Cancelar
