@@ -1069,6 +1069,35 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                       ))}
                     </div>
                   )}
+                  {pastedImages.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {pastedImages.map((f, idx) => (
+                        <div
+                          key={`${f.name}-${idx}`}
+                          className="relative group h-16 w-16 rounded-md overflow-hidden border bg-muted"
+                        >
+                          {pastedPreviews[idx] && (
+                            <img
+                              src={pastedPreviews[idx]}
+                              alt={f.name}
+                              className="h-full w-full object-cover cursor-zoom-in"
+                              onClick={() => setLightboxUrl(pastedPreviews[idx])}
+                            />
+                          )}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setPastedImages((p) => p.filter((_, i) => i !== idx))
+                            }
+                            className="absolute top-0.5 right-0.5 rounded-full bg-background/80 p-0.5 opacity-0 group-hover:opacity-100 transition"
+                            aria-label="Remover imagem"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[11px] text-muted-foreground">
                       {comentarioPessoas.length > 0
@@ -1111,20 +1140,35 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                         type="button"
                         size="sm"
                         className="h-8 gap-1.5"
-                        disabled={!comentarioInicial.trim() || comentar.isPending}
+                        disabled={
+                          (!comentarioInicial.trim() && pastedImages.length === 0) ||
+                          comentar.isPending ||
+                          upload.isPending
+                        }
                         onClick={async () => {
-                          if (!tarefaId || !comentarioInicial.trim()) return;
+                          if (!tarefaId) return;
+                          if (!comentarioInicial.trim() && pastedImages.length === 0) return;
                           try {
+                            const imageLinks: { titulo: string; url: string; tipo?: string }[] = [];
+                            for (const f of pastedImages) {
+                              const path = await upload.mutateAsync({
+                                tarefaId,
+                                file: f,
+                                nome: f.name,
+                              });
+                              imageLinks.push({ titulo: f.name, url: path, tipo: "image" });
+                            }
                             await comentar.mutateAsync({
                               tarefaId,
-                              conteudo: comentarioInicial.trim(),
+                              conteudo: comentarioInicial.trim() || "(imagem)",
                               mencionados: comentarioPessoas,
-                              links,
+                              links: [...links, ...imageLinks],
                             });
                             setComentarioInicial("");
                             setComentarioPessoas([]);
                             setComentarioCaret(0);
                             setLinks([]);
+                            setPastedImages([]);
                           } catch {
                             /* toast no hook */
                           }
