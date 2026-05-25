@@ -199,6 +199,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
       setLinks([]);
       setNovoLinkTitulo("");
       setNovoLinkUrl("");
+      setPastedImages([]);
     }
   }, [open, defaultDate, isEditing, prefillTitulo, prefillDescricao]);
 
