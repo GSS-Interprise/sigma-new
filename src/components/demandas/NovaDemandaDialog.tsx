@@ -167,6 +167,18 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
   const [links, setLinks] = useState<{ titulo: string; url: string }[]>([]);
   const [novoLinkTitulo, setNovoLinkTitulo] = useState("");
   const [novoLinkUrl, setNovoLinkUrl] = useState("");
+  const [pastedImages, setPastedImages] = useState<File[]>([]);
+  const [pastedPreviews, setPastedPreviews] = useState<string[]>([]);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+
+  // Object URLs para preview local; libera ao desmontar/alterar
+  useEffect(() => {
+    const urls = pastedImages.map((f) => URL.createObjectURL(f));
+    setPastedPreviews(urls);
+    return () => {
+      urls.forEach((u) => URL.revokeObjectURL(u));
+    };
+  }, [pastedImages]);
 
   useEffect(() => {
     if (!open) return;
