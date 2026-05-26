@@ -14959,6 +14959,7 @@ export type Database = {
         | "suspenso_revogado"
         | "nao_ganhamos"
         | "capitacao_de_credenciamento"
+        | "proposta_presencial"
       status_medico: "Ativo" | "Inativo" | "Suspenso"
       status_pagamento: "pendente" | "pago" | "atrasado" | "cancelado"
       status_patrimonio: "ativo" | "transferido" | "baixado"
@@ -15345,6 +15346,7 @@ export const Constants = {
         "suspenso_revogado",
         "nao_ganhamos",
         "capitacao_de_credenciamento",
+        "proposta_presencial",
       ],
       status_medico: ["Ativo", "Inativo", "Suspenso"],
       status_pagamento: ["pendente", "pago", "atrasado", "cancelado"],
