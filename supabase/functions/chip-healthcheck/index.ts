@@ -36,14 +36,19 @@ serve(async (req) => {
     const evoKey = evoConfig?.find((c: any) => c.campo_nome === "evolution_api_key")?.valor;
     if (!evoUrl || !evoKey) throw new Error("Evolution não configurada");
 
-    // Só chips que o usuário marcou como "pode disparar". Ativos + suspeitos
-    // (este último pra detectar recuperação e voltar pra 'ativo').
-    // Ignora chips inativos (desligados deliberadamente) e sem instance_name.
+    // Só chips de PROSPECÇÃO IA. Chips de operadora manual (Amanda, Bruna,
+    // Letícia, Ester, etc.) não devem entrar — quando o WhatsApp Web cai no
+    // celular delas, elas mesmas reabrem. Pingar com sendPresence força a
+    // Evolution a reportar 'close' indevidamente nesses chips pessoais,
+    // marcando como suspeito e impedindo envio manual via Sigma.
+    // Incidente 26/05/2026: healthcheck derrubou 22 chips manuais ao mesmo
+    // tempo, equipe inteira ficou sem enviar nem reconectar QR.
     const { data: chips } = await supabase
       .from("chips")
-      .select("id, nome, instance_name, status, connection_state, tipo_instancia, pode_disparar")
+      .select("id, nome, instance_name, status, connection_state, tipo_instancia, pode_disparar, categoria_uso")
       .eq("tipo_instancia", "disparos")
       .eq("pode_disparar", true)
+      .eq("categoria_uso", "prospeccao_ia")
       .in("status", ["ativo", "suspeito"])
       .not("instance_name", "is", null);
 
