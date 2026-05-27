@@ -70,6 +70,11 @@ Deno.serve(async (req) => {
     const { action, instanceName, data } = await req.json() as EvolutionRequest;
     console.log(`Evolution API Proxy - Action: ${action}, Instance: ${instanceName || 'N/A'}`);
 
+    // FIX 27/05/2026: nomes de instance com espaço, ç, ã (ex: "Amanda porspecção",
+    // "IPHONE ANTÔNIA - DISPARO AGENDAS") quebravam URL fetch sem encode —
+    // edge function retornava erro 500 e equipe não conseguia gerar QR.
+    const encInstance = instanceName ? encodeURIComponent(instanceName) : "";
+
     const headers = {
       "apikey": evolutionApiKey,
       "Content-Type": "application/json",
@@ -107,13 +112,13 @@ Deno.serve(async (req) => {
 
       case "connectInstance":
         if (!instanceName) throw new Error("instanceName é obrigatório");
-        endpoint = `${evolutionApiUrl}/instance/connect/${instanceName}`;
+        endpoint = `${evolutionApiUrl}/instance/connect/${encInstance}`;
         response = await fetch(endpoint, { method: "GET", headers });
         break;
 
       case "connectionState":
         if (!instanceName) throw new Error("instanceName é obrigatório");
-        endpoint = `${evolutionApiUrl}/instance/connectionState/${instanceName}`;
+        endpoint = `${evolutionApiUrl}/instance/connectionState/${encInstance}`;
         response = await fetch(endpoint, { method: "GET", headers });
         break;
 
@@ -133,21 +138,21 @@ Deno.serve(async (req) => {
 
       case "logoutInstance":
         if (!instanceName) throw new Error("instanceName é obrigatório");
-        endpoint = `${evolutionApiUrl}/instance/logout/${instanceName}`;
+        endpoint = `${evolutionApiUrl}/instance/logout/${encInstance}`;
         method = "DELETE";
         response = await fetch(endpoint, { method, headers });
         break;
 
       case "deleteInstance":
         if (!instanceName) throw new Error("instanceName é obrigatório");
-        endpoint = `${evolutionApiUrl}/instance/delete/${instanceName}`;
+        endpoint = `${evolutionApiUrl}/instance/delete/${encInstance}`;
         method = "DELETE";
         response = await fetch(endpoint, { method, headers });
         break;
 
       case "setSettings":
         if (!instanceName) throw new Error("instanceName é obrigatório");
-        endpoint = `${evolutionApiUrl}/settings/set/${instanceName}`;
+        endpoint = `${evolutionApiUrl}/settings/set/${encInstance}`;
         method = "POST";
         body = JSON.stringify(data);
         response = await fetch(endpoint, { method, headers, body });
@@ -155,13 +160,13 @@ Deno.serve(async (req) => {
 
       case "fetchInstance":
         if (!instanceName) throw new Error("instanceName é obrigatório");
-        endpoint = `${evolutionApiUrl}/instance/fetchInstances?instanceName=${instanceName}`;
+        endpoint = `${evolutionApiUrl}/instance/fetchInstances?instanceName=${encInstance}`;
         response = await fetch(endpoint, { method: "GET", headers });
         break;
 
       case "setProxy":
         if (!instanceName) throw new Error("instanceName é obrigatório");
-        endpoint = `${evolutionApiUrl}/proxy/set/${instanceName}`;
+        endpoint = `${evolutionApiUrl}/proxy/set/${encInstance}`;
         method = "POST";
         body = JSON.stringify(data);
         console.log(`Setting proxy for ${instanceName}:`, data);
@@ -170,13 +175,13 @@ Deno.serve(async (req) => {
 
       case "getProxy":
         if (!instanceName) throw new Error("instanceName é obrigatório");
-        endpoint = `${evolutionApiUrl}/proxy/find/${instanceName}`;
+        endpoint = `${evolutionApiUrl}/proxy/find/${encInstance}`;
         response = await fetch(endpoint, { method: "GET", headers });
         break;
 
       case "setWebhook":
         if (!instanceName) throw new Error("instanceName é obrigatório");
-        endpoint = `${evolutionApiUrl}/webhook/set/${instanceName}`;
+        endpoint = `${evolutionApiUrl}/webhook/set/${encInstance}`;
         method = "POST";
         // Evolution API v2 espera { webhook: { ... } } com byEvents e base64 (não webhookByEvents/webhookBase64)
         const webhookPayload = {
@@ -195,13 +200,13 @@ Deno.serve(async (req) => {
 
       case "findWebhook":
         if (!instanceName) throw new Error("instanceName é obrigatório");
-        endpoint = `${evolutionApiUrl}/webhook/find/${instanceName}`;
+        endpoint = `${evolutionApiUrl}/webhook/find/${encInstance}`;
         response = await fetch(endpoint, { method: "GET", headers });
         break;
 
       case "findMessages":
         if (!instanceName) throw new Error("instanceName é obrigatório");
-        endpoint = `${evolutionApiUrl}/chat/findMessages/${instanceName}`;
+        endpoint = `${evolutionApiUrl}/chat/findMessages/${encInstance}`;
         method = "POST";
         body = JSON.stringify(data);
         console.log(`Finding messages for ${instanceName}:`, data);
@@ -210,7 +215,7 @@ Deno.serve(async (req) => {
 
       case "checkIsOnWhatsapp":
         if (!instanceName) throw new Error("instanceName é obrigatório");
-        endpoint = `${evolutionApiUrl}/chat/whatsappNumbers/${instanceName}`;
+        endpoint = `${evolutionApiUrl}/chat/whatsappNumbers/${encInstance}`;
         method = "POST";
         body = JSON.stringify(data);
         console.log(`Checking WhatsApp numbers for ${instanceName}:`, data);
@@ -219,7 +224,7 @@ Deno.serve(async (req) => {
 
       case "fetchProfile":
         if (!instanceName) throw new Error("instanceName é obrigatório");
-        endpoint = `${evolutionApiUrl}/chat/fetchProfile/${instanceName}`;
+        endpoint = `${evolutionApiUrl}/chat/fetchProfile/${encInstance}`;
         method = "POST";
         body = JSON.stringify(data);
         response = await fetch(endpoint, { method, headers, body });
