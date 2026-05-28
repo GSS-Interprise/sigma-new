@@ -84,6 +84,12 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead }: Pr
   const [bPalavrasProibidas, setBPalavrasProibidas] = useState(""); // Termos que a IA não pode usar
   const [previewOpen, setPreviewOpen] = useState(false);
   const [excludedLeadIds, setExcludedLeadIds] = useState<Set<string>>(new Set());
+  // Identidade do remetente — arquitetura templates-email-por-campanha.md.
+  // Aplicado em todos os templates que tem {{nome_remetente}}, {{whatsapp_remetente}},
+  // {{descricao_oportunidade}} (passos de WhatsApp reforço D+2 e Email D+3).
+  const [nomeRemetente, setNomeRemetente] = useState("Equipe GSS");
+  const [whatsappRemetente, setWhatsappRemetente] = useState("");
+  const [descricaoOportunidade, setDescricaoOportunidade] = useState("");
   const qc = useQueryClient();
 
   const { data: especialidades = [] } = useQuery({
@@ -212,6 +218,10 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead }: Pr
           tipo_envio: tipoEnvio,
           leads_excluidos_ids:
             excludedLeadIds.size > 0 ? Array.from(excludedLeadIds) : null,
+          // Identidade do remetente (templates-email-por-campanha.md)
+          nome_remetente: nomeRemetente || "Equipe GSS",
+          whatsapp_remetente: whatsappRemetente || null,
+          descricao_oportunidade: descricaoOportunidade || null,
           criado_por: user.user?.id,
         })
         .select()
@@ -277,6 +287,9 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead }: Pr
     setBResposta1("");
     setBObjecao2("");
     setBResposta2("");
+    setNomeRemetente("Equipe GSS");
+    setWhatsappRemetente("");
+    setDescricaoOportunidade("");
     setBInfoExtra("");
     setBInicioServico("");
     setBPagamento("");
@@ -382,6 +395,74 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead }: Pr
                 onChange={(e) => setNome(e.target.value)}
                 placeholder="Ex: Intensivistas Pediátricos - SC"
               />
+            </div>
+
+            {/* Identidade do remetente — controla quem assina email/WhatsApp e qual o conteúdo da oportunidade.
+                Sem isso, o template usa default genérico "Equipe GSS" e a frase fica fraca. */}
+            <div className="space-y-3 rounded-md border border-amber-200 bg-amber-50/40 p-3">
+              <div>
+                <Label className="text-sm font-semibold flex items-center gap-1.5">
+                  ✉️ Identidade do remetente
+                </Label>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Como o médico vai te ver no email e no WhatsApp. Sem isso, sai genérico.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Nome do remetente *</Label>
+                  <Input
+                    value={nomeRemetente}
+                    onChange={(e) => setNomeRemetente(e.target.value)}
+                    placeholder="Ex: Dr. Maikon Madeira"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">WhatsApp do remetente (opcional)</Label>
+                  <Input
+                    value={whatsappRemetente}
+                    onChange={(e) => setWhatsappRemetente(e.target.value)}
+                    placeholder="(51) 99540-1928"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs">Descrição da oportunidade *</Label>
+                <Textarea
+                  value={descricaoOportunidade}
+                  onChange={(e) => setDescricaoOportunidade(e.target.value)}
+                  placeholder="Ex: uma vaga de Telediagnóstico em Radiologia, 100% remoto, atendendo 3 hospitais em SC"
+                  rows={2}
+                  className="text-sm"
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  Vai entrar no email assim: "Estamos com <em>{descricaoOportunidade || "..."}</em> — valores, estrutura..."
+                </p>
+              </div>
+
+              {/* Preview do email renderizado */}
+              {(nomeRemetente || descricaoOportunidade) && (
+                <details className="text-xs">
+                  <summary className="cursor-pointer text-amber-700 font-medium">
+                    👁 Ver preview do email
+                  </summary>
+                  <div className="mt-2 rounded border border-amber-200 bg-white p-3 font-mono text-[11px] whitespace-pre-wrap leading-relaxed text-foreground">
+{`Olá Dr(a). [NOME DO MÉDICO],
+
+Sou ${nomeRemetente || "[NOME REMETENTE]"}, da equipe GSS Saúde. Como não consegui falar com você pelo WhatsApp, estou te escrevendo por aqui.
+
+Estamos com ${descricaoOportunidade || "[DESCRIÇÃO DA OPORTUNIDADE]"} — valores, estrutura e condições completas posso compartilhar assim que tivermos um papo rápido.
+
+Se tiver interesse, basta responder este email${whatsappRemetente ? ` ou me chamar direto no WhatsApp: ${whatsappRemetente}` : ""}.
+
+Abraço,
+${nomeRemetente || "[NOME REMETENTE]"}
+GSS Saúde`}
+                  </div>
+                </details>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
