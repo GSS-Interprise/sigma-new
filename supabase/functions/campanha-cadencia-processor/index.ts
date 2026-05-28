@@ -41,7 +41,7 @@ serve(async (req) => {
       .select(`
         id, campanha_id, lead_id, status, canal_atual, chip_usado_id, proximo_touch_em, proximo_passo_id, touches_executados, humano_assumiu,
         lead:lead_id(id, nome, phone_e164, email, uf, cidade, opt_out, classificacao, cooldown_ate),
-        campanha:campanha_id(id, nome, status, cadencia_ativa, cadencia_template_id, briefing_ia, chip_id, chip_ids)
+        campanha:campanha_id(id, nome, status, cadencia_ativa, cadencia_template_id, briefing_ia, chip_id, chip_ids, whatsapp_remetente, nome_remetente, descricao_oportunidade, regiao_estado)
       `)
       .not("proximo_touch_em", "is", null)
       .lte("proximo_touch_em", agora)
@@ -195,6 +195,11 @@ async function executarWhatsApp(supabase: any, cl: any, lead: any, campanha: any
     cidade: briefing.cidade || lead.cidade || "",
     hospital: briefing.hospital || "",
     servico: briefing.nome_servico || "",
+    // Variáveis por campanha (arquitetura templates-email-por-campanha.md)
+    nome_remetente: campanha.nome_remetente || "Equipe GSS",
+    whatsapp_remetente: campanha.whatsapp_remetente || "",
+    descricao_oportunidade: campanha.descricao_oportunidade || "uma oportunidade na sua área",
+    cidade_oportunidade: campanha.regiao_estado || briefing.cidade || "",
   });
 
   const phone = normalizeBrazilPhone(lead.phone_e164 || "");
@@ -238,6 +243,11 @@ async function executarEmail(supabase: any, cl: any, lead: any, campanha: any, p
     cidade: briefing.cidade || lead.cidade || "",
     hospital: briefing.hospital || "",
     servico: briefing.nome_servico || "",
+    // Variáveis por campanha (arquitetura templates-email-por-campanha.md)
+    nome_remetente: campanha.nome_remetente || "Equipe GSS",
+    whatsapp_remetente: campanha.whatsapp_remetente || "",
+    descricao_oportunidade: campanha.descricao_oportunidade || "uma oportunidade na sua área",
+    cidade_oportunidade: campanha.regiao_estado || briefing.cidade || "",
   };
   const subject = resolveTemplate(passo.subject_template || `Sobre a oportunidade em ${vars.cidade}`, vars);
   const text = resolveTemplate(passo.mensagem_template || "", vars);
@@ -297,8 +307,13 @@ async function clearTouch(supabase: any, clId: string, motivo: string) {
 }
 
 function resolveTemplate(tpl: string, vars: Record<string, string>): string {
+  let txt = tpl;
+  // Blocos condicionais {{#var}}...{{/var}} — se var vazia, remove bloco inteiro
+  txt = txt.replace(/\{\{#(\w+)\}\}([\s\S]*?)\{\{\/\1\}\}/g, (_, name, inner) => {
+    return vars[name] ? inner : "";
+  });
   // Spintax {opt1|opt2}
-  let txt = tpl.replace(/\{([^{}]*\|[^{}]*)\}/g, (_, g1) => {
+  txt = txt.replace(/\{([^{}]*\|[^{}]*)\}/g, (_, g1) => {
     const opts = String(g1).split("|");
     return opts[Math.floor(Math.random() * opts.length)];
   });
