@@ -2475,6 +2475,7 @@ export type Database = {
           delay_max_ms: number | null
           delay_min_ms: number | null
           descricao: string | null
+          descricao_oportunidade: string | null
           disparos_enviados: number | null
           disparos_falhas: number | null
           empresas_vinculadas: string[] | null
@@ -2488,6 +2489,7 @@ export type Database = {
           mensagem_inicial: string | null
           next_batch_at: string | null
           nome: string
+          nome_remetente: string | null
           objetivo: string | null
           orcamento: number | null
           pecas_url: string[] | null
@@ -2519,6 +2521,7 @@ export type Database = {
           updated_by: string | null
           updated_by_name: string | null
           variaveis_dinamicas: string[] | null
+          whatsapp_remetente: string | null
         }
         Insert: {
           agendamento_tipo?: string | null
@@ -2546,6 +2549,7 @@ export type Database = {
           delay_max_ms?: number | null
           delay_min_ms?: number | null
           descricao?: string | null
+          descricao_oportunidade?: string | null
           disparos_enviados?: number | null
           disparos_falhas?: number | null
           empresas_vinculadas?: string[] | null
@@ -2559,6 +2563,7 @@ export type Database = {
           mensagem_inicial?: string | null
           next_batch_at?: string | null
           nome: string
+          nome_remetente?: string | null
           objetivo?: string | null
           orcamento?: number | null
           pecas_url?: string[] | null
@@ -2590,6 +2595,7 @@ export type Database = {
           updated_by?: string | null
           updated_by_name?: string | null
           variaveis_dinamicas?: string[] | null
+          whatsapp_remetente?: string | null
         }
         Update: {
           agendamento_tipo?: string | null
@@ -2617,6 +2623,7 @@ export type Database = {
           delay_max_ms?: number | null
           delay_min_ms?: number | null
           descricao?: string | null
+          descricao_oportunidade?: string | null
           disparos_enviados?: number | null
           disparos_falhas?: number | null
           empresas_vinculadas?: string[] | null
@@ -2630,6 +2637,7 @@ export type Database = {
           mensagem_inicial?: string | null
           next_batch_at?: string | null
           nome?: string
+          nome_remetente?: string | null
           objetivo?: string | null
           orcamento?: number | null
           pecas_url?: string[] | null
@@ -2661,6 +2669,7 @@ export type Database = {
           updated_by?: string | null
           updated_by_name?: string | null
           variaveis_dinamicas?: string[] | null
+          whatsapp_remetente?: string | null
         }
         Relationships: [
           {
