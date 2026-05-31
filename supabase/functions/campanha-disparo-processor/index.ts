@@ -428,22 +428,14 @@ serve(async (req) => {
 
     console.log(`[disparo] Lote: sent=${sent} failed=${failed}`);
 
-    // ── Diagnóstico de chips: marca como suspeito quem teve >50% erros e >=3 tentativas ──
+    // Conceito de "suspeito" removido em 31/05/2026 a pedido do Raul.
+    // Equipe gerencia status dos chips manualmente. Só logamos métricas.
     for (const [chipId, m] of Object.entries(chipMetrics)) {
       const total = m.sucessos + m.erros;
       const taxaErro = total > 0 ? m.erros / total : 0;
       console.log(
-        `[disparo] chip ${chipId}: ok=${m.sucessos} err=${m.erros} (${Math.round(taxaErro * 100)}%)`
+        `[disparo] chip ${chipId}: ok=${m.sucessos} err=${m.erros} (${Math.round(taxaErro * 100)}%)`,
       );
-      if (total >= 3 && taxaErro >= 0.5) {
-        await supabase
-          .from("chips")
-          .update({ status: "suspeito" })
-          .eq("id", chipId);
-        console.warn(
-          `[disparo] 🚨 Chip ${chipId} marcado como suspeito (${m.erros}/${total} erros)`
-        );
-      }
     }
 
     // ── Verificar restantes ──
