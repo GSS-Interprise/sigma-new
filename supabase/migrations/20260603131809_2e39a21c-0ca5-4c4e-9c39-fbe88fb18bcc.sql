@@ -1,0 +1,1 @@
+ALTER TYPE status_licitacao ADD VALUE IF NOT EXISTS 'fracassado';
