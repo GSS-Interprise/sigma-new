@@ -110,11 +110,38 @@ Deno.serve(async (req) => {
           }
         );
 
-      case "connectInstance":
+      case "connectInstance": {
         if (!instanceName) throw new Error("instanceName é obrigatório");
-        endpoint = `${evolutionApiUrl}/instance/connect/${encInstance}`;
-        response = await fetch(endpoint, { method: "GET", headers });
-        break;
+        // FIX 02/06/2026: a janela de QR do Evolution v2.3.7 é curta e, em chip
+        // travado em close/connecting (ou recém-criado), o connect devolve
+        // {count:0} sem base64 → UI mostrava "não foi possível gerar o QR".
+        // Solução: connect; se não veio QR e não está open, chuta com restart e
+        // faz polling até o base64 aparecer (~24s). Single call da UI vira confiável.
+        const connectUrl = `${evolutionApiUrl}/instance/connect/${encInstance}`;
+        const tryConnect = async () => {
+          const r = await fetch(connectUrl, { method: "GET", headers });
+          const txt = await r.text();
+          let d: any;
+          try { d = JSON.parse(txt); } catch { d = { raw: txt }; }
+          return d;
+        };
+        let connData: any = await tryConnect();
+        if (connData?.instance?.state !== "open" && !connData?.base64) {
+          // chuta o socket pra reiniciar a geração de QR
+          try {
+            await fetch(`${evolutionApiUrl}/instance/restart/${encInstance}`, { method: "POST", headers });
+          } catch { /* ignora — segue pro polling */ }
+          for (let i = 0; i < 6 && !connData?.base64; i++) {
+            await new Promise((res) => setTimeout(res, 4000));
+            try { connData = await tryConnect(); } catch { /* tenta de novo */ }
+            if (connData?.instance?.state === "open") break;
+          }
+        }
+        return new Response(
+          JSON.stringify(connData),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
 
       case "connectionState":
         if (!instanceName) throw new Error("instanceName é obrigatório");
