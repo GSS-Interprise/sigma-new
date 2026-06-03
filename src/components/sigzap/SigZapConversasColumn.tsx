@@ -11,7 +11,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Search, RefreshCw, User, Wifi, MessageCircle, Camera, Loader2, ChevronDown, UserX } from "lucide-react";
+import { Search, RefreshCw, User, Wifi, MessageCircle, Camera, Loader2, ChevronDown, UserX, Filter } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format, isToday, isYesterday, differenceInMinutes } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -676,10 +676,13 @@ export function SigZapConversasColumn({
       <ScrollArea className="flex-1 min-h-0">
         <div className="p-2 space-y-2">
           {selectedInstanceIds.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground text-sm">
-              <Wifi className="h-10 w-10 mx-auto mb-2 opacity-20" />
-              <p>Selecione instâncias</p>
-              <p className="text-xs mt-1">para ver as conversas</p>
+            <div className="m-2 rounded-lg border border-dashed border-primary/40 bg-primary/5 px-4 py-6 text-center">
+              <Filter className="h-9 w-9 mx-auto mb-2 text-primary/60" />
+              <p className="text-sm font-semibold text-foreground">Nenhuma instância selecionada</p>
+              <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
+                Selecione um ou mais chips no <span className="font-medium text-foreground">filtro de instâncias acima</span> para ver as conversas.
+                <br />Todas as conversas do chip aparecem aqui — <span className="font-medium">com ou sem responsável</span>.
+              </p>
             </div>
           ) : loadingConversas ? (
             [...Array(5)].map((_, i) => (
