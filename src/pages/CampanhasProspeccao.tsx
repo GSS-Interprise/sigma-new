@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -74,25 +74,50 @@ type ResponsavelFiltro = "todos" | "minhas";
 
 const RESPONSAVEL_STORAGE_KEY = "campanhas-prospeccao-responsavel";
 
-function carregarResponsavelInicial(isAdmin: boolean): ResponsavelFiltro {
+// Roles que enxergam TODAS as campanhas por padrão (liderança/gestão + admin).
+// Operadora comum continua começando em "minhas".
+const ROLES_VE_TODAS = ["admin", "lideres", "gestor_captacao", "gestor_marketing", "diretoria"];
+
+function lerResponsavelSalvo(): ResponsavelFiltro | null {
   if (typeof window !== "undefined") {
     const saved = localStorage.getItem(RESPONSAVEL_STORAGE_KEY);
     if (saved === "todos" || saved === "minhas") return saved;
   }
-  // Default por role: admin vê todas, operadora vê só as dela
-  return isAdmin ? "todos" : "minhas";
+  return null;
 }
 
 export default function CampanhasProspeccao() {
   const { user } = useAuth();
-  const { isAdmin } = usePermissions();
+  const { isAdmin, isLeader, userRoles } = usePermissions();
+  // Líder/gestor (e admin) veem todas as campanhas por padrão; operadora vê só as dela.
+  const veTodasPorDefault =
+    isAdmin || isLeader || userRoles.some((r) => ROLES_VE_TODAS.includes(r.role));
   const [busca, setBusca] = useState("");
   const [statusFiltro, setStatusFiltro] = useState<StatusFiltro>("ativa");
   const [responsavelFiltro, setResponsavelFiltro] = useState<ResponsavelFiltro>(
-    () => carregarResponsavelInicial(isAdmin),
+    () => lerResponsavelSalvo() ?? "minhas",
   );
 
+  // Aplica o default por role assim que os roles carregam, se o usuário ainda não
+  // tem preferência salva — evita "minhas" travado pra líder/gestor em cold load.
+  const defaultAplicadoRef = useRef(false);
   useEffect(() => {
+    if (defaultAplicadoRef.current) return;
+    if (userRoles.length === 0) return; // roles ainda carregando
+    defaultAplicadoRef.current = true;
+    if (lerResponsavelSalvo() === null) {
+      setResponsavelFiltro(veTodasPorDefault ? "todos" : "minhas");
+    }
+  }, [userRoles, veTodasPorDefault]);
+
+  // Persiste só mudanças após o mount — não salva o placeholder inicial, pra não
+  // sobrescrever o default por role antes dos roles carregarem.
+  const montadoRef = useRef(false);
+  useEffect(() => {
+    if (!montadoRef.current) {
+      montadoRef.current = true;
+      return;
+    }
     if (typeof window !== "undefined") {
       localStorage.setItem(RESPONSAVEL_STORAGE_KEY, responsavelFiltro);
     }
