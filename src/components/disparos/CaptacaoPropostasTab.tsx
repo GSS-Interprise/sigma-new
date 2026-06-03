@@ -45,7 +45,13 @@ export function CaptacaoPropostasTab() {
   const [criarPropostaOpen, setCriarPropostaOpen] = useState(false);
   const [propostaSelecionada, setPropostaSelecionada] = useState<{ id: string; nome: string } | null>(null);
   const queryClient = useQueryClient();
-  const { isAdmin } = usePermissions();
+  const { isAdmin, isLeader, userRoles } = usePermissions();
+  const canDeleteProposta =
+    isAdmin ||
+    isLeader ||
+    userRoles.some(
+      (r) => r.role === "gestor_captacao" || r.role === "gestor_contratos"
+    );
 
   const deleteMutation = useMutation({
     mutationFn: async (propostaId: string) => {
@@ -330,7 +336,7 @@ export function CaptacaoPropostasTab() {
                                       {new Date(proposta.criado_em).toLocaleDateString("pt-BR")}
                                     </span>
                                     <Eye className="h-4 w-4 text-muted-foreground" />
-                                    {isAdmin && (
+                                    {canDeleteProposta && (
                                       <Button
                                         variant="ghost"
                                         size="icon"
