@@ -384,7 +384,7 @@ async function downloadAndStoreMedia(
       
       // Usar endpoint de download de mídia da Evolution
       // GET /message/getBase64FromMediaMessage/{instanceName}
-      const downloadEndpoint = `${evolutionUrl}/chat/getBase64FromMediaMessage/${instanceName}`;
+      const downloadEndpoint = `${evolutionUrl}/chat/getBase64FromMediaMessage/${encodeURIComponent(instanceName)}`;
       
       console.log('📡 Chamando Evolution API:', downloadEndpoint);
       

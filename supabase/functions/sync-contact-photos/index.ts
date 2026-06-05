@@ -103,7 +103,7 @@ serve(async (req) => {
             const phone = contact.contact_phone || contact.contact_jid?.replace('@s.whatsapp.net', '').replace('@c.us', '');
             if (!phone) return;
 
-            const response = await fetch(`${evolutionUrl}/chat/fetchProfilePictureUrl/${instanceName}`, {
+            const response = await fetch(`${evolutionUrl}/chat/fetchProfilePictureUrl/${encodeURIComponent(instanceName)}`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'apikey': evolutionApiKey },
               body: JSON.stringify({ number: phone }),

@@ -118,7 +118,7 @@ Deno.serve(async (req) => {
     }
 
     const callApi = async (where: Record<string, any>) => {
-      const resp = await fetch(`${evolutionUrl}/chat/findMessages/${instance.name}`, {
+      const resp = await fetch(`${evolutionUrl}/chat/findMessages/${encodeURIComponent(instance.name)}`, {
         method: "POST",
         headers: { "apikey": evolutionKey, "Content-Type": "application/json" },
         body: JSON.stringify({ where, limit, page }),
