@@ -3,6 +3,11 @@ project_id = "zupsbgtoeoixfokzkjro"
 [functions.evolution-api-proxy]
 verify_jwt = false
 
+# Auto-reconnect de chips presos em "connecting" (mitigação do flapping Baileys/proxy).
+# verify_jwt=false: invocada pelo pg_cron a cada 5 min.
+[functions.chip-auto-reconnect]
+verify_jwt = false
+
 [functions.disparos-zap-pendentes]
 verify_jwt = false
 
