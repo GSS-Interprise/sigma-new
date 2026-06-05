@@ -334,7 +334,7 @@ Deno.serve(async (req) => {
     // 6. Update contact profile (name + photo) from Evolution API
     let profileUpdated = false;
     try {
-      const profileUrl = `${evolutionUrl}/chat/fetchProfile/${instance.name}`;
+      const profileUrl = `${evolutionUrl}/chat/fetchProfile/${encodeURIComponent(instance.name)}`;
       const profileResp = await fetch(profileUrl, {
         method: "POST",
         headers: { "apikey": evolutionKey, "Content-Type": "application/json" },
