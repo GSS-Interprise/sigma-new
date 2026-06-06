@@ -39,6 +39,23 @@ serve(async (req) => {
     if (camp.status !== "ativa" && camp.status !== "rascunho")
       return json({ ok: true, msg: "Status incompatível" });
 
+    // ── Guard de janela horária (WS2) — só dispara 07-17h dias úteis (default) ──
+    if (camp.horario_inteligente_ativo) {
+      const brt = new Date(Date.now() - 3 * 3600 * 1000); // relógio de parede BRT via getters UTC
+      const horaBrt = brt.getUTCHours();
+      const jsDow = brt.getUTCDay(); // 0=dom..6=sáb
+      const diaSemanaBrt = jsDow === 0 ? 7 : jsDow; // 1=seg..7=dom
+      const ini = camp.horario_inicio_brt ?? 7;
+      const fim = camp.horario_fim_brt ?? 17;
+      const dias: number[] = camp.dias_semana ?? [1, 2, 3, 4, 5];
+      const dentroJanela = horaBrt >= ini && horaBrt < fim && dias.includes(diaSemanaBrt);
+      if (!dentroJanela) {
+        await supabase.from("campanhas").update({ next_batch_at: null }).eq("id", campanha_id);
+        console.log(`[disparo] skip fora_janela: hora_brt=${horaBrt} dia=${diaSemanaBrt} janela=${ini}-${fim}h dias=[${dias}]`);
+        return json({ ok: true, msg: "skipped:fora_janela", hora_brt: horaBrt, dia_semana: diaSemanaBrt });
+      }
+    }
+
     if (camp.next_batch_at) {
       const nextTime = new Date(camp.next_batch_at).getTime();
       if (nextTime > Date.now()) {
@@ -88,11 +105,10 @@ serve(async (req) => {
       : null;
 
     // ── Config ──
-    const batchSize = camp.batch_size || 10;
+    // WS2: batch_size e delay_between_batches deixaram de reger o ritmo —
+    // agora é 1 cold/chip por ciclo + espaçamento fixo em minutos (ver abaixo).
     const delayMinMs = camp.delay_min_ms || 8000;
     const delayMaxMs = camp.delay_max_ms || 25000;
-    const delayBatchMinMs = (camp.delay_between_batches_min || 300) * 1000;
-    const delayBatchMaxMs = (camp.delay_between_batches_max || 600) * 1000;
     const chipIds: string[] = camp.chip_ids || [];
     const rotation = camp.rotation_strategy || "round_robin";
     const limiteDiario = camp.limite_diario_campanha || 120;
@@ -144,6 +160,34 @@ serve(async (req) => {
       return json({ ok: false, error: "Nenhum chip disponível" });
     }
 
+    // ── Cap anti-ban: máx 35 cold/dia POR CHIP (global, somando todas as campanhas) — WS2 ──
+    // Conta primeiros-contatos (data_primeiro_contato) de hoje por chip_usado_id.
+    // Aquecimento é externo ([[aquecimento-externo-pre-conexao]]) → cap flat, sem curva interna.
+    const COLD_CAP_DIA = 35;
+    {
+      const ids = chipsDisponiveis.map((c) => c.id);
+      const { data: coldRows } = await supabase
+        .from("campanha_leads")
+        .select("chip_usado_id")
+        .in("chip_usado_id", ids)
+        .gte("data_primeiro_contato", hoje.toISOString());
+      const porChip: Record<string, number> = {};
+      for (const r of coldRows || []) {
+        const id = (r as any).chip_usado_id;
+        if (id) porChip[id] = (porChip[id] || 0) + 1;
+      }
+      const antes = chipsDisponiveis.length;
+      chipsDisponiveis = chipsDisponiveis.filter((c) => (porChip[c.id] || 0) < COLD_CAP_DIA);
+      if (chipsDisponiveis.length < antes) {
+        console.log(`[disparo] ${antes - chipsDisponiveis.length} chip(s) no teto de ${COLD_CAP_DIA} cold/dia`);
+      }
+      if (chipsDisponiveis.length === 0) {
+        await supabase.from("campanhas").update({ next_batch_at: null }).eq("id", campanha_id);
+        console.log(`[disparo] todos os chips atingiram ${COLD_CAP_DIA} cold/dia`);
+        return json({ ok: true, msg: `Todos os chips no teto de ${COLD_CAP_DIA}/dia` });
+      }
+    }
+
     // ── Buscar Evolution API config ──
     const { data: evoConfig } = await supabase
       .from("config_lista_items")
@@ -160,8 +204,9 @@ serve(async (req) => {
     if (!evoUrl || !evoKey) throw new Error("Evolution API não configurada");
 
     // ── Buscar leads FRIO ──
+    // WS2: 1 cold por chip por ciclo (espaçamento em minutos), não rajada.
     const restante = limiteDiario - (enviadosHoje || 0);
-    const lote = Math.min(batchSize, restante);
+    const lote = Math.min(chipsDisponiveis.length, restante);
 
     const { data: leadsFrio, error: leadsErr } = await supabase
       .from("campanha_leads")
@@ -453,7 +498,11 @@ serve(async (req) => {
         .single();
 
       if (latestCamp?.status === "ativa") {
-        const batchPause = randomDelay(delayBatchMinMs, delayBatchMaxMs);
+        // WS2: espaçamento em MINUTOS entre ciclos (~15-20min) → cada chip faz ~1 cold/ciclo,
+        // ~35/dia ao longo da janela 07-17h. Substitui a pausa de batch (5-10min) por ritmo anti-ban.
+        const SPACING_MIN_MS = 15 * 60 * 1000;
+        const SPACING_MAX_MS = 20 * 60 * 1000;
+        const batchPause = randomDelay(SPACING_MIN_MS, SPACING_MAX_MS);
         const nextBatchAt = new Date(Date.now() + batchPause).toISOString();
         await supabase
           .from("campanhas")
