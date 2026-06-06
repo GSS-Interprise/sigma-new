@@ -9,6 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
+import { CATEGORIAS_USO, type CategoriaUso } from "@/constants/categorias";
 
 interface EvolutionInstanceDialogProps {
   open: boolean;
@@ -27,18 +28,6 @@ const INSTANCE_COLORS = [
   { name: "Vermelho", value: "#ef4444" },
   { name: "Ciano", value: "#06b6d4" },
 ];
-
-// Categorias de uso do chip (mesmo conjunto do ChipsTab / constraint chips_categoria_uso_check).
-// Define o objetivo do chip — o motor de disparo e o healthcheck tratam cada categoria diferente.
-const CATEGORIAS_USO = [
-  { value: "prospeccao_ia", label: "Prospecção IA", desc: "IA prospecta automaticamente (entra no limite de 35/dia)" },
-  { value: "manual", label: "Manual", desc: "Operador envia manualmente, IA não responde" },
-  { value: "inbound", label: "Inbound", desc: "Recebe leads de tráfego pago / site" },
-  { value: "suporte", label: "Suporte", desc: "Atendimento, dúvidas pós-venda" },
-  { value: "pessoal_restrito", label: "Pessoal Restrito", desc: "Fora da máquina de prospecção" },
-] as const;
-
-type CategoriaUso = (typeof CATEGORIAS_USO)[number]["value"];
 
 // Default sugerido por tipo de instância (editável pelo usuário)
 const categoriaDefaultPorTipo = (tipo: string): CategoriaUso =>

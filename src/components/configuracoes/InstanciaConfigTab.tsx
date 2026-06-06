@@ -28,6 +28,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { usePermissions } from "@/hooks/usePermissions";
 import { QRCodeDialog } from "./QRCodeDialog";
 import { EvolutionInstanceDialog } from "./EvolutionInstanceDialog";
+import { CATEGORIA_LABELS } from "@/constants/categorias";
 
 import { GlobalEvolutionConfigDialog } from "./GlobalEvolutionConfigDialog";
 import { Input } from "@/components/ui/input";
@@ -57,15 +58,6 @@ interface ChipInstance {
   created_by: string | null;
   created_by_name: string | null;
 }
-
-// Labels das categorias (mesmo conjunto da constraint chips_categoria_uso_check)
-const CATEGORIA_LABELS: Record<string, string> = {
-  prospeccao_ia: "Prospecção IA",
-  manual: "Manual",
-  inbound: "Inbound",
-  suporte: "Suporte",
-  pessoal_restrito: "Pessoal Restrito",
-};
 
 export type TipoInstancia = "disparos" | "trafego_pago";
 
@@ -261,6 +253,8 @@ export function InstanciaConfigTab({ tipo = "disparos" }: InstanciaConfigTabProp
                 profile_name: profileName,
                 profile_picture_url: profilePictureUrl,
                 status: "ativo",
+                // preserva a classificação do chip — o sync NUNCA deve apagar categoria_uso
+                categoria_uso: existingChip?.categoria_uso ?? null,
               },
               { onConflict: "instance_name" }
             )
@@ -540,7 +534,8 @@ export function InstanciaConfigTab({ tipo = "disparos" }: InstanciaConfigTabProp
                 inst.nome?.toLowerCase().includes(term) ||
                 inst.profile_name?.toLowerCase().includes(term) ||
                 inst.created_by_name?.toLowerCase().includes(term) ||
-                inst.numero?.toLowerCase().includes(term)
+                inst.numero?.toLowerCase().includes(term) ||
+                (inst.categoria_uso && CATEGORIA_LABELS[inst.categoria_uso]?.toLowerCase().includes(term))
               );
             });
             return filtered.length === 0 ? (
@@ -613,8 +608,12 @@ export function InstanciaConfigTab({ tipo = "disparos" }: InstanciaConfigTabProp
                     <TableCell>
                       <div className="flex flex-col items-start gap-1">
                         {getConnectionBadge(inst.connection_state)}
-                        {inst.connection_state !== "open" && (
-                          <Badge variant="destructive" className="text-[10px] px-1.5 py-0 gap-1">
+                        {inst.connection_state === "close" && (
+                          <Badge
+                            variant="destructive"
+                            className="text-xs px-1.5 py-0 gap-1"
+                            title="Instância desconectada — escaneie o QR Code para reconectar"
+                          >
                             <WifiOff className="h-3 w-3" />
                             Reconectar WhatsApp
                           </Badge>
