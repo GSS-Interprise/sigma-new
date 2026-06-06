@@ -38,10 +38,12 @@ Deno.serve(async (req) => {
     const key = cfg?.find((c: any) => c.campo_nome === "evolution_api_key")?.valor;
     if (!url || !key) return json({ error: "Evolution não configurada" }, 500);
 
+    // só as categorias da máquina de prospecção; pessoal_restrito/suporte ficam de fora
     const { data: chips } = await supabase
       .from("chips")
       .select("id, instance_name, categoria_uso")
       .eq("status", "ativo")
+      .in("categoria_uso", ["prospeccao_ia", "manual", "inbound"])
       .not("instance_name", "is", null);
 
     const cutoff = new Date(Date.now() - COOLDOWN_MIN * 60 * 1000).toISOString();
