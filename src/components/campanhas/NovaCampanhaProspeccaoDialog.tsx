@@ -24,6 +24,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Rocket, MapPin, Stethoscope, Smartphone, Brain, Settings2, Zap, Shield, ClipboardList, Eye } from "lucide-react";
 import { PreviewLeadsCampanhaModal } from "./PreviewLeadsCampanhaModal";
+import { JanelaHorarioConfig, type JanelaHorario } from "./JanelaHorarioConfig";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 
 const UF_LIST = [
@@ -51,6 +52,8 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead }: Pr
   const [delayMaxMs, setDelayMaxMs] = useState(25);
   const [delayBatchMin, setDelayBatchMin] = useState(5);
   const [delayBatchMax, setDelayBatchMax] = useState(10);
+  // WS2: janela de disparo (default 07-17h dias úteis)
+  const [janela, setJanela] = useState<JanelaHorario>({ ativo: true, inicio: 7, fim: 17, dias: [1, 2, 3, 4, 5] });
   const [mensagemInicial, setMensagemInicial] = useState("");
   const [cadenciaAtiva, setCadenciaAtiva] = useState(true);
   // F2.2: tipo de envio (default IA pra manter comportamento atual)
@@ -212,6 +215,11 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead }: Pr
           delay_max_ms: delayMaxMs * 1000,
           delay_between_batches_min: delayBatchMin * 60,
           delay_between_batches_max: delayBatchMax * 60,
+          // WS2: janela de disparo (07-17h dias úteis default)
+          horario_inteligente_ativo: janela.ativo,
+          horario_inicio_brt: janela.inicio,
+          horario_fim_brt: janela.fim,
+          dias_semana: janela.dias,
           mensagem_inicial: mensagemInicial || null,
           briefing_ia: briefing,
           cadencia_ativa: cadenciaAtiva,
@@ -267,6 +275,7 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead }: Pr
     setDelayMaxMs(25);
     setDelayBatchMin(5);
     setDelayBatchMax(10);
+    setJanela({ ativo: true, inicio: 7, fim: 17, dias: [1, 2, 3, 4, 5] });
     setMensagemInicial("");
     setCadenciaAtiva(true);
     setTipoEnvio("ia");
@@ -748,6 +757,8 @@ GSS Saúde`}
                 </p>
               </div>
             )}
+
+            <JanelaHorarioConfig value={janela} onChange={setJanela} />
           </TabsContent>
 
           <TabsContent value="mensagem" className="space-y-4 mt-4">
