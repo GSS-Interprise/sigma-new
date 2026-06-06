@@ -2475,6 +2475,10 @@ export type Database = {
           delay_max_ms: number | null
           delay_min_ms: number | null
           descricao: string | null
+          dias_semana: number[] | null
+          horario_fim_brt: number | null
+          horario_inicio_brt: number | null
+          horario_inteligente_ativo: boolean | null
           descricao_oportunidade: string | null
           disparos_enviados: number | null
           disparos_falhas: number | null
@@ -2549,6 +2553,10 @@ export type Database = {
           delay_max_ms?: number | null
           delay_min_ms?: number | null
           descricao?: string | null
+          dias_semana?: number[] | null
+          horario_fim_brt?: number | null
+          horario_inicio_brt?: number | null
+          horario_inteligente_ativo?: boolean | null
           descricao_oportunidade?: string | null
           disparos_enviados?: number | null
           disparos_falhas?: number | null
@@ -2623,6 +2631,10 @@ export type Database = {
           delay_max_ms?: number | null
           delay_min_ms?: number | null
           descricao?: string | null
+          dias_semana?: number[] | null
+          horario_fim_brt?: number | null
+          horario_inicio_brt?: number | null
+          horario_inteligente_ativo?: boolean | null
           descricao_oportunidade?: string | null
           disparos_enviados?: number | null
           disparos_falhas?: number | null
