@@ -314,7 +314,9 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead }: Pr
   const espsSelecionadas = especialidades.filter((e) => especialidadeIds.includes(e.id));
   const briefingCompleto = [bNomeServico, bHospital, bCidade, bTipoServico, bHandoffNome, bHandoffTelefone]
     .every((c) => c.trim().length > 0);
-  const canCreate = nome.trim().length > 0 && briefingCompleto;
+  // WS2: janela inválida (fim<=início ou sem dias) faria a campanha nunca disparar — bloqueia o submit.
+  const janelaValida = !janela.ativo || (janela.dias.length > 0 && janela.fim > janela.inicio);
+  const canCreate = nome.trim().length > 0 && briefingCompleto && janelaValida;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

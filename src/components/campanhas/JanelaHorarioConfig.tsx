@@ -88,6 +88,15 @@ export function JanelaHorarioConfig({ value, onChange }: Props) {
               ))}
             </div>
           </div>
+
+          {(dias.length === 0 || fim <= inicio) && (
+            <p className="text-xs text-destructive">
+              {dias.length === 0
+                ? "Selecione ao menos 1 dia."
+                : "O horário de fim deve ser maior que o de início."}{" "}
+              Sem isso a campanha nunca dispara.
+            </p>
+          )}
         </>
       )}
     </div>
