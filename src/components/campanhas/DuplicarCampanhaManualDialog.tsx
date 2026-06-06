@@ -11,7 +11,7 @@ import { Loader2 } from "lucide-react";
 interface Props {
   open: boolean;
   onOpenChange: (o: boolean) => void;
-  campanha: { id: string; nome: string; total_frio: number };
+  campanha: { id: string; nome: string; total_frio: number | null };
 }
 
 // WS4: duplica campanha IA → manual movendo os N leads frios mais antigos (RPC atômica).
@@ -47,7 +47,7 @@ export function DuplicarCampanhaManualDialog({ open, onOpenChange, campanha }: P
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md" onClick={(e) => e.stopPropagation()}>
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Duplicar pra manual</DialogTitle>
         </DialogHeader>
