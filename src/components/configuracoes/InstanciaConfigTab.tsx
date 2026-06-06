@@ -28,6 +28,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { usePermissions } from "@/hooks/usePermissions";
 import { QRCodeDialog } from "./QRCodeDialog";
 import { EvolutionInstanceDialog } from "./EvolutionInstanceDialog";
+import { CATEGORIA_LABELS } from "@/constants/categorias";
 
 import { GlobalEvolutionConfigDialog } from "./GlobalEvolutionConfigDialog";
 import { Input } from "@/components/ui/input";
@@ -52,6 +53,7 @@ interface ChipInstance {
   limite_diario: number | null;
   provedor: string | null;
   tipo_instancia: string | null;
+  categoria_uso: string | null;
   created_at: string | null;
   created_by: string | null;
   created_by_name: string | null;
@@ -251,6 +253,8 @@ export function InstanciaConfigTab({ tipo = "disparos" }: InstanciaConfigTabProp
                 profile_name: profileName,
                 profile_picture_url: profilePictureUrl,
                 status: "ativo",
+                // preserva a classificação do chip — o sync NUNCA deve apagar categoria_uso
+                categoria_uso: existingChip?.categoria_uso ?? null,
               },
               { onConflict: "instance_name" }
             )
@@ -530,7 +534,8 @@ export function InstanciaConfigTab({ tipo = "disparos" }: InstanciaConfigTabProp
                 inst.nome?.toLowerCase().includes(term) ||
                 inst.profile_name?.toLowerCase().includes(term) ||
                 inst.created_by_name?.toLowerCase().includes(term) ||
-                inst.numero?.toLowerCase().includes(term)
+                inst.numero?.toLowerCase().includes(term) ||
+                (inst.categoria_uso && CATEGORIA_LABELS[inst.categoria_uso]?.toLowerCase().includes(term))
               );
             });
             return filtered.length === 0 ? (
@@ -543,6 +548,7 @@ export function InstanciaConfigTab({ tipo = "disparos" }: InstanciaConfigTabProp
                 <TableRow>
                   <TableHead>Instância</TableHead>
                   <TableHead>Número</TableHead>
+                  <TableHead>Categoria</TableHead>
                   <TableHead>Engine</TableHead>
                   <TableHead>Conexão</TableHead>
                   <TableHead>Status</TableHead>
@@ -586,9 +592,34 @@ export function InstanciaConfigTab({ tipo = "disparos" }: InstanciaConfigTabProp
                     </TableCell>
                     <TableCell>{inst.numero || "-"}</TableCell>
                     <TableCell>
+                      {inst.categoria_uso ? (
+                        <Badge variant="secondary">
+                          {CATEGORIA_LABELS[inst.categoria_uso] || inst.categoria_uso}
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="border-amber-400 text-amber-600">
+                          Reclassificar
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>
                       <Badge variant="outline">{inst.engine || "baileys"}</Badge>
                     </TableCell>
-                    <TableCell>{getConnectionBadge(inst.connection_state)}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-col items-start gap-1">
+                        {getConnectionBadge(inst.connection_state)}
+                        {inst.connection_state === "close" && (
+                          <Badge
+                            variant="destructive"
+                            className="text-xs px-1.5 py-0 gap-1"
+                            title="Instância desconectada — escaneie o QR Code para reconectar"
+                          >
+                            <WifiOff className="h-3 w-3" />
+                            Reconectar WhatsApp
+                          </Badge>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell>{getStatusBadge(inst.status)}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">

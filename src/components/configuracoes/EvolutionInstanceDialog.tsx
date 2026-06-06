@@ -9,6 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
+import { CATEGORIAS_USO, type CategoriaUso } from "@/constants/categorias";
 
 interface EvolutionInstanceDialogProps {
   open: boolean;
@@ -28,6 +29,10 @@ const INSTANCE_COLORS = [
   { name: "Ciano", value: "#06b6d4" },
 ];
 
+// Default sugerido por tipo de instância (editável pelo usuário)
+const categoriaDefaultPorTipo = (tipo: string): CategoriaUso =>
+  tipo === "trafego_pago" ? "inbound" : "prospeccao_ia";
+
 type DialogStep = "form" | "qrcode";
 
 export function EvolutionInstanceDialog({ open, onOpenChange, onCreated, defaultTipo }: EvolutionInstanceDialogProps) {
@@ -35,6 +40,7 @@ export function EvolutionInstanceDialog({ open, onOpenChange, onCreated, default
   const [phoneNumber, setPhoneNumber] = useState("");
   const [selectedColor, setSelectedColor] = useState(INSTANCE_COLORS[0].value);
   const [tipoInstancia, setTipoInstancia] = useState<"disparos" | "trafego_pago" | "">(defaultTipo || "");
+  const [categoriaUso, setCategoriaUso] = useState<CategoriaUso | "">(defaultTipo ? categoriaDefaultPorTipo(defaultTipo) : "");
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState<DialogStep>("form");
   
@@ -66,6 +72,7 @@ export function EvolutionInstanceDialog({ open, onOpenChange, onCreated, default
     setPhoneNumber("");
     setSelectedColor(INSTANCE_COLORS[0].value);
     setTipoInstancia(defaultTipo || "");
+    setCategoriaUso(defaultTipo ? categoriaDefaultPorTipo(defaultTipo) : "");
     setStep("form");
     setQrCode(null);
     setPairingCode(null);
@@ -87,6 +94,11 @@ export function EvolutionInstanceDialog({ open, onOpenChange, onCreated, default
 
     if (!tipoInstancia) {
       toast.error("Selecione o tipo da instância");
+      return;
+    }
+
+    if (!categoriaUso) {
+      toast.error("Selecione a categoria de uso do chip");
       return;
     }
 
@@ -183,6 +195,7 @@ export function EvolutionInstanceDialog({ open, onOpenChange, onCreated, default
             engine: "baileys",
             status: "ativo",
             tipo_instancia: tipoInstancia,
+            categoria_uso: categoriaUso,
             behavior_config: { color: selectedColor },
           })
           .eq("id", existingChip.id);
@@ -209,6 +222,7 @@ export function EvolutionInstanceDialog({ open, onOpenChange, onCreated, default
           engine: "baileys",
           status: "ativo",
           tipo_instancia: tipoInstancia,
+          categoria_uso: categoriaUso,
           behavior_config: { color: selectedColor },
           created_by: user?.id || null,
           created_by_name: creatorName,
@@ -385,7 +399,15 @@ export function EvolutionInstanceDialog({ open, onOpenChange, onCreated, default
             <div className="space-y-4 py-4">
               <div className="space-y-2">
                 <Label>Tipo da Instância *</Label>
-                <Select value={tipoInstancia} onValueChange={(v) => setTipoInstancia(v as "disparos" | "trafego_pago")}>
+                <Select
+                  value={tipoInstancia}
+                  onValueChange={(v) => {
+                    const t = v as "disparos" | "trafego_pago";
+                    setTipoInstancia(t);
+                    // sugere categoria default pelo tipo (usuário pode trocar)
+                    setCategoriaUso(categoriaDefaultPorTipo(t));
+                  }}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione o tipo..." />
                   </SelectTrigger>
@@ -394,6 +416,27 @@ export function EvolutionInstanceDialog({ open, onOpenChange, onCreated, default
                     <SelectItem value="trafego_pago">Tráfego Pago</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Categoria de uso *</Label>
+                <Select value={categoriaUso} onValueChange={(v) => setCategoriaUso(v as CategoriaUso)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione a categoria..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CATEGORIAS_USO.map((c) => (
+                      <SelectItem key={c.value} value={c.value}>
+                        {c.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {categoriaUso && (
+                  <p className="text-xs text-muted-foreground">
+                    {CATEGORIAS_USO.find((c) => c.value === categoriaUso)?.desc}
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">

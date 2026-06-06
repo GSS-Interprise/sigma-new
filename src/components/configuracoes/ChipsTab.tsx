@@ -14,14 +14,7 @@ import { Plus, Pencil, Trash2, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { ConfirmDestructive } from "@/components/common/ConfirmDestructive";
-
-const CATEGORIAS_USO = [
-  { value: "prospeccao_ia", label: "Prospecção IA", desc: "Chip usado pela IA pra prospecção automática" },
-  { value: "manual", label: "Manual", desc: "Operador envia manualmente, IA não responde" },
-  { value: "pessoal_restrito", label: "Pessoal Restrito", desc: "Chip pessoal — privacidade alta (use com Privado)" },
-  { value: "suporte", label: "Suporte", desc: "Atendimento, dúvidas pós-venda" },
-  { value: "inbound", label: "Inbound", desc: "Recebe leads de tráfego pago / site" },
-] as const;
+import { CATEGORIAS_USO, CATEGORIA_USO_VALUES, type CategoriaUso } from "@/constants/categorias";
 
 const chipSchema = z.object({
   nome: z.string().trim().min(1, "Nome é obrigatório").max(100),
@@ -31,7 +24,7 @@ const chipSchema = z.object({
   status: z.enum(["ativo", "inativo"]),
   dono_id: z.string().uuid().nullable().optional(),
   categoria_uso: z
-    .enum(["prospeccao_ia", "manual", "pessoal_restrito", "suporte", "inbound"])
+    .enum(CATEGORIA_USO_VALUES as [CategoriaUso, ...CategoriaUso[]])
     .nullable()
     .optional(),
   privado: z.boolean().optional(),
