@@ -52,10 +52,20 @@ interface ChipInstance {
   limite_diario: number | null;
   provedor: string | null;
   tipo_instancia: string | null;
+  categoria_uso: string | null;
   created_at: string | null;
   created_by: string | null;
   created_by_name: string | null;
 }
+
+// Labels das categorias (mesmo conjunto da constraint chips_categoria_uso_check)
+const CATEGORIA_LABELS: Record<string, string> = {
+  prospeccao_ia: "Prospecção IA",
+  manual: "Manual",
+  inbound: "Inbound",
+  suporte: "Suporte",
+  pessoal_restrito: "Pessoal Restrito",
+};
 
 export type TipoInstancia = "disparos" | "trafego_pago";
 
@@ -543,6 +553,7 @@ export function InstanciaConfigTab({ tipo = "disparos" }: InstanciaConfigTabProp
                 <TableRow>
                   <TableHead>Instância</TableHead>
                   <TableHead>Número</TableHead>
+                  <TableHead>Categoria</TableHead>
                   <TableHead>Engine</TableHead>
                   <TableHead>Conexão</TableHead>
                   <TableHead>Status</TableHead>
@@ -586,9 +597,30 @@ export function InstanciaConfigTab({ tipo = "disparos" }: InstanciaConfigTabProp
                     </TableCell>
                     <TableCell>{inst.numero || "-"}</TableCell>
                     <TableCell>
+                      {inst.categoria_uso ? (
+                        <Badge variant="secondary">
+                          {CATEGORIA_LABELS[inst.categoria_uso] || inst.categoria_uso}
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="border-amber-400 text-amber-600">
+                          Reclassificar
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>
                       <Badge variant="outline">{inst.engine || "baileys"}</Badge>
                     </TableCell>
-                    <TableCell>{getConnectionBadge(inst.connection_state)}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-col items-start gap-1">
+                        {getConnectionBadge(inst.connection_state)}
+                        {inst.connection_state !== "open" && (
+                          <Badge variant="destructive" className="text-[10px] px-1.5 py-0 gap-1">
+                            <WifiOff className="h-3 w-3" />
+                            Reconectar WhatsApp
+                          </Badge>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell>{getStatusBadge(inst.status)}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
