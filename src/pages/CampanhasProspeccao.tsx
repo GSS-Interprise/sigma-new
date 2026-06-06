@@ -32,9 +32,18 @@ import {
   ClipboardList,
   Settings,
   BarChart3,
+  MoreVertical,
+  Copy,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { supabase } from "@/integrations/supabase/client";
 import { NovaCampanhaProspeccaoDialog } from "@/components/campanhas/NovaCampanhaProspeccaoDialog";
+import { DuplicarCampanhaManualDialog } from "@/components/campanhas/DuplicarCampanhaManualDialog";
 import { ConfigurarCampanhaDialog } from "@/components/campanhas/ConfigurarCampanhaDialog";
 import { CampanhaProspeccaoKanban } from "@/components/campanhas/CampanhaProspeccaoKanban";
 import { AcompanhamentoView } from "@/components/campanhas/acompanhamento/AcompanhamentoView";
@@ -695,6 +704,7 @@ function CampanhaCard({
       : 0;
 
   const isRascunho = campanha.status === "rascunho";
+  const [dupOpen, setDupOpen] = useState(false);
 
   return (
     <Card
@@ -772,6 +782,30 @@ function CampanhaCard({
             >
               <Settings className="h-3.5 w-3.5" />
             </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0"
+                  onClick={(e) => e.stopPropagation()}
+                  title="Mais ações"
+                >
+                  <MoreVertical className="h-3.5 w-3.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDupOpen(true);
+                  }}
+                >
+                  <Copy className="h-4 w-4 mr-2" />
+                  Duplicar pra manual
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
 
@@ -799,6 +833,11 @@ function CampanhaCard({
           </div>
         )}
       </CardContent>
+      <DuplicarCampanhaManualDialog
+        open={dupOpen}
+        onOpenChange={setDupOpen}
+        campanha={{ id: campanha.id, nome: campanha.nome, total_frio: campanha.total_frio }}
+      />
     </Card>
   );
 }
