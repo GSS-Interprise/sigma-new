@@ -50,9 +50,17 @@ serve(async (req) => {
       const dias: number[] = camp.dias_semana ?? [1, 2, 3, 4, 5];
       const dentroJanela = horaBrt >= ini && horaBrt < fim && dias.includes(diaSemanaBrt);
       if (!dentroJanela) {
-        await supabase.from("campanhas").update({ next_batch_at: null }).eq("id", campanha_id);
-        console.log(`[disparo] skip fora_janela: hora_brt=${horaBrt} dia=${diaSemanaBrt} janela=${ini}-${fim}h dias=[${dias}]`);
-        return json({ ok: true, msg: "skipped:fora_janela", hora_brt: horaBrt, dia_semana: diaSemanaBrt });
+        // Reagenda pro próximo início de janela (job de minuto re-dispara lá).
+        // .or(...) garante que NÃO sobrescrevemos um lock ativo de outro processo (anti envio-duplo).
+        const proxIni = proximaJanelaInicio(ini, dias).toISOString();
+        const agoraIso = new Date().toISOString();
+        await supabase
+          .from("campanhas")
+          .update({ next_batch_at: proxIni })
+          .eq("id", campanha_id)
+          .or(`next_batch_at.is.null,next_batch_at.lte.${agoraIso}`);
+        console.log(`[disparo] skip fora_janela: hora_brt=${horaBrt} dia=${diaSemanaBrt} janela=${ini}-${fim}h → próximo ${proxIni}`);
+        return json({ ok: true, msg: "skipped:fora_janela", hora_brt: horaBrt, dia_semana: diaSemanaBrt, proximo: proxIni });
       }
     }
 
@@ -113,9 +121,9 @@ serve(async (req) => {
     const rotation = camp.rotation_strategy || "round_robin";
     const limiteDiario = camp.limite_diario_campanha || 120;
 
-    // ── Verificar limite diário ──
-    const hoje = new Date();
-    hoje.setHours(0, 0, 0, 0);
+    // ── Verificar limite diário (fronteira = meia-noite BRT, não UTC) ──
+    const brtAgora = new Date(Date.now() - 3 * 3600 * 1000);
+    const hoje = new Date(Date.UTC(brtAgora.getUTCFullYear(), brtAgora.getUTCMonth(), brtAgora.getUTCDate(), 3, 0, 0)); // 00:00 BRT = 03:00 UTC
     const { count: enviadosHoje } = await supabase
       .from("campanha_leads")
       .select("id", { count: "exact", head: true })
@@ -234,6 +242,8 @@ serve(async (req) => {
       chipIndex = 0;
     // Métricas por chip nesta execução (pra detectar chip morto)
     const chipMetrics: Record<string, { sucessos: number; erros: number }> = {};
+    // WS2: garante no máx 1 cold por chip POR CICLO (mesmo via fallback) — não estoura o cap intra-ciclo.
+    const enviadosCiclo: Record<string, number> = {};
     const bumpChip = (id: string, ok: boolean) => {
       if (!chipMetrics[id]) chipMetrics[id] = { sucessos: 0, erros: 0 };
       if (ok) chipMetrics[id].sucessos++;
@@ -268,6 +278,9 @@ serve(async (req) => {
           .single();
         if (curr?.status === "pausada") break;
       }
+
+      // WS2: se todos os chips já mandaram 1 cold neste ciclo, encerra (espaçamento por chip).
+      if (chipsDisponiveis.every((c) => (enviadosCiclo[c.id] || 0) >= 1)) break;
 
       // ── Ordenar chips: primário primeiro, fallback depois ──
       const chipPrimario =
@@ -312,6 +325,7 @@ serve(async (req) => {
       let tentativas = 0;
 
       for (const chipTry of chipsParaTentar) {
+        if ((enviadosCiclo[chipTry.id] || 0) >= 1) continue; // WS2: já mandou 1 neste ciclo
         tentativas++;
         const result = await sendWhatsAppText({
           supabase,
@@ -329,6 +343,7 @@ serve(async (req) => {
           success = true;
           chipUsado = chipTry;
           bumpChip(chipTry.id, true);
+          enviadosCiclo[chipTry.id] = (enviadosCiclo[chipTry.id] || 0) + 1; // WS2: 1/chip/ciclo
           if (tentativas > 1) {
             console.warn(
               `[disparo] ↻ Fallback OK pra ${lead.nome} via ${chipTry.nome} (após ${tentativas - 1} chip(s) falhar(em))`
@@ -555,6 +570,21 @@ function sleep(ms: number): Promise<void> {
 
 function randomDelay(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+// Próximo início de janela (hora `ini` BRT num dia da semana permitido), alinhado ao minuto 0.
+// Varre as próximas 8 dias em passos de 1h. Usado pra reagendar quando fora da janela.
+function proximaJanelaInicio(ini: number, dias: number[]): Date {
+  for (let h = 1; h <= 8 * 24; h++) {
+    const t = new Date(Date.now() + h * 3600 * 1000);
+    const brt = new Date(t.getTime() - 3 * 3600 * 1000);
+    const dow = brt.getUTCDay() === 0 ? 7 : brt.getUTCDay();
+    if (brt.getUTCHours() === ini && dias.includes(dow)) {
+      t.setUTCMinutes(0, 0, 0);
+      return t;
+    }
+  }
+  return new Date(Date.now() + 3600 * 1000); // fallback defensivo
 }
 
 async function fetchWithTimeout(

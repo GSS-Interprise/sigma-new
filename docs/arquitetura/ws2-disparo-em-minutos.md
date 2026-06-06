@@ -62,3 +62,12 @@ Toggle "Respeitar horário" + inputs início/fim + dias da semana. Reusável. De
 - [ ] Edge deployada + smoke-test (invoke retorna 2xx; dispara dentro da janela, pula fora).
 - [ ] UI de janela no wizard + edição.
 - [ ] Revisão barata (2 lentes Sonnet) + PO (eu) sem blocker. Auto-merge.
+
+## 6.1 Resultado da revisão (2 lentes Sonnet, ~121k tokens)
+**Corrigidos antes do merge:**
+- 🔴 Guard de janela zerava `next_batch_at` incondicional → podia destruir lock de outro processo (envio duplo). **Fix:** reagenda pro próximo início de janela com `.or(next_batch_at.is.null,next_batch_at.lte.now)` — não toca lock ativo. (job 11, cron de minuto, re-dispara no horário.)
+- 🔴 Fallback de chip podia mandar 2+ cold no mesmo ciclo (estourar cap intra-ciclo). **Fix:** `enviadosCiclo[chipId]` — skip chip que já enviou no ciclo + break quando todos enviaram.
+- 🟠 Fronteira do cap usava meia-noite UTC. **Fix:** meia-noite BRT (03:00 UTC).
+
+**Follow-up registrado (NÃO bloqueia v1):**
+- 🟠 **Corrida TOCTOU cross-campanha:** 2 campanhas no mesmo chip, mesmo minuto, ambas em 34 → chip fecha em 36. Soft-cap atual (snapshot por invocação) já corta o grosso (vs 0 cap antes). **Cap atômico real = mover pro `pre_send_check`** (conta `chip_send_log` = tentativas, não só sucessos; com lock por chip). Exige aprovação de função DB (DDL). Raro hoje: campanhas usam chips dedicados.
