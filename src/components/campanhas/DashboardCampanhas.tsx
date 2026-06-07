@@ -112,6 +112,21 @@ export function DashboardCampanhas() {
     refetchInterval: 60_000,
   });
 
+  // IA × Manual — tipo_envio por campanha (a view não traz; junta com a tabela campanhas)
+  const { data: tiposMap = new Map<string, string>() } = useQuery({
+    queryKey: ["dashboard-tipos-envio"],
+    queryFn: async () => {
+      const { data } = await (supabase as any)
+        .from("campanhas")
+        .select("id, tipo_envio")
+        .in("status", ["ativa", "pausada"]);
+      const m = new Map<string, string>();
+      (data ?? []).forEach((c: any) => m.set(c.id, c.tipo_envio || "ia"));
+      return m;
+    },
+    staleTime: 60_000,
+  });
+
   // Lista de especialidades das campanhas existentes (pra dropdown)
   const { data: especialidades = [] } = useQuery({
     queryKey: ["dashboard-especialidades"],
@@ -426,6 +441,33 @@ export function DashboardCampanhas() {
           tooltip="Leads descartados automaticamente porque o telefone não tem WhatsApp ativo. Vale revisar a fonte desses contatos."
         />
       </div>
+
+      {/* IA × Manual — split por tipo de envio (Dr. Michael vê lado a lado) */}
+      {(() => {
+        const split = { ia: { disp: 0, q: 0, c: 0 }, manual: { disp: 0, q: 0, c: 0 } };
+        for (const r of rows ?? []) {
+          const t = tiposMap.get(r.campanha_id) === "manual" ? "manual" : "ia";
+          split[t].disp += r.disparos_24h ?? 0;
+          split[t].q += r.quentes ?? 0;
+          split[t].c += 1;
+        }
+        const Bloco = ({ titulo, cor, s }: { titulo: string; cor: string; s: { disp: number; q: number; c: number } }) => (
+          <div className="border rounded-lg p-4 bg-card">
+            <div className={`text-xs font-semibold mb-2 ${cor}`}>{titulo}</div>
+            <div className="flex gap-6 text-sm">
+              <div><div className="text-2xl font-bold tabular-nums">{s.disp.toLocaleString("pt-BR")}</div><div className="text-xs text-muted-foreground">disparos 24h</div></div>
+              <div><div className="text-2xl font-bold tabular-nums">{s.q}</div><div className="text-xs text-muted-foreground">quentes</div></div>
+              <div><div className="text-2xl font-bold tabular-nums">{s.c}</div><div className="text-xs text-muted-foreground">campanhas</div></div>
+            </div>
+          </div>
+        );
+        return (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Bloco titulo="🤖 IA (automática)" cor="text-indigo-700" s={split.ia} />
+            <Bloco titulo="👤 Manual (operadora)" cor="text-emerald-700" s={split.manual} />
+          </div>
+        );
+      })()}
 
       {/* Nota contextual: dá tranquilidade sobre o sistema anti-ban funcionar como freio, não como erro */}
       <p className="text-xs text-muted-foreground italic px-1 -mt-2">
