@@ -112,8 +112,10 @@ export function CampanhaProspeccaoKanban({ campanhaId }: Props) {
     queryKey: ["acompanhamento-lead-by-campanha-lead", campanhaLeadAbertoId],
     enabled: !!campanhaLeadAbertoId,
     queryFn: async (): Promise<AcompanhamentoLead | null> => {
+      // Usa a view COMPLETA (sem o filtro etapa_acompanhamento IS NOT NULL): o master-detail
+      // precisa abrir QUALQUER lead do Kanban, não só os já em acompanhamento (bug do modal não abrir).
       const { data } = await (supabase as any)
-        .from("vw_acompanhamento_kanban")
+        .from("vw_acompanhamento_kanban_full")
         .select("*")
         .eq("campanha_lead_id", campanhaLeadAbertoId)
         .maybeSingle();
