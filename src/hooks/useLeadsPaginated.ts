@@ -55,9 +55,11 @@ export function useLeadsPaginated({
       const from = page * LEADS_PAGE_SIZE;
       const to = from + LEADS_PAGE_SIZE - 1;
 
+      // count 'estimated': em 796k o count exato escaneia a tabela inteira a cada load.
+      // O estimated usa o planner (rápido) e retorna exato p/ resultados pequenos (busca filtrada).
       let query = supabase
         .from('leads')
-        .select('*, especialidades_ref:especialidades!leads_especialidade_id_fkey(id, nome), lead_enrichments(*)', { count: 'exact' });
+        .select('*, especialidades_ref:especialidades!leads_especialidade_id_fkey(id, nome), lead_enrichments(*)', { count: 'estimated' });
 
       // Aplicar filtro de busca
       if (searchTerm.trim().length >= 2) {
@@ -147,7 +149,7 @@ export function useLeadsFilterCounts(enabled: boolean = true) {
       console.log("🔄 Buscando filtros de leads (RPC server-side)...");
 
       const [countResult, especialidadesResult, filterCountsResult] = await Promise.all([
-        supabase.from('leads').select('*', { count: 'exact', head: true }),
+        supabase.from('leads').select('*', { count: 'estimated', head: true }),
         supabase.from('especialidades').select('id, nome').eq('ativo', true).order('nome'),
         supabase.rpc('get_leads_filter_counts'),
       ]);
