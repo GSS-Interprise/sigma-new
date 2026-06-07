@@ -145,17 +145,19 @@ serve(async (req) => {
     if (chipIds.length > 0) {
       const { data: chips } = await supabase
         .from("chips")
-        .select("id, nome, numero, instance_name, status")
+        .select("id, nome, numero, instance_name, status, connection_state")
         .in("id", chipIds)
-        .eq("status", "ativo");
+        .eq("status", "ativo")
+        .eq("connection_state", "open"); // só chip realmente conectado dispara (evita falha silenciosa de chip ativo+offline)
       chipsDisponiveis = chips || [];
     } else if (camp.chip_id) {
       const { data: chip } = await supabase
         .from("chips")
-        .select("id, nome, numero, instance_name, status")
+        .select("id, nome, numero, instance_name, status, connection_state")
         .eq("id", camp.chip_id)
         .eq("status", "ativo")
-        .single();
+        .eq("connection_state", "open") // só chip realmente conectado dispara
+        .maybeSingle();
       if (chip) chipsDisponiveis = [chip];
     }
 

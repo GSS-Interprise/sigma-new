@@ -980,27 +980,46 @@ serve(async (req) => {
               .maybeSingle();
 
             if (campLeadCheck) {
-              const iaPayload = {
-                phone: normalizedPhone.replace('+', ''),
-                message_text: messageText,
-                instance_name: instanceName,
-                message_type: messageType || 'text',
-              };
-              console.log('🤖 Lead em campanha ativa, chamando IA...', JSON.stringify({
-                lead_id: leadId,
-                campanha_id: campLeadCheck.campanha_id,
-                phone: iaPayload.phone,
-                instance: iaPayload.instance_name,
-                msg_preview: messageText?.slice(0, 50),
-              }));
-              // Fire-and-forget: não bloqueia o webhook
-              supabase.functions.invoke('campanha-ia-responder', {
-                body: iaPayload,
-              }).then((result: any) => {
-                console.log('🤖 IA resultado:', JSON.stringify(result?.data || result?.error || 'sem resposta'));
-              }).catch((iaErr: any) => {
-                console.warn('⚠️ Erro ao chamar IA (não-crítico):', iaErr?.message);
-              });
+              // Checa o tipo de envio da campanha: 'manual' => a OPERADORA conduz a conversa,
+              // a IA NÃO responde. Só campanhas 'ia'/'ambos' acionam o respondedor automático.
+              const { data: campInfo } = await supabase
+                .from('campanhas')
+                .select('tipo_envio')
+                .eq('id', campLeadCheck.campanha_id)
+                .maybeSingle();
+              const tipoEnvio = (campInfo?.tipo_envio as string) ?? 'ia';
+
+              if (tipoEnvio === 'manual') {
+                // Campanha manual: conversa fica registrada e visível pra operadora responder
+                // pelo Sigma. IA não entra (modelo: disparo automático + troca humana).
+                console.log('📋 Lead em campanha MANUAL respondeu — IA NÃO responde, encaminhado pra operadora:', JSON.stringify({
+                  lead_id: leadId,
+                  campanha_id: campLeadCheck.campanha_id,
+                  msg_preview: messageText?.slice(0, 50),
+                }));
+              } else {
+                const iaPayload = {
+                  phone: normalizedPhone.replace('+', ''),
+                  message_text: messageText,
+                  instance_name: instanceName,
+                  message_type: messageType || 'text',
+                };
+                console.log('🤖 Lead em campanha IA ativa, chamando IA...', JSON.stringify({
+                  lead_id: leadId,
+                  campanha_id: campLeadCheck.campanha_id,
+                  phone: iaPayload.phone,
+                  instance: iaPayload.instance_name,
+                  msg_preview: messageText?.slice(0, 50),
+                }));
+                // Fire-and-forget: não bloqueia o webhook
+                supabase.functions.invoke('campanha-ia-responder', {
+                  body: iaPayload,
+                }).then((result: any) => {
+                  console.log('🤖 IA resultado:', JSON.stringify(result?.data || result?.error || 'sem resposta'));
+                }).catch((iaErr: any) => {
+                  console.warn('⚠️ Erro ao chamar IA (não-crítico):', iaErr?.message);
+                });
+              }
             }
           } catch (campCheckErr) {
             console.warn('⚠️ Erro ao verificar campanha (não-crítico):', campCheckErr);
