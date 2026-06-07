@@ -92,20 +92,30 @@ Toda WS segue **SDD**: nada de código antes da spec.
 | Wizard só lista chip `connection_state='open'` | ✅ 07/06 (operador não escolhe chip offline) |
 | Modal da página `/leads` (`LeadProfile360Modal`) | 🔴 não tem conversa+tasks+responder inline (só o do Kanban tem) |
 | Painel saúde de chips (UI) | 🔴 views prontas (`vw_chip_health`), falta a tela |
-| Dashboard IA×manual | 🟡 `DashboardCampanhas` + export PDF/Excel ✅; falta segmentar IA×manual |
-| Página `/leads` performance (796k) | 🔴 lenta — keyset pagination + índices trgm + count estimado + select reduzido |
+| Dashboard IA×manual | ✅ 07/06 — card IA (automática) × Manual (operadora): disparos/quentes/campanhas |
+| Página `/leads` performance (796k) | ✅ 07/06 — índice `created_at` + trgm nome/phone + count condicional (estimated s/ filtro, exact c/ filtro) |
 
 ### Resultado da auditoria 07/06 (3 agentes + triagem)
 **Core sólido:** WS1 (chip UI), WS2 (motor+janela), WS3 (IA, buildPrompt 24 campos), WS4 (duplicar manual), WS8 (CFM), hardening `pre_send_check` (atômico, em uso) — todos ✅ confirmados.
 **3 falsos-positivos descartados na triagem** (agentes erram — sempre validar): (a) "view `_full` não existe" → criada hoje, validada no Chrome; (b) "bug DST no -3h" → Brasil aboliu horário de verão em 2019; (c) "`contratacao` fora do prompt" → está em `campanha-ia-responder:591`.
 **Follow-ups de hardening (baixo risco, não-feitos de propósito p/ não arriscar):** processor não filtra `categoria_uso` do chip (manual×IA podem compartilhar); janela `fim=24` nunca dispara (comparação exclusiva); RPC WS4 gera tasks p/ todos os leads da campanha nova (idempotente).
 
-**Caminho crítico restante (próxima sessão):**
-- **Gaps:** painel de saúde de chips (WS7, view pronta) · conversa+tasks+responder no `LeadProfile360Modal` da `/leads` (WS6 P1.2) · multi-local (WS5) · rotas/sidebar (WS9).
-- **Performance:** otimizar `/leads` (796k) — keyset + índices trgm + count estimado.
-- **Valor:** fila de enriquecimento (506k novos do CFM sem telefone) + dashboard IA×manual.
+### Entregue 07/06 (tarde) — 4 frentes + correções, validadas E2E no Chrome
+- ✅ **/leads performance**: índice `created_at` (era a **causa raiz** da lentidão — não existia) + trgm nome/phone + count condicional. Busca "SILVA" → 59k, lista rápida.
+- ✅ **Multi-local (WS5)**: wizard "outras unidades" → `briefing_ia.locais[]`; IA lista todos.
+- ✅ **Responder no modal `/leads` (WS6 P1.2)**: `LeadProfile360Modal` usa `LeadConversaUnificada` (conversa + caixa).
+- ✅ **Dashboard IA×manual**: card segmentado.
+- ✅ **Correções de campanha**: Pediatria UTI/Emergencia manual→IA (chips 9001/9005); ULTRASSOM SC trocou chip manual offline por IA (9008).
+- 🐛 Bug pego no teste E2E: `count: estimated` zerava a busca (planner subestima ILIKE) → corrigido p/ condicional. **Validar E2E é essencial** — sem o teste ia pra prod quebrado.
 
-**Pré-requisitos operacionais (equipe, não-dev):** reconectar chips `close` (28 manual + vários IA) via QR.
+### Reunião Bruna (líder prospecção) 03/06 — valida o plano
+Quase tudo que ela pediu **já está no ar**: modal abre (corrigido), multi-local (WS5), duplicar IA→manual (WS4, validado E2E), cap 35/multi-chip, separação IA/manual dos leads, tarefas no manual, conversa no card, ver todas as campanhas (role `gestor_captacao` OK). Gaps que ela levantou = os mesmos do plano (enriquecimento, BI) + operacionais/futuros (telefones físicos p/ chips, Instagram/LinkedIn — não-dev).
+
+**Caminho crítico restante:**
+- 🔥 **Fila de enriquecimento Lemit** (506k sem telefone) — BLOQUEADO: precisa do Raul (como o Lemit é chamado + custo/consulta). Desenho em `ws8-t6-fila-enriquecimento.md`.
+- 🟢 WS9 rotas/sidebar · WS7 painel saúde chips · hardening (categoria_uso depende de antes corrigir campanha que use chip incompatível).
+
+**Pré-requisitos operacionais (equipe, não-dev):** reconectar chips `close` via QR; levantar telefones físicos p/ mais chips; treinamento das operadoras (semana de 09/06).
 
 ---
 
