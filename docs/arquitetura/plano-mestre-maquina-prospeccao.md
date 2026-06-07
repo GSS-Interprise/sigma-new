@@ -200,7 +200,8 @@ Toda WS segue **SDD**: nada de código antes da spec.
 ---
 
 ## 6. Briefing técnico (acessos / comandos / como retomar)
-- **Repo:** `C:\Users\rauls\sigma-new` (branch `main`, push direto → Lovable deploya). Commits só com identidade do Raul, sem co-author.
+- **Repo:** `C:\Users\rauls\sigma-new` (branch `main`, push direto). ⚠️ **Lovable NÃO auto-deploya** — Raul publica manual no editor ("Publish"). **Edges** (`supabase functions deploy`) e **DDL** (Management API) vão direto pra prod, independem do publish. Commits só com identidade do Raul, sem co-author.
+- **Enriquecimento (WS8-T6):** desenho pronto em `ws8-t6-fila-enriquecimento.md` (usa Lemit; ponto de partida da próxima sessão).
 - **Acessos (em memória):** VPS SSH `root@147.93.71.48` (Easypanel), Supabase (service_role JWT + SBP token em `reference_supabase_token.md`), Bright Data API, anon key, cfm-postgres (via VPS), N8N CLI (`docker exec disparador_n8n n8n …`).
 - **SQL prod:** Management API `POST https://api.supabase.com/v1/projects/zupsbgtoeoixfokzkjro/database/query` com SBP. **Sempre PowerShell** (não Bash) p/ evitar mangle de acento; melhor ainda usar coluna não-acentuada ou JS no browser p/ UTF-8.
 - **Deploy edge:** `npx supabase functions deploy <nome> --project-ref zupsbgtoeoixfokzkjro` (env `SUPABASE_ACCESS_TOKEN`=SBP).
