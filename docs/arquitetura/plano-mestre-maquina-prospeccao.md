@@ -115,6 +115,12 @@ Quase tudo que ela pediu **já está no ar**: modal abre (corrigido), multi-loca
 - 🔥 **Fila de enriquecimento Lemit** (506k sem telefone) — BLOQUEADO: precisa do Raul (como o Lemit é chamado + custo/consulta). Desenho em `ws8-t6-fila-enriquecimento.md`.
 - 🟢 WS9 rotas/sidebar · WS7 painel saúde chips · hardening (categoria_uso depende de antes corrigir campanha que use chip incompatível).
 
+### Dashboard de gestão — 3 fases entregues 07/06 (noite), validadas E2E
+- **F1:** view `vw_disparos_diarios` (série BRT) + filtro de período (hoje/semana/mês/custom) + meta **700/dia** + capacidade de chips (X/20 × 35) + gráfico vs meta.
+- **F2:** funil (Base→Convertido com taxa de passagem) + comparação semanal (+14% real) + conversão no card IA×manual.
+- **F3:** saúde operacional (tempo médio quente "21 dias" 🔴 + quentes esperando >24h + sem WhatsApp %).
+- Não duplicado: produtividade (`ComparativoOperadoras`), snapshot (export PDF). Tendência de conversão aguarda volume. Mapa: `dashboard-gestao-melhorias.md`.
+
 **Pré-requisitos operacionais (equipe, não-dev):** reconectar chips `close` via QR; levantar telefones físicos p/ mais chips; treinamento das operadoras (semana de 09/06).
 
 ---
