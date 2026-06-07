@@ -118,10 +118,11 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead }: Pr
     queryFn: async () => {
       const { data, error } = await supabase
         .from("chips")
-        .select("id, nome, numero, status, pode_disparar, tipo_instancia")
+        .select("id, nome, numero, status, pode_disparar, tipo_instancia, connection_state, categoria_uso")
         .eq("status", "ativo")
         .eq("tipo_instancia", "disparos")
         .eq("pode_disparar", true)
+        .eq("connection_state", "open") // só oferece chip realmente conectado (evita escolher chip offline que nunca dispara)
         .order("nome");
       if (error) throw error;
       return data || [];
