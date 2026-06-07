@@ -39,9 +39,11 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   /** F2.9 — Lead pré-selecionado vindo do perfil 360. Após criar campanha, INSERT direto em campanha_leads pra incluir esse lead manualmente. */
   preLead?: { id: string; nome: string } | null;
+  /** WS-C — chamado com o id da campanha recém-criada, pra conduzir o usuário a adicionar leads (campanha nasce vazia). */
+  onCreated?: (campanhaId: string) => void;
 }
 
-export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead }: Props) {
+export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCreated }: Props) {
   const [tab, setTab] = useState("basico");
   const [nome, setNome] = useState("");
   const [especialidadeIds, setEspecialidadeIds] = useState<string[]>([]);
@@ -264,11 +266,12 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead }: Pr
 
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       qc.invalidateQueries({ queryKey: ["campanhas-prospeccao"] });
-      toast.success("Campanha de prospecção criada!");
+      toast.success("Campanha criada! Agora adicione os leads pra ela começar a rodar.");
       resetForm();
       onOpenChange(false);
+      if (data?.id) onCreated?.(data.id);
     },
     onError: (e: any) => toast.error("Erro: " + e.message),
   });

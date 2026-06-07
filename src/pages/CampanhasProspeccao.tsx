@@ -199,6 +199,11 @@ export default function CampanhasProspeccao() {
       Object.keys(c.briefing_ia || {}).length === 0);
   const countFantasmas = campanhas.filter(isCampanhaFantasma).length;
 
+  // WS-C (Gap 1): campanha sem nenhum lead não dispara nada. Sinaliza pra operadora não esquecer o 2º passo (adicionar leads).
+  const totalLeadsDe = (c: CampanhaRow) =>
+    c.total_frio + c.total_contatado + c.total_em_conversa + c.total_aquecido + c.total_quente + c.total_convertido;
+  const countSemLeads = campanhas.filter((c) => c.status !== "rascunho" && totalLeadsDe(c) === 0).length;
+
   // Aplica filtro de status + responsável
   const campanhasFiltradas = campanhas
     .filter((c) => statusFiltro === "todas" || c.status === statusFiltro)
@@ -316,9 +321,20 @@ export default function CampanhasProspeccao() {
               />
             </div>
 
+            {totalLeadsDe(campanhaSelecionada) === 0 && (
+              <div className="flex items-start gap-2 rounded-md border border-sky-300 bg-sky-50 px-3 py-2 text-sm text-sky-900">
+                <UserPlus className="h-4 w-4 mt-0.5 shrink-0" />
+                <span>
+                  Esta campanha ainda <strong>não tem leads</strong> e não vai disparar. Clique em
+                  <strong> "Adicionar Leads à Base"</strong> abaixo pra puxar os leads do filtro (especialidade + UF).
+                </span>
+              </div>
+            )}
+
             <div className="flex gap-2">
               <Button
                 size="sm"
+                className={totalLeadsDe(campanhaSelecionada) === 0 ? "ring-2 ring-sky-400 ring-offset-1" : ""}
                 onClick={() =>
                   adicionarLeads.mutate({
                     campanha_id: selecionada,
@@ -538,17 +554,31 @@ export default function CampanhasProspeccao() {
                   </p>
                 </Card>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {campanhasFiltradas.map((c) => (
-                    <CampanhaCard
-                      key={c.id}
-                      campanha={c}
-                      fantasma={isCampanhaFantasma(c)}
-                      onClick={() => setSelecionada(c.id)}
-                      onConfigurar={() => setConfigurarId(c.id)}
-                    />
-                  ))}
-                </div>
+                <>
+                  {countSemLeads > 0 && (
+                    <div className="mb-3 flex items-start gap-2 rounded-md border border-sky-300 bg-sky-50 px-3 py-2 text-sm text-sky-900">
+                      <UserPlus className="h-4 w-4 mt-0.5 shrink-0" />
+                      <span>
+                        <strong>{countSemLeads}</strong>{" "}
+                        {countSemLeads === 1 ? "campanha está sem leads" : "campanhas estão sem leads"} e
+                        não {countSemLeads === 1 ? "vai" : "vão"} disparar. Abra a campanha e clique em
+                        <strong> "Adicionar Leads à Base"</strong> pra ela começar a rodar.
+                      </span>
+                    </div>
+                  )}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {campanhasFiltradas.map((c) => (
+                      <CampanhaCard
+                        key={c.id}
+                        campanha={c}
+                        fantasma={isCampanhaFantasma(c)}
+                        semLeads={c.status !== "rascunho" && totalLeadsDe(c) === 0}
+                        onClick={() => setSelecionada(c.id)}
+                        onConfigurar={() => setConfigurarId(c.id)}
+                      />
+                    ))}
+                  </div>
+                </>
               )}
             </>
           ) : view === "acompanhamento" ? (
@@ -566,6 +596,7 @@ export default function CampanhasProspeccao() {
         <NovaCampanhaProspeccaoDialog
           open={dialogOpen}
           onOpenChange={setDialogOpen}
+          onCreated={(id) => setSelecionada(id)}
         />
 
         <ConfigurarCampanhaDialog
@@ -680,11 +711,13 @@ function MetricCard({
 function CampanhaCard({
   campanha,
   fantasma,
+  semLeads,
   onClick,
   onConfigurar,
 }: {
   campanha: CampanhaRow;
   fantasma?: boolean;
+  semLeads?: boolean;
   onClick: () => void;
   onConfigurar: () => void;
 }) {
@@ -709,7 +742,7 @@ function CampanhaCard({
   return (
     <Card
       className={`cursor-pointer hover:shadow-md transition-shadow ${
-        fantasma ? "border-amber-300 bg-amber-50/30" : ""
+        fantasma ? "border-amber-300 bg-amber-50/30" : semLeads ? "border-sky-300 bg-sky-50/30" : ""
       } ${isRascunho ? "opacity-70" : ""}`}
       onClick={onClick}
     >
@@ -723,6 +756,15 @@ function CampanhaCard({
                 className="mt-1 text-xs border-amber-400 text-amber-800 bg-amber-100"
               >
                 ⚠️ Falta configurar (chip ou briefing IA)
+              </Badge>
+            )}
+            {semLeads && !fantasma && (
+              <Badge
+                variant="outline"
+                className="mt-1 text-xs border-sky-400 text-sky-800 bg-sky-100"
+              >
+                <UserPlus className="h-3 w-3 mr-1" />
+                Sem leads — clique pra adicionar
               </Badge>
             )}
             <div className="flex items-center gap-2 mt-1 flex-wrap">
