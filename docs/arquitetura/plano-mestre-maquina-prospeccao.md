@@ -1,183 +1,173 @@
 ---
-tags: [arquitetura, sigma-gss, plano-mestre]
+tags: [arquitetura, sigma-gss, plano-mestre, spec-driven]
 projeto: SigmaGSS
 autor: Raul + Claude
-data: 2026-06-06
-status: ativo — FONTE DE VERDADE do roadmap da máquina de prospecção
+data: 2026-06-07
+status: ativo — FONTE DE VERDADE do roadmap (v2, Spec-Driven)
 repo: GSS-Interprise/sigma-new
-base: [.claude/plano-campanhas-ia-vs-manual.md, horario-inteligente-campanhas-ia.md, bloco-t-rotas-prospeccao.md, sidebar-agrupada-dominio.md, templates-email-por-campanha.md, chips-disparo-runtime.md]
 ---
 
-# 🎯 Plano Mestre — Máquina de Prospecção GSS (consolidado)
+# 🎯 Plano Mestre — Máquina de Prospecção GSS (v2 · Spec-Driven)
 
-> Amarra e indexa: `plano-campanhas-ia-vs-manual.md` (R1-R11), `horario-inteligente`, `bloco-t-rotas`, `sidebar-agrupada`, `templates-email`, `chips-disparo-runtime`. Cada um segue como doc de capacidade com tarefas finas; este é o mapa que conecta tudo.
+> **Como usar (briefing de nova sessão):** este doc é a fonte de verdade. Comece lendo §0 (metodologia) + §1 (o que já está pronto) + §2 (guardrails) e então pegue a próxima WS em §4 (cada uma em formato spec→plan→tasks→aceite). Cada WS também tem doc próprio em `docs/arquitetura/wsN-*.md`.
 
 **Stakeholders:** Raul (dev/decisor técnico) · Ramone + Dr. Michael (direção) · equipe prospecção (Bruna lidera + Letícia, Ester, Kezia, Antônia, Lidyanne).
 
-**Meta de negócio:** **2.000–5.000 disparos/dia**, máquina **estável**, **zero erros recorrentes** (reconexão de chip, envio pela equipe, QR), visibilidade total (dashboard), equipe operando sozinha no Sigma (hoje opera fora, em planilha). Hoje: ~25–35/dia efetivos — insuficiente.
-
-**Princípio:** seguir à risca, soluções inteligentes (avisos "Necessário reconectar WhatsApp X"), fix de raiz — sem gambiarra.
+**Meta de negócio:** **2.000–5.000 disparos/dia**, máquina **estável**, **zero erros recorrentes** (reconexão de chip, envio pela equipe, QR), visibilidade total (dashboard), equipe operando 100% no Sigma (hoje opera em planilha externa).
 
 ---
 
-## 0. Guardrails anti-ban (base inquebrável)
+## 0. Metodologia — Spec Driven Development + pipeline (LER PRIMEIRO)
 
-1. **Máx 35 primeiros-disparos/chip/dia.** "Disparo" = **a 1ª mensagem (saudação fria)** a um lead novo. Respostas IA/cadência **NÃO contam** (são reativas, buckets `resposta_ia`/`cadencia`).
-2. **Espaçar os 35 ao longo de 07h–17h BRT** (600 min) → **1 primeiro-envio a cada ~12–25 min/chip** (jitter em MINUTOS, nunca segundos, nunca rajada). Cada chip tem o dia todo pra seus 35.
-3. **Proxy residencial BR sticky por chip** (Bright Data ISP). Datacenter = ban. Avaliar 4G/5G móvel.
-4. **Nunca martelar poucos chips** pra "fazer número" (risco ban — incidentes 01–03/06).
-5. **Spintax/variações** da 1ª mensagem (até 18) — manter. **Chip novo = aquecer** antes de cold. **Manual e IA em chips separados.**
-6. Época de eleição = meta mais restritiva, cuidado extra.
+Toda WS segue **SDD**: nada de código antes da spec.
+
+**Fluxo por WS:**
+1. **Spec** (`docs/arquitetura/wsN-*.md`): o quê / por quê / estado atual mapeado / fora de escopo.
+2. **Plan**: arquitetura, arquivos-alvo, tarefas atômicas (T1, T2...), riscos.
+3. **Tasks**: implementar numa **branch** (`wsN-nome`), tarefa a tarefa, type-check verde.
+4. **Review (multi-agente, barato)**: Workflow com **2 lentes Sonnet** (bugs/correção + anti-ban/dados) **escopo no diff** (`git diff main...branch`). PO = Claude (confere contra o critério de pronto).
+5. **Gate de merge autônomo:** review sem blocker (após triagem) **+ type-check verde + build verde + smoke-test runtime** (edge: deploy+invoke 2xx; migration: aplicar+verificar; UI: criar/abrir no fluxo) **+ rollback pronto**.
+6. **Auto-merge** (squash) → `main`. **Lovable deploya o front da main na hora.** Edges via `supabase functions deploy`.
+
+**Autonomia (decidido com Raul 06/06):**
+- ✅ **Auto-merge sozinho:** código frontend, **edge functions** (com smoke-test).
+- 🔴 **Precisa OK explícito do Raul (o classificador bloqueia DDL autônomo):** **migrations / RPC / funções DB** e **ops destrutivas/em massa de dados** (ex: importar 752k do CFM). Apresentar o SQL → Raul aprova → aplicar via Management API.
+- Decisões de **produto**: default sensato + anotar; só perguntar se molda muito o build (ex: split top-N da WS4).
+
+**Custo calibrado:** preset barato (2 lentes Sonnet, escopo no diff) custou **27k–121k tokens/review** vs 240k do painel Opus inicial. Pegou bugs reais em 100% das WS. Subir pra 3 lentes/Opus só em WS crítica.
+
+**Guard-rail de triagem:** o agente revisor às vezes **exagera** (ex: disse "sync apaga categoria a cada evento" — era falso; PostgREST preserva colunas fora do payload). Sempre **validar o achado** antes de aplicar; descartar o inaplicável (ex: gates de aquecimento interno — warmup é EXTERNO, [[aquecimento-externo-pre-conexao]]).
 
 ---
 
 ## 1. Estado atual — ENTREGUE (jun/2026)
 
+### Infra/estabilidade (fixes de raiz desta sprint)
 | ✅ | O quê |
 |---|---|
-| Proxy | webshare→**Bright Data** sticky (per-instância + env global). |
-| Encoding | `encodeURIComponent` em todas edges Evolution. Fim do "Edge non-2xx" por acento/espaço. Ver `feedback encode-instancename`. |
-| Container duplicado | Evolution órfão (Swarm) removido — causava conflito de sessão/flapping. |
-| Healthcheck | `chip-auto-reconnect` + cron jobid 22 (5min): reinicia `connecting`, ignora `open`, loga `close`→`needs_qr`. Fim do restart manual. |
+| Proxy | Bright Data ISP BR sticky por chip (substituiu webshare quebrado) + env global. |
+| Encoding | `encodeURIComponent` em todas edges Evolution → fim do "Edge non-2xx" por acento/espaço. |
+| Container duplicado | Evolution órfão do Swarm removido (causava conflito de sessão/flapping). |
+| **Healthcheck** | edge `chip-auto-reconnect` + cron pg_cron `chip-auto-reconnect-5min` (jobid 22): reinicia `connecting`, ignora `open`, loga `close`→`needs_qr`. Mira só `categoria_uso in (prospeccao_ia,manual,inbound)`. |
 | Conversas órfãs | 478 migradas de instâncias mortas→vivas (0 dup). |
-| Opt-out bug | chips manuais fora do bridge IA; 5 falsos-positivos revertidos. |
-| Visibilidade campanhas | default "Todos" (líder/gestor/equipe veem todas). |
-| QR UX | aviso instância não-selecionada + edge faz restart+poll até QR. |
-| Templates por campanha | remetente/oportunidade por campanha + Mustache (T1-T10). |
+| Classificação de chips | `categoria_uso` setado nos ativos; ver §runtime. |
 
-**Diagnóstico de raiz (sessão 05-06/06):** `connecting` = latência proxy residencial × `defaultQueryTimeoutMs` 60s **hardcoded** no Baileys → flapping. Evolution v2.3.7 não expõe timeout por env. Ver `reference_chip_connecting_flapping`.
+**Causa-raiz do flapping (documentada):** latência do proxy residencial × `defaultQueryTimeoutMs` 60s **hardcoded** no Baileys → loop de reconexão. Evolution v2.3.7 **não expõe** o timeout por env. Mitigação = healthcheck. Raiz (opcional) = forkar imagem (timeout 120s) ou proxy 4G. Ver [[chip-connecting-flapping-causa-e-fix]].
 
-## 1b. Já construído — REAPROVEITAR (não recriar)
-- `campanhas.tipo_campanha`='prospeccao', `tipo_envio`='ia'|'manual'.
-- **`campanha_lead_tasks`** (migration 20260524) — tarefas por lead/canal, trigger gera 6 tasks (whatsapp_1/2/3, email, instagram, telefone).
-- Componentes **DisparoManual** (`useDisparoManual`, `DisparoManualLeadPanel`, `DisparoManualLeadsColumn`).
-- Sigzap: conversa+histórico WhatsApp do lead.
-- `DisparosCampanhas` (multicanal) + `CampanhasProspeccao` (IA) + `CaptacaoKanban` (acompanhamento).
-- Views `vw_campanhas_dashboard` etc. (BI parcial).
-- **Dedup de leads:** índices únicos `chave_unica`, `cpf`, `phone_e164`. `enrich-lead` edge. 288k leads hoje.
+### Features entregues (PRs em produção)
+| WS | Entrega | PR | DB |
+|---|---|---|---|
+| **WS1** | UI de chip: `categoria_uso` **obrigatória na criação** (`EvolutionInstanceDialog`), coluna Categoria + badges 🟡Reclassificar / 🔴Reconectar (`InstanciaConfigTab`), fonte única `src/constants/categorias.ts`. | #1 | — |
+| **WS2-A** | Motor de disparo: guard **janela 07-17h dias úteis** + **cap 35 cold/dia POR CHIP** (global) + **espaçamento ~1 cold/chip a cada 15-20min** (substitui rajada). `campanha-disparo-processor`. | #2 | migration `campanhas` janela (4 cols) |
+| **WS2-B** | UI da janela no wizard (`JanelaHorarioConfig`) com validação (bloqueia fim≤início / dias vazio). | #3 | — |
+| **WS3** | **Já existia** — IA (`campanha-ia-responder`) já interpola os 17 campos do briefing (prompt sigma-v9); detalhe da campanha abre (`CampanhaProspeccaoKanban`). Não recriado. | — | — |
+| **WS4** | Duplicar campanha **IA→manual** com **split top-N** (RPC `duplicar_campanha_para_manual` + menu 3-pontinhos no `CampanhaCard` + dialog). Move N frios, gera 6 tasks por canal. | #4 | RPC (migration `20260606170000`) |
 
----
-
-## 2. Requisitos consolidados (R1-R11 das reuniões + novos N1-N5)
-
-| # | Requisito | Origem | Estado | WS |
-|---|---|---|---|---|
-| R1 | Indicador UI: campanha rodando × parada por falta de chip + "reconectar WhatsApp X" | Raul+Bruna | ❌ | WS1/WS7 |
-| R2 | Card de campanha automatizada **abre** detalhe (hoje nem abre) | Bruna | ❌ | WS3 |
-| R3 | Duplicar campanha IA→manual (3-pontinhos) com **split de leads** | Bruna/Raul | ❌ | WS4 |
-| R4 | Fluxo manual = **tarefas por lead/canal** (1º/2º contato, ligação, email, IG, LinkedIn) | Bruna | ⚙️ `campanha_lead_tasks` | WS4 |
-| R5 | Separação automática listas IA × manual (lead não nas duas) | Bruna/Raul | ❌ | WS4 |
-| R6 | Relatórios/BI (IA×manual, por canal/campanha, exportável p/ Dr. Michael) | Bruna | ⚙️ views | WS7 |
-| R7 | Ver conversa do lead (IA+manual) **dentro do card/campanha** | Bruna | ⚙️ Sigzap | WS6 |
-| R8 | Proposta **multi-local/hospital** (1 contrato, vários hospitais/cidades) | Bruna | ❌ | WS5 |
-| R9 | Default 35 disparos/chip/dia | Rubens | ⚙️ limite existe | WS2 |
-| R10 | Instagram/LinkedIn discovery (perfil do médico) — custo, parceiro Life's Hub | Bruna | ❌ backlog | backlog |
-| R11 | Treinamento equipe (sexta 14h + semana seguinte) | Bruna | — | operacional |
-| **N1** | **Disparo em minutos** (1º envio espaçado 07-17h), não segundos/rajada | Raul | ❌ | WS2 |
-| **N2** | **IA absorve contexto da criação** da campanha (briefing→prompt) | Raul | ❌ | WS3 |
-| **N3** | **Importação CFM** (~752k médicos ativos) + enriquecimento gradual + dedup | Raul | ❌ | WS8 |
-| **N4** | **WhatsApp dentro do card do lead** | Raul | ⚙️ Sigzap | WS6 |
-| **N5** | **Reorg rotas /prospeccao + sidebar agrupada** | Raul | ❌ arquitetado | WS9 |
+### Componentes/arquivos-chave criados
+- `src/constants/categorias.ts` (fonte única categorias).
+- `src/components/campanhas/JanelaHorarioConfig.tsx` (janela).
+- `src/components/campanhas/DuplicarCampanhaManualDialog.tsx` (WS4).
+- edge `supabase/functions/chip-auto-reconnect/` (healthcheck).
+- RPC `duplicar_campanha_para_manual(uuid,int)`.
 
 ---
 
-## 3. Workstreams
+## 2. Guardrails anti-ban (inquebráveis)
+1. **Máx 35 primeiros-disparos/chip/dia.** "Disparo" = 1ª msg (cold). Respostas IA/cadência NÃO contam (buckets `resposta_ia`/`cadencia`).
+2. **Espaçar 07-17h BRT** (~1 cold/chip a cada 15-20min). Nunca rajada, nunca madrugada.
+3. **Aquecimento é EXTERNO** (equipe aquece antes de conectar). Sem gate de warmup interno no Sigma. [[aquecimento-externo-pre-conexao]]
+4. Proxy residencial BR sticky por chip. Datacenter = ban. Spintax. Manual e IA em chips separados.
+5. Regra por `categoria_uso`: 35/dia só pra `prospeccao_ia`; `manual` = operadora; `inbound` = só recebe; `pessoal_restrito`/`suporte` = fora da máquina.
 
-### WS1 — Estabilidade de chip & conexão (R1) — zero erro de reconexão
-healthcheck ✅. Falta UI:
-- [ ] **Indicador de chip (R1):** badge 🟢 online · 🟡 reconectando · 🔴 **"Necessário reconectar WhatsApp X"** + botão QR. Fonte: `connectionState` + `chip_auto_reconnect_log`.
-- [ ] **Aviso proativo** quando chip de campanha ativa fica `close` > N min.
-- [ ] **Painel "Saúde dos Chips"**: estado, último reconnect, precisa-QR, disparos hoje/teto.
-- [ ] (raiz, opcional) forkar Evolution `defaultQueryTimeoutMs:120000` OU proxy 4G.
+---
 
-### WS2 — Disparo inteligente (R9 + N1) — janela + espaçamento em minutos
-base: `horario-inteligente-campanhas-ia.md` (janela). Falta o pacing:
-- [ ] **Janela horária/campanha** (07-17h, dias úteis) + guard no `campanha-disparo-processor` (4 colunas — ver doc).
-- [ ] **Pacing 35/dia em minutos:** processor agenda próximo 1º-envio = `now()+random(12-25min)`, teto 35/dia, dentro da janela, **só bucket cold_disparo**. Nunca rajada.
-- [ ] **Limite por bucket:** 35/dia conta só primeiros-contatos; respostas IA/cadência fora.
-- [ ] Critério: log mostra ~35 envios espalhados 07-17h, ~1/15-20min, nunca de madrugada.
+## 3. Modelo de dados (referência rápida)
+- `chips` (Evolution `instance_id`, `categoria_uso`, `status`, `connection_state`) → `sigzap_instances` (FK `chip_id`) → `sigzap_conversations` (FK `instance_id`) → `sigzap_messages`.
+- `campanhas` (`tipo_envio` ia|manual, `briefing_ia` jsonb, `chip_ids`, `horario_*`, `dias_semana`, `next_batch_at`) → `campanha_leads` (FK `campanha_id`, `lead_id`, `status` frio→contatado→…, `chip_usado_id`, `data_primeiro_contato`) → `campanha_lead_tasks` (6 tasks/canal, trigger AFTER INSERT só se manual/ambos).
+- `leads` (288k; únicos: `chave_unica`, `cpf`, `phone_e164`; `crm`,`uf`,`especialidade`). `enrich-lead` edge enriquece telefone.
+- Anti-ban: `pre_send_check` RPC (per-chip, atômico), `chip_send_log`, `antiban_global_config` (`warmup_curve=[10,20,35,50,60,70,80]`).
+- **CFM:** VPS `cfm-postgres` → db `cfm` → `cfm.medicos` (978.332; **751.800 ativos cod `A`**).
 
-### WS3 — Campanhas IA (R2 + N2)
-- [ ] **Detalhe da campanha automatizada abre** → Kanban funil + relatório + leads + chips + status.
-- [ ] **IA absorve briefing da criação** — especialidade/cidade/hospital/oportunidade/valores/remetente da campanha viram contexto no prompt do `campanha-ia-responder` (sem reconfigurar à mão).
+---
 
-### WS4 — Campanhas Manuais (R3+R4+R5) — núcleo da dor da Bruna
-infra parcial (`campanha_lead_tasks`, DisparoManual). Finalizar+expor:
-- [ ] **Duplicar IA→manual** com **split de leads** (lead sai da fila IA, não fica nas duas).
-- [ ] **Tarefas por lead/canal** espelhando a planilha: 1º/2º contato, ligação, email, IG, LinkedIn; status 🟡 sem resposta · 🔴 negou · 🟢 conversando.
-- [ ] **Atribuição por operadora** + produtividade.
-- [ ] Critério: Bruna duplica IA→manual, pega X leads, trabalha tasks por canal no Sigma (substitui planilha).
+## 4. Workstreams restantes (formato Spec-Driven)
 
-### WS5 — Wizard de campanha (R8) — vagas próximas/multi-local
-- [ ] **Proposta multi-hospital/cidade** (1 contrato, N localizações — ex: Tubarão 3 unidades).
-- [ ] **Sugerir vagas semelhantes/região próxima** (especialidade + raio geográfico).
-- [ ] **Duplicar/pré-preencher** a partir de outra campanha.
+### WS5 — Wizard: proposta multi-local / vagas próximas (R8)
+**Spec:** 1 campanha/proposta com **vários hospitais/cidades** (ex: Tubarão SC, 3 unidades). Hoje o wizard (`NovaCampanhaProspeccaoDialog`) só tem 1 hospital + 1 cidade (briefing) + 1 UF (`regiao_estado`).
+**Plan:** `briefing_ia` é jsonb → adicionar `locais: [{hospital, cidade, uf}]` (array) sem migration (campo jsonb). UI: bloco "Locais" repetível no wizard. O prompt (`campanha-ia-responder buildPrompt`) passa a listar os locais. Sugestão de vagas próximas = filtro por especialidade + UF/raio (usar `leads.uf`/`cidade`).
+**Tasks:** T1 estado `locais[]` + UI repetível no wizard. T2 salvar em `briefing_ia.locais`. T3 `buildPrompt` renderiza locais. T4 (opcional) sugestão de região próxima no preview.
+**Aceite:** criar campanha com 2+ locais; IA menciona o local certo; sem migration.
+**Risco:** retrocompat — briefing antigo sem `locais` deve continuar (fallback pra hospital/cidade single).
 
-### WS6 — Conversas/Sigzap (R7 + N4) — WhatsApp no card
-robustez ✅ (encoding, órfãs). Falta o card:
-- [ ] **WhatsApp dentro do card do lead** — ver/responder a conversa (IA+manual) sem sair pra Conversas.
-- [ ] **Histórico cross-canal** no card (WhatsApp+email+tasks).
+### WS6 — WhatsApp dentro do card do lead (R7/N4) — quase pronto
+**Spec:** ver/responder a conversa WhatsApp (IA+manual) dentro do card do lead, sem ir pra Conversas.
+**Estado:** **já existe** — `AcompanhamentoLeadPainel` tem tab "Conversa" via `LeadConversaUnificada` (busca `sigzap_conversations` por `lead_id`). Falta: histórico cross-canal (email/IG) no card + contexto da campanha na conversa.
+**Plan/Tasks:** T1 validar o que existe (pode estar 90% pronto — confirmar no Chrome). T2 adicionar aba/secção cross-canal se faltar. T3 mostrar campanha de origem na conversa.
+**Aceite:** abrir lead no Kanban → ver/responder WhatsApp no card. (Talvez já passe hoje — validar antes de codar.)
 
-### WS7 — Monitoramento & Dashboard (R1+R6)
-- [ ] **Dashboard BI** (Dr. Michael): disparos/dia, taxa resposta, funil, **IA×manual lado a lado**, por canal/campanha, exportável.
-- [ ] **Painel saúde operacional** (chips online/offline/precisa-QR, disparos hoje vs teto).
-- [ ] **Avisos inteligentes**: "campanha X parada por falta de chip", "reconectar WhatsApp Y".
+### WS7 — Monitoramento & Dashboard (R1/R6)
+**Spec:** dashboard BI (Dr. Michael): disparos/dia, taxa resposta, funil, **IA×manual lado a lado**, por canal/campanha, exportável. + painel saúde de chips (online/offline/precisa-QR, disparos hoje vs teto). + avisos "campanha X parada por falta de chip".
+**Plan:** views já existem (`vw_campanhas_dashboard`, `vw_campanha_tasks_dashboard`). Painel de chips usa `connectionState` + `chip_auto_reconnect_log`. Pode precisar de view nova pra IA×manual agregado (migration → aprovação).
+**Tasks:** T1 painel saúde de chips (R1 — reusa dados do healthcheck). T2 BI funil IA×manual. T3 export. T4 avisos campanha-parada.
+**Aceite:** Dr. Michael vê números IA×manual + equipe vê saúde dos chips sem perguntar ao Raul.
 
-### WS8 — Importação CFM + enriquecimento + dedup (N3) ⭐
-**Fonte:** VPS `cfm-postgres` → db `cfm` → tabela **`cfm.medicos` = 978.332 médicos**, dos quais **751.800 ATIVOS (Regular/cod `A`)** ← alvo. Excluir Falecido (40,5k), Cancelado (50,6k), etc. **Transferido (133k) = mesmo médico em outra UF** (cuidado dedup). Campos: `nu_crm`, `sg_uf`, `nm_medico`, `especialidade`, `situacao`, `dt_inscricao`, instituição, `hash_dados`. **Sem telefone/email.**
-**Alvo:** `leads` (Supabase; dedup por `chave_unica`/`cpf`/`phone_e164`; só 16,9k têm CRM hoje).
-**Objetivo:** Leads tab mostra **médicos ATIVOS do Brasil** → equipe analisa estratégia ANTES de criar campanha. Enriquecimento **gradual** (controle de custo).
-- [ ] **Pipeline import** `cfm.medicos (cod_situacao='A')` → `leads`. Definir transporte (cfm-postgres está na rede `easypanel` da VPS, Supabase é cloud → provável dump+import por lote, ou edge/job que lê via conexão direta ao Postgres da VPS).
-- [ ] **Filtrar só ativos** (`cod_situacao='A'`, ~752k) — Raul: "o ideal é pegar os ativos".
-- [ ] **Dedup robusto:** chave médico = **`nu_crm`+`sg_uf`** → setar `leads.crm`, `leads.uf`, `chave_unica='crm_<uf>_<crm>'`. **Match nome+UF (fuzzy) contra os 288k existentes** pra NÃO duplicar (existentes têm phone, não CRM). Tratar Transferido (mesmo médico em UF nova). Idempotente via `hash_dados`.
-- [ ] **Importar em lotes** (752k é grande) — incremental.
-- [ ] **Enriquecimento gradual** (`enrich-lead` por lote/demanda): lead entra cru (CRM+UF+especialidade), enriquece telefone só quando vai pra campanha ou sob fila controlada.
-- [ ] **Leads tab** filtra UF/especialidade/situação/enriquecido.
-- [ ] Critério: equipe vê médicos ativos, filtra por especialidade+região, enriquece/dispara subconjunto. Zero duplicata.
+### WS8 — Importação CFM + enriquecimento + dedup ⭐ (N3) — DETALHADO
+**Spec:** Leads tab mostra **médicos ATIVOS do Brasil** (~752k) pra equipe analisar estratégia ANTES de criar campanha. Enriquecimento (telefone/email) **gradual e sob custo controlado**.
+
+**Fonte (mapeada):** VPS `cfm-postgres` (container `ec132a8611cd`), db `cfm`, user `cfm_user`, tabela **`cfm.medicos`**:
+- Colunas: `nu_crm`, `sg_uf`, `nm_medico`, `especialidade`, `situacao`, `cod_situacao`, `dt_inscricao`, instituição, `hash_dados`/`security_hash` (dedup do scraper), `first_seen_at`/`updated_at`/`last_run_id`. **Sem telefone/email.**
+- Distribuição: total **978.332**. `cod_situacao='A'` (Regular) = **751.800 ← ALVO**. Excluir Falecido (40.559), Cancelado (50.656), etc. **Transferido (T, 133.147) = mesmo médico em outra UF** (cuidado dedup).
+
+**Alvo:** `leads` (Supabase, 288k atuais; únicos `chave_unica`/`cpf`/`phone_e164`; só 16,9k têm CRM).
+
+**Plan — pipeline (precisa aprovação DDL p/ staging + import):**
+1. **Transporte VPS→Supabase** (cfm-postgres é interno à rede da VPS, não exposto). Opções: (a) `pg_dump` do subset ativo na VPS → COPY pra tabela staging no Supabase; (b) **script na VPS** que lê `cfm.medicos` em lotes e faz UPSERT via REST/SQL no Supabase (recomendado — incremental + idempotente via `hash_dados`). Decidir na sessão.
+2. **Staging:** tabela `cfm_medicos_staging` (espelho do subset ativo) — permite reprocessar sem re-baixar.
+3. **Dedup → leads:**
+   - Chave do médico = **`nu_crm` + `sg_uf`**. Setar `leads.crm`, `leads.uf`, `chave_unica = 'crm_<uf>_<nu_crm>'`.
+   - Insert idempotente (índice único `chave_unica` já protege). Re-rodar não duplica.
+   - **Match contra os 288k existentes (que têm phone mas não CRM):** fuzzy por **nome normalizado + UF**. Se match → atualizar o lead existente com CRM/UF (NÃO inserir novo). Se não → inserir novo (cru). Normalização: upper, sem acento, sem prefixo Dr/Dra, colapsar espaços.
+   - **Transferido:** mesmo `nu_crm` em UF diferente = mesmo médico → dedup por nome+CRM raiz (evitar 2 leads).
+4. **Filtro ATIVOS** (`cod_situacao='A'`) — Raul: "o ideal é pegar os ativos".
+5. **Lotes** (752k é grande): importar incremental (ex: 5-10k/lote), logar progresso, sem travar o banco.
+6. **Enriquecimento gradual:** lead entra cru (CRM+UF+especialidade, sem telefone). `enrich-lead` por **fila/demanda** (só enriquece quando vai pra campanha ou sob batch controlado) — controla custo.
+7. **Leads tab:** filtros UF / especialidade / situação / enriquecido (cru vs com telefone).
+
+**Tasks:** T1 decidir+montar transporte (script VPS ou dump). T2 staging table (DDL→aprovar). T3 dedup+upsert idempotente (RPC ou job, DDL→aprovar) — testar em lote pequeno (1k) primeiro. T4 fuzzy match vs existentes. T5 filtros na Leads tab. T6 fila de enriquecimento gradual.
+**Aceite:** equipe vê médicos ativos do BR, filtra por especialidade+região, enriquece/dispara subconjunto. **Zero duplicata** (re-rodar import = idempotente). Custo de enriquecimento sob controle.
+**Riscos:** 🔴 import de 752k = op em massa → **lote-teste pequeno + aprovação Raul**. Fuzzy match falso-positivo (médico errado) → começar conservador (match exato normalizado). cfm-postgres não exposto → transporte via VPS.
 
 ### WS9 — Infra & rotas (N5)
-- [ ] **Reorg rotas** `/disparos/*`→`/prospeccao/{sub}` + redirects (`bloco-t-rotas-prospeccao.md`, 8 tarefas).
-- [ ] **Sidebar agrupada** (`sidebar-agrupada-dominio.md`).
-- [ ] **Persistir env Evolution no Easypanel UI** (senão deploy reverte pro webshare). ⚠️ pendente.
-- [ ] (opcional raiz) fork Evolution timeout 120s, ou proxy 4G.
+**Spec/Plan:** reorg `/disparos/*`→`/prospeccao/{sub}` + redirects (`bloco-t-rotas-prospeccao.md`, 8 tasks) + sidebar agrupada (`sidebar-agrupada-dominio.md`). Frontend puro (auto-mergeável).
+**Aceite:** ver os 2 docs (critério de pronto neles).
+
+### Hardening / follow-ups (quando estabilizar)
+- **Cap atômico no `pre_send_check`** (resolve corrida TOCTOU cross-campanha do cap 35/chip — hoje soft-cap). Precisa aprovação DDL. Conta `chip_send_log` (tentativas), com lock por chip.
+- **Raiz do flapping:** forkar Evolution (timeout 120s) OU proxy 4G móvel.
+- **Limpar instâncias duplicadas por número** (Leticia-radio/radio2 mesmo número; etc.) — decisão do Raul via UI (WS1 já dá visibilidade).
+- **WS2-B:** inline reclassify de categoria na lista de instâncias (hoje via aba Chips).
 
 ### Backlog
-- R10 Instagram/LinkedIn discovery (custo Life's Hub). R11 Treinamento equipe (sexta 14h + semana seguinte).
+- R10 Instagram/LinkedIn discovery (custo Life's Hub). R11 Treinamento equipe.
 
 ---
 
-## 4. Sequenciamento (fases) — alinhado ao roadmap P0-P3 da Bruna
-
-**Fase A — estabilizar operação (destrava JÁ):** WS1 indicador+aviso QR · WS2 janela+pacing (R9/N1) · persistir env Easypanel · equipe faz QR rescan dos `close`. *(= P0)*
-
-**Fase B — equipe 100% no Sigma:** WS4 manual+tarefas (R3/R4/R5) · WS6 WhatsApp no card (R7/N4) · WS3 detalhe IA (R2). *(= P1)*
-
-**Fase C — escala & inteligência:** WS8 CFM (N3) · WS5 wizard multi-local (R8) · WS3 IA contextual (N2). *(= P2)*
-
-**Fase D — visibilidade & polish:** WS7 dashboard BI (R6) · WS9 rotas+sidebar (N5). *(= P2/P3)*
-
-> Execução tarefa-a-tarefa, PR por tarefa, sem regressão. Cada WS aprofundado num doc de capacidade.
+## 5. Pendências operacionais (Raul/equipe — não bloqueiam dev)
+- **Equipe:** QR rescan dos chips `close` → destrava volume de disparo. (WS1 mostra quais.)
+- **Raul:** persistir env do proxy no **Easypanel** (login web) — senão um redeploy reverte pro webshare quebrado. Risco latente.
+- **Escala:** ~57 chips online p/ 2.000/dia (operacional/Bruna + UberChip a avaliar).
 
 ---
 
-## 5. Critérios de "eficiência 100%"
-- [ ] Chip cai → reconecta sozinho OU avisa QR claramente. **Zero "Edge non-2xx" surpresa.**
-- [ ] Equipe envia/recebe no Sigzap sem erro; vê todas campanhas e conversas.
-- [ ] Cada chip espalha ~35 primeiros-disparos entre 07-17h (anti-ban respeitado).
-- [ ] Disparos/dia escalam com chips online (2k+ exige ~57 chips — operacional/Bruna).
-- [ ] Leads tab com médicos ativos do Brasil (CFM), enriquecimento gradual, zero duplicata.
-- [ ] Dashboard: IA×manual, funil, saúde dos chips.
-- [ ] Bruna opera campanhas manuais inteiramente no Sigma (planilha aposentada).
+## 6. Briefing técnico (acessos / comandos / como retomar)
+- **Repo:** `C:\Users\rauls\sigma-new` (branch `main`, push direto → Lovable deploya). Commits só com identidade do Raul, sem co-author.
+- **Acessos (em memória):** VPS SSH `root@147.93.71.48` (Easypanel), Supabase (service_role JWT + SBP token em `reference_supabase_token.md`), Bright Data API, anon key, cfm-postgres (via VPS), N8N CLI (`docker exec disparador_n8n n8n …`).
+- **SQL prod:** Management API `POST https://api.supabase.com/v1/projects/zupsbgtoeoixfokzkjro/database/query` com SBP. **Sempre PowerShell** (não Bash) p/ evitar mangle de acento; melhor ainda usar coluna não-acentuada ou JS no browser p/ UTF-8.
+- **Deploy edge:** `npx supabase functions deploy <nome> --project-ref zupsbgtoeoixfokzkjro` (env `SUPABASE_ACCESS_TOKEN`=SBP).
+- **Invocar edge (DNS local não resolve `.functions.supabase.co`):** usar `https://zupsbgtoeoixfokzkjro.supabase.co/functions/v1/<nome>`.
+- **Cron de minuto (job 11)** dispara `campanha-disparo-processor` p/ campanhas ativas com `next_batch_at<=now()` OU (null + frio). Healthcheck = jobid 22.
 
-## 6. Acessos
-- ✅ VPS (SSH root), Supabase (service_role + SBP), Bright Data (API), anon key, cfm-postgres (via VPS).
-- ⚠️ **N8N login** — pra ajustar detector opt-out + webhooks.
-- ⚠️ **Easypanel login** — persistir env Evolution.
-
-## 7. Referências (docs-base por capacidade)
-- `chips-disparo-runtime.md` — runbook runtime/troubleshooting
-- `horario-inteligente-campanhas-ia.md` — janela horária (WS2)
-- `bloco-t-rotas-prospeccao.md` + `sidebar-agrupada-dominio.md` — rotas/sidebar (WS9)
-- `templates-email-por-campanha.md` — templates (entregue)
-- `.claude/plano-campanhas-ia-vs-manual.md` — R1-R11 das reuniões (base de WS3/WS4/WS5/WS7)
-- memórias: `reference_chip_connecting_flapping`, `feedback_encode_instancename_evolution`, `feedback_proxy_global_fallback`, `reference_bright_data_isp_br`
+## 7. Referências (docs por capacidade)
+- WS entregues: `ws1-chip-ui.md`, `ws2-disparo-em-minutos.md`, `ws4-manual-duplicar-split.md`.
+- Pendentes/base: `horario-inteligente-campanhas-ia.md`, `bloco-t-rotas-prospeccao.md`, `sidebar-agrupada-dominio.md`, `templates-email-por-campanha.md`, `chips-disparo-runtime.md`, `.claude/plano-campanhas-ia-vs-manual.md` (R1-R11).
+- Memórias: `chip-connecting-flapping-causa-e-fix`, `aquecimento-externo-pre-conexao`, `feedback_encode_instancename_evolution`, `feedback_proxy_global_fallback`, `reference_bright_data_isp_br`, `reference_supabase_token`.
