@@ -22,9 +22,10 @@ import {
   Stethoscope,
   Flame,
 } from "lucide-react";
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { supabase } from "@/integrations/supabase/client";
+import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { LeadPerfilIaSection } from "@/components/medicos/LeadPerfilIaSection";
 import { LeadTimelineUnificadoSection } from "@/components/medicos/LeadTimelineUnificadoSection";
@@ -94,6 +95,12 @@ export function AcompanhamentoLeadPainel({ lead, onClose }: Props) {
   const iniciaisDono = lead.assumido_por_nome
     ? lead.assumido_por_nome.split(" ").map((p) => p[0]).join("").slice(0, 2).toUpperCase()
     : "";
+  const iniciaisLead = (lead.lead_nome || "?")
+    .split(" ").filter(Boolean).map((p) => p[0]).join("").slice(0, 2).toUpperCase();
+  const quente = lead.etapa_acompanhamento === "quente";
+  const ultimoContatoLabel = (lead as any).data_ultimo_contato
+    ? formatDistanceToNow(new Date((lead as any).data_ultimo_contato), { locale: ptBR, addSuffix: true })
+    : null;
 
   return (
     <>
@@ -101,50 +108,61 @@ export function AcompanhamentoLeadPainel({ lead, onClose }: Props) {
         <SheetContent side="right" className="w-full sm:max-w-2xl md:max-w-5xl lg:max-w-6xl p-0 flex flex-col">
           <SheetHeader className="px-5 pt-5 pb-4 border-b">
             <div className="flex items-start gap-3">
+              <Avatar className="h-11 w-11 shrink-0">
+                <AvatarFallback className="bg-primary/10 text-primary font-semibold text-sm">
+                  {iniciaisLead}
+                </AvatarFallback>
+              </Avatar>
               <div className="min-w-0 flex-1">
-                <SheetTitle className="text-lg flex items-center gap-2">
-                  {lead.lead_nome}
-                  {lead.etapa_acompanhamento === "quente" && semDono && (
-                    <Flame className="h-5 w-5 text-red-500" />
-                  )}
+                <SheetTitle className="text-lg flex items-center gap-2 flex-wrap">
+                  <span className="truncate">{lead.lead_nome}</span>
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      "text-xs shrink-0",
+                      quente && "border-red-300 bg-red-50 text-red-700"
+                    )}
+                  >
+                    {quente && <Flame className="h-3 w-3 mr-1" />}
+                    {labelEtapa(lead.etapa_acompanhamento)}
+                  </Badge>
                 </SheetTitle>
-                <div className="text-sm text-muted-foreground space-y-1 mt-1">
+                <div className="text-sm text-muted-foreground mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5">
                   {lead.lead_especialidade && (
-                    <p className="flex items-center gap-1.5">
+                    <span className="flex items-center gap-1">
                       <Stethoscope className="h-3.5 w-3.5" />
                       {lead.lead_especialidade}
-                    </p>
+                    </span>
                   )}
                   {(lead.lead_cidade || lead.lead_uf) && (
-                    <p className="flex items-center gap-1.5">
+                    <span className="flex items-center gap-1">
                       <MapPin className="h-3.5 w-3.5" />
                       {[lead.lead_cidade, lead.lead_uf].filter(Boolean).join("/")}
-                    </p>
+                    </span>
                   )}
                   {lead.lead_phone && (
-                    <p className="flex items-center gap-1.5">
+                    <span className="flex items-center gap-1 font-mono">
                       <Phone className="h-3.5 w-3.5" />
-                      <span className="font-mono">{lead.lead_phone}</span>
-                    </p>
+                      {lead.lead_phone}
+                    </span>
                   )}
                 </div>
+                <div className="text-xs text-muted-foreground mt-1 flex flex-wrap items-center gap-x-3">
+                  <span className="flex items-center gap-1">
+                    <MessageSquare className="h-3 w-3" />
+                    {lead.campanha_nome}
+                  </span>
+                  {ultimoContatoLabel && <span>· último contato {ultimoContatoLabel}</span>}
+                </div>
               </div>
-              <div className="flex flex-col items-end gap-1.5">
-                <Badge variant="outline" className="text-xs">
-                  {labelEtapa(lead.etapa_acompanhamento)}
-                </Badge>
-                <Badge variant="outline" className="text-xs">
-                  {lead.campanha_nome}
-                </Badge>
-                {!semDono && (
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-1">
-                    <Avatar className="h-5 w-5">
-                      <AvatarFallback className="text-[10px] bg-primary/10">{iniciaisDono}</AvatarFallback>
-                    </Avatar>
-                    <span>{lead.assumido_por_nome || "—"}</span>
-                  </div>
-                )}
-              </div>
+              {!semDono && (
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
+                  <Avatar className="h-6 w-6">
+                    <AvatarFallback className="text-[10px] bg-primary/10">{iniciaisDono}</AvatarFallback>
+                  </Avatar>
+                  <span className="hidden sm:inline">{lead.assumido_por_nome || "—"}</span>
+                </div>
+              )}
             </div>
 
             {/* F2.9 — Contexto 360º (badges de sinais relevantes do lead) */}

@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useRef, useEffect, Fragment } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2, MessageSquare, ExternalLink, Send } from "lucide-react";
-import { format } from "date-fns";
+import { format, isSameDay, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -102,6 +102,12 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback }: Pro
     },
   });
 
+  // Scroll automático pro fim quando a conversa carrega ou chega mensagem nova
+  const endRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ block: "end" });
+  }, [mensagens?.length, conv?.id]);
+
   // Loading
   if (loadingConv || (conv?.id && loadingMsgs)) {
     return (
@@ -167,10 +173,18 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback }: Pro
           Conversa vinculada mas sem mensagens ainda.
         </p>
       ) : (
-        <div className="space-y-2">
-          {mensagens.map((msg) => (
-            <BubbleSigzap key={msg.id} msg={msg} />
-          ))}
+        <div className="space-y-1.5">
+          {mensagens.map((msg, i) => {
+            const prev = i > 0 ? mensagens[i - 1] : null;
+            const showSep = !prev || !isSameDay(new Date(prev.sent_at), new Date(msg.sent_at));
+            return (
+              <Fragment key={msg.id}>
+                {showSep && <DateSeparator iso={msg.sent_at} />}
+                <BubbleSigzap msg={msg} />
+              </Fragment>
+            );
+          })}
+          <div ref={endRef} />
         </div>
       )}
 
@@ -203,25 +217,41 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback }: Pro
   );
 }
 
-// Bubble do formato sigzap_messages (canônico)
+// Separador de data entre grupos de mensagens (estilo WhatsApp)
+function DateSeparator({ iso }: { iso: string }) {
+  let label = "";
+  try {
+    const d = new Date(iso);
+    label = isToday(d) ? "Hoje" : isYesterday(d) ? "Ontem" : format(d, "dd 'de' MMMM", { locale: ptBR });
+  } catch {}
+  return (
+    <div className="flex justify-center my-2">
+      <span className="text-[10px] uppercase tracking-wide text-muted-foreground bg-muted/70 rounded-full px-2.5 py-0.5">
+        {label}
+      </span>
+    </div>
+  );
+}
+
+// Bubble do formato sigzap_messages (canônico) — estilo WhatsApp
 function BubbleSigzap({ msg }: { msg: SigzapMsg }) {
   const mine = msg.from_me;
   const text = msg.message_text || (msg.message_type ? `[${msg.message_type}]` : "—");
+  let hora = "";
+  try { hora = format(new Date(msg.sent_at), "HH:mm", { locale: ptBR }); } catch {}
 
   return (
     <div className={cn("flex", mine ? "justify-end" : "justify-start")}>
       <div
         className={cn(
-          "max-w-[80%] rounded-md px-3 py-1.5 text-sm",
+          "max-w-[78%] rounded-2xl px-3 py-1.5 text-sm shadow-sm",
           mine
-            ? "bg-emerald-100 text-emerald-900 border border-emerald-200"
-            : "bg-muted text-foreground"
+            ? "bg-emerald-100 text-emerald-950 rounded-br-sm"
+            : "bg-background border border-border rounded-bl-sm"
         )}
       >
-        <p className="whitespace-pre-wrap break-words">{text}</p>
-        <div className={cn("text-[10px] mt-0.5 opacity-60", mine ? "text-right" : "text-left")}>
-          {format(new Date(msg.sent_at), "dd/MM HH:mm", { locale: ptBR })}
-        </div>
+        <p className="whitespace-pre-wrap break-words leading-snug">{text}</p>
+        <div className="text-[10px] mt-0.5 opacity-50 text-right">{hora}</div>
       </div>
     </div>
   );
