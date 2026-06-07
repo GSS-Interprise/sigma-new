@@ -20,6 +20,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ComparativoOperadoras } from "./ComparativoOperadoras";
+import { DashboardMetasFase1 } from "./DashboardMetasFase1";
 import {
   Rocket,
   Users,
@@ -386,6 +387,9 @@ export function DashboardCampanhas() {
           Gerado em {format(new Date(), "dd 'de' MMMM 'de' yyyy 'às' HH:mm", { locale: ptBR })}
         </p>
       </div>
+
+      {/* Fase 1 — Metas & Período (gestão): disparos vs 700/dia, capacidade de chips, gráfico */}
+      <DashboardMetasFase1 />
 
       {/* Cards principais (4 KPIs executivos) */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
