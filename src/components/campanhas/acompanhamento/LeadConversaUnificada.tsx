@@ -1,9 +1,13 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, MessageSquare, ExternalLink } from "lucide-react";
+import { Loader2, MessageSquare, ExternalLink, Send } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -38,13 +42,49 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback }: Pro
     queryFn: async () => {
       const { data } = await (supabase as any)
         .from("sigzap_conversations")
-        .select("id, instance_id, last_message_at")
+        .select("id, instance_id, last_message_at, instance:instance_id(name), contact:contact_id(contact_jid, contact_phone)")
         .eq("lead_id", leadId)
         .order("last_message_at", { ascending: false, nullsFirst: false })
         .limit(1)
         .maybeSingle();
-      return data as { id: string; instance_id: string | null; last_message_at: string | null } | null;
+      return data as {
+        id: string;
+        instance_id: string | null;
+        last_message_at: string | null;
+        instance: { name: string | null } | null;
+        contact: { contact_jid: string | null; contact_phone: string | null } | null;
+      } | null;
     },
+  });
+
+  // Caixa de resposta da operadora — envia pelo mesmo caminho do SigZap (send-sigzap-message).
+  // Esse envio NÃO passa pelo gate anti-ban de disparo: resposta pode sair em segundos.
+  const qc = useQueryClient();
+  const [texto, setTexto] = useState("");
+  const enviar = useMutation({
+    mutationFn: async (msg: string) => {
+      const instanceName = conv?.instance?.name;
+      const contactJid =
+        conv?.contact?.contact_jid ||
+        (conv?.contact?.contact_phone
+          ? `${conv.contact.contact_phone.replace(/\D/g, "")}@s.whatsapp.net`
+          : null);
+      if (!conv?.id || !instanceName || !contactJid) {
+        throw new Error("Conversa sem instância/contato vinculado — responda pelo SigZap.");
+      }
+      const { data, error } = await supabase.functions.invoke("send-sigzap-message", {
+        body: { action: "send", conversationId: conv.id, instanceName, contactJid, message: msg },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      return data;
+    },
+    onSuccess: () => {
+      setTexto("");
+      qc.invalidateQueries({ queryKey: ["acompanhamento-conv-msgs", conv?.id] });
+      toast.success("Mensagem enviada");
+    },
+    onError: (e: any) => toast.error("Erro ao enviar: " + (e?.message || "falha no envio")),
   });
 
   // 2. Se tem conversa, busca mensagens reais
@@ -133,6 +173,32 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback }: Pro
           ))}
         </div>
       )}
+
+      {/* Caixa de resposta da operadora (envio em segundos, sem gate anti-ban) */}
+      <div className="mt-3 flex items-end gap-2 border-t pt-3">
+        <Textarea
+          value={texto}
+          onChange={(e) => setTexto(e.target.value)}
+          placeholder="Responder pelo WhatsApp... (Enter envia, Shift+Enter quebra linha)"
+          rows={2}
+          className="resize-none text-sm"
+          disabled={enviar.isPending}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              if (texto.trim()) enviar.mutate(texto.trim());
+            }
+          }}
+        />
+        <Button
+          size="sm"
+          className="shrink-0"
+          disabled={!texto.trim() || enviar.isPending}
+          onClick={() => texto.trim() && enviar.mutate(texto.trim())}
+        >
+          {enviar.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+        </Button>
+      </div>
     </>
   );
 }
