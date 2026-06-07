@@ -69,6 +69,8 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
   const [bNomeServico, setBNomeServico] = useState(""); // Ex: "Plantão UTI Pediátrica"
   const [bHospital, setBHospital] = useState(""); // Ex: "Hospital Regional do Oeste"
   const [bCidade, setBCidade] = useState(""); // Ex: "Chapecó / SC"
+  // WS5 — locais adicionais (multi-local): além do hospital/cidade principal. A IA menciona todos.
+  const [bLocaisExtras, setBLocaisExtras] = useState<Array<{ hospital: string; cidade: string }>>([]);
   const [bTipoServico, setBTipoServico] = useState(""); // plantao_12h, plantao_24h, rotineiro, producao
   const [bRequisitos, setBRequisitos] = useState(""); // Ex: "RQE em Pediatria ou experiência UTI"
   const [bEstrutura, setBEstrutura] = useState(""); // Ex: "10 leitos, suporte de especialidades"
@@ -178,6 +180,8 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
         nome_servico: bNomeServico,
         hospital: bHospital,
         cidade: bCidade,
+        // WS5 — multi-local: principal + extras (a IA lista todos). Retrocompat: hospital/cidade single acima.
+        locais: [{ hospital: bHospital, cidade: bCidade, uf: regiaoEstado || "" }, ...bLocaisExtras.map((l) => ({ ...l, uf: regiaoEstado || "" }))].filter((l) => l.hospital || l.cidade),
         tipo_servico: bTipoServico,
         requisitos: bRequisitos,
         estrutura: bEstrutura,
@@ -880,6 +884,31 @@ GSS Saúde`}
                         placeholder="Ex: Chapecó / SC"
                       />
                     </div>
+                  </div>
+
+                  {/* WS5 — outras unidades/locais (multi-local, opcional) */}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Outras unidades/locais (opcional — a IA menciona todos na campanha)</Label>
+                    {bLocaisExtras.map((loc, i) => (
+                      <div key={i} className="grid grid-cols-[1fr_1fr_auto] gap-2">
+                        <Input
+                          value={loc.hospital}
+                          onChange={(e) => setBLocaisExtras((prev) => prev.map((l, j) => (j === i ? { ...l, hospital: e.target.value } : l)))}
+                          placeholder="Hospital / Unidade"
+                        />
+                        <Input
+                          value={loc.cidade}
+                          onChange={(e) => setBLocaisExtras((prev) => prev.map((l, j) => (j === i ? { ...l, cidade: e.target.value } : l)))}
+                          placeholder="Cidade"
+                        />
+                        <Button type="button" variant="ghost" size="sm" onClick={() => setBLocaisExtras((prev) => prev.filter((_, j) => j !== i))}>
+                          Remover
+                        </Button>
+                      </div>
+                    ))}
+                    <Button type="button" variant="outline" size="sm" onClick={() => setBLocaisExtras((prev) => [...prev, { hospital: "", cidade: "" }])}>
+                      + Adicionar local
+                    </Button>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">

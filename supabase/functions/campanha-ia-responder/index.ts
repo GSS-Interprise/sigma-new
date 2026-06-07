@@ -588,6 +588,7 @@ REGRAS DE FALA HUMANA — segue à risca, médicos identificam bot na hora:
 
 <oportunidade>
   Serviço: ${b.nome_servico || "?"} | Hospital: ${b.hospital || "?"} | Cidade: ${b.cidade || "?"}
+  ${Array.isArray(b.locais) && b.locais.length > 1 ? `Locais da campanha (mencione o(s) que fizer sentido pro médico/região): ${b.locais.map((l: any) => `${l.hospital || "?"}${l.cidade ? " — " + l.cidade : ""}`).join("; ")}` : ""}
   Tipo: ${b.tipo_servico || "plantão"} | Contratação: ${b.contratacao || "PJ"}
   Requisito: ${b.requisitos || "Formação na área"}
   ${b.estrutura ? `Estrutura: ${b.estrutura}` : ""}
