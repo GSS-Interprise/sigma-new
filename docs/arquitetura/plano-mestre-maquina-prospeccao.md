@@ -62,6 +62,7 @@ Toda WS segue **SDD**: nada de código antes da spec.
 | **WS2-B** | UI da janela no wizard (`JanelaHorarioConfig`) com validação (bloqueia fim≤início / dias vazio). | #3 | — |
 | **WS3** | **Já existia** — IA (`campanha-ia-responder`) já interpola os 17 campos do briefing (prompt sigma-v9); detalhe da campanha abre (`CampanhaProspeccaoKanban`). Não recriado. | — | — |
 | **WS4** | Duplicar campanha **IA→manual** com **split top-N** (RPC `duplicar_campanha_para_manual` + menu 3-pontinhos no `CampanhaCard` + dialog). Move N frios, gera 6 tasks por canal. | #4 | RPC (migration `20260606170000`) |
+| **WS8** ✅ | **Import CFM 752k** (07/06). Staging `cfm_medicos_staging` (espelho dos 751.800 ativos cod A, transporte direto VPS→Supabase via pooler). Merge dedup em 3 camadas (CRM forte → nome+UF exato anti-homônimo → insert cru), idempotente, auditado em `cfm_import_audit`. **Resultado: leads 289k→796k** (506.493 novos + 236.544 ganharam CRM sem duplicar + 18k enriquecidos; 0 duplicata de chave_unica). Validado no piloto RR + Chrome. | — | staging + `cfm_import_audit` (DDL aprovado Raul) |
 
 ### Componentes/arquivos-chave criados
 - `src/constants/categorias.ts` (fonte única categorias).
@@ -69,6 +70,34 @@ Toda WS segue **SDD**: nada de código antes da spec.
 - `src/components/campanhas/DuplicarCampanhaManualDialog.tsx` (WS4).
 - edge `supabase/functions/chip-auto-reconnect/` (healthcheck).
 - RPC `duplicar_campanha_para_manual(uuid,int)`.
+
+---
+
+## 1.5 Prontidão das Campanhas — auditoria 07/06 (multi-agente + runtime + visual)
+
+**Veredito:** a máquina de campanhas **JÁ RODA em produção** (cron `job 11` ativo a cada minuto; sexta 05/06 = 429 recebidas + 540 enviadas). Hoje (domingo) fica quieto pela janela 07-17h **dias úteis** — correto.
+
+**Modelo confirmado com Raul (07/06):** disparo ≠ troca de mensagens. **Disparo automático em IA E manual** (mesmo motor `campanha-disparo-processor`, anti-ban: 35/chip/dia **cold**, espaçamento em minutos, janela 07-17h úteis, **multi-chip** round-robin+fallback). A diferença IA×manual é **quem conduz a conversa** (IA vs operadora). A **resposta nunca é barrada pelo cap** (cap conta só `data_primeiro_contato`; resposta tem rate-limit próprio permissivo).
+
+| Capacidade | Status |
+|---|---|
+| Campanha IA: dispara + responde + handoff | ✅ produção |
+| Multi-chip (round-robin + fallback) | ✅ |
+| Disparo manual automático (mesmo motor) | ✅ |
+| Cap 35/chip só cold; resposta livre em segundos | ✅ |
+| **[P0 ✅ 07/06] chip só dispara se `connection_state='open'`** | ✅ deployado (corrige campanha parada por chip caído, ex ULTRASSOM SC) |
+| **[P0 ✅ 07/06] campanha manual: IA NÃO responde (operadora conduz)** | ✅ deployado (`receive-whatsapp-messages` checa `tipo_envio`) |
+| Modal do lead: conversa WhatsApp + tasks juntas | 🟡 70% — existe no Kanban (`AcompanhamentoLeadPainel`); falta **responder inline** + falta no modal da página `/leads` (`LeadProfile360Modal`) |
+| Operadora responder pelo Sigma | 🟡 caminho existe (`send-disparo-manual`, sem gate anti-ban); falta o **botão** no modal |
+| Painel saúde de chips (UI) | 🔴 views prontas (`vw_chip_health`), falta a tela |
+| Dashboard IA×manual | 🟡 `DashboardCampanhas` + export PDF/Excel ✅; falta segmentar IA×manual |
+| Página `/leads` performance (796k) | 🔴 lenta — keyset pagination + índices trgm + count estimado + select reduzido |
+
+**Caminho crítico restante:**
+- **P1:** botão "responder" no modal do lead (operadora) · levar conversa+tasks pro modal da `/leads` · badge "lead manual respondeu" (pra operadora ver que tem resposta esperando).
+- **P2:** painel saúde de chips · otimização `/leads` · dashboard IA×manual · fila de enriquecimento (506k novos do CFM sem telefone).
+
+**Pré-requisitos operacionais (equipe, não-dev):** reconectar chips `close` (28 manual + vários IA) via QR.
 
 ---
 
@@ -111,7 +140,10 @@ Toda WS segue **SDD**: nada de código antes da spec.
 **Tasks:** T1 painel saúde de chips (R1 — reusa dados do healthcheck). T2 BI funil IA×manual. T3 export. T4 avisos campanha-parada.
 **Aceite:** Dr. Michael vê números IA×manual + equipe vê saúde dos chips sem perguntar ao Raul.
 
-### WS8 — Importação CFM + enriquecimento + dedup ⭐ (N3) — DETALHADO
+### WS8 — Importação CFM + enriquecimento + dedup ⭐ (N3) — ✅ ENTREGUE 07/06
+
+> **Status:** import concluído. Transporte (752k→staging) + merge dedup 3-camadas idempotente rodados. Base leads 289k→**796k**. Falta só **T6 (fila de enriquecimento gradual de telefone)** — os 506k novos entraram sem telefone. Follow-ups abertos: varredura de ~3.485 duplicatas pré-existentes por CRM (merge via `merged_into_id`), limpeza de 195 leads com UF inválida. Auditoria/reversão em `cfm_import_audit` (lotes `RR-piloto`+`BR-massa`).
+
 **Spec:** Leads tab mostra **médicos ATIVOS do Brasil** (~752k) pra equipe analisar estratégia ANTES de criar campanha. Enriquecimento (telefone/email) **gradual e sob custo controlado**.
 
 **Fonte (mapeada):** VPS `cfm-postgres` (container `ec132a8611cd`), db `cfm`, user `cfm_user`, tabela **`cfm.medicos`**:
