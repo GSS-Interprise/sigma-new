@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ComparativoOperadoras } from "./ComparativoOperadoras";
 import { DashboardMetasFase1 } from "./DashboardMetasFase1";
+import { DashboardFunilFase2 } from "./DashboardFunilFase2";
 import {
   Rocket,
   Users,
@@ -448,23 +449,29 @@ export function DashboardCampanhas() {
 
       {/* IA × Manual — split por tipo de envio (Dr. Michael vê lado a lado) */}
       {(() => {
-        const split = { ia: { disp: 0, q: 0, c: 0 }, manual: { disp: 0, q: 0, c: 0 } };
+        const split = { ia: { disp: 0, q: 0, c: 0, conv: 0, cont: 0 }, manual: { disp: 0, q: 0, c: 0, conv: 0, cont: 0 } };
         for (const r of rows ?? []) {
           const t = tiposMap.get(r.campanha_id) === "manual" ? "manual" : "ia";
           split[t].disp += r.disparos_24h ?? 0;
           split[t].q += r.quentes ?? 0;
           split[t].c += 1;
+          split[t].conv += r.convertidos ?? 0;
+          split[t].cont += r.contatado ?? 0;
         }
-        const Bloco = ({ titulo, cor, s }: { titulo: string; cor: string; s: { disp: number; q: number; c: number } }) => (
-          <div className="border rounded-lg p-4 bg-card">
-            <div className={`text-xs font-semibold mb-2 ${cor}`}>{titulo}</div>
-            <div className="flex gap-6 text-sm">
-              <div><div className="text-2xl font-bold tabular-nums">{s.disp.toLocaleString("pt-BR")}</div><div className="text-xs text-muted-foreground">disparos 24h</div></div>
-              <div><div className="text-2xl font-bold tabular-nums">{s.q}</div><div className="text-xs text-muted-foreground">quentes</div></div>
-              <div><div className="text-2xl font-bold tabular-nums">{s.c}</div><div className="text-xs text-muted-foreground">campanhas</div></div>
+        const Bloco = ({ titulo, cor, s }: { titulo: string; cor: string; s: { disp: number; q: number; c: number; conv: number; cont: number } }) => {
+          const convPct = s.cont > 0 ? ((s.conv / s.cont) * 100).toFixed(1) : "0.0";
+          return (
+            <div className="border rounded-lg p-4 bg-card">
+              <div className={`text-xs font-semibold mb-2 ${cor}`}>{titulo}</div>
+              <div className="flex gap-5 text-sm flex-wrap">
+                <div><div className="text-2xl font-bold tabular-nums">{s.disp.toLocaleString("pt-BR")}</div><div className="text-xs text-muted-foreground">disparos 24h</div></div>
+                <div><div className="text-2xl font-bold tabular-nums">{s.q}</div><div className="text-xs text-muted-foreground">quentes</div></div>
+                <div><div className="text-2xl font-bold tabular-nums">{convPct}%</div><div className="text-xs text-muted-foreground">conversão</div></div>
+                <div><div className="text-2xl font-bold tabular-nums">{s.c}</div><div className="text-xs text-muted-foreground">campanhas</div></div>
+              </div>
             </div>
-          </div>
-        );
+          );
+        };
         return (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Bloco titulo="🤖 IA (automática)" cor="text-indigo-700" s={split.ia} />
@@ -472,6 +479,9 @@ export function DashboardCampanhas() {
           </div>
         );
       })()}
+
+      {/* Fase 2 — Funil de prospecção + comparação semanal */}
+      <DashboardFunilFase2 funil={{ pool: agg.pool_total, contatado: agg.contatado, emConversa: agg.em_conversa, quentes: agg.quentes, convertidos: agg.convertidos }} />
 
       {/* Nota contextual: dá tranquilidade sobre o sistema anti-ban funcionar como freio, não como erro */}
       <p className="text-xs text-muted-foreground italic px-1 -mt-2">
