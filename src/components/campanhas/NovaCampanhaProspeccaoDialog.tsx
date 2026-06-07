@@ -25,6 +25,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Rocket, MapPin, Stethoscope, Smartphone, Brain, Settings2, Zap, Shield, ClipboardList, Eye } from "lucide-react";
 import { PreviewLeadsCampanhaModal } from "./PreviewLeadsCampanhaModal";
 import { JanelaHorarioConfig, type JanelaHorario } from "./JanelaHorarioConfig";
+import { CadenciaConfig } from "./CadenciaConfig";
+import type { CadenciaPasso } from "@/hooks/useCadencia";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 
 const UF_LIST = [
@@ -58,6 +60,9 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead }: Pr
   const [cadenciaAtiva, setCadenciaAtiva] = useState(true);
   // F2.2: tipo de envio (default IA pra manter comportamento atual)
   const [tipoEnvio, setTipoEnvio] = useState<"ia" | "manual">("ia");
+  // WS-A: cadência de tarefas parametrizável (só usada quando tipo_envio = manual)
+  const [cadenciaTemplateId, setCadenciaTemplateId] = useState<string | null>(null);
+  const [cadenciaPassos, setCadenciaPassos] = useState<CadenciaPasso[]>([]);
   // Briefing IA — campos estruturados (anti-burro)
   const [bNomeServico, setBNomeServico] = useState(""); // Ex: "Plantão UTI Pediátrica"
   const [bHospital, setBHospital] = useState(""); // Ex: "Hospital Regional do Oeste"
@@ -225,6 +230,10 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead }: Pr
           briefing_ia: briefing,
           cadencia_ativa: cadenciaAtiva,
           tipo_envio: tipoEnvio,
+          // WS-A: snapshot da cadência de TAREFAS manuais (fonte de verdade do trigger). Só pra manual.
+          // (distinto de cadencia_template_id, que é a cadência de mensagens automáticas)
+          tarefa_cadencia_template_id: tipoEnvio === "manual" ? cadenciaTemplateId : null,
+          tarefa_cadencia_passos: tipoEnvio === "manual" && cadenciaPassos.length > 0 ? cadenciaPassos : null,
           leads_excluidos_ids:
             excludedLeadIds.size > 0 ? Array.from(excludedLeadIds) : null,
           // Identidade do remetente (templates-email-por-campanha.md)
@@ -280,6 +289,8 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead }: Pr
     setMensagemInicial("");
     setCadenciaAtiva(true);
     setTipoEnvio("ia");
+    setCadenciaTemplateId(null);
+    setCadenciaPassos([]);
     setBNomeServico("");
     setBHospital("");
     setBCidade("");
@@ -394,7 +405,7 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead }: Pr
                     Manual (operadora)
                   </div>
                   <p className="text-xs text-muted-foreground mt-1 leading-snug">
-                    Cada lead gera 6 tarefas (WhatsApp×3, email, Instagram, telefone) pra operadora executar e marcar feita.
+                    Cada lead gera uma cadência de tarefas (configurável: WhatsApp, ligação, Instagram…) pra operadora executar e marcar feita.
                   </p>
                 </button>
               </div>
@@ -779,39 +790,52 @@ GSS Saúde`}
               </p>
             </div>
 
-            <div className="border rounded-lg p-4 space-y-3 bg-amber-50/50">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1">
-                  <h4 className="font-semibold text-sm flex items-center gap-2">
-                    <Zap className="h-4 w-4 text-amber-600" />
-                    Cadência automática (follow-up)
-                  </h4>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Se o médico não responder à mensagem inicial, o sistema envia automaticamente
-                    um reforço em 2 dias (WhatsApp) e um email em 3 dias.
-                    Se o médico responder em qualquer momento, a cadência pausa e a IA assume.
-                  </p>
+            {/* Cadência automática da IA (follow-up) — só pra campanha IA */}
+            {tipoEnvio === "ia" && (
+              <div className="border rounded-lg p-4 space-y-3 bg-amber-50/50">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1">
+                    <h4 className="font-semibold text-sm flex items-center gap-2">
+                      <Zap className="h-4 w-4 text-amber-600" />
+                      Cadência automática (follow-up)
+                    </h4>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Se o médico não responder à mensagem inicial, o sistema envia automaticamente
+                      um reforço em 2 dias (WhatsApp) e um email em 3 dias.
+                      Se o médico responder em qualquer momento, a cadência pausa e a IA assume.
+                    </p>
+                  </div>
+                  <label className="flex items-center gap-2 cursor-pointer shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={cadenciaAtiva}
+                      onChange={(e) => setCadenciaAtiva(e.target.checked)}
+                      className="w-4 h-4"
+                    />
+                    <span className="text-sm font-medium">
+                      {cadenciaAtiva ? "Ativada" : "Desativada"}
+                    </span>
+                  </label>
                 </div>
-                <label className="flex items-center gap-2 cursor-pointer shrink-0">
-                  <input
-                    type="checkbox"
-                    checked={cadenciaAtiva}
-                    onChange={(e) => setCadenciaAtiva(e.target.checked)}
-                    className="w-4 h-4"
-                  />
-                  <span className="text-sm font-medium">
-                    {cadenciaAtiva ? "Ativada" : "Desativada"}
-                  </span>
-                </label>
+                {cadenciaAtiva && (
+                  <div className="text-xs bg-white rounded border p-2 space-y-1 text-muted-foreground">
+                    <div><strong>T1 D+0</strong> — WhatsApp (mensagem inicial acima)</div>
+                    <div><strong>T2 D+2</strong> — WhatsApp reforço automático</div>
+                    <div><strong>T3 D+3</strong> — Email de último contato</div>
+                  </div>
+                )}
               </div>
-              {cadenciaAtiva && (
-                <div className="text-xs bg-white rounded border p-2 space-y-1 text-muted-foreground">
-                  <div><strong>T1 D+0</strong> — WhatsApp (mensagem inicial acima)</div>
-                  <div><strong>T2 D+2</strong> — WhatsApp reforço automático</div>
-                  <div><strong>T3 D+3</strong> — Email de último contato</div>
-                </div>
-              )}
-            </div>
+            )}
+
+            {/* WS-A: cadência de tarefas parametrizável — só pra campanha manual */}
+            {tipoEnvio === "manual" && (
+              <CadenciaConfig
+                passos={cadenciaPassos}
+                onChange={setCadenciaPassos}
+                templateId={cadenciaTemplateId}
+                onTemplateChange={setCadenciaTemplateId}
+              />
+            )}
           </TabsContent>
 
           <TabsContent value="ia" className="space-y-4 mt-4">

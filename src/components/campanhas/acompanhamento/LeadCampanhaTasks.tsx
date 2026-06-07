@@ -25,10 +25,6 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import {
-  MessageCircle,
-  Mail,
-  Instagram,
-  Phone,
   Check,
   Clock,
   X,
@@ -41,14 +37,16 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { format, isToday, isPast } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { useTaskTipos, type TaskTipo as TaskTipoMeta } from "@/hooks/useCadencia";
+import { resolveTaskIcon } from "@/lib/taskIcons";
 
-type TaskTipo = "whatsapp_1" | "whatsapp_2" | "whatsapp_3" | "email" | "instagram" | "telefone";
 type TaskStatus = "pendente" | "feita" | "snooze" | "descartada";
 
 interface Task {
   id: string;
   campanha_lead_id: string;
-  tipo: TaskTipo;
+  tipo: string; // WS-A: código do canal (task_tipos.codigo); legado pode trazer whatsapp_1/2/3
+  rotulo: string | null;
   ordem: number;
   status: TaskStatus;
   prazo_at: string;
@@ -59,14 +57,23 @@ interface Task {
   descarte_motivo: string | null;
 }
 
-const TIPO_META: Record<TaskTipo, { label: string; icon: React.ElementType; color: string }> = {
-  whatsapp_1: { label: "WhatsApp #1", icon: MessageCircle, color: "text-emerald-600" },
-  whatsapp_2: { label: "WhatsApp #2", icon: MessageCircle, color: "text-emerald-600" },
-  email: { label: "Email", icon: Mail, color: "text-blue-600" },
-  whatsapp_3: { label: "WhatsApp #3", icon: MessageCircle, color: "text-emerald-600" },
-  instagram: { label: "Instagram", icon: Instagram, color: "text-pink-600" },
-  telefone: { label: "Telefone", icon: Phone, color: "text-amber-600" },
+/** Rótulos/ícones de tipos legados (pré-WS-A) que não existem mais em task_tipos. */
+const LEGADO_META: Record<string, { label: string; icone: string; cor: string }> = {
+  whatsapp_1: { label: "WhatsApp #1", icone: "MessageCircle", cor: "text-emerald-600" },
+  whatsapp_2: { label: "WhatsApp #2", icone: "MessageCircle", cor: "text-emerald-600" },
+  whatsapp_3: { label: "WhatsApp #3", icone: "MessageCircle", cor: "text-emerald-600" },
+  telefone: { label: "Telefone", icone: "Phone", cor: "text-amber-600" },
 };
+
+/** Resolve label/ícone/cor de uma task a partir de task_tipos (+ fallback legado). */
+function metaDaTask(task: Task, tipos: TaskTipoMeta[]) {
+  const tipo = tipos.find((t) => t.codigo === task.tipo);
+  const legado = LEGADO_META[task.tipo];
+  const label = task.rotulo || tipo?.label || legado?.label || task.tipo;
+  const icone = tipo?.icone || legado?.icone || "CircleDot";
+  const cor = tipo?.cor || legado?.cor || "text-slate-600";
+  return { label, Icon: resolveTaskIcon(icone), color: cor };
+}
 
 const SNOOZE_OPCOES = [
   { label: "1 dia", horas: 24 },
@@ -81,6 +88,7 @@ interface Props {
 export function LeadCampanhaTasks({ campanhaLeadId }: Props) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { data: tipos = [] } = useTaskTipos();
   const [feitaTaskId, setFeitaTaskId] = useState<string | null>(null);
   const [observacao, setObservacao] = useState("");
   const [descartarTaskId, setDescartarTaskId] = useState<string | null>(null);
@@ -206,6 +214,7 @@ export function LeadCampanhaTasks({ campanhaLeadId }: Props) {
             <TaskRow
               key={task.id}
               task={task}
+              tipos={tipos}
               onMarcarFeita={() => setFeitaTaskId(task.id)}
               onSnooze={(ate) => snooze.mutate({ taskId: task.id, ate })}
               onDescartar={() => setDescartarTaskId(task.id)}
@@ -282,15 +291,15 @@ export function LeadCampanhaTasks({ campanhaLeadId }: Props) {
 
 interface TaskRowProps {
   task: Task;
+  tipos: TaskTipoMeta[];
   onMarcarFeita: () => void;
   onSnooze: (ate: Date) => void;
   onDescartar: () => void;
 }
 
-function TaskRow({ task, onMarcarFeita, onSnooze, onDescartar }: TaskRowProps) {
+function TaskRow({ task, tipos, onMarcarFeita, onSnooze, onDescartar }: TaskRowProps) {
   const [datePickerOpen, setDatePickerOpen] = useState(false);
-  const meta = TIPO_META[task.tipo];
-  const Icon = meta.icon;
+  const { label, Icon, color } = metaDaTask(task, tipos);
   const prazo = new Date(task.prazo_at);
   const isHoje = isToday(prazo);
   const isAtrasada = isPast(prazo) && !isHoje && task.status === "pendente";
@@ -314,11 +323,11 @@ function TaskRow({ task, onMarcarFeita, onSnooze, onDescartar }: TaskRowProps) {
         corStatus
       )}
     >
-      <Icon className={cn("h-5 w-5 mt-0.5 flex-shrink-0", meta.color, (isFeita || isDescartada) && "opacity-50")} />
+      <Icon className={cn("h-5 w-5 mt-0.5 flex-shrink-0", color, (isFeita || isDescartada) && "opacity-50")} />
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 text-sm font-medium">
-          <span className={cn(isFeita && "line-through text-muted-foreground")}>{meta.label}</span>
+          <span className={cn(isFeita && "line-through text-muted-foreground")}>{label}</span>
           {task.status === "snooze" && (
             <Badge variant="outline" className="text-[10px] gap-1 px-1.5 py-0">
               <Clock className="h-2.5 w-2.5" />
