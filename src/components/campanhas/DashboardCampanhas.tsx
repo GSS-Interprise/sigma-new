@@ -22,6 +22,7 @@ import {
 import { ComparativoOperadoras } from "./ComparativoOperadoras";
 import { DashboardMetasFase1 } from "./DashboardMetasFase1";
 import { DashboardFunilFase2 } from "./DashboardFunilFase2";
+import { DashboardSaudeFase3 } from "./DashboardSaudeFase3";
 import {
   Rocket,
   Users,
@@ -482,6 +483,9 @@ export function DashboardCampanhas() {
 
       {/* Fase 2 — Funil de prospecção + comparação semanal */}
       <DashboardFunilFase2 funil={{ pool: agg.pool_total, contatado: agg.contatado, emConversa: agg.em_conversa, quentes: agg.quentes, convertidos: agg.convertidos }} />
+
+      {/* Fase 3 — Saúde operacional (onde agir) */}
+      <DashboardSaudeFase3 tempoMedioQuente={tempoMedioQuente} quentesAtrasados={quentesAtrasados} descartadosPhone={descartadosPhone} totalQuentes={agg.quentes} contatado={agg.contatado} />
 
       {/* Nota contextual: dá tranquilidade sobre o sistema anti-ban funcionar como freio, não como erro */}
       <p className="text-xs text-muted-foreground italic px-1 -mt-2">
