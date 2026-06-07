@@ -87,15 +87,23 @@ Toda WS segue **SDD**: nada de código antes da spec.
 | Cap 35/chip só cold; resposta livre em segundos | ✅ |
 | **[P0 ✅ 07/06] chip só dispara se `connection_state='open'`** | ✅ deployado (corrige campanha parada por chip caído, ex ULTRASSOM SC) |
 | **[P0 ✅ 07/06] campanha manual: IA NÃO responde (operadora conduz)** | ✅ deployado (`receive-whatsapp-messages` checa `tipo_envio`) |
-| Modal do lead: conversa WhatsApp + tasks juntas | 🟡 70% — existe no Kanban (`AcompanhamentoLeadPainel`); falta **responder inline** + falta no modal da página `/leads` (`LeadProfile360Modal`) |
-| Operadora responder pelo Sigma | 🟡 caminho existe (`send-disparo-manual`, sem gate anti-ban); falta o **botão** no modal |
+| Modal do lead (Kanban): conversa + tasks + **responder** | ✅ **validado E2E 07/06** — bug do master-detail corrigido (view `vw_acompanhamento_kanban_full`), redesenhado (header rico + conversa estilo WhatsApp + caixa de resposta) |
+| Operadora responder pelo Sigma (no modal) | ✅ caixa de resposta plugada (`LeadConversaUnificada` → `send-sigzap-message`, sem gate anti-ban) — só aparece quando há conversa SigZap vinculada |
+| Wizard só lista chip `connection_state='open'` | ✅ 07/06 (operador não escolhe chip offline) |
+| Modal da página `/leads` (`LeadProfile360Modal`) | 🔴 não tem conversa+tasks+responder inline (só o do Kanban tem) |
 | Painel saúde de chips (UI) | 🔴 views prontas (`vw_chip_health`), falta a tela |
 | Dashboard IA×manual | 🟡 `DashboardCampanhas` + export PDF/Excel ✅; falta segmentar IA×manual |
 | Página `/leads` performance (796k) | 🔴 lenta — keyset pagination + índices trgm + count estimado + select reduzido |
 
-**Caminho crítico restante:**
-- **P1:** botão "responder" no modal do lead (operadora) · levar conversa+tasks pro modal da `/leads` · badge "lead manual respondeu" (pra operadora ver que tem resposta esperando).
-- **P2:** painel saúde de chips · otimização `/leads` · dashboard IA×manual · fila de enriquecimento (506k novos do CFM sem telefone).
+### Resultado da auditoria 07/06 (3 agentes + triagem)
+**Core sólido:** WS1 (chip UI), WS2 (motor+janela), WS3 (IA, buildPrompt 24 campos), WS4 (duplicar manual), WS8 (CFM), hardening `pre_send_check` (atômico, em uso) — todos ✅ confirmados.
+**3 falsos-positivos descartados na triagem** (agentes erram — sempre validar): (a) "view `_full` não existe" → criada hoje, validada no Chrome; (b) "bug DST no -3h" → Brasil aboliu horário de verão em 2019; (c) "`contratacao` fora do prompt" → está em `campanha-ia-responder:591`.
+**Follow-ups de hardening (baixo risco, não-feitos de propósito p/ não arriscar):** processor não filtra `categoria_uso` do chip (manual×IA podem compartilhar); janela `fim=24` nunca dispara (comparação exclusiva); RPC WS4 gera tasks p/ todos os leads da campanha nova (idempotente).
+
+**Caminho crítico restante (próxima sessão):**
+- **Gaps:** painel de saúde de chips (WS7, view pronta) · conversa+tasks+responder no `LeadProfile360Modal` da `/leads` (WS6 P1.2) · multi-local (WS5) · rotas/sidebar (WS9).
+- **Performance:** otimizar `/leads` (796k) — keyset + índices trgm + count estimado.
+- **Valor:** fila de enriquecimento (506k novos do CFM sem telefone) + dashboard IA×manual.
 
 **Pré-requisitos operacionais (equipe, não-dev):** reconectar chips `close` (28 manual + vários IA) via QR.
 
