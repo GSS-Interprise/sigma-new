@@ -99,7 +99,9 @@ export function DashboardMetasFase1() {
   const capacidade = chipsOnline * CAP_POR_CHIP;
   const faltamChips = Math.max(0, Math.ceil((META_DISPAROS_DIA - capacidade) / CAP_POR_CHIP));
   const corMeta = (v: number) => (v >= META_DISPAROS_DIA ? "#10b981" : v >= META_DISPAROS_DIA / 2 ? "#f59e0b" : "#ef4444");
-  const yMax = Math.max(META_DISPAROS_DIA, ...serie.map((s) => s.disparos)) * 1.1;
+  // topo do eixo Y robusto (reduce evita NaN/spread anômalo); meta sempre visível
+  const maxDisp = serie.reduce((m, s) => Math.max(m, Number(s.disparos) || 0), 0);
+  const yTop = Math.max(META_DISPAROS_DIA, maxDisp);
 
   const ATALHOS: { k: Periodo; label: string }[] = [
     { k: "hoje", label: "Hoje" },
@@ -191,7 +193,7 @@ export function DashboardMetasFase1() {
           <ResponsiveContainer width="100%" height={224}>
             <BarChart data={serie} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
               <XAxis dataKey="label" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
-              <YAxis domain={[0, yMax]} tick={{ fontSize: 11 }} allowDecimals={false} />
+              <YAxis domain={[0, yTop]} ticks={[0, Math.round(yTop / 2), yTop]} tick={{ fontSize: 11 }} allowDecimals={false} width={44} />
               <Tooltip
                 formatter={(v: any) => [`${v} disparos`, ""]}
                 labelFormatter={(l) => `Dia ${l}`}
