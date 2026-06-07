@@ -51,6 +51,7 @@ import { MaskedField } from "@/components/common/MaskedField";
 import { maskCPF } from "@/lib/maskSensitiveData";
 import { toast } from "sonner";
 import { NovaCampanhaProspeccaoDialog } from "@/components/campanhas/NovaCampanhaProspeccaoDialog";
+import { LeadConversaUnificada } from "@/components/campanhas/acompanhamento/LeadConversaUnificada";
 
 /**
  * F2.9 — Modal de perfil 360 do lead.
@@ -499,19 +500,8 @@ export function LeadProfile360Modal({ open, onOpenChange, leadId }: Props) {
                     <MessageCircle className="h-4 w-4 text-muted-foreground" />
                     Conversa
                   </h3>
-                  {perfil.ultima_msg_sigzap ? (
-                    <p className="text-sm">
-                      Última mensagem{" "}
-                      <span className="font-medium">
-                        {formatDistanceToNow(new Date(perfil.ultima_msg_sigzap), { addSuffix: true, locale: ptBR })}
-                      </span>{" "}
-                      <span className="text-muted-foreground">
-                        ({format(new Date(perfil.ultima_msg_sigzap), "dd/MM/yyyy HH:mm", { locale: ptBR })})
-                      </span>
-                    </p>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">Nenhuma conversa ainda</p>
-                  )}
+                  {/* WS6 P1.2 — conversa + caixa de resposta inline (mesmo componente do Kanban) */}
+                  <LeadConversaUnificada leadId={leadId || ""} historicoCampanhaFallback={[]} />
                 </Card>
               </div>
             </div>
