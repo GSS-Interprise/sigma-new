@@ -172,6 +172,16 @@ Deno.serve(async (req) => {
 
       case "deleteInstance":
         if (!instanceName) throw new Error("instanceName é obrigatório");
+        // Evolution API retorna 400 se a instância ainda estiver conectada.
+        // Faz logout silencioso antes de deletar para evitar o erro.
+        try {
+          await fetch(`${evolutionApiUrl}/instance/logout/${encInstance}`, {
+            method: "DELETE",
+            headers,
+          });
+        } catch (e) {
+          console.warn("Logout antes de delete falhou (ignorado):", e);
+        }
         endpoint = `${evolutionApiUrl}/instance/delete/${encInstance}`;
         method = "DELETE";
         response = await fetch(endpoint, { method, headers });

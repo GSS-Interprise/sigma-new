@@ -1501,6 +1501,27 @@ export type Database = {
         }
         Relationships: []
       }
+      bkp_orfas_conv_20260605: {
+        Row: {
+          bkp_at: string | null
+          conv_id: string | null
+          new_instance_id: string | null
+          old_instance_id: string | null
+        }
+        Insert: {
+          bkp_at?: string | null
+          conv_id?: string | null
+          new_instance_id?: string | null
+          old_instance_id?: string | null
+        }
+        Update: {
+          bkp_at?: string | null
+          conv_id?: string | null
+          new_instance_id?: string | null
+          old_instance_id?: string | null
+        }
+        Relationships: []
+      }
       blacklist: {
         Row: {
           created_at: string | null
@@ -1616,6 +1637,7 @@ export type Database = {
           observacao: string | null
           ordem: number
           prazo_at: string
+          rotulo: string | null
           snooze_ate: string | null
           status: string
           tipo: string
@@ -1631,6 +1653,7 @@ export type Database = {
           observacao?: string | null
           ordem: number
           prazo_at: string
+          rotulo?: string | null
           snooze_ate?: string | null
           status?: string
           tipo: string
@@ -1646,6 +1669,7 @@ export type Database = {
           observacao?: string | null
           ordem?: number
           prazo_at?: string
+          rotulo?: string | null
           snooze_ate?: string | null
           status?: string
           tipo?: string
@@ -1664,6 +1688,13 @@ export type Database = {
             columns: ["campanha_lead_id"]
             isOneToOne: false
             referencedRelation: "vw_acompanhamento_kanban"
+            referencedColumns: ["campanha_lead_id"]
+          },
+          {
+            foreignKeyName: "campanha_lead_tasks_campanha_lead_id_fkey"
+            columns: ["campanha_lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_acompanhamento_kanban_full"
             referencedColumns: ["campanha_lead_id"]
           },
           {
@@ -1742,6 +1773,13 @@ export type Database = {
             columns: ["campanha_lead_id"]
             isOneToOne: false
             referencedRelation: "vw_acompanhamento_kanban"
+            referencedColumns: ["campanha_lead_id"]
+          },
+          {
+            foreignKeyName: "campanha_lead_touches_campanha_lead_id_fkey"
+            columns: ["campanha_lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_acompanhamento_kanban_full"
             referencedColumns: ["campanha_lead_id"]
           },
           {
@@ -2138,6 +2176,13 @@ export type Database = {
             foreignKeyName: "campanha_perguntas_pendentes_campanha_lead_id_fkey"
             columns: ["campanha_lead_id"]
             isOneToOne: false
+            referencedRelation: "vw_acompanhamento_kanban_full"
+            referencedColumns: ["campanha_lead_id"]
+          },
+          {
+            foreignKeyName: "campanha_perguntas_pendentes_campanha_lead_id_fkey"
+            columns: ["campanha_lead_id"]
+            isOneToOne: false
             referencedRelation: "vw_leads_quentes_esperando"
             referencedColumns: ["campanha_lead_id"]
           },
@@ -2475,17 +2520,17 @@ export type Database = {
           delay_max_ms: number | null
           delay_min_ms: number | null
           descricao: string | null
-          dias_semana: number[] | null
-          horario_fim_brt: number | null
-          horario_inicio_brt: number | null
-          horario_inteligente_ativo: boolean | null
           descricao_oportunidade: string | null
+          dias_semana: number[] | null
           disparos_enviados: number | null
           disparos_falhas: number | null
           empresas_vinculadas: string[] | null
           especialidade_id: string | null
           especialidade_ids: string[] | null
+          horario_fim_brt: number | null
+          horario_inicio_brt: number | null
           horario_inteligente: boolean | null
+          horario_inteligente_ativo: boolean | null
           id: string
           leads_excluidos_ids: string[] | null
           limite_diario_campanha: number | null
@@ -2507,6 +2552,8 @@ export type Database = {
           setores_vinculados: string[] | null
           status: Database["public"]["Enums"]["status_campanha"]
           tamanho_lote: number | null
+          tarefa_cadencia_passos: Json | null
+          tarefa_cadencia_template_id: string | null
           tipo_campanha: string | null
           tipo_envio: string
           total_aberturas: number | null
@@ -2553,17 +2600,17 @@ export type Database = {
           delay_max_ms?: number | null
           delay_min_ms?: number | null
           descricao?: string | null
-          dias_semana?: number[] | null
-          horario_fim_brt?: number | null
-          horario_inicio_brt?: number | null
-          horario_inteligente_ativo?: boolean | null
           descricao_oportunidade?: string | null
+          dias_semana?: number[] | null
           disparos_enviados?: number | null
           disparos_falhas?: number | null
           empresas_vinculadas?: string[] | null
           especialidade_id?: string | null
           especialidade_ids?: string[] | null
+          horario_fim_brt?: number | null
+          horario_inicio_brt?: number | null
           horario_inteligente?: boolean | null
+          horario_inteligente_ativo?: boolean | null
           id?: string
           leads_excluidos_ids?: string[] | null
           limite_diario_campanha?: number | null
@@ -2585,6 +2632,8 @@ export type Database = {
           setores_vinculados?: string[] | null
           status?: Database["public"]["Enums"]["status_campanha"]
           tamanho_lote?: number | null
+          tarefa_cadencia_passos?: Json | null
+          tarefa_cadencia_template_id?: string | null
           tipo_campanha?: string | null
           tipo_envio?: string
           total_aberturas?: number | null
@@ -2631,17 +2680,17 @@ export type Database = {
           delay_max_ms?: number | null
           delay_min_ms?: number | null
           descricao?: string | null
-          dias_semana?: number[] | null
-          horario_fim_brt?: number | null
-          horario_inicio_brt?: number | null
-          horario_inteligente_ativo?: boolean | null
           descricao_oportunidade?: string | null
+          dias_semana?: number[] | null
           disparos_enviados?: number | null
           disparos_falhas?: number | null
           empresas_vinculadas?: string[] | null
           especialidade_id?: string | null
           especialidade_ids?: string[] | null
+          horario_fim_brt?: number | null
+          horario_inicio_brt?: number | null
           horario_inteligente?: boolean | null
+          horario_inteligente_ativo?: boolean | null
           id?: string
           leads_excluidos_ids?: string[] | null
           limite_diario_campanha?: number | null
@@ -2663,6 +2712,8 @@ export type Database = {
           setores_vinculados?: string[] | null
           status?: Database["public"]["Enums"]["status_campanha"]
           tamanho_lote?: number | null
+          tarefa_cadencia_passos?: Json | null
+          tarefa_cadencia_template_id?: string | null
           tipo_campanha?: string | null
           tipo_envio?: string
           total_aberturas?: number | null
@@ -2760,6 +2811,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "vw_especialidade_pool_count"
             referencedColumns: ["especialidade_id"]
+          },
+          {
+            foreignKeyName: "campanhas_tarefa_cadencia_template_id_fkey"
+            columns: ["tarefa_cadencia_template_id"]
+            isOneToOne: false
+            referencedRelation: "tarefa_cadencia_templates"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -3084,6 +3142,111 @@ export type Database = {
           id?: string
           nome?: string
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      cfm_import_audit: {
+        Row: {
+          acao: string
+          crm_anterior: string | null
+          crm_setado: string | null
+          executado_em: string
+          id: number
+          lead_id: string
+          lote: string
+        }
+        Insert: {
+          acao: string
+          crm_anterior?: string | null
+          crm_setado?: string | null
+          executado_em?: string
+          id?: number
+          lead_id: string
+          lote: string
+        }
+        Update: {
+          acao?: string
+          crm_anterior?: string | null
+          crm_setado?: string | null
+          executado_em?: string
+          id?: number
+          lead_id?: string
+          lote?: string
+        }
+        Relationships: []
+      }
+      cfm_medicos_staging: {
+        Row: {
+          cod_situacao: string | null
+          dt_inscricao: string | null
+          especialidade: string | null
+          hash_dados: string | null
+          importado_em: string
+          nm_medico: string
+          nm_social: string | null
+          nu_crm: string
+          nu_crm_natural: string | null
+          prim_inscricao_uf: string | null
+          sg_uf: string
+          situacao: string | null
+          tipo_inscricao: string | null
+        }
+        Insert: {
+          cod_situacao?: string | null
+          dt_inscricao?: string | null
+          especialidade?: string | null
+          hash_dados?: string | null
+          importado_em?: string
+          nm_medico: string
+          nm_social?: string | null
+          nu_crm: string
+          nu_crm_natural?: string | null
+          prim_inscricao_uf?: string | null
+          sg_uf: string
+          situacao?: string | null
+          tipo_inscricao?: string | null
+        }
+        Update: {
+          cod_situacao?: string | null
+          dt_inscricao?: string | null
+          especialidade?: string | null
+          hash_dados?: string | null
+          importado_em?: string
+          nm_medico?: string
+          nm_social?: string | null
+          nu_crm?: string
+          nu_crm_natural?: string | null
+          prim_inscricao_uf?: string | null
+          sg_uf?: string
+          situacao?: string | null
+          tipo_inscricao?: string | null
+        }
+        Relationships: []
+      }
+      chip_auto_reconnect_log: {
+        Row: {
+          action: string | null
+          chip_id: string | null
+          created_at: string | null
+          id: string
+          instance_name: string | null
+          state_before: string | null
+        }
+        Insert: {
+          action?: string | null
+          chip_id?: string | null
+          created_at?: string | null
+          id?: string
+          instance_name?: string | null
+          state_before?: string | null
+        }
+        Update: {
+          action?: string | null
+          chip_id?: string | null
+          created_at?: string | null
+          id?: string
+          instance_name?: string | null
+          state_before?: string | null
         }
         Relationships: []
       }
@@ -13002,6 +13165,54 @@ export type Database = {
         }
         Relationships: []
       }
+      tarefa_cadencia_templates: {
+        Row: {
+          ativo: boolean
+          created_at: string
+          created_by: string | null
+          descricao: string | null
+          id: string
+          is_default: boolean
+          nome: string
+          passos: Json
+        }
+        Insert: {
+          ativo?: boolean
+          created_at?: string
+          created_by?: string | null
+          descricao?: string | null
+          id?: string
+          is_default?: boolean
+          nome: string
+          passos?: Json
+        }
+        Update: {
+          ativo?: boolean
+          created_at?: string
+          created_by?: string | null
+          descricao?: string | null
+          id?: string
+          is_default?: boolean
+          nome?: string
+          passos?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tarefa_cadencia_templates_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tarefa_cadencia_templates_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "vw_produtividade_disparos"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       tarefas_captacao: {
         Row: {
           campanha_proposta_id: string | null
@@ -13104,6 +13315,36 @@ export type Database = {
             referencedColumns: ["lead_id"]
           },
         ]
+      }
+      task_tipos: {
+        Row: {
+          ativo: boolean
+          codigo: string
+          cor: string
+          created_at: string
+          icone: string
+          label: string
+          ordem: number
+        }
+        Insert: {
+          ativo?: boolean
+          codigo: string
+          cor?: string
+          created_at?: string
+          icone?: string
+          label: string
+          ordem?: number
+        }
+        Update: {
+          ativo?: boolean
+          codigo?: string
+          cor?: string
+          created_at?: string
+          icone?: string
+          label?: string
+          ordem?: number
+        }
+        Relationships: []
       }
       trafego_pago_conversoes: {
         Row: {
@@ -13894,6 +14135,95 @@ export type Database = {
           },
         ]
       }
+      vw_acompanhamento_kanban_full: {
+        Row: {
+          assumido_em: string | null
+          assumido_por: string | null
+          assumido_por_email: string | null
+          assumido_por_nome: string | null
+          campanha_id: string | null
+          campanha_lead_id: string | null
+          campanha_nome: string | null
+          data_primeiro_contato: string | null
+          data_status: string | null
+          data_ultimo_contato: string | null
+          etapa_acompanhamento: string | null
+          handoff_nome: string | null
+          humano_assumiu: boolean | null
+          lead_cidade: string | null
+          lead_classificacao: string | null
+          lead_especialidade: string | null
+          lead_id: string | null
+          lead_nome: string | null
+          lead_opt_out: boolean | null
+          lead_phone: string | null
+          lead_uf: string | null
+          motivo_perdido: string | null
+          msgs_total: number | null
+          perfil_confianca: number | null
+          perfil_modalidade: string[] | null
+          perfil_resumo: string | null
+          perfil_valor_min: number | null
+          resultado_final: string | null
+          servico: string | null
+          servico_cidade: string | null
+          status: Database["public"]["Enums"]["status_lead_campanha"] | null
+          updated_at: string | null
+          validacoes: Json | null
+          validacoes_ok: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campanha_leads_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "campanhas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campanha_leads_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "vw_campanha_metricas"
+            referencedColumns: ["campanha_id"]
+          },
+          {
+            foreignKeyName: "campanha_leads_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "vw_campanhas_dashboard"
+            referencedColumns: ["campanha_id"]
+          },
+          {
+            foreignKeyName: "campanha_leads_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campanha_leads_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_lead_perfil_360"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "campanha_leads_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_leads_duplicados"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campanha_leads_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_leads_quentes_esperando"
+            referencedColumns: ["lead_id"]
+          },
+        ]
+      }
       vw_campanha_metricas: {
         Row: {
           campanha_criada_em: string | null
@@ -13946,6 +14276,13 @@ export type Database = {
             columns: ["campanha_lead_id"]
             isOneToOne: false
             referencedRelation: "vw_acompanhamento_kanban"
+            referencedColumns: ["campanha_lead_id"]
+          },
+          {
+            foreignKeyName: "campanha_lead_tasks_campanha_lead_id_fkey"
+            columns: ["campanha_lead_id"]
+            isOneToOne: false
+            referencedRelation: "vw_acompanhamento_kanban_full"
             referencedColumns: ["campanha_lead_id"]
           },
           {
@@ -14017,6 +14354,36 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "vw_leads_quentes_esperando"
             referencedColumns: ["lead_id"]
+          },
+        ]
+      }
+      vw_campanha_ultimo_disparo: {
+        Row: {
+          campanha_id: string | null
+          ultima_atividade: string | null
+          ultimo_disparo: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campanha_leads_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "campanhas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campanha_leads_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "vw_campanha_metricas"
+            referencedColumns: ["campanha_id"]
+          },
+          {
+            foreignKeyName: "campanha_leads_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "vw_campanhas_dashboard"
+            referencedColumns: ["campanha_id"]
           },
         ]
       }
@@ -14124,6 +14491,54 @@ export type Database = {
           ultimo_disparo: string | null
         }
         Relationships: []
+      }
+      vw_disparos_diarios: {
+        Row: {
+          campanha_id: string | null
+          campanha_nome: string | null
+          dia: string | null
+          especialidade_id: string | null
+          n_disparos: number | null
+          regiao_estado: string | null
+          tipo_envio: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campanha_leads_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "campanhas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campanha_leads_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "vw_campanha_metricas"
+            referencedColumns: ["campanha_id"]
+          },
+          {
+            foreignKeyName: "campanha_leads_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "vw_campanhas_dashboard"
+            referencedColumns: ["campanha_id"]
+          },
+          {
+            foreignKeyName: "campanhas_especialidade_id_fkey"
+            columns: ["especialidade_id"]
+            isOneToOne: false
+            referencedRelation: "especialidades"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campanhas_especialidade_id_fkey"
+            columns: ["especialidade_id"]
+            isOneToOne: false
+            referencedRelation: "vw_especialidade_pool_count"
+            referencedColumns: ["especialidade_id"]
+          },
+        ]
       }
       vw_especialidade_pool_count: {
         Row: {
@@ -14537,6 +14952,10 @@ export type Database = {
         Returns: string
       }
       current_user_is_active: { Args: never; Returns: boolean }
+      duplicar_campanha_para_manual: {
+        Args: { p_campanha_origem: string; p_qtd_leads: number }
+        Returns: string
+      }
       enviar_lead_proxima_fase: {
         Args: {
           p_campanha_proposta_id: string
