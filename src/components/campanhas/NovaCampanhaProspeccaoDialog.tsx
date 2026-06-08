@@ -28,6 +28,7 @@ import { JanelaHorarioConfig, type JanelaHorario } from "./JanelaHorarioConfig";
 import { CadenciaConfig } from "./CadenciaConfig";
 import type { CadenciaPasso } from "@/hooks/useCadencia";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { useChipsEmUso } from "@/hooks/useChipsEmUso";
 
 const UF_LIST = [
   "AC","AL","AM","AP","BA","CE","DF","ES","GO","MA","MG","MS","MT",
@@ -103,6 +104,8 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
   const [whatsappRemetente, setWhatsappRemetente] = useState("");
   const [descricaoOportunidade, setDescricaoOportunidade] = useState("");
   const qc = useQueryClient();
+  // Pedido Bruna (08/06): bloqueia no seletor os chips já usados por outra campanha ativa.
+  const { data: chipsEmUso } = useChipsEmUso();
 
   const { data: especialidades = [] } = useQuery({
     queryKey: ["especialidades-lista-com-count"],
@@ -655,20 +658,26 @@ GSS Saúde`}
               <div className="flex flex-wrap gap-2">
                 {chips.map((c) => {
                   const selected = chipIds.includes(c.id);
+                  const usadoPor = !selected ? chipsEmUso?.get(c.id) : undefined;
+                  const bloqueado = !!usadoPor;
                   return (
                     <Badge
                       key={c.id}
                       variant={selected ? "default" : "outline"}
-                      className="cursor-pointer"
+                      className={bloqueado ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}
+                      title={bloqueado ? `Já em uso por: ${usadoPor}` : undefined}
                       onClick={() =>
-                        setChipIds((prev) =>
-                          selected
-                            ? prev.filter((id) => id !== c.id)
-                            : [...prev, c.id]
-                        )
+                        bloqueado
+                          ? undefined
+                          : setChipIds((prev) =>
+                              selected
+                                ? prev.filter((id) => id !== c.id)
+                                : [...prev, c.id]
+                            )
                       }
                     >
                       {c.nome} {c.numero ? `(${c.numero})` : ""}
+                      {bloqueado ? " · em uso" : ""}
                     </Badge>
                   );
                 })}

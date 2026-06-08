@@ -24,6 +24,7 @@ import {
   Settings,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { useChipsEmUso } from "@/hooks/useChipsEmUso";
 import { toast } from "sonner";
 import { ConfirmDestructive } from "@/components/common/ConfirmDestructive";
 
@@ -90,6 +91,9 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
       return data || [];
     },
   });
+
+  // Pedido Bruna (08/06): chip já usado por outra campanha ativa fica bloqueado aqui.
+  const { data: chipsEmUso } = useChipsEmUso(campanha?.id);
 
   const totalLeads =
     (campanha?.total_frio || 0) +
@@ -236,20 +240,27 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
                       chips.map((c: any) => {
                         const selected = chipIds.includes(c.id);
                         const open = c.connection_state === "open";
+                        const usadoPor = !selected ? chipsEmUso?.get(c.id) : undefined;
+                        const bloqueado = !!usadoPor;
                         return (
                           <button
                             key={c.id}
                             type="button"
+                            disabled={bloqueado}
                             onClick={() =>
-                              setChipIds(
-                                selected
-                                  ? chipIds.filter((id) => id !== c.id)
-                                  : [...chipIds, c.id]
-                              )
+                              bloqueado
+                                ? undefined
+                                : setChipIds(
+                                    selected
+                                      ? chipIds.filter((id) => id !== c.id)
+                                      : [...chipIds, c.id]
+                                  )
                             }
                             className={`w-full flex items-center justify-between p-2 rounded border text-sm transition-colors ${
                               selected
                                 ? "bg-primary/10 border-primary"
+                                : bloqueado
+                                ? "bg-muted/40 border-input opacity-60 cursor-not-allowed"
                                 : "bg-background hover:bg-muted"
                             }`}
                           >
@@ -270,6 +281,11 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
                                 <p className="text-xs text-muted-foreground truncate">
                                   {c.numero}
                                 </p>
+                                {usadoPor && (
+                                  <p className="text-[11px] text-amber-600 truncate">
+                                    já em uso por: {usadoPor}
+                                  </p>
+                                )}
                               </div>
                             </div>
                             <Badge
