@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { AppLayout } from "@/components/layout/AppLayout";
@@ -35,6 +35,7 @@ import {
   MoreVertical,
   Copy,
   Smartphone,
+  Ban,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -749,6 +750,20 @@ function CampanhaCard({
 
   const isRascunho = campanha.status === "rascunho";
   const [dupOpen, setDupOpen] = useState(false);
+  const qcStatus = useQueryClient();
+  // Pausar/reativar/finalizar campanha (a equipe pediu poder cancelar campanha ativa)
+  const mudarStatus = useMutation({
+    mutationFn: async (novo: "ativa" | "pausada" | "finalizada") => {
+      const { error } = await (supabase as any).from("campanhas").update({ status: novo }).eq("id", campanha.id);
+      if (error) throw error;
+      return novo;
+    },
+    onSuccess: (novo) => {
+      qcStatus.invalidateQueries();
+      toast.success(novo === "pausada" ? "Campanha pausada" : novo === "ativa" ? "Campanha reativada" : "Campanha finalizada");
+    },
+    onError: (e: any) => toast.error("Erro ao mudar status: " + (e?.message || e)),
+  });
 
   return (
     <Card
@@ -857,6 +872,32 @@ function CampanhaCard({
                   <Copy className="h-4 w-4 mr-2" />
                   Duplicar pra manual
                 </DropdownMenuItem>
+                {campanha.status === "ativa" && (
+                  <DropdownMenuItem onClick={(e) => { e.stopPropagation(); mudarStatus.mutate("pausada"); }}>
+                    <Pause className="h-4 w-4 mr-2" />
+                    Pausar campanha
+                  </DropdownMenuItem>
+                )}
+                {campanha.status === "pausada" && (
+                  <DropdownMenuItem onClick={(e) => { e.stopPropagation(); mudarStatus.mutate("ativa"); }}>
+                    <Play className="h-4 w-4 mr-2" />
+                    Reativar campanha
+                  </DropdownMenuItem>
+                )}
+                {(campanha.status === "ativa" || campanha.status === "pausada") && (
+                  <DropdownMenuItem
+                    className="text-red-600 focus:text-red-700"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (window.confirm(`Finalizar a campanha "${campanha.nome.trim()}"?\n\nEla para de disparar e sai das ativas. Você pode reativá-la depois pela aba "Todas".`)) {
+                        mudarStatus.mutate("finalizada");
+                      }
+                    }}
+                  >
+                    <Ban className="h-4 w-4 mr-2" />
+                    Finalizar campanha
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
