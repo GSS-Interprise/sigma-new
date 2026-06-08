@@ -98,9 +98,28 @@ Deno.serve(async (req) => {
         console.log("Creating instance - Endpoint:", endpoint);
         console.log("Creating instance - Payload:", body);
         response = await fetch(endpoint, { method, headers, body });
-        const createResponseText = await response.text();
+        let createResponseText = await response.text();
         console.log("Creating instance - Response Status:", response.status);
         console.log("Creating instance - Response Body:", createResponseText);
+        // Se a instância já existe no Evolution (órfã de uma criação anterior),
+        // remove e tenta de novo automaticamente — caso comum quando o chip
+        // foi apagado só do nosso banco mas ficou no Evolution.
+        if (response.status === 403 && /already in use/i.test(createResponseText)) {
+          const orphanName = (data as any)?.instanceName;
+          if (orphanName) {
+            const encOrphan = encodeURIComponent(orphanName);
+            console.log("Instance already exists, cleaning up:", orphanName);
+            try {
+              await fetch(`${evolutionApiUrl}/instance/logout/${encOrphan}`, { method: "DELETE", headers });
+            } catch (e) { console.warn("logout falhou (ok):", e); }
+            try {
+              await fetch(`${evolutionApiUrl}/instance/delete/${encOrphan}`, { method: "DELETE", headers });
+            } catch (e) { console.warn("delete falhou:", e); }
+            response = await fetch(endpoint, { method, headers, body });
+            createResponseText = await response.text();
+            console.log("Retry create - Status:", response.status, "Body:", createResponseText);
+          }
+        }
         // Re-create response since we consumed the body
         return new Response(
           createResponseText,
