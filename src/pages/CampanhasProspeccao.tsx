@@ -34,6 +34,7 @@ import {
   BarChart3,
   MoreVertical,
   Copy,
+  Smartphone,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -48,6 +49,7 @@ import { ConfigurarCampanhaDialog } from "@/components/campanhas/ConfigurarCampa
 import { CampanhaProspeccaoKanban } from "@/components/campanhas/CampanhaProspeccaoKanban";
 import { AcompanhamentoView } from "@/components/campanhas/acompanhamento/AcompanhamentoView";
 import { DashboardCampanhas } from "@/components/campanhas/DashboardCampanhas";
+import { StatusOperacionalPanel } from "@/components/campanhas/StatusOperacionalPanel";
 import { ErrorBoundary } from "@/components/common/ErrorBoundary";
 import { useAdicionarLeadsCampanha } from "@/hooks/useCampanhaLeads";
 import { toast } from "sonner";
@@ -121,8 +123,9 @@ export default function CampanhasProspeccao() {
   const view = (searchParams.get("view") || "campanhas") as
     | "campanhas"
     | "acompanhamento"
-    | "dashboard";
-  const setView = (next: "campanhas" | "acompanhamento" | "dashboard") => {
+    | "dashboard"
+    | "status";
+  const setView = (next: "campanhas" | "acompanhamento" | "dashboard" | "status") => {
     const sp = new URLSearchParams(searchParams);
     if (next === "campanhas") sp.delete("view");
     else sp.set("view", next);
@@ -427,6 +430,10 @@ export default function CampanhasProspeccao() {
               <BarChart3 className="h-3.5 w-3.5" />
               Dashboard
             </ToggleTab>
+            <ToggleTab active={view === "status"} onClick={() => setView("status")}>
+              <Smartphone className="h-3.5 w-3.5" />
+              Status
+            </ToggleTab>
           </div>
 
           {view === "campanhas" ? (
@@ -585,9 +592,13 @@ export default function CampanhasProspeccao() {
             <ErrorBoundary label="AcompanhamentoView">
               <AcompanhamentoView />
             </ErrorBoundary>
-          ) : (
+          ) : view === "dashboard" ? (
             <ErrorBoundary label="DashboardCampanhas">
               <DashboardCampanhas />
+            </ErrorBoundary>
+          ) : (
+            <ErrorBoundary label="StatusOperacional">
+              <StatusOperacionalPanel />
             </ErrorBoundary>
           )}
 
