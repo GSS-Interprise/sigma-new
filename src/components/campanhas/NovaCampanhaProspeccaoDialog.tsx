@@ -331,11 +331,26 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
   };
 
   const espsSelecionadas = especialidades.filter((e) => especialidadeIds.includes(e.id));
-  const briefingCompleto = [bNomeServico, bHospital, bCidade, bTipoServico, bHandoffNome, bHandoffTelefone]
+  const briefingCompletoIA = [bNomeServico, bHospital, bCidade, bTipoServico, bHandoffNome, bHandoffTelefone]
     .every((c) => c.trim().length > 0);
+  // Manual: a operadora conversa, não a IA — não exige handoff/tipo/briefing IA, só o contexto básico.
+  const briefingMinimoManual = [bNomeServico, bHospital, bCidade].every((c) => c.trim().length > 0);
+  const briefingOk = tipoEnvio === "manual" ? briefingMinimoManual : briefingCompletoIA;
   // WS2: janela inválida (fim<=início ou sem dias) faria a campanha nunca disparar — bloqueia o submit.
   const janelaValida = !janela.ativo || (janela.dias.length > 0 && janela.fim > janela.inicio);
-  const canCreate = nome.trim().length > 0 && briefingCompleto && janelaValida;
+  const canCreate = nome.trim().length > 0 && briefingOk && janelaValida;
+  // Feedback claro: o que ainda falta pra liberar o botão (em vez de só desabilitar sem explicar)
+  const faltaPreencher: string[] = [];
+  if (nome.trim().length === 0) faltaPreencher.push("nome da campanha (aba Configuração)");
+  if (bNomeServico.trim().length === 0) faltaPreencher.push("nome do serviço");
+  if (bHospital.trim().length === 0) faltaPreencher.push("hospital/unidade");
+  if (bCidade.trim().length === 0) faltaPreencher.push("cidade");
+  if (tipoEnvio !== "manual") {
+    if (bTipoServico.trim().length === 0) faltaPreencher.push("tipo de serviço");
+    if (bHandoffNome.trim().length === 0) faltaPreencher.push("nome do handoff");
+    if (bHandoffTelefone.trim().length === 0) faltaPreencher.push("telefone do handoff");
+  }
+  if (!janelaValida) faltaPreencher.push("janela de horário válida");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1263,12 +1278,19 @@ GSS Saúde`}
                 Próximo
               </Button>
             ) : (
-              <Button
-                onClick={() => criar.mutate()}
-                disabled={!canCreate || criar.isPending}
-              >
-                {criar.isPending ? "Criando..." : "Criar Campanha"}
-              </Button>
+              <div className="flex flex-col items-end gap-1">
+                {!canCreate && faltaPreencher.length > 0 && (
+                  <span className="text-xs text-amber-600 text-right max-w-md">
+                    Falta preencher: {faltaPreencher.join(", ")}
+                  </span>
+                )}
+                <Button
+                  onClick={() => criar.mutate()}
+                  disabled={!canCreate || criar.isPending}
+                >
+                  {criar.isPending ? "Criando..." : "Criar Campanha"}
+                </Button>
+              </div>
             )}
           </div>
         </div>
