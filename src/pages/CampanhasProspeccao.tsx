@@ -36,6 +36,7 @@ import {
   Copy,
   Smartphone,
   Ban,
+  Trash2,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -764,6 +765,15 @@ function CampanhaCard({
     },
     onError: (e: any) => toast.error("Erro ao mudar status: " + (e?.message || e)),
   });
+  // Excluir campanha (delete CASCADE: apaga vínculos da campanha; os médicos seguem na base)
+  const excluir = useMutation({
+    mutationFn: async () => {
+      const { error } = await (supabase as any).from("campanhas").delete().eq("id", campanha.id);
+      if (error) throw error;
+    },
+    onSuccess: () => { qcStatus.invalidateQueries(); toast.success("Campanha excluída"); },
+    onError: (e: any) => toast.error("Erro ao excluir: " + (e?.message || e)),
+  });
 
   return (
     <Card
@@ -898,6 +908,19 @@ function CampanhaCard({
                     Finalizar campanha
                   </DropdownMenuItem>
                 )}
+                <DropdownMenuItem
+                  className="text-red-600 focus:text-red-700"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const msg = total > 0
+                      ? `Excluir a campanha "${campanha.nome.trim()}"?\n\nRemove a campanha e o vínculo de ${total} lead(s) + o histórico dela. Os médicos CONTINUAM na base. Esta ação NÃO pode ser desfeita.\n\nSe quer só parar de disparar, use "Finalizar".`
+                      : `Excluir a campanha "${campanha.nome.trim()}"? Esta ação não pode ser desfeita.`;
+                    if (window.confirm(msg)) excluir.mutate();
+                  }}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Excluir campanha
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>

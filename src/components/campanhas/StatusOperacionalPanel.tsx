@@ -2,7 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { Loader2, Wifi, WifiOff, AlertTriangle, Send, Smartphone, MapPin } from "lucide-react";
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 interface Chip {
   id: string;
@@ -32,17 +33,19 @@ export function StatusOperacionalPanel() {
     queryKey: ["status-operacional"],
     refetchInterval: 60_000,
     queryFn: async () => {
-      const [{ data: camps }, { data: chips }, { data: disp }] = await Promise.all([
+      const [{ data: camps }, { data: chips }, { data: disp }, { data: ult }] = await Promise.all([
         (supabase as any).from("campanhas").select("id, nome, tipo_envio, chip_ids").eq("status", "ativa"),
         (supabase as any).from("chips").select("id, nome, numero, connection_state, status, pode_disparar"),
         (supabase as any).from("vw_disparos_diarios").select("n_disparos").eq("dia", hoje),
+        (supabase as any).from("vw_campanha_ultimo_disparo").select("campanha_id, ultimo_disparo"),
       ]);
       const chipMap = new Map<string, Chip>((chips ?? []).map((c: Chip) => [c.id, c]));
+      const ultMap = new Map<string, string>((ult ?? []).map((u: any) => [u.campanha_id, u.ultimo_disparo]));
       const campanhas = (camps ?? []).map((c: Campanha) => {
         const ids = c.chip_ids ?? [];
         const on = ids.map((id) => chipMap.get(id)).filter(online) as Chip[];
         const off = ids.map((id) => chipMap.get(id)).filter((c) => c && !online(c)) as Chip[];
-        return { ...c, on, off };
+        return { ...c, on, off, ultimo: ultMap.get(c.id) ?? null };
       });
       const rodando = campanhas.filter((c) => c.on.length > 0).sort((a, b) => b.on.length - a.on.length);
       const paradas = campanhas.filter((c) => c.on.length === 0 && (c.chip_ids?.length ?? 0) > 0);
@@ -98,6 +101,7 @@ export function StatusOperacionalPanel() {
               <tr>
                 <th className="text-left px-3 py-2 font-medium">Campanha</th>
                 <th className="text-left px-3 py-2 font-medium">Tipo</th>
+                <th className="text-left px-3 py-2 font-medium">Último disparo</th>
                 <th className="text-left px-3 py-2 font-medium">Chips conectados ✅</th>
                 <th className="text-left px-3 py-2 font-medium">A reconectar 🔴</th>
               </tr>
@@ -107,6 +111,7 @@ export function StatusOperacionalPanel() {
                 <tr key={c.id} className="border-t">
                   <td className="px-3 py-2 font-medium">{c.nome.trim()}</td>
                   <td className="px-3 py-2"><TipoTag tipo={c.tipo_envio} /></td>
+                  <td className="px-3 py-2"><UltimoDisparo iso={c.ultimo} /></td>
                   <td className="px-3 py-2">{c.on.map((ch) => <ChipBadge key={ch.id} nome={nomeCurto(ch.nome)} ok />)}</td>
                   <td className="px-3 py-2">{c.off.length ? c.off.map((ch) => <ChipBadge key={ch.id} nome={nomeCurto(ch.nome)} />) : <span className="text-muted-foreground">—</span>}</td>
                 </tr>
@@ -194,6 +199,22 @@ function ChipBadge({ nome, ok }: { nome: string; ok?: boolean }) {
   return (
     <span className={cn("inline-flex items-center gap-1 text-xs font-semibold rounded px-2 py-0.5 mr-1.5 mb-1", ok ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-700")}>
       <Smartphone className="h-3 w-3" />{nome}
+    </span>
+  );
+}
+
+// "Está disparando agora?" — verde pulsante se disparou nos últimos 30min; senão hora + há quanto tempo
+function UltimoDisparo({ iso }: { iso: string | null }) {
+  if (!iso) return <span className="text-muted-foreground text-xs">sem disparo ainda</span>;
+  const d = new Date(iso);
+  const ativo = (Date.now() - d.getTime()) / 60000 < 30;
+  const hora = format(d, "HH:mm");
+  let rel = "";
+  try { rel = formatDistanceToNow(d, { locale: ptBR, addSuffix: true }); } catch {}
+  return (
+    <span className={cn("inline-flex items-center gap-1.5 text-xs", ativo ? "text-emerald-700 font-semibold" : "text-muted-foreground")}>
+      <span className={cn("h-2 w-2 rounded-full shrink-0", ativo ? "bg-emerald-500 animate-pulse" : "bg-gray-300")} />
+      {ativo ? `disparando · ${hora}` : `${hora} · ${rel}`}
     </span>
   );
 }
