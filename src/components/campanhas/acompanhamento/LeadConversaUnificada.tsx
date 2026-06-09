@@ -38,6 +38,21 @@ interface SigzapMsg {
  * a conversa SigZap ainda não foi vinculada via lead_id (30% dos leads
  * sem match exato no backfill F1.3).
  */
+// Traduz erro técnico de envio (Evolution/edge) numa mensagem clara pra operadora —
+// pra ninguém achar que é "erro de sistema" quando é chip caído / número inválido.
+function traduzErroEnvio(raw: string): string {
+  const m = (raw || "").toLowerCase();
+  if (m.includes("connection closed") || m.includes("precondition") || m.includes("428") || m.includes("desconect"))
+    return "O chip dessa campanha está desconectado do WhatsApp. Reconecte ele em 'Disparos & Chips' e tente de novo.";
+  if (m.includes("not on whatsapp") || m.includes("exists") || m.includes("invalid") || m.includes("número") || m.includes("number"))
+    return "Esse número parece não ter WhatsApp ativo. Confira o número ou marque o lead como perdido.";
+  if (m.includes("timeout") || m.includes("abort") || m.includes("demor"))
+    return "O WhatsApp demorou demais pra responder (chip lento). Tente de novo em instantes.";
+  if (m.includes("non-2xx") || m.includes("edge function"))
+    return "Não consegui enviar agora (o chip pode estar fora do ar). Confira a conexão do chip e tente de novo.";
+  return raw || "Não consegui enviar agora. Tente de novo.";
+}
+
 export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campanhaId, campanhaLeadId, leadPhone }: Props) {
   // 1. Acha a conversa SigZap vinculada a este lead
   const { data: conv, isLoading: loadingConv } = useQuery({
@@ -79,16 +94,21 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
       const { data, error } = await supabase.functions.invoke("send-sigzap-message", {
         body: { action: "send", conversationId: conv.id, instanceName, contactJid, message: msg },
       });
-      if (error) throw error;
-      if ((data as any)?.error) throw new Error((data as any).error);
+      if (error) {
+        // Extrai o motivo real do corpo (o invoke só dá "non-2xx" genérico).
+        let det = error?.message || "";
+        try { const body = await (error as any).context?.json?.(); det = body?.details ? JSON.stringify(body.details) : (body?.error || det); } catch (_) {}
+        throw new Error(traduzErroEnvio(det));
+      }
+      if ((data as any)?.error) throw new Error(traduzErroEnvio((data as any).error));
       return data;
     },
     onSuccess: () => {
       setTexto("");
       qc.invalidateQueries({ queryKey: ["acompanhamento-conv-msgs", conv?.id] });
-      toast.success("Mensagem enviada");
+      toast.success("Mensagem enviada ✅");
     },
-    onError: (e: any) => toast.error("Erro ao enviar: " + (e?.message || "falha no envio")),
+    onError: (e: any) => toast.error(e?.message || "Não foi possível enviar."),
   });
 
   // 1º contato MANUAL (campanha manual): lead ainda sem conversa — inicia o contato
@@ -100,23 +120,19 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
       const { data, error } = await supabase.functions.invoke("campanha-disparo-manual-1contato", {
         body: { campanha_id: campanhaId, campanha_lead_id: campanhaLeadId, lead_id: leadId, phone: leadPhone, mensagem: msg },
       });
-      if (error) throw error;
-      if ((data as any)?.error) throw new Error((data as any).error);
+      if (error) throw new Error(traduzErroEnvio(error?.message || ""));
+      if ((data as any)?.error) throw new Error((data as any).error); // já vem traduzido da edge
       return data;
     },
     onSuccess: () => {
       setTexto1o("");
-      // A edge responde rápido e envia em 2º plano — a conversa já é criada aqui;
-      // a mensagem confirmada aparece no refetch tardio (quando o envio grava).
+      // Envio síncrono: a mensagem já saiu e a conversa tem a 1ª mensagem.
       qc.invalidateQueries({ queryKey: ["acompanhamento-conv-by-lead", leadId] });
+      qc.invalidateQueries({ queryKey: ["acompanhamento-conv-msgs"] });
       qc.invalidateQueries({ queryKey: ["acompanhamento-leads"] });
       toast.success("1ª mensagem enviada! 🎉 O lead já está como contatado.");
-      setTimeout(() => {
-        qc.invalidateQueries({ queryKey: ["acompanhamento-conv-by-lead", leadId] });
-        qc.invalidateQueries({ queryKey: ["acompanhamento-conv-msgs"] });
-      }, 4000);
     },
-    onError: (e: any) => toast.error("Não foi: " + (e?.message || "falha no envio")),
+    onError: (e: any) => toast.error(e?.message || "Não foi possível enviar."),
   });
 
   // 2. Se tem conversa, busca mensagens reais
