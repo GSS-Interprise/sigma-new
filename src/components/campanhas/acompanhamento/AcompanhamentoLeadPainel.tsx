@@ -223,7 +223,7 @@ export function AcompanhamentoLeadPainel({ lead, onClose }: Props) {
               <TabsContent value="conversa" className="m-0 h-full">
                 <ScrollArea className="h-full">
                   <div className="p-5">
-                    <LeadConversaUnificada leadId={lead.lead_id} historicoCampanhaFallback={historicoConversa} />
+                    <LeadConversaUnificada leadId={lead.lead_id} historicoCampanhaFallback={historicoConversa} campanhaId={lead.campanha_id} campanhaLeadId={lead.campanha_lead_id} leadPhone={lead.lead_phone} />
                   </div>
                 </ScrollArea>
               </TabsContent>
@@ -318,6 +318,9 @@ export function AcompanhamentoLeadPainel({ lead, onClose }: Props) {
                   <LeadConversaUnificada
                     leadId={lead.lead_id}
                     historicoCampanhaFallback={historicoConversa}
+                    campanhaId={lead.campanha_id}
+                    campanhaLeadId={lead.campanha_lead_id}
+                    leadPhone={lead.lead_phone}
                   />
                 </div>
               </ScrollArea>

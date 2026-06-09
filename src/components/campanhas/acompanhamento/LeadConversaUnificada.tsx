@@ -14,6 +14,10 @@ interface Props {
   leadId: string;
   /** Histórico legado (campanha_leads.historico_conversa) — usado como fallback. */
   historicoCampanhaFallback: Array<{ role: string; text: string; ts: string }>;
+  /** Contexto da campanha — habilita enviar o 1º contato manual quando o lead ainda não tem conversa. */
+  campanhaId?: string;
+  campanhaLeadId?: string;
+  leadPhone?: string | null;
 }
 
 interface SigzapMsg {
@@ -34,7 +38,7 @@ interface SigzapMsg {
  * a conversa SigZap ainda não foi vinculada via lead_id (30% dos leads
  * sem match exato no backfill F1.3).
  */
-export function LeadConversaUnificada({ leadId, historicoCampanhaFallback }: Props) {
+export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campanhaId, campanhaLeadId, leadPhone }: Props) {
   // 1. Acha a conversa SigZap vinculada a este lead
   const { data: conv, isLoading: loadingConv } = useQuery({
     queryKey: ["acompanhamento-conv-by-lead", leadId],
@@ -87,6 +91,28 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback }: Pro
     onError: (e: any) => toast.error("Erro ao enviar: " + (e?.message || "falha no envio")),
   });
 
+  // 1º contato MANUAL (campanha manual): lead ainda sem conversa — inicia o contato
+  // pelo chip da campanha e marca o campanha_leads (data_primeiro_contato + contatado).
+  const [texto1o, setTexto1o] = useState("");
+  const enviar1oContato = useMutation({
+    mutationFn: async (msg: string) => {
+      if (!campanhaId) throw new Error("Sem campanha no contexto");
+      const { data, error } = await supabase.functions.invoke("campanha-disparo-manual-1contato", {
+        body: { campanha_id: campanhaId, campanha_lead_id: campanhaLeadId, lead_id: leadId, phone: leadPhone, mensagem: msg },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      return data;
+    },
+    onSuccess: () => {
+      setTexto1o("");
+      qc.invalidateQueries({ queryKey: ["acompanhamento-conv-by-lead", leadId] });
+      qc.invalidateQueries({ queryKey: ["acompanhamento-leads"] });
+      toast.success("1ª mensagem enviada pelo WhatsApp! 🎉");
+    },
+    onError: (e: any) => toast.error("Erro ao enviar 1º contato: " + (e?.message || "falha")),
+  });
+
   // 2. Se tem conversa, busca mensagens reais
   const { data: mensagens, isLoading: loadingMsgs } = useQuery({
     queryKey: ["acompanhamento-conv-msgs", conv?.id],
@@ -118,30 +144,69 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback }: Pro
     );
   }
 
-  // Sem conversa SigZap vinculada — usa fallback do histórico de campanha
+  // Sem conversa SigZap vinculada — fallback do histórico + (se campanha) caixa de 1º contato.
   if (!conv?.id) {
-    if (historicoCampanhaFallback.length === 0) {
-      return (
-        <div className="text-center py-12 text-muted-foreground">
-          <MessageSquare className="h-10 w-10 mx-auto mb-2 opacity-30" />
-          <p className="text-sm">Nenhuma conversa registrada ainda.</p>
-          <p className="text-xs mt-1">
-            Quando o médico responder no WhatsApp, as mensagens aparecem aqui.
-          </p>
-        </div>
-      );
-    }
     return (
       <>
-        <div className="mb-3 text-xs flex items-center gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded px-2.5 py-1.5">
-          <MessageSquare className="h-3.5 w-3.5" />
-          Mostrando histórico desta campanha (lead ainda sem vínculo com a conversa unificada do SigZap).
-        </div>
-        <div className="space-y-2">
-          {historicoCampanhaFallback.map((msg, i) => (
-            <BubbleLegacy key={i} msg={msg} />
-          ))}
-        </div>
+        {historicoCampanhaFallback.length === 0 ? (
+          <div className="text-center py-10 text-muted-foreground">
+            <MessageSquare className="h-10 w-10 mx-auto mb-2 opacity-30" />
+            <p className="text-sm">Nenhuma conversa registrada ainda.</p>
+            <p className="text-xs mt-1">
+              {campanhaId
+                ? "Envie a 1ª mensagem abaixo pra iniciar o contato no WhatsApp."
+                : "Quando o médico responder no WhatsApp, as mensagens aparecem aqui."}
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="mb-3 text-xs flex items-center gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded px-2.5 py-1.5">
+              <MessageSquare className="h-3.5 w-3.5" />
+              Mostrando histórico desta campanha (lead ainda sem vínculo com a conversa unificada do SigZap).
+            </div>
+            <div className="space-y-2">
+              {historicoCampanhaFallback.map((msg, i) => (
+                <BubbleLegacy key={i} msg={msg} />
+              ))}
+            </div>
+          </>
+        )}
+
+        {campanhaId && (
+          <div className="mt-4 border-t pt-3">
+            <div className="text-xs font-medium text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-2.5 py-1.5 mb-2 flex items-center gap-1.5">
+              <Send className="h-3.5 w-3.5" />
+              Enviar 1ª mensagem (disparo manual via WhatsApp)
+            </div>
+            <div className="flex items-end gap-2">
+              <Textarea
+                value={texto1o}
+                onChange={(e) => setTexto1o(e.target.value)}
+                placeholder="Escreva a 1ª mensagem pro médico... (Enter envia, Shift+Enter quebra linha)"
+                rows={2}
+                className="resize-none text-sm"
+                disabled={enviar1oContato.isPending}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    if (texto1o.trim()) enviar1oContato.mutate(texto1o.trim());
+                  }
+                }}
+              />
+              <Button
+                size="sm"
+                className="shrink-0"
+                disabled={!texto1o.trim() || enviar1oContato.isPending}
+                onClick={() => texto1o.trim() && enviar1oContato.mutate(texto1o.trim())}
+              >
+                {enviar1oContato.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              </Button>
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-1">
+              Usa um chip conectado da campanha. Ao enviar, o lead passa pra "contatado".
+            </p>
+          </div>
+        )}
       </>
     );
   }
