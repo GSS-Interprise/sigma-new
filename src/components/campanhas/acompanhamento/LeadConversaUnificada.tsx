@@ -106,11 +106,17 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
     },
     onSuccess: () => {
       setTexto1o("");
+      // A edge responde rápido e envia em 2º plano — a conversa já é criada aqui;
+      // a mensagem confirmada aparece no refetch tardio (quando o envio grava).
       qc.invalidateQueries({ queryKey: ["acompanhamento-conv-by-lead", leadId] });
       qc.invalidateQueries({ queryKey: ["acompanhamento-leads"] });
-      toast.success("1ª mensagem enviada pelo WhatsApp! 🎉");
+      toast.success("1ª mensagem enviada! 🎉 O lead já está como contatado.");
+      setTimeout(() => {
+        qc.invalidateQueries({ queryKey: ["acompanhamento-conv-by-lead", leadId] });
+        qc.invalidateQueries({ queryKey: ["acompanhamento-conv-msgs"] });
+      }, 4000);
     },
-    onError: (e: any) => toast.error("Erro ao enviar 1º contato: " + (e?.message || "falha")),
+    onError: (e: any) => toast.error("Não foi: " + (e?.message || "falha no envio")),
   });
 
   // 2. Se tem conversa, busca mensagens reais
