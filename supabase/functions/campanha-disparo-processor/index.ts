@@ -32,6 +32,13 @@ serve(async (req) => {
       .single();
 
     if (campErr || !camp) throw new Error("Campanha não encontrada");
+
+    // Mudança 09/06: campanha MANUAL não tem disparo automático — o 1º contato é
+    // feito à mão pela equipe (Evolution). O motor só dispara campanhas IA.
+    // Guard antes de qualquer efeito (lock/janela/next_batch) pra não tocar a manual.
+    if (camp.tipo_envio === "manual")
+      return json({ ok: true, msg: "skipped:manual — 1o contato e manual, sem disparo automatico" });
+
     if (["pausada", "finalizada", "arquivada"].includes(camp.status))
       return json({ ok: true, msg: `Campanha ${camp.status}` });
 
