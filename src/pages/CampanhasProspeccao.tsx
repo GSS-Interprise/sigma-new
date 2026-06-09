@@ -912,10 +912,15 @@ function CampanhaCard({
                   className="text-red-600 focus:text-red-700"
                   onClick={(e) => {
                     e.stopPropagation();
-                    const msg = total > 0
-                      ? `Excluir a campanha "${campanha.nome.trim()}"?\n\nRemove a campanha e o vínculo de ${total} lead(s) + o histórico dela. Os médicos CONTINUAM na base. Esta ação NÃO pode ser desfeita.\n\nSe quer só parar de disparar, use "Finalizar".`
-                      : `Excluir a campanha "${campanha.nome.trim()}"? Esta ação não pode ser desfeita.`;
-                    if (window.confirm(msg)) excluir.mutate();
+                    // Confirmação forte (digitar EXCLUIR) — evita delete acidental (incidente Bruna 09/06).
+                    const resp = window.prompt(
+                      `⚠️ EXCLUIR a campanha "${campanha.nome.trim()}" é PERMANENTE` +
+                        (total > 0 ? ` — remove o vínculo de ${total} lead(s) + o histórico (os médicos continuam na base)` : "") +
+                        `.\n\nSe é só pra parar de disparar, CANCELE e use "Finalizar" (reversível).\n\nPra confirmar, digite EXCLUIR:`
+                    );
+                    if (resp === null) return; // cancelou
+                    if (resp.trim().toUpperCase() === "EXCLUIR") excluir.mutate();
+                    else toast.error('Exclusão cancelada — é preciso digitar "EXCLUIR" pra confirmar.');
                   }}
                 >
                   <Trash2 className="h-4 w-4 mr-2" />
