@@ -3,13 +3,18 @@ tags: [arquitetura, sigma-gss, campanhas, manual, mudanca-rumo]
 projeto: SigmaGSS
 autor: Raul + Claude
 data: 2026-06-09
-status: ANÁLISE (pronta pra priorizar/executar) — NÃO implementado ainda
+status: PARCIAL — 1.1 (parar disparo auto) + 1.2 (1º contato manual no card) IMPLEMENTADOS 09/06; 1.3 (UI/métricas) pendente
 repo: GSS-Interprise/sigma-new
 ---
 
 # Mudança de rumo — Campanha MANUAL: 1º contato 100% manual
 
 > **Decisão (Raul, 09/06):** em campanha **manual**, o **primeiro contato NÃO é mais disparo automatizado**. A equipe chama os médicos **manualmente via Evolution**, com **chip diferente** do usado pela IA e **leads diferentes**. Só o 1º disparo muda — o que antes eu tinha entendido como automatizado, agora é manual de verdade.
+
+## ✅ Status de implementação (09/06)
+- **1.1 Parar disparo automático das manuais — FEITO** (commit `9b40005`): guard no `campanha-disparo-processor` (return early se `tipo_envio='manual'`) + filtro no cron job 11 (`tipo_envio IS DISTINCT FROM 'manual'`). Validado: 7 campanhas IA seguem disparando; a única manual (Urologista) ficou de fora.
+- **1.2 1º contato manual no card do lead — FEITO** (commit `fe59838`, requer publish no Lovable): edge nova `campanha-disparo-manual-1contato` (envia pelo chip da campanha + marca `campanha_leads`: data_primeiro_contato + frio→contatado + chip_usado_id) + caixa "Enviar 1ª mensagem" no `LeadConversaUnificada` quando o lead ainda não tem conversa.
+- **1.3 UI/métricas (aba Status / Dashboard / wizard) — PENDENTE** (exibição; não crítico).
 
 ## 0. Como é HOJE (o que precisa mudar)
 - `campanha-disparo-processor` (cron **job 11**) dispara o 1º contato cold de **TODA campanha `tipo_campanha='prospeccao'` ativa**, **incluindo manual** — o WHERE do cron **não filtra `tipo_envio`**. Ele marca `campanha_leads.data_primeiro_contato` + status `frio→contatado`.
