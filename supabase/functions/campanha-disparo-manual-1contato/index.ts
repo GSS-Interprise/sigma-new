@@ -65,10 +65,10 @@ serve(async (req) => {
     // ── Lead + telefone ──
     const { data: lead } = await supabase
       .from("leads")
-      .select("id, nome, phone_whatsapp, especialidade, uf, cidade")
+      .select("id, nome, phone_e164, especialidade, uf, cidade")
       .eq("id", lead_id)
       .single();
-    const phoneRaw = (phone || lead?.phone_whatsapp || "").toString().trim();
+    const phoneRaw = (phone || lead?.phone_e164 || "").toString().trim();
     if (!phoneRaw) return json({ error: "Lead sem telefone (phone_whatsapp) — não dá pra enviar." }, 400);
 
     // ── Campanha (chips) ──
@@ -172,17 +172,31 @@ serve(async (req) => {
     });
 
     // ── Enviar via send-sigzap-message ──
-    const sendResp = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/send-sigzap-message`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: authHeader },
-      body: JSON.stringify({
-        action: "send",
-        conversationId,
-        instanceName: chip.instance_name,
-        contactJid,
-        message: msgFinal,
-      }),
-    });
+    // Timeout de 30s: o send-sigzap-message faz fetch ao Evolution SEM timeout —
+    // se o chip/proxy está lento, penduraria a request e o botão giraria pra sempre.
+    let sendResp: Response;
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 30_000);
+    try {
+      sendResp = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/send-sigzap-message`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: authHeader },
+        body: JSON.stringify({
+          action: "send",
+          conversationId,
+          instanceName: chip.instance_name,
+          contactJid,
+          message: msgFinal,
+        }),
+        signal: ac.signal,
+      });
+    } catch (_e) {
+      clearTimeout(timer);
+      return json({
+        error: "O WhatsApp demorou demais pra confirmar o envio (chip lento ou número sem WhatsApp). A mensagem pode não ter saído — confira no SigZap antes de reenviar.",
+      }, 504);
+    }
+    clearTimeout(timer);
     const sendResult = await sendResp.json().catch(() => ({}));
     if (!sendResp.ok) {
       return json({ error: "Falha ao enviar a mensagem", details: sendResult }, 500);
