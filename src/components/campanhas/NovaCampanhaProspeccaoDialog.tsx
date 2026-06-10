@@ -44,6 +44,10 @@ interface Props {
   onCreated?: (campanhaId: string) => void;
 }
 
+// Sentinela do picker de especialidades: não é uuid — ao criar, vira
+// campanhas.sem_especialidade=true e sai do array especialidade_ids.
+const GENERALISTA_ID = "GENERALISTA";
+
 export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCreated }: Props) {
   const [tab, setTab] = useState("basico");
   const [nome, setNome] = useState("");
@@ -116,12 +120,23 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
         .select("especialidade_id, especialidade_nome, especialidade_area, total_leads")
         .order("especialidade_nome");
       if (error) throw error;
-      return (data || []).map((e: any) => ({
-        id: e.especialidade_id,
-        nome: e.especialidade_nome,
-        area: e.especialidade_area,
-        total_leads: e.total_leads || 0,
-      }));
+      return [
+        // Pedido equipe (10/06): mirar médicos SEM especialidade (102k+ na base).
+        // Não é uuid de especialidade — vira flag sem_especialidade na campanha.
+        // total_leads -1 = picker mostra "—" (count real aparece no preview do pool).
+        {
+          id: GENERALISTA_ID,
+          nome: "Generalista (sem especialidade)",
+          area: null,
+          total_leads: -1,
+        },
+        ...(data || []).map((e: any) => ({
+          id: e.especialidade_id,
+          nome: e.especialidade_nome,
+          area: e.especialidade_area,
+          total_leads: e.total_leads || 0,
+        })),
+      ];
     },
   });
 
@@ -155,13 +170,15 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
     ],
     enabled: debouncedEspIds.length > 0 || !!debouncedUf,
     queryFn: async () => {
+      const idsReais = debouncedEspIds.filter((id) => id !== GENERALISTA_ID);
       const { data, error } = await (supabase as any).rpc(
         "campanha_wizard_preview",
         {
-          p_especialidade_ids: debouncedEspIds.length > 0 ? debouncedEspIds : null,
+          p_especialidade_ids: idsReais.length > 0 ? idsReais : null,
           p_uf: debouncedUf || null,
           p_exclude_lead_ids: null,
           p_sample_limit: 0,
+          p_sem_especialidade: debouncedEspIds.includes(GENERALISTA_ID),
         },
       );
       if (error) throw error;
@@ -209,6 +226,7 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
         palavras_proibidas: bPalavrasProibidas,
       };
 
+      const espIdsReais = especialidadeIds.filter((id) => id !== GENERALISTA_ID);
       const { data, error } = await (supabase as any)
         .from("campanhas")
         .insert({
@@ -216,9 +234,10 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
           canal: "whatsapp",
           status: "ativa",
           tipo_campanha: "prospeccao",
-          especialidade_ids: especialidadeIds.length > 0 ? especialidadeIds : null,
+          especialidade_ids: espIdsReais.length > 0 ? espIdsReais : null,
           // Mantém especialidade_id (singular) com a primeira pra retrocompat de UI legada
-          especialidade_id: especialidadeIds[0] || null,
+          especialidade_id: espIdsReais[0] || null,
+          sem_especialidade: especialidadeIds.includes(GENERALISTA_ID),
           regiao_estado: regiaoEstado || null,
           chip_ids: chipIds.length > 0 ? chipIds : null,
           chip_id: chipIds[0] || null,
@@ -624,7 +643,7 @@ GSS Saúde`}
             <PreviewLeadsCampanhaModal
               open={previewOpen}
               onOpenChange={setPreviewOpen}
-              especialidadeIds={especialidadeIds}
+              especialidadeIds={especialidadeIds.filter((id) => id !== GENERALISTA_ID)}
               uf={regiaoEstado}
               poolCount={poolCount}
               excludedIds={excludedLeadIds}
@@ -1336,11 +1355,14 @@ function EspecialidadesMultiPicker({
       )
     : options;
 
-  // Ordena: selecionadas no topo, depois por total_leads desc
+  // Ordena: selecionadas no topo, Generalista fixo em seguida, depois por total_leads desc
   const ordenadas = [...filtradas].sort((a, b) => {
     const aSel = value.includes(a.id) ? 1 : 0;
     const bSel = value.includes(b.id) ? 1 : 0;
     if (aSel !== bSel) return bSel - aSel;
+    const aGen = a.id === GENERALISTA_ID ? 1 : 0;
+    const bGen = b.id === GENERALISTA_ID ? 1 : 0;
+    if (aGen !== bGen) return bGen - aGen;
     return (b.total_leads || 0) - (a.total_leads || 0);
   });
 
@@ -1424,7 +1446,7 @@ function EspecialidadesMultiPicker({
                           <span className="truncate text-left">{opt.nome}</span>
                         </span>
                         <span className="text-[10px] text-muted-foreground tabular-nums shrink-0 ml-2">
-                          {(opt.total_leads || 0).toLocaleString("pt-BR")}
+                          {opt.total_leads < 0 ? "—" : (opt.total_leads || 0).toLocaleString("pt-BR")}
                         </span>
                       </button>
                     );
