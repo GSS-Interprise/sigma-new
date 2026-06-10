@@ -169,6 +169,29 @@ export function DashboardCampanhas() {
     return UF_LIST.filter((uf) => ufsEmUso.has(uf));
   }, [rows]);
 
+  // Estado real dos chips por campanha — pra status honesto ("sem chip" ≠ "ativa")
+  // e pros cartões de decisão. Confiável pós-sync do chip-auto-reconnect (10/06).
+  const { data: chipsPorCampanha = new Map<string, { total: number; open: number }>() } = useQuery({
+    queryKey: ["dashboard-chips-campanha"],
+    queryFn: async () => {
+      const [{ data: camps }, { data: chips }] = await Promise.all([
+        (supabase as any).from("campanhas").select("id, chip_ids, chip_id").in("status", ["ativa", "pausada"]),
+        (supabase as any).from("chips").select("id, connection_state"),
+      ]);
+      const stateById = new Map<string, string>((chips ?? []).map((c: any) => [c.id, c.connection_state]));
+      const m = new Map<string, { total: number; open: number }>();
+      for (const c of camps ?? []) {
+        const ids: string[] = (c.chip_ids?.length ? c.chip_ids : [c.chip_id]).filter(Boolean);
+        m.set(c.id, {
+          total: ids.length,
+          open: ids.filter((id) => stateById.get(id) === "open").length,
+        });
+      }
+      return m;
+    },
+    refetchInterval: 60_000,
+  });
+
   // Métrica acionável: quantos leads únicos foram descartados por phone inválido.
   // Mostra qualidade da base de leads (NÃO é "erro do sistema" — é dado da fonte).
   const { data: descartadosPhone = 0 } = useQuery({
@@ -229,6 +252,84 @@ export function DashboardCampanhas() {
 
   // Alertas: leads quentes muito antigos (respeita filtros)
   const quentesAtrasados = rowsFiltradas.filter((r) => (r.quente_mais_antigo_h ?? 0) > 24);
+
+  // ── Camada de decisão (pedido Ramone 10/06): fato → consequência → ação ──
+  // Cada linha ganha diagnóstico operacional + projeção de esgotamento da base.
+  const diagnostico = (r: DashboardRow) => {
+    const chips = chipsPorCampanha.get(r.campanha_id);
+    const semChip = r.status === "ativa" && chips !== undefined && chips.open === 0;
+    const pendentes = r.pool_pendentes ?? 0;
+    const ritmoDia = (r.disparos_7d ?? 0) / 7;
+    // dias até esgotar a fila no ritmo atual (null = sem ritmo pra projetar)
+    const esgotaEmDias = pendentes > 0 && ritmoDia > 0.5 ? Math.round(pendentes / ritmoDia) : null;
+    const quenteAtrasadoH = (r.quente_mais_antigo_h ?? 0) > 24 ? (r.quente_mais_antigo_h as number) : 0;
+    const baseEsgotada = pendentes === 0 && (r.pool_total ?? 0) > 0;
+    const contatoBaixo =
+      (r.contatado ?? 0) >= 30 && (r.taxa_contato_pct ?? 100) < 40;
+    const paradaComFila =
+      r.status === "ativa" && !semChip && pendentes > 0 && (r.disparos_hoje ?? 0) === 0;
+    // score de atenção: ordena a tabela pelo que precisa de gente, não pelo que a máquina fez
+    const score =
+      (quenteAtrasadoH > 0 ? 1000 + Math.min(quenteAtrasadoH, 999) : 0) +
+      (semChip ? 800 : 0) +
+      (paradaComFila ? 300 : 0) +
+      (baseEsgotada ? 200 : 0) +
+      (contatoBaixo ? 100 : 0);
+    return { semChip, pendentes, esgotaEmDias, quenteAtrasadoH, baseEsgotada, contatoBaixo, paradaComFila, score };
+  };
+
+  const rowsComDiag = rowsFiltradas.map((r) => ({ r, d: diagnostico(r) }));
+  const rowsOrdenadas = [...rowsComDiag].sort(
+    (a, b) => b.d.score - a.d.score || (b.r.disparos_24h ?? 0) - (a.r.disparos_24h ?? 0),
+  );
+
+  // Cartões "o que precisa de você hoje" — no máx 5, do mais urgente pro menos
+  type Decisao = { tone: "red" | "amber" | "blue"; titulo: string; consequencia: string; acao: string };
+  const decisoes: Decisao[] = [];
+  for (const { r, d } of rowsOrdenadas) {
+    if (d.quenteAtrasadoH > 0) {
+      const dias = Math.floor(d.quenteAtrasadoH / 24);
+      decisoes.push({
+        tone: "red",
+        titulo: `${r.quentes} quente(s) esperando há ${dias >= 1 ? `${dias} dia(s)` : `${d.quenteAtrasadoH.toFixed(0)}h`} — ${r.nome}`,
+        consequencia: "Médico interessado esfria e fecha com outra agência.",
+        acao: "Cobrar retorno da operadora hoje (aba Acompanhamento).",
+      });
+    }
+    if (d.semChip) {
+      decisoes.push({
+        tone: "red",
+        titulo: `Campanha parada sem chip conectado — ${r.nome}`,
+        consequencia: `${d.pendentes.toLocaleString("pt-BR")} lead(s) na fila sem ninguém disparando.`,
+        acao: "Pedir pra equipe reconectar o chip (QR Code em Chips & Instâncias).",
+      });
+    }
+    if (d.baseEsgotada) {
+      decisoes.push({
+        tone: "blue",
+        titulo: `Base 100% percorrida — ${r.nome}`,
+        consequencia: "Campanha sem lead novo pra contatar.",
+        acao: "Decidir: ampliar região/especialidade ou encerrar a campanha.",
+      });
+    }
+    if (d.esgotaEmDias !== null && d.esgotaEmDias > 365 && d.pendentes > 1000) {
+      decisoes.push({
+        tone: "amber",
+        titulo: `Ritmo insuficiente — ${r.nome}`,
+        consequencia: `${d.pendentes.toLocaleString("pt-BR")} na fila e ritmo atual leva ~${Math.round(d.esgotaEmDias / 30)} meses pra esgotar.`,
+        acao: "Adicionar chips à campanha ou aceitar o prazo.",
+      });
+    }
+    if (d.contatoBaixo) {
+      decisoes.push({
+        tone: "amber",
+        titulo: `Taxa de contato baixa (${(r.taxa_contato_pct ?? 0).toFixed(0)}%) — ${r.nome}`,
+        consequencia: "A maioria dos disparos não vira conversa: mensagem ou lista fraca.",
+        acao: "Revisar a mensagem inicial e a origem dos leads dessa campanha.",
+      });
+    }
+  }
+  const decisoesTop = decisoes.slice(0, 5);
 
   // Indicador novo: tempo médio do quente mais antigo (entre campanhas com quentes)
   const tempoMedioQuente = (() => {
@@ -390,6 +491,48 @@ export function DashboardCampanhas() {
         </p>
       </div>
 
+      {/* O que precisa de você hoje — camada de decisão da Ramone (10/06).
+          Fato + consequência + ação; sem precisar montar o quebra-cabeça na tabela. */}
+      {decisoesTop.length > 0 && (
+        <Card className="p-4 border-l-4 border-l-rose-400">
+          <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 text-rose-600" />
+            O que precisa de você hoje
+            <span className="text-xs font-normal text-muted-foreground">
+              ({decisoesTop.length} {decisoesTop.length === 1 ? "item" : "itens"})
+            </span>
+          </h3>
+          <div className="space-y-2">
+            {decisoesTop.map((dec, i) => (
+              <div
+                key={i}
+                className={cn(
+                  "rounded-md border p-3 text-sm",
+                  dec.tone === "red" && "bg-rose-50 border-rose-200",
+                  dec.tone === "amber" && "bg-amber-50 border-amber-200",
+                  dec.tone === "blue" && "bg-blue-50 border-blue-200",
+                )}
+              >
+                <p className="font-medium">{dec.titulo}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{dec.consequencia}</p>
+                <p className="text-xs mt-1">
+                  <span className="font-semibold">➜ Ação:</span> {dec.acao}
+                </p>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+      {decisoesTop.length === 0 && (
+        <Card className="p-4 border-l-4 border-l-emerald-400">
+          <p className="text-sm flex items-center gap-2">
+            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+            <span className="font-medium">Nada esperando decisão sua agora</span>
+            <span className="text-xs text-muted-foreground">— quentes em dia, chips conectados, bases com fila.</span>
+          </p>
+        </Card>
+      )}
+
       {/* Fase 1 — Metas & Período (gestão): disparos vs 700/dia, capacidade de chips, gráfico */}
       <DashboardMetasFase1 />
 
@@ -516,59 +659,85 @@ export function DashboardCampanhas() {
       <Card className="p-0 overflow-hidden">
         <div className="px-4 py-3 border-b bg-muted/30">
           <h3 className="text-sm font-semibold">Performance por campanha</h3>
-          <p className="text-xs text-muted-foreground">Ordenado por disparos das últimas 24h</p>
+          <p className="text-xs text-muted-foreground">
+            Ordenado pelo que precisa de atenção primeiro · funil mostra onde cada campanha perde lead
+          </p>
         </div>
         <ScrollArea className="max-h-[500px]">
           <table className="w-full text-sm">
             <thead className="bg-muted/20 sticky top-0">
               <tr className="text-xs text-muted-foreground border-b">
                 <th className="text-left px-4 py-2 font-medium">Campanha</th>
+                <th className="text-left px-3 py-2 font-medium">Funil (contato → conversa → quente → fechado)</th>
                 <th className="text-right px-3 py-2 font-medium">Base</th>
-                <th className="text-right px-3 py-2 font-medium">Contatado</th>
-                <th className="text-right px-3 py-2 font-medium">% Cobertura</th>
-                <th className="text-right px-3 py-2 font-medium">Em conv.</th>
+                <th className="text-right px-3 py-2 font-medium">Na fila</th>
+                <th className="text-right px-3 py-2 font-medium">Esgota em</th>
                 <th className="text-right px-3 py-2 font-medium">Quentes</th>
-                <th className="text-right px-3 py-2 font-medium">Convert.</th>
                 <th className="text-right px-3 py-2 font-medium">24h</th>
                 <th className="text-center px-3 py-2 font-medium">Status</th>
               </tr>
             </thead>
             <tbody>
-              {rowsFiltradas.length === 0 ? (
+              {rowsOrdenadas.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="text-center py-8 text-muted-foreground">
+                  <td colSpan={8} className="text-center py-8 text-muted-foreground">
                     {temFiltro
                       ? "Nenhuma campanha bate com os filtros aplicados."
                       : "Nenhuma campanha ativa ou pausada."}
                   </td>
                 </tr>
               ) : (
-                rowsFiltradas.map((r) => {
-                  const pct = r.pool_total ? ((r.contatado ?? 0) / r.pool_total) * 100 : 0;
+                rowsOrdenadas.map(({ r, d }) => {
+                  // status honesto: o que a campanha está FAZENDO, não o flag do banco
+                  const statusReal = r.status === "pausada"
+                    ? { label: "pausada", cls: "bg-slate-100 text-slate-700 border-slate-200" }
+                    : d.semChip
+                      ? { label: "sem chip", cls: "bg-rose-100 text-rose-700 border-rose-200" }
+                      : d.baseEsgotada
+                        ? { label: "base esgotada", cls: "bg-blue-100 text-blue-700 border-blue-200" }
+                        : (r.disparos_hoje ?? 0) > 0
+                          ? { label: "disparando", cls: "bg-emerald-100 text-emerald-700 border-emerald-200" }
+                          : { label: "aguardando", cls: "bg-amber-50 text-amber-700 border-amber-200" };
                   return (
                     <tr key={r.campanha_id} className="border-b hover:bg-muted/30">
-                      <td className="px-4 py-2 truncate max-w-[260px]">
+                      <td className="px-4 py-2 truncate max-w-[220px]">
                         <div className="font-medium text-foreground/90">{r.nome}</div>
                         {r.regiao_estado && (
                           <div className="text-[10px] text-muted-foreground">{r.regiao_estado}</div>
                         )}
                       </td>
-                      <td className="px-3 py-2 text-right tabular-nums">{r.pool_total ?? 0}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{r.contatado ?? 0}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{pct.toFixed(0)}%</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{r.em_conversa ?? 0}</td>
+                      <td className="px-3 py-2 min-w-[190px]">
+                        <MiniFunil
+                          contatado={r.contatado ?? 0}
+                          emConversa={r.em_conversa ?? 0}
+                          quentes={r.quentes ?? 0}
+                          convertidos={r.convertidos ?? 0}
+                          taxaContatoPct={r.taxa_contato_pct}
+                        />
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">{(r.pool_total ?? 0).toLocaleString("pt-BR")}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{d.pendentes.toLocaleString("pt-BR")}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-xs">
+                        {d.baseEsgotada
+                          ? <span className="text-blue-700 font-medium">esgotada</span>
+                          : d.esgotaEmDias === null
+                            ? "—"
+                            : d.esgotaEmDias > 90
+                              ? <span className={d.esgotaEmDias > 365 ? "text-amber-700 font-medium" : ""}>~{Math.round(d.esgotaEmDias / 30)} meses</span>
+                              : `${d.esgotaEmDias}d`}
+                      </td>
                       <td className="px-3 py-2 text-right tabular-nums">
-                        <span className={cn("font-semibold", (r.quente_mais_antigo_h ?? 0) > 24 && "text-amber-700")}>
+                        <span className={cn("font-semibold", d.quenteAtrasadoH > 0 && "text-amber-700")}>
                           {r.quentes ?? 0}
                         </span>
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums text-emerald-700 font-semibold">
-                        {r.convertidos ?? 0}
+                        {d.quenteAtrasadoH > 0 && (
+                          <span className="text-[10px] text-amber-700 block">+{Math.floor(d.quenteAtrasadoH / 24)}d esperando</span>
+                        )}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums">{r.disparos_24h ?? 0}</td>
                       <td className="px-3 py-2 text-center">
-                        <Badge variant={r.status === "ativa" ? "default" : "secondary"} className="text-[10px]">
-                          {r.status}
+                        <Badge variant="outline" className={cn("text-[10px]", statusReal.cls)}>
+                          {statusReal.label}
                         </Badge>
                       </td>
                     </tr>
@@ -582,6 +751,57 @@ export function DashboardCampanhas() {
 
       {/* F3.5 — Comparativo entre operadoras (atividade geral SigZap por enquanto) */}
       <ComparativoOperadoras />
+    </div>
+  );
+}
+
+// Mini-funil por campanha: 4 estágios com largura proporcional ao estágio anterior.
+// O número que importa pra decisão é a QUEDA entre estágios — o pior vira vermelho.
+function MiniFunil({
+  contatado,
+  emConversa,
+  quentes,
+  convertidos,
+  taxaContatoPct,
+}: {
+  contatado: number;
+  emConversa: number;
+  quentes: number;
+  convertidos: number;
+  taxaContatoPct: number | null;
+}) {
+  if (contatado === 0) {
+    return <span className="text-xs text-muted-foreground">sem contato ainda</span>;
+  }
+  const pctConversa = (emConversa / contatado) * 100;
+  const stages = [
+    { n: contatado, label: "contatados", cls: "bg-blue-400" },
+    { n: emConversa, label: "em conversa", cls: pctConversa < 5 ? "bg-rose-400" : "bg-indigo-400" },
+    { n: quentes, label: "quentes", cls: "bg-amber-400" },
+    { n: convertidos, label: "fechados", cls: "bg-emerald-500" },
+  ];
+  const title = [
+    `${contatado} contatados (${(taxaContatoPct ?? 0).toFixed(0)}% da base alcançada)`,
+    `→ ${emConversa} em conversa (${pctConversa.toFixed(0)}% respondem)`,
+    `→ ${quentes} quentes`,
+    `→ ${convertidos} fechados`,
+    pctConversa < 5 ? "⚠ poucas respostas: revisar mensagem/lista" : "",
+  ].filter(Boolean).join("\n");
+  return (
+    <div className="flex items-center gap-1" title={title}>
+      {stages.map((s, i) => {
+        // largura em escala log pra estágio pequeno continuar visível
+        const w = s.n === 0 ? 3 : Math.max(8, Math.round((Math.log10(s.n + 1) / Math.log10(stages[0].n + 1)) * 56));
+        return (
+          <div key={i} className="flex flex-col items-center gap-0.5">
+            <div
+              className={cn("h-2.5 rounded-sm", s.n === 0 ? "bg-muted" : s.cls)}
+              style={{ width: `${w}px` }}
+            />
+            <span className="text-[9px] tabular-nums text-muted-foreground leading-none">{s.n}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
