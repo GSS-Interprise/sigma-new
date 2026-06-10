@@ -47,7 +47,7 @@ Deno.serve(async (req) => {
     // só as categorias da máquina de prospecção; pessoal_restrito/suporte ficam de fora
     const { data: chips } = await supabase
       .from("chips")
-      .select("id, instance_name, categoria_uso")
+      .select("id, instance_name, categoria_uso, connection_state")
       .eq("status", "ativo")
       .in("categoria_uso", ["prospeccao_ia", "manual", "inbound"])
       .not("instance_name", "is", null);
@@ -66,6 +66,16 @@ Deno.serve(async (req) => {
         state = d?.instance?.state || "unknown";
       } catch {
         state = "err";
+      }
+
+      // Sincroniza chips.connection_state com o estado REAL (10/06): o disparador
+      // decide por essa coluna, e os crons chip-healthcheck estão desligados —
+      // sem isto ela só atualizava quando alguém abria a tela de chips (stale o
+      // dia todo = campanha pulada com chip online, visto em Pediatria/Nefro).
+      if (["open", "close", "connecting"].includes(state) && state !== c.connection_state) {
+        await supabase.from("chips")
+          .update({ connection_state: state, updated_at: new Date().toISOString() })
+          .eq("id", c.id);
       }
 
       if (state === "open") { summary.open++; continue; }
