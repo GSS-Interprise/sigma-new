@@ -18,6 +18,12 @@ const cors = {
 
 const COOLDOWN_MIN = 10;   // não reinicia o mesmo chip mais de 1x a cada 10 min
 const MAX_RESTARTS = 5;    // máx de restarts por execução (anti-sobrecarga)
+// Grace de pareamento (10/06): instância exibindo QR fica em "connecting" — igual
+// a um flap. Restart no meio do scan mata o pairing (device meio-registrado →
+// WhatsApp responde 401 LOGOUT e apaga a credencial; visto no prospec-raul-9003).
+// Se o chip estava "close" (needs_qr logado) há pouco, esse "connecting" é a
+// equipe escaneando QR, não flapping → não tocar.
+const QR_GRACE_MIN = 30;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
@@ -48,7 +54,7 @@ Deno.serve(async (req) => {
 
     const cutoff = new Date(Date.now() - COOLDOWN_MIN * 60 * 1000).toISOString();
     let restarted = 0;
-    const summary = { total: chips?.length || 0, open: 0, connecting: 0, close: 0, restarted: 0, skipped_cooldown: 0, skipped_cap: 0, needs_qr: 0, err: 0 };
+    const summary = { total: chips?.length || 0, open: 0, connecting: 0, close: 0, restarted: 0, skipped_cooldown: 0, skipped_cap: 0, skipped_qr_grace: 0, needs_qr: 0, err: 0 };
     const details: any[] = [];
 
     for (const c of chips || []) {
@@ -75,6 +81,15 @@ Deno.serve(async (req) => {
       if (state === "connecting") {
         summary.connecting++;
         if (restarted >= MAX_RESTARTS) { summary.skipped_cap++; details.push({ instance: c.instance_name, state, action: "skipped_cap" }); continue; }
+        const qrGraceCutoff = new Date(Date.now() - QR_GRACE_MIN * 60 * 1000).toISOString();
+        const { data: recentQr } = await supabase
+          .from("chip_auto_reconnect_log")
+          .select("id")
+          .eq("chip_id", c.id)
+          .eq("action", "needs_qr")
+          .gte("created_at", qrGraceCutoff)
+          .limit(1);
+        if (recentQr && recentQr.length) { summary.skipped_qr_grace++; details.push({ instance: c.instance_name, state, action: "skipped_qr_grace" }); continue; }
         const { data: recent } = await supabase
           .from("chip_auto_reconnect_log")
           .select("id")
