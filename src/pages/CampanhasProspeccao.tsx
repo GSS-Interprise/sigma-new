@@ -37,6 +37,8 @@ import {
   Smartphone,
   Ban,
   Trash2,
+  Bot,
+  User,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -61,6 +63,7 @@ interface CampanhaRow {
   nome: string;
   status: string;
   tipo_campanha: string | null;
+  tipo_envio: string | null;
   especialidade_id: string | null;
   especialidade_ids: string[] | null;
   regiao_estado: string | null;
@@ -155,7 +158,7 @@ export default function CampanhasProspeccao() {
       let q = (supabase as any)
         .from("campanhas")
         .select(
-          "id, nome, status, tipo_campanha, especialidade_id, especialidade_ids, regiao_estado, limite_diario_campanha, total_frio, total_contatado, total_em_conversa, total_aquecido, total_quente, total_convertido, created_at, chip_id, chip_ids, briefing_ia, criado_por, especialidade:especialidade_id(nome)"
+          "id, nome, status, tipo_campanha, tipo_envio, especialidade_id, especialidade_ids, regiao_estado, limite_diario_campanha, total_frio, total_contatado, total_em_conversa, total_aquecido, total_quente, total_convertido, created_at, chip_id, chip_ids, briefing_ia, criado_por, especialidade:especialidade_id(nome)"
         )
         .eq("tipo_campanha", "prospeccao")
         .order("created_at", { ascending: false });
@@ -804,6 +807,18 @@ function CampanhaCard({
               </Badge>
             )}
             <div className="flex items-center gap-2 mt-1 flex-wrap">
+              {/* Flag IA (automática) vs Manual (operadora) — pedido equipe 11/06 */}
+              {campanha.tipo_envio === "manual" ? (
+                <Badge variant="outline" className="text-xs border-emerald-300 bg-emerald-50 text-emerald-800">
+                  <User className="h-3 w-3 mr-1" />
+                  Manual
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="text-xs border-indigo-300 bg-indigo-50 text-indigo-800">
+                  <Bot className="h-3 w-3 mr-1" />
+                  IA
+                </Badge>
+              )}
               {campanha.especialidades_nomes && campanha.especialidades_nomes.length > 0 ? (
                 campanha.especialidades_nomes.length === 1 ? (
                   <Badge variant="outline" className="text-xs">

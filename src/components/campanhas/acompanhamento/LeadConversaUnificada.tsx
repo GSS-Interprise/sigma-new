@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, Fragment } from "react";
+import { useState, useRef, useEffect, useMemo, Fragment } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2, MessageSquare, ExternalLink, Send } from "lucide-react";
@@ -150,11 +150,59 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
     },
   });
 
+  // ─────────────────────────────────────────────────────────────────────
+  // Timeline UNIFICADA: funde sigzap_messages (conversas manuais/SigZap) com
+  // campanha_leads.historico_conversa (conversas da IA, que NÃO vão pro SigZap).
+  // Bug 11/06: o painel mostrava só a conversa SigZap mais recente — quando o
+  // médico tinha conversa IA rica no histórico + uma conversa SigZap curta de
+  // OUTRA campanha, a IA sumia. Agora junta as duas por timestamp e deduplica.
+  // ─────────────────────────────────────────────────────────────────────
+  type TimelineMsg = { id: string; mine: boolean; text: string; ts: Date | null; source: "sigzap" | "historico"; status?: string | null };
+  const timeline: TimelineMsg[] = useMemo(() => {
+    const items: TimelineMsg[] = [];
+    for (const m of mensagens ?? []) {
+      items.push({
+        id: `s_${m.id}`,
+        mine: m.from_me,
+        text: m.message_text || (m.message_type ? `[${m.message_type}]` : "—"),
+        ts: m.sent_at ? new Date(m.sent_at) : null,
+        source: "sigzap",
+        status: m.message_status,
+      });
+    }
+    (historicoCampanhaFallback ?? []).forEach((h, i) => {
+      const role = (h.role || "").toLowerCase();
+      items.push({
+        id: `h_${i}`,
+        // role 'medico'/'lead' = entrada do médico; resto (ia/gss/humano/assistant) = nosso
+        mine: role !== "medico" && role !== "lead",
+        text: h.text,
+        ts: h.ts ? new Date(h.ts) : null,
+        source: "historico",
+      });
+    });
+    // ordena por timestamp (sem ts vai pro fim, preservando ordem de inserção)
+    items.sort((a, b) => (a.ts?.getTime() ?? Infinity) - (b.ts?.getTime() ?? Infinity));
+    // dedup: mesma direção + mesmo texto a < 2min = mesma mensagem em 2 fontes.
+    // Prefere a versão SigZap (tem status de entrega).
+    const out: Array<TimelineMsg & { _k: string }> = [];
+    for (const it of items) {
+      const k = `${it.mine ? "1" : "0"}|${(it.text || "").trim().toLowerCase().slice(0, 80)}`;
+      const dup = out.find((o) => o._k === k && o.ts && it.ts && Math.abs(o.ts.getTime() - it.ts.getTime()) < 120000);
+      if (dup) {
+        if (it.source === "sigzap" && dup.source === "historico") Object.assign(dup, it);
+        continue;
+      }
+      out.push({ ...it, _k: k });
+    }
+    return out;
+  }, [mensagens, historicoCampanhaFallback]);
+
   // Scroll automático pro fim quando a conversa carrega ou chega mensagem nova
   const endRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end" });
-  }, [mensagens?.length, conv?.id]);
+  }, [timeline.length, conv?.id]);
 
   // Loading
   if (loadingConv || (conv?.id && loadingMsgs)) {
@@ -166,108 +214,51 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
     );
   }
 
-  // Sem conversa SigZap vinculada — fallback do histórico + (se campanha) caixa de 1º contato.
-  if (!conv?.id) {
-    return (
-      <>
-        {historicoCampanhaFallback.length === 0 ? (
-          <div className="text-center py-10 text-muted-foreground">
-            <MessageSquare className="h-10 w-10 mx-auto mb-2 opacity-30" />
-            <p className="text-sm">Nenhuma conversa registrada ainda.</p>
-            <p className="text-xs mt-1">
-              {campanhaId
-                ? "Envie a 1ª mensagem abaixo pra iniciar o contato no WhatsApp."
-                : "Quando o médico responder no WhatsApp, as mensagens aparecem aqui."}
-            </p>
-          </div>
-        ) : (
-          <>
-            <div className="mb-3 text-xs flex items-center gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded px-2.5 py-1.5">
-              <MessageSquare className="h-3.5 w-3.5" />
-              Mostrando histórico desta campanha (lead ainda sem vínculo com a conversa unificada do SigZap).
-            </div>
-            <div className="space-y-2">
-              {historicoCampanhaFallback.map((msg, i) => (
-                <BubbleLegacy key={i} msg={msg} />
-              ))}
-            </div>
-          </>
-        )}
-
-        {campanhaId && (
-          <div className="mt-4 border-t pt-3">
-            <div className="text-xs font-medium text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-2.5 py-1.5 mb-2 flex items-center gap-1.5">
-              <Send className="h-3.5 w-3.5" />
-              Enviar 1ª mensagem (disparo manual via WhatsApp)
-            </div>
-            <div className="flex items-end gap-2">
-              <Textarea
-                value={texto1o}
-                onChange={(e) => setTexto1o(e.target.value)}
-                placeholder="Escreva a 1ª mensagem pro médico... (Enter envia, Shift+Enter quebra linha)"
-                rows={2}
-                className="resize-none text-sm"
-                disabled={enviar1oContato.isPending}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    if (texto1o.trim()) enviar1oContato.mutate(texto1o.trim());
-                  }
-                }}
-              />
-              <Button
-                size="sm"
-                className="shrink-0"
-                disabled={!texto1o.trim() || enviar1oContato.isPending}
-                onClick={() => texto1o.trim() && enviar1oContato.mutate(texto1o.trim())}
-              >
-                {enviar1oContato.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              </Button>
-            </div>
-            <p className="text-[11px] text-muted-foreground mt-1">
-              Usa um chip conectado da campanha. Ao enviar, o lead passa pra "contatado".
-            </p>
-          </div>
-        )}
-      </>
-    );
-  }
-
-  // Tem conversa vinculada — mostra mensagens reais (cross-campanha)
-  const linkSigzap = `/disparos/sigzap?conversation=${conv.id}`;
+  const temConversa = timeline.length > 0;
+  const linkSigzap = conv?.id ? `/disparos/sigzap?conversation=${conv.id}` : null;
 
   return (
     <>
-      <div className="mb-3 flex items-center justify-between flex-wrap gap-2">
-        <Badge variant="outline" className="gap-1.5 text-xs">
-          <MessageSquare className="h-3 w-3" />
-          Conversa unificada
-          <span className="text-muted-foreground">· {mensagens?.length ?? 0} mensagens</span>
-        </Badge>
-        <a
-          href={linkSigzap}
-          className="text-xs text-primary hover:underline flex items-center gap-1"
-          target="_blank"
-          rel="noreferrer"
-        >
-          Abrir no SigZap
-          <ExternalLink className="h-3 w-3" />
-        </a>
-      </div>
+      {temConversa && (
+        <div className="mb-3 flex items-center justify-between flex-wrap gap-2">
+          <Badge variant="outline" className="gap-1.5 text-xs">
+            <MessageSquare className="h-3 w-3" />
+            Conversa unificada
+            <span className="text-muted-foreground">· {timeline.length} mensagens</span>
+          </Badge>
+          {linkSigzap && (
+            <a
+              href={linkSigzap}
+              className="text-xs text-primary hover:underline flex items-center gap-1"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Abrir no SigZap
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          )}
+        </div>
+      )}
 
-      {(!mensagens || mensagens.length === 0) ? (
-        <p className="text-sm text-muted-foreground text-center py-8">
-          Conversa vinculada mas sem mensagens ainda.
-        </p>
+      {!temConversa ? (
+        <div className="text-center py-10 text-muted-foreground">
+          <MessageSquare className="h-10 w-10 mx-auto mb-2 opacity-30" />
+          <p className="text-sm">Nenhuma conversa registrada ainda.</p>
+          <p className="text-xs mt-1">
+            {campanhaId
+              ? "Envie a 1ª mensagem abaixo pra iniciar o contato no WhatsApp."
+              : "Quando o médico responder no WhatsApp, as mensagens aparecem aqui."}
+          </p>
+        </div>
       ) : (
         <div className="space-y-1.5">
-          {mensagens.map((msg, i) => {
-            const prev = i > 0 ? mensagens[i - 1] : null;
-            const showSep = !prev || !isSameDay(new Date(prev.sent_at), new Date(msg.sent_at));
+          {timeline.map((msg, i) => {
+            const prev = i > 0 ? timeline[i - 1] : null;
+            const showSep = !!msg.ts && (!prev || !prev.ts || !isSameDay(prev.ts, msg.ts));
             return (
               <Fragment key={msg.id}>
-                {showSep && <DateSeparator iso={msg.sent_at} />}
-                <BubbleSigzap msg={msg} />
+                {showSep && msg.ts && <DateSeparator iso={msg.ts.toISOString()} />}
+                <BubbleTimeline msg={msg} />
               </Fragment>
             );
           })}
@@ -275,32 +266,91 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
         </div>
       )}
 
-      {/* Caixa de resposta da operadora (envio em segundos, sem gate anti-ban) */}
-      <div className="mt-3 flex items-end gap-2 border-t pt-3">
-        <Textarea
-          value={texto}
-          onChange={(e) => setTexto(e.target.value)}
-          placeholder="Responder pelo WhatsApp... (Enter envia, Shift+Enter quebra linha)"
-          rows={2}
-          className="resize-none text-sm"
-          disabled={enviar.isPending}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              if (texto.trim()) enviar.mutate(texto.trim());
-            }
-          }}
-        />
-        <Button
-          size="sm"
-          className="shrink-0"
-          disabled={!texto.trim() || enviar.isPending}
-          onClick={() => texto.trim() && enviar.mutate(texto.trim())}
-        >
-          {enviar.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-        </Button>
-      </div>
+      {/* Caixa de resposta: se há conversa SigZap vinculada, responde por ela (segundos,
+          sem gate anti-ban). Senão, e se há campanha, oferece o 1º contato manual. */}
+      {conv?.id ? (
+        <div className="mt-3 flex items-end gap-2 border-t pt-3">
+          <Textarea
+            value={texto}
+            onChange={(e) => setTexto(e.target.value)}
+            placeholder="Responder pelo WhatsApp... (Enter envia, Shift+Enter quebra linha)"
+            rows={2}
+            className="resize-none text-sm"
+            disabled={enviar.isPending}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                if (texto.trim()) enviar.mutate(texto.trim());
+              }
+            }}
+          />
+          <Button
+            size="sm"
+            className="shrink-0"
+            disabled={!texto.trim() || enviar.isPending}
+            onClick={() => texto.trim() && enviar.mutate(texto.trim())}
+          >
+            {enviar.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+          </Button>
+        </div>
+      ) : campanhaId ? (
+        <div className="mt-4 border-t pt-3">
+          <div className="text-xs font-medium text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-2.5 py-1.5 mb-2 flex items-center gap-1.5">
+            <Send className="h-3.5 w-3.5" />
+            Enviar 1ª mensagem (disparo manual via WhatsApp)
+          </div>
+          <div className="flex items-end gap-2">
+            <Textarea
+              value={texto1o}
+              onChange={(e) => setTexto1o(e.target.value)}
+              placeholder="Escreva a 1ª mensagem pro médico... (Enter envia, Shift+Enter quebra linha)"
+              rows={2}
+              className="resize-none text-sm"
+              disabled={enviar1oContato.isPending}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  if (texto1o.trim()) enviar1oContato.mutate(texto1o.trim());
+                }
+              }}
+            />
+            <Button
+              size="sm"
+              className="shrink-0"
+              disabled={!texto1o.trim() || enviar1oContato.isPending}
+              onClick={() => texto1o.trim() && enviar1oContato.mutate(texto1o.trim())}
+            >
+              {enviar1oContato.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            </Button>
+          </div>
+          <p className="text-[11px] text-muted-foreground mt-1">
+            Usa um chip conectado da campanha. Ao enviar, o lead passa pra "contatado".
+          </p>
+        </div>
+      ) : null}
     </>
+  );
+}
+
+// Bubble da timeline unificada (sigzap + histórico IA), estilo WhatsApp
+function BubbleTimeline({ msg }: { msg: { mine: boolean; text: string; ts: Date | null; source: string } }) {
+  const mine = msg.mine;
+  let hora = "";
+  if (msg.ts) { try { hora = format(msg.ts, "HH:mm", { locale: ptBR }); } catch {} }
+  return (
+    <div className={cn("flex", mine ? "justify-end" : "justify-start")}>
+      <div
+        className={cn(
+          "max-w-[78%] rounded-2xl px-3 py-1.5 text-sm shadow-sm",
+          mine
+            ? "bg-emerald-100 text-emerald-950 rounded-br-sm"
+            : "bg-background border border-border rounded-bl-sm"
+        )}
+      >
+        <p className="whitespace-pre-wrap break-words leading-snug">{msg.text}</p>
+        <div className="text-[10px] mt-0.5 opacity-50 text-right">{hora}</div>
+      </div>
+    </div>
   );
 }
 
@@ -320,46 +370,3 @@ function DateSeparator({ iso }: { iso: string }) {
   );
 }
 
-// Bubble do formato sigzap_messages (canônico) — estilo WhatsApp
-function BubbleSigzap({ msg }: { msg: SigzapMsg }) {
-  const mine = msg.from_me;
-  const text = msg.message_text || (msg.message_type ? `[${msg.message_type}]` : "—");
-  let hora = "";
-  try { hora = format(new Date(msg.sent_at), "HH:mm", { locale: ptBR }); } catch {}
-
-  return (
-    <div className={cn("flex", mine ? "justify-end" : "justify-start")}>
-      <div
-        className={cn(
-          "max-w-[78%] rounded-2xl px-3 py-1.5 text-sm shadow-sm",
-          mine
-            ? "bg-emerald-100 text-emerald-950 rounded-br-sm"
-            : "bg-background border border-border rounded-bl-sm"
-        )}
-      >
-        <p className="whitespace-pre-wrap break-words leading-snug">{text}</p>
-        <div className="text-[10px] mt-0.5 opacity-50 text-right">{hora}</div>
-      </div>
-    </div>
-  );
-}
-
-// Bubble do formato legado (campanha_leads.historico_conversa) — fallback
-function BubbleLegacy({ msg }: { msg: { role: string; text: string; ts: string } }) {
-  const mine = msg.role === "ia" || msg.role === "assistant" || msg.role === "humano";
-  return (
-    <div className={cn("flex", mine ? "justify-end" : "justify-start")}>
-      <div
-        className={cn(
-          "max-w-[80%] rounded-md px-3 py-1.5 text-sm",
-          mine ? "bg-emerald-100 text-emerald-900 border border-emerald-200" : "bg-muted"
-        )}
-      >
-        <p className="whitespace-pre-wrap break-words">{msg.text}</p>
-        <div className={cn("text-[10px] mt-0.5 opacity-60", mine ? "text-right" : "text-left")}>
-          {msg.ts && format(new Date(msg.ts), "dd/MM HH:mm", { locale: ptBR })}
-        </div>
-      </div>
-    </div>
-  );
-}
