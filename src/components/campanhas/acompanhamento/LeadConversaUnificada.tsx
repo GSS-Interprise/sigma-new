@@ -7,6 +7,7 @@ import { ptBR } from "date-fns/locale";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Smartphone } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -76,13 +77,34 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
     },
   });
 
+  // #5 (pedido equipe 11/06): escolher por qual chip a resposta sai. Default = chip da
+  // conversa (continuidade: médico já conhece esse número). Operadora pode trocar pra
+  // um chip "humano" se quiser separar do que a IA usa — com aviso de que muda o número.
+  const [instanceEscolhida, setInstanceEscolhida] = useState<string | null>(null);
+  const { data: chipsCampanha = [] } = useQuery({
+    queryKey: ["acompanhamento-chips-campanha", campanhaId],
+    enabled: !!campanhaId,
+    queryFn: async () => {
+      const { data: camp } = await (supabase as any)
+        .from("campanhas").select("chip_ids, chip_id").eq("id", campanhaId).maybeSingle();
+      const ids: string[] = (camp?.chip_ids?.length ? camp.chip_ids : [camp?.chip_id]).filter(Boolean);
+      if (!ids.length) return [] as Array<{ instance_name: string; nome: string; open: boolean }>;
+      const { data: chips } = await (supabase as any)
+        .from("chips").select("nome, instance_name, connection_state").in("id", ids);
+      return (chips ?? []).map((c: any) => ({ instance_name: c.instance_name, nome: c.nome, open: c.connection_state === "open" }));
+    },
+    staleTime: 60_000,
+  });
+  // Chip efetivo do envio: escolhido > o da conversa SigZap
+  const instanceAtual = instanceEscolhida || conv?.instance?.name || null;
+
   // Caixa de resposta da operadora — envia pelo mesmo caminho do SigZap (send-sigzap-message).
   // Esse envio NÃO passa pelo gate anti-ban de disparo: resposta pode sair em segundos.
   const qc = useQueryClient();
   const [texto, setTexto] = useState("");
   const enviar = useMutation({
     mutationFn: async (msg: string) => {
-      const instanceName = conv?.instance?.name;
+      const instanceName = instanceAtual;
       const contactJid =
         conv?.contact?.contact_jid ||
         (conv?.contact?.contact_phone
@@ -269,7 +291,31 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
       {/* Caixa de resposta: se há conversa SigZap vinculada, responde por ela (segundos,
           sem gate anti-ban). Senão, e se há campanha, oferece o 1º contato manual. */}
       {conv?.id ? (
-        <div className="mt-3 flex items-end gap-2 border-t pt-3">
+        <div className="mt-3 border-t pt-3">
+          {/* #5: chip que envia a resposta — transparente e trocável */}
+          <div className="flex items-center gap-2 mb-2 text-xs">
+            <Smartphone className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+            <span className="text-muted-foreground shrink-0">Enviando pelo chip:</span>
+            {chipsCampanha.length > 1 ? (
+              <select
+                value={instanceAtual ?? ""}
+                onChange={(e) => setInstanceEscolhida(e.target.value)}
+                className="border rounded px-1.5 py-0.5 text-xs bg-background max-w-[60%]"
+              >
+                {chipsCampanha.map((c) => (
+                  <option key={c.instance_name} value={c.instance_name} disabled={!c.open}>
+                    {c.nome}{!c.open ? " (offline)" : ""}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span className="font-medium truncate">{instanceAtual || "—"}</span>
+            )}
+            {instanceEscolhida && conv?.instance?.name && instanceEscolhida !== conv.instance.name && (
+              <span className="text-amber-600 shrink-0" title="O médico vai receber de um número diferente do que vinha conversando.">⚠ número diferente</span>
+            )}
+          </div>
+          <div className="flex items-end gap-2">
           <Textarea
             value={texto}
             onChange={(e) => setTexto(e.target.value)}
@@ -292,6 +338,7 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
           >
             {enviar.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </Button>
+          </div>
         </div>
       ) : campanhaId ? (
         <div className="mt-4 border-t pt-3">
