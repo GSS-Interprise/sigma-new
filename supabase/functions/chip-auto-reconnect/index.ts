@@ -47,17 +47,47 @@ Deno.serve(async (req) => {
     // só as categorias da máquina de prospecção; pessoal_restrito/suporte ficam de fora
     const { data: chips } = await supabase
       .from("chips")
-      .select("id, instance_name, categoria_uso, connection_state")
+      .select("id, instance_name, categoria_uso, connection_state, provedor")
       .eq("status", "ativo")
       .in("categoria_uso", ["prospeccao_ia", "manual", "inbound"])
       .not("instance_name", "is", null);
 
+    // uazapi: provider gerencia reconexão sozinho — aqui a gente só SINCRONIZA o
+    // connection_state (poll /instance/status), sem restart. Token isolado por chip.
+    const UZ_URL = (Deno.env.get("UAZAPI_SERVER_URL") || "").replace(/\/+$/, "");
+    const uzTokens = new Map<string, string>();
+    const uzChipIds = (chips || []).filter((c: any) => c.provedor === "uazapi").map((c: any) => c.id);
+    if (uzChipIds.length && UZ_URL) {
+      const { data: secs } = await supabase.from("chip_provider_secrets").select("chip_id, uazapi_token").in("chip_id", uzChipIds);
+      for (const s of secs || []) uzTokens.set(s.chip_id as string, s.uazapi_token as string);
+    }
+
     const cutoff = new Date(Date.now() - COOLDOWN_MIN * 60 * 1000).toISOString();
     let restarted = 0;
-    const summary = { total: chips?.length || 0, open: 0, connecting: 0, close: 0, restarted: 0, skipped_cooldown: 0, skipped_cap: 0, skipped_qr_grace: 0, needs_qr: 0, err: 0 };
+    const summary = { total: chips?.length || 0, open: 0, connecting: 0, close: 0, restarted: 0, skipped_cooldown: 0, skipped_cap: 0, skipped_qr_grace: 0, needs_qr: 0, err: 0, uazapi: 0 };
     const details: any[] = [];
 
     for (const c of chips || []) {
+      // ── uazapi: só sincroniza estado, sem restart (reconexão é do provider) ──
+      if ((c as any).provedor === "uazapi") {
+        summary.uazapi++;
+        const tok = uzTokens.get(c.id);
+        if (!tok || !UZ_URL) continue;
+        let uzState = "close";
+        try {
+          const r = await fetch(`${UZ_URL}/instance/status`, { headers: { token: tok } });
+          const d = await r.json();
+          const inst = d?.instance || d;
+          uzState = inst?.status === "connected" ? "open" : inst?.status === "connecting" ? "connecting" : "close";
+        } catch { uzState = "err"; }
+        if (["open", "close", "connecting"].includes(uzState) && uzState !== c.connection_state) {
+          await supabase.from("chips").update({ connection_state: uzState, updated_at: new Date().toISOString() }).eq("id", c.id);
+        }
+        if (uzState === "open") summary.open++;
+        details.push({ instance: c.instance_name, provedor: "uazapi", state: uzState });
+        continue;
+      }
+
       const enc = encodeURIComponent(c.instance_name);
       let state = "unknown";
       try {

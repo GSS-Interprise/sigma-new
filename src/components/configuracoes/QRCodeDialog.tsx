@@ -10,9 +10,14 @@ interface QRCodeDialogProps {
   onOpenChange: (open: boolean) => void;
   instanceName: string;
   onConnected: () => void;
+  /** provedor do chip — 'uazapi' roteia pro uazapi-instance-manager (piloto 11/06). */
+  provedor?: string;
+  /** chip_id — obrigatório quando provedor='uazapi'. */
+  chipId?: string;
 }
 
-export function QRCodeDialog({ open, onOpenChange, instanceName, onConnected }: QRCodeDialogProps) {
+export function QRCodeDialog({ open, onOpenChange, instanceName, onConnected, provedor, chipId }: QRCodeDialogProps) {
+  const isUazapi = provedor === "uazapi";
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [pairingCode, setPairingCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -30,17 +35,26 @@ export function QRCodeDialog({ open, onOpenChange, instanceName, onConnected }: 
         return;
       }
 
-      const { data, error } = await supabase.functions.invoke("evolution-api-proxy", {
-        body: { action: "connectInstance", instanceName },
-      });
+      const { data, error } = isUazapi
+        ? await supabase.functions.invoke("uazapi-instance-manager", {
+            body: { action: "connect", chip_id: chipId },
+          })
+        : await supabase.functions.invoke("evolution-api-proxy", {
+            body: { action: "connectInstance", instanceName },
+          });
 
       if (error) throw error;
 
-      if (data?.base64) {
-        setQrCode(data.base64);
-        setPairingCode(data.pairingCode || null);
+      // uazapi devolve { qrcode, paircode, state }; evolution devolve { base64, pairingCode }
+      const qr = isUazapi ? data?.qrcode : data?.base64;
+      const pair = isUazapi ? data?.paircode : data?.pairingCode;
+      const alreadyOpen = isUazapi ? data?.state === "open" : data?.instance?.state === "open";
+
+      if (qr) {
+        setQrCode(qr);
+        setPairingCode(pair || null);
         setPolling(true);
-      } else if (data?.instance?.state === "open") {
+      } else if (alreadyOpen) {
         setConnectionState("open");
         toast.success("Instância já conectada!");
         onConnected();
@@ -57,9 +71,13 @@ export function QRCodeDialog({ open, onOpenChange, instanceName, onConnected }: 
     if (!instanceName || !polling) return;
 
     try {
-      const { data, error } = await supabase.functions.invoke("evolution-api-proxy", {
-        body: { action: "connectionState", instanceName },
-      });
+      const { data, error } = isUazapi
+        ? await supabase.functions.invoke("uazapi-instance-manager", {
+            body: { action: "status", chip_id: chipId },
+          })
+        : await supabase.functions.invoke("evolution-api-proxy", {
+            body: { action: "connectionState", instanceName },
+          });
 
       if (error) throw error;
 

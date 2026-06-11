@@ -74,6 +74,8 @@ export function InstanciaConfigTab({ tipo = "disparos" }: InstanciaConfigTabProp
   const [syncing, setSyncing] = useState(false);
   const [applyingWebhook, setApplyingWebhook] = useState<string | null>(null);
   const [selectedInstanceName, setSelectedInstanceName] = useState<string>("");
+  const [selectedProvedor, setSelectedProvedor] = useState<string>("evolution");
+  const [selectedChipId, setSelectedChipId] = useState<string>("");
   const [searchFilter, setSearchFilter] = useState("");
   
   const queryClient = useQueryClient();
@@ -407,6 +409,8 @@ export function InstanciaConfigTab({ tipo = "disparos" }: InstanciaConfigTabProp
   const handleConnect = (instance: ChipInstance) => {
     const instanceName = instance.instance_name || instance.nome;
     setSelectedInstanceName(instanceName);
+    setSelectedProvedor(instance.provedor || "evolution");
+    setSelectedChipId(instance.id);
     setQrDialogOpen(true);
   };
 
@@ -695,6 +699,8 @@ export function InstanciaConfigTab({ tipo = "disparos" }: InstanciaConfigTabProp
         open={qrDialogOpen}
         onOpenChange={setQrDialogOpen}
         instanceName={selectedInstanceName}
+        provedor={selectedProvedor}
+        chipId={selectedChipId}
         onConnected={() => {
           syncInstances();
           setQrDialogOpen(false);

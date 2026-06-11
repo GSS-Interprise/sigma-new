@@ -75,6 +75,52 @@ const DEFAULT_TIMEOUT = 15_000;
 const DEFAULT_MAX_RETRIES = 3;
 const TRANSIENT_CODES = new Set([429, 500, 502, 503, 504]);
 
+// uazapi (piloto 11/06): provider alternativo. A orquestração anti-ban (pre_send_check,
+// delay, retry, log) é a MESMA — muda só o transporte (endpoint + header de auth).
+const UZAPI_URL = (Deno.env.get("UAZAPI_SERVER_URL") || "").replace(/\/+$/, "");
+
+interface Transporte {
+  endpoint: string;
+  headers: Record<string, string>;
+  body: Record<string, unknown>;
+}
+
+// Decide endpoint/header/body por provedor do chip. Evolution = default.
+async function resolveTransporte(
+  supabase: SupabaseClient,
+  evo: EvoConfig,
+  chipId: string,
+  instanceName: string,
+  kind: "text" | "media",
+  payload: Record<string, unknown>,
+): Promise<Transporte> {
+  const { data: chip } = await supabase.from("chips").select("provedor").eq("id", chipId).maybeSingle();
+  const provedor = (chip?.provedor as string) || "evolution";
+
+  if (provedor === "uazapi" && UZAPI_URL) {
+    const { data: sec } = await supabase
+      .from("chip_provider_secrets").select("uazapi_token").eq("chip_id", chipId).maybeSingle();
+    const token = sec?.uazapi_token as string | undefined;
+    if (token) {
+      const headers = { "Content-Type": "application/json", token };
+      if (kind === "text") {
+        return { endpoint: `${UZAPI_URL}/send/text`, headers, body: { number: payload.number, text: payload.text } };
+      }
+      // mídia: uazapi /send/media (number, type, file=url, text=caption)
+      return {
+        endpoint: `${UZAPI_URL}/send/media`,
+        headers,
+        body: { number: payload.number, type: payload.mediatype, file: payload.media, text: payload.caption || "", docName: payload.fileName },
+      };
+    }
+  }
+
+  // Evolution (default)
+  const headers = { "Content-Type": "application/json", apikey: evo.apiKey };
+  const path = kind === "text" ? "sendText" : "sendMedia";
+  return { endpoint: `${evo.url}/message/${path}/${encodeURIComponent(instanceName)}`, headers, body: payload };
+}
+
 function hashContent(text: string): string {
   let h = 0x811c9dc5;
   for (let i = 0; i < text.length; i++) {
@@ -113,6 +159,7 @@ async function executeEvolutionSend(args: {
   conteudoSize: number;
   endpoint: string;            // já com instance encoded
   body: Record<string, unknown>;
+  transportHeaders?: Record<string, string>; // header de auth por provedor (uazapi: token / evolution: apikey)
 }): Promise<SendResult> {
   const {
     base: {
@@ -131,7 +178,9 @@ async function executeEvolutionSend(args: {
     conteudoSize,
     endpoint,
     body,
+    transportHeaders,
   } = args;
+  const postHeaders = transportHeaders || { "Content-Type": "application/json", apikey: evo.apiKey };
 
   // 1. pre_send_check
   const { data: checkData, error: checkErr } = await supabase.rpc("pre_send_check", {
@@ -195,7 +244,7 @@ async function executeEvolutionSend(args: {
         endpoint,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json", apikey: evo.apiKey },
+          headers: postHeaders,
           body: JSON.stringify(body),
         },
         timeoutMs
@@ -343,20 +392,21 @@ async function executeEvolutionSend(args: {
  * sendWhatsAppText — único caminho permitido pra mandar texto via Evolution.
  */
 export async function sendWhatsAppText(opts: SendTextOpts): Promise<SendResult> {
-  const { evo, instanceName, toJid, text, quotedMessageId } = opts;
+  const { supabase, evo, chipId, instanceName, toJid, text, quotedMessageId } = opts;
   const conteudoHash = hashContent(text);
   const conteudoSize = text.length;
-  const endpoint = `${evo.url}/message/sendText/${encodeURIComponent(instanceName)}`;
-  const body: Record<string, unknown> = { number: toJid, text };
-  if (quotedMessageId) body.quoted = { key: { id: quotedMessageId } };
+  const payload: Record<string, unknown> = { number: toJid, text };
+  if (quotedMessageId) payload.quoted = { key: { id: quotedMessageId } };
 
+  const t = await resolveTransporte(supabase, evo, chipId, instanceName, "text", payload);
   return executeEvolutionSend({
     base: opts,
     conteudoTipo: "text",
     conteudoHash,
     conteudoSize,
-    endpoint,
-    body,
+    endpoint: t.endpoint,
+    body: t.body,
+    transportHeaders: t.headers,
   });
 }
 
@@ -380,8 +430,7 @@ export async function sendWhatsAppMedia(opts: SendMediaOpts): Promise<SendResult
   const hashSeed = mediaUrl + (mediaCaption || "") + (mediaFilename || "");
   const conteudoHash = hashContent(hashSeed);
   const conteudoSize = (mediaCaption?.length || 0) + (mediaFilename?.length || 0);
-  const endpoint = `${evo.url}/message/sendMedia/${encodeURIComponent(instanceName)}`;
-  const body: Record<string, unknown> = {
+  const payload: Record<string, unknown> = {
     number: toJid,
     mediatype: mediaType,
     mimetype: mediaMimeType,
@@ -389,18 +438,20 @@ export async function sendWhatsAppMedia(opts: SendMediaOpts): Promise<SendResult
     fileName: mediaFilename,
     media: mediaUrl,
   };
-  if (quotedMessageId) body.quoted = { key: { id: quotedMessageId } };
+  if (quotedMessageId) payload.quoted = { key: { id: quotedMessageId } };
 
   // Mapeia tipo Evolution → conteudoTipo do log
   const conteudoTipo: ConteudoTipo = mediaType === "video" ? "image" : (mediaType as ConteudoTipo);
 
+  const t = await resolveTransporte(opts.supabase, evo, opts.chipId, instanceName, "media", payload);
   return executeEvolutionSend({
     base: opts,
     conteudoTipo,
     conteudoHash,
     conteudoSize,
-    endpoint,
-    body,
+    endpoint: t.endpoint,
+    body: t.body,
+    transportHeaders: t.headers,
   });
 }
 

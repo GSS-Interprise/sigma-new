@@ -43,6 +43,10 @@ export function EvolutionInstanceDialog({ open, onOpenChange, onCreated, default
   const [categoriaUso, setCategoriaUso] = useState<CategoriaUso | "">(defaultTipo ? categoriaDefaultPorTipo(defaultTipo) : "");
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState<DialogStep>("form");
+  // Provider do chip (piloto 11/06): 'evolution' (padrão) | 'uazapi'
+  const [provider, setProvider] = useState<"evolution" | "uazapi">("evolution");
+  const [createdChipId, setCreatedChipId] = useState<string>("");
+  const isUazapi = provider === "uazapi";
   
   // QR Code state
   const [qrCode, setQrCode] = useState<string | null>(null);
@@ -79,6 +83,8 @@ export function EvolutionInstanceDialog({ open, onOpenChange, onCreated, default
     setConnectionState("close");
     setPolling(false);
     setCreatedInstanceName("");
+    setProvider("evolution");
+    setCreatedChipId("");
   };
 
   const handleClose = (newOpen: boolean) => {
@@ -107,16 +113,41 @@ export function EvolutionInstanceDialog({ open, onOpenChange, onCreated, default
       return;
     }
 
-    if (!trimmedPhone) {
-      toast.error("Número do telefone é obrigatório");
-      return;
+    // uazapi: número vem do pareamento, não exige no form. Evolution exige.
+    if (!isUazapi) {
+      if (!trimmedPhone) {
+        toast.error("Número do telefone é obrigatório");
+        return;
+      }
+      // Formato esperado: DDI (2) + DDD (2) + 9 + 8 dígitos = 13 dígitos. Ex: 5547999758708
+      if (!/^55\d{2}9\d{8}$/.test(trimmedPhone)) {
+        toast.error("Número inválido. Use o formato DDI + DDD + 9 + número (ex: 5547999758708)");
+        return;
+      }
     }
 
-    // Formato esperado: DDI (2) + DDD (2) + 9 + 8 dígitos = 13 dígitos. Ex: 5547999758708
-    if (!/^55\d{2}9\d{8}$/.test(trimmedPhone)) {
-      toast.error(
-        "Número inválido. Use o formato DDI + DDD + 9 + número (ex: 5547999758708)"
-      );
+    // ── uazapi: cria via uazapi-instance-manager (init + chip + webhook) ──
+    if (isUazapi) {
+      setLoading(true);
+      try {
+        const { data, error } = await supabase.functions.invoke("uazapi-instance-manager", {
+          body: { action: "create", nome: trimmedName, numero: trimmedPhone || null, tipo_instancia: tipoInstancia, categoria_uso: categoriaUso },
+        });
+        if (error) throw error;
+        if ((data as any)?.error) throw new Error((data as any).error);
+        const chipId = (data as any)?.chip_id;
+        const slug = (data as any)?.instance_name || trimmedName;
+        setCreatedChipId(chipId);
+        setCreatedInstanceName(slug);
+        queryClient.invalidateQueries({ queryKey: ["instancias-whatsapp"] });
+        toast.success("Instância uazapi criada! Escaneie o QR Code.");
+        setStep("qrcode");
+        fetchQRCode(slug, chipId);
+      } catch (e: any) {
+        toast.error(e?.message || "Erro ao criar instância uazapi");
+      } finally {
+        setLoading(false);
+      }
       return;
     }
 
@@ -251,20 +282,25 @@ export function EvolutionInstanceDialog({ open, onOpenChange, onCreated, default
     }
   };
 
-  const fetchQRCode = async (name: string) => {
+  const fetchQRCode = async (name: string, chipIdArg?: string) => {
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke("evolution-api-proxy", {
-        body: { action: "connectInstance", instanceName: name },
-      });
+      const cid = chipIdArg || createdChipId;
+      const { data, error } = isUazapi
+        ? await supabase.functions.invoke("uazapi-instance-manager", { body: { action: "connect", chip_id: cid } })
+        : await supabase.functions.invoke("evolution-api-proxy", { body: { action: "connectInstance", instanceName: name } });
 
       if (error) throw error;
 
-      if (data?.base64) {
-        setQrCode(data.base64);
-        setPairingCode(data.pairingCode || null);
+      const qr = isUazapi ? (data as any)?.qrcode : data?.base64;
+      const pair = isUazapi ? (data as any)?.paircode : data?.pairingCode;
+      const alreadyOpen = isUazapi ? (data as any)?.state === "open" : data?.instance?.state === "open";
+
+      if (qr) {
+        setQrCode(qr);
+        setPairingCode(pair || null);
         setPolling(true);
-      } else if (data?.instance?.state === "open") {
+      } else if (alreadyOpen) {
         setConnectionState("open");
         handleConnectionSuccess(name);
       }
@@ -339,10 +375,10 @@ export function EvolutionInstanceDialog({ open, onOpenChange, onCreated, default
 
   const handleConnectionSuccess = async (name: string) => {
     toast.success("WhatsApp conectado com sucesso!");
-    
-    // Configure webhook automatically
-    await configureWebhookAutomatically(name);
-    
+
+    // uazapi já configura o webhook na criação (uazapi-instance-manager). Só Evolution precisa aqui.
+    if (!isUazapi) await configureWebhookAutomatically(name);
+
     queryClient.invalidateQueries({ queryKey: ["instancias-whatsapp"] });
     onCreated(name);
     handleClose(false);
@@ -352,9 +388,9 @@ export function EvolutionInstanceDialog({ open, onOpenChange, onCreated, default
     if (!createdInstanceName || !polling) return;
 
     try {
-      const { data, error } = await supabase.functions.invoke("evolution-api-proxy", {
-        body: { action: "connectionState", instanceName: createdInstanceName },
-      });
+      const { data, error } = isUazapi
+        ? await supabase.functions.invoke("uazapi-instance-manager", { body: { action: "status", chip_id: createdChipId } })
+        : await supabase.functions.invoke("evolution-api-proxy", { body: { action: "connectionState", instanceName: createdInstanceName } });
 
       if (error) throw error;
 
@@ -397,6 +433,29 @@ export function EvolutionInstanceDialog({ open, onOpenChange, onCreated, default
         {step === "form" ? (
           <>
             <div className="space-y-4 py-4">
+              {/* Provider do servidor de WhatsApp (piloto uazapi 11/06) */}
+              <div className="space-y-2">
+                <Label>Servidor (provider)</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setProvider("evolution")}
+                    className={`rounded-md border px-3 py-2 text-sm text-left transition-colors ${provider === "evolution" ? "border-primary bg-primary/5 font-medium" : "border-input hover:bg-muted/40"}`}
+                  >
+                    Evolution
+                    <span className="block text-[11px] text-muted-foreground">atual</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setProvider("uazapi")}
+                    className={`rounded-md border px-3 py-2 text-sm text-left transition-colors ${provider === "uazapi" ? "border-primary bg-primary/5 font-medium" : "border-input hover:bg-muted/40"}`}
+                  >
+                    uazapi
+                    <span className="block text-[11px] text-muted-foreground">novo · proxy nativo</span>
+                  </button>
+                </div>
+              </div>
+
               <div className="space-y-2">
                 <Label>Tipo da Instância *</Label>
                 <Select
@@ -450,7 +509,8 @@ export function EvolutionInstanceDialog({ open, onOpenChange, onCreated, default
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="phoneNumber">Número do Telefone *</Label>
+                {/* Evolution exige o número no form; uazapi descobre no pareamento */}
+                <Label htmlFor="phoneNumber">Número do Telefone {isUazapi ? "(opcional)" : "*"}</Label>
                 <Input
                   id="phoneNumber"
                   value={phoneNumber}
@@ -460,7 +520,9 @@ export function EvolutionInstanceDialog({ open, onOpenChange, onCreated, default
                   maxLength={13}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Formato: DDI (55) + DDD + 9 + número. Ex: 5547999758708
+                  {isUazapi
+                    ? "No uazapi o número é detectado ao escanear o QR — não precisa preencher."
+                    : "Formato: DDI (55) + DDD + 9 + número. Ex: 5547999758708"}
                 </p>
               </div>
 
