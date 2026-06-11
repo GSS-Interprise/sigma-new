@@ -41,7 +41,7 @@ serve(async (req) => {
       .select(`
         id, campanha_id, lead_id, status, canal_atual, chip_usado_id, proximo_touch_em, proximo_passo_id, touches_executados, humano_assumiu,
         lead:lead_id(id, nome, phone_e164, email, uf, cidade, opt_out, classificacao, cooldown_ate),
-        campanha:campanha_id(id, nome, status, cadencia_ativa, cadencia_template_id, briefing_ia, chip_id, chip_ids, whatsapp_remetente, nome_remetente, descricao_oportunidade, regiao_estado)
+        campanha:campanha_id(id, nome, status, tipo_envio, cadencia_ativa, cadencia_template_id, briefing_ia, chip_id, chip_ids, whatsapp_remetente, nome_remetente, descricao_oportunidade, regiao_estado)
       `)
       .not("proximo_touch_em", "is", null)
       .lte("proximo_touch_em", agora)
@@ -90,6 +90,9 @@ serve(async (req) => {
       if (lead.classificacao === "proibido" || lead.classificacao === "protegido") { skipped++; await clearTouch(supabase, cl.id, "classificacao"); continue; }
       if (lead.cooldown_ate && new Date(lead.cooldown_ate) > new Date()) { skipped++; continue; }
       if (campanha.status !== "ativa") { skipped++; continue; }
+      // Campanha manual: a equipe conduz, a IA NÃO faz cadência automática.
+      // Limpa o touch agendado pra não reprocessar (ex: campanha convertida ia→manual).
+      if (campanha.tipo_envio === "manual") { skipped++; await clearTouch(supabase, cl.id, "campanha_manual"); continue; }
       if (campanha.cadencia_ativa === false) { skipped++; await clearTouch(supabase, cl.id, "cadencia_desativada"); continue; }
       if (cl.humano_assumiu === true) { skipped++; continue; }
 
