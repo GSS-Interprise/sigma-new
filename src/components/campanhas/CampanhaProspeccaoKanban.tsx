@@ -39,6 +39,7 @@ interface KanbanColumn {
   description: string;
 }
 
+// Kanban IA (default): disparo automático → IA conversa → aquece → quente
 const COLUMNS: KanbanColumn[] = [
   {
     id: "frio",
@@ -96,6 +97,56 @@ const COLUMNS: KanbanColumn[] = [
   },
 ];
 
+// Kanban MANUAL: a equipe conduz — sem "IA Conversando". O médico que respondeu
+// o 1º contato (status em_conversa) entra direto em "Aquecido". (pedido equipe 11/06)
+const COLUMNS_MANUAL: KanbanColumn[] = [
+  {
+    id: "frio",
+    label: "Pendentes",
+    color: "text-slate-600",
+    bgColor: "bg-slate-50",
+    borderColor: "border-slate-200",
+    icon: Clock,
+    description: "Aguardando 1º contato",
+  },
+  {
+    id: "contatado",
+    label: "Aguardando Resposta",
+    color: "text-blue-600",
+    bgColor: "bg-blue-50",
+    borderColor: "border-blue-200",
+    icon: Send,
+    description: "1ª mensagem enviada",
+  },
+  {
+    id: "em_conversa",
+    label: "Aquecido",
+    color: "text-amber-600",
+    bgColor: "bg-amber-50",
+    borderColor: "border-amber-200",
+    icon: ThermometerSun,
+    description: "Respondeu — em conversa",
+  },
+  {
+    id: "quente",
+    label: "Leads Quentes",
+    color: "text-red-600",
+    bgColor: "bg-red-50",
+    borderColor: "border-red-200",
+    icon: Flame,
+    description: "Pronto pra fechar",
+  },
+  {
+    id: "convertido",
+    label: "Convertidos",
+    color: "text-green-600",
+    bgColor: "bg-green-50",
+    borderColor: "border-green-200",
+    icon: CheckCircle,
+    description: "Negócio fechado",
+  },
+];
+
 interface Props {
   campanhaId: string;
 }
@@ -124,6 +175,18 @@ export function CampanhaProspeccaoKanban({ campanhaId }: Props) {
   });
   const { byStatus, leads, isLoading } = useCampanhaLeadsByStatus(campanhaId);
   const atualizarStatus = useAtualizarStatusLead();
+
+  // Campanha manual usa um kanban sem "IA Conversando" (a equipe conduz)
+  const { data: tipoEnvio } = useQuery({
+    queryKey: ["campanha-tipo-envio", campanhaId],
+    queryFn: async (): Promise<string> => {
+      const { data } = await (supabase as any)
+        .from("campanhas").select("tipo_envio").eq("id", campanhaId).maybeSingle();
+      return (data?.tipo_envio as string) || "ia";
+    },
+    staleTime: 60_000,
+  });
+  const colunas = tipoEnvio === "manual" ? COLUMNS_MANUAL : COLUMNS;
 
   const filteredByStatus = (status: StatusLeadCampanha) => {
     const leadsInStatus = byStatus[status] || [];
@@ -180,7 +243,7 @@ export function CampanhaProspeccaoKanban({ campanhaId }: Props) {
       </div>
 
       <div className="flex gap-3 overflow-x-auto pb-4">
-        {COLUMNS.map((col) => {
+        {colunas.map((col) => {
           const colLeads = filteredByStatus(col.id);
           const Icon = col.icon;
           return (
