@@ -9,6 +9,9 @@ import {
   XCircle,
   X,
   CheckSquare,
+  Inbox,
+  Clock,
+  ThermometerSun,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,6 +29,7 @@ import {
   useAprovarLead,
   useMarcarPerdido,
   type EtapaAcompanhamento,
+  type ColunaManual,
   type AcompanhamentoLead,
   type FiltroAcompanhamento,
 } from "@/hooks/useAcompanhamentoLeads";
@@ -49,8 +53,15 @@ const COLUNAS: Array<{
   { etapa: "na_escala", label: "Na escala", icon: Calendar, color: "text-emerald-600", bg: "bg-emerald-50" },
 ];
 
+// Estágios de entrada da campanha MANUAL (read-only, movem automático pelo status)
+const COLUNAS_MANUAL: Array<{ col: ColunaManual; label: string; icon: React.ElementType; color: string; bg: string }> = [
+  { col: "pendentes", label: "Pendentes", icon: Inbox, color: "text-slate-600", bg: "bg-slate-50" },
+  { col: "aguardando", label: "Aguardando resposta", icon: Clock, color: "text-violet-600", bg: "bg-violet-50" },
+  { col: "aquecido", label: "Aquecido", icon: ThermometerSun, color: "text-orange-600", bg: "bg-orange-50" },
+];
+
 export function AcompanhamentoKanban({ filtro, onLeadClick }: Props) {
-  const { porEtapa, todosLeads, isLoading } = useAcompanhamentoLeads(filtro);
+  const { porEtapa, porColunaManual, temManual, todosLeads, isLoading } = useAcompanhamentoLeads(filtro);
   const [perdidoExpanded, setPerdidoExpanded] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverEtapa, setDragOverEtapa] = useState<EtapaAcompanhamento | null>(null);
@@ -168,6 +179,31 @@ export function AcompanhamentoKanban({ filtro, onLeadClick }: Props) {
 
   return (
     <>
+      {/* Estágios de entrada manual — só aparecem quando há campanha manual em andamento.
+          Read-only: o card anda sozinho conforme o status (mandou msg → Aguardando; respondeu → Aquecido). */}
+      {temManual && (
+        <div className="mb-3">
+          <div className="flex items-center gap-1.5 mb-2 text-xs text-muted-foreground">
+            <span className="font-medium">Campanhas manuais</span>
+            <span className="opacity-70">· o card anda sozinho: mandou 1ª msg → Aguardando · médico respondeu → Aquecido</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {COLUNAS_MANUAL.map((col) => (
+              <ColunaManualView
+                key={col.col}
+                label={col.label}
+                icon={col.icon}
+                color={col.color}
+                bg={col.bg}
+                leads={porColunaManual[col.col] || []}
+                crossCampanhasMap={crossCampanhasMap}
+                onLeadClick={onLeadClick}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
         {COLUNAS.map((col) => (
           <Coluna
@@ -342,6 +378,45 @@ function Coluna({
               onDragEnd={onDragEnd}
               selected={selectedIds.has(l.campanha_lead_id)}
               onToggleSelect={() => onToggleSelect(l.campanha_lead_id)}
+            />
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Coluna de estágio manual — read-only (anda sozinha pelo status, sem drag/drop nem bulk).
+function ColunaManualView({
+  label, icon: Icon, color, bg, leads, crossCampanhasMap, onLeadClick,
+}: {
+  label: string;
+  icon: React.ElementType;
+  color: string;
+  bg: string;
+  leads: AcompanhamentoLead[];
+  crossCampanhasMap?: Map<string, Array<{ id: string; nome: string }>>;
+  onLeadClick: (lead: AcompanhamentoLead) => void;
+}) {
+  return (
+    <div className={`border rounded-md ${bg}`}>
+      <div className="flex items-center justify-between p-2.5 border-b bg-card/50">
+        <div className="flex items-center gap-1.5">
+          <Icon className={`h-4 w-4 ${color}`} />
+          <span className="text-sm font-medium">{label}</span>
+        </div>
+        <Badge variant="outline" className="text-xs h-5">{leads.length}</Badge>
+      </div>
+      <div className="p-2 space-y-2 min-h-[160px] max-h-[50vh] overflow-y-auto">
+        {leads.length === 0 ? (
+          <p className="text-xs text-muted-foreground text-center py-6 italic">vazio</p>
+        ) : (
+          leads.map((l) => (
+            <AcompanhamentoCard
+              key={l.campanha_lead_id}
+              lead={l}
+              crossCampanhas={crossCampanhasMap?.get(l.lead_id)}
+              onClick={() => onLeadClick(l)}
             />
           ))
         )}

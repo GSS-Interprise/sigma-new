@@ -47,6 +47,15 @@ export interface AcompanhamentoLead {
   perfil_modalidade: string[] | null;
   perfil_valor_min: number | null;
   perfil_confianca: number | null;
+  tipo_envio: string | null;
+}
+
+// Estágios de entrada da campanha MANUAL (derivados do status, antes da triagem)
+export type ColunaManual = "pendentes" | "aguardando" | "aquecido";
+export function colunaManualDeLead(l: { status: string }): ColunaManual {
+  if (l.status === "frio") return "pendentes";
+  if (l.status === "contatado" || l.status === "sem_resposta") return "aguardando";
+  return "aquecido"; // em_conversa / quente
 }
 
 export type FiltroAcompanhamento = "todos" | "minha_fila" | "sem_dono" | "aguarda_maikon" | "aguarda_equipe";
@@ -124,12 +133,26 @@ export function useAcompanhamentoLeads(filtro: FiltroAcompanhamento = "todos") {
       perdido: [],
     };
     for (const l of filtrados) {
+      // lead manual em estágio de entrada (etapa nula) não entra no funil de triagem
+      if (l.tipo_envio === "manual" && !l.etapa_acompanhamento) continue;
       if (grupos[l.etapa_acompanhamento]) grupos[l.etapa_acompanhamento].push(l);
     }
     return grupos;
   }, [filtrados]);
 
-  return { leads: filtrados, todosLeads: leads, isLoading, counts, porEtapa };
+  // Estágios de entrada manual (Pendentes/Aguardando/Aquecido) — derivados do status
+  const porColunaManual = useMemo(() => {
+    const grupos: Record<ColunaManual, AcompanhamentoLead[]> = { pendentes: [], aguardando: [], aquecido: [] };
+    for (const l of filtrados) {
+      if (l.tipo_envio === "manual" && !l.etapa_acompanhamento) {
+        grupos[colunaManualDeLead(l)].push(l);
+      }
+    }
+    return grupos;
+  }, [filtrados]);
+  const temManual = porColunaManual.pendentes.length + porColunaManual.aguardando.length + porColunaManual.aquecido.length > 0;
+
+  return { leads: filtrados, todosLeads: leads, isLoading, counts, porEtapa, porColunaManual, temManual };
 }
 
 // ── Mutações (RPCs) ──────────────────────────────────────────

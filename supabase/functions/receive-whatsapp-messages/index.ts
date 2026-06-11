@@ -973,9 +973,9 @@ serve(async (req) => {
           try {
             const { data: campLeadCheck } = await supabase
               .from('campanha_leads')
-              .select('id, campanha_id')
+              .select('id, campanha_id, status')
               .eq('lead_id', leadId)
-              .in('status', ['contatado', 'em_conversa', 'aquecido'])
+              .in('status', ['contatado', 'sem_resposta', 'em_conversa', 'aquecido'])
               .limit(1)
               .maybeSingle();
 
@@ -992,6 +992,14 @@ serve(async (req) => {
               if (tipoEnvio === 'manual') {
                 // Campanha manual: conversa fica registrada e visível pra operadora responder
                 // pelo Sigma. IA não entra (modelo: disparo automático + troca humana).
+                // Auto-movimento do kanban manual (11/06): médico respondeu →
+                // status vai pra 'em_conversa' (Aguardando resposta → Aquecido).
+                if (campLeadCheck.status === 'contatado' || campLeadCheck.status === 'sem_resposta') {
+                  await supabase
+                    .from('campanha_leads')
+                    .update({ status: 'em_conversa', data_status: new Date().toISOString() })
+                    .eq('id', campLeadCheck.id);
+                }
                 console.log('📋 Lead em campanha MANUAL respondeu — IA NÃO responde, encaminhado pra operadora:', JSON.stringify({
                   lead_id: leadId,
                   campanha_id: campLeadCheck.campanha_id,
