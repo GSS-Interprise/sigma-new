@@ -409,7 +409,7 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
             </TabsTrigger>
             <TabsTrigger value="ia" className="flex items-center gap-1.5">
               <Brain className="h-3.5 w-3.5" />
-              Briefing IA
+              {tipoEnvio === "manual" ? "Contexto da vaga" : "Briefing IA"}
             </TabsTrigger>
           </TabsList>
 
@@ -891,8 +891,9 @@ GSS Saúde`}
           <TabsContent value="ia" className="space-y-4 mt-4">
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
               <Brain className="h-4 w-4 inline mr-1" />
-              Preencha cada campo — a IA vai usar essas informações pra conversar com os médicos automaticamente.
-              Quanto mais completo, melhor a conversa.
+              {tipoEnvio === "manual"
+                ? "Contexto da vaga pra equipe consultar na conversa. Só nome do serviço, hospital e cidade são obrigatórios — o resto é opcional."
+                : "Preencha cada campo — a IA vai usar essas informações pra conversar com os médicos automaticamente. Quanto mais completo, melhor a conversa."}
             </div>
 
             <ScrollArea className="h-[400px] pr-3">
@@ -1127,7 +1128,9 @@ GSS Saúde`}
                   </div>
                 </div>
 
-                {/* BLOCO 3: Handoff */}
+                {/* BLOCOS 3-5: Handoff/Objeções/Palavras — só IA (na manual, a operadora conduz) */}
+                {tipoEnvio === "ia" && (
+                <>
                 <div className="space-y-3">
                   <h4 className="font-semibold text-sm border-b pb-1">
                     Quando o médico estiver interessado
@@ -1235,6 +1238,8 @@ GSS Saúde`}
                     — use isto pra adicionar termos específicos desta campanha.
                   </p>
                 </div>
+                </>
+                )}
 
                 {/* BLOCO 6: Info extra */}
                 <div className="space-y-1.5">
@@ -1249,9 +1254,11 @@ GSS Saúde`}
               </div>
             </ScrollArea>
 
-            {/* Indicador de completude */}
+            {/* Indicador de completude — manual exige só os 3 básicos da vaga */}
             {(() => {
-              const campos = [bNomeServico, bHospital, bCidade, bTipoServico, bHandoffNome, bHandoffTelefone];
+              const campos = tipoEnvio === "manual"
+                ? [bNomeServico, bHospital, bCidade]
+                : [bNomeServico, bHospital, bCidade, bTipoServico, bHandoffNome, bHandoffTelefone];
               const preenchidos = campos.filter((c) => c.trim()).length;
               const total = campos.length;
               const pct = Math.round((preenchidos / total) * 100);
