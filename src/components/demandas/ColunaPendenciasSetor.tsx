@@ -1,6 +1,16 @@
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { useState } from "react";
+import {
   AlertCircle,
   Gavel,
   FileText,
@@ -24,16 +34,52 @@ const ICONES: Record<string, any> = {
 export function ColunaPendenciasSetor() {
   const { setorId, setorNome } = useUserSetor();
   const { isAdmin } = usePermissions();
-  const { data: pendencias = [], isLoading } = usePendenciasSetor(setorId, isAdmin);
+  const [adminSetorFiltro, setAdminSetorFiltro] = useState<string>("todos");
+  const setorEfetivo = isAdmin
+    ? (adminSetorFiltro === "todos" ? null : adminSetorFiltro)
+    : setorId;
+  const { data: pendencias = [], isLoading } = usePendenciasSetor(setorEfetivo, isAdmin);
+
+  const { data: setores = [] } = useQuery({
+    queryKey: ["setores-pendencias-filter"],
+    enabled: isAdmin,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("setores")
+        .select("id, nome")
+        .order("nome");
+      if (error) throw error;
+      return data || [];
+    },
+  });
 
   return (
     <Card className="flex flex-col h-full bg-gradient-to-b from-card to-card/60 backdrop-blur-sm">
       <div className="p-3 border-b flex items-center gap-2">
         <AlertCircle className="h-4 w-4 text-orange-500" />
         <h3 className="font-semibold text-sm">Pendências do setor</h3>
-        <span className="text-[11px] text-muted-foreground">
-          {setorNome ? `· ${setorNome}` : ""}
-        </span>
+        {!isAdmin && (
+          <span className="text-[11px] text-muted-foreground">
+            {setorNome ? `· ${setorNome}` : ""}
+          </span>
+        )}
+        {isAdmin && (
+          <div className="ml-auto">
+            <Select value={adminSetorFiltro} onValueChange={setAdminSetorFiltro}>
+              <SelectTrigger className="h-7 text-[11px] w-[180px]">
+                <SelectValue placeholder="Setor" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos os setores</SelectItem>
+                {setores.map((s: any) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.nome}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
       </div>
       <ScrollArea className="flex-1 p-2">
         <div className="space-y-2">

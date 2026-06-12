@@ -149,6 +149,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
   const [titulo, setTitulo] = useState("");
   const [descricao, setDescricao] = useState("");
   const [pessoas, setPessoas] = useState<string[]>([]);
+  const [finalizadores, setFinalizadores] = useState<string[]>([]);
   const [urgencia, setUrgencia] = useState<Urgencia>("media");
   const [dataLimite, setDataLimite] = useState<Date | undefined>(
     defaultDate ?? undefined,
@@ -186,6 +187,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
       setTitulo(prefillTitulo ?? "");
       setDescricao(prefillDescricao ?? "");
       setPessoas([]);
+      setFinalizadores([]);
       setUrgencia("media");
       setDataLimite(defaultDate ?? undefined);
       setPendingFiles([]);
@@ -218,6 +220,8 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
     const pessoasIniciais = Array.from(
       new Set([responsavel, ...mencIds, criador].filter((id): id is string => !!id)),
     );
+    const finIds = (tarefaExistente.finalizadores ?? []).map((f) => f.user_id);
+    setFinalizadores(finIds);
     // Se for tarefa pessoal (somente o próprio usuário), deixar vazio
     if (
       pessoasIniciais.length === 1 &&
@@ -459,6 +463,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
           urgencia,
           responsavel_id: responsavelFinal,
           mencionados: mencionadosFinal,
+          finalizadores: finalizadores.filter((id) => id !== user?.id),
           data_limite: dataLimite ? format(dataLimite, "yyyy-MM-dd") : null,
           checklist: checklist.filter((c) => c.texto.trim()),
           tags,
@@ -484,6 +489,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
         urgencia,
         responsavel_id: responsavelFinal,
         mencionados: mencionadosFinal,
+        finalizadores: finalizadores.filter((id) => id !== user?.id),
         data_limite: dataLimite ? format(dataLimite, "yyyy-MM-dd") : null,
         checklist: checklist.filter((c) => c.texto.trim()),
         tags,
@@ -828,6 +834,51 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                 : "A primeira pessoa marcada é o responsável principal."}
             </p>
           </div>
+
+          {!ehPessoal && (
+            <div className="grid gap-1.5">
+              <Label className="text-xs flex items-center gap-1.5">
+                <CheckCircle2 className="h-3.5 w-3.5 text-destructive" />
+                Quem pode finalizar a demanda?
+              </Label>
+              <div className="flex flex-wrap gap-1.5 rounded-md border bg-muted/20 px-2 py-2 min-h-9">
+                <Badge variant="outline" className="gap-1 bg-primary/10 border-primary/30">
+                  <Lock className="h-3 w-3" />
+                  Você (criador) — sempre
+                </Badge>
+                {pessoas.map((pid) => {
+                  const p = pessoasSistema.find((x) => x.id === pid);
+                  const ativo = finalizadores.includes(pid);
+                  return (
+                    <button
+                      key={pid}
+                      type="button"
+                      onClick={() =>
+                        setFinalizadores((prev) =>
+                          prev.includes(pid)
+                            ? prev.filter((x) => x !== pid)
+                            : [...prev, pid],
+                        )
+                      }
+                      className={cn(
+                        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors",
+                        ativo
+                          ? "bg-destructive/15 border-destructive/40 text-destructive"
+                          : "bg-background border-border hover:bg-muted",
+                      )}
+                    >
+                      {ativo && <Check className="h-3 w-3" />}
+                      {p?.nome_completo || "Pessoa"}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Apenas você e os marcados aqui podem encerrar a demanda. Os demais envolvidos
+                continuam podendo comentar, anexar e acompanhar normalmente.
+              </p>
+            </div>
+          )}
 
           <div className="grid gap-1.5">
             <Label className="text-xs flex items-center gap-1.5 text-muted-foreground">
@@ -1262,25 +1313,25 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
         <DialogFooter className="shrink-0 border-t bg-background px-5 py-3 sm:justify-between gap-2">
           <div className="flex items-center gap-2">
             {isEditing && tarefaExistente ? (() => {
-              const envolvidosIds = Array.from(new Set([
+              // Finalizadores = criador + lista escolhida. Apenas eles finalizam.
+              const finalizadoresIds = Array.from(new Set([
                 tarefaExistente.created_by,
-                tarefaExistente.responsavel_id,
-                ...(tarefaExistente.mencionados ?? []).map((m) => m.user_id),
+                ...(tarefaExistente.finalizadores ?? []).map((f) => f.user_id),
               ].filter((x): x is string => !!x)));
               const confirmadosSet = new Set(confirmacoes.map((c) => c.user_id));
-              const total = envolvidosIds.length;
-              const feitas = envolvidosIds.filter((id) => confirmadosSet.has(id)).length;
-              const eEnvolvido = !!user?.id && envolvidosIds.includes(user.id);
+              const total = finalizadoresIds.length;
+              const feitas = finalizadoresIds.filter((id) => confirmadosSet.has(id)).length;
+              const eFinalizador = !!user?.id && finalizadoresIds.includes(user.id);
               const jaConfirmou = !!user?.id && confirmadosSet.has(user.id);
               const jaConcluida = tarefaExistente.status === "concluida";
-              if (!eEnvolvido && total >  0) {
+              if (!eFinalizador && total > 0) {
                 return (
                   <span className="text-[11px] text-muted-foreground">
-                    {feitas}/{total} confirmaram conclusão
+                    {feitas}/{total} finalizador(es) confirmaram
                   </span>
                 );
               }
-              if (!eEnvolvido) return <span />;
+              if (!eFinalizador) return <span />;
               return (
                 <>
                   <Button
@@ -1292,21 +1343,21 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                       toggleConfirmacao.mutate({
                         tarefaId: tarefaExistente.id,
                         confirmar: !jaConfirmou,
-                        envolvidosIds,
+                        finalizadoresIds,
                       })
                     }
                     className={cn("gap-1", jaConfirmou && "text-green-600 border-green-600/40")}
                     title={
                       jaConfirmou
-                        ? "Você confirmou. Clique para desfazer."
-                        : "Marcar minha parte como realizada"
+                        ? "Você confirmou a conclusão. Clique para desfazer."
+                        : "Confirmar finalização da demanda"
                     }
                   >
                     <CheckCircle2 className="h-4 w-4" />
-                    {jaConfirmou ? "Confirmado por você" : "Marcar como realizada"}
+                    {jaConfirmou ? "Você finalizou" : "Finalizar demanda"}
                   </Button>
                   <span className="text-[11px] text-muted-foreground">
-                    {feitas}/{total} confirmaram
+                    {feitas}/{total} finalizador(es)
                     {jaConcluida && " · concluída"}
                   </span>
                 </>

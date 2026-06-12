@@ -29,6 +29,7 @@ export interface DemandaTarefa {
   criador_nome?: string | null;
   setor_destino_nome?: string | null;
   mencionados?: { user_id: string; nome?: string | null }[];
+  finalizadores?: { user_id: string; nome?: string | null }[];
   anexos_count?: number;
 }
 
@@ -68,7 +69,7 @@ async function enrich(rows: any[]): Promise<DemandaTarefa[]> {
   );
   const tarefaIds = rows.map((r) => r.id);
 
-  const [profilesRes, setoresRes, mencRes, anexosRes] = await Promise.all([
+  const [profilesRes, setoresRes, mencRes, anexosRes, finRes] = await Promise.all([
     userIds.length
       ? supabase.from("profiles").select("id, nome_completo").in("id", userIds)
       : Promise.resolve({ data: [] as any[] }),
@@ -82,6 +83,10 @@ async function enrich(rows: any[]): Promise<DemandaTarefa[]> {
     supabase
       .from("worklist_tarefa_anexos")
       .select("tarefa_id")
+      .in("tarefa_id", tarefaIds),
+    supabase
+      .from("worklist_tarefa_finalizadores" as any)
+      .select("tarefa_id, user_id")
       .in("tarefa_id", tarefaIds),
   ]);
 
@@ -97,8 +102,17 @@ async function enrich(rows: any[]): Promise<DemandaTarefa[]> {
     list.push({ user_id: m.user_id, nome: profilesMap.get(m.user_id) ?? null });
     mencByTarefa.set(m.tarefa_id, list);
   });
+  const finByTarefa = new Map<string, { user_id: string; nome?: string | null }[]>();
+  ((finRes as any).data || []).forEach((m: any) => {
+    const list = finByTarefa.get(m.tarefa_id) || [];
+    list.push({ user_id: m.user_id, nome: profilesMap.get(m.user_id) ?? null });
+    finByTarefa.set(m.tarefa_id, list);
+  });
   const mencUserIds = Array.from(
-    new Set((mencRes.data || []).map((m: any) => m.user_id)),
+    new Set([
+      ...((mencRes.data || []).map((m: any) => m.user_id)),
+      ...(((finRes as any).data || []).map((m: any) => m.user_id)),
+    ]),
   ).filter((id) => !profilesMap.has(id));
   if (mencUserIds.length) {
     const { data: extras } = await supabase
@@ -107,6 +121,11 @@ async function enrich(rows: any[]): Promise<DemandaTarefa[]> {
       .in("id", mencUserIds);
     (extras || []).forEach((p: any) => profilesMap.set(p.id, p.nome_completo));
     mencByTarefa.forEach((list) => {
+      list.forEach((m) => {
+        if (!m.nome) m.nome = profilesMap.get(m.user_id) ?? null;
+      });
+    });
+    finByTarefa.forEach((list) => {
       list.forEach((m) => {
         if (!m.nome) m.nome = profilesMap.get(m.user_id) ?? null;
       });
@@ -125,6 +144,7 @@ async function enrich(rows: any[]): Promise<DemandaTarefa[]> {
       ? setoresMap.get(r.setor_destino_id) ?? null
       : null,
     mencionados: mencByTarefa.get(r.id) ?? [],
+    finalizadores: finByTarefa.get(r.id) ?? [],
     anexos_count: anexosCount.get(r.id) ?? 0,
   })) as DemandaTarefa[];
 }
@@ -230,12 +250,18 @@ export function useDemandasTodas() {
 }
 
 export function usePendenciasSetor(setorId: string | null | undefined, isAdmin = false) {
+  // Para admin: setorId pode ser usado como override (filtrar 1 setor) ou
+  // undefined/null → mostrar todos os setores.
   return useQuery({
-    queryKey: ["demandas", "pendencias-setor", setorId, isAdmin],
+    queryKey: ["demandas", "pendencias-setor", setorId ?? null, isAdmin],
     enabled: !!setorId || isAdmin,
     queryFn: async () => {
       let q: any = supabase.from("vw_worklist_pendencias_setor" as any).select("*");
-      if (!isAdmin && setorId) q = q.eq("setor_id", setorId);
+      if (isAdmin) {
+        if (setorId) q = q.eq("setor_id", setorId);
+      } else if (setorId) {
+        q = q.eq("setor_id", setorId);
+      }
       const { data, error } = await q.order("urgencia", { ascending: false }).limit(200);
       if (error) throw error;
       return (data || []) as unknown as Array<{
@@ -260,6 +286,7 @@ export interface NovaDemandaInput {
   escopo: "setor" | "geral";
   responsavel_id?: string | null;
   mencionados?: string[];
+  finalizadores?: string[];
   urgencia: "baixa" | "media" | "alta" | "critica";
   tipo: "tarefa" | "arquivo" | "esclarecimento";
   data_limite?: string | null;
@@ -315,6 +342,19 @@ export function useCriarDemanda() {
           .from("worklist_tarefa_mencionados")
           .insert(rows);
         if (mErr) throw mErr;
+      }
+      // Finalizadores: garante que responsável também é finalizador por padrão
+      const finSet = new Set<string>(input.finalizadores ?? []);
+      if (input.responsavel_id) finSet.add(input.responsavel_id);
+      finSet.delete(user.id); // criador é finalizador implícito via função pode_finalizar
+      if (finSet.size) {
+        const finRows = Array.from(finSet).map((uid) => ({
+          tarefa_id: tarefaId,
+          user_id: uid,
+        }));
+        await supabase
+          .from("worklist_tarefa_finalizadores" as any)
+          .insert(finRows);
       }
       // Notificações para responsável + mencionados (exceto o próprio criador)
       try {
@@ -415,7 +455,14 @@ export function useAtualizarStatusDemanda() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["demandas"] });
     },
-    onError: (e: any) => toast.error(e.message ?? "Erro ao atualizar"),
+    onError: (e: any) => {
+      const msg = String(e?.message ?? "");
+      if (msg.includes("finalizadores escolhidos")) {
+        toast.error("Apenas o criador e finalizadores escolhidos podem concluir esta demanda.");
+      } else {
+        toast.error(msg || "Erro ao atualizar");
+      }
+    },
   });
 }
 
@@ -427,6 +474,7 @@ export interface AtualizarDemandaInput {
   data_limite?: string | null;
   responsavel_id?: string | null;
   mencionados?: string[];
+  finalizadores?: string[];
   checklist?: { texto: string; ok: boolean }[];
   tags?: string[];
 }
@@ -501,6 +549,24 @@ export function useAtualizarDemanda() {
               console.error("[demandas] erro ao notificar novos mencionados", e);
             }
           }
+        }
+      }
+
+      if (input.finalizadores !== undefined) {
+        const finSet = new Set<string>(input.finalizadores);
+        if (input.responsavel_id) finSet.add(input.responsavel_id);
+        await supabase
+          .from("worklist_tarefa_finalizadores" as any)
+          .delete()
+          .eq("tarefa_id", input.id);
+        if (finSet.size) {
+          const rows = Array.from(finSet).map((uid) => ({
+            tarefa_id: input.id,
+            user_id: uid,
+          }));
+          await supabase
+            .from("worklist_tarefa_finalizadores" as any)
+            .insert(rows);
         }
       }
 
@@ -830,11 +896,14 @@ export function useToggleConfirmacaoDemanda() {
       tarefaId,
       confirmar,
       envolvidosIds,
+      finalizadoresIds,
     }: {
       tarefaId: string;
       confirmar: boolean;
-      /** IDs de todos os envolvidos (responsável + mencionados) — usado para detectar se todos confirmaram */
-      envolvidosIds: string[];
+      /** Compat: lista geral de envolvidos (legacy) */
+      envolvidosIds?: string[];
+      /** IDs dos finalizadores (criador + escolhidos) — fecha quando todos confirmarem */
+      finalizadoresIds?: string[];
     }) => {
       if (!user?.id) throw new Error("Sem usuário autenticado");
 
@@ -855,8 +924,9 @@ export function useToggleConfirmacaoDemanda() {
           detalhes: {},
         } as any);
 
-        // Verifica se todos os envolvidos já confirmaram → fecha a tarefa
-        const envolvidosUnicos = Array.from(new Set(envolvidosIds.filter(Boolean)));
+        // Verifica se todos os finalizadores já confirmaram → fecha a tarefa
+        const baseIds = finalizadoresIds ?? envolvidosIds ?? [];
+        const envolvidosUnicos = Array.from(new Set(baseIds.filter(Boolean)));
         if (envolvidosUnicos.length > 0) {
           const { data: confs } = await supabase
             .from("worklist_tarefa_confirmacoes" as any)
