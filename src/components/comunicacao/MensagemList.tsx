@@ -284,11 +284,9 @@ export function MensagemList({ mensagens, currentUserId, currentUserNome, reacoe
                 
                 <div
                   className={cn(
-                    "rounded-lg px-4 py-2",
-                    isOwn
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted"
+                    "chat-bubble"
                   )}
+                  data-own={isOwn ? "true" : "false"}
                 >
                   {/* Reply Preview - Clickable */}
                   {replyMessage && (
