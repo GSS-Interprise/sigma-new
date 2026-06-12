@@ -71,6 +71,18 @@ export default function DisparosSigZap() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams.get("lead")]);
+
+  // Abrir conversa direto via ?conversa=<id> (usado pelo link das demandas)
+  useEffect(() => {
+    const convId = searchParams.get("conversa");
+    if (!convId) return;
+    setSelectedConversaId(convId);
+    const next = new URLSearchParams(searchParams);
+    next.delete("conversa");
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams.get("conversa")]);
+
   const [selectedInstanceIds, setSelectedInstanceIds] = useState<string[]>(() => {
     // Load from localStorage on mount
     const stored = localStorage.getItem(STORAGE_KEY);
