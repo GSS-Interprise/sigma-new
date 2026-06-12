@@ -33,6 +33,8 @@ import { URGENCIA_CLASS, URGENCIA_LABEL, TIPO_LABEL } from "@/lib/setoresAccess"
 import type { DemandaTarefa } from "@/hooks/useDemandas";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useAuth } from "@/contexts/AuthContext";
+import { extractMensagemLink } from "@/lib/mensagemLink";
+import { useNavigate } from "react-router-dom";
 
 interface Props {
   tarefa: DemandaTarefa;
@@ -56,6 +58,8 @@ function initials(name?: string | null) {
 export function TarefaCard({ tarefa, onConcluir, onReabrir, onClick, compact }: Props) {
   const { isAdmin } = usePermissions();
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const mensagemLink = extractMensagemLink(tarefa.descricao);
   const atrasada =
     tarefa.data_limite &&
     tarefa.status !== "concluida" &&
@@ -154,6 +158,20 @@ export function TarefaCard({ tarefa, onConcluir, onReabrir, onClick, compact }: 
             {r.label}
           </span>
         ))}
+        {mensagemLink && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              navigate(mensagemLink.href);
+            }}
+            title="Ir para mensagem original no canal"
+            className="inline-flex items-center gap-1 rounded-md bg-primary/10 text-primary px-1.5 py-0.5 hover:bg-primary/20 transition-colors"
+          >
+            <MessageCircle className="h-3 w-3" />
+            Mensagem
+          </button>
+        )}
         {tarefa.anexos_count ? (
           <span className="inline-flex items-center gap-0.5">
             <Paperclip className="h-3 w-3" />
