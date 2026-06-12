@@ -86,6 +86,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { PessoasCombobox } from "./PessoasCombobox";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { sanitizeHtml } from "@/lib/sanitizeHtml";
+import { extractMensagemLink } from "@/lib/mensagemLink";
 
 interface Props {
   open: boolean;
@@ -551,8 +552,24 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                 </span>
               )}
             </div>
-            {isEditing && temReferencias && (
+            {(() => {
+              const mensagemLink = extractMensagemLink(descricao);
+              const mostrar = isEditing && (temReferencias || !!mensagemLink);
+              if (!mostrar) return null;
+              return (
               <div className="flex flex-wrap items-center gap-1.5">
+                {mensagemLink && (
+                  <button
+                    type="button"
+                    onClick={() => irPara(mensagemLink.href)}
+                    className="inline-flex items-center gap-1 rounded-md border border-primary/40 bg-primary/10 text-primary px-2 py-0.5 text-[11px] hover:bg-primary/20 transition-colors"
+                    title="Abrir mensagem original no canal"
+                  >
+                    <MessageCircle className="h-3 w-3" />
+                    <span>Ir para mensagem</span>
+                    <ExternalLink className="h-2.5 w-2.5 opacity-60" />
+                  </button>
+                )}
                 {referencias?.licitacao && (
                   <button
                     type="button"
@@ -598,7 +615,8 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                   </button>
                 )}
               </div>
-            )}
+              );
+            })()}
           </div>
         </DialogHeader>
 
