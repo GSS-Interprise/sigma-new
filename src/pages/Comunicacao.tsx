@@ -139,10 +139,10 @@ export default function Comunicacao() {
       {isAdmin && (
         <Tabs value={vista} onValueChange={(v) => setVista(v as any)} className="ml-auto">
           <TabsList>
-            <TabsTrigger value="comunicacao" className="gap-1">
+            <TabsTrigger value="comunicacao" className="gap-1 data-[state=active]:bg-green-600 data-[state=active]:text-white">
               <MessageSquare className="h-3.5 w-3.5" /> Comunicação
             </TabsTrigger>
-            <TabsTrigger value="monitoramento" className="gap-1">
+            <TabsTrigger value="monitoramento" className="gap-1 data-[state=active]:bg-green-600 data-[state=active]:text-white">
               <Shield className="h-3.5 w-3.5" /> Monitoramento ADM
             </TabsTrigger>
           </TabsList>
@@ -181,10 +181,16 @@ export default function Comunicacao() {
           <Tabs value={tabSidebar} onValueChange={(v) => setTabSidebar(v as any)} className="flex flex-col h-full min-h-0">
             <div className="flex items-center gap-1 p-2 border-b shrink-0">
               <TabsList className="grid grid-cols-2 flex-1">
-                <TabsTrigger value="canais" className="gap-1">
+                <TabsTrigger
+                  value="canais"
+                  className="gap-1 data-[state=active]:bg-green-600 data-[state=active]:text-white"
+                >
                   <Hash className="h-3.5 w-3.5" /> Canais
                 </TabsTrigger>
-                <TabsTrigger value="privado" className="gap-1">
+                <TabsTrigger
+                  value="privado"
+                  className="gap-1 data-[state=active]:bg-green-600 data-[state=active]:text-white"
+                >
                   <MessageSquare className="h-3.5 w-3.5" /> Privado
                 </TabsTrigger>
               </TabsList>

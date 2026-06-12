@@ -130,7 +130,7 @@ export function CanalList({ canais, canalSelecionado, onSelectCanal, isAdmin = f
             onClick={() => onSelectCanal(canal.id)}
             className={cn(
               "w-full px-4 py-3 flex items-center gap-3 hover:bg-accent transition-colors text-left",
-              canalSelecionado === canal.id && "bg-accent"
+              canalSelecionado === canal.id && "bg-green-600 text-white hover:bg-green-600"
             )}
           >
             {canal.tipo === "direto" ? (

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { Upload } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { MensagemList } from "./MensagemList";
@@ -27,6 +28,9 @@ export function MensagemArea({ canalId, onOpenDM, targetMensagemId, onTargetMens
   const { isAdmin } = usePermissions();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [replyingTo, setReplyingTo] = useState<ReplyingTo | null>(null);
+  const [droppedFiles, setDroppedFiles] = useState<File[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragCounter = useRef(0);
 
   const { data: canal } = useQuery({
     queryKey: ["canal", canalId],
@@ -326,14 +330,45 @@ export function MensagemArea({ canalId, onOpenDM, targetMensagemId, onTargetMens
   if (!canal) return null;
 
   return (
-    <div className="flex flex-col h-full">
+    <div
+      className="flex flex-col h-full relative"
+      onDragEnter={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.dataTransfer?.types?.includes("Files")) {
+          dragCounter.current++;
+          setIsDragging(true);
+        }
+      }}
+      onDragOver={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      }}
+      onDragLeave={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragCounter.current--;
+        if (dragCounter.current <= 0) {
+          dragCounter.current = 0;
+          setIsDragging(false);
+        }
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragCounter.current = 0;
+        setIsDragging(false);
+        const files = Array.from(e.dataTransfer?.files || []);
+        if (files.length > 0) setDroppedFiles(files);
+      }}
+    >
       <CanalHeader 
         canal={canal} 
         isAdmin={isAdmin} 
         onCanalDeleted={handleCanalDeleted}
       />
       
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto p-4 bg-muted/30">
         <MensagemList 
           mensagens={mensagens || []} 
           currentUserId={user?.id}
@@ -358,7 +393,18 @@ export function MensagemArea({ canalId, onOpenDM, targetMensagemId, onTargetMens
         replyingTo={replyingTo}
         onCancelReply={() => setReplyingTo(null)}
         isAdmin={isAdmin}
+        externalFiles={droppedFiles}
+        onExternalFilesConsumed={() => setDroppedFiles([])}
       />
+
+      {isDragging && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-green-600/10 border-4 border-dashed border-green-600 rounded-md pointer-events-none">
+          <div className="bg-card px-6 py-4 rounded-lg shadow-lg flex items-center gap-3">
+            <Upload className="h-6 w-6 text-green-600" />
+            <span className="font-medium">Solte os arquivos aqui para anexar</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
