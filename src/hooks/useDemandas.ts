@@ -1005,6 +1005,7 @@ export interface NovaRecorrenciaInput {
   frequencia: "diaria" | "semanal" | "mensal";
   dias_semana?: number[] | null;
   dia_mes?: number | null;
+  data_inicio?: string | null;
   hora: string; // HH:mm
   duracao_min?: number | null;
   participantes?: string[];
@@ -1030,6 +1031,7 @@ export function useCriarRecorrencia() {
           frequencia: input.frequencia,
           dias_semana: input.dias_semana ?? null,
           dia_mes: input.dia_mes ?? null,
+          proxima_geracao: input.data_inicio ?? null,
           hora: input.hora,
           duracao_min: input.duracao_min ?? 60,
           participantes: input.participantes ?? [],
@@ -1042,11 +1044,13 @@ export function useCriarRecorrencia() {
       const recId = (data as any).id as string;
       // Materializa imediatamente
       try {
-        await supabase.functions.invoke("gerar-tarefas-recorrentes", {
+        const { error: fnError } = await supabase.functions.invoke("gerar-tarefas-recorrentes", {
           body: { recorrencia_id: recId },
         });
+        if (fnError) throw fnError;
       } catch (e) {
         console.error("[demandas] falha ao materializar recorrência", e);
+        throw e;
       }
       return recId;
     },
