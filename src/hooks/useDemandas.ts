@@ -889,11 +889,14 @@ export function useToggleConfirmacaoDemanda() {
       tarefaId,
       confirmar,
       envolvidosIds,
+      finalizadoresIds,
     }: {
       tarefaId: string;
       confirmar: boolean;
-      /** IDs de todos os envolvidos (responsável + mencionados) — usado para detectar se todos confirmaram */
-      envolvidosIds: string[];
+      /** Compat: lista geral de envolvidos (legacy) */
+      envolvidosIds?: string[];
+      /** IDs dos finalizadores (criador + escolhidos) — fecha quando todos confirmarem */
+      finalizadoresIds?: string[];
     }) => {
       if (!user?.id) throw new Error("Sem usuário autenticado");
 
@@ -914,8 +917,9 @@ export function useToggleConfirmacaoDemanda() {
           detalhes: {},
         } as any);
 
-        // Verifica se todos os envolvidos já confirmaram → fecha a tarefa
-        const envolvidosUnicos = Array.from(new Set(envolvidosIds.filter(Boolean)));
+        // Verifica se todos os finalizadores já confirmaram → fecha a tarefa
+        const baseIds = finalizadoresIds ?? envolvidosIds ?? [];
+        const envolvidosUnicos = Array.from(new Set(baseIds.filter(Boolean)));
         if (envolvidosUnicos.length > 0) {
           const { data: confs } = await supabase
             .from("worklist_tarefa_confirmacoes" as any)
