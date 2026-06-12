@@ -149,6 +149,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
   const [titulo, setTitulo] = useState("");
   const [descricao, setDescricao] = useState("");
   const [pessoas, setPessoas] = useState<string[]>([]);
+  const [finalizadores, setFinalizadores] = useState<string[]>([]);
   const [urgencia, setUrgencia] = useState<Urgencia>("media");
   const [dataLimite, setDataLimite] = useState<Date | undefined>(
     defaultDate ?? undefined,
@@ -186,6 +187,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
       setTitulo(prefillTitulo ?? "");
       setDescricao(prefillDescricao ?? "");
       setPessoas([]);
+      setFinalizadores([]);
       setUrgencia("media");
       setDataLimite(defaultDate ?? undefined);
       setPendingFiles([]);
@@ -218,6 +220,8 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
     const pessoasIniciais = Array.from(
       new Set([responsavel, ...mencIds, criador].filter((id): id is string => !!id)),
     );
+    const finIds = (tarefaExistente.finalizadores ?? []).map((f) => f.user_id);
+    setFinalizadores(finIds);
     // Se for tarefa pessoal (somente o próprio usuário), deixar vazio
     if (
       pessoasIniciais.length === 1 &&
