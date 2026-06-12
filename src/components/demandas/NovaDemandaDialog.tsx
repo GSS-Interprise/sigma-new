@@ -58,6 +58,8 @@ import {
   CheckCircle2,
   Lock,
 } from "lucide-react";
+import { Repeat, Clock as ClockIcon } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
@@ -81,6 +83,7 @@ import {
   useAtualizarStatusDemanda,
   getDemandaAnexoSignedUrl,
 } from "@/hooks/useDemandas";
+import { useCriarRecorrencia } from "@/hooks/useDemandas";
 import { URGENCIA_LABEL } from "@/lib/setoresAccess";
 import { supabase } from "@/integrations/supabase/client";
 import { PessoasCombobox } from "./PessoasCombobox";
