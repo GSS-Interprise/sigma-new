@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +19,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
 export default function Demandas() {
   const [novaOpen, setNovaOpen] = useState(false);
   const [tarefaAbertaId, setTarefaAbertaId] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
   const { setorNome } = useUserSetor();
   const { isAdmin } = usePermissions();
 
@@ -28,6 +30,18 @@ export default function Demandas() {
     }
     setTarefaAbertaId(id);
   };
+
+  // Abrir tarefa via querystring (?tarefa=<id>) — usado pelo modal global de atrasadas
+  useEffect(() => {
+    const id = searchParams.get("tarefa");
+    if (id && UUID_RE.test(id)) {
+      setTarefaAbertaId(id);
+      const next = new URLSearchParams(searchParams);
+      next.delete("tarefa");
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const headerActions = (
     <div className="flex items-center justify-between w-full gap-3">
