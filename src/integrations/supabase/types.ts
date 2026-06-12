@@ -13960,6 +13960,32 @@ export type Database = {
           },
         ]
       }
+      worklist_tarefa_finalizadores: {
+        Row: {
+          created_at: string
+          tarefa_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          tarefa_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          tarefa_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "worklist_tarefa_finalizadores_tarefa_id_fkey"
+            columns: ["tarefa_id"]
+            isOneToOne: false
+            referencedRelation: "worklist_tarefas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       worklist_tarefa_mencionados: {
         Row: {
           created_at: string
@@ -15195,6 +15221,10 @@ export type Database = {
       norm_nome: { Args: { p_nome: string }; Returns: string }
       norm_phone: { Args: { p: string }; Returns: string }
       pode_encerrar_campanha: { Args: { _user_id: string }; Returns: boolean }
+      pode_finalizar_demanda: {
+        Args: { _tarefa_id: string; _user_id: string }
+        Returns: boolean
+      }
       popular_qualidade_metricas: { Args: { p_data?: string }; Returns: Json }
       pre_send_check: {
         Args: {
