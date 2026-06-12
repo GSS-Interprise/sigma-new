@@ -7,7 +7,6 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import { useLicitacoesRealtimeAccess } from "@/hooks/useLicitacoesRealtimeAccess";
 import { useLicitacoesRealtimeNotifications } from "@/hooks/useLicitacoesRealtimeNotifications";
 import { useLicitacoesRealtime } from "@/hooks/useLicitacoesRealtime";
-import { AlertaDemandasAtrasadasModal } from "@/components/demandas/AlertaDemandasAtrasadasModal";
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -46,7 +45,6 @@ function AppLayoutContent({ children, headerActions, hideFooter }: AppLayoutProp
         {!hideFooter && <Footer />}
       </div>
       {!isLoading && hasAccess && <LicitacoesRealtimeLoader />}
-      <AlertaDemandasAtrasadasModal />
     </div>
   );
 }
