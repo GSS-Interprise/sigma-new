@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { differenceInCalendarDays, format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { AlertTriangle, ArrowRight, X } from "lucide-react";
@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { useDemandasAtrasadas } from "@/hooks/useDemandasAtrasadas";
 import { parseLocalDate } from "@/lib/dateUtils";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
 
 const INTERVAL_MS = 40 * 60 * 1000; // 40 minutos
 const SNOOZE_KEY = "demandas-atrasadas-modal:last-shown";
@@ -18,12 +19,18 @@ const SNOOZE_KEY = "demandas-atrasadas-modal:last-shown";
  * relógio dos 40 min, mas o card no kanban continua piscando.
  */
 export function AlertaDemandasAtrasadasModal() {
+  const { user } = useAuth();
+  const location = useLocation();
   const { data: atrasadas = [] } = useDemandasAtrasadas();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [shakeKey, setShakeKey] = useState(0);
 
   useEffect(() => {
+    if (!user) {
+      setOpen(false);
+      return;
+    }
     if (!atrasadas.length) {
       setOpen(false);
       return;
@@ -40,7 +47,7 @@ export function AlertaDemandasAtrasadasModal() {
       }
     }, INTERVAL_MS);
     return () => window.clearInterval(id);
-  }, [atrasadas.length]);
+  }, [atrasadas.length, user]);
 
   const fechar = () => {
     localStorage.setItem(SNOOZE_KEY, String(Date.now()));
@@ -53,6 +60,9 @@ export function AlertaDemandasAtrasadasModal() {
     navigate(`/demandas?tarefa=${id}`);
   };
 
+  // Não mostra em telas públicas (login / reset)
+  const isPublicRoute = location.pathname === "/auth" || location.pathname === "/reset-password";
+  if (!user || isPublicRoute) return null;
   if (!open || !atrasadas.length) return null;
 
   return (
