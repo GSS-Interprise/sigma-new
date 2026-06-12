@@ -2,6 +2,134 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================
+   Chat surface — Emerald Prestige
+   Escopo aplicado em .chat-surface (página /comunicacao)
+   Paleta: #064e3b (deep) · #0d7a5f (emerald) · #c9a84c (gold) · #f5f0e0 (cream)
+   ============================ */
+.chat-surface {
+  --chat-deep: 6 78 59;        /* #064e3b */
+  --chat-emerald: 13 122 95;   /* #0d7a5f */
+  --chat-gold: 201 168 76;     /* #c9a84c */
+  --chat-cream: 245 240 224;   /* #f5f0e0 */
+  --chat-bg: 250 248 242;
+  --chat-surface-card: 255 255 255;
+  --chat-border: 232 226 208;
+  --chat-ink: 17 24 28;
+  --chat-ink-soft: 90 95 92;
+
+  font-family: 'Manrope', system-ui, -apple-system, sans-serif;
+  color: rgb(var(--chat-ink));
+  background: rgb(var(--chat-bg));
+}
+.chat-surface .chat-heading,
+.chat-surface h1,
+.chat-surface h2,
+.chat-surface h3 {
+  font-family: 'Sora', 'Manrope', system-ui, sans-serif;
+  letter-spacing: -0.01em;
+}
+
+.chat-surface .chat-card {
+  background: rgb(var(--chat-surface-card));
+  border: 1px solid rgb(var(--chat-border));
+  border-radius: 14px;
+}
+
+.chat-surface .chat-divider {
+  border-color: rgb(var(--chat-border));
+}
+
+/* Sidebar — canal item */
+.chat-surface .chat-channel {
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; text-align: left;
+  padding: 10px 12px; margin: 2px 8px;
+  border-radius: 10px;
+  font-size: 14px; font-weight: 500;
+  color: rgb(var(--chat-ink));
+  transition: background .15s ease, color .15s ease, transform .15s ease;
+  position: relative;
+}
+.chat-surface .chat-channel:hover {
+  background: rgb(var(--chat-cream) / 0.55);
+}
+.chat-surface .chat-channel[data-selected="true"] {
+  background: rgb(var(--chat-deep));
+  color: rgb(var(--chat-cream));
+  box-shadow: 0 6px 18px -10px rgb(var(--chat-deep) / 0.6);
+}
+.chat-surface .chat-channel[data-selected="true"]::before {
+  content: ""; position: absolute; left: -2px; top: 18%; bottom: 18%;
+  width: 3px; border-radius: 2px;
+  background: rgb(var(--chat-gold));
+}
+.chat-surface .chat-channel[data-selected="true"] svg {
+  color: rgb(var(--chat-gold)) !important;
+}
+
+/* Mensagens — bolhas */
+.chat-surface .chat-bubble {
+  border-radius: 14px;
+  padding: 10px 14px;
+  font-size: 14px; line-height: 1.45;
+  background: rgb(var(--chat-surface-card));
+  border: 1px solid rgb(var(--chat-border));
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.03);
+}
+.chat-surface .chat-bubble[data-own="true"] {
+  background: rgb(var(--chat-deep));
+  color: rgb(var(--chat-cream));
+  border-color: transparent;
+  border-bottom-right-radius: 4px;
+}
+.chat-surface .chat-bubble[data-own="false"] {
+  border-bottom-left-radius: 4px;
+}
+
+/* Tabs Canais/Privado */
+.chat-surface .chat-tab[data-state="active"] {
+  background: rgb(var(--chat-deep)) !important;
+  color: rgb(var(--chat-cream)) !important;
+  box-shadow: 0 4px 12px -6px rgb(var(--chat-deep) / 0.5);
+}
+
+/* Input card */
+.chat-surface .chat-input-card {
+  background: rgb(var(--chat-surface-card));
+  border: 1px solid rgb(var(--chat-border));
+  border-radius: 16px;
+  box-shadow: 0 6px 20px -14px rgb(15 23 42 / 0.18);
+}
+.chat-surface .chat-send {
+  background: rgb(var(--chat-deep));
+  color: rgb(var(--chat-cream));
+  border-radius: 12px;
+  transition: transform .15s ease, background .2s ease;
+}
+.chat-surface .chat-send:hover {
+  background: rgb(var(--chat-emerald));
+  transform: translateY(-1px);
+}
+
+/* Badge não-lidas em dourado discreto */
+.chat-surface .chat-badge {
+  background: rgb(var(--chat-gold));
+  color: #2a1f00;
+  font-weight: 700;
+  font-size: 11px;
+  border-radius: 999px;
+  padding: 1px 7px;
+  min-width: 20px;
+  text-align: center;
+}
+
+.chat-surface .chat-meta {
+  color: rgb(var(--chat-ink-soft));
+  font-size: 11px;
+  font-weight: 500;
+}
+
 /* Kanban Scrollbar Customization */
 .kanban-scroll-aberto [data-radix-scroll-area-viewport] > div {
   scrollbar-width: thin;
