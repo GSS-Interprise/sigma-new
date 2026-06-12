@@ -78,17 +78,18 @@ export function ColunaAgenda({ onTarefaClick }: Props) {
   );
 
   return (
-    <Card className="flex flex-col h-full overflow-hidden">
+    <Card className="flex flex-col h-full overflow-hidden rounded-2xl border-border/70 shadow-sm">
       {/* Header */}
-      <div className="p-3 border-b flex items-center justify-between">
+      <div className="px-4 py-3 border-b flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <CalendarDays className="h-4 w-4 text-primary" />
-          <h3 className="font-semibold text-sm">Agenda</h3>
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10">
+            <CalendarDays className="h-4 w-4 text-primary" />
+          </div>
+          <h3 className="font-bold text-sm tracking-tight">Agenda</h3>
         </div>
         <Button
           size="sm"
-          variant="ghost"
-          className="h-7 w-7 p-0"
+          className="h-7 w-7 p-0 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
           onClick={() => setDialogOpen(true)}
         >
           <Plus className="h-4 w-4" />
@@ -96,22 +97,22 @@ export function ColunaAgenda({ onTarefaClick }: Props) {
       </div>
 
       {/* Month nav */}
-      <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/30">
+      <div className="flex items-center justify-between px-3 py-2 border-b">
         <Button
           size="sm"
           variant="ghost"
-          className="h-7 w-7 p-0"
+          className="h-7 w-7 p-0 rounded-lg"
           onClick={() => setMonthCursor((d) => subMonths(d, 1))}
         >
           <ChevronLeft className="h-4 w-4" />
         </Button>
-        <span className="text-sm font-semibold capitalize">
+        <span className="text-xs font-bold uppercase tracking-widest text-foreground/80">
           {format(monthCursor, "MMMM yyyy", { locale: ptBR })}
         </span>
         <Button
           size="sm"
           variant="ghost"
-          className="h-7 w-7 p-0"
+          className="h-7 w-7 p-0 rounded-lg"
           onClick={() => setMonthCursor((d) => addMonths(d, 1))}
         >
           <ChevronRight className="h-4 w-4" />
@@ -119,16 +120,16 @@ export function ColunaAgenda({ onTarefaClick }: Props) {
       </div>
 
       {/* Weekday header */}
-      <div className="grid grid-cols-7 border-b bg-muted/20 text-[10px] font-semibold text-muted-foreground">
+      <div className="grid grid-cols-7 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 px-1.5 pt-2">
         {WEEKDAYS.map((w) => (
-          <div key={w} className="px-1.5 py-1.5 text-left">
-            {w}
+          <div key={w} className="py-1 text-center">
+            {w.replace(".", "")}
           </div>
         ))}
       </div>
 
       {/* Month grid */}
-      <div className="grid grid-cols-7 grid-rows-6 flex-1 min-h-[320px] border-b">
+      <div className="grid grid-cols-7 grid-rows-6 flex-1 min-h-[320px] gap-0.5 p-1.5">
         {days.map((d, i) => {
           const key = format(d, "yyyy-MM-dd");
           const eventos = tarefasPorDia.get(key) || [];
@@ -142,8 +143,6 @@ export function ColunaAgenda({ onTarefaClick }: Props) {
               isPast(parseISO(t.data_limite)) &&
               !isToday(parseISO(t.data_limite)),
           );
-          const isLastCol = (i + 1) % 7 === 0;
-          const isLastRow = i >= days.length - 7;
           return (
             <button
               key={key}
@@ -154,24 +153,21 @@ export function ColunaAgenda({ onTarefaClick }: Props) {
                 setDayDialogOpen(true);
               }}
               className={cn(
-                "relative text-left p-1 overflow-hidden transition-colors group",
-                !isLastCol && "border-r",
-                !isLastRow && "border-b",
-                "border-border/60",
-                fora && "bg-muted/20 text-muted-foreground/50",
-                !fora && "hover:bg-accent/40",
-                !fora && temAtrasada && "bg-destructive/10 hover:bg-destructive/15",
-                sel && "bg-primary/10 ring-1 ring-inset ring-primary/40",
+                "relative text-left p-1 overflow-hidden rounded-lg transition-all group",
+                fora && "opacity-40",
+                !fora && !sel && !hoje && "hover:bg-accent/50",
+                !fora && temAtrasada && !sel && "bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/30 dark:hover:bg-rose-950/40",
+                sel && !hoje && "bg-primary/10 ring-1 ring-inset ring-primary/40",
                 sel && temAtrasada && "ring-destructive/50 bg-destructive/15",
               )}
             >
               <div className="flex items-center justify-start mb-0.5">
                 <span
                   className={cn(
-                    "inline-flex items-center justify-center text-[11px] font-semibold h-5 min-w-5 px-1 rounded-full",
-                    hoje && "bg-primary text-primary-foreground",
+                    "inline-flex items-center justify-center text-[11px] font-bold h-6 min-w-6 px-1.5 rounded-full",
+                    hoje && "bg-primary text-primary-foreground shadow-md shadow-primary/30",
                     !hoje && !temAtrasada && "text-foreground",
-                    !hoje && temAtrasada && "text-destructive",
+                    !hoje && temAtrasada && "text-rose-600 dark:text-rose-400",
                     fora && "text-muted-foreground/50",
                   )}
                 >
@@ -196,20 +192,20 @@ export function ColunaAgenda({ onTarefaClick }: Props) {
                         className={cn(
                           "h-1.5 w-1.5 rounded-full flex-shrink-0",
                           atrasada
-                            ? "bg-destructive"
+                            ? "bg-rose-500"
                             : t.status === "concluida"
                             ? "bg-muted-foreground"
-                            : "bg-primary",
+                            : "bg-emerald-500",
                         )}
                       />
-                      <span className="truncate text-foreground/80">
+                      <span className="truncate text-foreground/70 font-medium">
                         {t.titulo}
                       </span>
                     </div>
                   );
                 })}
                 {eventos.length > 3 && (
-                  <div className="text-[9px] text-muted-foreground font-medium">
+                  <div className="text-[9px] text-muted-foreground font-bold">
                     +{eventos.length - 3}
                   </div>
                 )}
@@ -220,13 +216,13 @@ export function ColunaAgenda({ onTarefaClick }: Props) {
       </div>
 
       {/* Selected day tasks */}
-      <div className="px-3 py-2 border-b bg-muted/20">
-        <p className="text-xs text-muted-foreground capitalize">
-          {format(date, "PPP", { locale: ptBR })} —{" "}
-          <span className="font-semibold text-foreground">
+      <div className="px-4 py-2.5 border-t bg-muted/30">
+        <p className="text-[11px] text-muted-foreground capitalize">
+          {format(date, "PPP", { locale: ptBR })} ·{" "}
+          <span className="font-bold text-foreground">
             {tarefasDoDia.length}
-          </span>{" "}
-          tarefa(s)
+          </span>
+          {" "}tarefa(s)
         </p>
       </div>
       <ScrollArea className="px-2 py-2 max-h-48">
