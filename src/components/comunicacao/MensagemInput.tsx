@@ -35,6 +35,8 @@ interface MensagemInputProps {
   replyingTo?: ReplyingTo | null;
   onCancelReply?: () => void;
   isAdmin?: boolean;
+  externalFiles?: File[];
+  onExternalFilesConsumed?: () => void;
 }
 
 export function MensagemInput({ 
@@ -43,7 +45,9 @@ export function MensagemInput({
   participantes = [],
   replyingTo,
   onCancelReply,
-  isAdmin = false
+  isAdmin = false,
+  externalFiles,
+  onExternalFilesConsumed,
 }: MensagemInputProps) {
   const [mensagem, setMensagem] = useState("");
   const [anexos, setAnexos] = useState<File[]>([]);
@@ -54,6 +58,19 @@ export function MensagemInput({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
+
+  // Receber arquivos arrastados de fora (drag-and-drop na área de chat)
+  useEffect(() => {
+    if (externalFiles && externalFiles.length > 0) {
+      setAnexos((prev) => [...prev, ...externalFiles]);
+      toast({
+        title: "Arquivos anexados",
+        description: `${externalFiles.length} arquivo(s) prontos para envio.`,
+      });
+      onExternalFilesConsumed?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [externalFiles]);
 
   // Função para extrair primeiro e segundo nome
   const getShortName = (fullName: string | undefined) => {
