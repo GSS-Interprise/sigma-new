@@ -461,6 +461,7 @@ export interface AtualizarDemandaInput {
   data_limite?: string | null;
   responsavel_id?: string | null;
   mencionados?: string[];
+  finalizadores?: string[];
   checklist?: { texto: string; ok: boolean }[];
   tags?: string[];
 }
@@ -535,6 +536,24 @@ export function useAtualizarDemanda() {
               console.error("[demandas] erro ao notificar novos mencionados", e);
             }
           }
+        }
+      }
+
+      if (input.finalizadores !== undefined) {
+        const finSet = new Set<string>(input.finalizadores);
+        if (input.responsavel_id) finSet.add(input.responsavel_id);
+        await supabase
+          .from("worklist_tarefa_finalizadores" as any)
+          .delete()
+          .eq("tarefa_id", input.id);
+        if (finSet.size) {
+          const rows = Array.from(finSet).map((uid) => ({
+            tarefa_id: input.id,
+            user_id: uid,
+          }));
+          await supabase
+            .from("worklist_tarefa_finalizadores" as any)
+            .insert(rows);
         }
       }
 
