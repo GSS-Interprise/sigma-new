@@ -22,6 +22,7 @@ export default function Comunicacao() {
   const { isAdmin } = usePermissions();
   const queryClient = useQueryClient();
   const [vista, setVista] = useState<"comunicacao" | "monitoramento">("comunicacao");
+  const [tabSidebar, setTabSidebar] = useState<"canais" | "privado">("canais");
 
   // Handle canal from URL query param
   useEffect(() => {
