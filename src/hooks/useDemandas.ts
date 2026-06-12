@@ -14,6 +14,9 @@ export interface DemandaTarefa {
   tipo: string;
   escopo: string;
   data_limite: string | null;
+  data_limite_hora: string | null;
+  duracao_min: number | null;
+  recorrencia_id: string | null;
   concluida_em: string | null;
   created_at: string;
   created_by: string | null;
@@ -290,6 +293,8 @@ export interface NovaDemandaInput {
   urgencia: "baixa" | "media" | "alta" | "critica";
   tipo: "tarefa" | "arquivo" | "esclarecimento";
   data_limite?: string | null;
+  data_limite_hora?: string | null;
+  duracao_min?: number | null;
   licitacao_id?: string | null;
   contrato_id?: string | null;
   lead_id?: string | null;
@@ -324,6 +329,8 @@ export function useCriarDemanda() {
           setor_origem_id: input.setor_origem_id ?? null,
           responsavel_id: input.responsavel_id ?? null,
           data_limite: input.data_limite ?? null,
+          data_limite_hora: input.data_limite_hora ?? null,
+          duracao_min: input.duracao_min ?? null,
           licitacao_id: input.licitacao_id ?? null,
           contrato_id: input.contrato_id ?? null,
           lead_id: input.lead_id ?? null,
