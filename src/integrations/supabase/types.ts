@@ -14047,21 +14047,91 @@ export type Database = {
           },
         ]
       }
+      worklist_tarefa_recorrencias: {
+        Row: {
+          ativo: boolean
+          checklist_template: Json
+          created_at: string
+          created_by: string
+          descricao: string | null
+          dia_mes: number | null
+          dias_semana: number[]
+          duracao_min: number
+          escopo: string
+          frequencia: string
+          hora: string
+          id: string
+          participantes: string[]
+          proxima_geracao: string | null
+          setor_destino_id: string | null
+          tipo: string
+          titulo: string
+          updated_at: string
+          urgencia: string
+        }
+        Insert: {
+          ativo?: boolean
+          checklist_template?: Json
+          created_at?: string
+          created_by: string
+          descricao?: string | null
+          dia_mes?: number | null
+          dias_semana?: number[]
+          duracao_min?: number
+          escopo?: string
+          frequencia: string
+          hora: string
+          id?: string
+          participantes?: string[]
+          proxima_geracao?: string | null
+          setor_destino_id?: string | null
+          tipo?: string
+          titulo: string
+          updated_at?: string
+          urgencia?: string
+        }
+        Update: {
+          ativo?: boolean
+          checklist_template?: Json
+          created_at?: string
+          created_by?: string
+          descricao?: string | null
+          dia_mes?: number | null
+          dias_semana?: number[]
+          duracao_min?: number
+          escopo?: string
+          frequencia?: string
+          hora?: string
+          id?: string
+          participantes?: string[]
+          proxima_geracao?: string | null
+          setor_destino_id?: string | null
+          tipo?: string
+          titulo?: string
+          updated_at?: string
+          urgencia?: string
+        }
+        Relationships: []
+      }
       worklist_tarefas: {
         Row: {
+          alerta_2h_enviado_at: string | null
           checklist: Json
           concluida_em: string | null
           contrato_id: string | null
           created_at: string | null
           created_by: string | null
           data_limite: string | null
+          data_limite_hora: string | null
           descricao: string | null
+          duracao_min: number | null
           escopo: string
           id: string
           lead_id: string | null
           licitacao_id: string | null
           modulo: string
           prioridade: string | null
+          recorrencia_id: string | null
           relacionamento_id: string | null
           responsavel_id: string | null
           setor_destino_id: string | null
@@ -14075,19 +14145,23 @@ export type Database = {
           urgencia: string
         }
         Insert: {
+          alerta_2h_enviado_at?: string | null
           checklist?: Json
           concluida_em?: string | null
           contrato_id?: string | null
           created_at?: string | null
           created_by?: string | null
           data_limite?: string | null
+          data_limite_hora?: string | null
           descricao?: string | null
+          duracao_min?: number | null
           escopo?: string
           id?: string
           lead_id?: string | null
           licitacao_id?: string | null
           modulo: string
           prioridade?: string | null
+          recorrencia_id?: string | null
           relacionamento_id?: string | null
           responsavel_id?: string | null
           setor_destino_id?: string | null
@@ -14101,19 +14175,23 @@ export type Database = {
           urgencia?: string
         }
         Update: {
+          alerta_2h_enviado_at?: string | null
           checklist?: Json
           concluida_em?: string | null
           contrato_id?: string | null
           created_at?: string | null
           created_by?: string | null
           data_limite?: string | null
+          data_limite_hora?: string | null
           descricao?: string | null
+          duracao_min?: number | null
           escopo?: string
           id?: string
           lead_id?: string | null
           licitacao_id?: string | null
           modulo?: string
           prioridade?: string | null
+          recorrencia_id?: string | null
           relacionamento_id?: string | null
           responsavel_id?: string | null
           setor_destino_id?: string | null
@@ -14139,6 +14217,13 @@ export type Database = {
             columns: ["licitacao_id"]
             isOneToOne: false
             referencedRelation: "licitacoes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "worklist_tarefas_recorrencia_fk"
+            columns: ["recorrencia_id"]
+            isOneToOne: false
+            referencedRelation: "worklist_tarefa_recorrencias"
             referencedColumns: ["id"]
           },
           {
