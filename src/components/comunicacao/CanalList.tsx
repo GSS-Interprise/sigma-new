@@ -16,6 +16,8 @@ interface CanalListProps {
   canalSelecionado: string | null;
   onSelectCanal: (id: string) => void;
   isAdmin?: boolean;
+  searchTerm?: string;
+  onlineUsers?: Set<string>;
 }
 
 /** Returns first + second name only: "Bruna da Silva Santos" → "Bruna Silva" (skips prepositions) */
@@ -28,7 +30,7 @@ function shortName(fullName: string): string {
   return second ? `${first} ${second}` : first;
 }
 
-export function CanalList({ canais, canalSelecionado, onSelectCanal, isAdmin = false }: CanalListProps) {
+export function CanalList({ canais, canalSelecionado, onSelectCanal, isAdmin = false, searchTerm = "", onlineUsers }: CanalListProps) {
   const { data: user } = useQuery({
     queryKey: ["current-user"],
     queryFn: async () => {
@@ -92,14 +94,14 @@ export function CanalList({ canais, canalSelecionado, onSelectCanal, isAdmin = f
       const profileMap = new Map((profiles || []).map(p => [p.id, p.nome_completo]));
 
       // Map canal_id → other user's short name
-      const result: Record<string, { name: string; isMyDM: boolean }> = {};
+      const result: Record<string, { name: string; isMyDM: boolean; userId: string }> = {};
       for (const canal_id of dmCanalIds) {
         const participants = (data || []).filter(p => p.canal_id === canal_id);
         const isMine = participants.some(p => p.user_id === user?.id);
         const other = participants.find(p => p.user_id !== user?.id);
         if (other) {
           const fullName = profileMap.get(other.user_id) || "Usuário";
-          result[canal_id] = { name: shortName(fullName), isMyDM: isMine };
+          result[canal_id] = { name: shortName(fullName), isMyDM: isMine, userId: other.user_id };
         }
       }
       return result;
@@ -119,11 +121,28 @@ export function CanalList({ canais, canalSelecionado, onSelectCanal, isAdmin = f
     return !dmParticipantes[canal.id].isMyDM;
   };
 
+  const getOtherUserId = (canal: Canal) => {
+    if (canal.tipo !== "direto") return null;
+    return dmParticipantes?.[canal.id]?.userId || null;
+  };
+
+  const term = searchTerm.trim().toLowerCase();
+  const filtered = term
+    ? canais.filter((c) => getDisplayName(c).toLowerCase().includes(term))
+    : canais;
+
   return (
     <div className="flex-1 overflow-y-auto px-1">
-      {canais.map((canal) => {
+      {filtered.length === 0 && (
+        <div className="px-4 py-6 text-center text-xs text-muted-foreground">
+          Nenhum resultado
+        </div>
+      )}
+      {filtered.map((canal) => {
         const naoLidas = notificacoes?.[canal.id] || 0;
         const selected = canalSelecionado === canal.id;
+        const otherId = getOtherUserId(canal);
+        const isOnline = !!(otherId && onlineUsers?.has(otherId));
         
         return (
           <button
@@ -135,6 +154,12 @@ export function CanalList({ canais, canalSelecionado, onSelectCanal, isAdmin = f
             {canal.tipo === "direto" ? (
               <div className="relative flex-shrink-0">
                 <MessageSquare className={cn("h-4 w-4", selected ? "text-[rgb(var(--chat-gold))]" : "text-muted-foreground")} />
+                {isOnline && (
+                  <span
+                    className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white"
+                    title="Online"
+                  />
+                )}
                 {isAdmin && isNotMyDM(canal) && (
                   <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-destructive" />
                 )}

@@ -1,5 +1,8 @@
-import { useState, useEffect, useRef } from "react";
-import { Upload } from "lucide-react";
+import { useState, useEffect, useRef, useMemo } from "react";
+import { Upload, Search, X } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { useOnlinePresence } from "@/hooks/useOnlinePresence";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { MensagemList } from "./MensagemList";
@@ -31,6 +34,8 @@ export function MensagemArea({ canalId, onOpenDM, targetMensagemId, onTargetMens
   const [droppedFiles, setDroppedFiles] = useState<File[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const dragCounter = useRef(0);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
 
   const { data: canal } = useQuery({
     queryKey: ["canal", canalId],
@@ -123,6 +128,7 @@ export function MensagemArea({ canalId, onOpenDM, targetMensagemId, onTargetMens
     staleTime: Infinity,
   });
 
+  const onlineUsers = useOnlinePresence(user?.id);
   const { data: profile } = useQuery({
     queryKey: ["profile", user?.id],
     queryFn: async () => {
@@ -329,6 +335,14 @@ export function MensagemArea({ canalId, onOpenDM, targetMensagemId, onTargetMens
 
   if (!canal) return null;
 
+  const term = searchTerm.trim().toLowerCase();
+  const mensagensFiltradas = term
+    ? (mensagens || []).filter((m) =>
+        (m.mensagem || "").toLowerCase().includes(term) ||
+        (m.user_nome || "").toLowerCase().includes(term)
+      )
+    : (mensagens || []);
+
   return (
     <div
       className="flex flex-col h-full relative"
@@ -366,11 +380,43 @@ export function MensagemArea({ canalId, onOpenDM, targetMensagemId, onTargetMens
         canal={canal} 
         isAdmin={isAdmin} 
         onCanalDeleted={handleCanalDeleted}
+        onlineUsers={onlineUsers}
+        searchOpen={searchOpen}
+        onToggleSearch={() => {
+          setSearchOpen((v) => !v);
+          if (searchOpen) setSearchTerm("");
+        }}
       />
+
+      {searchOpen && (
+        <div className="px-5 py-2 border-b chat-divider bg-white/60 flex items-center gap-2 animate-fade-in">
+          <Search className="h-4 w-4 text-muted-foreground" />
+          <Input
+            autoFocus
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Buscar nesta conversa..."
+            className="h-8 border-0 bg-transparent focus-visible:ring-0 shadow-none px-0"
+          />
+          {term && (
+            <span className="text-xs text-muted-foreground whitespace-nowrap">
+              {mensagensFiltradas.length} resultado{mensagensFiltradas.length === 1 ? "" : "s"}
+            </span>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 rounded-full"
+            onClick={() => { setSearchTerm(""); setSearchOpen(false); }}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
       
       <div className="flex-1 overflow-y-auto px-5 py-6">
         <MensagemList 
-          mensagens={mensagens || []} 
+          mensagens={mensagensFiltradas}
           currentUserId={user?.id}
           currentUserNome={profile?.nome_completo}
           reacoesByMensagem={reacoesByMensagem}

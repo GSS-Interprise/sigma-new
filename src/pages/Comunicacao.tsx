@@ -1,13 +1,15 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
-import { Plus, Hash, MessageSquare, Lock, Shield } from "lucide-react";
+import { Plus, Hash, MessageSquare, Lock, Shield, Search } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { CanalList } from "@/components/comunicacao/CanalList";
 import { MensagemArea } from "@/components/comunicacao/MensagemArea";
 import { NovoCanalDialog } from "@/components/comunicacao/NovoCanalDialog";
 import { NovaDMDialog } from "@/components/comunicacao/NovaDMDialog";
 import { MonitoramentoAdm } from "@/components/comunicacao/MonitoramentoAdm";
+import { useOnlinePresence } from "@/hooks/useOnlinePresence";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -23,6 +25,7 @@ export default function Comunicacao() {
   const queryClient = useQueryClient();
   const [vista, setVista] = useState<"comunicacao" | "monitoramento">("comunicacao");
   const [tabSidebar, setTabSidebar] = useState<"canais" | "privado">("canais");
+  const [sidebarSearch, setSidebarSearch] = useState("");
 
   // Handle canal from URL query param
   useEffect(() => {
@@ -44,6 +47,8 @@ export default function Comunicacao() {
     },
     staleTime: Infinity,
   });
+
+  const onlineUsers = useOnlinePresence(currentUser?.id);
 
   const { data: canais } = useQuery({
     queryKey: ["comunicacao-canais"],
@@ -200,6 +205,18 @@ export default function Comunicacao() {
               </Button>
             </div>
 
+            <div className="px-3 pt-3 pb-1 shrink-0">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                <Input
+                  value={sidebarSearch}
+                  onChange={(e) => setSidebarSearch(e.target.value)}
+                  placeholder={tabSidebar === "canais" ? "Buscar canais..." : "Buscar pessoas..."}
+                  className="h-8 pl-8 text-sm bg-[rgb(var(--chat-cream))]/40 border-[rgb(var(--chat-border))]"
+                />
+              </div>
+            </div>
+
             <TabsContent
               value="canais"
               className="flex-1 min-h-0 mt-0 data-[state=active]:flex data-[state=active]:flex-col overflow-hidden py-2"
@@ -208,6 +225,8 @@ export default function Comunicacao() {
                 canais={canaisGrupo}
                 canalSelecionado={canalSelecionado}
                 onSelectCanal={setCanalSelecionado}
+                searchTerm={sidebarSearch}
+                onlineUsers={onlineUsers}
               />
             </TabsContent>
 
@@ -220,6 +239,8 @@ export default function Comunicacao() {
                 canalSelecionado={canalSelecionado}
                 onSelectCanal={setCanalSelecionado}
                 isAdmin={isAdmin}
+                searchTerm={sidebarSearch}
+                onlineUsers={onlineUsers}
               />
             </TabsContent>
           </Tabs>
