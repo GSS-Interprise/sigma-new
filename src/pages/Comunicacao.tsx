@@ -130,14 +130,31 @@ export default function Comunicacao() {
   }, [currentUser, queryClient]);
 
   const headerActions = (
-    <div className="flex items-center gap-2">
-      <h1 className="text-2xl font-bold">Comunicação</h1>
-      <p className="text-sm text-muted-foreground">Mensagens e canais internos</p>
+    <div className="flex items-center gap-4 w-full">
+      <div className="flex items-center gap-2">
+        <h1 className="text-2xl font-bold">Comunicação</h1>
+        <p className="text-sm text-muted-foreground hidden md:block">Mensagens e canais internos</p>
+      </div>
+      {isAdmin && (
+        <Tabs value={vista} onValueChange={(v) => setVista(v as any)} className="ml-auto">
+          <TabsList>
+            <TabsTrigger value="comunicacao" className="gap-1">
+              <MessageSquare className="h-3.5 w-3.5" /> Comunicação
+            </TabsTrigger>
+            <TabsTrigger value="monitoramento" className="gap-1">
+              <Shield className="h-3.5 w-3.5" /> Monitoramento ADM
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+      )}
     </div>
   );
 
   return (
     <AppLayout headerActions={headerActions}>
+      {isAdmin && vista === "monitoramento" ? (
+        <MonitoramentoAdm />
+      ) : (
       <div className="flex h-full">
         {/* Sidebar de canais */}
         <div className="w-64 border-r bg-card flex flex-col">
@@ -215,6 +232,7 @@ export default function Comunicacao() {
           )}
         </div>
       </div>
+      )}
 
       <NovoCanalDialog
         open={novoCanalOpen}
