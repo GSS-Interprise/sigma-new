@@ -464,6 +464,16 @@ export function MensagemList({ mensagens, currentUserId, currentUserNome, reacoe
                     </span>
                   )}
                 </div>
+                {canalId && (
+                  <ReacoesMensagem
+                    mensagemId={mensagem.id}
+                    canalId={canalId}
+                    reacoes={reacoesByMensagem?.[mensagem.id] || []}
+                    currentUserId={currentUserId}
+                    currentUserNome={currentUserNome}
+                    isOwn={isOwn}
+                  />
+                )}
               </div>
             </div>
           );
