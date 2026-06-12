@@ -181,10 +181,16 @@ export default function Comunicacao() {
           <Tabs value={tabSidebar} onValueChange={(v) => setTabSidebar(v as any)} className="flex flex-col h-full min-h-0">
             <div className="flex items-center gap-1 p-2 border-b shrink-0">
               <TabsList className="grid grid-cols-2 flex-1">
-                <TabsTrigger value="canais" className="gap-1">
+                <TabsTrigger
+                  value="canais"
+                  className="gap-1 data-[state=active]:bg-green-600 data-[state=active]:text-white"
+                >
                   <Hash className="h-3.5 w-3.5" /> Canais
                 </TabsTrigger>
-                <TabsTrigger value="privado" className="gap-1">
+                <TabsTrigger
+                  value="privado"
+                  className="gap-1 data-[state=active]:bg-green-600 data-[state=active]:text-white"
+                >
                   <MessageSquare className="h-3.5 w-3.5" /> Privado
                 </TabsTrigger>
               </TabsList>
