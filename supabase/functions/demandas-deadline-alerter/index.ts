@@ -9,12 +9,9 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
  *   - vence em 2 dias
  *   - atrasadas (data_limite < hoje)
  * Para cada usuário envolvido (criador + responsavel + finalizadores) emite UMA
- * notificação consolidada via system_notifications. Idempotência: limpa as
- * notifs do tipo "demanda_prazo_digest" criadas hoje antes de inserir.
- *
- * Observação: envio de email exige domínio configurado em Lovable Emails.
- * Quando o domínio estiver pronto, basta plugar uma chamada à
- * supabase.functions.invoke("send-transactional-email", ...) no loop final.
+ * notificação consolidada via system_notifications + UM email via Resend.
+ * Idempotência: limpa as notifs do tipo "demanda_prazo_digest" criadas hoje
+ * antes de inserir.
  */
 
 const corsHeaders = {
@@ -164,12 +161,78 @@ serve(async (req) => {
       inseridas = ins?.length ?? 0;
     }
 
+    // Envio de emails via Resend (paralelo, sem quebrar o cron em caso de falha)
+    const { data: profs } = await supabase
+      .from("profiles")
+      .select("id, email, nome_completo")
+      .in("id", userIds);
+    const profById = new Map<string, { email: string | null; nome_completo: string | null }>();
+    (profs ?? []).forEach((p: any) =>
+      profById.set(p.id, { email: p.email, nome_completo: p.nome_completo }),
+    );
+
+    const APP_URL = Deno.env.get("APP_URL") ?? "https://sigma-gss.lovable.app";
+    let emailsEnviados = 0;
+    let emailsFalha = 0;
+
+    await Promise.all(
+      Array.from(porUser.entries()).map(async ([uid, lista]) => {
+        const prof = profById.get(uid);
+        if (!prof?.email) return;
+
+        const atrasadas = lista.filter((d) => d.dias < 0);
+        const hoje = lista.filter((d) => d.dias === 0);
+        const em1 = lista.filter((d) => d.dias === 1);
+        const em2 = lista.filter((d) => d.dias === 2);
+
+        const section = (label: string, arr: typeof lista, cor: string) =>
+          arr.length === 0
+            ? ""
+            : `<h3 style="color:${cor};margin:20px 0 8px;font-size:15px">${label} (${arr.length})</h3>
+               <ul style="margin:0;padding-left:20px;color:#222">
+                 ${arr.map((d) => `<li style="margin:4px 0">${escapeHtml(d.titulo)}</li>`).join("")}
+               </ul>`;
+
+        const subject = atrasadas.length > 0
+          ? `⚠️ ${atrasadas.length} demanda(s) atrasada(s) — Sigma GSS`
+          : `Você tem ${lista.length} demanda(s) próxima(s) do prazo`;
+
+        const html = `
+          <div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:600px;margin:0 auto;padding:24px;background:#fff;color:#222">
+            <h2 style="margin:0 0 4px;font-size:20px">Olá, ${escapeHtml(prof.nome_completo ?? "")}</h2>
+            <p style="margin:0 0 16px;color:#555">Resumo das suas demandas no Sigma:</p>
+            ${section("🔴 Atrasadas", atrasadas, "#b91c1c")}
+            ${section("🟠 Vencem hoje", hoje, "#c2410c")}
+            ${section("🟡 Vencem em 1 dia", em1, "#a16207")}
+            ${section("🟢 Vencem em 2 dias", em2, "#15803d")}
+            <div style="margin-top:28px">
+              <a href="${APP_URL}/demandas" style="display:inline-block;background:#0f172a;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600">Abrir Demandas</a>
+            </div>
+            <hr style="margin:32px 0 12px;border:none;border-top:1px solid #e5e7eb"/>
+            <p style="color:#888;font-size:12px;margin:0">Email automático do Sigma GSS · ${new Date().toLocaleDateString("pt-BR")}</p>
+          </div>`;
+
+        try {
+          const { error: mailErr } = await supabase.functions.invoke("send-email-resend", {
+            body: { to: prof.email, subject, html },
+          });
+          if (mailErr) throw mailErr;
+          emailsEnviados++;
+        } catch (e) {
+          console.error("[alerter] falha email", prof.email, e);
+          emailsFalha++;
+        }
+      }),
+    );
+
     return new Response(
       JSON.stringify({
         success: true,
         demandas: demandas.length,
         usuarios_afetados: userIds.length,
         notificacoes: inseridas,
+        emails_enviados: emailsEnviados,
+        emails_falha: emailsFalha,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
@@ -181,3 +244,12 @@ serve(async (req) => {
     );
   }
 });
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
