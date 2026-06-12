@@ -250,12 +250,18 @@ export function useDemandasTodas() {
 }
 
 export function usePendenciasSetor(setorId: string | null | undefined, isAdmin = false) {
+  // Para admin: setorId pode ser usado como override (filtrar 1 setor) ou
+  // undefined/null → mostrar todos os setores.
   return useQuery({
-    queryKey: ["demandas", "pendencias-setor", setorId, isAdmin],
+    queryKey: ["demandas", "pendencias-setor", setorId ?? null, isAdmin],
     enabled: !!setorId || isAdmin,
     queryFn: async () => {
       let q: any = supabase.from("vw_worklist_pendencias_setor" as any).select("*");
-      if (!isAdmin && setorId) q = q.eq("setor_id", setorId);
+      if (isAdmin) {
+        if (setorId) q = q.eq("setor_id", setorId);
+      } else if (setorId) {
+        q = q.eq("setor_id", setorId);
+      }
       const { data, error } = await q.order("urgencia", { ascending: false }).limit(200);
       if (error) throw error;
       return (data || []) as unknown as Array<{
