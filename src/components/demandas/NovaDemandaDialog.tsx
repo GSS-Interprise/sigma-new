@@ -483,6 +483,46 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
 
     try {
       let tarefaIdFinal: string;
+      const horaPayload = horaLimite && /^\d{2}:\d{2}$/.test(horaLimite)
+        ? `${horaLimite}:00`
+        : null;
+      const duracaoPayload = duracaoMin && /^\d+$/.test(duracaoMin)
+        ? parseInt(duracaoMin, 10)
+        : null;
+
+      // Se for recorrência nova (somente na criação), cria template e materializa
+      if (!isEditing && recorrenteAtivo) {
+        if (!horaPayload) {
+          toast.error("Informe a hora para a recorrência");
+          return;
+        }
+        if (recFrequencia === "semanal" && recDiasSemana.length === 0) {
+          toast.error("Selecione ao menos um dia da semana");
+          return;
+        }
+        if (recFrequencia === "mensal" && (!recDiaMes || isNaN(parseInt(recDiaMes, 10)))) {
+          toast.error("Informe o dia do mês");
+          return;
+        }
+        await criarRecorrencia.mutateAsync({
+          titulo: titulo.trim(),
+          descricao: descricao.trim() || null,
+          tipo: "tarefa",
+          urgencia,
+          setor_destino_id: null,
+          escopo: ehPessoal ? "setor" : "geral",
+          frequencia: recFrequencia,
+          dias_semana: recFrequencia === "semanal" ? recDiasSemana : null,
+          dia_mes: recFrequencia === "mensal" ? parseInt(recDiaMes, 10) : null,
+          hora: horaPayload,
+          duracao_min: duracaoPayload ?? 60,
+          participantes: mencionadosFinal,
+          checklist_template: checklist.filter((c) => c.texto.trim()),
+        });
+        onOpenChange(false);
+        return;
+      }
+
       if (isEditing && tarefaId) {
         await atualizar.mutateAsync({
           id: tarefaId,
@@ -493,6 +533,8 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
           mencionados: mencionadosFinal,
           finalizadores: finalizadores.filter((id) => id !== user?.id),
           data_limite: dataLimite ? format(dataLimite, "yyyy-MM-dd") : null,
+          data_limite_hora: horaPayload,
+          duracao_min: duracaoPayload,
           checklist: checklist.filter((c) => c.texto.trim()),
           tags,
         });
@@ -519,6 +561,8 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
         mencionados: mencionadosFinal,
         finalizadores: finalizadores.filter((id) => id !== user?.id),
         data_limite: dataLimite ? format(dataLimite, "yyyy-MM-dd") : null,
+        data_limite_hora: horaPayload,
+        duracao_min: duracaoPayload,
         checklist: checklist.filter((c) => c.texto.trim()),
         tags,
         comentario_inicial: comentarioInicial.trim() || null,
