@@ -139,10 +139,10 @@ export default function Comunicacao() {
       {isAdmin && (
         <Tabs value={vista} onValueChange={(v) => setVista(v as any)} className="ml-auto">
           <TabsList>
-            <TabsTrigger value="comunicacao" className="gap-1">
+            <TabsTrigger value="comunicacao" className="gap-1 data-[state=active]:bg-green-600 data-[state=active]:text-white">
               <MessageSquare className="h-3.5 w-3.5" /> Comunicação
             </TabsTrigger>
-            <TabsTrigger value="monitoramento" className="gap-1">
+            <TabsTrigger value="monitoramento" className="gap-1 data-[state=active]:bg-green-600 data-[state=active]:text-white">
               <Shield className="h-3.5 w-3.5" /> Monitoramento ADM
             </TabsTrigger>
           </TabsList>
