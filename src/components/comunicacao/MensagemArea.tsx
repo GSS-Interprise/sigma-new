@@ -337,6 +337,8 @@ export function MensagemArea({ canalId, onOpenDM, targetMensagemId, onTargetMens
         <MensagemList 
           mensagens={mensagens || []} 
           currentUserId={user?.id}
+          currentUserNome={profile?.nome_completo}
+          reacoesByMensagem={reacoesByMensagem}
           onReply={handleReply}
           onEdit={handleEdit}
           onUserNameClick={onOpenDM}
