@@ -59,6 +59,27 @@ export function MensagemArea({ canalId, onOpenDM, targetMensagemId, onTargetMens
     },
   });
 
+  // Reações por mensagem do canal
+  const { data: reacoes } = useQuery({
+    queryKey: ["reacoes", canalId],
+    queryFn: async () => {
+      const ids = (mensagens || []).map((m) => m.id);
+      if (ids.length === 0) return [] as any[];
+      const { data, error } = await supabase
+        .from("comunicacao_reacoes")
+        .select("id, mensagem_id, user_id, user_nome, reacao")
+        .in("mensagem_id", ids);
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!mensagens && mensagens.length > 0,
+  });
+
+  const reacoesByMensagem = (reacoes || []).reduce((acc: Record<string, any[]>, r: any) => {
+    (acc[r.mensagem_id] = acc[r.mensagem_id] || []).push(r);
+    return acc;
+  }, {});
+
   // Buscar participantes do canal para menções
   const { data: participantes } = useQuery({
     queryKey: ["canal-participantes", canalId],
@@ -192,6 +213,13 @@ export function MensagemArea({ canalId, onOpenDM, targetMensagemId, onTargetMens
           queryClient.invalidateQueries({ queryKey: ["mensagens", canalId] });
         }
       )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "comunicacao_reacoes" },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["reacoes", canalId] });
+        }
+      )
       .subscribe();
 
     return () => {
@@ -309,6 +337,8 @@ export function MensagemArea({ canalId, onOpenDM, targetMensagemId, onTargetMens
         <MensagemList 
           mensagens={mensagens || []} 
           currentUserId={user?.id}
+          currentUserNome={profile?.nome_completo}
+          reacoesByMensagem={reacoesByMensagem}
           onReply={handleReply}
           onEdit={handleEdit}
           onUserNameClick={onOpenDM}

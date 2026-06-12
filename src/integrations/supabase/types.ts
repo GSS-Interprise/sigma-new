@@ -4052,6 +4052,41 @@ export type Database = {
           },
         ]
       }
+      comunicacao_reacoes: {
+        Row: {
+          created_at: string
+          id: string
+          mensagem_id: string
+          reacao: string
+          user_id: string
+          user_nome: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          mensagem_id: string
+          reacao: string
+          user_id: string
+          user_nome: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          mensagem_id?: string
+          reacao?: string
+          user_id?: string
+          user_nome?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "comunicacao_reacoes_mensagem_id_fkey"
+            columns: ["mensagem_id"]
+            isOneToOne: false
+            referencedRelation: "comunicacao_mensagens"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       config_lista_items: {
         Row: {
           campo_nome: string

@@ -1,11 +1,13 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
-import { Plus, Hash, MessageSquare, Lock } from "lucide-react";
+import { Plus, Hash, MessageSquare, Lock, Shield } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { CanalList } from "@/components/comunicacao/CanalList";
 import { MensagemArea } from "@/components/comunicacao/MensagemArea";
 import { NovoCanalDialog } from "@/components/comunicacao/NovoCanalDialog";
 import { NovaDMDialog } from "@/components/comunicacao/NovaDMDialog";
+import { MonitoramentoAdm } from "@/components/comunicacao/MonitoramentoAdm";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -19,6 +21,7 @@ export default function Comunicacao() {
   const [novaDMOpen, setNovaDMOpen] = useState(false);
   const { isAdmin } = usePermissions();
   const queryClient = useQueryClient();
+  const [vista, setVista] = useState<"comunicacao" | "monitoramento">("comunicacao");
 
   // Handle canal from URL query param
   useEffect(() => {
@@ -42,20 +45,12 @@ export default function Comunicacao() {
   });
 
   const { data: canais } = useQuery({
-    queryKey: ["comunicacao-canais", isAdmin],
+    queryKey: ["comunicacao-canais"],
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Não autenticado");
-
-      if (isAdmin) {
-        const { data, error } = await supabase
-          .from("comunicacao_canais")
-          .select("*")
-          .order("updated_at", { ascending: false });
-        if (error) throw error;
-        return data;
-      }
-
+      // Sempre mostra apenas canais/DMs em que o usuário participa
+      // (mesmo admin: o monitoramento de DMs alheias fica na aba "Monitoramento ADM")
       const { data, error } = await supabase
         .from("comunicacao_canais")
         .select(`*, comunicacao_participantes!inner(user_id, ultima_leitura)`)
@@ -135,14 +130,31 @@ export default function Comunicacao() {
   }, [currentUser, queryClient]);
 
   const headerActions = (
-    <div className="flex items-center gap-2">
-      <h1 className="text-2xl font-bold">Comunicação</h1>
-      <p className="text-sm text-muted-foreground">Mensagens e canais internos</p>
+    <div className="flex items-center gap-4 w-full">
+      <div className="flex items-center gap-2">
+        <h1 className="text-2xl font-bold">Comunicação</h1>
+        <p className="text-sm text-muted-foreground hidden md:block">Mensagens e canais internos</p>
+      </div>
+      {isAdmin && (
+        <Tabs value={vista} onValueChange={(v) => setVista(v as any)} className="ml-auto">
+          <TabsList>
+            <TabsTrigger value="comunicacao" className="gap-1">
+              <MessageSquare className="h-3.5 w-3.5" /> Comunicação
+            </TabsTrigger>
+            <TabsTrigger value="monitoramento" className="gap-1">
+              <Shield className="h-3.5 w-3.5" /> Monitoramento ADM
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+      )}
     </div>
   );
 
   return (
     <AppLayout headerActions={headerActions}>
+      {isAdmin && vista === "monitoramento" ? (
+        <MonitoramentoAdm />
+      ) : (
       <div className="flex h-full">
         {/* Sidebar de canais */}
         <div className="w-64 border-r bg-card flex flex-col">
@@ -220,6 +232,7 @@ export default function Comunicacao() {
           )}
         </div>
       </div>
+      )}
 
       <NovoCanalDialog
         open={novoCanalOpen}

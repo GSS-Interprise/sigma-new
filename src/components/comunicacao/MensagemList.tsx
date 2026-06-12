@@ -14,6 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { NovaDemandaDialog } from "@/components/demandas/NovaDemandaDialog";
+import { ReacoesMensagem, type Reacao } from "./ReacoesMensagem";
 
 const IMAGE_EXTS = ["jpg", "jpeg", "png", "gif", "bmp", "webp", "svg"];
 const VIDEO_EXTS = ["mp4", "webm", "ogg", "mov"];
@@ -43,6 +44,8 @@ interface Mensagem {
 interface MensagemListProps {
   mensagens: Mensagem[];
   currentUserId?: string;
+  currentUserNome?: string;
+  reacoesByMensagem?: Record<string, Reacao[]>;
   onReply?: (mensagem: Mensagem) => void;
   onEdit?: (mensagemId: string, novoTexto: string) => void;
   onUserNameClick?: (userId: string) => void;
@@ -55,7 +58,7 @@ interface MensagemListProps {
 
 const EDIT_TIME_LIMIT_SECONDS = 300; // 5 minutos
 
-export function MensagemList({ mensagens, currentUserId, onReply, onEdit, onUserNameClick, canalId, targetMensagemId, onTargetMensagemHandled }: MensagemListProps) {
+export function MensagemList({ mensagens, currentUserId, currentUserNome, reacoesByMensagem, onReply, onEdit, onUserNameClick, canalId, targetMensagemId, onTargetMensagemHandled }: MensagemListProps) {
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [fileViewerOpen, setFileViewerOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -461,6 +464,16 @@ export function MensagemList({ mensagens, currentUserId, onReply, onEdit, onUser
                     </span>
                   )}
                 </div>
+                {canalId && (
+                  <ReacoesMensagem
+                    mensagemId={mensagem.id}
+                    canalId={canalId}
+                    reacoes={reacoesByMensagem?.[mensagem.id] || []}
+                    currentUserId={currentUserId}
+                    currentUserNome={currentUserNome}
+                    isOwn={isOwn}
+                  />
+                )}
               </div>
             </div>
           );
