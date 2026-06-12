@@ -48,12 +48,24 @@ export function ReacoesMensagem({
   const toggleMutation = useMutation({
     mutationFn: async (tipo: ReacaoTipo) => {
       if (!currentUserId) return;
-      const existente = reacoes.find(
-        (r) => r.reacao === tipo && r.user_id === currentUserId
-      );
-      if (existente) {
-        await supabase.from("comunicacao_reacoes").delete().eq("id", existente.id);
-      } else {
+      // Reação atual do usuário nesta mensagem (apenas uma é permitida)
+      const minhasReacoes = reacoes.filter((r) => r.user_id === currentUserId);
+      const mesmaReacao = minhasReacoes.find((r) => r.reacao === tipo);
+
+      // Sempre remove todas as reações anteriores deste usuário nesta mensagem
+      if (minhasReacoes.length > 0) {
+        await supabase
+          .from("comunicacao_reacoes")
+          .delete()
+          .in(
+            "id",
+            minhasReacoes.map((r) => r.id)
+          );
+      }
+
+      // Se clicou na mesma reação que já tinha → só remove (toggle off).
+      // Se clicou em outra → insere a nova depois de remover a anterior.
+      if (!mesmaReacao) {
         await supabase.from("comunicacao_reacoes").insert({
           mensagem_id: mensagemId,
           user_id: currentUserId,
