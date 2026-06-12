@@ -138,6 +138,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
   const upload = useUploadAnexoDemanda();
   const removerAnexo = useDeleteAnexoDemanda();
   const atualizarStatus = useAtualizarStatusDemanda();
+  const criarRecorrencia = useCriarRecorrencia();
 
   const tarefaIdValido = !!tarefaId && UUID_RE.test(tarefaId);
   const isEditing = tarefaIdValido;
@@ -158,6 +159,13 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
   const [dataLimite, setDataLimite] = useState<Date | undefined>(
     defaultDate ?? undefined,
   );
+  const [horaLimite, setHoraLimite] = useState<string>("");
+  const [duracaoMin, setDuracaoMin] = useState<string>("");
+  // Recorrência
+  const [recorrenteAtivo, setRecorrenteAtivo] = useState(false);
+  const [recFrequencia, setRecFrequencia] = useState<"diaria" | "semanal" | "mensal">("semanal");
+  const [recDiasSemana, setRecDiasSemana] = useState<number[]>([]);
+  const [recDiaMes, setRecDiaMes] = useState<string>("");
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [checklist, setChecklist] = useState<{ texto: string; ok: boolean }[]>([]);
