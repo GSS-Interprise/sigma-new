@@ -1,11 +1,13 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
-import { Plus, Hash, MessageSquare, Lock } from "lucide-react";
+import { Plus, Hash, MessageSquare, Lock, Shield } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { CanalList } from "@/components/comunicacao/CanalList";
 import { MensagemArea } from "@/components/comunicacao/MensagemArea";
 import { NovoCanalDialog } from "@/components/comunicacao/NovoCanalDialog";
 import { NovaDMDialog } from "@/components/comunicacao/NovaDMDialog";
+import { MonitoramentoAdm } from "@/components/comunicacao/MonitoramentoAdm";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -19,6 +21,7 @@ export default function Comunicacao() {
   const [novaDMOpen, setNovaDMOpen] = useState(false);
   const { isAdmin } = usePermissions();
   const queryClient = useQueryClient();
+  const [vista, setVista] = useState<"comunicacao" | "monitoramento">("comunicacao");
 
   // Handle canal from URL query param
   useEffect(() => {
@@ -42,20 +45,12 @@ export default function Comunicacao() {
   });
 
   const { data: canais } = useQuery({
-    queryKey: ["comunicacao-canais", isAdmin],
+    queryKey: ["comunicacao-canais"],
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Não autenticado");
-
-      if (isAdmin) {
-        const { data, error } = await supabase
-          .from("comunicacao_canais")
-          .select("*")
-          .order("updated_at", { ascending: false });
-        if (error) throw error;
-        return data;
-      }
-
+      // Sempre mostra apenas canais/DMs em que o usuário participa
+      // (mesmo admin: o monitoramento de DMs alheias fica na aba "Monitoramento ADM")
       const { data, error } = await supabase
         .from("comunicacao_canais")
         .select(`*, comunicacao_participantes!inner(user_id, ultima_leitura)`)
