@@ -178,7 +178,7 @@ export default function Comunicacao() {
 
         {/* Sidebar de canais (direita) com abas Canais / Privado */}
         <div className="w-72 border-l bg-card flex flex-col min-h-0 overflow-hidden">
-          <Tabs defaultValue="canais" className="flex flex-col h-full min-h-0">
+          <Tabs value={tabSidebar} onValueChange={(v) => setTabSidebar(v as any)} className="flex flex-col h-full min-h-0">
             <div className="flex items-center gap-1 p-2 border-b shrink-0">
               <TabsList className="grid grid-cols-2 flex-1">
                 <TabsTrigger value="canais" className="gap-1">
@@ -192,13 +192,10 @@ export default function Comunicacao() {
                 size="sm"
                 variant="ghost"
                 className="h-8 w-8 p-0 shrink-0"
-                onClick={() => (vista === "comunicacao" ? null : null)}
+                onClick={() => (tabSidebar === "canais" ? setNovoCanalOpen(true) : setNovaDMOpen(true))}
+                title={tabSidebar === "canais" ? "Novo canal" : "Nova conversa privada"}
               >
-                <Plus className="h-4 w-4" onClick={(e) => {
-                  // Botão "+" contextual: abre criar canal ou nova DM conforme aba ativa
-                  const activeTab = (e.currentTarget.closest("[data-tabs-root]") as HTMLElement)?.querySelector('[data-state="active"]')?.getAttribute("data-value");
-                  // fallback: usa o componente abaixo
-                }} />
+                <Plus className="h-4 w-4" />
               </Button>
             </div>
 
