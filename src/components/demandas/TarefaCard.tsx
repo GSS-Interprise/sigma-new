@@ -32,6 +32,7 @@ import { cn } from "@/lib/utils";
 import { URGENCIA_CLASS, URGENCIA_LABEL, TIPO_LABEL } from "@/lib/setoresAccess";
 import type { DemandaTarefa } from "@/hooks/useDemandas";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface Props {
   tarefa: DemandaTarefa;
@@ -54,10 +55,18 @@ function initials(name?: string | null) {
 
 export function TarefaCard({ tarefa, onConcluir, onReabrir, onClick, compact }: Props) {
   const { isAdmin } = usePermissions();
+  const { user } = useAuth();
   const atrasada =
     tarefa.data_limite &&
     tarefa.status !== "concluida" &&
     isPast(parseLocalDate(tarefa.data_limite) ?? new Date(tarefa.data_limite));
+
+  const finalizadoresIds = (tarefa.finalizadores ?? []).map((f) => f.user_id);
+  const podeFinalizar =
+    isAdmin ||
+    (!!user?.id && (tarefa.created_by === user.id || finalizadoresIds.includes(user.id)));
+  const souFinalizador =
+    !!user?.id && (tarefa.created_by === user.id || finalizadoresIds.includes(user.id));
 
   const urgClass =
     URGENCIA_CLASS[tarefa.urgencia] ?? URGENCIA_CLASS.media;
@@ -74,7 +83,7 @@ export function TarefaCard({ tarefa, onConcluir, onReabrir, onClick, compact }: 
       className={cn(
         "group relative overflow-hidden border-l-[3px] p-3 transition-all hover:shadow-md cursor-pointer bg-card/60 backdrop-blur-sm",
         atrasada
-          ? "border-l-destructive"
+          ? "border-l-destructive ring-1 ring-destructive/40 bg-destructive/5"
           : tarefa.urgencia === "critica"
           ? "border-l-destructive"
           : tarefa.urgencia === "alta"
@@ -82,6 +91,7 @@ export function TarefaCard({ tarefa, onConcluir, onReabrir, onClick, compact }: 
           : tarefa.urgencia === "media"
           ? "border-l-primary"
           : "border-l-muted-foreground/40",
+        souFinalizador && tarefa.status !== "concluida" && "ring-1 ring-destructive/50 bg-destructive/[0.06]",
         tarefa.status === "concluida" && "opacity-60",
       )}
       onClick={() => onClick?.(tarefa)}
@@ -95,9 +105,21 @@ export function TarefaCard({ tarefa, onConcluir, onReabrir, onClick, compact }: 
         >
           {tarefa.titulo}
         </h4>
-        <Badge variant="outline" className={cn("text-[10px] px-1.5 py-0", urgClass)}>
-          {URGENCIA_LABEL[tarefa.urgencia] ?? tarefa.urgencia}
-        </Badge>
+        <div className="flex items-center gap-1 shrink-0">
+          {atrasada && (
+            <Badge className="text-[9px] px-1.5 py-0 bg-destructive text-destructive-foreground animate-pulse">
+              ATRASADA
+            </Badge>
+          )}
+          {souFinalizador && tarefa.status !== "concluida" && !atrasada && (
+            <Badge className="text-[9px] px-1.5 py-0 bg-destructive/15 text-destructive border border-destructive/40">
+              Você finaliza
+            </Badge>
+          )}
+          <Badge variant="outline" className={cn("text-[10px] px-1.5 py-0", urgClass)}>
+            {URGENCIA_LABEL[tarefa.urgencia] ?? tarefa.urgencia}
+          </Badge>
+        </div>
       </div>
 
       {!compact && tarefa.descricao && (
@@ -197,7 +219,7 @@ export function TarefaCard({ tarefa, onConcluir, onReabrir, onClick, compact }: 
         </div>
       </div>
 
-      {onConcluir && tarefa.status !== "concluida" && (
+      {onConcluir && tarefa.status !== "concluida" && podeFinalizar && (
         <AlertDialog>
           <AlertDialogTrigger asChild>
             <Button
