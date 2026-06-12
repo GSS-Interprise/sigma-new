@@ -51,6 +51,7 @@ import ResetPassword from "./pages/ResetPassword";
 import AdminImport from "./pages/AdminImport";
 import Notificacoes from "./pages/Notificacoes";
 import NotFound from "./pages/NotFound";
+import { AlertaDemandasAtrasadasModal } from "@/components/demandas/AlertaDemandasAtrasadasModal";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -71,6 +72,7 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <AuthProvider>
+            <AlertaDemandasAtrasadasModal />
             <Routes>
             <Route path="/auth" element={<Auth />} />
             <Route path="/reset-password" element={<ResetPassword />} />
