@@ -24,6 +24,7 @@ import {
   CheckCircle2,
   Clock,
   RotateCcw,
+  Repeat,
 } from "lucide-react";
 import { format, isPast } from "date-fns";
 import { parseLocalDate } from "@/lib/dateUtils";
@@ -191,11 +192,24 @@ export function TarefaCard({ tarefa, onConcluir, onReabrir, onClick, compact }: 
             >
               <Calendar className="h-3 w-3" />
               {format(parseLocalDate(tarefa.data_limite) ?? new Date(tarefa.data_limite), "dd MMM", { locale: ptBR })}
+              {tarefa.data_limite_hora && (
+                <span className="ml-0.5 tabular-nums">
+                  · {(tarefa.data_limite_hora as string).slice(0, 5)}
+                </span>
+              )}
             </span>
           ) : (
             <span className="inline-flex items-center gap-1 text-muted-foreground">
               <Clock className="h-3 w-3" />
               Sem prazo
+            </span>
+          )}
+          {tarefa.recorrencia_id && (
+            <span
+              className="inline-flex items-center gap-0.5 text-primary"
+              title="Tarefa recorrente"
+            >
+              <Repeat className="h-3 w-3" />
             </span>
           )}
         </div>

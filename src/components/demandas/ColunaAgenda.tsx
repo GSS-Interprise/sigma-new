@@ -24,6 +24,7 @@ import { useDemandasDoSetor, useAtualizarStatusDemanda } from "@/hooks/useDemand
 import { useUserSetor } from "@/hooks/useUserSetor";
 import { TarefaCard } from "./TarefaCard";
 import { NovaDemandaDialog } from "./NovaDemandaDialog";
+import { DiaAgendaDialog } from "./DiaAgendaDialog";
 
 interface Props {
   onTarefaClick?: (id: string) => void;
@@ -38,6 +39,9 @@ export function ColunaAgenda({ onTarefaClick }: Props) {
   const [date, setDate] = useState<Date>(new Date());
   const [monthCursor, setMonthCursor] = useState<Date>(new Date());
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogDate, setDialogDate] = useState<Date | null>(null);
+  const [dayDialogOpen, setDayDialogOpen] = useState(false);
+  const [dayDialogDate, setDayDialogDate] = useState<Date | null>(null);
 
   // Build 6-week grid for the visible month
   const days = useMemo(() => {
@@ -144,7 +148,11 @@ export function ColunaAgenda({ onTarefaClick }: Props) {
             <button
               key={key}
               type="button"
-              onClick={() => setDate(d)}
+              onClick={() => {
+                setDate(d);
+                setDayDialogDate(d);
+                setDayDialogOpen(true);
+              }}
               className={cn(
                 "relative text-left p-1 overflow-hidden transition-colors group",
                 !isLastCol && "border-r",
@@ -243,8 +251,31 @@ export function ColunaAgenda({ onTarefaClick }: Props) {
 
       <NovaDemandaDialog
         open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        defaultDate={date}
+        onOpenChange={(o) => {
+          setDialogOpen(o);
+          if (!o) setDialogDate(null);
+        }}
+        defaultDate={dialogDate ?? date}
+      />
+
+      <DiaAgendaDialog
+        open={dayDialogOpen}
+        onOpenChange={setDayDialogOpen}
+        date={dayDialogDate}
+        tarefas={
+          dayDialogDate
+            ? tarefas.filter(
+                (t) =>
+                  t.data_limite &&
+                  isSameDay(parseISO(t.data_limite), dayDialogDate),
+              )
+            : []
+        }
+        onNovaTarefa={(d) => {
+          setDialogDate(d);
+          setDialogOpen(true);
+        }}
+        onTarefaClick={onTarefaClick}
       />
     </Card>
   );

@@ -14,6 +14,9 @@ export interface DemandaTarefa {
   tipo: string;
   escopo: string;
   data_limite: string | null;
+  data_limite_hora: string | null;
+  duracao_min: number | null;
+  recorrencia_id: string | null;
   concluida_em: string | null;
   created_at: string;
   created_by: string | null;
@@ -290,6 +293,8 @@ export interface NovaDemandaInput {
   urgencia: "baixa" | "media" | "alta" | "critica";
   tipo: "tarefa" | "arquivo" | "esclarecimento";
   data_limite?: string | null;
+  data_limite_hora?: string | null;
+  duracao_min?: number | null;
   licitacao_id?: string | null;
   contrato_id?: string | null;
   lead_id?: string | null;
@@ -324,6 +329,8 @@ export function useCriarDemanda() {
           setor_origem_id: input.setor_origem_id ?? null,
           responsavel_id: input.responsavel_id ?? null,
           data_limite: input.data_limite ?? null,
+          data_limite_hora: input.data_limite_hora ?? null,
+          duracao_min: input.duracao_min ?? null,
           licitacao_id: input.licitacao_id ?? null,
           contrato_id: input.contrato_id ?? null,
           lead_id: input.lead_id ?? null,
@@ -472,6 +479,8 @@ export interface AtualizarDemandaInput {
   descricao?: string | null;
   urgencia?: "baixa" | "media" | "alta" | "critica";
   data_limite?: string | null;
+  data_limite_hora?: string | null;
+  duracao_min?: number | null;
   responsavel_id?: string | null;
   mencionados?: string[];
   finalizadores?: string[];
@@ -493,6 +502,9 @@ export function useAtualizarDemanda() {
         patch.prioridade = input.urgencia;
       }
       if (input.data_limite !== undefined) patch.data_limite = input.data_limite;
+      if (input.data_limite_hora !== undefined)
+        patch.data_limite_hora = input.data_limite_hora;
+      if (input.duracao_min !== undefined) patch.duracao_min = input.duracao_min;
       if (input.responsavel_id !== undefined) patch.responsavel_id = input.responsavel_id;
       if (input.checklist !== undefined) patch.checklist = input.checklist as any;
       if (input.tags !== undefined) patch.tags = input.tags as any;
@@ -976,5 +988,72 @@ export function useToggleConfirmacaoDemanda() {
       qc.invalidateQueries({ queryKey: ["demandas"] });
     },
     onError: (e: any) => toast.error(e.message ?? "Erro ao confirmar"),
+  });
+}
+
+// =============================================================
+// Tarefas recorrentes
+// =============================================================
+
+export interface NovaRecorrenciaInput {
+  titulo: string;
+  descricao?: string | null;
+  tipo: "tarefa" | "arquivo" | "esclarecimento";
+  urgencia: "baixa" | "media" | "alta" | "critica";
+  setor_destino_id: string | null;
+  escopo: "setor" | "geral";
+  frequencia: "diaria" | "semanal" | "mensal";
+  dias_semana?: number[] | null;
+  dia_mes?: number | null;
+  hora: string; // HH:mm
+  duracao_min?: number | null;
+  participantes?: string[];
+  checklist_template?: { texto: string; ok: boolean }[];
+}
+
+export function useCriarRecorrencia() {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: NovaRecorrenciaInput) => {
+      if (!user?.id) throw new Error("Sem usuário autenticado");
+      const { data, error } = await supabase
+        .from("worklist_tarefa_recorrencias" as any)
+        .insert({
+          titulo: input.titulo,
+          descricao: input.descricao ?? null,
+          tipo: input.tipo,
+          urgencia: input.urgencia,
+          setor_destino_id: input.setor_destino_id,
+          escopo: input.escopo,
+          created_by: user.id,
+          frequencia: input.frequencia,
+          dias_semana: input.dias_semana ?? null,
+          dia_mes: input.dia_mes ?? null,
+          hora: input.hora,
+          duracao_min: input.duracao_min ?? 60,
+          participantes: input.participantes ?? [],
+          checklist_template: (input.checklist_template ?? []) as any,
+          ativo: true,
+        } as any)
+        .select("id")
+        .single();
+      if (error) throw error;
+      const recId = (data as any).id as string;
+      // Materializa imediatamente
+      try {
+        await supabase.functions.invoke("gerar-tarefas-recorrentes", {
+          body: { recorrencia_id: recId },
+        });
+      } catch (e) {
+        console.error("[demandas] falha ao materializar recorrência", e);
+      }
+      return recId;
+    },
+    onSuccess: () => {
+      toast.success("Recorrência criada");
+      qc.invalidateQueries({ queryKey: ["demandas"] });
+    },
+    onError: (e: any) => toast.error(e.message ?? "Erro ao criar recorrência"),
   });
 }
