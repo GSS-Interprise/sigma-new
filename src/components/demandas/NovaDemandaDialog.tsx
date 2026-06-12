@@ -1039,7 +1039,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                   >
                     <CalendarIcon className="mr-2 h-4 w-4" />
                     {dataLimite
-                      ? format(dataLimite, "dd/MM/yyyy")
+                      ? `${format(dataLimite, "dd/MM/yyyy")}${horaLimite ? ` · ${horaLimite}` : ""}`
                       : "Sem prazo"}
                   </Button>
                 </PopoverTrigger>
@@ -1052,13 +1052,28 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                     className="p-3 pointer-events-auto"
                     locale={ptBR}
                   />
+                  <div className="p-3 border-t space-y-2">
+                    <Label className="text-xs flex items-center gap-1.5">
+                      <ClockIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                      Hora (opcional)
+                    </Label>
+                    <Input
+                      type="time"
+                      value={horaLimite}
+                      onChange={(e) => setHoraLimite(e.target.value)}
+                      className="h-9"
+                    />
+                  </div>
                   {dataLimite && (
                     <div className="p-2 border-t">
                       <Button
                         size="sm"
                         variant="ghost"
                         className="w-full text-xs"
-                        onClick={() => setDataLimite(undefined)}
+                        onClick={() => {
+                          setDataLimite(undefined);
+                          setHoraLimite("");
+                        }}
                       >
                         Remover prazo
                       </Button>
