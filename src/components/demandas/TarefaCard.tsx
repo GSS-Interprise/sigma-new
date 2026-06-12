@@ -82,16 +82,15 @@ export function TarefaCard({ tarefa, onConcluir, onReabrir, onClick, compact }: 
     <Card
       className={cn(
         "group relative overflow-hidden border-l-[3px] p-3 transition-all hover:shadow-md cursor-pointer bg-card/60 backdrop-blur-sm",
-        atrasada
-          ? "border-l-destructive ring-1 ring-destructive/40 bg-destructive/5"
-          : tarefa.urgencia === "critica"
+        atrasada && "demanda-atrasada-gritante border-l-black",
+        !atrasada && (tarefa.urgencia === "critica"
           ? "border-l-destructive"
           : tarefa.urgencia === "alta"
           ? "border-l-orange-500"
           : tarefa.urgencia === "media"
           ? "border-l-primary"
-          : "border-l-muted-foreground/40",
-        souFinalizador && tarefa.status !== "concluida" && "ring-1 ring-destructive/50 bg-destructive/[0.06]",
+          : "border-l-muted-foreground/40"),
+        !atrasada && souFinalizador && tarefa.status !== "concluida" && "ring-1 ring-destructive/50 bg-destructive/[0.06]",
         tarefa.status === "concluida" && "opacity-60",
       )}
       onClick={() => onClick?.(tarefa)}
@@ -107,8 +106,8 @@ export function TarefaCard({ tarefa, onConcluir, onReabrir, onClick, compact }: 
         </h4>
         <div className="flex items-center gap-1 shrink-0">
           {atrasada && (
-            <Badge className="text-[9px] px-1.5 py-0 bg-destructive text-destructive-foreground animate-pulse">
-              ATRASADA
+            <Badge data-overdue-keep className="text-[10px] px-1.5 py-0 bg-black text-white border border-white font-bold tracking-wider animate-pulse">
+              ⚠ ATRASADA
             </Badge>
           )}
           {souFinalizador && tarefa.status !== "concluida" && !atrasada && (
