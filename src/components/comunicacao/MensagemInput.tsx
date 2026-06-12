@@ -240,7 +240,8 @@ export function MensagemInput({
   };
 
   return (
-    <div className="border-t p-4">
+    <div className="px-5 pb-5 pt-3">
+     <div className="chat-input-card p-3">
       {/* Reply Preview */}
       {replyingTo && (
         <div className="mb-2 flex items-center gap-2 bg-muted/50 rounded-lg px-3 py-2 border-l-4 border-primary">
@@ -278,7 +279,7 @@ export function MensagemInput({
         </div>
       )}
 
-      <div className="flex gap-2">
+      <div className="flex gap-2 items-end">
         <input
           ref={fileInputRef}
           type="file"
@@ -288,8 +289,9 @@ export function MensagemInput({
         />
         
         <Button
-          variant="outline"
+          variant="ghost"
           size="icon"
+          className="rounded-full text-[rgb(var(--chat-deep))] hover:bg-[rgb(var(--chat-cream))] shrink-0"
           onClick={() => fileInputRef.current?.click()}
           disabled={isLoading || uploadingFiles}
         >
@@ -305,7 +307,7 @@ export function MensagemInput({
                 value={mensagem}
                 onChange={handleMensagemChange}
                 onKeyDown={handleKeyDown}
-                className="min-h-[60px] resize-none"
+                className="min-h-[52px] resize-none border-0 focus-visible:ring-0 shadow-none bg-transparent px-2"
                 disabled={isLoading || uploadingFiles}
               />
             </PopoverAnchor>
@@ -346,10 +348,13 @@ export function MensagemInput({
         <Button
           onClick={handleEnviar}
           disabled={(!mensagem.trim() && anexos.length === 0) || isLoading || uploadingFiles}
+          className="chat-send h-10 w-10 p-0 rounded-full shrink-0"
+          size="icon"
         >
           <Send className="h-4 w-4" />
         </Button>
       </div>
+     </div>
     </div>
   );
 }

@@ -153,12 +153,13 @@ export default function Comunicacao() {
 
   return (
     <AppLayout headerActions={headerActions}>
+      <div className="chat-surface flex flex-col h-full min-h-0">
       {isAdmin && vista === "monitoramento" ? (
         <MonitoramentoAdm />
       ) : (
-      <div className="flex h-full min-h-0 overflow-hidden">
+      <div className="flex h-full min-h-0 overflow-hidden gap-3 p-3">
         {/* Área principal de mensagens (esquerda) */}
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex-1 flex flex-col min-w-0 chat-card overflow-hidden">
           {canalSelecionado ? (
             <MensagemArea 
               canalId={canalSelecionado} 
@@ -177,27 +178,21 @@ export default function Comunicacao() {
         </div>
 
         {/* Sidebar de canais (direita) com abas Canais / Privado */}
-        <div className="w-72 border-l bg-card flex flex-col min-h-0 overflow-hidden">
+        <div className="w-80 chat-card flex flex-col min-h-0 overflow-hidden">
           <Tabs value={tabSidebar} onValueChange={(v) => setTabSidebar(v as any)} className="flex flex-col h-full min-h-0">
-            <div className="flex items-center gap-1 p-2 border-b shrink-0">
+            <div className="flex items-center gap-2 p-3 chat-divider border-b shrink-0">
               <TabsList className="grid grid-cols-2 flex-1">
-                <TabsTrigger
-                  value="canais"
-                  className="gap-1 data-[state=active]:bg-green-600 data-[state=active]:text-white"
-                >
+                <TabsTrigger value="canais" className="chat-tab gap-1.5 font-semibold">
                   <Hash className="h-3.5 w-3.5" /> Canais
                 </TabsTrigger>
-                <TabsTrigger
-                  value="privado"
-                  className="gap-1 data-[state=active]:bg-green-600 data-[state=active]:text-white"
-                >
+                <TabsTrigger value="privado" className="chat-tab gap-1.5 font-semibold">
                   <MessageSquare className="h-3.5 w-3.5" /> Privado
                 </TabsTrigger>
               </TabsList>
               <Button
                 size="sm"
                 variant="ghost"
-                className="h-8 w-8 p-0 shrink-0"
+                className="h-9 w-9 p-0 shrink-0 rounded-full hover:bg-[rgb(var(--chat-cream))]"
                 onClick={() => (tabSidebar === "canais" ? setNovoCanalOpen(true) : setNovaDMOpen(true))}
                 title={tabSidebar === "canais" ? "Novo canal" : "Nova conversa privada"}
               >
@@ -207,7 +202,7 @@ export default function Comunicacao() {
 
             <TabsContent
               value="canais"
-              className="flex-1 min-h-0 mt-0 data-[state=active]:flex data-[state=active]:flex-col overflow-hidden"
+              className="flex-1 min-h-0 mt-0 data-[state=active]:flex data-[state=active]:flex-col overflow-hidden py-2"
             >
               <CanalList
                 canais={canaisGrupo}
@@ -218,7 +213,7 @@ export default function Comunicacao() {
 
             <TabsContent
               value="privado"
-              className="flex-1 min-h-0 mt-0 data-[state=active]:flex data-[state=active]:flex-col overflow-hidden"
+              className="flex-1 min-h-0 mt-0 data-[state=active]:flex data-[state=active]:flex-col overflow-hidden py-2"
             >
               <CanalList
                 canais={canaisDireto}
@@ -231,6 +226,7 @@ export default function Comunicacao() {
         </div>
       </div>
       )}
+      </div>
 
       <NovoCanalDialog
         open={novoCanalOpen}
