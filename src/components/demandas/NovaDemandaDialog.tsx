@@ -514,6 +514,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
           frequencia: recFrequencia,
           dias_semana: recFrequencia === "semanal" ? recDiasSemana : null,
           dia_mes: recFrequencia === "mensal" ? parseInt(recDiaMes, 10) : null,
+          data_inicio: dataLimite ? format(dataLimite, "yyyy-MM-dd") : null,
           hora: horaPayload,
           duracao_min: duracaoPayload ?? 60,
           participantes: mencionadosFinal,

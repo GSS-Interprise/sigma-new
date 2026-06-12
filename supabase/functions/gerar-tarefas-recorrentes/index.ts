@@ -93,7 +93,7 @@ Deno.serve(async (req) => {
         const { data: nova, error: insErr } = await supabase
           .from("worklist_tarefas")
           .insert({
-            modulo: "worklist",
+            modulo: "demandas",
             titulo: rec.titulo,
             descricao: rec.descricao,
             tipo: rec.tipo,
@@ -101,6 +101,7 @@ Deno.serve(async (req) => {
             escopo: rec.escopo,
             setor_destino_id: rec.setor_destino_id,
             created_by: rec.created_by,
+            responsavel_id: rec.participantes?.[0] ?? rec.created_by,
             data_limite: dataISO,
             data_limite_hora: rec.hora,
             duracao_min: rec.duracao_min,
