@@ -1,57 +1,31 @@
-## Melhorias no módulo Demandas
+## Objetivo
 
-### 1. Controle de quem pode finalizar a demanda
+Usar o Resend como provedor de envio de email para o digest diário de demandas (e demais alertas futuros), no lugar da infraestrutura Lovable Emails que exige verificação de domínio pendente.
 
-**Hoje:** qualquer responsável ou mencionado pode marcar como concluída.
-**Novo comportamento:** apenas o **criador** e os usuários escolhidos como **finalizadores** podem mudar o status para "concluída". Os demais envolvidos (mencionados) continuam podendo comentar, anexar, marcar checklist, etc.
+## Etapas
 
-**Banco**
-- Nova tabela `worklist_tarefa_finalizadores (tarefa_id, user_id)` com GRANTs + RLS (leitura para envolvidos, escrita para criador/admin).
-- Função `pode_finalizar_demanda(tarefa_id, user_id)` (SECURITY DEFINER) → true se for `created_by`, admin, ou estiver em `worklist_tarefa_finalizadores`. Por padrão o `responsavel_id` é incluído automaticamente como finalizador.
-- Trigger `BEFORE UPDATE` em `worklist_tarefas` que bloqueia mudança de `status` para `concluida` quando o usuário corrente não pode finalizar.
+1. **Conectar o connector Resend** ao projeto via `standard_connectors--connect`. Isso disponibiliza `LOVABLE_API_KEY` + `RESEND_API_KEY` como variáveis de ambiente nas Edge Functions, sem precisar criar/colar chave manualmente.
 
-**UI**
-- `NovaDemandaDialog`: novo campo "Quem pode finalizar?" (multi-select com base no responsável + mencionados). O criador é sempre incluído implícito.
-- `CardActionsMenu` / botão Concluir: só aparece se `pode_finalizar` true.
+2. **Criar Edge Function `send-email-resend`** — wrapper genérico que recebe `{ to, subject, html, text? }` e envia via gateway do Resend (`https://connector-gateway.lovable.dev/resend/emails`). Inclui validação Zod, CORS e tratamento de erro. Servirá para qualquer envio transacional do app.
 
-### 2. Pendências do setor por setor do usuário + filtro
+3. **Plugar no `demandas-deadline-alerter`** — após montar o digest por usuário, buscar o email do usuário em `profiles` e chamar `send-email-resend` com um HTML estilizado contendo:
+   - Lista de demandas atrasadas (destaque vermelho)
+   - Lista de demandas que vencem hoje / em 1 dia / em 2 dias
+   - Link direto para `/demandas`
+   - Mantém a notificação in-app (`system_notifications`) que já existe.
 
-- `ColunaPendenciasSetor` hoje já passa o `setorId` do usuário. Reforçar: **não-admin sempre é filtrado pelo seu próprio setor**, sem possibilidade de trocar.
-- **Admins:** novo `<Select>` no topo da coluna com opções "Todos os setores" (padrão) + lista de setores. O filtro é aplicado client-side no `usePendenciasSetor`.
-- Atualizar `usePendenciasSetor` para aceitar `setorIdOverride` opcional (usado só por admin).
+4. **Domínio do remetente** — usar `onboarding@resend.dev` inicialmente (funciona sem verificação, ideal para testes). Quando o usuário verificar `gestaoservicosaude.com.br` no painel Resend, basta trocar o `from` para `Sigma <demandas@gestaoservicosaude.com.br>`.
 
-### 3. Alertas e notificações
+5. **Teste manual** — após deploy, invocar `demandas-deadline-alerter` manualmente uma vez para validar o envio antes do cron das 08h disparar.
 
-**a) In-app (alertas mais agressivos)**
-- Cards de demandas em atraso na `ColunaMinhasTarefas`, `ColunaAgenda` e `KanbanTarefas` ganham:
-  - borda esquerda vermelha pulsante
-  - badge "ATRASADA" vermelho
-  - data em vermelho-escuro com ícone de alerta
-- Sino de notificações: criar uma notif persistente por dia para cada demanda atrasada do usuário (sem duplicar).
+## Detalhes técnicos
 
-**b) E-mail automático (digest, não 1 por demanda)**
-- Nova Edge Function `demandas-deadline-alerter` (cron diário 8h).
-- Lógica:
-  - Busca todas as demandas não concluídas com `data_limite` ∈ [hoje, hoje+2 dias] **OU** `data_limite < hoje` (atrasadas).
-  - Para cada usuário envolvido (criador, responsável, finalizadores, mencionados) agrupa as demandas dele.
-  - Envia **1 único e-mail por usuário** listando todas as demandas, separando "Vence hoje", "Vence em 1 dia", "Vence em 2 dias" e "Atrasadas".
-- Idempotência: tabela `demanda_alert_log (user_id, data, tipo)` com unique constraint para garantir 1 envio por usuário por dia.
-- Usar Lovable Emails (já configurado no projeto, se existir) com template novo `demandas-prazo-digest.tsx`. Se o domínio de email ainda não estiver configurado, peço para configurar primeiro.
-- Cron via `pg_cron` chamando a edge function todo dia às 8h America/Sao_Paulo.
+- Endpoint: `POST https://connector-gateway.lovable.dev/resend/emails`
+- Headers: `Authorization: Bearer ${LOVABLE_API_KEY}`, `X-Connection-Api-Key: ${RESEND_API_KEY}`
+- O cron pg_cron diário já está agendado e não precisa mudar.
+- A função `demandas-deadline-alerter` já agrupa demandas por usuário em buckets (Atrasadas / Vence hoje / 1 dia / 2 dias) — basta consumir esse agrupamento para o corpo do email.
+- Sem nova migração de banco.
 
-### 4. Destaque visual para demandas onde sou finalizador
+## Limitação
 
-- Cards em `TarefaCard`, `ColunaMinhasTarefas`, `KanbanTarefas`:
-  - Quando o usuário corrente é finalizador → fundo levemente avermelhado / borda mais forte + badge "Você finaliza".
-- Calendário (`ColunaAgenda`): dia com demandas onde sou finalizador ganha bullet/realce vermelho mais intenso; dia atrasado fica vermelho saturado.
-
-### Detalhes técnicos
-- Reaproveitar `system_notifications` para alertas in-app.
-- Reaproveitar `setores` para o select de admin.
-- Garantir que o trigger SQL retorne mensagem clara ("Apenas o criador e finalizadores podem concluir") para o toast da UI mapear.
-- Backfill: para demandas existentes, `responsavel_id` (quando existir) entra como finalizador único; sem responsável, só o criador finaliza.
-
-### Pontos de confirmação antes de implementar
-1. Ok confirmar que o **criador sempre pode finalizar** (sem checkbox)?
-2. O e-mail digest deve ir para **todos os envolvidos** (criador + responsável + finalizadores + mencionados) ou só para **criador + finalizadores**?
-3. Pode usar Lovable Emails como provedor? (Se já houver domínio configurado, plug-and-play; senão preciso pedir para configurar.)
+Com `onboarding@resend.dev`, o Resend só permite enviar para o email cadastrado na conta Resend até o domínio ser verificado. Para enviar a todos os usuários, será necessário verificar `gestaoservicosaude.com.br` no painel do Resend (https://resend.com/domains) — posso instruir os DNS records assim que estivermos nessa etapa.
