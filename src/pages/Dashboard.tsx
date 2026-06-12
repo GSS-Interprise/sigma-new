@@ -78,16 +78,25 @@ export default function Dashboard() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex-1 flex flex-col">
           <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
             <div className="flex items-center gap-3">
-              <TabsList>
-                <TabsTrigger value="home" className="flex items-center gap-2">
+              <TabsList className="h-11 gap-1 rounded-2xl border border-border/60 bg-card/80 p-1 shadow-sm backdrop-blur">
+                <TabsTrigger
+                  value="home"
+                  className="gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-muted-foreground transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg data-[state=active]:shadow-primary/25"
+                >
                   <LayoutDashboard className="h-4 w-4" />
                   Home
                 </TabsTrigger>
-                <TabsTrigger value="minha-area" className="flex items-center gap-2">
+                <TabsTrigger
+                  value="minha-area"
+                  className="gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-muted-foreground transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg data-[state=active]:shadow-primary/25"
+                >
                   <Briefcase className="h-4 w-4" />
                   Minha Área
                 </TabsTrigger>
-                <TabsTrigger value="kanban" className="flex items-center gap-2">
+                <TabsTrigger
+                  value="kanban"
+                  className="gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-muted-foreground transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg data-[state=active]:shadow-primary/25"
+                >
                   <Kanban className="h-4 w-4" />
                   Kanban de tarefas
                 </TabsTrigger>
