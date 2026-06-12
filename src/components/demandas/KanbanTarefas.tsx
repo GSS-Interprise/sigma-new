@@ -37,36 +37,33 @@ const COLUNAS: ColunaDef[] = [
     status: "aberta",
     label: "Todas as tarefas",
     icon: ListChecks,
-    headerClass: "from-primary/10 to-transparent border-primary/30",
+    headerClass: "bg-primary border-primary text-primary-foreground",
     ringClass: "ring-primary/50",
-    dotClass: "bg-primary",
+    dotClass: "bg-white/90",
   },
   {
     status: "em_analise",
     label: "Em análise",
     icon: Eye,
-    headerClass:
-      "from-blue-500/10 to-transparent border-blue-500/30 dark:from-blue-400/10 dark:border-blue-400/30",
+    headerClass: "bg-blue-500 border-blue-500 text-white",
     ringClass: "ring-blue-500/60",
-    dotClass: "bg-blue-500",
+    dotClass: "bg-white/90",
   },
   {
     status: "aguardando",
     label: "Aguardando",
     icon: Hourglass,
-    headerClass:
-      "from-amber-500/10 to-transparent border-amber-500/30 dark:from-amber-400/10 dark:border-amber-400/30",
+    headerClass: "bg-amber-500 border-amber-500 text-white",
     ringClass: "ring-amber-500/60",
-    dotClass: "bg-amber-500",
+    dotClass: "bg-white/90",
   },
   {
     status: "concluida",
     label: "Finalizado",
     icon: CheckCircle2,
-    headerClass:
-      "from-emerald-500/10 to-transparent border-emerald-500/30 dark:from-emerald-400/10 dark:border-emerald-400/30",
+    headerClass: "bg-emerald-600 border-emerald-600 text-white",
     ringClass: "ring-emerald-500/60",
-    dotClass: "bg-emerald-500",
+    dotClass: "bg-white/90",
   },
 ];
 
@@ -144,7 +141,7 @@ export function KanbanTarefas({ onTarefaClick }: Props) {
             >
               <div
                 className={cn(
-                  "p-3 border-b bg-gradient-to-r flex items-center justify-between gap-2",
+                  "p-3 border-b flex items-center justify-between gap-2",
                   col.headerClass,
                 )}
               >
@@ -153,7 +150,7 @@ export function KanbanTarefas({ onTarefaClick }: Props) {
                   <Icon className="h-4 w-4" />
                   <h3 className="font-semibold text-sm">{col.label}</h3>
                 </div>
-                <Badge variant="outline" className="text-[11px]">
+                <Badge variant="outline" className="text-[11px] bg-white/15 border-white/30 text-white hover:bg-white/20">
                   {lista.length}
                 </Badge>
               </div>
