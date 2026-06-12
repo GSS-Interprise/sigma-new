@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Hash, MessageSquare, Settings } from "lucide-react";
+import { Hash, MessageSquare, Settings, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GerenciarCanalDialog } from "./GerenciarCanalDialog";
 import { useQuery } from "@tanstack/react-query";
@@ -14,6 +14,9 @@ interface CanalHeaderProps {
   };
   isAdmin?: boolean;
   onCanalDeleted?: () => void;
+  onlineUsers?: Set<string>;
+  searchOpen?: boolean;
+  onToggleSearch?: () => void;
 }
 
 function shortName(fullName: string): string {
@@ -25,7 +28,7 @@ function shortName(fullName: string): string {
   return second ? `${first} ${second}` : first;
 }
 
-export function CanalHeader({ canal, isAdmin = false, onCanalDeleted }: CanalHeaderProps) {
+export function CanalHeader({ canal, isAdmin = false, onCanalDeleted, onlineUsers, searchOpen, onToggleSearch }: CanalHeaderProps) {
   const [gerenciarOpen, setGerenciarOpen] = useState(false);
 
   const { data: user } = useQuery({
@@ -38,7 +41,7 @@ export function CanalHeader({ canal, isAdmin = false, onCanalDeleted }: CanalHea
   });
 
   // For DM channels, resolve the other participant's name
-  const { data: dmDisplayName } = useQuery({
+  const { data: dmInfo } = useQuery({
     queryKey: ["dm-header-name", canal.id, user?.id],
     queryFn: async () => {
       if (!user) return null;
@@ -56,12 +59,16 @@ export function CanalHeader({ canal, isAdmin = false, onCanalDeleted }: CanalHea
         .eq("id", data[0].user_id)
         .single();
 
-      return profile?.nome_completo ? shortName(profile.nome_completo) : null;
+      return {
+        userId: data[0].user_id,
+        name: profile?.nome_completo ? shortName(profile.nome_completo) : null,
+      };
     },
     enabled: canal.tipo === "direto" && !!user,
   });
 
-  const displayName = canal.tipo === "direto" && dmDisplayName ? dmDisplayName : canal.nome;
+  const displayName = canal.tipo === "direto" && dmInfo?.name ? dmInfo.name : canal.nome;
+  const otherOnline = !!(canal.tipo === "direto" && dmInfo?.userId && onlineUsers?.has(dmInfo.userId));
 
   return (
     <>
@@ -76,19 +83,41 @@ export function CanalHeader({ canal, isAdmin = false, onCanalDeleted }: CanalHea
           </div>
           <div>
             <h3 className="chat-heading font-semibold text-[15px] leading-tight">{displayName}</h3>
-            {canal.descricao && (
-              <p className="text-xs text-muted-foreground mt-0.5">{canal.descricao}</p>
+            {canal.tipo === "direto" ? (
+              <p className="text-xs mt-0.5 flex items-center gap-1.5">
+                <span className={`h-1.5 w-1.5 rounded-full ${otherOnline ? "bg-emerald-500" : "bg-muted-foreground/40"}`} />
+                <span className={otherOnline ? "text-emerald-600 font-medium" : "text-muted-foreground"}>
+                  {otherOnline ? "Online agora" : "Offline"}
+                </span>
+              </p>
+            ) : (
+              canal.descricao && (
+                <p className="text-xs text-muted-foreground mt-0.5">{canal.descricao}</p>
+              )
             )}
           </div>
         </div>
-        <Button 
-          variant="ghost" 
-          size="icon"
-          className="rounded-full hover:bg-[rgb(var(--chat-cream))]"
-          onClick={() => setGerenciarOpen(true)}
-        >
-          <Settings className="h-4 w-4" />
-        </Button>
+        <div className="flex items-center gap-1">
+          {onToggleSearch && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className={`rounded-full hover:bg-[rgb(var(--chat-cream))] ${searchOpen ? "bg-[rgb(var(--chat-cream))]" : ""}`}
+              onClick={onToggleSearch}
+              title="Buscar mensagens"
+            >
+              <Search className="h-4 w-4" />
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="rounded-full hover:bg-[rgb(var(--chat-cream))]"
+            onClick={() => setGerenciarOpen(true)}
+          >
+            <Settings className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       <GerenciarCanalDialog
