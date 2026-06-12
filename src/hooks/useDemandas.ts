@@ -455,7 +455,14 @@ export function useAtualizarStatusDemanda() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["demandas"] });
     },
-    onError: (e: any) => toast.error(e.message ?? "Erro ao atualizar"),
+    onError: (e: any) => {
+      const msg = String(e?.message ?? "");
+      if (msg.includes("finalizadores escolhidos")) {
+        toast.error("Apenas o criador e finalizadores escolhidos podem concluir esta demanda.");
+      } else {
+        toast.error(msg || "Erro ao atualizar");
+      }
+    },
   });
 }
 
