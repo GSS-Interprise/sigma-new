@@ -54,10 +54,12 @@ export function ColunaPendenciasSetor() {
   });
 
   return (
-    <Card className="flex flex-col h-full bg-gradient-to-b from-card to-card/60 backdrop-blur-sm">
-      <div className="p-3 border-b flex items-center gap-2">
-        <AlertCircle className="h-4 w-4 text-orange-500" />
-        <h3 className="font-semibold text-sm">Pendências do setor</h3>
+    <Card className="flex flex-col h-full rounded-2xl border-border/70 shadow-sm overflow-hidden">
+      <div className="px-4 py-3 border-b flex items-center gap-2">
+        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-orange-500/10">
+          <AlertCircle className="h-4 w-4 text-orange-500" />
+        </div>
+        <h3 className="font-bold text-sm tracking-tight">Pendências do setor</h3>
         {!isAdmin && (
           <span className="text-[11px] text-muted-foreground">
             {setorNome ? `· ${setorNome}` : ""}
@@ -81,8 +83,8 @@ export function ColunaPendenciasSetor() {
           </div>
         )}
       </div>
-      <ScrollArea className="flex-1 p-2">
-        <div className="space-y-2">
+      <ScrollArea className="flex-1 px-3 py-3">
+        <div className="space-y-2.5">
           {isLoading && (
             <div className="text-xs text-muted-foreground text-center py-6">
               Carregando…
@@ -104,36 +106,36 @@ export function ColunaPendenciasSetor() {
               >
                 <div
                   className={cn(
-                    "rounded-lg border p-2.5 bg-card/50 hover:bg-muted/50 hover:shadow-sm transition border-l-[3px]",
+                    "rounded-xl border p-3 bg-card hover:shadow-md hover:-translate-y-0.5 transition-all border-l-[4px]",
                     p.urgencia === "alta"
                       ? "border-l-destructive"
                       : p.urgencia === "media"
                       ? "border-l-orange-500"
-                      : "border-l-muted-foreground/40",
+                      : "border-l-emerald-500/60",
                   )}
                 >
                   <div className="flex items-start gap-2">
-                    <Icon className="h-3.5 w-3.5 mt-0.5 text-muted-foreground shrink-0" />
+                    <Icon className="h-3.5 w-3.5 mt-0.5 text-muted-foreground/70 shrink-0" />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-2">
-                        <h4 className="text-xs font-semibold truncate">
+                        <h4 className="text-xs font-bold truncate">
                           {p.titulo}
                         </h4>
                         <Badge
                           variant="outline"
                           className={cn(
-                            "text-[9px] px-1 py-0 shrink-0",
+                            "text-[9px] px-1.5 py-0 shrink-0 font-bold uppercase",
                             URGENCIA_CLASS[p.urgencia] ?? "",
                           )}
                         >
                           {URGENCIA_LABEL[p.urgencia] ?? p.urgencia}
                         </Badge>
                       </div>
-                      <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">
+                      <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2 leading-relaxed">
                         {p.descricao}
                       </p>
-                      <div className="flex items-center justify-between mt-1">
-                        <span className="text-[10px] text-muted-foreground capitalize">
+                      <div className="flex items-center justify-between mt-1.5">
+                        <span className="text-[10px] font-bold text-muted-foreground/70 uppercase tracking-wider">
                           {p.origem}
                         </span>
                         <ExternalLink className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100" />
