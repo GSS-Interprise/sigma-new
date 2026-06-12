@@ -171,6 +171,7 @@ export default function Comunicacao() {
               onOpenDM={openDMWithUser}
               targetMensagemId={mensagemAlvo}
               onTargetMensagemHandled={() => setMensagemAlvo(null)}
+              onlineUsers={onlineUsers}
             />
           ) : (
             <div className="flex-1 flex items-center justify-center text-muted-foreground">

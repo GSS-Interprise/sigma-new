@@ -1,8 +1,7 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Upload, Search, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { useOnlinePresence } from "@/hooks/useOnlinePresence";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { MensagemList } from "./MensagemList";
@@ -17,6 +16,7 @@ interface MensagemAreaProps {
   /** Se informado, dá scroll na mensagem assim que a lista carrega. */
   targetMensagemId?: string | null;
   onTargetMensagemHandled?: () => void;
+  onlineUsers?: Set<string>;
 }
 
 interface ReplyingTo {
@@ -25,7 +25,7 @@ interface ReplyingTo {
   mensagem: string;
 }
 
-export function MensagemArea({ canalId, onOpenDM, targetMensagemId, onTargetMensagemHandled }: MensagemAreaProps) {
+export function MensagemArea({ canalId, onOpenDM, targetMensagemId, onTargetMensagemHandled, onlineUsers }: MensagemAreaProps) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { isAdmin } = usePermissions();
@@ -128,7 +128,6 @@ export function MensagemArea({ canalId, onOpenDM, targetMensagemId, onTargetMens
     staleTime: Infinity,
   });
 
-  const onlineUsers = useOnlinePresence(user?.id);
   const { data: profile } = useQuery({
     queryKey: ["profile", user?.id],
     queryFn: async () => {
