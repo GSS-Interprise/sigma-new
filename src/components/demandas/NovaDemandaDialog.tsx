@@ -589,7 +589,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                 {referencias?.conversa && (
                   <button
                     type="button"
-                    onClick={() => irPara(`/sigzap?conversa=${referencias.conversa!.id}`)}
+                    onClick={() => irPara(`/disparos/sigzap?conversa=${referencias.conversa!.id}`)}
                     className="inline-flex items-center gap-1 rounded-md border bg-muted/40 px-2 py-0.5 text-[11px] hover:bg-muted transition-colors"
                   >
                     <MessageCircle className="h-3 w-3" />
