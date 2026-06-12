@@ -86,8 +86,10 @@ export function TarefaCard({ tarefa, onConcluir, onReabrir, onClick, compact }: 
   return (
     <Card
       className={cn(
-        "group relative overflow-hidden border-l-[3px] p-3 transition-all hover:shadow-md cursor-pointer bg-card/60 backdrop-blur-sm",
-        atrasada && "demanda-atrasada-gritante border-l-black",
+        "group relative overflow-hidden rounded-2xl border p-4 transition-all duration-200 cursor-pointer",
+        atrasada
+          ? "border-l-[6px] border-l-rose-500 bg-slate-900 text-white shadow-xl shadow-slate-900/10 hover:scale-[1.005] hover:shadow-2xl"
+          : "border-l-[6px] bg-card hover:shadow-lg hover:-translate-y-0.5",
         !atrasada && (tarefa.urgencia === "critica"
           ? "border-l-destructive"
           : tarefa.urgencia === "alta"
@@ -95,7 +97,7 @@ export function TarefaCard({ tarefa, onConcluir, onReabrir, onClick, compact }: 
           : tarefa.urgencia === "media"
           ? "border-l-primary"
           : "border-l-muted-foreground/40"),
-        !atrasada && souFinalizador && tarefa.status !== "concluida" && "ring-1 ring-destructive/50 bg-destructive/[0.06]",
+        !atrasada && souFinalizador && tarefa.status !== "concluida" && "ring-1 ring-destructive/40 bg-destructive/[0.04]",
         tarefa.status === "concluida" && "opacity-60",
       )}
       onClick={() => onClick?.(tarefa)}
@@ -103,7 +105,8 @@ export function TarefaCard({ tarefa, onConcluir, onReabrir, onClick, compact }: 
       <div className="flex items-start justify-between gap-2 mb-1.5">
         <h4
           className={cn(
-            "text-sm font-semibold leading-snug flex-1 line-clamp-2",
+            "text-[15px] font-bold leading-snug flex-1 line-clamp-2",
+            atrasada ? "text-white" : "text-foreground",
             tarefa.status === "concluida" && "line-through",
           )}
         >
@@ -111,8 +114,8 @@ export function TarefaCard({ tarefa, onConcluir, onReabrir, onClick, compact }: 
         </h4>
         <div className="flex items-center gap-1 shrink-0">
           {atrasada && (
-            <Badge data-overdue-keep className="text-[10px] px-1.5 py-0 bg-black text-white border border-white font-bold tracking-wider animate-pulse">
-              ⚠ ATRASADA
+            <Badge data-overdue-keep className="text-[10px] px-2 py-0.5 bg-rose-500/20 text-rose-300 border border-rose-500/40 font-bold tracking-wider uppercase">
+              Atrasada
             </Badge>
           )}
           {souFinalizador && tarefa.status !== "concluida" && !atrasada && (
@@ -120,14 +123,20 @@ export function TarefaCard({ tarefa, onConcluir, onReabrir, onClick, compact }: 
               Você finaliza
             </Badge>
           )}
-          <Badge variant="outline" className={cn("text-[10px] px-1.5 py-0", urgClass)}>
+          <Badge variant="outline" className={cn(
+            "text-[10px] px-1.5 py-0",
+            atrasada ? "bg-white/10 text-white/80 border-white/15" : urgClass,
+          )}>
             {URGENCIA_LABEL[tarefa.urgencia] ?? tarefa.urgencia}
           </Badge>
         </div>
       </div>
 
       {!compact && tarefa.descricao && (
-        <p className="text-xs text-muted-foreground line-clamp-2 mb-2">
+        <p className={cn(
+          "text-xs line-clamp-2 mb-3 leading-relaxed",
+          atrasada ? "text-slate-400" : "text-muted-foreground",
+        )}>
           {tarefa.descricao
             .replace(/<[^>]*>/g, " ")
             .replace(/&nbsp;/g, " ")
@@ -139,17 +148,29 @@ export function TarefaCard({ tarefa, onConcluir, onReabrir, onClick, compact }: 
         </p>
       )}
 
-      <div className="flex items-center flex-wrap gap-1.5 text-[11px] text-muted-foreground">
-        <span className="inline-flex items-center gap-1 rounded-md bg-muted/60 px-1.5 py-0.5">
+      <div className={cn(
+        "flex items-center flex-wrap gap-1.5 text-[11px]",
+        atrasada ? "text-slate-400" : "text-muted-foreground",
+      )}>
+        <span className={cn(
+          "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-medium",
+          atrasada ? "bg-white/5 text-slate-300 border border-white/10" : "bg-muted/60",
+        )}>
           {TIPO_LABEL[tarefa.tipo] ?? tarefa.tipo}
         </span>
         {tarefa.setor_destino_nome && (
-          <span className="inline-flex items-center gap-1 rounded-md bg-primary/10 text-primary px-1.5 py-0.5">
+          <span className={cn(
+            "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-medium",
+            atrasada ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20" : "bg-primary/10 text-primary",
+          )}>
             {tarefa.setor_destino_nome}
           </span>
         )}
         {tarefa.escopo === "geral" && (
-          <span className="inline-flex items-center gap-1 rounded-md bg-accent/40 px-1.5 py-0.5">
+          <span className={cn(
+            "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5",
+            atrasada ? "bg-white/5 text-slate-300 border border-white/10" : "bg-accent/40",
+          )}>
             Geral
           </span>
         )}
@@ -181,13 +202,16 @@ export function TarefaCard({ tarefa, onConcluir, onReabrir, onClick, compact }: 
         ) : null}
       </div>
 
-      <div className="mt-2 flex items-center justify-between gap-2">
+      <div className={cn(
+        "mt-3 pt-3 flex items-center justify-between gap-2 border-t",
+        atrasada ? "border-white/5" : "border-border/40",
+      )}>
         <div className="flex items-center gap-1 text-[11px]">
           {tarefa.data_limite ? (
             <span
               className={cn(
-                "inline-flex items-center gap-1",
-                atrasada ? "text-destructive font-medium" : "text-muted-foreground",
+                "inline-flex items-center gap-1 font-medium",
+                atrasada ? "text-rose-400" : "text-muted-foreground",
               )}
             >
               <Calendar className="h-3 w-3" />
