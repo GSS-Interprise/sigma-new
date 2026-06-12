@@ -1069,6 +1069,131 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
             </div>
           </div>
 
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1.5">
+              <Label className="text-xs flex items-center gap-1.5">
+                <ClockIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                Hora (opcional)
+              </Label>
+              <Input
+                type="time"
+                value={horaLimite}
+                onChange={(e) => setHoraLimite(e.target.value)}
+                className="h-9"
+              />
+            </div>
+            {horaLimite && (
+              <div className="grid gap-1.5">
+                <Label className="text-xs">Duração (min)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  step={15}
+                  placeholder="60"
+                  value={duracaoMin}
+                  onChange={(e) => setDuracaoMin(e.target.value)}
+                  className="h-9"
+                />
+              </div>
+            )}
+          </div>
+
+          {!isEditing && (
+            <div className="grid gap-2 rounded-md border bg-muted/20 p-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs flex items-center gap-1.5 cursor-pointer">
+                  <Repeat className="h-3.5 w-3.5 text-primary" />
+                  Tarefa recorrente
+                </Label>
+                <Switch
+                  checked={recorrenteAtivo}
+                  onCheckedChange={setRecorrenteAtivo}
+                />
+              </div>
+              {recorrenteAtivo && (
+                <div className="grid gap-2">
+                  <div className="grid gap-1.5">
+                    <Label className="text-[11px] text-muted-foreground">
+                      Frequência
+                    </Label>
+                    <Select
+                      value={recFrequencia}
+                      onValueChange={(v) =>
+                        setRecFrequencia(v as "diaria" | "semanal" | "mensal")
+                      }
+                    >
+                      <SelectTrigger className="h-8">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="diaria">Diária</SelectItem>
+                        <SelectItem value="semanal">Semanal</SelectItem>
+                        <SelectItem value="mensal">Mensal</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {recFrequencia === "semanal" && (
+                    <div className="grid gap-1.5">
+                      <Label className="text-[11px] text-muted-foreground">
+                        Dias da semana
+                      </Label>
+                      <div className="flex flex-wrap gap-1">
+                        {["DOM", "SEG", "TER", "QUA", "QUI", "SEX", "SÁB"].map(
+                          (lbl, idx) => {
+                            const ativo = recDiasSemana.includes(idx);
+                            return (
+                              <button
+                                key={lbl}
+                                type="button"
+                                onClick={() =>
+                                  setRecDiasSemana((prev) =>
+                                    prev.includes(idx)
+                                      ? prev.filter((x) => x !== idx)
+                                      : [...prev, idx].sort(),
+                                  )
+                                }
+                                className={cn(
+                                  "inline-flex items-center justify-center w-9 h-8 rounded-md border text-[11px] font-semibold transition-colors",
+                                  ativo
+                                    ? "bg-primary text-primary-foreground border-primary"
+                                    : "bg-background border-border hover:bg-muted",
+                                )}
+                              >
+                                {lbl}
+                              </button>
+                            );
+                          },
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {recFrequencia === "mensal" && (
+                    <div className="grid gap-1.5">
+                      <Label className="text-[11px] text-muted-foreground">
+                        Dia do mês (1–31)
+                      </Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={31}
+                        value={recDiaMes}
+                        onChange={(e) => setRecDiaMes(e.target.value)}
+                        className="h-8"
+                      />
+                    </div>
+                  )}
+
+                  <p className="text-[11px] text-muted-foreground">
+                    Usa a <strong>hora</strong> e <strong>duração</strong> definidas acima. Pessoas marcadas serão mencionadas em cada ocorrência.
+                    As próximas 30 ocorrências são geradas automaticamente; novas datas surgem todo dia às 03h.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
           <p className="text-[11px] text-muted-foreground border-t pt-2">
             💡 Para vincular a uma <strong>licitação, contrato, lead</strong> ou{" "}
             <strong>conversa SigZap</strong>, abra o card correspondente e use o
