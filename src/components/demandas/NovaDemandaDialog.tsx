@@ -202,6 +202,12 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
       setFinalizadores([]);
       setUrgencia("media");
       setDataLimite(defaultDate ?? undefined);
+      setHoraLimite("");
+      setDuracaoMin("");
+      setRecorrenteAtivo(false);
+      setRecFrequencia("semanal");
+      setRecDiasSemana([]);
+      setRecDiaMes("");
       setPendingFiles([]);
       setChecklist([]);
       setNovoItem("");
@@ -225,6 +231,16 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
     setUrgencia((tarefaExistente.urgencia as Urgencia) ?? "media");
     setDataLimite(
       tarefaExistente.data_limite ? new Date(tarefaExistente.data_limite + "T00:00:00") : undefined,
+    );
+    setHoraLimite(
+      (tarefaExistente as any).data_limite_hora
+        ? String((tarefaExistente as any).data_limite_hora).slice(0, 5)
+        : "",
+    );
+    setDuracaoMin(
+      (tarefaExistente as any).duracao_min != null
+        ? String((tarefaExistente as any).duracao_min)
+        : "",
     );
     const mencIds = (tarefaExistente.mencionados ?? []).map((m) => m.user_id);
     const responsavel = tarefaExistente.responsavel_id;
