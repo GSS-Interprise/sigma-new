@@ -22,6 +22,7 @@ export default function Comunicacao() {
   const { isAdmin } = usePermissions();
   const queryClient = useQueryClient();
   const [vista, setVista] = useState<"comunicacao" | "monitoramento">("comunicacao");
+  const [tabSidebar, setTabSidebar] = useState<"canais" | "privado">("canais");
 
   // Handle canal from URL query param
   useEffect(() => {
@@ -155,7 +156,7 @@ export default function Comunicacao() {
       {isAdmin && vista === "monitoramento" ? (
         <MonitoramentoAdm />
       ) : (
-      <div className="flex h-full">
+      <div className="flex h-full min-h-0 overflow-hidden">
         {/* Área principal de mensagens (esquerda) */}
         <div className="flex-1 flex flex-col min-w-0">
           {canalSelecionado ? (
@@ -176,10 +177,10 @@ export default function Comunicacao() {
         </div>
 
         {/* Sidebar de canais (direita) com abas Canais / Privado */}
-        <div className="w-72 border-l bg-card flex flex-col">
-          <Tabs defaultValue="canais" className="flex flex-col h-full">
-            <div className="p-2 border-b">
-              <TabsList className="grid grid-cols-2 w-full">
+        <div className="w-72 border-l bg-card flex flex-col min-h-0 overflow-hidden">
+          <Tabs value={tabSidebar} onValueChange={(v) => setTabSidebar(v as any)} className="flex flex-col h-full min-h-0">
+            <div className="flex items-center gap-1 p-2 border-b shrink-0">
+              <TabsList className="grid grid-cols-2 flex-1">
                 <TabsTrigger value="canais" className="gap-1">
                   <Hash className="h-3.5 w-3.5" /> Canais
                 </TabsTrigger>
@@ -187,55 +188,38 @@ export default function Comunicacao() {
                   <MessageSquare className="h-3.5 w-3.5" /> Privado
                 </TabsTrigger>
               </TabsList>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-8 w-8 p-0 shrink-0"
+                onClick={() => (tabSidebar === "canais" ? setNovoCanalOpen(true) : setNovaDMOpen(true))}
+                title={tabSidebar === "canais" ? "Novo canal" : "Nova conversa privada"}
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
             </div>
 
-            <TabsContent value="canais" className="flex-1 min-h-0 flex flex-col m-0">
-              <div className="px-3 py-2 flex items-center justify-between border-b">
-                <span className="text-xs font-semibold text-muted-foreground uppercase">
-                  {canaisGrupo.length} canal{canaisGrupo.length === 1 ? "" : "is"}
-                </span>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 w-6 p-0"
-                  onClick={() => setNovoCanalOpen(true)}
-                  title="Novo canal"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-              <div className="flex-1 min-h-0 overflow-y-auto">
-                <CanalList
-                  canais={canaisGrupo}
-                  canalSelecionado={canalSelecionado}
-                  onSelectCanal={setCanalSelecionado}
-                />
-              </div>
+            <TabsContent
+              value="canais"
+              className="flex-1 min-h-0 mt-0 data-[state=active]:flex data-[state=active]:flex-col overflow-hidden"
+            >
+              <CanalList
+                canais={canaisGrupo}
+                canalSelecionado={canalSelecionado}
+                onSelectCanal={setCanalSelecionado}
+              />
             </TabsContent>
 
-            <TabsContent value="privado" className="flex-1 min-h-0 flex flex-col m-0">
-              <div className="px-3 py-2 flex items-center justify-between border-b">
-                <span className="text-xs font-semibold text-muted-foreground uppercase">
-                  {canaisDireto.length} conversa{canaisDireto.length === 1 ? "" : "s"}
-                </span>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 w-6 p-0"
-                  onClick={() => setNovaDMOpen(true)}
-                  title="Nova conversa privada"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-              <div className="flex-1 min-h-0 overflow-y-auto">
-                <CanalList
-                  canais={canaisDireto}
-                  canalSelecionado={canalSelecionado}
-                  onSelectCanal={setCanalSelecionado}
-                  isAdmin={isAdmin}
-                />
-              </div>
+            <TabsContent
+              value="privado"
+              className="flex-1 min-h-0 mt-0 data-[state=active]:flex data-[state=active]:flex-col overflow-hidden"
+            >
+              <CanalList
+                canais={canaisDireto}
+                canalSelecionado={canalSelecionado}
+                onSelectCanal={setCanalSelecionado}
+                isAdmin={isAdmin}
+              />
             </TabsContent>
           </Tabs>
         </div>
