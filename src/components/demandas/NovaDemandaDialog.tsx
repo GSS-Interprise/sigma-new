@@ -1313,25 +1313,25 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
         <DialogFooter className="shrink-0 border-t bg-background px-5 py-3 sm:justify-between gap-2">
           <div className="flex items-center gap-2">
             {isEditing && tarefaExistente ? (() => {
-              const envolvidosIds = Array.from(new Set([
+              // Finalizadores = criador + lista escolhida. Apenas eles finalizam.
+              const finalizadoresIds = Array.from(new Set([
                 tarefaExistente.created_by,
-                tarefaExistente.responsavel_id,
-                ...(tarefaExistente.mencionados ?? []).map((m) => m.user_id),
+                ...(tarefaExistente.finalizadores ?? []).map((f) => f.user_id),
               ].filter((x): x is string => !!x)));
               const confirmadosSet = new Set(confirmacoes.map((c) => c.user_id));
-              const total = envolvidosIds.length;
-              const feitas = envolvidosIds.filter((id) => confirmadosSet.has(id)).length;
-              const eEnvolvido = !!user?.id && envolvidosIds.includes(user.id);
+              const total = finalizadoresIds.length;
+              const feitas = finalizadoresIds.filter((id) => confirmadosSet.has(id)).length;
+              const eFinalizador = !!user?.id && finalizadoresIds.includes(user.id);
               const jaConfirmou = !!user?.id && confirmadosSet.has(user.id);
               const jaConcluida = tarefaExistente.status === "concluida";
-              if (!eEnvolvido && total >  0) {
+              if (!eFinalizador && total > 0) {
                 return (
                   <span className="text-[11px] text-muted-foreground">
-                    {feitas}/{total} confirmaram conclusão
+                    {feitas}/{total} finalizador(es) confirmaram
                   </span>
                 );
               }
-              if (!eEnvolvido) return <span />;
+              if (!eFinalizador) return <span />;
               return (
                 <>
                   <Button
@@ -1343,21 +1343,21 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                       toggleConfirmacao.mutate({
                         tarefaId: tarefaExistente.id,
                         confirmar: !jaConfirmou,
-                        envolvidosIds,
+                        finalizadoresIds,
                       })
                     }
                     className={cn("gap-1", jaConfirmou && "text-green-600 border-green-600/40")}
                     title={
                       jaConfirmou
-                        ? "Você confirmou. Clique para desfazer."
-                        : "Marcar minha parte como realizada"
+                        ? "Você confirmou a conclusão. Clique para desfazer."
+                        : "Confirmar finalização da demanda"
                     }
                   >
                     <CheckCircle2 className="h-4 w-4" />
-                    {jaConfirmou ? "Confirmado por você" : "Marcar como realizada"}
+                    {jaConfirmou ? "Você finalizou" : "Finalizar demanda"}
                   </Button>
                   <span className="text-[11px] text-muted-foreground">
-                    {feitas}/{total} confirmaram
+                    {feitas}/{total} finalizador(es)
                     {jaConcluida && " · concluída"}
                   </span>
                 </>
