@@ -70,25 +70,31 @@ export default function Demandas() {
   return (
     <AppLayout headerActions={headerActions}>
       <Tabs defaultValue="home" className="h-[calc(100vh-8rem)] flex flex-col">
-        <div className="px-3 pt-3">
-          <TabsList>
-            <TabsTrigger value="home" className="gap-1.5">
+        <div className="px-4 pt-4">
+          <TabsList className="h-11 gap-1 rounded-2xl border border-border/60 bg-card/80 p-1 shadow-sm backdrop-blur">
+            <TabsTrigger
+              value="home"
+              className="gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-muted-foreground transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg data-[state=active]:shadow-primary/25"
+            >
               <LayoutGrid className="h-4 w-4" /> Home
             </TabsTrigger>
-            <TabsTrigger value="kanban" className="gap-1.5">
+            <TabsTrigger
+              value="kanban"
+              className="gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-muted-foreground transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg data-[state=active]:shadow-primary/25"
+            >
               <Kanban className="h-4 w-4" /> Kanban de tarefas
             </TabsTrigger>
           </TabsList>
         </div>
         <TabsContent value="home" className="flex-1 min-h-0 p-3 mt-2">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 h-full">
-            <div className="min-h-0">
+          <div className="grid grid-cols-1 gap-4 h-full md:grid-cols-12">
+            <div className="min-h-0 md:col-span-3">
               <ColunaAgenda onTarefaClick={abrirDetalheTarefa} />
             </div>
-            <div className="min-h-0">
+            <div className="min-h-0 md:col-span-6">
               <ColunaMinhasTarefas onTarefaClick={abrirDetalheTarefa} />
             </div>
-            <div className="min-h-0">
+            <div className="min-h-0 md:col-span-3">
               <ColunaPendenciasSetor />
             </div>
           </div>
