@@ -65,23 +65,26 @@ export function CanalHeader({ canal, isAdmin = false, onCanalDeleted }: CanalHea
 
   return (
     <>
-      <div className="border-b p-4 flex items-center justify-between bg-card">
+      <div className="chat-divider border-b px-5 py-3.5 flex items-center justify-between bg-white/60 backdrop-blur-sm">
         <div className="flex items-center gap-3">
-          {canal.tipo === "direto" ? (
-            <MessageSquare className="h-5 w-5 text-muted-foreground" />
-          ) : (
-            <Hash className="h-5 w-5 text-muted-foreground" />
-          )}
+          <div className="h-9 w-9 rounded-full flex items-center justify-center bg-[rgb(var(--chat-cream))]">
+            {canal.tipo === "direto" ? (
+              <MessageSquare className="h-4 w-4 text-[rgb(var(--chat-deep))]" />
+            ) : (
+              <Hash className="h-4 w-4 text-[rgb(var(--chat-deep))]" />
+            )}
+          </div>
           <div>
-            <h3 className="font-semibold">{displayName}</h3>
+            <h3 className="chat-heading font-semibold text-[15px] leading-tight">{displayName}</h3>
             {canal.descricao && (
-              <p className="text-sm text-muted-foreground">{canal.descricao}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{canal.descricao}</p>
             )}
           </div>
         </div>
         <Button 
           variant="ghost" 
           size="icon"
+          className="rounded-full hover:bg-[rgb(var(--chat-cream))]"
           onClick={() => setGerenciarOpen(true)}
         >
           <Settings className="h-4 w-4" />

@@ -120,36 +120,33 @@ export function CanalList({ canais, canalSelecionado, onSelectCanal, isAdmin = f
   };
 
   return (
-    <div className="flex-1 overflow-y-auto">
+    <div className="flex-1 overflow-y-auto px-1">
       {canais.map((canal) => {
         const naoLidas = notificacoes?.[canal.id] || 0;
+        const selected = canalSelecionado === canal.id;
         
         return (
           <button
             key={canal.id}
             onClick={() => onSelectCanal(canal.id)}
-            className={cn(
-              "w-full px-4 py-3 flex items-center gap-3 hover:bg-accent transition-colors text-left",
-              canalSelecionado === canal.id && "bg-green-600 text-white hover:bg-green-600"
-            )}
+            data-selected={selected}
+            className="chat-channel"
           >
             {canal.tipo === "direto" ? (
               <div className="relative flex-shrink-0">
-                <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                <MessageSquare className={cn("h-4 w-4", selected ? "text-[rgb(var(--chat-gold))]" : "text-muted-foreground")} />
                 {isAdmin && isNotMyDM(canal) && (
                   <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-destructive" />
                 )}
               </div>
             ) : (
-              <Hash className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+              <Hash className={cn("h-4 w-4 flex-shrink-0", selected ? "text-[rgb(var(--chat-gold))]" : "text-muted-foreground")} />
             )}
             <div className="flex-1 min-w-0">
-              <div className="font-medium truncate">{getDisplayName(canal)}</div>
+              <div className="truncate">{getDisplayName(canal)}</div>
             </div>
             {naoLidas > 0 && (
-              <Badge variant="destructive" className="ml-auto">
-                {naoLidas}
-              </Badge>
+              <span className="chat-badge ml-auto">{naoLidas}</span>
             )}
           </button>
         );
