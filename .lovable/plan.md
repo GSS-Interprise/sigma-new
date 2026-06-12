@@ -1,31 +1,98 @@
 ## Objetivo
 
-Usar o Resend como provedor de envio de email para o digest diário de demandas (e demais alertas futuros), no lugar da infraestrutura Lovable Emails que exige verificação de domínio pendente.
+Evoluir o módulo de Demandas/Tarefas para suportar:
+1. **Prazo com hora** (não só data).
+2. **Tarefas recorrentes** (ex.: "toda quinta às 14h, reunião financeiro").
+3. **Alerta no Sigma 2h antes** do prazo expirar.
+4. **Clique no dia do calendário** abre dialog com tarefas e agendas daquele dia.
 
-## Etapas
+---
 
-1. **Conectar o connector Resend** ao projeto via `standard_connectors--connect`. Isso disponibiliza `LOVABLE_API_KEY` + `RESEND_API_KEY` como variáveis de ambiente nas Edge Functions, sem precisar criar/colar chave manualmente.
+## 1. Schema — `worklist_tarefas` e novas tabelas
 
-2. **Criar Edge Function `send-email-resend`** — wrapper genérico que recebe `{ to, subject, html, text? }` e envia via gateway do Resend (`https://connector-gateway.lovable.dev/resend/emails`). Inclui validação Zod, CORS e tratamento de erro. Servirá para qualquer envio transacional do app.
+Migração (esquema, sem dados):
 
-3. **Plugar no `demandas-deadline-alerter`** — após montar o digest por usuário, buscar o email do usuário em `profiles` e chamar `send-email-resend` com um HTML estilizado contendo:
-   - Lista de demandas atrasadas (destaque vermelho)
-   - Lista de demandas que vencem hoje / em 1 dia / em 2 dias
-   - Link direto para `/demandas`
-   - Mantém a notificação in-app (`system_notifications`) que já existe.
+- **`worklist_tarefas.data_limite_hora` `time`** (nullable) — hora associada ao `data_limite`. Mantém compatibilidade: tarefas antigas continuam só com data.
+- **`worklist_tarefas.duracao_min` `int`** (nullable) — útil para reuniões (default 60 quando criada como agenda).
+- **`worklist_tarefas.alerta_2h_enviado_at` `timestamptz`** — controle de idempotência do alerta.
+- **`worklist_tarefas.recorrencia_id` `uuid`** (FK → `worklist_tarefa_recorrencias.id`) — vincula a tarefa-instância ao template.
 
-4. **Domínio do remetente** — usar `onboarding@resend.dev` inicialmente (funciona sem verificação, ideal para testes). Quando o usuário verificar `gestaoservicosaude.com.br` no painel Resend, basta trocar o `from` para `Sigma <demandas@gestaoservicosaude.com.br>`.
+Nova tabela **`worklist_tarefa_recorrencias`**:
 
-5. **Teste manual** — após deploy, invocar `demandas-deadline-alerter` manualmente uma vez para validar o envio antes do cron das 08h disparar.
+```text
+id, titulo, descricao, tipo, urgencia,
+setor_destino_id, escopo, created_by,
+frequencia        text   -- 'semanal' | 'mensal' | 'diaria'
+dias_semana       int[]  -- 0..6 (dom..sáb), p/ semanal
+dia_mes           int    -- 1..31, p/ mensal
+hora              time   -- horário do compromisso
+duracao_min       int
+participantes     uuid[] -- vira mencionados em cada instância
+checklist_template jsonb
+ativo             bool
+proxima_geracao   date   -- até onde já foi materializado
+created_at, updated_at
+```
 
-## Detalhes técnicos
+Materialização: edge function diária gera instâncias em `worklist_tarefas` para os próximos 30 dias, idempotente por `(recorrencia_id, data_limite)` (unique index parcial).
 
-- Endpoint: `POST https://connector-gateway.lovable.dev/resend/emails`
-- Headers: `Authorization: Bearer ${LOVABLE_API_KEY}`, `X-Connection-Api-Key: ${RESEND_API_KEY}`
-- O cron pg_cron diário já está agendado e não precisa mudar.
-- A função `demandas-deadline-alerter` já agrupa demandas por usuário em buckets (Atrasadas / Vence hoje / 1 dia / 2 dias) — basta consumir esse agrupamento para o corpo do email.
-- Sem nova migração de banco.
+GRANTs + RLS análogas às de `worklist_tarefas` (criador/admin gerencia, setor visualiza).
 
-## Limitação
+---
 
-Com `onboarding@resend.dev`, o Resend só permite enviar para o email cadastrado na conta Resend até o domínio ser verificado. Para enviar a todos os usuários, será necessário verificar `gestaoservicosaude.com.br` no painel do Resend (https://resend.com/domains) — posso instruir os DNS records assim que estivermos nessa etapa.
+## 2. Backend / Edge Functions
+
+- **`gerar-tarefas-recorrentes`** — roda 1x/dia via `pg_cron`. Para cada recorrência ativa, cria as instâncias faltantes dos próximos 30 dias.
+- **`alerta-tarefas-2h`** — roda a cada 10 min via `pg_cron`. Seleciona tarefas com `data_limite + data_limite_hora` entre `now()+1h50` e `now()+2h10`, status ≠ concluída, `alerta_2h_enviado_at IS NULL`. Cria notificação em `comunicacao_notificacoes` / `system_notifications` para `created_by`, `responsavel_id` e `mencionados`, e marca `alerta_2h_enviado_at = now()`.
+
+Os jobs `pg_cron` serão inseridos via insert tool (contêm URL/anon-key específicos do projeto).
+
+---
+
+## 3. UI
+
+### a) `NovaDemandaDialog` (criar/editar tarefa)
+- Ao lado do date picker de Prazo, adicionar **input de hora** (`HH:mm`, opcional) e, quando preenchido, campo **Duração (min)**.
+- Nova aba/seção colapsável **"Repetir"**:
+  - Switch "Tarefa recorrente"
+  - Frequência: Semanal / Mensal / Diária
+  - Dias da semana (chips Seg–Dom) ou dia do mês
+  - Hora + Duração
+  - Pessoas envolvidas (reusa `PessoasCombobox`)
+  - Ao salvar com recorrência ativa: grava em `worklist_tarefa_recorrencias` e dispara `gerar-tarefas-recorrentes` para materializar imediatamente.
+
+### b) `TarefaCard`
+- Exibir hora junto da data quando `data_limite_hora` existir (`13 jun · 14:00`).
+- Badge 🔁 quando `recorrencia_id` não-nulo.
+
+### c) `ColunaAgenda` — clique no dia
+- Hoje o calendário só mostra contagem. Adicionar `onClick` no dia que abre **`DiaAgendaDialog`** novo:
+  - Lista as tarefas daquele dia ordenadas por hora.
+  - Inclui as instâncias de recorrência já materializadas (vêm naturalmente de `worklist_tarefas`).
+  - Botão "Nova tarefa neste dia" pré-preenche o `NovaDemandaDialog`.
+
+### d) Sino de notificações
+- Reaproveita o componente atual de notificações; alerta 2h aparece como item novo "⏰ Tarefa expira às 16:00 — {titulo}".
+
+---
+
+## 4. Detalhes técnicos
+
+- Campo único de prazo no front: `data_limite: Date` + `hora?: string`. Ao montar payload: gravar `data_limite` (date) e `data_limite_hora` (time) separados.
+- Ordenação na Agenda: `ORDER BY data_limite, data_limite_hora NULLS LAST`.
+- Considerar timezone do navegador para o alerta de 2h; o cron compara em `America/Sao_Paulo` (server side via `timezone('America/Sao_Paulo', now())`).
+- Edição de uma instância recorrente: editar só a instância (default) ou "editar série" (atualiza `worklist_tarefa_recorrencias` e regenera futuras não concluídas). Versão 1: apenas "editar instância"; "editar série" fica como follow-up.
+- Excluir série desativa `ativo=false` e remove instâncias futuras não concluídas.
+
+---
+
+## 5. Ordem de implementação
+
+1. Migração (schema + RLS + GRANTs + unique index + crons).
+2. Edge functions `gerar-tarefas-recorrentes` e `alerta-tarefas-2h`.
+3. UI: hora no `NovaDemandaDialog` + exibição no `TarefaCard`.
+4. UI: seção "Repetir" + criação de recorrência.
+5. UI: `DiaAgendaDialog` no clique do dia.
+6. Notificação 2h no sino.
+
+Posso começar pelos passos 1–3 (entrega imediata: hora + alerta) e depois 4–6 (recorrência + dialog do dia), ou ir tudo em sequência. Qual prefere?
