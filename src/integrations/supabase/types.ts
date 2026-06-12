@@ -2549,6 +2549,7 @@ export type Database = {
           responsavel_id: string | null
           rotation_strategy: string | null
           segmento_id: string | null
+          sem_especialidade: boolean
           setores_vinculados: string[] | null
           status: Database["public"]["Enums"]["status_campanha"]
           tamanho_lote: number | null
@@ -2629,6 +2630,7 @@ export type Database = {
           responsavel_id?: string | null
           rotation_strategy?: string | null
           segmento_id?: string | null
+          sem_especialidade?: boolean
           setores_vinculados?: string[] | null
           status?: Database["public"]["Enums"]["status_campanha"]
           tamanho_lote?: number | null
@@ -2709,6 +2711,7 @@ export type Database = {
           responsavel_id?: string | null
           rotation_strategy?: string | null
           segmento_id?: string | null
+          sem_especialidade?: boolean
           setores_vinculados?: string[] | null
           status?: Database["public"]["Enums"]["status_campanha"]
           tamanho_lote?: number | null
@@ -3385,6 +3388,62 @@ export type Database = {
           },
           {
             foreignKeyName: "chip_persona_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: true
+            referencedRelation: "vw_chip_performance_7d"
+            referencedColumns: ["chip_id"]
+          },
+        ]
+      }
+      chip_provider_secrets: {
+        Row: {
+          chip_id: string
+          created_at: string
+          provedor: string
+          uazapi_instance_id: string | null
+          uazapi_token: string | null
+          updated_at: string
+        }
+        Insert: {
+          chip_id: string
+          created_at?: string
+          provedor?: string
+          uazapi_instance_id?: string | null
+          uazapi_token?: string | null
+          updated_at?: string
+        }
+        Update: {
+          chip_id?: string
+          created_at?: string
+          provedor?: string
+          uazapi_instance_id?: string | null
+          uazapi_token?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chip_provider_secrets_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: true
+            referencedRelation: "chips"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chip_provider_secrets_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: true
+            referencedRelation: "vw_campanhas_dashboard"
+            referencedColumns: ["chip_principal_id"]
+          },
+          {
+            foreignKeyName: "chip_provider_secrets_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: true
+            referencedRelation: "vw_chip_health"
+            referencedColumns: ["chip_id"]
+          },
+          {
+            foreignKeyName: "chip_provider_secrets_chip_id_fkey"
             columns: ["chip_id"]
             isOneToOne: true
             referencedRelation: "vw_chip_performance_7d"
@@ -14079,6 +14138,7 @@ export type Database = {
           servico: string | null
           servico_cidade: string | null
           status: Database["public"]["Enums"]["status_lead_campanha"] | null
+          tipo_envio: string | null
           updated_at: string | null
           validacoes: Json | null
           validacoes_ok: number | null
@@ -14168,6 +14228,7 @@ export type Database = {
           servico: string | null
           servico_cidade: string | null
           status: Database["public"]["Enums"]["status_lead_campanha"] | null
+          tipo_envio: string | null
           updated_at: string | null
           validacoes: Json | null
           validacoes_ok: number | null
@@ -14907,6 +14968,7 @@ export type Database = {
           p_especialidade_ids?: string[]
           p_exclude_lead_ids?: string[]
           p_sample_limit?: number
+          p_sem_especialidade?: boolean
           p_uf?: string
         }
         Returns: Json
