@@ -479,6 +479,8 @@ export interface AtualizarDemandaInput {
   descricao?: string | null;
   urgencia?: "baixa" | "media" | "alta" | "critica";
   data_limite?: string | null;
+  data_limite_hora?: string | null;
+  duracao_min?: number | null;
   responsavel_id?: string | null;
   mencionados?: string[];
   finalizadores?: string[];
@@ -500,6 +502,9 @@ export function useAtualizarDemanda() {
         patch.prioridade = input.urgencia;
       }
       if (input.data_limite !== undefined) patch.data_limite = input.data_limite;
+      if (input.data_limite_hora !== undefined)
+        patch.data_limite_hora = input.data_limite_hora;
+      if (input.duracao_min !== undefined) patch.duracao_min = input.duracao_min;
       if (input.responsavel_id !== undefined) patch.responsavel_id = input.responsavel_id;
       if (input.checklist !== undefined) patch.checklist = input.checklist as any;
       if (input.tags !== undefined) patch.tags = input.tags as any;
