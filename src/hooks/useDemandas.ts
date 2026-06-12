@@ -29,6 +29,7 @@ export interface DemandaTarefa {
   criador_nome?: string | null;
   setor_destino_nome?: string | null;
   mencionados?: { user_id: string; nome?: string | null }[];
+  finalizadores?: { user_id: string; nome?: string | null }[];
   anexos_count?: number;
 }
 
@@ -68,7 +69,7 @@ async function enrich(rows: any[]): Promise<DemandaTarefa[]> {
   );
   const tarefaIds = rows.map((r) => r.id);
 
-  const [profilesRes, setoresRes, mencRes, anexosRes] = await Promise.all([
+  const [profilesRes, setoresRes, mencRes, anexosRes, finRes] = await Promise.all([
     userIds.length
       ? supabase.from("profiles").select("id, nome_completo").in("id", userIds)
       : Promise.resolve({ data: [] as any[] }),
@@ -82,6 +83,10 @@ async function enrich(rows: any[]): Promise<DemandaTarefa[]> {
     supabase
       .from("worklist_tarefa_anexos")
       .select("tarefa_id")
+      .in("tarefa_id", tarefaIds),
+    supabase
+      .from("worklist_tarefa_finalizadores" as any)
+      .select("tarefa_id, user_id")
       .in("tarefa_id", tarefaIds),
   ]);
 
@@ -97,8 +102,17 @@ async function enrich(rows: any[]): Promise<DemandaTarefa[]> {
     list.push({ user_id: m.user_id, nome: profilesMap.get(m.user_id) ?? null });
     mencByTarefa.set(m.tarefa_id, list);
   });
+  const finByTarefa = new Map<string, { user_id: string; nome?: string | null }[]>();
+  ((finRes as any).data || []).forEach((m: any) => {
+    const list = finByTarefa.get(m.tarefa_id) || [];
+    list.push({ user_id: m.user_id, nome: profilesMap.get(m.user_id) ?? null });
+    finByTarefa.set(m.tarefa_id, list);
+  });
   const mencUserIds = Array.from(
-    new Set((mencRes.data || []).map((m: any) => m.user_id)),
+    new Set([
+      ...((mencRes.data || []).map((m: any) => m.user_id)),
+      ...(((finRes as any).data || []).map((m: any) => m.user_id)),
+    ]),
   ).filter((id) => !profilesMap.has(id));
   if (mencUserIds.length) {
     const { data: extras } = await supabase
@@ -107,6 +121,11 @@ async function enrich(rows: any[]): Promise<DemandaTarefa[]> {
       .in("id", mencUserIds);
     (extras || []).forEach((p: any) => profilesMap.set(p.id, p.nome_completo));
     mencByTarefa.forEach((list) => {
+      list.forEach((m) => {
+        if (!m.nome) m.nome = profilesMap.get(m.user_id) ?? null;
+      });
+    });
+    finByTarefa.forEach((list) => {
       list.forEach((m) => {
         if (!m.nome) m.nome = profilesMap.get(m.user_id) ?? null;
       });
@@ -125,6 +144,7 @@ async function enrich(rows: any[]): Promise<DemandaTarefa[]> {
       ? setoresMap.get(r.setor_destino_id) ?? null
       : null,
     mencionados: mencByTarefa.get(r.id) ?? [],
+    finalizadores: finByTarefa.get(r.id) ?? [],
     anexos_count: anexosCount.get(r.id) ?? 0,
   })) as DemandaTarefa[];
 }
