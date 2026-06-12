@@ -280,6 +280,7 @@ export interface NovaDemandaInput {
   escopo: "setor" | "geral";
   responsavel_id?: string | null;
   mencionados?: string[];
+  finalizadores?: string[];
   urgencia: "baixa" | "media" | "alta" | "critica";
   tipo: "tarefa" | "arquivo" | "esclarecimento";
   data_limite?: string | null;
@@ -335,6 +336,19 @@ export function useCriarDemanda() {
           .from("worklist_tarefa_mencionados")
           .insert(rows);
         if (mErr) throw mErr;
+      }
+      // Finalizadores: garante que responsável também é finalizador por padrão
+      const finSet = new Set<string>(input.finalizadores ?? []);
+      if (input.responsavel_id) finSet.add(input.responsavel_id);
+      finSet.delete(user.id); // criador é finalizador implícito via função pode_finalizar
+      if (finSet.size) {
+        const finRows = Array.from(finSet).map((uid) => ({
+          tarefa_id: tarefaId,
+          user_id: uid,
+        }));
+        await supabase
+          .from("worklist_tarefa_finalizadores" as any)
+          .insert(finRows);
       }
       // Notificações para responsável + mencionados (exceto o próprio criador)
       try {
