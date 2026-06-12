@@ -417,6 +417,8 @@ function ColunaManualView({
               lead={l}
               crossCampanhas={crossCampanhasMap?.get(l.lead_id)}
               onClick={() => onLeadClick(l)}
+              onDragStart={() => {}}
+              onDragEnd={() => {}}
             />
           ))
         )}
