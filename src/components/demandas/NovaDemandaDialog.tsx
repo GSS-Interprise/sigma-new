@@ -86,6 +86,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { PessoasCombobox } from "./PessoasCombobox";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { sanitizeHtml } from "@/lib/sanitizeHtml";
+import { extractMensagemLink } from "@/lib/mensagemLink";
 
 interface Props {
   open: boolean;
