@@ -215,36 +215,6 @@ export function ColunaAgenda({ onTarefaClick }: Props) {
         })}
       </div>
 
-      {/* Selected day tasks */}
-      <div className="px-4 py-2.5 border-t bg-muted/30">
-        <p className="text-[11px] text-muted-foreground capitalize">
-          {format(date, "PPP", { locale: ptBR })} ·{" "}
-          <span className="font-bold text-foreground">
-            {tarefasDoDia.length}
-          </span>
-          {" "}tarefa(s)
-        </p>
-      </div>
-      <ScrollArea className="px-2 py-2 max-h-48">
-        <div className="space-y-2">
-          {tarefasDoDia.length === 0 && (
-            <div className="text-xs text-muted-foreground text-center py-4">
-              Nada agendado
-            </div>
-          )}
-          {tarefasDoDia.map((t) => (
-            <TarefaCard
-              key={t.id}
-              tarefa={t}
-              onConcluir={(id) => concluir.mutate({ id, status: "concluida" })}
-              onReabrir={(id) => concluir.mutate({ id, status: "aberta" })}
-              onClick={() => onTarefaClick?.(t.id)}
-              compact
-            />
-          ))}
-        </div>
-      </ScrollArea>
-
       <NovaDemandaDialog
         open={dialogOpen}
         onOpenChange={(o) => {
