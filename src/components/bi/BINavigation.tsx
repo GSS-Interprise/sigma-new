@@ -27,9 +27,9 @@ export const BI_CATEGORIES: BICategory[] = [
     label: "Comercial",
     icon: TrendingUp,
     modules: [
+      { key: "prospeccao", label: "Prospecção", icon: Send },
       { key: "licitacoes", label: "Licitações", icon: BarChart3 },
       { key: "competitiva", label: "Competitiva", icon: TrendingUp },
-      { key: "disparos", label: "Disparos", icon: Send },
     ],
   },
   {

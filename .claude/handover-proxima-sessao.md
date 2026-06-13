@@ -1,7 +1,61 @@
 # Handover — Próxima Sessão Claude Code
 **Criado:** 2026-04-23
-**Atualizado:** 2026-05-05 (sessão Bright Data + Sprint 2 antiban + P9 WhatsApp)
+**Atualizado:** 2026-06-09 (sessão: campanha manual + 1º contato no card + FIX FLAPPING CHIPS via proxy sticky)
 **Contexto:** cold-start. Esta sessão termina aqui. Próxima sessão lê este doc primeiro.
+
+---
+
+## 🔴 UPDATE 2026-06-09 — LEIA ISTO PRIMEIRO (problema dos chips ainda em observação)
+
+### Resumo do que esta sessão fez
+1. **Campanha MANUAL mudou de modelo:** 1º contato NÃO dispara mais automático — equipe chama via Evolution. **Fase A no ar** (guard no `campanha-disparo-processor` + filtro cron job 11 `tipo_envio IS DISTINCT FROM 'manual'`, commit `9b40005`). **Fase B no ar** (edge nova `campanha-disparo-manual-1contato` + caixa "Enviar 1ª mensagem" no card do lead `LeadConversaUnificada`). Doc: `docs/arquitetura/campanha-manual-1o-contato-mudanca.md`. Falta **Fase C** (UI/métricas tratar manual diferente).
+2. **Edge `campanha-disparo-manual-1contato`** (commits `fe59838`→`3ad958d`): evoluiu otimista→**síncrono honesto**. Espera confirmação do envio, marca `campanha_leads` (frio→contatado + chip_usado_id) só se enviou; se falha, limpa conversa órfã. Erros técnicos → mensagem clara (tradutor `traduzErroEnvio` no front + edge): chip desconectado / sem WhatsApp / chip lento.
+3. **Recuperação de campanha:** Bruna excluiu campanha de anestesia sem querer → recuperada do `campanhas_history` (trigger+snapshot) → "Anestesiologia - Guaramirim/SC" (rascunho). Botão Excluir agora exige digitar "EXCLUIR" (commit `0cf9339`).
+4. **Treinamento:** 6 guias HTML+PDF em `C:\Users\rauls\treinamento-gss\` (+ `\pdf\`). Screenshots reais pendentes (equipe tira prints → `img\`).
+
+### 🔥 CAUSA RAIZ DO FLAPPING DOS CHIPS (descoberta hoje — pode ainda estar em aberto)
+**Os chips deslogavam em massa (2048 `needs_qr`/24h)** porque o **proxy Bright Data rotacionava o IP a cada conexão** (env global `PROXY_USERNAME` estava SEM `-session-`). WhatsApp exige IP estável → via sessão pulando de IP → LOGOUT. Logs Evolution: `Proxy enabled → Connection Closed (428) → Instance X LOGOUT`.
+
+**FIX aplicado (runtime, NÃO em código):**
+- **Per-chip:** edge `chip-apply-proxy-bulk` rodada → 10 chips ativos com `-session-{slug}{id8}` (IPs distintos = anti-ban). Idempotente, pode re-rodar.
+- **Global:** `docker service update --env-add PROXY_USERNAME=brd-customer-hl_10d829af-zone-isp_proxy1-session-globalfb disparador_evolution-api`. Rollback em `/root/proxy_env_rollback_20260609.txt`.
+- **Resultado validado:** chips OPEN 2→6 SEM reescanear QR, 0 LOGOUT/428 em 6min de monitor (1 evento residual).
+
+**⚠️ PENDÊNCIAS CRÍTICAS (se o Raul disser "chips caindo de novo", checar nesta ordem):**
+1. **Easypanel UI persistiu o env?** Mexi via `docker service update` mas **redeploy do Easypanel REVERTE** pro rotativo. Raul ia setar `PROXY_USERNAME=...-session-globalfb` no Easypanel UI (https://147.93.71.48/ → projeto `disparador` → `evolution-api` → Environment). **SE não persistiu e houve redeploy → flapping voltou. Re-aplicar o `docker service update` + insistir no Easypanel.**
+2. **Equipe reescaneou QR?** Chips em `close` precisam rescan (os 6 subiram sozinhos; o resto não). Sem QR, seguem caídos (mas NÃO deslogam após reconectar, graças ao sticky).
+3. **Frontend foi publicado no Lovable?** O 1º contato no card + tradutor de erro + Excluir blindado são frontend. Sem publish, a Bruna vê erro técnico antigo ("non-2xx").
+
+### Comandos de diagnóstico prontos (chips/proxy)
+```bash
+# 1. Proxy rotaciona? (IP deve ser ESTÁVEL com -session; sem session muda)
+ssh root@147.93.71.48 'c=disparador_evolution-api.1.9tm3f42yqs7c9ynltn048y7no; docker exec $c env | grep ^PROXY_USERNAME='
+#   -> tem que ter "-session-globalfb". Se NÃO tem, redeploy reverteu.
+
+# 2. LOGOUTs recentes (deve ser ~0)
+ssh root@147.93.71.48 'c=disparador_evolution-api.1.9tm3f42yqs7c9ynltn048y7no; docker logs $c --since 10m 2>&1 | grep -ciE "LOGOUT|statusCode.?:.?428"'
+
+# 3. Reconexões — CUIDADO interpretar! Separar por action:
+#   select action,state_before,count(*),count(distinct instance_name) from chip_auto_reconnect_log
+#     where created_at > now()-interval '2h' group by 1,2 order by 3 desc;
+#   -> action='needs_qr'/close = NÃO é queda; é o cron logando chips deslogados a cada 5min (esperando QR).
+#      Só action='restarted'/connecting = flap real. Pós-fix 09/06: ~5 restart/2h (era constante) = OK.
+```
+
+> **Estado 09/06 fim de sessão:** flapping RESOLVIDO (6 chips open estáveis, 0 LOGOUT/428, env sticky persistiu no Easypanel). Os ~225 needs_qr/2h são **10 chips deslogados esperando QR da equipe** — não é bug, é operacional. Falta: equipe reescanear QR + publish Lovable do frontend (1º contato no card + tradutor de erro).
+```powershell
+# 4. Quantos chips OPEN de verdade (via URL pública do Evolution; localhost:8080 na VPS NAO funciona)
+#   pega url/key de config_lista_items (evolution_api_url/key) -> GET {url}/instance/fetchInstances -> contar connectionStatus='open'
+
+# 5. Re-aplicar proxy sticky per-chip se precisar:
+#   invoke edge chip-apply-proxy-bulk (service_role) body {}
+```
+
+### Acessos rápidos
+- Supabase SIGMA-GSS ref `zupsbgtoeoixfokzkjro`. SBP token + service_role em `memory/reference_supabase_token.md`. **Usar PowerShell** (não Bash) pra Bitwarden/token.
+- VPS `root@147.93.71.48` (key-based). Container Evolution: `disparador_evolution-api.1.9tm3f42yqs7c9ynltn048y7no` (v2.3.7). Easypanel https://147.93.71.48/ (login Ewerton).
+- Memórias-chave atualizadas hoje: `chip-connecting-flapping-causa-e-fix` (causa raiz proxy IP rotativo), `modelo-de-campanhas-disparo-vs-troca-de-mensagens` (manual = 1º contato manual).
+- Workflow: commit identidade Raul, push direto main, Lovable publica manual (desloga browser).
 
 ---
 

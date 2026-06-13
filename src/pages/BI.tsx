@@ -6,7 +6,7 @@ import { AbaInteligenciaCompetitiva } from "@/components/bi/AbaInteligenciaCompe
 import { AbaMedicos } from "@/components/bi/AbaMedicos";
 import { AbaRelacionamento } from "@/components/bi/AbaRelacionamento";
 import { AbaFinanceiro } from "@/components/bi/AbaFinanceiro";
-import { AbaDisparos } from "@/components/bi/AbaDisparos";
+import { AbaProspec } from "@/components/bi/AbaProspec";
 import { AbaEscalas } from "@/components/bi/AbaEscalas";
 import { AbaContratos } from "@/components/bi/AbaContratos";
 import { AbaAges } from "@/components/bi/AbaAges";
@@ -28,7 +28,7 @@ const MODULE_COMPONENTS: Record<string, React.ComponentType> = {
   medicos: AbaMedicos,
   relacionamento: AbaRelacionamento,
   financeiro: AbaFinanceiro,
-  disparos: AbaDisparos,
+  prospeccao: AbaProspec,
   escalas: AbaEscalas,
   ti: AbaTI,
 };
@@ -36,7 +36,7 @@ const MODULE_COMPONENTS: Record<string, React.ComponentType> = {
 export default function BI() {
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = (searchParams.get("tab") || "").toLowerCase();
-  const activeModule = ALL_MODULE_KEYS.includes(tabParam) ? tabParam : "licitacoes";
+  const activeModule = ALL_MODULE_KEYS.includes(tabParam) ? tabParam : "prospeccao";
 
   const handleSelectModule = (moduleKey: string) => {
     setSearchParams((prev) => {
