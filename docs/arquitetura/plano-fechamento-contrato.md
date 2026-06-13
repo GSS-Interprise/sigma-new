@@ -18,7 +18,9 @@ contrato: 4 blocos · 23/03 → 20/06/2026 · R$16.000
 - ✅ **D1 Banco de Notícias:** tabelas `hospitais`/`hospital_especialidades`/`hospital_noticias` + RLS + GRANT + trgm + Storage. Falta D2 (UI).
 - ✅ **Auditoria /bi:** [[auditoria-bi]]. Legado fake (`AbaDisparos`+`useDisparosBI`) **morto**; motor real (`AbaProspec`) plugado no `/bi` como aba default "Prospecção".
 - ✅ **BI executivo:** aba **Resumo** na Prospecção (KPIs com meta, ritmo vs 700/dia, funil, produtividade do time).
-- ⏳ **Falta:** publish Lovable + Ramone validar · D2 (UI notícias) · B1 (resumo IA campanha) · A1/A2 (Bloco 3) · shell fix · B3 (apresentação). Abas BI Médicos/Contratos/etc = contrato futuro.
+- ✅ **D2 Banco de Notícias UI:** página `/noticias` (busca, cadastro hospital+especialidades, notícia com print no Storage). Item na sidebar.
+- ✅ **E1 Sidebar agrupada:** grupos Prospecção (1ª) · Operação Clínica · Gestão · Sistema. Notícias no grupo Prospecção.
+- ⏳ **Falta:** publish Lovable + Ramone validar BI · B1 (resumo IA campanha) · A1/A2 (Bloco 3) · shell BI fix (breadcrumb) · B3 (apresentação). Abas BI Médicos/Contratos/etc = contrato futuro.
 
 ## 0. Status real (auditado 13/06 via DB + código)
 
