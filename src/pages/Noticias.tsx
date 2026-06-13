@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogT
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SearchableMultiSelect } from "@/components/ui/searchable-multi-select";
 import { toast } from "sonner";
-import { Plus, Search, Building2, AlertTriangle, ExternalLink, Newspaper, Loader2 } from "lucide-react";
+import { Plus, Search, Building2, AlertTriangle, ExternalLink, Newspaper, Loader2, Sparkles } from "lucide-react";
 
 const TIPOS = [
   { value: "calote", label: "Calote / não paga" },
@@ -49,6 +49,7 @@ async function currentUserId() {
 export default function Noticias() {
   const qc = useQueryClient();
   const [busca, setBusca] = useState("");
+  const [novaNoticiaOpen, setNovaNoticiaOpen] = useState(false);
   const [novoHospitalOpen, setNovoHospitalOpen] = useState(false);
   const [hospitalSel, setHospitalSel] = useState<Hospital | null>(null);
 
@@ -86,6 +87,8 @@ export default function Noticias() {
     );
   }, [hospitais, busca]);
 
+  const refetchHospitais = () => qc.invalidateQueries({ queryKey: ["hospitais"] });
+
   return (
     <AppLayout
       headerActions={
@@ -96,12 +99,14 @@ export default function Noticias() {
             </h1>
             <p className="text-sm text-muted-foreground">Hospitais com calote ou má reputação — argumento pra abordagem dos médicos</p>
           </div>
-          <NovoHospitalDialog
-            open={novoHospitalOpen}
-            onOpenChange={setNovoHospitalOpen}
-            especialidades={especialidades}
-            onSaved={() => qc.invalidateQueries({ queryKey: ["hospitais"] })}
-          />
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setNovoHospitalOpen(true)}>
+              <Building2 className="h-4 w-4 mr-2" /> Novo hospital
+            </Button>
+            <Button onClick={() => setNovaNoticiaOpen(true)}>
+              <Plus className="h-4 w-4 mr-2" /> Nova notícia
+            </Button>
+          </div>
         </div>
       }
     >
@@ -116,7 +121,7 @@ export default function Noticias() {
         ) : filtrados.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 gap-2 text-center text-muted-foreground">
             <Building2 className="h-10 w-10 opacity-40" />
-            <p>{busca ? "Nenhum hospital encontrado." : "Nenhum hospital cadastrado ainda. Cadastre o primeiro."}</p>
+            <p>{busca ? "Nenhum hospital encontrado." : "Nenhum hospital cadastrado ainda. Clique em 'Nova notícia' pra começar."}</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -152,14 +157,221 @@ export default function Noticias() {
         )}
       </div>
 
+      <NoticiaDialog
+        open={novaNoticiaOpen}
+        onOpenChange={setNovaNoticiaOpen}
+        hospitais={hospitais}
+        onSaved={refetchHospitais}
+      />
+      <NovoHospitalDialog
+        open={novoHospitalOpen}
+        onOpenChange={setNovoHospitalOpen}
+        especialidades={especialidades}
+        onSaved={refetchHospitais}
+      />
+
       {hospitalSel && (
         <HospitalDetalheDialog
           hospital={hospitalSel}
+          hospitais={hospitais}
           onClose={() => setHospitalSel(null)}
-          onChanged={() => qc.invalidateQueries({ queryKey: ["hospitais"] })}
+          onChanged={refetchHospitais}
         />
       )}
     </AppLayout>
+  );
+}
+
+// ─── Nova notícia (com IA por link + hospital existente ou novo) ───
+function NoticiaDialog({
+  open,
+  onOpenChange,
+  hospitais,
+  fixedHospitalId,
+  onSaved,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  hospitais: Hospital[];
+  fixedHospitalId?: string;
+  onSaved: () => void;
+}) {
+  const [url, setUrl] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [hospMode, setHospMode] = useState<"existing" | "new">("existing");
+  const [hospitalId, setHospitalId] = useState(fixedHospitalId ?? "");
+  const [novoHosp, setNovoHosp] = useState({ nome: "", uf: "", cidade: "" });
+  const [form, setForm] = useState({ tipo: "calote", titulo: "", resumo: "", data_fato: "", gravidade: "2" });
+  const [file, setFile] = useState<File | null>(null);
+
+  const reset = () => {
+    setUrl(""); setHospMode("existing"); setHospitalId(fixedHospitalId ?? "");
+    setNovoHosp({ nome: "", uf: "", cidade: "" });
+    setForm({ tipo: "calote", titulo: "", resumo: "", data_fato: "", gravidade: "2" });
+    setFile(null);
+  };
+
+  const preencherIA = async () => {
+    if (!url.trim()) { toast.warning("Cole o link primeiro"); return; }
+    setAiLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("noticia-extrair-link", { body: { url } });
+      if (error) throw error;
+      if (!data?.ok) { toast.warning(data?.message || "Não consegui ler o link — preencha manualmente."); return; }
+      const d = data.dados || {};
+      setForm((f) => ({
+        ...f,
+        tipo: d.tipo || f.tipo,
+        titulo: d.titulo || f.titulo,
+        resumo: d.resumo || f.resumo,
+        data_fato: d.data_fato || f.data_fato,
+        gravidade: d.gravidade ? String(d.gravidade) : f.gravidade,
+      }));
+      if (!fixedHospitalId && d.hospital_nome) {
+        const alvo = String(d.hospital_nome).toLowerCase();
+        const match = hospitais.find((h) => h.nome.toLowerCase().includes(alvo) || alvo.includes(h.nome.toLowerCase()));
+        if (match) { setHospMode("existing"); setHospitalId(match.id); }
+        else { setHospMode("new"); setNovoHosp({ nome: d.hospital_nome, uf: d.uf || "", cidade: d.cidade || "" }); }
+      }
+      toast.success("Preenchido pela IA — revise antes de salvar");
+    } catch (e: any) {
+      toast.error("Erro IA: " + (e?.message || e));
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const save = useMutation({
+    mutationFn: async () => {
+      if (!form.titulo.trim()) throw new Error("Título é obrigatório");
+      const criado_por = await currentUserId();
+
+      // Resolve hospital
+      let hid = hospitalId;
+      if (!fixedHospitalId && hospMode === "new") {
+        if (!novoHosp.nome.trim()) throw new Error("Nome do hospital é obrigatório");
+        const { data, error } = await (supabase as any)
+          .from("hospitais")
+          .insert({ nome: novoHosp.nome, uf: novoHosp.uf || null, cidade: novoHosp.cidade || null, criado_por })
+          .select("id")
+          .single();
+        if (error) throw error;
+        hid = data.id;
+      }
+      if (!hid) throw new Error("Selecione um hospital ou cadastre um novo");
+
+      // Upload print
+      let fonte_print: string | null = null;
+      if (file) {
+        const path = `${hid}/${Date.now()}-${file.name.replace(/[^\w.-]/g, "_")}`;
+        const { error: upErr } = await supabase.storage.from("hospital-noticias").upload(path, file);
+        if (upErr) throw upErr;
+        fonte_print = path;
+      }
+
+      const { error } = await (supabase as any).from("hospital_noticias").insert({
+        hospital_id: hid,
+        tipo: form.tipo,
+        titulo: form.titulo,
+        resumo: form.resumo || null,
+        fonte_url: url || null,
+        fonte_print,
+        data_fato: form.data_fato || null,
+        gravidade: Number(form.gravidade),
+        criado_por,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Notícia cadastrada");
+      reset();
+      onOpenChange(false);
+      onSaved();
+    },
+    onError: (e: any) => toast.error("Erro: " + e.message),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) reset(); onOpenChange(v); }}>
+      <DialogContent className="max-w-lg max-h-[88vh] overflow-y-auto">
+        <DialogHeader><DialogTitle>Nova notícia / ocorrência</DialogTitle></DialogHeader>
+        <div className="space-y-3">
+          {/* Link + IA */}
+          <div>
+            <Label>Link da notícia (opcional)</Label>
+            <div className="flex gap-2">
+              <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://… (portal, Instagram)" />
+              <Button type="button" variant="secondary" onClick={preencherIA} disabled={aiLoading} className="shrink-0">
+                {aiLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                <span className="ml-1.5 hidden sm:inline">Preencher com IA</span>
+              </Button>
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-1">A IA lê o link e preenche os campos. Instagram às vezes exige preencher manual.</p>
+          </div>
+
+          {/* Hospital */}
+          {!fixedHospitalId && (
+            <div>
+              <Label>Hospital</Label>
+              <div className="flex gap-2 mb-2">
+                <Button type="button" size="sm" variant={hospMode === "existing" ? "default" : "outline"} onClick={() => setHospMode("existing")}>Existente</Button>
+                <Button type="button" size="sm" variant={hospMode === "new" ? "default" : "outline"} onClick={() => setHospMode("new")}>Novo</Button>
+              </div>
+              {hospMode === "existing" ? (
+                <Select value={hospitalId} onValueChange={setHospitalId}>
+                  <SelectTrigger><SelectValue placeholder="Selecione o hospital" /></SelectTrigger>
+                  <SelectContent>
+                    {hospitais.map((h) => (
+                      <SelectItem key={h.id} value={h.id}>{h.nome}{h.uf ? ` (${h.uf})` : ""}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <div className="grid grid-cols-4 gap-2">
+                  <Input className="col-span-2" placeholder="Nome do hospital" value={novoHosp.nome} onChange={(e) => setNovoHosp({ ...novoHosp, nome: e.target.value })} />
+                  <Input placeholder="Cidade" value={novoHosp.cidade} onChange={(e) => setNovoHosp({ ...novoHosp, cidade: e.target.value })} />
+                  <Input placeholder="UF" maxLength={2} value={novoHosp.uf} onChange={(e) => setNovoHosp({ ...novoHosp, uf: e.target.value.toUpperCase() })} />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Campos da notícia */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Tipo</Label>
+              <Select value={form.tipo} onValueChange={(v) => setForm({ ...form, tipo: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>{TIPOS.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Gravidade</Label>
+              <Select value={form.gravidade} onValueChange={(v) => setForm({ ...form, gravidade: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">Baixa</SelectItem>
+                  <SelectItem value="2">Média</SelectItem>
+                  <SelectItem value="3">Alta</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div><Label>Título *</Label><Input value={form.titulo} onChange={(e) => setForm({ ...form, titulo: e.target.value })} placeholder="Ex: Atraso de 3 meses no pagamento dos plantonistas" /></div>
+          <div><Label>Resumo</Label><Textarea value={form.resumo} onChange={(e) => setForm({ ...form, resumo: e.target.value })} rows={3} /></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><Label>Data do fato</Label><Input type="date" value={form.data_fato} onChange={(e) => setForm({ ...form, data_fato: e.target.value })} /></div>
+            <div><Label>Print (imagem)</Label><Input type="file" accept="image/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} /></div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
+          <Button onClick={() => save.mutate()} disabled={save.isPending}>
+            {save.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />} Salvar notícia
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -205,16 +417,10 @@ function NovoHospitalDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogTrigger asChild>
-        <Button><Plus className="h-4 w-4 mr-2" /> Novo hospital</Button>
-      </DialogTrigger>
       <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader><DialogTitle>Cadastrar hospital</DialogTitle></DialogHeader>
         <div className="space-y-3">
-          <div>
-            <Label>Nome *</Label>
-            <Input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} placeholder="Ex: Hospital Municipal de X" />
-          </div>
+          <div><Label>Nome *</Label><Input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} placeholder="Ex: Hospital Municipal de X" /></div>
           <div className="grid grid-cols-2 gap-3">
             <div><Label>Cidade</Label><Input value={form.cidade} onChange={(e) => setForm({ ...form, cidade: e.target.value })} /></div>
             <div><Label>UF</Label><Input maxLength={2} value={form.uf} onChange={(e) => setForm({ ...form, uf: e.target.value.toUpperCase() })} /></div>
@@ -249,7 +455,7 @@ function NovoHospitalDialog({
   );
 }
 
-function HospitalDetalheDialog({ hospital, onClose, onChanged }: { hospital: Hospital; onClose: () => void; onChanged: () => void }) {
+function HospitalDetalheDialog({ hospital, hospitais, onClose, onChanged }: { hospital: Hospital; hospitais: Hospital[]; onClose: () => void; onChanged: () => void }) {
   const qc = useQueryClient();
   const [novaOpen, setNovaOpen] = useState(false);
 
@@ -275,14 +481,12 @@ function HospitalDetalheDialog({ hospital, onClose, onChanged }: { hospital: Hos
     <Dialog open onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Building2 className="h-5 w-5" /> {hospital.nome}
-          </DialogTitle>
+          <DialogTitle className="flex items-center gap-2"><Building2 className="h-5 w-5" /> {hospital.nome}</DialogTitle>
           <p className="text-sm text-muted-foreground">{[hospital.cidade, hospital.uf].filter(Boolean).join("/")} {hospital.regiao ? `· ${hospital.regiao}` : ""}</p>
         </DialogHeader>
 
         <div className="flex justify-end">
-          <NovaNoticiaDialog open={novaOpen} onOpenChange={setNovaOpen} hospitalId={hospital.id} onSaved={refresh} />
+          <Button size="sm" onClick={() => setNovaOpen(true)}><Plus className="h-4 w-4 mr-1" /> Nova notícia</Button>
         </div>
 
         {isLoading ? (
@@ -324,94 +528,8 @@ function HospitalDetalheDialog({ hospital, onClose, onChanged }: { hospital: Hos
             })}
           </div>
         )}
-      </DialogContent>
-    </Dialog>
-  );
-}
 
-function NovaNoticiaDialog({ open, onOpenChange, hospitalId, onSaved }: { open: boolean; onOpenChange: (v: boolean) => void; hospitalId: string; onSaved: () => void }) {
-  const [form, setForm] = useState({ tipo: "calote", titulo: "", resumo: "", fonte_url: "", data_fato: "", gravidade: "2" });
-  const [file, setFile] = useState<File | null>(null);
-
-  const save = useMutation({
-    mutationFn: async () => {
-      if (!form.titulo.trim()) throw new Error("Título é obrigatório");
-      let fonte_print: string | null = null;
-      if (file) {
-        const path = `${hospitalId}/${Date.now()}-${file.name.replace(/[^\w.-]/g, "_")}`;
-        const { error: upErr } = await supabase.storage.from("hospital-noticias").upload(path, file);
-        if (upErr) throw upErr;
-        fonte_print = path;
-      }
-      const criado_por = await currentUserId();
-      const { error } = await (supabase as any).from("hospital_noticias").insert({
-        hospital_id: hospitalId,
-        tipo: form.tipo,
-        titulo: form.titulo,
-        resumo: form.resumo || null,
-        fonte_url: form.fonte_url || null,
-        fonte_print,
-        data_fato: form.data_fato || null,
-        gravidade: Number(form.gravidade),
-        criado_por,
-      });
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      toast.success("Notícia adicionada");
-      setForm({ tipo: "calote", titulo: "", resumo: "", fonte_url: "", data_fato: "", gravidade: "2" });
-      setFile(null);
-      onOpenChange(false);
-      onSaved();
-    },
-    onError: (e: any) => toast.error("Erro: " + e.message),
-  });
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogTrigger asChild>
-        <Button size="sm"><Plus className="h-4 w-4 mr-1" /> Nova notícia</Button>
-      </DialogTrigger>
-      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
-        <DialogHeader><DialogTitle>Nova notícia / ocorrência</DialogTitle></DialogHeader>
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Tipo</Label>
-              <Select value={form.tipo} onValueChange={(v) => setForm({ ...form, tipo: v })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>{TIPOS.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Gravidade</Label>
-              <Select value={form.gravidade} onValueChange={(v) => setForm({ ...form, gravidade: v })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1">Baixa</SelectItem>
-                  <SelectItem value="2">Média</SelectItem>
-                  <SelectItem value="3">Alta</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div><Label>Título *</Label><Input value={form.titulo} onChange={(e) => setForm({ ...form, titulo: e.target.value })} placeholder="Ex: Atraso de 3 meses no pagamento dos plantonistas" /></div>
-          <div><Label>Resumo</Label><Textarea value={form.resumo} onChange={(e) => setForm({ ...form, resumo: e.target.value })} rows={3} /></div>
-          <div className="grid grid-cols-2 gap-3">
-            <div><Label>Fonte (link)</Label><Input value={form.fonte_url} onChange={(e) => setForm({ ...form, fonte_url: e.target.value })} placeholder="https://…" /></div>
-            <div><Label>Data do fato</Label><Input type="date" value={form.data_fato} onChange={(e) => setForm({ ...form, data_fato: e.target.value })} /></div>
-          </div>
-          <div>
-            <Label>Print (imagem)</Label>
-            <Input type="file" accept="image/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button onClick={() => save.mutate()} disabled={save.isPending}>
-            {save.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />} Salvar
-          </Button>
-        </DialogFooter>
+        <NoticiaDialog open={novaOpen} onOpenChange={setNovaOpen} hospitais={hospitais} fixedHospitalId={hospital.id} onSaved={refresh} />
       </DialogContent>
     </Dialog>
   );
