@@ -20,9 +20,9 @@ import {
   Menu,
   Megaphone,
   Shield,
-  Briefcase,
   Rocket,
   UserSearch,
+  type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -41,33 +41,64 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
-const navigationTop = [
-  { name: "Home", href: "/", icon: LayoutDashboard },
-  { name: "Licitações", href: "/licitacoes", icon: Gavel },
-  { name: "Prospecção", href: "/prospeccao", icon: Rocket },
-  { name: "Leads", href: "/leads", icon: UserSearch },
-  { name: "Conversas", href: "/disparos/sigzap", icon: MessageCircle },
-  // Hub de Disparos contém Chips & Instâncias, Captadores, BI-Prospec,
-  // Banco de Interesse, Residentes, Email, etc. Enquanto o Bloco T (sub-rotas
-  // /prospeccao/{sub}) não fica pronto, este é o caminho que a equipe usa.
-  { name: "Disparos & Chips", href: "/disparos", icon: Send },
-  { name: "Marketing", href: "/marketing", icon: Megaphone },
-  { name: "Clientes e Contratos", href: "/contratos", icon: FileText },
-  { name: "Relacionamento Médico", href: "/relacionamento-medico", icon: Activity },
-  { name: "Médicos", href: "/medicos", icon: Users },
-  { name: "Escalas", href: "/escalas", icon: Calendar },
-  { name: "Financeiro", href: "/financeiro", icon: DollarSign },
-  { name: "Patrimônio", href: "/patrimonio", icon: Package },
-  { name: "Radiologia", href: "/radiologia", icon: Stethoscope },
-  { name: "BI", href: "/bi", icon: BarChart3 },
-  { name: "AGES", href: "/ages", icon: Building2 },
+type NavItem = {
+  name: string;
+  href: string;
+  icon: LucideIcon;
+  modulo?: string; // módulo de permissão (vazio = sempre visível p/ autenticado)
+  adminOnly?: boolean;
+  adminOrLeader?: boolean;
+};
+
+type NavGroup = {
+  label?: string; // rótulo do grupo (não clicável). Vazio = sem cabeçalho
+  items: NavItem[];
+};
+
+// Ordem aplica anchoring + activation energy: Prospecção (operação que mais roda) logo após Home.
+// Agrupamento = mental accounting (usuário pensa por domínio). Permissões inalteradas — só muda o visual.
+const navigationGroups: NavGroup[] = [
+  {
+    items: [{ name: "Home", href: "/", icon: LayoutDashboard, modulo: "dashboard" }],
+  },
+  {
+    label: "Prospecção",
+    items: [
+      { name: "Campanhas", href: "/prospeccao", icon: Rocket, modulo: "disparos" },
+      { name: "Conversas", href: "/disparos/sigzap", icon: MessageCircle, modulo: "disparos" },
+      { name: "Leads", href: "/leads", icon: UserSearch, modulo: "disparos" },
+      { name: "Disparos & Chips", href: "/disparos", icon: Send, modulo: "disparos" },
+      // Notícias entra aqui quando a UI (D2) sair: { name: "Notícias", href: "/noticias", icon: Newspaper, modulo: "disparos" },
+    ],
+  },
+  {
+    label: "Operação clínica",
+    items: [
+      { name: "Médicos", href: "/medicos", icon: Users, modulo: "medicos" },
+      { name: "Relacionamento", href: "/relacionamento-medico", icon: Activity, modulo: "relacionamento" },
+      { name: "Escalas", href: "/escalas", icon: Calendar, modulo: "escalas" },
+      { name: "Clientes e Contratos", href: "/contratos", icon: FileText, modulo: "contratos" },
+      { name: "Licitações", href: "/licitacoes", icon: Gavel, modulo: "licitacoes" },
+      { name: "AGES", href: "/ages", icon: Building2, modulo: "ages" },
+      { name: "Radiologia", href: "/radiologia", icon: Stethoscope, modulo: "radiologia" },
+    ],
+  },
+  {
+    label: "Gestão",
+    items: [
+      { name: "BI", href: "/bi", icon: BarChart3, modulo: "bi" },
+      { name: "Marketing", href: "/marketing", icon: Megaphone, modulo: "marketing" },
+      { name: "Financeiro", href: "/financeiro", icon: DollarSign, modulo: "financeiro" },
+      { name: "Patrimônio", href: "/patrimonio", icon: Package, modulo: "patrimonio" },
+    ],
+  },
 ];
 
-const navigationBottom = [
+const navigationSistema: NavItem[] = [
   { name: "Comunicação", href: "/comunicacao", icon: MessageSquare },
   { name: "Suporte", href: "/suporte", icon: Headset },
-  { name: "Auditoria", href: "/auditoria", icon: Shield },
-  { name: "Configurações", href: "/configuracoes", icon: Settings },
+  { name: "Auditoria", href: "/auditoria", icon: Shield, adminOrLeader: true },
+  { name: "Configurações", href: "/configuracoes", icon: Settings, adminOnly: true },
 ];
 
 export function Sidebar() {
@@ -75,13 +106,46 @@ export function Sidebar() {
   const { signOut } = useAuth();
   const { isAdmin, hasPermission, userRoles, isLeader } = usePermissions();
   const { hasAnyCaptacaoAccess } = useCaptacaoPermissions();
-  const { open, setOpen } = useSidebar();
-  
-  // Verificar se o usuário é externo
-  const isExterno = userRoles?.some(role => role.role === 'externos');
-  
-  // Verificar se está no módulo de Disparos
-  const isDisparosActive = location.pathname.startsWith('/disparos');
+  const { open } = useSidebar();
+
+  const isExterno = userRoles?.some((role) => role.role === "externos");
+
+  // Mantém a semântica de permissão exata da versão chapada
+  const canSee = (item: NavItem): boolean => {
+    if (item.adminOnly) return isAdmin;
+    if (item.adminOrLeader) return isAdmin || isLeader;
+    const modulo = item.modulo;
+    if (!modulo) return true;
+    if (modulo === "dashboard") return true; // Home sempre visível
+    if (modulo === "disparos") {
+      return isAdmin || hasPermission("disparos", "visualizar") || hasAnyCaptacaoAccess();
+    }
+    return isAdmin || hasPermission(modulo as any, "visualizar");
+  };
+
+  const renderItem = (item: NavItem) => {
+    const isActive = location.pathname === item.href;
+    return (
+      <SidebarMenuItem key={item.name} className={cn(!open && "flex justify-center")}>
+        <SidebarMenuButton asChild isActive={isActive}>
+          <Link
+            to={item.href}
+            title={item.name}
+            className={cn(
+              "flex items-center rounded-lg py-2.5 text-sm font-medium transition-colors",
+              open ? "gap-3 px-3 justify-start w-full" : "justify-center w-10 h-10 p-0",
+              isActive
+                ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            )}
+          >
+            <item.icon className="h-5 w-5 flex-shrink-0" />
+            {open && <span>{item.name}</span>}
+          </Link>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    );
+  };
 
   return (
     <SidebarUI collapsible="icon" className="data-[state=collapsed]:w-16 data-[state=expanded]:w-64">
@@ -93,110 +157,37 @@ export function Sidebar() {
           </SidebarTrigger>
         </div>
       </SidebarHeader>
-      
-      <SidebarContent>
-        <SidebarMenu className={cn("space-y-1 py-4", open ? "px-2" : "px-1")}>
-          {navigationTop.map((item) => {
-            // Mapear href para módulo de permissão
-            const moduleMap: Record<string, string> = {
-              '/': 'dashboard',
-              '/workspace': 'workspace',
-              '/licitacoes': 'licitacoes',
-              '/disparos': 'disparos',
-              '/disparos/sigzap': 'disparos',
-              '/prospeccao': 'disparos',
-              '/leads': 'disparos',
-              '/marketing': 'marketing',
-              '/contratos': 'contratos',
-              '/relacionamento-medico': 'relacionamento',
-              '/medicos': 'medicos',
-              '/escalas': 'escalas',
-              '/financeiro': 'financeiro',
-              '/patrimonio': 'patrimonio',
-              '/radiologia': 'radiologia',
-              '/bi': 'bi',
-              '/ages': 'ages',
-            };
-            
-            const modulo = moduleMap[item.href];
-            
-            // Para módulo de disparos, verificar também permissões de captação
-            if (modulo === 'disparos') {
-              // Se tem permissão por role OU por captacao_permissoes_usuario, mostrar
-              const hasRolePermission = isAdmin || hasPermission('disparos', 'visualizar');
-              if (!hasRolePermission && !hasAnyCaptacaoAccess()) {
-                return null;
-              }
-            } else if (modulo === 'workspace') {
-              // Workspace é sempre visível para usuários autenticados
-            } else {
-              // Admin vê tudo, outros precisam de permissão
-              if (!isAdmin && modulo && !hasPermission(modulo as any, 'visualizar')) {
-                return null;
-              }
-            }
-            
-            const isActive = location.pathname === item.href;
-            return (
-              <SidebarMenuItem key={item.name} className={cn(!open && "flex justify-center")}>
-                <SidebarMenuButton asChild isActive={isActive}>
-                  <Link
-                    to={item.href}
-                    className={cn(
-                      "flex items-center rounded-lg py-2.5 text-sm font-medium transition-colors",
-                      open ? "gap-3 px-3 justify-start w-full" : "justify-center w-10 h-10 p-0",
-                      isActive
-                        ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                        : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                    )}
-                  >
-                    <item.icon className="h-5 w-5 flex-shrink-0" />
-                    {open && <span>{item.name}</span>}
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            );
-          })}
-        </SidebarMenu>
 
-        <SidebarMenu className={cn("space-y-1 mt-auto", open ? "px-2" : "px-1")}>
-          {navigationBottom.map((item) => {
-            // Esconder Configurações para não-admins
-            if (item.name === "Configurações" && !isAdmin) {
-              return null;
-            }
-            
-            // Esconder Auditoria para quem não é admin nem líder
-            if (item.name === "Auditoria" && !isAdmin && !isLeader) {
-              return null;
-            }
-            
-            // Para usuários externos, mostrar apenas Suporte e Comunicação
-            if (isExterno && !isAdmin && item.name !== "Suporte" && item.name !== "Comunicação") {
-              return null;
-            }
-            
-            const isActive = location.pathname === item.href;
+      <SidebarContent>
+        <div className={cn("py-4", open ? "px-2" : "px-1")}>
+          {navigationGroups.map((group, gi) => {
+            const visibleItems = group.items.filter(canSee);
+            if (visibleItems.length === 0) return null; // esconde grupo vazio
             return (
-                <SidebarMenuItem key={item.name} className={cn(!open && "flex justify-center")}>
-                  <SidebarMenuButton asChild isActive={isActive}>
-                    <Link
-                      to={item.href}
-                      className={cn(
-                        "flex items-center rounded-lg py-2.5 text-sm font-medium transition-colors",
-                        open ? "gap-3 px-3 justify-start w-full" : "justify-center w-10 h-10 p-0",
-                        isActive
-                          ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                          : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                      )}
-                    >
-                      <item.icon className="h-5 w-5 flex-shrink-0" />
-                      {open && <span>{item.name}</span>}
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
+              <div key={group.label ?? `g${gi}`} className={cn(gi > 0 && "mt-4")}>
+                {group.label && open && (
+                  <div className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/45">
+                    {group.label}
+                  </div>
+                )}
+                {group.label && !open && gi > 0 && (
+                  <div className="mx-2 my-2 border-t border-sidebar-border/40" aria-hidden />
+                )}
+                <SidebarMenu className="space-y-1">{visibleItems.map(renderItem)}</SidebarMenu>
+              </div>
             );
           })}
+        </div>
+
+        <SidebarMenu className={cn("space-y-1 mt-auto pb-2", open ? "px-2" : "px-1")}>
+          {navigationSistema
+            .filter((item) => {
+              if (!canSee(item)) return false;
+              // Externos só veem Suporte e Comunicação
+              if (isExterno && !isAdmin && item.name !== "Suporte" && item.name !== "Comunicação") return false;
+              return true;
+            })
+            .map(renderItem)}
         </SidebarMenu>
       </SidebarContent>
 

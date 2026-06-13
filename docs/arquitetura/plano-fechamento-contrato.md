@@ -73,6 +73,11 @@ contrato: 4 blocos · 23/03 → 20/06/2026 · R$16.000
 - **C3 · Aba Prospecção (entrega agora).** KPIs estratégicos: funil macro, meta 700/dia + tendência, conversão IA×manual, top campanhas/especialidades, produtividade do time, saúde da máquina. ~12h.
 - **C4 · Abas Contratos/Financeiro/Escalas.** Placeholders "Próximo escopo" agora; conteúdo = **contrato futuro**. ~2h (placeholders).
 
+### FRENTE E — Sidebar agrupada por domínio [novo · UX, pedido Raul]
+- **E1 · Agrupamento.** Trocar a lista chapada (17 itens) por grupos: **Prospecção** (1ª, Raul controla) · Operação Clínica · Gestão · Sistema. Labels não-clicáveis, esconde grupo vazio, **permissões idênticas** (só muda o visual — não mexe na autoridade dos outros domínios). Base: [[sidebar-agrupada-dominio]] (Variante A, nunca implementada).
+- Princípios aplicados (skills ui-ux-pro-max + marketing-psychology): **anchoring** (Prospecção 1ª = referência), **activation energy** (operação mais usada no topo, menos cliques), **mental accounting** (agrupar como o usuário pensa), Miller 7±2, hierarquia visual.
+- Prospecção (Raul controla 100%): Campanhas · Conversas · Leads · Disparos & Chips · **Notícias** (entra quando D2 sair). ~5h.
+
 ### FRENTE D — Banco de Notícias (catálogo hospitais) [novo · escopo adicional]
 - **D1 · Modelagem.** Migration `hospitais` (nome, CNPJ?, UF, cidade, região, especialidades[], tipo_local) + `hospital_noticias` (FK, tipo, título, resumo, fonte_url, fonte_print, data_fato, gravidade, tags[], criado_por). **GRANT + RLS + índice trgm.** ~4h.
 - **D2 · Catálogo + cadastro.** Página `/noticias` (ou dentro de Captação): listar/buscar hospitais, cadastrar local + notícias (link/print/resumo). ~8h.
