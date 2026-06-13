@@ -5,14 +5,12 @@ import { FiltroPeriodo } from "./FiltroPeriodo";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Send, MessageCircle, Trophy, TrendingUp, Megaphone, Users, Target, Radio, MousePointer, BarChart3, Mail, Instagram, Stethoscope, UserCheck, XCircle, MessageSquare, HelpCircle, RotateCcw, Lock, AlertCircle, RefreshCw, Inbox } from "lucide-react";
-import { Label } from "@/components/ui/label";
+import { Loader2, Send, MessageCircle, Trophy, TrendingUp, Megaphone, Users, Target, Radio, MousePointer, BarChart3, Mail, Instagram, Stethoscope, UserCheck, XCircle, MessageSquare, RotateCcw, Lock, RefreshCw, Inbox } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select";
 import { toast } from "sonner";
 import {
   BarChart, Bar, LineChart, Line, Area, AreaChart, XAxis, YAxis, CartesianGrid,
-  Tooltip as RechartsTooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell,
+  Tooltip as RechartsTooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, ReferenceLine,
 } from "recharts";
 
 // Paleta neon (cyan, magenta, amarelo, verde, laranja, roxo)
@@ -105,40 +103,15 @@ function PanelCard({ title, description, icon: Icon, accent = NEON.cyan, childre
 export function AbaProspec() {
   const [dataInicio, setDataInicio] = useState(startOfMonthsAgo(5));
   const [dataFim, setDataFim] = useState(new Date().toISOString().slice(0, 10));
-  const [tabAtiva, setTabAtiva] = useState<string>("visao");
-  const [pergunta, setPergunta] = useState<string>("");
+  const [tabAtiva, setTabAtiva] = useState<string>("resumo");
 
   const PERIODO_INICIO_DEFAULT = startOfMonthsAgo(5);
   const PERIODO_FIM_DEFAULT = new Date().toISOString().slice(0, 10);
 
-  // Mapa de pergunta → aba destino
-  const perguntaParaTab: Record<string, string> = {
-    "geral-disparos": "visao",
-    "geral-disparos-respostas": "visao",
-    "geral-disparos-respostas-conv": "visao",
-    "esp-disparos": "especialidade",
-    "esp-disparos-respostas": "especialidade",
-    "esp-disparos-respostas-conv": "especialidade",
-    "esp-motivos-nao-conv": "conversao",
-    "esp-conv-colaborador": "conversao",
-    "origem-email": "canais",
-    "origem-sigzap": "canais",
-    "origem-trafego": "trafego",
-    "origem-instagram": "canais",
-    "origem-ocorrencias": "canais",
-  };
-
-  const handlePerguntaChange = (value: string) => {
-    setPergunta(value);
-    const tab = perguntaParaTab[value];
-    if (tab) setTabAtiva(tab);
-  };
-
   const handleLimparFiltros = () => {
     setDataInicio(PERIODO_INICIO_DEFAULT);
     setDataFim(PERIODO_FIM_DEFAULT);
-    setPergunta("");
-    setTabAtiva("visao");
+    setTabAtiva("resumo");
   };
 
   // === Dashboard agregado via RPC (1 chamada) ===
@@ -177,6 +150,68 @@ export function AbaProspec() {
     },
     staleTime: 5 * 60_000,
   });
+
+  // === Resumo executivo: séries de apoio (views novas) ===
+  const META_DISPAROS_DIA = 700; // 20 chips × 35/dia (anti-ban WS2)
+
+  const { data: disparosDiariosRaw } = useQuery({
+    queryKey: ["bi-resumo-disparos-diarios", dataInicio, dataFim],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("vw_disparos_diarios")
+        .select("dia, n_disparos")
+        .gte("dia", dataInicio)
+        .lte("dia", dataFim)
+        .order("dia");
+      if (error) throw error;
+      return (data ?? []) as any[];
+    },
+    staleTime: 60_000,
+    retry: false,
+  });
+
+  const { data: captadoraProd } = useQuery({
+    queryKey: ["bi-resumo-captadora"],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("vw_captadora_produtividade")
+        .select("nome_completo, massa_enviados, manuais_enviados, convertidos_campanha, conversoes_totais, leads_assumidos, taxa_conversao_pct");
+      if (error) throw error;
+      return (data ?? []) as any[];
+    },
+    staleTime: 60_000,
+    retry: false,
+  });
+
+  // Série de disparos/dia (agrega as N linhas por dia da view)
+  const serieDisparos = useMemo(() => {
+    const porDia = new Map<string, number>();
+    for (const r of disparosDiariosRaw ?? []) {
+      porDia.set(r.dia, (porDia.get(r.dia) || 0) + (Number(r.n_disparos) || 0));
+    }
+    return [...porDia.entries()]
+      .map(([dia, n]) => ({ dia: dia.slice(5), disparos: n }))
+      .sort((a, b) => (a.dia < b.dia ? -1 : 1));
+  }, [disparosDiariosRaw]);
+
+  const mediaDisparosDia = useMemo(() => {
+    if (!serieDisparos.length) return 0;
+    const soma = serieDisparos.reduce((s, r) => s + r.disparos, 0);
+    return Math.round(soma / serieDisparos.length);
+  }, [serieDisparos]);
+
+  const topCaptadoras = useMemo(
+    () => [...(captadoraProd ?? [])]
+      .map((c) => ({
+        nome: (c.nome_completo || "—").split(" ").slice(0, 2).join(" "),
+        enviados: (Number(c.massa_enviados) || 0) + (Number(c.manuais_enviados) || 0),
+        convertidos: (Number(c.convertidos_campanha) || 0) + (Number(c.conversoes_totais) || 0),
+      }))
+      .filter((c) => c.enviados > 0)
+      .sort((a, b) => b.enviados - a.enviados)
+      .slice(0, 8),
+    [captadoraProd]
+  );
 
   // Desestrutura RPC com defaults seguros
   const totais = (dashboard?.totais ?? {}) as any;
@@ -282,6 +317,15 @@ export function AbaProspec() {
   const taxaResp = totalGeralDisparos > 0 ? ((totaisGerais.responderam / totalGeralDisparos) * 100).toFixed(1) : "0";
   const taxaConv = totalGeralDisparos > 0 ? ((totaisGerais.convertidos / totalGeralDisparos) * 100).toFixed(1) : "0";
 
+  // Ritmo vs meta de disparos (700/dia = 20 chips × 35, anti-ban WS2)
+  const pctMeta = META_DISPAROS_DIA > 0 ? (mediaDisparosDia / META_DISPAROS_DIA) * 100 : 0;
+  const corMeta = pctMeta >= 100 ? NEON.green : pctMeta >= 50 ? NEON.yellow : NEON.orange;
+  const funilMacro = [
+    { nome: "Disparos", v: totalGeralDisparos, cor: NEON.cyan },
+    { nome: "Responderam", v: totaisGerais.responderam, cor: NEON.magenta },
+    { nome: "Convertidos", v: totaisGerais.convertidos, cor: NEON.green },
+  ];
+
   return (
     <div
       className="space-y-6 -m-4 p-4 md:p-6 min-h-[calc(100vh-8rem)] rounded-lg"
@@ -298,43 +342,6 @@ export function AbaProspec() {
         onDataFimChange={setDataFim}
         theme="dark-neon"
       >
-        {/* Select: O que você quer saber? */}
-        <div className="flex-1 min-w-[280px]">
-          <Label className="mb-2 flex items-center gap-2 text-[hsl(var(--fp-muted))]">
-            <HelpCircle className="h-4 w-4" />
-            O que você quer saber?
-          </Label>
-          <Select value={pergunta} onValueChange={handlePerguntaChange}>
-            <SelectTrigger className="border-[hsl(var(--fp-border)/0.22)] bg-[hsl(var(--fp-surface-elevated)/0.96)] text-[hsl(var(--fp-foreground))] hover:border-[hsl(var(--fp-border)/0.5)] focus:ring-[hsl(var(--fp-accent)/0.35)]">
-              <SelectValue placeholder="Selecione uma pergunta…" />
-            </SelectTrigger>
-            <SelectContent className="z-[220] border border-cyan-500/40 bg-slate-950 text-slate-100 shadow-[0_0_28px_rgba(34,211,238,0.25)] max-h-[400px]">
-              <SelectGroup>
-                <SelectLabel className="text-cyan-300 text-[11px] uppercase tracking-wider">Geral</SelectLabel>
-                <SelectItem value="geral-disparos" className="text-slate-100 focus:bg-cyan-500/20 focus:text-white">Nº de disparos</SelectItem>
-                <SelectItem value="geral-disparos-respostas" className="text-slate-100 focus:bg-cyan-500/20 focus:text-white">Disparos × Médicos que responderam</SelectItem>
-                <SelectItem value="geral-disparos-respostas-conv" className="text-slate-100 focus:bg-cyan-500/20 focus:text-white">Disparos × Responderam × Convertidos</SelectItem>
-              </SelectGroup>
-              <SelectGroup>
-                <SelectLabel className="text-cyan-300 text-[11px] uppercase tracking-wider">Por especialidade</SelectLabel>
-                <SelectItem value="esp-disparos" className="text-slate-100 focus:bg-cyan-500/20 focus:text-white">Nº de disparos por especialidade</SelectItem>
-                <SelectItem value="esp-disparos-respostas" className="text-slate-100 focus:bg-cyan-500/20 focus:text-white">Disparos × Responderam por especialidade</SelectItem>
-                <SelectItem value="esp-disparos-respostas-conv" className="text-slate-100 focus:bg-cyan-500/20 focus:text-white">Disparos × Responderam × Convertidos por especialidade</SelectItem>
-                <SelectItem value="esp-motivos-nao-conv" className="text-slate-100 focus:bg-cyan-500/20 focus:text-white">Motivos da não conversão</SelectItem>
-                <SelectItem value="esp-conv-colaborador" className="text-slate-100 focus:bg-cyan-500/20 focus:text-white">Convertidos por colaborador</SelectItem>
-              </SelectGroup>
-              <SelectGroup>
-                <SelectLabel className="text-cyan-300 text-[11px] uppercase tracking-wider">Origem</SelectLabel>
-                <SelectItem value="origem-email" className="text-slate-100 focus:bg-cyan-500/20 focus:text-white">Nº de disparos por email</SelectItem>
-                <SelectItem value="origem-sigzap" className="text-slate-100 focus:bg-cyan-500/20 focus:text-white">Nº de disparos SigZap</SelectItem>
-                <SelectItem value="origem-trafego" className="text-slate-100 focus:bg-cyan-500/20 focus:text-white">Nº de retorno pelo tráfego pago</SelectItem>
-                <SelectItem value="origem-instagram" className="text-slate-100 focus:bg-cyan-500/20 focus:text-white">Nº de prospecção por Instagram</SelectItem>
-                <SelectItem value="origem-ocorrencias" className="text-slate-100 focus:bg-cyan-500/20 focus:text-white">Nº de ocorrências</SelectItem>
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        </div>
-
         {/* Limpar filtros */}
         <div className="flex-shrink-0">
           <Button
@@ -395,6 +402,7 @@ export function AbaProspec() {
           style={{ borderColor: `${NEON.cyan}33`, background: "rgba(15,23,42,0.6)" }}
         >
           {[
+            ["resumo", "Resumo"],
             ["visao", "Visão geral"],
             ["especialidade", "Por especialidade"],
             ["conversao", "Conversão"],
@@ -412,6 +420,90 @@ export function AbaProspec() {
             </TabsTrigger>
           ))}
         </TabsList>
+
+        {/* === Resumo executivo (diretoria) === */}
+        <TabsContent value="resumo" className="space-y-4">
+          {/* KPIs com contexto */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <KPI icon={Send} label="Disparos no período" value={totalGeralDisparos.toLocaleString()} sub={`~${mediaDisparosDia.toLocaleString()}/dia`} color={NEON.cyan} />
+            <KPI icon={MessageCircle} label="Taxa de resposta" value={`${taxaResp}%`} sub={`${totaisGerais.responderam.toLocaleString()} resp.`} color={NEON.magenta} />
+            <KPI icon={Trophy} label="Taxa de conversão" value={`${taxaConv}%`} sub={`${totaisGerais.convertidos.toLocaleString()} conv.`} color={NEON.green} />
+            <KPI icon={Target} label="Ritmo vs meta" value={`${Math.round(pctMeta)}%`} sub={`meta ${META_DISPAROS_DIA}/dia`} color={corMeta} />
+          </div>
+
+          {/* Ritmo de disparos por dia vs meta */}
+          <PanelCard
+            title="Ritmo de disparos por dia"
+            description={`Média ${mediaDisparosDia.toLocaleString()}/dia · meta ${META_DISPAROS_DIA}/dia · verde = bateu a meta, laranja = abaixo de 50%`}
+            icon={BarChart3}
+            accent={corMeta}
+          >
+            {serieDisparos.length === 0 ? (
+              <p className="text-sm py-8 text-center" style={{ color: "#64748b" }}>Sem disparos no período.</p>
+            ) : (
+              <ResponsiveContainer width="100%" height={240}>
+                <BarChart data={serieDisparos}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                  <XAxis dataKey="dia" stroke="#64748b" tick={{ fill: "#94a3b8", fontSize: 11 }} />
+                  <YAxis stroke="#64748b" tick={{ fill: "#94a3b8", fontSize: 11 }} />
+                  <RechartsTooltip contentStyle={tooltipStyle} cursor={{ fill: "rgba(34,211,238,0.05)" }} formatter={(v: any) => [Number(v).toLocaleString(), "Disparos"]} />
+                  <ReferenceLine y={META_DISPAROS_DIA} stroke={NEON.yellow} strokeDasharray="6 4" label={{ value: `meta ${META_DISPAROS_DIA}`, fill: NEON.yellow, fontSize: 11, position: "insideTopRight" }} />
+                  <Bar dataKey="disparos" name="Disparos" radius={[4, 4, 0, 0]}>
+                    {serieDisparos.map((r, i) => (
+                      <Cell key={i} fill={r.disparos >= META_DISPAROS_DIA ? NEON.green : r.disparos >= META_DISPAROS_DIA * 0.5 ? NEON.yellow : NEON.orange} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </PanelCard>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Funil macro */}
+            <PanelCard title="Funil — disparo → resposta → conversão" description="Onde o lead avança e onde vaza" icon={TrendingUp} accent={NEON.cyan}>
+              <div className="space-y-3 pt-1">
+                {funilMacro.map((e, i, arr) => {
+                  const max = arr[0].v || 1;
+                  const w = e.v > 0 ? Math.max(6, (e.v / max) * 100) : 0;
+                  const passagem = i > 0 && arr[i - 1].v > 0 ? ((e.v / arr[i - 1].v) * 100).toFixed(1) : null;
+                  return (
+                    <div key={e.nome}>
+                      <div className="flex items-baseline justify-between text-xs mb-1">
+                        <span style={{ color: "#cbd5e1" }}>{e.nome}</span>
+                        <span className="font-mono" style={{ color: e.cor }}>
+                          {e.v.toLocaleString()}
+                          {passagem && <span style={{ color: "#64748b" }}> · {passagem}% da etapa anterior</span>}
+                        </span>
+                      </div>
+                      <div className="h-6 rounded-md overflow-hidden" style={{ background: "rgba(15,23,42,0.6)" }}>
+                        <div className="h-full rounded-md transition-all" style={{ width: `${w}%`, background: e.cor, boxShadow: `0 0 12px ${e.cor}55` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </PanelCard>
+
+            {/* Produtividade do time */}
+            <PanelCard title="Produtividade do time" description="Top captadoras — volume enviado e conversões" icon={Users} accent={NEON.green}>
+              {topCaptadoras.length === 0 ? (
+                <p className="text-sm py-8 text-center" style={{ color: "#64748b" }}>Sem atividade por captadora ainda. Enche conforme a equipe trabalha os leads.</p>
+              ) : (
+                <ResponsiveContainer width="100%" height={Math.max(240, topCaptadoras.length * 36)}>
+                  <BarChart data={topCaptadoras} layout="vertical" margin={{ left: 90 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                    <XAxis type="number" stroke="#64748b" tick={{ fill: "#94a3b8", fontSize: 11 }} />
+                    <YAxis dataKey="nome" type="category" stroke="#64748b" tick={{ fill: "#cbd5e1", fontSize: 11 }} width={110} />
+                    <RechartsTooltip contentStyle={tooltipStyle} cursor={{ fill: "rgba(34,197,94,0.05)" }} />
+                    <Legend wrapperStyle={{ color: "#cbd5e1", fontSize: 12 }} />
+                    <Bar dataKey="enviados" fill={NEON.cyan} name="Enviados" radius={[0, 4, 4, 0]} />
+                    <Bar dataKey="convertidos" fill={NEON.green} name="Convertidos" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </PanelCard>
+          </div>
+        </TabsContent>
 
         {/* === Visão geral === */}
         <TabsContent value="visao" className="space-y-4">
