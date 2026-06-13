@@ -39,6 +39,7 @@ import {
   Trash2,
   Bot,
   User,
+  Sparkles,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -49,6 +50,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { NovaCampanhaProspeccaoDialog } from "@/components/campanhas/NovaCampanhaProspeccaoDialog";
 import { DuplicarCampanhaManualDialog } from "@/components/campanhas/DuplicarCampanhaManualDialog";
+import { CampanhaResumoIaDialog } from "@/components/campanhas/CampanhaResumoIaDialog";
 import { ConfigurarCampanhaDialog } from "@/components/campanhas/ConfigurarCampanhaDialog";
 import { CampanhaProspeccaoKanban } from "@/components/campanhas/CampanhaProspeccaoKanban";
 import { AcompanhamentoView } from "@/components/campanhas/acompanhamento/AcompanhamentoView";
@@ -765,6 +767,7 @@ function CampanhaCard({
 
   const isRascunho = campanha.status === "rascunho";
   const [dupOpen, setDupOpen] = useState(false);
+  const [resumoOpen, setResumoOpen] = useState(false);
   const qcStatus = useQueryClient();
   // Pausar/reativar/finalizar campanha (a equipe pediu poder cancelar campanha ativa)
   const mudarStatus = useMutation({
@@ -902,6 +905,15 @@ function CampanhaCard({
                 <DropdownMenuItem
                   onClick={(e) => {
                     e.stopPropagation();
+                    setResumoOpen(true);
+                  }}
+                >
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  Resumo executivo (IA)
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
                     setDupOpen(true);
                   }}
                 >
@@ -985,6 +997,12 @@ function CampanhaCard({
         open={dupOpen}
         onOpenChange={setDupOpen}
         campanha={{ id: campanha.id, nome: campanha.nome, total_frio: campanha.total_frio }}
+      />
+      <CampanhaResumoIaDialog
+        campanhaId={campanha.id}
+        nome={campanha.nome.trim()}
+        open={resumoOpen}
+        onOpenChange={setResumoOpen}
       />
     </Card>
   );
