@@ -20,6 +20,25 @@ parent: plano-fechamento-contrato.md (Frente C)
 4. **Tabelas densas + jargão interno** ("pendência", "risco relacional", "SLA_DIAS") que diretora não decodifica.
 5. **Navegação por popover sem "onde estou"** — sem breadcrumb, descoberta confusa.
 
+## 1.1 Tema (padrão visual) — RESOLVIDO 13/06
+Mapeamento confirmou: **AbaProspec era a ÚNICA aba dark-neon (103 indicadores dark); as outras 11 são light/shadcn.** Era a origem do "um BI dark, outro white". **Padrão adotado = light** (maioria). AbaProspec foi convertida pra light (KPI/PanelCard shadcn, paleta clara, tooltip light), preservando toda a lógica. Agora as 12 abas seguem o mesmo padrão visual.
+
+## 1.2 Mapeamento útil / não-útil por painel (o que aproveitar)
+| Aba | Útil (manter) | Não-útil / corrigir |
+|---|---|---|
+| **Prospecção** (AbaProspec) | Resumo executivo, funil, ritmo vs meta, por especialidade, conversão, campanhas | (resolvido: tema light + select removido) |
+| Financeiro | Tudo — limpo, é a **referência de design** | — |
+| Contratos | KPIs de carteira, vencimentos, valor em risco | 8 KPIs sem hierarquia → reduzir a 3-4 vitais; listas sem sort |
+| Médicos | Status de cadastro, riscos (docs vencendo), evolução | 2 blocos de KPI redundantes; jargão ("pendência") |
+| Licitações | Funil, taxa de ganho, evolução | KPIs sem meta; gráfico de 3 linhas confuso |
+| Competitiva | Concorrentes, Δ preço vs vencedor | tabela de 8 colunas; falta "recomendação tática" |
+| Escalas | Furos, cobertura | crítico escondido em sub-abas → trazer furos pra cima |
+| TI | Taxa resolução, SLA | 7 KPIs em linha; gargalos não-acionáveis |
+| AGES | Receita, produção, licitações | 10 KPIs sem agrupar |
+| DrEscala / ClienteExterno | Funcionam | refinos menores |
+
+**Para ESTE contrato:** só Prospecção (feita). As demais = **contrato futuro** (FIX/REBUILD mapeados acima, prontos pra virar proposta).
+
 ## 2. Ação tomada (13/06) ✅
 - **KILL** `AbaDisparos` + `useDisparosBI` (dado fake). Removidos.
 - **Motor novo no /bi:** aba **"Prospecção"** agora roda `AbaProspec` (RPC real). Vira aba **default** do `/bi`.
