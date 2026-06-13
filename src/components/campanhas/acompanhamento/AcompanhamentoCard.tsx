@@ -1,7 +1,7 @@
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Flame, MessageSquare, MapPin, Stethoscope, Clock, Layers } from "lucide-react";
+import { Flame, MessageSquare, MapPin, Stethoscope, Clock, Layers, Tag, DollarSign, Sparkles } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { AcompanhamentoLead } from "@/hooks/useAcompanhamentoLeads";
@@ -117,6 +117,27 @@ export function AcompanhamentoCard({
           </Badge>
         )}
       </div>
+
+      {/* A2 — tags de insight do perfil IA (banco_interesse_leads) */}
+      {((lead.perfil_modalidade && lead.perfil_modalidade.length > 0) || (lead.perfil_valor_min != null && lead.perfil_valor_min > 0)) && (
+        <div className="flex flex-wrap items-center gap-1 mb-2" title={lead.perfil_resumo || undefined}>
+          {lead.perfil_modalidade?.slice(0, 2).map((m) => (
+            <Badge key={m} variant="secondary" className="text-[10px] h-4 px-1.5 gap-0.5">
+              <Tag className="h-2.5 w-2.5" />
+              {m}
+            </Badge>
+          ))}
+          {lead.perfil_valor_min != null && lead.perfil_valor_min > 0 && (
+            <Badge variant="secondary" className="text-[10px] h-4 px-1.5 gap-0.5 border-emerald-200 bg-emerald-50 text-emerald-700">
+              <DollarSign className="h-2.5 w-2.5" />
+              {lead.perfil_valor_min >= 1000 ? `${Math.round(lead.perfil_valor_min / 1000)}k+` : `${lead.perfil_valor_min}+`}
+            </Badge>
+          )}
+          {lead.perfil_resumo && (
+            <Sparkles className="h-3 w-3 text-primary/60" />
+          )}
+        </div>
+      )}
 
       <div className="flex items-center gap-1 mb-2">
         {[0, 1, 2, 3].map((i) => (
