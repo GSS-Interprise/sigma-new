@@ -22,6 +22,7 @@ import {
   Shield,
   Rocket,
   UserSearch,
+  Newspaper,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -67,8 +68,8 @@ const navigationGroups: NavGroup[] = [
       { name: "Campanhas", href: "/prospeccao", icon: Rocket, modulo: "disparos" },
       { name: "Conversas", href: "/disparos/sigzap", icon: MessageCircle, modulo: "disparos" },
       { name: "Leads", href: "/leads", icon: UserSearch, modulo: "disparos" },
+      { name: "Notícias", href: "/noticias", icon: Newspaper, modulo: "disparos" },
       { name: "Disparos & Chips", href: "/disparos", icon: Send, modulo: "disparos" },
-      // Notícias entra aqui quando a UI (D2) sair: { name: "Notícias", href: "/noticias", icon: Newspaper, modulo: "disparos" },
     ],
   },
   {
