@@ -23,6 +23,12 @@ interface RegiaoLead {
   ufs: string[];
   cidades: string[];
   created_at: string;
+  // Campos enriquecidos pela IA (A1 — busca retroativa por perfil)
+  modalidade_preferida: string[] | null;
+  tipo_contratacao_preferida: string[] | null;
+  valor_minimo_aceitavel: number | null;
+  valor_minimo_unidade: string | null;
+  confianca_score: number | null;
   lead: {
     id: string;
     nome: string;
@@ -39,6 +45,10 @@ export function RegiaoInteresseModule() {
   const [ufFilter, setUfFilter] = useState("");
   const [especialidadeFilter, setEspecialidadeFilter] = useState("");
   const [cidadeFilter, setCidadeFilter] = useState("");
+  // A1 — filtros por perfil IA
+  const [modalidadeFilter, setModalidadeFilter] = useState("");
+  const [tipoContratacaoFilter, setTipoContratacaoFilter] = useState("");
+  const [valorVagaFilter, setValorVagaFilter] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [vincularDialogOpen, setVincularDialogOpen] = useState(false);
 
@@ -55,6 +65,11 @@ export function RegiaoInteresseModule() {
           ufs,
           cidades,
           created_at,
+          modalidade_preferida,
+          tipo_contratacao_preferida,
+          valor_minimo_aceitavel,
+          valor_minimo_unidade,
+          confianca_score,
           lead:leads!banco_interesse_leads_lead_id_fkey (
             id, nome, phone_e164, especialidade, uf, cidade
           )
@@ -68,19 +83,25 @@ export function RegiaoInteresseModule() {
 
   // Extract unique filter options from loaded data
   const filterOptions = useMemo(() => {
-    if (!regiaoLeads) return { ufs: [], especialidades: [], cidades: [] };
+    if (!regiaoLeads) return { ufs: [], especialidades: [], cidades: [], modalidades: [], tiposContratacao: [] };
     const ufSet = new Set<string>();
     const espSet = new Set<string>();
     const cidSet = new Set<string>();
+    const modSet = new Set<string>();
+    const tipoSet = new Set<string>();
     regiaoLeads.forEach((r) => {
       if (r.lead?.uf) ufSet.add(r.lead.uf.toUpperCase());
       if (r.lead?.especialidade) espSet.add(r.lead.especialidade);
       if (r.lead?.cidade) cidSet.add(r.lead.cidade);
+      (r.modalidade_preferida || []).forEach((m) => m && modSet.add(m));
+      (r.tipo_contratacao_preferida || []).forEach((t) => t && tipoSet.add(t));
     });
     return {
       ufs: Array.from(ufSet).sort(),
       especialidades: Array.from(espSet).sort(),
       cidades: Array.from(cidSet).sort(),
+      modalidades: Array.from(modSet).sort(),
+      tiposContratacao: Array.from(tipoSet).sort(),
     };
   }, [regiaoLeads]);
 
@@ -93,6 +114,14 @@ export function RegiaoInteresseModule() {
       if (ufFilter && lead.uf?.toUpperCase() !== ufFilter) return false;
       if (especialidadeFilter && lead.especialidade !== especialidadeFilter) return false;
       if (cidadeFilter && lead.cidade !== cidadeFilter) return false;
+      // A1 — filtros por perfil IA
+      if (modalidadeFilter && !(r.modalidade_preferida || []).includes(modalidadeFilter)) return false;
+      if (tipoContratacaoFilter && !(r.tipo_contratacao_preferida || []).includes(tipoContratacaoFilter)) return false;
+      if (valorVagaFilter) {
+        const v = Number(valorVagaFilter);
+        // mostra médicos cujo mínimo aceitável é <= valor da vaga (cabem na vaga)
+        if (!Number.isNaN(v) && (r.valor_minimo_aceitavel == null || r.valor_minimo_aceitavel > v)) return false;
+      }
       if (searchTerm.trim()) {
         const term = searchTerm.toLowerCase();
         return (
@@ -104,7 +133,7 @@ export function RegiaoInteresseModule() {
       }
       return true;
     });
-  }, [regiaoLeads, searchTerm, ufFilter, especialidadeFilter, cidadeFilter]);
+  }, [regiaoLeads, searchTerm, ufFilter, especialidadeFilter, cidadeFilter, modalidadeFilter, tipoContratacaoFilter, valorVagaFilter]);
 
   const totalCount = filteredLeads.length;
 
@@ -289,6 +318,41 @@ export function RegiaoInteresseModule() {
                 ))}
               </SelectContent>
             </Select>
+            {/* A1 — filtros por perfil enriquecido pela IA */}
+            {filterOptions.modalidades.length > 0 && (
+              <Select value={modalidadeFilter || undefined} onValueChange={(v) => setModalidadeFilter(v === "__all__" ? "" : v)}>
+                <SelectTrigger className="w-[180px] h-9">
+                  <SelectValue placeholder="Modalidade (IA)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">Todas modalidades</SelectItem>
+                  {filterOptions.modalidades.map((m) => (
+                    <SelectItem key={m} value={m}>{m}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            {filterOptions.tiposContratacao.length > 0 && (
+              <Select value={tipoContratacaoFilter || undefined} onValueChange={(v) => setTipoContratacaoFilter(v === "__all__" ? "" : v)}>
+                <SelectTrigger className="w-[180px] h-9">
+                  <SelectValue placeholder="Contratação (IA)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">Toda contratação</SelectItem>
+                  {filterOptions.tiposContratacao.map((t) => (
+                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            <Input
+              type="number"
+              placeholder="Valor da vaga (R$)"
+              value={valorVagaFilter}
+              onChange={(e) => setValorVagaFilter(e.target.value)}
+              className="w-[160px] h-9"
+              title="Mostra médicos cujo valor mínimo aceitável (extraído pela IA) é ≤ esse valor"
+            />
           </div>
         </CardContent>
       </Card>
@@ -355,6 +419,17 @@ export function RegiaoInteresseModule() {
                           <span className="text-xs text-muted-foreground">
                             {lead.cidade}
                           </span>
+                        )}
+                        {(item.modalidade_preferida || []).slice(0, 1).map((m) => (
+                          <Badge key={m} variant="outline" className="text-xs border-cyan-300 bg-cyan-50 text-cyan-700">
+                            {m}
+                          </Badge>
+                        ))}
+                        {item.valor_minimo_aceitavel != null && item.valor_minimo_aceitavel > 0 && (
+                          <Badge variant="outline" className="text-xs border-emerald-300 bg-emerald-50 text-emerald-700">
+                            ≥ R$ {item.valor_minimo_aceitavel >= 1000 ? `${Math.round(item.valor_minimo_aceitavel / 1000)}k` : item.valor_minimo_aceitavel}
+                            {item.valor_minimo_unidade ? `/${item.valor_minimo_unidade}` : ""}
+                          </Badge>
                         )}
                         {item.encaminhado_por_nome && (
                           <Badge variant="outline" className="text-xs gap-1 border-primary/30 text-primary">
