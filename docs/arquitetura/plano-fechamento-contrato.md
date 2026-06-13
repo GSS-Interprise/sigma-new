@@ -20,7 +20,11 @@ contrato: 4 blocos · 23/03 → 20/06/2026 · R$16.000
 - ✅ **BI executivo:** aba **Resumo** na Prospecção (KPIs com meta, ritmo vs 700/dia, funil, produtividade do time).
 - ✅ **D2 Banco de Notícias UI:** página `/noticias` (busca, cadastro hospital+especialidades, notícia com print no Storage). Item na sidebar.
 - ✅ **E1 Sidebar agrupada:** grupos Prospecção (1ª) · Operação Clínica · Gestão · Sistema. Notícias no grupo Prospecção.
-- ⏳ **Falta:** publish Lovable + Ramone validar BI · B1 (resumo IA campanha) · A1/A2 (Bloco 3) · shell BI fix (breadcrumb) · B3 (apresentação). Abas BI Médicos/Contratos/etc = contrato futuro.
+- ✅ **B1 Resumo IA de campanha:** edge `campanha-resumo-ia` (deployado + validado) + tabela cache + UI no menu da campanha.
+- ✅ **A2 Tag insights no Kanban:** badges de modalidade/valor + resumo IA no card de acompanhamento.
+- ✅ **A1 Filtro retroativo por perfil:** filtros por modalidade/contratação/valor IA no Banco de Interesse.
+- ⏳ **Falta:** publish Lovable + Ramone validar BI · shell BI fix (breadcrumb) · B3 (apresentação final). Abas BI Médicos/Contratos/etc = contrato futuro.
+- **Bloco 3 = 100% · Bloco 4 = ~90%** (falta só apresentação, que depende de publish + dados reais).
 
 ## 0. Status real (auditado 13/06 via DB + código)
 
