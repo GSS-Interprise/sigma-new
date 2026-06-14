@@ -24,6 +24,7 @@ import {
   UserSearch,
   Newspaper,
   ClipboardCheck,
+  Footprints,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -90,6 +91,7 @@ const navigationGroups: NavGroup[] = [
     label: "Gestão",
     items: [
       { name: "BI", href: "/bi", icon: BarChart3, modulo: "bi" },
+      { name: "Atividades de Campo", href: "/atividades-campo", icon: Footprints, adminOrLeader: true },
       { name: "Marketing", href: "/marketing", icon: Megaphone, modulo: "marketing" },
       { name: "Financeiro", href: "/financeiro", icon: DollarSign, modulo: "financeiro" },
       { name: "Patrimônio", href: "/patrimonio", icon: Package, modulo: "patrimonio" },

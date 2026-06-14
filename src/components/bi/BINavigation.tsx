@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import {
   BarChart3, TrendingUp, Send, Calendar, Briefcase,
   Users, MessageSquare, DollarSign, FileText, Monitor,
-  ChevronDown, Building2,
+  ChevronDown, Building2, ListChecks,
 } from "lucide-react";
 
 export interface BIModule {
@@ -28,6 +28,7 @@ export const BI_CATEGORIES: BICategory[] = [
     icon: TrendingUp,
     modules: [
       { key: "prospeccao", label: "Prospecção", icon: Send },
+      { key: "esforco", label: "Esforço da Equipe", icon: ListChecks },
       { key: "insights", label: "Insights Conversas", icon: MessageSquare },
       { key: "licitacoes", label: "Licitações", icon: BarChart3 },
       { key: "competitiva", label: "Competitiva", icon: TrendingUp },
