@@ -29,6 +29,7 @@ import DisparosCampanhaPropostas from "./pages/DisparosCampanhaPropostas";
 import DisparosBIProspec from "./pages/DisparosBIProspec";
 import CampanhasProspeccao from "./pages/CampanhasProspeccao";
 import Noticias from "./pages/Noticias";
+import Parecer from "./pages/Parecer";
 import Contratos from "./pages/Contratos";
 import RelacionamentoMedico from "./pages/RelacionamentoMedico";
 import Medicos from "./pages/Medicos";
@@ -99,6 +100,7 @@ const App = () => (
             <Route path="/disparos/bi-prospec" element={<ProtectedRoute><PermissionRoute modulo="disparos"><DisparosBIProspec /></PermissionRoute></ProtectedRoute>} />
             <Route path="/prospeccao" element={<ProtectedRoute><PermissionRoute modulo="disparos"><CampanhasProspeccao /></PermissionRoute></ProtectedRoute>} />
             <Route path="/noticias" element={<ProtectedRoute><PermissionRoute modulo="disparos"><Noticias /></PermissionRoute></ProtectedRoute>} />
+            <Route path="/parecer" element={<ProtectedRoute><PermissionRoute adminOrLeader><Parecer /></PermissionRoute></ProtectedRoute>} />
             <Route path="/disparos/tarefas" element={<ProtectedRoute><PermissionRoute modulo="disparos"><DisparosCampanhas /></PermissionRoute></ProtectedRoute>} />
             <Route path="/marketing" element={<ProtectedRoute><PermissionRoute modulo="marketing"><Marketing /></PermissionRoute></ProtectedRoute>} />
             <Route path="/contratos" element={<ProtectedRoute><PermissionRoute modulo="contratos"><Contratos /></PermissionRoute></ProtectedRoute>} />

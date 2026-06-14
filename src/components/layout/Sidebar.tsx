@@ -23,6 +23,7 @@ import {
   Rocket,
   UserSearch,
   Newspaper,
+  ClipboardCheck,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -76,6 +77,7 @@ const navigationGroups: NavGroup[] = [
     label: "Operação clínica",
     items: [
       { name: "Médicos", href: "/medicos", icon: Users, modulo: "medicos" },
+      { name: "Pareceres", href: "/parecer", icon: ClipboardCheck, adminOrLeader: true },
       { name: "Relacionamento", href: "/relacionamento-medico", icon: Activity, modulo: "relacionamento" },
       { name: "Escalas", href: "/escalas", icon: Calendar, modulo: "escalas" },
       { name: "Clientes e Contratos", href: "/contratos", icon: FileText, modulo: "contratos" },
