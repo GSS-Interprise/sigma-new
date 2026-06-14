@@ -67,12 +67,23 @@ export function useAcompanhamentoLeads(filtro: FiltroAcompanhamento = "todos") {
   const { data: leads = [], isLoading } = useQuery({
     queryKey: ["acompanhamento-leads"],
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from("vw_acompanhamento_kanban")
-        .select("*")
-        .order("data_status", { ascending: false });
-      if (error) throw error;
-      return (data || []) as AcompanhamentoLead[];
+      // PostgREST limita 1000/request — campanhas grandes capavam a fila/contadores em 1000.
+      // Paginar até trazer todas (cap 20k de segurança).
+      const PAGE = 1000;
+      const CAP = 20000;
+      let all: AcompanhamentoLead[] = [];
+      for (let from = 0; from < CAP; from += PAGE) {
+        const { data, error } = await (supabase as any)
+          .from("vw_acompanhamento_kanban")
+          .select("*")
+          .order("data_status", { ascending: false })
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        const chunk = (data || []) as AcompanhamentoLead[];
+        all = all.concat(chunk);
+        if (chunk.length < PAGE) break;
+      }
+      return all;
     },
   });
 
