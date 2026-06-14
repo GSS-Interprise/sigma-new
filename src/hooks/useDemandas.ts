@@ -234,9 +234,10 @@ export function useDemandasDoSetor(
       // Materializa recorrências só para o intervalo visível do calendário.
       if (inicioISO && fimISO) {
         try {
-          await supabase.functions.invoke("gerar-tarefas-recorrentes", {
+          const { error: fnError } = await supabase.functions.invoke("gerar-tarefas-recorrentes", {
             body: { data_inicio: inicioISO, data_fim: fimISO },
           });
+          if (fnError) throw fnError;
         } catch (e) {
           console.error("[demandas] falha ao materializar recorrências do mês", e);
         }
