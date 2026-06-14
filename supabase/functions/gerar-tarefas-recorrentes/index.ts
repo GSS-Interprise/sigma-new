@@ -88,8 +88,7 @@ Deno.serve(async (req) => {
     hoje.setUTCHours(0, 0, 0, 0);
     const janelaCustomizada = !!(dataInicio && dataFim);
     const inicioJanela = dataInicio ?? hoje;
-    const fimJanela = dataFim ?? addDays(hoje, HORIZONTE_DIAS - 1);
-    const limiteExclusivo = addDays(fimJanela, 1);
+    const fimJanela = dataFim ?? null;
 
     let criadas = 0;
     for (const rec of recorrencias ?? []) {
@@ -97,6 +96,9 @@ Deno.serve(async (req) => {
         ? new Date(rec.proxima_geracao + "T00:00:00Z")
         : inicioJanela;
       const start = janelaCustomizada ? inicioJanela : inicio > hoje ? inicio : hoje;
+      const limiteExclusivo = janelaCustomizada && fimJanela
+        ? addDays(fimJanela, 1)
+        : addDays(start, HORIZONTE_DIAS);
 
       for (let d = new Date(start); d < limiteExclusivo; d = addDays(d, 1)) {
         if (!deveGerarNoDia(rec, d)) continue;
