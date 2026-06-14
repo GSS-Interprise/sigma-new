@@ -156,18 +156,18 @@ export function ColunaAgenda({ onTarefaClick }: Props) {
                 "relative text-left p-1 overflow-hidden rounded-lg transition-all group",
                 fora && "opacity-40",
                 !fora && !sel && !hoje && "hover:bg-accent/50",
-                !fora && temAtrasada && !sel && "bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/30 dark:hover:bg-rose-950/40",
+                !fora && temAtrasada && "bg-red-600 hover:bg-red-700 text-white",
                 sel && !hoje && "bg-primary/10 ring-1 ring-inset ring-primary/40",
-                sel && temAtrasada && "ring-destructive/50 bg-destructive/15",
+                sel && temAtrasada && "ring-2 ring-inset ring-red-800",
               )}
             >
-              <div className="flex items-center justify-start mb-0.5">
+              <div className="flex items-center justify-start">
                 <span
                   className={cn(
                     "inline-flex items-center justify-center text-[11px] font-bold h-6 min-w-6 px-1.5 rounded-full",
                     hoje && "bg-primary text-primary-foreground shadow-md shadow-primary/30",
                     !hoje && !temAtrasada && "text-foreground",
-                    !hoje && temAtrasada && "text-rose-600 dark:text-rose-400",
+                    !hoje && temAtrasada && "text-white",
                     fora && "text-muted-foreground/50",
                   )}
                 >
@@ -176,40 +176,24 @@ export function ColunaAgenda({ onTarefaClick }: Props) {
                   })}
                 </span>
               </div>
-              <div className="space-y-0.5">
-                {eventos.slice(0, 3).map((t) => {
-                  const atrasada =
-                    t.status !== "concluida" &&
-                    t.data_limite &&
-                    isPast(parseISO(t.data_limite));
-                  return (
-                    <div
-                      key={t.id}
-                      className="flex items-center gap-1 text-[10px] truncate"
-                      title={t.titulo}
-                    >
-                      <span
-                        className={cn(
-                          "h-1.5 w-1.5 rounded-full flex-shrink-0",
-                          atrasada
-                            ? "bg-rose-500"
-                            : t.status === "concluida"
-                            ? "bg-muted-foreground"
-                            : "bg-emerald-500",
-                        )}
-                      />
-                      <span className="truncate text-foreground/70 font-medium">
-                        {t.titulo}
-                      </span>
-                    </div>
-                  );
-                })}
-                {eventos.length > 3 && (
-                  <div className="text-[9px] text-muted-foreground font-bold">
-                    +{eventos.length - 3}
-                  </div>
-                )}
-              </div>
+              {eventos.length > 0 && (
+                <div className="mt-0.5 flex items-center gap-1">
+                  <span
+                    className={cn(
+                      "h-1.5 w-1.5 rounded-full",
+                      temAtrasada ? "bg-white" : "bg-emerald-500",
+                    )}
+                  />
+                  <span
+                    className={cn(
+                      "text-[9px] font-bold",
+                      temAtrasada ? "text-white" : "text-muted-foreground",
+                    )}
+                  >
+                    {eventos.length}
+                  </span>
+                </div>
+              )}
             </button>
           );
         })}
