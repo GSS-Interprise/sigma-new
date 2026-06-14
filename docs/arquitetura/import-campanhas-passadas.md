@@ -59,6 +59,19 @@ Pra cada linha, achar o `leads` existente antes de criar (evita duplicar a base 
 3. Se ainda não achou → **cria lead novo** (são médicos reais; valem pra base + histórico).
 4. Idempotência: a importação grava `metadados.import_origem` + hash da linha; re-rodar não duplica `campanha_leads` (UNIQUE campanha_id+lead_id já existe).
 
+## 5.1 Resultado do dry-run de match (14/06 — dados reais)
+Cruzei os telefones das planilhas com `leads.phone_e164` + `lead_contatos` (sufixo 8 dígitos), e os não-achados por nome (trgm):
+
+| Planilha | Achados por telefone | Restantes (por nome ≥0.5) | Realmente novos |
+|---|---|---|---|
+| **Pediatras MG** (4.062) | **4.041 (99%)** | 21 | ~0 |
+| **CNES empresa** (58) | 14 (24%) + 8 sem telefone | 44 batem por nome | ~0 |
+| **Total** | ~4.055 por telefone | 65 por nome | **~0 a criar** |
+
+**Conclusão:** praticamente **100% dos médicos já existem na base** (telefone forte; o resto bate por nome). Quase nada a criar. ⚠️ Os 65 por-nome (sim≥0.5) precisam de **conferência no dry-run** (risco de homônimo) antes do commit.
+
+**Task de contato pra todos? Sim:** cada médico vira `campanha_leads`. Pediatras → WPP vazio (2.661) = `frio` + task **"1º contato"** (Pendente, equipe continua); WPP "Enviado" (1.401) = `contatado` + touch histórico. CNES (finalizada) → status pelo desfecho da Ligação, sem task aberta. Mecanismo de task já existe (`campanha_lead_tasks` + cadência manual).
+
 ## 6. Execução (proposta)
 - **Script Python controlado** (one-time, não UI — é importação pontual), via Management API/service_role:
   1. **Dry-run**: lê planilha, normaliza, roda match, e **gera relatório** (quantos match por telefone / por nome / novos / sem telefone / por status) SEM gravar. Raul revisa.
