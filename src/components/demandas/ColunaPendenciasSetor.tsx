@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/select";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   AlertCircle,
   Gavel,
@@ -39,6 +39,35 @@ export function ColunaPendenciasSetor() {
     ? (adminSetorFiltro === "todos" ? null : adminSetorFiltro)
     : setorId;
   const { data: pendencias = [], isLoading } = usePendenciasSetor(setorEfetivo, isAdmin);
+
+  const contratoIds = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          pendencias
+            .filter((p) => p.origem === "contrato" && p.recurso_id)
+            .map((p) => p.recurso_id),
+        ),
+      ),
+    [pendencias],
+  );
+
+  const { data: codigosMap = {} } = useQuery({
+    queryKey: ["contratos-codigo-interno", contratoIds],
+    enabled: contratoIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("contratos")
+        .select("id, codigo_interno")
+        .in("id", contratoIds);
+      if (error) throw error;
+      const map: Record<string, number | null> = {};
+      (data || []).forEach((c: any) => {
+        map[c.id] = c.codigo_interno;
+      });
+      return map;
+    },
+  });
 
   const { data: setores = [] } = useQuery({
     queryKey: ["setores-pendencias-filter"],
@@ -132,7 +161,7 @@ export function ColunaPendenciasSetor() {
                       </div>
                       {p.origem === "contrato" && p.recurso_id && (
                         <p className="text-[10px] font-mono text-muted-foreground/80 mt-0.5">
-                          ID: {p.recurso_id.slice(0, 8)}
+                          ID: {codigosMap[p.recurso_id] ?? "—"}
                         </p>
                       )}
                       <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2 leading-relaxed">
