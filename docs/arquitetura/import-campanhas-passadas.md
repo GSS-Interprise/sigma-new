@@ -72,6 +72,16 @@ Cruzei os telefones das planilhas com `leads.phone_e164` + `lead_contatos` (sufi
 
 **Task de contato pra todos? Sim:** cada médico vira `campanha_leads`. Pediatras → WPP vazio (2.661) = `frio` + task **"1º contato"** (Pendente, equipe continua); WPP "Enviado" (1.401) = `contatado` + touch histórico. CNES (finalizada) → status pelo desfecho da Ligação, sem task aberta. Mecanismo de task já existe (`campanha_lead_tasks` + cadência manual).
 
+## 5.2 Resultado da EXECUÇÃO (14/06 — aplicado em produção)
+Importador rodado (dry-run → commit). Tudo marcado `origem/import_origem='import_planilha_2026_06'` (rollback fácil).
+- **2 campanhas manuais criadas:** "CNES empresa (importada)" (`finalizada`) · "Pediatras MG (importada)" (`ativa`). Ambas `cadencia_ativa=false` → **não disparam sozinhas**.
+- **CNES (58):** 4 contatado · 46 sem_resposta · 8 descartado.
+- **Pediatras MG (4.037):** 2.640 frio (Pendentes — equipe continua) · 1.274 contatado (Aguardando) · 123 descartado (sem interesse). (4.062 linhas → 4.037 leads; 25 colapsaram por médico repetido/mesmo lead.)
+- **Match:** ~99% por telefone, resto por nome (≥0.85). Só **12 leads novos** criados (não existiam na base).
+- **1.339 registros** em `lead_historico` (desfechos: 1ª msg, ligação, sem interesse).
+- **Tasks:** a cadência parametrizável da campanha **auto-gerou** as tasks de contato (frio já tem task de WhatsApp). Tasks de descartado + CNES (finalizada) foram **fechadas**. ⚠️ Restaram ~23k tasks pendentes (cadência multi-canal/multi-touch dos 3.914 leads ativos da Pediatras) — se for demais, dá pra enxugar pra só WhatsApp.
+- Script: `C:\Users\rauls\import_campanhas.py` (não versionado — contém token; lógica documentada aqui).
+
 ## 6. Execução (proposta)
 - **Script Python controlado** (one-time, não UI — é importação pontual), via Management API/service_role:
   1. **Dry-run**: lê planilha, normaliza, roda match, e **gera relatório** (quantos match por telefone / por nome / novos / sem telefone / por status) SEM gravar. Raul revisa.
