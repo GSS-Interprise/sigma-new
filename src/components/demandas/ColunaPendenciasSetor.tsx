@@ -102,7 +102,6 @@ export function ColunaPendenciasSetor() {
                 key={p.id}
                 to={p.link}
                 className="block group"
-                target="_blank"
               >
                 <div
                   className={cn(
@@ -131,6 +130,11 @@ export function ColunaPendenciasSetor() {
                           {URGENCIA_LABEL[p.urgencia] ?? p.urgencia}
                         </Badge>
                       </div>
+                      {p.origem === "contrato" && p.recurso_id && (
+                        <p className="text-[10px] font-mono text-muted-foreground/80 mt-0.5">
+                          ID: {p.recurso_id.slice(0, 8)}
+                        </p>
+                      )}
                       <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2 leading-relaxed">
                         {p.descricao}
                       </p>
