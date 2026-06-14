@@ -84,6 +84,7 @@ interface CampanhaRow {
   criador_nome?: string | null;
   especialidade?: { nome: string } | null;
   especialidades_nomes?: string[];
+  total_real?: number | null; // contagem real (todos os status, inclui descartado/sem_resposta)
 }
 
 type StatusFiltro = "ativa" | "rascunho" | "pausada" | "todas";
@@ -188,6 +189,18 @@ export default function CampanhasProspeccao() {
               .filter(Boolean) as string[];
           }
         }
+      }
+
+      // Total REAL de leads por campanha (inclui descartado/sem_resposta, que os
+      // contadores denormalizados não somam). Card mostra o número verdadeiro.
+      const ids = rows.map((r) => r.id);
+      if (ids.length > 0) {
+        const { data: counts } = await (supabase as any)
+          .from("vw_campanha_lead_counts")
+          .select("campanha_id, total_leads")
+          .in("campanha_id", ids);
+        const cmap = new Map((counts || []).map((c: any) => [c.campanha_id, c.total_leads]));
+        for (const r of rows) r.total_real = (cmap.get(r.id) as number) ?? null;
       }
       return rows;
     },
@@ -757,6 +770,8 @@ function CampanhaCard({
     campanha.total_aquecido +
     campanha.total_quente +
     campanha.total_convertido;
+  // Total exibido no card = contagem real (inclui descartado/sem_resposta); fallback pro ativo
+  const totalExibido = campanha.total_real ?? total;
 
   const progressPercent =
     total > 0
@@ -972,7 +987,7 @@ function CampanhaCard({
         <div className="flex items-center gap-4 text-xs text-muted-foreground">
           <span className="flex items-center gap-1">
             <Users className="h-3 w-3" />
-            {total} leads
+            {totalExibido} leads
           </span>
           <span className="flex items-center gap-1 text-red-600 font-medium">
             <Flame className="h-3 w-3" />
