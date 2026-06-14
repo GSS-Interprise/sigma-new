@@ -18,6 +18,12 @@ function dateISO(d: Date) {
   return d.toISOString().slice(0, 10);
 }
 
+function parseISODate(value: unknown) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const d = new Date(`${value}T00:00:00Z`);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 function deveGerarNoDia(
   rec: {
     frequencia: string;
@@ -47,13 +53,17 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    // Filtra por recorrência específica se fornecida no body
+    // Filtra por recorrência específica e/ou janela mensal se fornecido no body
     let recorrenciaId: string | null = null;
+    let dataInicio: Date | null = null;
+    let dataFim: Date | null = null;
     try {
       const body = await req.json();
       if (body && typeof body.recorrencia_id === "string") {
         recorrenciaId = body.recorrencia_id;
       }
+      dataInicio = parseISODate(body?.data_inicio);
+      dataFim = parseISODate(body?.data_fim);
     } catch {
       /* sem body */
     }
@@ -68,16 +78,19 @@ Deno.serve(async (req) => {
 
     const hoje = new Date();
     hoje.setUTCHours(0, 0, 0, 0);
-    const limite = addDays(hoje, HORIZONTE_DIAS);
+    const janelaCustomizada = !!(dataInicio && dataFim);
+    const inicioJanela = dataInicio ?? hoje;
+    const fimJanela = dataFim ?? addDays(hoje, HORIZONTE_DIAS - 1);
+    const limiteExclusivo = addDays(fimJanela, 1);
 
     let criadas = 0;
     for (const rec of recorrencias ?? []) {
       const inicio = rec.proxima_geracao
         ? new Date(rec.proxima_geracao + "T00:00:00Z")
-        : hoje;
-      const start = inicio > hoje ? inicio : hoje;
+        : inicioJanela;
+      const start = janelaCustomizada ? inicioJanela : inicio > hoje ? inicio : hoje;
 
-      for (let d = new Date(start); d < limite; d = addDays(d, 1)) {
+      for (let d = new Date(start); d < limiteExclusivo; d = addDays(d, 1)) {
         if (!deveGerarNoDia(rec, d)) continue;
         const dataISO = dateISO(d);
 
@@ -130,10 +143,12 @@ Deno.serve(async (req) => {
         criadas++;
       }
 
-      await supabase
-        .from("worklist_tarefa_recorrencias")
-        .update({ proxima_geracao: dateISO(limite) })
-        .eq("id", rec.id);
+      if (!janelaCustomizada) {
+        await supabase
+          .from("worklist_tarefa_recorrencias")
+          .update({ proxima_geracao: dateISO(limiteExclusivo) })
+          .eq("id", rec.id);
+      }
     }
 
     return new Response(
