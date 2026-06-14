@@ -41,15 +41,26 @@ export function useCampanhaLeads(campanhaId?: string) {
     queryKey: ["campanha-leads", campanhaId],
     enabled: !!campanhaId,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("campanha_leads")
-        .select(
-          "*, lead:lead_id(id, nome, phone_e164, email, uf, cidade, especialidade)"
-        )
-        .eq("campanha_id", campanhaId!)
-        .order("data_status", { ascending: false });
-      if (error) throw error;
-      return (data || []) as CampanhaLead[];
+      // PostgREST limita a 1000 linhas/request. Campanhas grandes (ex: import com 3.9k leads)
+      // ficavam capadas em 1000 no Kanban. Paginar até trazer todas (cap de segurança 20k).
+      const PAGE = 1000;
+      const CAP = 20000;
+      let all: CampanhaLead[] = [];
+      for (let from = 0; from < CAP; from += PAGE) {
+        const { data, error } = await supabase
+          .from("campanha_leads")
+          .select(
+            "*, lead:lead_id(id, nome, phone_e164, email, uf, cidade, especialidade)"
+          )
+          .eq("campanha_id", campanhaId!)
+          .order("data_status", { ascending: false })
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        const chunk = (data || []) as CampanhaLead[];
+        all = all.concat(chunk);
+        if (chunk.length < PAGE) break;
+      }
+      return all;
     },
   });
 }
