@@ -103,7 +103,7 @@ Deno.serve(async (req) => {
         const dataISO = dateISO(d);
 
         // upsert idempotente por (recorrencia_id, data_limite)
-        const { data: existente } = await supabase
+        const { data: existente } = await serviceClient
           .from("worklist_tarefas")
           .select("id")
           .eq("recorrencia_id", rec.id)
@@ -111,7 +111,7 @@ Deno.serve(async (req) => {
           .maybeSingle();
         if (existente) continue;
 
-        const { data: nova, error: insErr } = await supabase
+        const { data: nova, error: insErr } = await serviceClient
           .from("worklist_tarefas")
           .insert({
             modulo: "demandas",
@@ -144,7 +144,7 @@ Deno.serve(async (req) => {
             tarefa_id: nova.id,
             user_id: uid,
           }));
-          await supabase
+          await serviceClient
             .from("worklist_tarefa_mencionados")
             .insert(mencionados);
         }
@@ -152,7 +152,7 @@ Deno.serve(async (req) => {
       }
 
       if (!janelaCustomizada) {
-        await supabase
+        await serviceClient
           .from("worklist_tarefa_recorrencias")
           .update({ proxima_geracao: dateISO(limiteExclusivo) })
           .eq("id", rec.id);
