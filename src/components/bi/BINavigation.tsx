@@ -28,6 +28,7 @@ export const BI_CATEGORIES: BICategory[] = [
     icon: TrendingUp,
     modules: [
       { key: "prospeccao", label: "Prospecção", icon: Send },
+      { key: "insights", label: "Insights Conversas", icon: MessageSquare },
       { key: "licitacoes", label: "Licitações", icon: BarChart3 },
       { key: "competitiva", label: "Competitiva", icon: TrendingUp },
     ],
