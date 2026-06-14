@@ -20,6 +20,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { SetorSelect } from "@/components/shared/SetorSelect";
+import { Separator } from "@/components/ui/separator";
 
 type UserStatus = "ativo" | "inativo" | "suspenso";
 
@@ -47,6 +48,10 @@ export function UsuarioDialog({ open, onOpenChange, usuario }: UsuarioDialogProp
   const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
+  const [googleClientId, setGoogleClientId] = useState("");
+  const [googleClientSecret, setGoogleClientSecret] = useState("");
+  const [googleHasConfig, setGoogleHasConfig] = useState(false);
+  const [googleSaving, setGoogleSaving] = useState(false);
   const [formData, setFormData] = useState<{
     nome_completo: string;
     email: string;
@@ -77,6 +82,24 @@ export function UsuarioDialog({ open, onOpenChange, usuario }: UsuarioDialogProp
       // Load user roles
       const userRoles = usuario.user_roles?.map((ur: any) => ur.role) || [];
       setSelectedRoles(userRoles);
+
+      // Load Google OAuth config (admin-only via RLS)
+      (async () => {
+        const { data } = await supabase
+          .from("user_google_oauth_config")
+          .select("client_id")
+          .eq("user_id", usuario.id)
+          .maybeSingle();
+        if (data) {
+          setGoogleClientId(data.client_id);
+          setGoogleClientSecret("");
+          setGoogleHasConfig(true);
+        } else {
+          setGoogleClientId("");
+          setGoogleClientSecret("");
+          setGoogleHasConfig(false);
+        }
+      })();
     } else {
       setFormData({
         nome_completo: "",
@@ -87,6 +110,9 @@ export function UsuarioDialog({ open, onOpenChange, usuario }: UsuarioDialogProp
         setor_id: "",
       });
       setSelectedRoles([]);
+      setGoogleClientId("");
+      setGoogleClientSecret("");
+      setGoogleHasConfig(false);
     }
   }, [usuario, open]);
 
@@ -96,6 +122,55 @@ export function UsuarioDialog({ open, onOpenChange, usuario }: UsuarioDialogProp
         ? prev.filter((r) => r !== role)
         : [...prev, role]
     );
+  };
+
+  const saveGoogleConfig = async () => {
+    if (!usuario?.id) return;
+    if (!googleClientId) {
+      toast.error("Informe o Client ID");
+      return;
+    }
+    if (!googleHasConfig && !googleClientSecret) {
+      toast.error("Informe o Client Secret");
+      return;
+    }
+    setGoogleSaving(true);
+    try {
+      const payload: any = { user_id: usuario.id, client_id: googleClientId };
+      if (googleClientSecret) payload.client_secret = googleClientSecret;
+      const { error } = await supabase
+        .from("user_google_oauth_config")
+        .upsert(payload, { onConflict: "user_id" });
+      if (error) throw error;
+      toast.success("Configuração do Google salva");
+      setGoogleClientSecret("");
+      setGoogleHasConfig(true);
+    } catch (e: any) {
+      toast.error(e.message || "Erro ao salvar configuração");
+    } finally {
+      setGoogleSaving(false);
+    }
+  };
+
+  const removeGoogleConfig = async () => {
+    if (!usuario?.id) return;
+    setGoogleSaving(true);
+    try {
+      await supabase.from("user_google_calendar_tokens").delete().eq("user_id", usuario.id);
+      const { error } = await supabase
+        .from("user_google_oauth_config")
+        .delete()
+        .eq("user_id", usuario.id);
+      if (error) throw error;
+      toast.success("Configuração removida");
+      setGoogleClientId("");
+      setGoogleClientSecret("");
+      setGoogleHasConfig(false);
+    } catch (e: any) {
+      toast.error(e.message || "Erro ao remover");
+    } finally {
+      setGoogleSaving(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -318,6 +393,58 @@ export function UsuarioDialog({ open, onOpenChange, usuario }: UsuarioDialogProp
               ))}
             </div>
           </div>
+
+          {usuario && (
+            <>
+              <Separator />
+              <div className="space-y-2">
+                <Label>Google Calendar (OAuth)</Label>
+                <p className="text-xs text-muted-foreground">
+                  Cole o Client ID e Client Secret do OAuth Client criado no Google Cloud
+                  Console deste usuário. Redirect URI a configurar no GCP:
+                  <br />
+                  <code className="text-[10px] break-all">
+                    {`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-oauth-callback`}
+                  </code>
+                </p>
+                <div className="space-y-2">
+                  <Input
+                    placeholder="Client ID"
+                    value={googleClientId}
+                    onChange={(e) => setGoogleClientId(e.target.value)}
+                  />
+                  <Input
+                    placeholder={googleHasConfig ? "Client Secret (deixe vazio para manter o atual)" : "Client Secret"}
+                    type="password"
+                    value={googleClientSecret}
+                    onChange={(e) => setGoogleClientSecret(e.target.value)}
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={saveGoogleConfig}
+                      disabled={googleSaving}
+                    >
+                      {googleSaving ? "Salvando..." : googleHasConfig ? "Atualizar Google" : "Salvar Google"}
+                    </Button>
+                    {googleHasConfig && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={removeGoogleConfig}
+                        disabled={googleSaving}
+                      >
+                        Remover
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
 
           <div className="flex justify-end gap-2">
             <Button

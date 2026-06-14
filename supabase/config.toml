@@ -68,3 +68,7 @@ verify_jwt = false
 # (sorteia parceiro power-law, gera mensagem via OpenAI, envia via helper).
 [functions.aquecedor-tick]
 verify_jwt = false
+
+# OAuth callback do Google — chamado pelo browser do usuário sem header Authorization.
+[functions.google-oauth-callback]
+verify_jwt = false
