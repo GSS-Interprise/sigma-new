@@ -71,6 +71,12 @@ export function AcompanhamentoKanban({ filtro, onLeadClick }: Props) {
   const moverEtapa = useMoverEtapa();
   const aprovarLead = useAprovarLead();
   const marcarPerdido = useMarcarPerdido();
+  // Toggle entre o pipeline de acompanhamento (IA/quentes) e a entrada manual.
+  // Default "ia" — a aba é "Quentes (IA)". Manual fica a 1 clique pra acompanhar sem empilhar.
+  const [kanbanView, setKanbanView] = useState<"ia" | "manual">("ia");
+
+  const countIA = COLUNAS.reduce((s, c) => s + (porEtapa[c.etapa]?.length || 0), 0);
+  const countManual = COLUNAS_MANUAL.reduce((s, c) => s + (porColunaManual[c.col]?.length || 0), 0);
 
   const toggleSelect = (campanhaLeadId: string) => {
     setSelectedIds((prev) => {
@@ -179,13 +185,26 @@ export function AcompanhamentoKanban({ filtro, onLeadClick }: Props) {
 
   return (
     <>
-      {/* Estágios de entrada manual — só aparecem quando há campanha manual em andamento.
-          Read-only: o card anda sozinho conforme o status (mandou msg → Aguardando; respondeu → Aquecido). */}
+      {/* Toggle de visão — só quando há campanha manual (senão não há o que alternar) */}
       {temManual && (
+        <div className="inline-flex items-center rounded-lg border p-0.5 bg-muted/40">
+          <ToggleBtn active={kanbanView === "ia"} onClick={() => setKanbanView("ia")}>
+            <Flame className="h-3.5 w-3.5 mr-1 text-red-500" /> Quentes (IA)
+            <span className="opacity-60 ml-1">{countIA}</span>
+          </ToggleBtn>
+          <ToggleBtn active={kanbanView === "manual"} onClick={() => setKanbanView("manual")}>
+            <Inbox className="h-3.5 w-3.5 mr-1" /> Manual (entrada)
+            <span className="opacity-60 ml-1">{countManual}</span>
+          </ToggleBtn>
+        </div>
+      )}
+
+      {/* Estágios de entrada manual — só na visão "manual".
+          Read-only: o card anda sozinho conforme o status (mandou msg → Aguardando; respondeu → Aquecido). */}
+      {temManual && kanbanView === "manual" && (
         <div className="mb-3">
           <div className="flex items-center gap-1.5 mb-2 text-xs text-muted-foreground">
-            <span className="font-medium">Campanhas manuais</span>
-            <span className="opacity-70">· o card anda sozinho: mandou 1ª msg → Aguardando · médico respondeu → Aquecido</span>
+            <span className="opacity-70">O card anda sozinho: mandou 1ª msg → Aguardando · médico respondeu → Aquecido</span>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {COLUNAS_MANUAL.map((col) => (
@@ -204,6 +223,8 @@ export function AcompanhamentoKanban({ filtro, onLeadClick }: Props) {
         </div>
       )}
 
+      {kanbanView === "ia" && (
+      <>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
         {COLUNAS.map((col) => (
           <Coluna
@@ -310,6 +331,8 @@ export function AcompanhamentoKanban({ filtro, onLeadClick }: Props) {
           </div>
         )}
       </div>
+      </>
+      )}
     </>
   );
 }
@@ -383,6 +406,20 @@ function Coluna({
         )}
       </div>
     </div>
+  );
+}
+
+function ToggleBtn({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex items-center text-xs font-medium px-3 py-1.5 rounded-md transition-colors ${
+        active ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 
