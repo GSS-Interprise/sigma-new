@@ -48,10 +48,18 @@ Deno.serve(async (req) => {
     return new Response("ok", { headers: corsHeaders });
   }
   try {
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceClient = createClient(
+      supabaseUrl,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
+    const authHeader = req.headers.get("Authorization") ?? "";
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+    const recorrenciasClient = authHeader && anonKey
+      ? createClient(supabaseUrl, anonKey, {
+          global: { headers: { Authorization: authHeader } },
+        })
+      : serviceClient;
 
     // Filtra por recorrência específica e/ou janela mensal se fornecido no body
     let recorrenciaId: string | null = null;
@@ -68,7 +76,7 @@ Deno.serve(async (req) => {
       /* sem body */
     }
 
-    let q = supabase
+    let q = recorrenciasClient
       .from("worklist_tarefa_recorrencias")
       .select("*")
       .eq("ativo", true);
