@@ -36,6 +36,13 @@ export interface DemandaTarefa {
   anexos_count?: number;
 }
 
+function isoDate(date: Date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
 export interface DemandaComentario {
   id: string;
   tarefa_id: string;
@@ -215,19 +222,38 @@ export function useDemandasParaMim() {
   });
 }
 
-export function useDemandasDoSetor(setorId: string | null | undefined) {
+export function useDemandasDoSetor(
+  setorId: string | null | undefined,
+  dataInicio?: Date,
+  dataFim?: Date,
+) {
   const { user } = useAuth();
+  const inicioISO = dataInicio ? isoDate(dataInicio) : null;
+  const fimISO = dataFim ? isoDate(dataFim) : null;
   return useQuery({
-    queryKey: ["demandas", "agenda-setor", setorId, user?.id],
+    queryKey: ["demandas", "agenda-setor", setorId, user?.id, inicioISO, fimISO],
     enabled: !!user?.id,
     queryFn: async () => {
-      // Para o calendário trazemos tudo que o usuário consegue ver e que tem data_limite
-      const { data, error } = await supabase
+      // Materializa recorrências só para o intervalo visível do calendário.
+      if (inicioISO && fimISO) {
+        try {
+          const { error: fnError } = await supabase.functions.invoke("gerar-tarefas-recorrentes", {
+            body: { data_inicio: inicioISO, data_fim: fimISO },
+          });
+          if (fnError) throw fnError;
+        } catch (e) {
+          console.error("[demandas] falha ao materializar recorrências do mês", e);
+        }
+      }
+
+      let q = supabase
         .from("worklist_tarefas")
         .select("*")
         .eq("modulo", "demandas")
-        .not("data_limite", "is", null)
-        .order("data_limite", { ascending: true });
+        .not("data_limite", "is", null);
+      if (inicioISO) q = q.gte("data_limite", inicioISO);
+      if (fimISO) q = q.lte("data_limite", fimISO);
+      const { data, error } = await q.order("data_limite", { ascending: true });
       if (error) throw error;
       return enrich(data || []);
     },

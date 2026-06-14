@@ -1203,7 +1203,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
 
                   <p className="text-[11px] text-muted-foreground">
                     Usa a <strong>hora</strong> e <strong>duração</strong> definidas acima. Pessoas marcadas serão mencionadas em cada ocorrência.
-                    As próximas 30 ocorrências são geradas automaticamente; novas datas surgem todo dia às 03h.
+                    A recorrência permanece ativa e o calendário carrega as ocorrências conforme o mês visualizado.
                   </p>
                 </div>
               )}

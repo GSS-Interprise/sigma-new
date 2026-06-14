@@ -18,6 +18,12 @@ function dateISO(d: Date) {
   return d.toISOString().slice(0, 10);
 }
 
+function parseISODate(value: unknown) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const d = new Date(`${value}T00:00:00Z`);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 function deveGerarNoDia(
   rec: {
     frequencia: string;
@@ -42,23 +48,35 @@ Deno.serve(async (req) => {
     return new Response("ok", { headers: corsHeaders });
   }
   try {
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceClient = createClient(
+      supabaseUrl,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
+    const authHeader = req.headers.get("Authorization") ?? "";
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+    const recorrenciasClient = authHeader && anonKey
+      ? createClient(supabaseUrl, anonKey, {
+          global: { headers: { Authorization: authHeader } },
+        })
+      : serviceClient;
 
-    // Filtra por recorrência específica se fornecida no body
+    // Filtra por recorrência específica e/ou janela mensal se fornecido no body
     let recorrenciaId: string | null = null;
+    let dataInicio: Date | null = null;
+    let dataFim: Date | null = null;
     try {
       const body = await req.json();
       if (body && typeof body.recorrencia_id === "string") {
         recorrenciaId = body.recorrencia_id;
       }
+      dataInicio = parseISODate(body?.data_inicio);
+      dataFim = parseISODate(body?.data_fim);
     } catch {
       /* sem body */
     }
 
-    let q = supabase
+    let q = recorrenciasClient
       .from("worklist_tarefa_recorrencias")
       .select("*")
       .eq("ativo", true);
@@ -68,21 +86,26 @@ Deno.serve(async (req) => {
 
     const hoje = new Date();
     hoje.setUTCHours(0, 0, 0, 0);
-    const limite = addDays(hoje, HORIZONTE_DIAS);
+    const janelaCustomizada = !!(dataInicio && dataFim);
+    const inicioJanela = dataInicio ?? hoje;
+    const fimJanela = dataFim ?? null;
 
     let criadas = 0;
     for (const rec of recorrencias ?? []) {
       const inicio = rec.proxima_geracao
         ? new Date(rec.proxima_geracao + "T00:00:00Z")
-        : hoje;
-      const start = inicio > hoje ? inicio : hoje;
+        : inicioJanela;
+      const start = janelaCustomizada ? inicioJanela : inicio > hoje ? inicio : hoje;
+      const limiteExclusivo = janelaCustomizada && fimJanela
+        ? addDays(fimJanela, 1)
+        : addDays(start, HORIZONTE_DIAS);
 
-      for (let d = new Date(start); d < limite; d = addDays(d, 1)) {
+      for (let d = new Date(start); d < limiteExclusivo; d = addDays(d, 1)) {
         if (!deveGerarNoDia(rec, d)) continue;
         const dataISO = dateISO(d);
 
         // upsert idempotente por (recorrencia_id, data_limite)
-        const { data: existente } = await supabase
+        const { data: existente } = await serviceClient
           .from("worklist_tarefas")
           .select("id")
           .eq("recorrencia_id", rec.id)
@@ -90,7 +113,7 @@ Deno.serve(async (req) => {
           .maybeSingle();
         if (existente) continue;
 
-        const { data: nova, error: insErr } = await supabase
+        const { data: nova, error: insErr } = await serviceClient
           .from("worklist_tarefas")
           .insert({
             modulo: "demandas",
@@ -123,17 +146,19 @@ Deno.serve(async (req) => {
             tarefa_id: nova.id,
             user_id: uid,
           }));
-          await supabase
+          await serviceClient
             .from("worklist_tarefa_mencionados")
             .insert(mencionados);
         }
         criadas++;
       }
 
-      await supabase
-        .from("worklist_tarefa_recorrencias")
-        .update({ proxima_geracao: dateISO(limite) })
-        .eq("id", rec.id);
+      if (!janelaCustomizada) {
+        await serviceClient
+          .from("worklist_tarefa_recorrencias")
+          .update({ proxima_geracao: dateISO(limiteExclusivo) })
+          .eq("id", rec.id);
+      }
     }
 
     return new Response(
