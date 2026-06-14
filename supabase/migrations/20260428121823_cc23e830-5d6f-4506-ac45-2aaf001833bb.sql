@@ -165,6 +165,11 @@ BEGIN
     SELECT lead_id FROM canais
       WHERE lead_id IS NOT NULL
         AND status_final IN ('respondeu', 'aceitou', 'convertido', 'em_conversa')
+    UNION
+    -- motor de prospecção (campanha_leads): médico que avançou de 'contatado' respondeu
+    SELECT lead_id FROM public.campanha_leads
+      WHERE lead_id IS NOT NULL
+        AND status IN ('em_conversa', 'aquecido', 'quente', 'convertido')
   ),
   convertidos_geral AS (
     SELECT id AS lead_id FROM conv
