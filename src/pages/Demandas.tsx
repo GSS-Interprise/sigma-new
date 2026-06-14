@@ -22,6 +22,7 @@ export default function Demandas() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { setorNome } = useUserSetor();
   const { isAdmin } = usePermissions();
+  const [tab, setTab] = useState<string>("home");
 
   const abrirDetalheTarefa = (id: string) => {
     if (!UUID_RE.test(id)) {
@@ -45,48 +46,41 @@ export default function Demandas() {
 
   const headerActions = (
     <div className="flex items-center justify-between w-full gap-3">
-      <div className="flex items-center gap-3">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            Demandas
-            <Sparkles className="h-4 w-4 text-primary" />
-          </h1>
-          <p className="text-xs text-muted-foreground">
-            Hub de tarefas, agenda e pendências
-          </p>
-        </div>
+      <div className="flex items-center gap-3 min-w-0">
+        <TabsList className="h-10 gap-1 rounded-2xl border border-border/60 bg-card/80 p-1 shadow-sm backdrop-blur">
+          <TabsTrigger
+            value="home"
+            className="gap-2 rounded-xl px-3 py-1.5 text-sm font-semibold text-muted-foreground transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg data-[state=active]:shadow-primary/25"
+          >
+            <LayoutGrid className="h-4 w-4" /> Home
+          </TabsTrigger>
+          <TabsTrigger
+            value="kanban"
+            className="gap-2 rounded-xl px-3 py-1.5 text-sm font-semibold text-muted-foreground transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg data-[state=active]:shadow-primary/25"
+          >
+            <Kanban className="h-4 w-4" /> Kanban de tarefas
+          </TabsTrigger>
+        </TabsList>
+        <h1 className="text-lg font-bold flex items-center gap-1.5 truncate">
+          Demandas
+          <Sparkles className="h-4 w-4 text-primary" />
+        </h1>
         {(setorNome || isAdmin) && (
-          <Badge variant="outline" className="text-[11px]">
+          <Badge variant="outline" className="text-[11px] shrink-0">
             {isAdmin ? "Admin · todos os setores" : setorNome}
           </Badge>
         )}
       </div>
-      <Button onClick={() => setNovaOpen(true)} className="gap-1">
+      <Button onClick={() => setNovaOpen(true)} className="gap-1 shrink-0">
         <Plus className="h-4 w-4" /> Nova demanda
       </Button>
     </div>
   );
 
   return (
-    <AppLayout headerActions={headerActions}>
-      <Tabs defaultValue="home" className="h-[calc(100vh-8rem)] flex flex-col">
-        <div className="px-4 pt-4">
-          <TabsList className="h-11 gap-1 rounded-2xl border border-border/60 bg-card/80 p-1 shadow-sm backdrop-blur">
-            <TabsTrigger
-              value="home"
-              className="gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-muted-foreground transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg data-[state=active]:shadow-primary/25"
-            >
-              <LayoutGrid className="h-4 w-4" /> Home
-            </TabsTrigger>
-            <TabsTrigger
-              value="kanban"
-              className="gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-muted-foreground transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg data-[state=active]:shadow-primary/25"
-            >
-              <Kanban className="h-4 w-4" /> Kanban de tarefas
-            </TabsTrigger>
-          </TabsList>
-        </div>
-        <TabsContent value="home" className="flex-1 min-h-0 p-3 mt-2">
+    <Tabs value={tab} onValueChange={setTab} className="contents">
+      <AppLayout headerActions={headerActions}>
+        <TabsContent value="home" className="flex-1 min-h-0 p-3 mt-0 h-[calc(100vh-5rem)]">
           <div className="grid grid-cols-1 gap-4 h-full md:grid-cols-12">
             <div className="min-h-0 md:col-span-3">
               <ColunaAgenda onTarefaClick={abrirDetalheTarefa} />
@@ -99,17 +93,17 @@ export default function Demandas() {
             </div>
           </div>
         </TabsContent>
-        <TabsContent value="kanban" className="flex-1 min-h-0 p-3 mt-2">
+        <TabsContent value="kanban" className="flex-1 min-h-0 p-3 mt-0 h-[calc(100vh-5rem)]">
           <KanbanTarefas onTarefaClick={abrirDetalheTarefa} />
         </TabsContent>
-      </Tabs>
-      <NovaDemandaDialog open={novaOpen} onOpenChange={setNovaOpen} />
-      <NovaDemandaDialog
-        key={tarefaAbertaId ?? "novo-detalhe"}
-        tarefaId={tarefaAbertaId}
-        open={!!tarefaAbertaId}
-        onOpenChange={(open) => !open && setTarefaAbertaId(null)}
-      />
-    </AppLayout>
+        <NovaDemandaDialog open={novaOpen} onOpenChange={setNovaOpen} />
+        <NovaDemandaDialog
+          key={tarefaAbertaId ?? "novo-detalhe"}
+          tarefaId={tarefaAbertaId}
+          open={!!tarefaAbertaId}
+          onOpenChange={(open) => !open && setTarefaAbertaId(null)}
+        />
+      </AppLayout>
+    </Tabs>
   );
 }
