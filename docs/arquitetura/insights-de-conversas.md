@@ -3,7 +3,8 @@ tags: [arquitetura, sigma-gss, insights, conversas, ia, bi, spec-driven]
 projeto: SigmaGSS
 autor: Raul + Claude
 data: 2026-06-14
-status: PLANO (aguarda decisões §6 antes de executar)
+status: ENTREGUE (14/06) — backfill 51 perfis, cron 2h, aba BI no ar
+decisoes: híbrido · aba nova · backfill+cron · forma_pagamento dedicado (todas confirmadas Raul)
 repo: GSS-Interprise/sigma-new
 ---
 
