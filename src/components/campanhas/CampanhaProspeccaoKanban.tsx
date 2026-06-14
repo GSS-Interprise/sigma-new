@@ -18,6 +18,7 @@ import {
   MapPin,
   User,
   GripVertical,
+  XCircle,
 } from "lucide-react";
 import {
   useCampanhaLeadsByStatus,
@@ -95,6 +96,24 @@ const COLUMNS: KanbanColumn[] = [
     icon: CheckCircle,
     description: "Negócio fechado",
   },
+  {
+    id: "sem_resposta",
+    label: "Sem resposta",
+    color: "text-slate-500",
+    bgColor: "bg-slate-50",
+    borderColor: "border-slate-200",
+    icon: Phone,
+    description: "Contatado, não respondeu",
+  },
+  {
+    id: "descartado",
+    label: "Descartados",
+    color: "text-slate-500",
+    bgColor: "bg-slate-50",
+    borderColor: "border-slate-200",
+    icon: XCircle,
+    description: "Sem sucesso / sem interesse",
+  },
 ];
 
 // Kanban MANUAL: a equipe conduz — sem "IA Conversando". O médico que respondeu
@@ -144,6 +163,24 @@ const COLUMNS_MANUAL: KanbanColumn[] = [
     borderColor: "border-green-200",
     icon: CheckCircle,
     description: "Negócio fechado",
+  },
+  {
+    id: "sem_resposta",
+    label: "Sem resposta",
+    color: "text-slate-500",
+    bgColor: "bg-slate-50",
+    borderColor: "border-slate-200",
+    icon: Phone,
+    description: "Contatado, não respondeu",
+  },
+  {
+    id: "descartado",
+    label: "Descartados",
+    color: "text-slate-500",
+    bgColor: "bg-slate-50",
+    borderColor: "border-slate-200",
+    icon: XCircle,
+    description: "Sem sucesso / sem interesse",
   },
 ];
 
