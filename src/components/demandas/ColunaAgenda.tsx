@@ -1,6 +1,5 @@
 import { useState, useMemo } from "react";
 import { Card } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { CalendarDays, Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import {
@@ -20,9 +19,8 @@ import {
 } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
-import { useDemandasDoSetor, useAtualizarStatusDemanda } from "@/hooks/useDemandas";
+import { useDemandasDoSetor } from "@/hooks/useDemandas";
 import { useUserSetor } from "@/hooks/useUserSetor";
-import { TarefaCard } from "./TarefaCard";
 import { NovaDemandaDialog } from "./NovaDemandaDialog";
 import { DiaAgendaDialog } from "./DiaAgendaDialog";
 
@@ -34,8 +32,6 @@ const WEEKDAYS = ["DOM.", "SEG.", "TER.", "QUA.", "QUI.", "SEX.", "SÁB."];
 
 export function ColunaAgenda({ onTarefaClick }: Props) {
   const { setorId } = useUserSetor();
-  const { data: tarefas = [] } = useDemandasDoSetor(setorId);
-  const concluir = useAtualizarStatusDemanda();
   const [date, setDate] = useState<Date>(new Date());
   const [monthCursor, setMonthCursor] = useState<Date>(new Date());
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -43,10 +39,20 @@ export function ColunaAgenda({ onTarefaClick }: Props) {
   const [dayDialogOpen, setDayDialogOpen] = useState(false);
   const [dayDialogDate, setDayDialogDate] = useState<Date | null>(null);
 
+  const mesVisivel = useMemo(
+    () => ({ inicio: startOfMonth(monthCursor), fim: endOfMonth(monthCursor) }),
+    [monthCursor],
+  );
+  const { data: tarefas = [] } = useDemandasDoSetor(
+    setorId,
+    mesVisivel.inicio,
+    mesVisivel.fim,
+  );
+
   // Build 6-week grid for the visible month
   const days = useMemo(() => {
-    const start = startOfWeek(startOfMonth(monthCursor), { weekStartsOn: 0 });
-    const end = endOfWeek(endOfMonth(monthCursor), { weekStartsOn: 0 });
+    const start = startOfWeek(mesVisivel.inicio, { weekStartsOn: 0 });
+    const end = endOfWeek(mesVisivel.fim, { weekStartsOn: 0 });
     const out: Date[] = [];
     let cur = start;
     while (cur <= end) {
@@ -54,7 +60,7 @@ export function ColunaAgenda({ onTarefaClick }: Props) {
       cur = addDays(cur, 1);
     }
     return out;
-  }, [monthCursor]);
+  }, [mesVisivel]);
 
   // Tasks indexed by yyyy-mm-dd
   const tarefasPorDia = useMemo(() => {
