@@ -79,7 +79,7 @@ Importador rodado (dry-run → commit). Tudo marcado `origem/import_origem='impo
 - **Pediatras MG (4.037):** 2.640 frio (Pendentes — equipe continua) · 1.274 contatado (Aguardando) · 123 descartado (sem interesse). (4.062 linhas → 4.037 leads; 25 colapsaram por médico repetido/mesmo lead.)
 - **Match:** ~99% por telefone, resto por nome (≥0.85). Só **12 leads novos** criados (não existiam na base).
 - **1.339 registros** em `lead_historico` (desfechos: 1ª msg, ligação, sem interesse).
-- **Tasks:** a cadência parametrizável da campanha **auto-gerou** as tasks de contato (frio já tem task de WhatsApp). Tasks de descartado + CNES (finalizada) foram **fechadas**. ⚠️ Restaram ~23k tasks pendentes (cadência multi-canal/multi-touch dos 3.914 leads ativos da Pediatras) — se for demais, dá pra enxugar pra só WhatsApp.
+- **Tasks:** a cadência parametrizável auto-gerou tasks ao inserir. Limpeza feita: descartado + CNES (finalizada) fechadas; Pediatras **enxugada pra 1 task de WhatsApp por lead ativo** (3.914) — removidos email/ligação/instagram e WhatsApp duplicados.
 - Script: `C:\Users\rauls\import_campanhas.py` (não versionado — contém token; lógica documentada aqui).
 
 ## 6. Execução (proposta)
