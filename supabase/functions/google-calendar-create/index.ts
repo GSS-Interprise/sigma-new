@@ -1,5 +1,5 @@
 import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors'
-import { authUserId, getValidGoogleAccessToken } from '../_shared/google-token.ts'
+import { authUserId, getAccessTokenForUser } from '../_shared/google-token.ts'
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
@@ -12,7 +12,7 @@ Deno.serve(async (req) => {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
-    const accessToken = await getValidGoogleAccessToken(userId)
+    const accessToken = await getAccessTokenForUser(userId)
 
     const tz = timeZone || 'America/Sao_Paulo'
     const eventBody: any = {
