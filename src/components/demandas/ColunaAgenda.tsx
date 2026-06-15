@@ -382,11 +382,28 @@ export function ColunaAgenda({ onTarefaClick }: Props) {
           <DialogHeader>
             <DialogTitle>Conectar Google Calendar</DialogTitle>
             <DialogDescription>
-              {gConn?.hasConfig
-                ? "Faça login com sua conta Google para ver e criar eventos."
-                : "Peça ao administrador para cadastrar seu Client ID e Client Secret do Google nas configurações de usuário."}
+              {gConn?.dwdIntendedButInvalid
+                ? "A integração via Service Account (DWD) está configurada de forma inválida. Peça ao administrador para corrigir os secrets abaixo."
+                : gConn?.hasConfig
+                  ? "Faça login com sua conta Google para ver e criar eventos."
+                  : "Peça ao administrador para cadastrar seu Client ID e Client Secret do Google nas configurações de usuário."}
             </DialogDescription>
           </DialogHeader>
+          {gConn?.dwdIntendedButInvalid && gConn.dwdIssues.length > 0 && (
+            <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-xs space-y-1.5">
+              <div className="font-semibold text-destructive">Problemas detectados:</div>
+              <ul className="list-disc pl-4 space-y-1 text-foreground/90">
+                {gConn.dwdIssues.map((iss) => (
+                  <li key={iss.code}>
+                    <span className="font-mono text-[10px] text-muted-foreground">
+                      {iss.code}
+                    </span>{" "}
+                    {iss.message}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setConnectOpen(false)}>Fechar</Button>
             {gConn?.hasConfig && (
