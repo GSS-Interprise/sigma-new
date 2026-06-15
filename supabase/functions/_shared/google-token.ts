@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { shouldUseDWD, getImpersonatedAccessToken } from './google-sa.ts'
 
 export async function getValidGoogleAccessToken(userId: string): Promise<string> {
   const service = createClient(
@@ -44,6 +45,29 @@ export async function getValidGoogleAccessToken(userId: string): Promise<string>
   }).eq('user_id', userId)
 
   return j.access_token
+}
+
+/**
+ * Returns a Google access token for the given SIGMA user.
+ * - If the user's email is in the configured Workspace domain, uses Service
+ *   Account Domain-Wide Delegation to impersonate the user (no per-user setup).
+ * - Otherwise falls back to the user's individual OAuth refresh token.
+ */
+export async function getAccessTokenForUser(userId: string): Promise<string> {
+  const service = createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+  )
+  const { data: profile } = await service
+    .from('profiles')
+    .select('email')
+    .eq('id', userId)
+    .maybeSingle()
+  const email = profile?.email as string | undefined
+  if (email && shouldUseDWD(email)) {
+    return getImpersonatedAccessToken(email)
+  }
+  return getValidGoogleAccessToken(userId)
 }
 
 export async function authUserId(req: Request): Promise<string> {
