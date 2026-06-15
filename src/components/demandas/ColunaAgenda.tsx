@@ -123,13 +123,39 @@ export function ColunaAgenda({ onTarefaClick }: Props) {
     <Card className="flex flex-col h-full overflow-hidden rounded-2xl border-border/70 shadow-sm">
       {/* Header */}
       <div className="px-4 py-3 border-b flex items-center justify-between">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 min-w-0">
           <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10">
             <CalendarDays className="h-4 w-4 text-primary" />
           </div>
-          <h3 className="font-bold text-sm tracking-tight">
-            {isGoogle ? "Google Calendar" : "Agenda"}
-          </h3>
+          <div className="inline-flex rounded-lg border bg-muted/40 p-0.5 text-[11px] font-semibold">
+            <button
+              type="button"
+              onClick={() => setSource("agenda")}
+              className={cn(
+                "px-2.5 py-1 rounded-md transition-colors",
+                !isGoogle
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              Agenda
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSource("google");
+                if (!gConn?.connected) setConnectOpen(true);
+              }}
+              className={cn(
+                "px-2.5 py-1 rounded-md transition-colors",
+                isGoogle
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              Google Calendar
+            </button>
+          </div>
         </div>
         <Button
           size="sm"
@@ -151,34 +177,9 @@ export function ColunaAgenda({ onTarefaClick }: Props) {
         </Button>
       </div>
 
-      {/* Source toggle */}
-      <div className="px-3 pt-2 pb-1">
-        <div className="inline-flex rounded-lg border bg-muted/40 p-0.5 text-[11px] font-semibold">
-          <button
-            type="button"
-            onClick={() => setSource("agenda")}
-            className={cn(
-              "px-2.5 py-1 rounded-md transition-colors",
-              !isGoogle ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            Agenda
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setSource("google");
-              if (!gConn?.connected) setConnectOpen(true);
-            }}
-            className={cn(
-              "px-2.5 py-1 rounded-md transition-colors",
-              isGoogle ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            Google Calendar
-          </button>
-        </div>
-        {isGoogle && gConn?.connected && (
+      {/* Google Calendar connection info */}
+      {isGoogle && gConn?.connected && (
+        <div className="px-3 pt-2 pb-1">
           <div className="mt-1.5 flex items-center justify-between text-[10px] text-muted-foreground">
             <span className="truncate">{gConn.email}</span>
             <div className="flex items-center gap-1">
@@ -198,8 +199,8 @@ export function ColunaAgenda({ onTarefaClick }: Props) {
               </button>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Month nav */}
       <div className="flex items-center justify-between px-3 py-2 border-b">
