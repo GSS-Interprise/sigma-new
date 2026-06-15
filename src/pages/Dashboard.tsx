@@ -72,56 +72,60 @@ export default function Dashboard() {
     );
   }
 
-  return (
-    <AppLayout>
-      <div className="p-3 min-h-[calc(100vh-4rem)] flex flex-col">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex-1 flex flex-col">
-          <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
-            <div className="flex items-center gap-3">
-              <TabsList className="h-11 gap-1 rounded-2xl border border-border/60 bg-card/80 p-1 shadow-sm backdrop-blur">
+  const headerToolbar = (
+    <div className="flex items-center justify-between gap-3 flex-wrap w-full">
+      <div className="flex items-center gap-3 flex-wrap">
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="h-10 gap-1 rounded-2xl border border-border/60 bg-card/80 p-1 shadow-sm backdrop-blur">
                 <TabsTrigger
                   value="home"
-                  className="gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-muted-foreground transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg data-[state=active]:shadow-primary/25"
+              className="gap-2 rounded-xl px-3 py-1.5 text-sm font-semibold text-muted-foreground transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg data-[state=active]:shadow-primary/25"
                 >
                   <LayoutDashboard className="h-4 w-4" />
                   Home
                 </TabsTrigger>
                 <TabsTrigger
                   value="minha-area"
-                  className="gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-muted-foreground transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg data-[state=active]:shadow-primary/25"
+              className="gap-2 rounded-xl px-3 py-1.5 text-sm font-semibold text-muted-foreground transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg data-[state=active]:shadow-primary/25"
                 >
                   <Briefcase className="h-4 w-4" />
                   Minha Área
                 </TabsTrigger>
                 <TabsTrigger
                   value="kanban"
-                  className="gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-muted-foreground transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg data-[state=active]:shadow-primary/25"
+              className="gap-2 rounded-xl px-3 py-1.5 text-sm font-semibold text-muted-foreground transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg data-[state=active]:shadow-primary/25"
                 >
                   <Kanban className="h-4 w-4" />
                   Kanban de tarefas
                 </TabsTrigger>
               </TabsList>
-              {activeTab === "home" && (
-                <div className="flex items-center gap-2">
-                  <h1 className="text-lg font-bold flex items-center gap-1.5">
-                    Demandas
-                    <Sparkles className="h-4 w-4 text-primary" />
-                  </h1>
-                  {(setorNome || isAdmin) && (
-                    <Badge variant="outline" className="text-[11px]">
-                      {isAdmin ? "Admin · todos os setores" : setorNome}
-                    </Badge>
-                  )}
-                </div>
-              )}
-            </div>
-            {activeTab === "home" && (
-              <Button onClick={() => setNovaDemandaOpen(true)} className="gap-1">
-                <Plus className="h-4 w-4" /> Nova demanda
-              </Button>
+        </Tabs>
+        {activeTab === "home" && (
+          <div className="flex items-center gap-2">
+            <h1 className="text-lg font-bold flex items-center gap-1.5">
+              Demandas
+              <Sparkles className="h-4 w-4 text-primary" />
+            </h1>
+            {(setorNome || isAdmin) && (
+              <Badge variant="outline" className="text-[11px]">
+                {isAdmin ? "Admin · todos os setores" : setorNome}
+              </Badge>
             )}
           </div>
+        )}
+      </div>
+      {activeTab === "home" && (
+        <Button onClick={() => setNovaDemandaOpen(true)} size="sm" className="gap-1">
+          <Plus className="h-4 w-4" /> Nova demanda
+        </Button>
+      )}
+    </div>
+  );
 
+  return (
+    <AppLayout headerActions={headerToolbar}>
+      <div className="p-3 min-h-[calc(100vh-4rem)] flex flex-col">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex-1 flex flex-col">
           <TabsContent value="home" className="flex-1 mt-0">
             <div className="grid grid-cols-1 md:grid-cols-[1.15fr_1.15fr_0.7fr] gap-3 h-[calc(100vh-10rem)]">
               <div className="min-h-0">
