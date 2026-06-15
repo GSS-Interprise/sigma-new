@@ -1,98 +1,88 @@
 ## Objetivo
 
-Evoluir o módulo de Demandas/Tarefas para suportar:
-1. **Prazo com hora** (não só data).
-2. **Tarefas recorrentes** (ex.: "toda quinta às 14h, reunião financeiro").
-3. **Alerta no Sigma 2h antes** do prazo expirar.
-4. **Clique no dia do calendário** abre dialog com tarefas e agendas daquele dia.
+Eliminar a necessidade de cada usuário conectar a própria conta Google. Usar **uma única Service Account** com **Domain-Wide Delegation (DWD)** que se passa pelo e-mail do usuário do SIGMA. Quem tiver e-mail fora do domínio Workspace continua usando o OAuth individual atual.
 
----
+## Estratégia: 2 modos coexistindo
 
-## 1. Schema — `worklist_tarefas` e novas tabelas
-
-Migração (esquema, sem dados):
-
-- **`worklist_tarefas.data_limite_hora` `time`** (nullable) — hora associada ao `data_limite`. Mantém compatibilidade: tarefas antigas continuam só com data.
-- **`worklist_tarefas.duracao_min` `int`** (nullable) — útil para reuniões (default 60 quando criada como agenda).
-- **`worklist_tarefas.alerta_2h_enviado_at` `timestamptz`** — controle de idempotência do alerta.
-- **`worklist_tarefas.recorrencia_id` `uuid`** (FK → `worklist_tarefa_recorrencias.id`) — vincula a tarefa-instância ao template.
-
-Nova tabela **`worklist_tarefa_recorrencias`**:
+Para cada chamada (criar evento / listar eventos), o backend decide:
 
 ```text
-id, titulo, descricao, tipo, urgencia,
-setor_destino_id, escopo, created_by,
-frequencia        text   -- 'semanal' | 'mensal' | 'diaria'
-dias_semana       int[]  -- 0..6 (dom..sáb), p/ semanal
-dia_mes           int    -- 1..31, p/ mensal
-hora              time   -- horário do compromisso
-duracao_min       int
-participantes     uuid[] -- vira mencionados em cada instância
-checklist_template jsonb
-ativo             bool
-proxima_geracao   date   -- até onde já foi materializado
-created_at, updated_at
+usuário do SIGMA
+   │
+   ├─ email termina em domínio configurado (ex: @gestaosaudeservicos.com.br)?
+   │     SIM ──► usa Service Account + impersonate(email)   ← padrão, sem setup
+   │     NÃO ──► cai no fluxo OAuth atual (user_google_calendar_tokens)
 ```
 
-Materialização: edge function diária gera instâncias em `worklist_tarefas` para os próximos 30 dias, idempotente por `(recorrencia_id, data_limite)` (unique index parcial).
+Vantagem: zero configuração para a maioria, e mantém suporte a e-mails externos.
 
-GRANTs + RLS análogas às de `worklist_tarefas` (criador/admin gerencia, setor visualiza).
+## Pré-requisitos (lado Google — feitos pelo admin Workspace, uma única vez)
 
----
+1. Criar uma **Service Account** no Google Cloud no projeto que já tem a Calendar API habilitada.
+2. Gerar uma **chave JSON** dessa service account.
+3. No **Google Admin Console → Security → API Controls → Domain-wide delegation**, autorizar o **Client ID** numérico da service account com os escopos:
+   - `https://www.googleapis.com/auth/calendar`
+   - `https://www.googleapis.com/auth/calendar.events`
+4. Me passar o JSON da chave (vai pra secret do Supabase) e o domínio padrão (ex: `gestaosaudeservicos.com.br`).
 
-## 2. Backend / Edge Functions
+## Mudanças no projeto
 
-- **`gerar-tarefas-recorrentes`** — roda 1x/dia via `pg_cron`. Para cada recorrência ativa, cria as instâncias faltantes dos próximos 30 dias.
-- **`alerta-tarefas-2h`** — roda a cada 10 min via `pg_cron`. Seleciona tarefas com `data_limite + data_limite_hora` entre `now()+1h50` e `now()+2h10`, status ≠ concluída, `alerta_2h_enviado_at IS NULL`. Cria notificação em `comunicacao_notificacoes` / `system_notifications` para `created_by`, `responsavel_id` e `mencionados`, e marca `alerta_2h_enviado_at = now()`.
+### Secrets (Supabase)
+- `GOOGLE_SERVICE_ACCOUNT_JSON` — JSON completo da chave (string).
+- `GOOGLE_WORKSPACE_DOMAIN` — domínio padrão para decidir DWD vs OAuth (ex: `gestaosaudeservicos.com.br`). Pode ser lista separada por vírgula se houver mais de um.
 
-Os jobs `pg_cron` serão inseridos via insert tool (contêm URL/anon-key específicos do projeto).
+### Edge functions
 
----
+**Novo helper `_shared/google-sa.ts`**
+- Lê `GOOGLE_SERVICE_ACCOUNT_JSON`.
+- Função `getImpersonatedAccessToken(userEmail)`:
+  - Monta JWT com `iss = client_email da SA`, `sub = userEmail`, `scope = calendar`, assinado com RS256 usando a `private_key` da SA.
+  - Troca por access token em `https://oauth2.googleapis.com/token` (grant `urn:ietf:params:oauth:grant-type:jwt-bearer`).
+  - Cacheia em memória por ~50min por email.
+- Função `shouldUseDWD(email)`: compara com `GOOGLE_WORKSPACE_DOMAIN`.
 
-## 3. UI
+**Atualizar `_shared/google-token.ts`**
+- Nova função `getAccessTokenForUser(userId)`:
+  1. Busca `profiles.email` do usuário.
+  2. Se `shouldUseDWD(email)` → retorna `getImpersonatedAccessToken(email)`.
+  3. Senão → mantém o caminho atual (`getValidGoogleAccessToken` com refresh token do `user_google_calendar_tokens`).
 
-### a) `NovaDemandaDialog` (criar/editar tarefa)
-- Ao lado do date picker de Prazo, adicionar **input de hora** (`HH:mm`, opcional) e, quando preenchido, campo **Duração (min)**.
-- Nova aba/seção colapsável **"Repetir"**:
-  - Switch "Tarefa recorrente"
-  - Frequência: Semanal / Mensal / Diária
-  - Dias da semana (chips Seg–Dom) ou dia do mês
-  - Hora + Duração
-  - Pessoas envolvidas (reusa `PessoasCombobox`)
-  - Ao salvar com recorrência ativa: grava em `worklist_tarefa_recorrencias` e dispara `gerar-tarefas-recorrentes` para materializar imediatamente.
+**`google-calendar-create` e `google-calendar-events`**
+- Trocar a chamada atual de token pelo novo `getAccessTokenForUser(userId)`.
+- Resto da lógica continua igual (mesmo endpoint, mesmo body do Calendar API).
+- Ao operar via DWD, o evento já cai na agenda do usuário porque o token foi emitido em nome dele.
 
-### b) `TarefaCard`
-- Exibir hora junto da data quando `data_limite_hora` existir (`13 jun · 14:00`).
-- Badge 🔁 quando `recorrencia_id` não-nulo.
+**`google-oauth-start` / `google-oauth-callback` / `user_google_oauth_config` / `user_google_calendar_tokens`**
+- Sem mudanças. Continuam ativos para o fallback.
 
-### c) `ColunaAgenda` — clique no dia
-- Hoje o calendário só mostra contagem. Adicionar `onClick` no dia que abre **`DiaAgendaDialog`** novo:
-  - Lista as tarefas daquele dia ordenadas por hora.
-  - Inclui as instâncias de recorrência já materializadas (vêm naturalmente de `worklist_tarefas`).
-  - Botão "Nova tarefa neste dia" pré-preenche o `NovaDemandaDialog`.
+### Frontend
 
-### d) Sino de notificações
-- Reaproveita o componente atual de notificações; alerta 2h aparece como item novo "⏰ Tarefa expira às 16:00 — {titulo}".
+**`useGoogleConnection`** (`src/hooks/useGoogleCalendar.ts`)
+- Passa a também consultar uma nova edge function leve `google-connection-status` (ou query no `profiles.email` + check do domínio no client via `import.meta.env`) para responder:
+  - `mode: "dwd" | "oauth"`
+  - `connected: true` automaticamente quando `mode === "dwd"`
+  - `email`: o próprio e-mail corporativo do usuário
 
----
+**Tela de configurações Google do usuário**
+- Quando `mode === "dwd"`: mostra "Conectado automaticamente como `usuario@dominio.com` via conta corporativa" — sem botões de conectar/desconectar.
+- Quando `mode === "oauth"`: mantém os botões atuais (conectar / desconectar / configurar client id).
 
-## 4. Detalhes técnicos
+**`GoogleEventDialog` e listagem de eventos**: nenhuma mudança visual.
 
-- Campo único de prazo no front: `data_limite: Date` + `hora?: string`. Ao montar payload: gravar `data_limite` (date) e `data_limite_hora` (time) separados.
-- Ordenação na Agenda: `ORDER BY data_limite, data_limite_hora NULLS LAST`.
-- Considerar timezone do navegador para o alerta de 2h; o cron compara em `America/Sao_Paulo` (server side via `timezone('America/Sao_Paulo', now())`).
-- Edição de uma instância recorrente: editar só a instância (default) ou "editar série" (atualiza `worklist_tarefa_recorrencias` e regenera futuras não concluídas). Versão 1: apenas "editar instância"; "editar série" fica como follow-up.
-- Excluir série desativa `ativo=false` e remove instâncias futuras não concluídas.
+### Banco
+Sem migração necessária. Tabelas `user_google_oauth_config` e `user_google_calendar_tokens` ficam intactas para o fallback.
 
----
+## Riscos e observações
 
-## 5. Ordem de implementação
+- **Erro `unauthorized_client`** ao trocar JWT: indica que o admin ainda não autorizou o Client ID da SA no Admin Console com os escopos certos. Mensagem clara no toast.
+- **E-mail do `profiles` diferente do e-mail Google Workspace**: impersonate falha. Vamos logar e exibir mensagem específica pedindo para corrigir `profiles.email`.
+- **Salas/agendas compartilhadas**: continua funcionando normalmente porque o token é do próprio usuário.
+- **Auditoria**: como o token é por usuário, eventos aparecem como criados pela pessoa certa, não por "bi@".
 
-1. Migração (schema + RLS + GRANTs + unique index + crons).
-2. Edge functions `gerar-tarefas-recorrentes` e `alerta-tarefas-2h`.
-3. UI: hora no `NovaDemandaDialog` + exibição no `TarefaCard`.
-4. UI: seção "Repetir" + criação de recorrência.
-5. UI: `DiaAgendaDialog` no clique do dia.
-6. Notificação 2h no sino.
+## Ordem de execução
 
-Posso começar pelos passos 1–3 (entrega imediata: hora + alerta) e depois 4–6 (recorrência + dialog do dia), ou ir tudo em sequência. Qual prefere?
+1. Você me confirma o **domínio** e gera o **JSON da Service Account**.
+2. Eu peço os 2 secrets (`GOOGLE_SERVICE_ACCOUNT_JSON`, `GOOGLE_WORKSPACE_DOMAIN`).
+3. Crio o helper `google-sa.ts`, atualizo `google-token.ts`, `google-calendar-create`, `google-calendar-events` e adiciono `google-connection-status`.
+4. Ajusto o hook e a tela de configurações Google.
+5. Testamos criando um evento com sua conta (deve funcionar sem você ter conectado nada) e com uma conta externa (deve cair no OAuth antigo).
