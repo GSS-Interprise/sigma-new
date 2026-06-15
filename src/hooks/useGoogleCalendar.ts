@@ -28,6 +28,8 @@ export function useGoogleConnection() {
           email: null as string | null,
           mode: "oauth" as "dwd" | "oauth",
           dwdConfigured: false,
+          dwdIntendedButInvalid: false,
+          dwdIssues: [] as { code: string; message: string }[],
         };
       }
       // Try the edge function first (handles DWD detection server-side).
@@ -40,6 +42,8 @@ export function useGoogleConnection() {
             email: (data.email as string | null) ?? null,
             mode: (data.mode as "dwd" | "oauth") ?? "oauth",
             dwdConfigured: !!data.dwdConfigured,
+            dwdIntendedButInvalid: !!data.dwdIntendedButInvalid,
+            dwdIssues: (data.dwdIssues as { code: string; message: string }[]) ?? [],
           };
         }
       } catch {
@@ -55,6 +59,8 @@ export function useGoogleConnection() {
         email: tok?.google_email ?? null,
         mode: "oauth" as "dwd" | "oauth",
         dwdConfigured: false,
+        dwdIntendedButInvalid: false,
+        dwdIssues: [] as { code: string; message: string }[],
       };
     },
     staleTime: 30_000,
