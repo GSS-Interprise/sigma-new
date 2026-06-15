@@ -291,7 +291,9 @@ export function usePendenciasSetor(setorId: string | null | undefined, isAdmin =
       } else if (setorId) {
         q = q.eq("setor_id", setorId);
       }
-      const { data, error } = await q.order("urgencia", { ascending: false }).limit(200);
+      const { data, error } = await q
+        .order("referencia_data", { ascending: true, nullsFirst: false })
+        .limit(200);
       if (error) throw error;
       return (data || []) as unknown as Array<{
         id: string;
