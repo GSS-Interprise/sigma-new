@@ -1,5 +1,5 @@
 import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors'
-import { authUserId, getValidGoogleAccessToken } from '../_shared/google-token.ts'
+import { authUserId, getAccessTokenForUser } from '../_shared/google-token.ts'
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
@@ -11,7 +11,7 @@ Deno.serve(async (req) => {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
-    const accessToken = await getValidGoogleAccessToken(userId)
+    const accessToken = await getAccessTokenForUser(userId)
     const url = new URL('https://www.googleapis.com/calendar/v3/calendars/primary/events')
     url.searchParams.set('timeMin', new Date(timeMin).toISOString())
     url.searchParams.set('timeMax', new Date(timeMax).toISOString())
