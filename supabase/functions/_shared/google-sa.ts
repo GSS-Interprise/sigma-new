@@ -20,6 +20,98 @@ function getSA(): ServiceAccount | null {
   }
 }
 
+export type DWDIssue =
+  | 'sa_missing'
+  | 'sa_invalid_json'
+  | 'sa_missing_client_email'
+  | 'sa_missing_private_key'
+  | 'sa_private_key_malformed'
+  | 'domain_missing'
+  | 'domain_incomplete'
+
+export interface DWDValidation {
+  ok: boolean
+  issues: { code: DWDIssue; message: string }[]
+  saClientEmail: string | null
+  workspaceDomains: string[]
+}
+
+function isLikelyFullDomain(d: string): boolean {
+  // Must contain a dot and end in a 2+ char TLD (e.g. com, com.br).
+  return /\.[a-z]{2,}(\.[a-z]{2,})?$/i.test(d)
+}
+
+export function validateDWDConfig(): DWDValidation {
+  const issues: { code: DWDIssue; message: string }[] = []
+  const raw = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_JSON')
+  let saClientEmail: string | null = null
+  if (!raw) {
+    issues.push({
+      code: 'sa_missing',
+      message: 'Secret GOOGLE_SERVICE_ACCOUNT_JSON não está definido.',
+    })
+  } else {
+    let parsed: any = null
+    try {
+      parsed = JSON.parse(raw)
+    } catch {
+      issues.push({
+        code: 'sa_invalid_json',
+        message:
+          'GOOGLE_SERVICE_ACCOUNT_JSON não é um JSON válido. Cole o conteúdo completo do arquivo .json da Service Account (começa com {"type":"service_account",...}).',
+      })
+    }
+    if (parsed && typeof parsed === 'object') {
+      if (!parsed.client_email) {
+        issues.push({
+          code: 'sa_missing_client_email',
+          message: 'JSON da Service Account não contém client_email.',
+        })
+      } else {
+        saClientEmail = String(parsed.client_email)
+      }
+      const pk = parsed.private_key as string | undefined
+      if (!pk) {
+        issues.push({
+          code: 'sa_missing_private_key',
+          message: 'JSON da Service Account não contém private_key.',
+        })
+      } else if (!/-----BEGIN PRIVATE KEY-----/.test(pk) || !/-----END PRIVATE KEY-----/.test(pk)) {
+        issues.push({
+          code: 'sa_private_key_malformed',
+          message:
+            'private_key inválida — deve incluir as linhas BEGIN/END PRIVATE KEY (mantenha os \\n do JSON original).',
+        })
+      }
+    }
+  }
+
+  const domains = getWorkspaceDomains()
+  if (domains.length === 0) {
+    issues.push({
+      code: 'domain_missing',
+      message: 'Secret GOOGLE_WORKSPACE_DOMAIN não está definido.',
+    })
+  } else {
+    const incomplete = domains.filter((d) => !isLikelyFullDomain(d))
+    if (incomplete.length) {
+      issues.push({
+        code: 'domain_incomplete',
+        message: `GOOGLE_WORKSPACE_DOMAIN está incompleto: "${incomplete.join(
+          ', ',
+        )}". Use o domínio completo, ex.: gestaoservicosaude.com.br (sem @, sem espaços).`,
+      })
+    }
+  }
+
+  return {
+    ok: issues.length === 0,
+    issues,
+    saClientEmail,
+    workspaceDomains: domains,
+  }
+}
+
 export function getWorkspaceDomains(): string[] {
   const raw = Deno.env.get('GOOGLE_WORKSPACE_DOMAIN') || ''
   return raw

@@ -1,7 +1,12 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors'
 import { authUserId } from '../_shared/google-token.ts'
-import { shouldUseDWD, isDWDConfigured, getWorkspaceDomains } from '../_shared/google-sa.ts'
+import {
+  shouldUseDWD,
+  isDWDConfigured,
+  getWorkspaceDomains,
+  validateDWDConfig,
+} from '../_shared/google-sa.ts'
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
@@ -39,6 +44,13 @@ Deno.serve(async (req) => {
     ])
     const email = (profile?.email as string | undefined) ?? null
     const dwdEligible = shouldUseDWD(email)
+    const validation = validateDWDConfig()
+    // "Intended DWD" = admin tried to configure DWD (any of the two secrets is set),
+    // so we should surface the specific validation issues instead of the generic
+    // "ask the admin" message.
+    const hasAnyDwdEnv =
+      !!Deno.env.get('GOOGLE_SERVICE_ACCOUNT_JSON') ||
+      !!Deno.env.get('GOOGLE_WORKSPACE_DOMAIN')
     if (dwdEligible) {
       return new Response(
         JSON.stringify({
@@ -58,6 +70,8 @@ Deno.serve(async (req) => {
         email: tok?.google_email ?? null,
         hasConfig: !!cfg,
         dwdConfigured: isDWDConfigured(),
+        dwdIntendedButInvalid: hasAnyDwdEnv && !validation.ok,
+        dwdIssues: hasAnyDwdEnv ? validation.issues : [],
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     )
