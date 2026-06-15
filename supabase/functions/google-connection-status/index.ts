@@ -1,7 +1,12 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors'
 import { authUserId } from '../_shared/google-token.ts'
-import { shouldUseDWD, isDWDConfigured, getWorkspaceDomains } from '../_shared/google-sa.ts'
+import {
+  shouldUseDWD,
+  isDWDConfigured,
+  getWorkspaceDomains,
+  validateDWDConfig,
+} from '../_shared/google-sa.ts'
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
@@ -39,6 +44,12 @@ Deno.serve(async (req) => {
     ])
     const email = (profile?.email as string | undefined) ?? null
     const dwdEligible = shouldUseDWD(email)
+    const validation = validateDWDConfig()
+    // Email's domain matches the configured workspace domain attempt but DWD config is broken.
+    const domains = getWorkspaceDomains()
+    const emailDomain = email?.toLowerCase().split('@')[1] ?? ''
+    const domainIntendedDWD =
+      !!emailDomain && domains.some((d) => emailDomain === d || emailDomain.endsWith('.' + d))
     if (dwdEligible) {
       return new Response(
         JSON.stringify({
@@ -58,6 +69,8 @@ Deno.serve(async (req) => {
         email: tok?.google_email ?? null,
         hasConfig: !!cfg,
         dwdConfigured: isDWDConfigured(),
+        dwdIntendedButInvalid: domainIntendedDWD && !validation.ok,
+        dwdIssues: domainIntendedDWD ? validation.issues : [],
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     )
