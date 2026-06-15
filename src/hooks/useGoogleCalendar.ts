@@ -21,7 +21,30 @@ export function useGoogleConnection() {
     queryFn: async () => {
       const { data: u } = await supabase.auth.getUser();
       const uid = u.user?.id;
-      if (!uid) return { hasConfig: false, connected: false, email: null as string | null };
+      if (!uid) {
+        return {
+          hasConfig: false,
+          connected: false,
+          email: null as string | null,
+          mode: "oauth" as "dwd" | "oauth",
+          dwdConfigured: false,
+        };
+      }
+      // Try the edge function first (handles DWD detection server-side).
+      try {
+        const { data, error } = await supabase.functions.invoke("google-connection-status", { body: {} });
+        if (!error && data) {
+          return {
+            hasConfig: !!data.hasConfig,
+            connected: !!data.connected,
+            email: (data.email as string | null) ?? null,
+            mode: (data.mode as "dwd" | "oauth") ?? "oauth",
+            dwdConfigured: !!data.dwdConfigured,
+          };
+        }
+      } catch {
+        // fall through to legacy direct query
+      }
       const [{ data: cfg }, { data: tok }] = await Promise.all([
         supabase.from("user_google_oauth_config").select("user_id").eq("user_id", uid).maybeSingle(),
         supabase.from("user_google_calendar_tokens").select("google_email,expires_at").eq("user_id", uid).maybeSingle(),
@@ -30,6 +53,8 @@ export function useGoogleConnection() {
         hasConfig: !!cfg,
         connected: !!tok,
         email: tok?.google_email ?? null,
+        mode: "oauth" as "dwd" | "oauth",
+        dwdConfigured: false,
       };
     },
     staleTime: 30_000,
