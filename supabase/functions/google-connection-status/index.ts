@@ -45,11 +45,12 @@ Deno.serve(async (req) => {
     const email = (profile?.email as string | undefined) ?? null
     const dwdEligible = shouldUseDWD(email)
     const validation = validateDWDConfig()
-    // Email's domain matches the configured workspace domain attempt but DWD config is broken.
-    const domains = getWorkspaceDomains()
-    const emailDomain = email?.toLowerCase().split('@')[1] ?? ''
-    const domainIntendedDWD =
-      !!emailDomain && domains.some((d) => emailDomain === d || emailDomain.endsWith('.' + d))
+    // "Intended DWD" = admin tried to configure DWD (any of the two secrets is set),
+    // so we should surface the specific validation issues instead of the generic
+    // "ask the admin" message.
+    const hasAnyDwdEnv =
+      !!Deno.env.get('GOOGLE_SERVICE_ACCOUNT_JSON') ||
+      !!Deno.env.get('GOOGLE_WORKSPACE_DOMAIN')
     if (dwdEligible) {
       return new Response(
         JSON.stringify({
