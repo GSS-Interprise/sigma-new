@@ -70,8 +70,8 @@ Deno.serve(async (req) => {
         email: tok?.google_email ?? null,
         hasConfig: !!cfg,
         dwdConfigured: isDWDConfigured(),
-        dwdIntendedButInvalid: domainIntendedDWD && !validation.ok,
-        dwdIssues: domainIntendedDWD ? validation.issues : [],
+        dwdIntendedButInvalid: hasAnyDwdEnv && !validation.ok,
+        dwdIssues: hasAnyDwdEnv ? validation.issues : [],
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     )
