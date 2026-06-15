@@ -190,13 +190,15 @@ export function ColunaAgenda({ onTarefaClick }: Props) {
               >
                 <RefreshCw className={cn("h-3 w-3", gFetching && "animate-spin")} />
               </button>
-              <button
-                onClick={() => disconnect.mutate()}
-                className="hover:text-foreground"
-                title="Desconectar"
-              >
-                <Unlink className="h-3 w-3" />
-              </button>
+              {gConn?.mode !== "dwd" && (
+                <button
+                  onClick={() => disconnect.mutate()}
+                  className="hover:text-foreground"
+                  title="Desconectar"
+                >
+                  <Unlink className="h-3 w-3" />
+                </button>
+              )}
             </div>
           </div>
         </div>
