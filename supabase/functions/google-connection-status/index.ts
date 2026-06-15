@@ -1,10 +1,31 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors'
 import { authUserId } from '../_shared/google-token.ts'
-import { shouldUseDWD, isDWDConfigured } from '../_shared/google-sa.ts'
+import { shouldUseDWD, isDWDConfigured, getWorkspaceDomains } from '../_shared/google-sa.ts'
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
+  // Public debug probe: returns DWD env config without requiring auth.
+  const url = new URL(req.url)
+  if (url.searchParams.get('debug') === '1') {
+    const raw = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_JSON')
+    let saParse: string = 'missing'
+    let clientEmail: string | null = null
+    if (raw) {
+      try {
+        const j = JSON.parse(raw)
+        saParse = 'ok'
+        clientEmail = j.client_email ?? null
+      } catch (e: any) { saParse = `parse_error: ${e.message}` }
+    }
+    return new Response(JSON.stringify({
+      saParse,
+      clientEmail,
+      workspaceDomains: getWorkspaceDomains(),
+      dwdConfigured: isDWDConfigured(),
+      rawDomainEnv: Deno.env.get('GOOGLE_WORKSPACE_DOMAIN') ?? null,
+    }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+  }
   try {
     const userId = await authUserId(req)
     const service = createClient(
