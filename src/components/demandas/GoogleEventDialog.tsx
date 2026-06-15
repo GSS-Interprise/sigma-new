@@ -5,8 +5,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CalendarIcon } from "lucide-react";
 import { useCreateGoogleEvent } from "@/hooks/useGoogleCalendar";
 import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 interface Props {
   open: boolean;
@@ -14,27 +19,38 @@ interface Props {
   defaultDate?: Date | null;
 }
 
-function toLocalInput(d: Date) {
-  return format(d, "yyyy-MM-dd'T'HH:mm");
+const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0"));
+const MINUTES = ["00", "15", "30", "45"];
+
+function combine(date: Date, hh: string, mm: string) {
+  const d = new Date(date);
+  d.setHours(parseInt(hh, 10), parseInt(mm, 10), 0, 0);
+  return d;
 }
 
 export function GoogleEventDialog({ open, onOpenChange, defaultDate }: Props) {
   const create = useCreateGoogleEvent();
   const [summary, setSummary] = useState("");
   const [description, setDescription] = useState("");
-  const [start, setStart] = useState("");
-  const [end, setEnd] = useState("");
+  const [startDate, setStartDate] = useState<Date>(new Date());
+  const [startH, setStartH] = useState("09");
+  const [startM, setStartM] = useState("00");
+  const [endDate, setEndDate] = useState<Date>(new Date());
+  const [endH, setEndH] = useState("10");
+  const [endM, setEndM] = useState("00");
   const [withMeet, setWithMeet] = useState(false);
   const [attendees, setAttendees] = useState("");
 
   useEffect(() => {
     if (!open) return;
     const base = defaultDate ? new Date(defaultDate) : new Date();
-    base.setHours(9, 0, 0, 0);
-    const e = new Date(base);
-    e.setHours(10, 0, 0, 0);
-    setStart(toLocalInput(base));
-    setEnd(toLocalInput(e));
+    base.setHours(0, 0, 0, 0);
+    setStartDate(base);
+    setEndDate(base);
+    setStartH("09");
+    setStartM("00");
+    setEndH("10");
+    setEndM("00");
     setSummary("");
     setDescription("");
     setWithMeet(false);
@@ -42,11 +58,13 @@ export function GoogleEventDialog({ open, onOpenChange, defaultDate }: Props) {
   }, [open, defaultDate]);
 
   const submit = async () => {
+    const start = combine(startDate, startH, startM);
+    const end = combine(endDate, endH, endM);
     await create.mutateAsync({
       summary,
       description,
-      start: new Date(start),
-      end: new Date(end),
+      start,
+      end,
       withMeet,
       attendees: attendees
         .split(/[,;\s]+/)
@@ -55,6 +73,44 @@ export function GoogleEventDialog({ open, onOpenChange, defaultDate }: Props) {
     });
     onOpenChange(false);
   };
+
+  const DatePick = ({ value, onChange }: { value: Date; onChange: (d: Date) => void }) => (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="outline" className="w-full justify-start font-normal">
+          <CalendarIcon className="mr-2 h-4 w-4" />
+          {format(value, "dd/MM/yyyy", { locale: ptBR })}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-0" align="start">
+        <Calendar
+          mode="single"
+          selected={value}
+          onSelect={(d) => d && onChange(d)}
+          initialFocus
+          locale={ptBR}
+          className="pointer-events-auto"
+        />
+      </PopoverContent>
+    </Popover>
+  );
+
+  const TimePick = ({ h, m, onH, onM }: { h: string; m: string; onH: (v: string) => void; onM: (v: string) => void }) => (
+    <div className="flex gap-1.5">
+      <Select value={h} onValueChange={onH}>
+        <SelectTrigger className="w-[72px]"><SelectValue /></SelectTrigger>
+        <SelectContent className="max-h-64">
+          {HOURS.map((v) => <SelectItem key={v} value={v}>{v}h</SelectItem>)}
+        </SelectContent>
+      </Select>
+      <Select value={m} onValueChange={onM}>
+        <SelectTrigger className="w-[72px]"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          {MINUTES.map((v) => <SelectItem key={v} value={v}>{v}min</SelectItem>)}
+        </SelectContent>
+      </Select>
+    </div>
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -67,14 +123,18 @@ export function GoogleEventDialog({ open, onOpenChange, defaultDate }: Props) {
             <Label>Título</Label>
             <Input value={summary} onChange={(e) => setSummary(e.target.value)} />
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label>Início</Label>
-              <Input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} />
+          <div className="space-y-2">
+            <Label>Início</Label>
+            <div className="flex gap-2">
+              <div className="flex-1"><DatePick value={startDate} onChange={setStartDate} /></div>
+              <TimePick h={startH} m={startM} onH={setStartH} onM={setStartM} />
             </div>
-            <div className="space-y-1.5">
-              <Label>Fim</Label>
-              <Input type="datetime-local" value={end} onChange={(e) => setEnd(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label>Fim</Label>
+            <div className="flex gap-2">
+              <div className="flex-1"><DatePick value={endDate} onChange={setEndDate} /></div>
+              <TimePick h={endH} m={endM} onH={setEndH} onM={setEndM} />
             </div>
           </div>
           <div className="space-y-1.5">
@@ -91,7 +151,7 @@ export function GoogleEventDialog({ open, onOpenChange, defaultDate }: Props) {
           </label>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-            <Button onClick={submit} disabled={create.isPending || !summary || !start || !end}>
+            <Button onClick={submit} disabled={create.isPending || !summary}>
               {create.isPending ? "Criando..." : "Criar evento"}
             </Button>
           </div>
