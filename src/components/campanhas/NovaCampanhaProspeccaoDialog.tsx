@@ -22,10 +22,10 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Rocket, MapPin, Stethoscope, Smartphone, Brain, Settings2, Zap, Shield, ClipboardList, Eye, ChevronDown } from "lucide-react";
+import { Rocket, MapPin, Stethoscope, Smartphone, Brain, Settings2, Zap, ClipboardList, Eye, ChevronDown } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { PreviewLeadsCampanhaModal } from "./PreviewLeadsCampanhaModal";
-import { JanelaHorarioConfig, type JanelaHorario } from "./JanelaHorarioConfig";
+import { type JanelaHorario } from "./JanelaHorarioConfig";
 import { CadenciaConfig } from "./CadenciaConfig";
 import type { CadenciaPasso } from "@/hooks/useCadencia";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
@@ -400,14 +400,10 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
         )}
 
         <Tabs value={tab} onValueChange={setTab}>
-          <TabsList className="grid grid-cols-4 w-full">
+          <TabsList className="grid grid-cols-3 w-full">
             <TabsTrigger value="basico" className="flex items-center gap-1.5">
               <Settings2 className="h-3.5 w-3.5" />
               Configuração
-            </TabsTrigger>
-            <TabsTrigger value="disparo" className="flex items-center gap-1.5">
-              <Shield className="h-3.5 w-3.5" />
-              Disparo
             </TabsTrigger>
             <TabsTrigger value="mensagem" className="flex items-center gap-1.5">
               <Smartphone className="h-3.5 w-3.5" />
@@ -740,105 +736,6 @@ GSS Saúde`}
                 </p>
               )}
             </div>
-          </TabsContent>
-
-          <TabsContent value="disparo" className="space-y-4 mt-4">
-            <p className="text-sm text-muted-foreground">
-              Configurações de proteção anti-bloqueio. Valores conservadores recomendados.
-            </p>
-
-            <div className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
-              O <b>volume diário é controlado automaticamente pelo sistema</b> (limite de cada chip + proteção anti-bloqueio). Não há teto fixo por campanha — os controles abaixo (lote, delays, janela) é que regulam o ritmo com segurança.
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label>Tamanho do lote</Label>
-                <Input
-                  type="number"
-                  value={batchSize}
-                  onChange={(e) => setBatchSize(Number(e.target.value))}
-                  min={1}
-                  max={50}
-                />
-                <p className="text-xs text-muted-foreground">Msgs por lote</p>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label>Rotação de chips</Label>
-                <Select value={rotationStrategy} onValueChange={setRotationStrategy}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="round_robin">Alternada (Round Robin)</SelectItem>
-                    <SelectItem value="random">Aleatória</SelectItem>
-                    <SelectItem value="single">Chip único</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label>Delay entre msgs (seg)</Label>
-                <div className="flex gap-2 items-center">
-                  <Input
-                    type="number"
-                    value={delayMinMs}
-                    onChange={(e) => setDelayMinMs(Number(e.target.value))}
-                    min={3}
-                    max={60}
-                    className="w-20"
-                  />
-                  <span className="text-xs text-muted-foreground">a</span>
-                  <Input
-                    type="number"
-                    value={delayMaxMs}
-                    onChange={(e) => setDelayMaxMs(Number(e.target.value))}
-                    min={5}
-                    max={120}
-                    className="w-20"
-                  />
-                  <span className="text-xs text-muted-foreground">seg</span>
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label>Pausa entre lotes (min)</Label>
-                <div className="flex gap-2 items-center">
-                  <Input
-                    type="number"
-                    value={delayBatchMin}
-                    onChange={(e) => setDelayBatchMin(Number(e.target.value))}
-                    min={1}
-                    max={30}
-                    className="w-20"
-                  />
-                  <span className="text-xs text-muted-foreground">a</span>
-                  <Input
-                    type="number"
-                    value={delayBatchMax}
-                    onChange={(e) => setDelayBatchMax(Number(e.target.value))}
-                    min={2}
-                    max={60}
-                    className="w-20"
-                  />
-                  <span className="text-xs text-muted-foreground">min</span>
-                </div>
-              </div>
-            </div>
-
-            {batchSize > 0 && (
-              <div className="bg-muted/50 rounded-lg p-3 text-sm">
-                <p className="text-xs text-muted-foreground">
-                  Cada lote de {batchSize} msgs demora ~{Math.round((batchSize * (delayMinMs + delayMaxMs)) / 2 / 60)}min,
-                  com pausa de {delayBatchMin}-{delayBatchMax}min entre lotes. O ritmo diário se ajusta sozinho ao limite seguro de cada chip.
-                </p>
-              </div>
-            )}
-
-            <JanelaHorarioConfig value={janela} onChange={setJanela} />
           </TabsContent>
 
           <TabsContent value="mensagem" className="space-y-4 mt-4">
@@ -1301,7 +1198,6 @@ GSS Saúde`}
         <div className="flex justify-between items-center pt-2 border-t">
           <p className="text-xs text-muted-foreground">
             {tab === "basico" && "Configure o alvo da campanha"}
-            {tab === "disparo" && "Proteções anti-bloqueio"}
             {tab === "mensagem" && "Defina a mensagem de abertura"}
             {tab === "ia" && "Briefing para a IA conversar"}
           </p>
@@ -1310,7 +1206,7 @@ GSS Saúde`}
               <Button
                 variant="outline"
                 onClick={() => {
-                  const order = ["basico", "disparo", "mensagem", "ia"];
+                  const order = ["basico", "mensagem", "ia"];
                   const idx = order.indexOf(tab);
                   setTab(order[Math.max(0, idx - 1)]);
                 }}
@@ -1321,7 +1217,7 @@ GSS Saúde`}
             {tab !== "ia" ? (
               <Button
                 onClick={() => {
-                  const order = ["basico", "disparo", "mensagem", "ia"];
+                  const order = ["basico", "mensagem", "ia"];
                   const idx = order.indexOf(tab);
                   setTab(order[Math.min(order.length - 1, idx + 1)]);
                 }}
