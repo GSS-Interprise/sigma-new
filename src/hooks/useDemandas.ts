@@ -518,6 +518,7 @@ export function useCriarDemanda() {
 }
 
 export function useAtualizarStatusDemanda() {
+  const { user } = useAuth();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
@@ -525,6 +526,9 @@ export function useAtualizarStatusDemanda() {
       if (status === "concluida") patch.concluida_em = new Date().toISOString();
       const { error } = await supabase.from("worklist_tarefas").update(patch).eq("id", id);
       if (error) throw error;
+      if (status === "concluida") {
+        await notificarConclusaoDemanda(id, user?.id ?? null);
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["demandas"] });
