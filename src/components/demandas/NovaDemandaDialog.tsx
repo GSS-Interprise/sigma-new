@@ -944,10 +944,34 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
               modulo={null}
               placeholder="Marcar pessoas (opcional)…"
             />
+            {!ehPessoal && pessoas.length > 1 && (
+              <div className="flex flex-wrap gap-1.5">
+                {pessoas.map((pid) => {
+                  const p = pessoasSistema.find((x) => x.id === pid);
+                  const responsavel = pid === responsavelPrincipalId;
+                  return (
+                    <button
+                      key={`resp-${pid}`}
+                      type="button"
+                      onClick={() => moverResponsavelPrincipal(pid)}
+                      className={cn(
+                        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors",
+                        responsavel
+                          ? "bg-primary/10 border-primary/40 text-primary"
+                          : "bg-background border-border hover:bg-muted",
+                      )}
+                    >
+                      {responsavel && <Check className="h-3 w-3" />}
+                      {p?.nome_completo || "Pessoa"}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             <p className="text-[11px] text-muted-foreground">
               {ehPessoal
                 ? "Sem ninguém marcado — esta tarefa é só pra você."
-                : "A primeira pessoa marcada é o responsável principal."}
+                : "Clique no nome para escolher o responsável principal."}
             </p>
           </div>
 
@@ -962,7 +986,13 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                   <Lock className="h-3 w-3" />
                   Você (criador) — sempre
                 </Badge>
-                {pessoas.map((pid) => {
+                {responsavelPrincipalId && (
+                  <Badge variant="outline" className="gap-1 bg-primary/10 border-primary/30 text-primary">
+                    <Lock className="h-3 w-3" />
+                    Responsável — sempre
+                  </Badge>
+                )}
+                {pessoasExtrasFinalizacao.map((pid) => {
                   const p = pessoasSistema.find((x) => x.id === pid);
                   const ativo = finalizadores.includes(pid);
                   return (
