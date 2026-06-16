@@ -14,6 +14,8 @@ export type ModuloChave = "licitacoes" | "contratos" | "disparos" | "sigzap" | n
 interface Props {
   value: string[];
   onChange: (ids: string[]) => void;
+  responsibleId?: string | null;
+  onResponsibleChange?: (id: string) => void;
   /** Quando definido, restringe a quem tem permissão `visualizar` no módulo. null = todo mundo. */
   modulo?: ModuloChave;
   placeholder?: string;
@@ -31,6 +33,8 @@ function initialsOf(name?: string | null) {
 export function PessoasCombobox({
   value,
   onChange,
+  responsibleId,
+  onResponsibleChange,
   modulo = null,
   placeholder = "Marcar pessoas…",
   excludeSelf = true,
@@ -124,11 +128,17 @@ export function PessoasCombobox({
         <div className="flex flex-wrap items-center gap-1.5">
           {value.map((id) => {
             const p: any = byId.get(id);
+            const isResponsible = id === responsibleId;
             return (
               <Badge
                 key={id}
                 variant="secondary"
-                className="gap-1.5 pr-1 pl-1 py-0.5"
+                className={cn(
+                  "gap-1.5 pr-1 pl-1 py-0.5 border transition-colors",
+                  isResponsible
+                    ? "bg-primary/10 border-primary/40 text-primary"
+                    : "border-transparent",
+                )}
               >
                 <Avatar className="h-5 w-5">
                   <AvatarImage src={p?.avatar_url || undefined} />
@@ -136,7 +146,20 @@ export function PessoasCombobox({
                     {initialsOf(p?.nome_completo)}
                   </AvatarFallback>
                 </Avatar>
-                <span className="text-xs">{p?.nome_completo || "…"}</span>
+                {onResponsibleChange ? (
+                  <button
+                    type="button"
+                    onClick={() => onResponsibleChange(id)}
+                    className="inline-flex items-center gap-1 text-xs"
+                    title="Definir como responsável"
+                    aria-label="Definir como responsável"
+                  >
+                    {isResponsible && <Check className="h-3 w-3" />}
+                    <span>{p?.nome_completo || "…"}</span>
+                  </button>
+                ) : (
+                  <span className="text-xs">{p?.nome_completo || "…"}</span>
+                )}
                 <button
                   type="button"
                   onClick={() => toggle(id)}
