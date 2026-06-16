@@ -1552,25 +1552,32 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
         <DialogFooter className="shrink-0 border-t bg-background px-5 py-3 sm:justify-between gap-2">
           <div className="flex items-center gap-2">
             {isEditing && tarefaExistente ? (() => {
-              // Finalizadores = criador + lista escolhida. Apenas eles finalizam.
-              const finalizadoresIds = Array.from(new Set([
-                tarefaExistente.created_by,
-                ...(tarefaExistente.finalizadores ?? []).map((f) => f.user_id),
-              ].filter((x): x is string => !!x)));
+              // Fechamento simples: o responsável encerra a demanda.
+              // Se não houver responsável, o criador faz o papel.
+              // Os "finalizadores" extras (chips marcados) também podem confirmar,
+              // mas NÃO são obrigatórios para o fechamento.
+              const responsavelOuCriador =
+                tarefaExistente.responsavel_id || tarefaExistente.created_by;
+              const finalizadoresIds = responsavelOuCriador ? [responsavelOuCriador] : [];
+              const extras = (tarefaExistente.finalizadores ?? [])
+                .map((f) => f.user_id)
+                .filter((id) => id && id !== responsavelOuCriador);
               const confirmadosSet = new Set(confirmacoes.map((c) => c.user_id));
               const total = finalizadoresIds.length;
               const feitas = finalizadoresIds.filter((id) => confirmadosSet.has(id)).length;
-              const eFinalizador = !!user?.id && finalizadoresIds.includes(user.id);
+              const podeConfirmar =
+                !!user?.id &&
+                (finalizadoresIds.includes(user.id) || extras.includes(user.id));
               const jaConfirmou = !!user?.id && confirmadosSet.has(user.id);
               const jaConcluida = tarefaExistente.status === "concluida";
-              if (!eFinalizador && total > 0) {
+              if (!podeConfirmar && total > 0) {
                 return (
                   <span className="text-[11px] text-muted-foreground">
-                    {feitas}/{total} finalizador(es) confirmaram
+                    Aguardando o responsável finalizar
                   </span>
                 );
               }
-              if (!eFinalizador) return <span />;
+              if (!podeConfirmar) return <span />;
               return (
                 <>
                   <Button
@@ -1596,8 +1603,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                     {jaConfirmou ? "Você finalizou" : "Finalizar demanda"}
                   </Button>
                   <span className="text-[11px] text-muted-foreground">
-                    {feitas}/{total} finalizador(es)
-                    {jaConcluida && " · concluída"}
+                    {jaConcluida ? "Concluída" : "Encerra ao confirmar"}
                   </span>
                 </>
               );
