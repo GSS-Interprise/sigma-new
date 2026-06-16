@@ -170,7 +170,7 @@ export function EnviarResumoEmailModal({
             tipo: 'contrato_resumo_email',
             titulo: `${remetenteNome} enviou o resumo do ${contratoLabel}`,
             mensagem: `Cliente: ${clienteNome}. Acesse o contrato para mais detalhes.`,
-            link: `/contratos?contrato=${contratoId}`,
+            link: `/contratos?open=${contratoId}`,
             referencia_id: contratoId,
           }));
         if (notifsBell.length > 0) {

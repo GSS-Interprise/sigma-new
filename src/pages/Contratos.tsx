@@ -83,7 +83,7 @@ export default function Contratos() {
 
   // Deep-link: /contratos?open=<id>
   useEffect(() => {
-    const openId = searchParams.get("open");
+    const openId = searchParams.get("open") || searchParams.get("contrato");
     if (!openId || !contratos) return;
     const contrato = (contratos as any[]).find((c) => c.id === openId);
     if (contrato) {
@@ -92,6 +92,7 @@ export default function Contratos() {
       setDialogOpen(true);
       setActiveTab("contratos");
       searchParams.delete("open");
+      searchParams.delete("contrato");
       setSearchParams(searchParams, { replace: true });
     }
   }, [searchParams, contratos, setSearchParams]);
