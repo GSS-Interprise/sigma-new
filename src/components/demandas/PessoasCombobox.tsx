@@ -53,6 +53,7 @@ export function PessoasCombobox({
         const { data } = await supabase
           .from("profiles")
           .select("id, nome_completo, setor_id")
+          .eq("status", "ativo")
           .order("nome_completo");
         return (data || []).filter((p: any) =>
           excludeSelf ? p.id !== user?.id : true,
@@ -79,6 +80,7 @@ export function PessoasCombobox({
         .from("profiles")
         .select("id, nome_completo, setor_id")
         .in("id", ids)
+        .eq("status", "ativo")
         .order("nome_completo");
       return profs || [];
     },
