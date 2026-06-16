@@ -22,7 +22,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Rocket, MapPin, Stethoscope, Smartphone, Brain, Settings2, Zap, Shield, ClipboardList, Eye } from "lucide-react";
+import { Rocket, MapPin, Stethoscope, Smartphone, Brain, Settings2, Zap, Shield, ClipboardList, Eye, ChevronDown } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { PreviewLeadsCampanhaModal } from "./PreviewLeadsCampanhaModal";
 import { JanelaHorarioConfig, type JanelaHorario } from "./JanelaHorarioConfig";
 import { CadenciaConfig } from "./CadenciaConfig";
@@ -52,7 +53,9 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
   const [tab, setTab] = useState("basico");
   const [nome, setNome] = useState("");
   const [especialidadeIds, setEspecialidadeIds] = useState<string[]>([]);
-  const [regiaoEstado, setRegiaoEstado] = useState<string>("");
+  const [regiaoEstados, setRegiaoEstados] = useState<string[]>([]);
+  // derivado: primeira UF, pra retrocompat (briefing/insert legados usam single)
+  const regiaoEstado = regiaoEstados[0] || "";
   const [chipIds, setChipIds] = useState<string[]>([]);
   const [rotationStrategy, setRotationStrategy] = useState("round_robin");
   const [limiteDiario, setLimiteDiario] = useState(120);
@@ -160,32 +163,35 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
   // Reduz N queries por keystroke pra 1 e centraliza a lógica
   // dos filtros (mesmos do selecionar_leads_campanha).
   const debouncedEspIds = useDebouncedValue(especialidadeIds, 300);
-  const debouncedUf = useDebouncedValue(regiaoEstado, 300);
+  const debouncedUfs = useDebouncedValue(regiaoEstados, 300);
 
   const { data: previewData } = useQuery({
     queryKey: [
       "campanha-wizard-preview",
       debouncedEspIds.join(","),
-      debouncedUf,
+      debouncedUfs.join(","),
     ],
-    enabled: debouncedEspIds.length > 0 || !!debouncedUf,
+    enabled: debouncedEspIds.length > 0 || debouncedUfs.length > 0,
     queryFn: async () => {
       const idsReais = debouncedEspIds.filter((id) => id !== GENERALISTA_ID);
-      const { data, error } = await (supabase as any).rpc(
-        "campanha_wizard_preview",
-        {
+      const call = async (uf: string | null) => {
+        const { data, error } = await (supabase as any).rpc("campanha_wizard_preview", {
           p_especialidade_ids: idsReais.length > 0 ? idsReais : null,
-          p_uf: debouncedUf || null,
+          p_uf: uf,
           p_exclude_lead_ids: null,
           p_sample_limit: 0,
           p_sem_especialidade: debouncedEspIds.includes(GENERALISTA_ID),
-        },
-      );
-      if (error) throw error;
-      return data as {
-        count: number;
-        count_em_outras_campanhas?: number;
-        sample: any[];
+        });
+        if (error) throw error;
+        return data as { count: number; count_em_outras_campanhas?: number; sample: any[] };
+      };
+      // Multi-UF: a RPC filtra por 1 UF; somamos por estado (UFs são disjuntas).
+      if (debouncedUfs.length <= 1) return call(debouncedUfs[0] || null);
+      const parts = await Promise.all(debouncedUfs.map((uf) => call(uf)));
+      return {
+        count: parts.reduce((s, p) => s + (p?.count || 0), 0),
+        count_em_outras_campanhas: parts.reduce((s, p) => s + (p?.count_em_outras_campanhas || 0), 0),
+        sample: [],
       };
     },
     staleTime: 30_000,
@@ -239,6 +245,7 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
           especialidade_id: espIdsReais[0] || null,
           sem_especialidade: especialidadeIds.includes(GENERALISTA_ID),
           regiao_estado: regiaoEstado || null,
+          regiao_estados: regiaoEstados.length > 0 ? regiaoEstados : null,
           chip_ids: chipIds.length > 0 ? chipIds : null,
           chip_id: chipIds[0] || null,
           chip_fallback_id: chipIds[1] || null,
@@ -305,7 +312,7 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
   const resetForm = () => {
     setNome("");
     setEspecialidadeIds([]);
-    setRegiaoEstado("");
+    setRegiaoEstados([]);
     setChipIds([]);
     setRotationStrategy("round_robin");
     setLimiteDiario(120);
@@ -580,20 +587,46 @@ GSS Saúde`}
               <div className="space-y-1.5">
                 <Label className="flex items-center gap-1.5">
                   <MapPin className="h-3.5 w-3.5" />
-                  Estado (UF)
+                  Estados (UF)
+                  <span className="text-xs text-muted-foreground font-normal">(1 ou mais)</span>
                 </Label>
-                <Select value={regiaoEstado} onValueChange={setRegiaoEstado}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Todo o Brasil" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {UF_LIST.map((uf) => (
-                      <SelectItem key={uf} value={uf}>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button type="button" className="w-full flex items-center justify-between rounded-md border bg-background px-3 py-2 text-sm">
+                      <span className={regiaoEstados.length ? "" : "text-muted-foreground"}>
+                        {regiaoEstados.length ? `${regiaoEstados.length} estado(s)` : "Todo o Brasil"}
+                      </span>
+                      <ChevronDown className="h-4 w-4 opacity-50" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-64 p-2">
+                    <div className="grid grid-cols-4 gap-1 max-h-56 overflow-y-auto">
+                      {UF_LIST.map((uf) => {
+                        const on = regiaoEstados.includes(uf);
+                        return (
+                          <button key={uf} type="button"
+                            onClick={() => setRegiaoEstados((prev) => prev.includes(uf) ? prev.filter((x) => x !== uf) : [...prev, uf])}
+                            className={`text-xs rounded px-1.5 py-1 border ${on ? "bg-primary text-primary-foreground border-primary" : "hover:bg-muted"}`}>
+                            {uf}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {regiaoEstados.length > 0 && (
+                      <button type="button" onClick={() => setRegiaoEstados([])} className="mt-2 text-xs text-muted-foreground hover:text-foreground underline">limpar</button>
+                    )}
+                  </PopoverContent>
+                </Popover>
+                {regiaoEstados.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {regiaoEstados.map((uf) => (
+                      <Badge key={uf} variant="secondary" className="text-xs gap-1 pr-1">
                         {uf}
-                      </SelectItem>
+                        <button type="button" onClick={() => setRegiaoEstados((p) => p.filter((x) => x !== uf))} className="hover:text-red-600">×</button>
+                      </Badge>
                     ))}
-                  </SelectContent>
-                </Select>
+                  </div>
+                )}
               </div>
             </div>
 

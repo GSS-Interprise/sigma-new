@@ -25,6 +25,7 @@ import {
   Newspaper,
   ClipboardCheck,
   Footprints,
+  ListTodo,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -68,6 +69,7 @@ const navigationGroups: NavGroup[] = [
     label: "Prospecção",
     items: [
       { name: "Campanhas", href: "/prospeccao", icon: Rocket, modulo: "disparos" },
+      { name: "Minhas Tarefas", href: "/tarefas", icon: ListTodo, modulo: "disparos" },
       { name: "Conversas", href: "/disparos/sigzap", icon: MessageCircle, modulo: "disparos" },
       { name: "Leads", href: "/leads", icon: UserSearch, modulo: "disparos" },
       { name: "Notícias", href: "/noticias", icon: Newspaper, modulo: "disparos" },

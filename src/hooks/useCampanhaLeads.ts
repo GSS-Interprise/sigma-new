@@ -25,6 +25,10 @@ export interface CampanhaLead {
   conversa_id: string | null;
   metadados: Record<string, unknown>;
   created_at: string;
+  // colaboração: quem está/assumiu o lead (UX multi-pessoa na mesma campanha)
+  assumido_por?: string | null;
+  assumido_em?: string | null;
+  humano_assumiu?: boolean | null;
   lead?: {
     id: string;
     nome: string;
@@ -33,6 +37,7 @@ export interface CampanhaLead {
     uf: string | null;
     cidade: string | null;
     especialidade: string | null;
+    tags: string[] | null;
   };
 }
 
@@ -50,7 +55,7 @@ export function useCampanhaLeads(campanhaId?: string) {
         const { data, error } = await supabase
           .from("campanha_leads")
           .select(
-            "*, lead:lead_id(id, nome, phone_e164, email, uf, cidade, especialidade)"
+            "*, lead:lead_id(id, nome, phone_e164, email, uf, cidade, especialidade, tags)"
           )
           .eq("campanha_id", campanhaId!)
           .order("data_status", { ascending: false })
@@ -122,6 +127,24 @@ export function useAdicionarLeadsCampanha() {
         toast.error(msg || "Erro ao adicionar leads");
       }
     },
+  });
+}
+
+// Edita as tags de um lead (quick-select nos cards). campanhaId só pra invalidar o cache certo.
+export function useUpdateLeadTags(campanhaId?: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { lead_id: string; tags: string[] }) => {
+      const { error } = await supabase
+        .from("leads")
+        .update({ tags: input.tags })
+        .eq("id", input.lead_id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["campanha-leads", campanhaId] });
+    },
+    onError: (e: any) => toast.error("Erro ao salvar tags: " + e.message),
   });
 }
 
