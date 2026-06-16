@@ -248,7 +248,9 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
     const pessoasIniciais = Array.from(
       new Set([responsavel, ...mencIds, criador].filter((id): id is string => !!id)),
     );
-    const finIds = (tarefaExistente.finalizadores ?? []).map((f) => f.user_id);
+    const finIds = (tarefaExistente.finalizadores ?? [])
+      .map((f) => f.user_id)
+      .filter((id) => id !== criador && id !== responsavel);
     setFinalizadores(finIds);
     // Se for tarefa pessoal (somente o próprio usuário), deixar vazio
     if (
@@ -480,6 +482,10 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
       ? [user?.id ?? ""].filter(Boolean)
       : pessoas;
     const responsavelFinal = ehPessoal ? user?.id ?? null : pessoas[0] ?? null;
+    const criadorFinal = tarefaExistente?.created_by ?? user?.id ?? null;
+    const finalizadoresExtras = finalizadores.filter(
+      (id) => id !== criadorFinal && id !== responsavelFinal,
+    );
     // Criador e responsável podem reescrever as listas de mencionados/finalizadores
     // (a RLS libera ambos). Outros envolvidos editam só campos simples.
     const podeEditarListas =
@@ -541,7 +547,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
           ...(podeEditarListas
             ? {
                 mencionados: mencionadosFinal,
-                finalizadores: finalizadores.filter((id) => id !== user?.id),
+                finalizadores: finalizadoresExtras,
               }
             : {}),
           data_limite: dataLimite ? format(dataLimite, "yyyy-MM-dd") : null,
@@ -571,7 +577,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
         urgencia,
         responsavel_id: responsavelFinal,
         mencionados: mencionadosFinal,
-        finalizadores: finalizadores.filter((id) => id !== user?.id),
+        finalizadores: finalizadoresExtras,
         data_limite: dataLimite ? format(dataLimite, "yyyy-MM-dd") : null,
         data_limite_hora: horaPayload,
         duracao_min: duracaoPayload,
@@ -596,6 +602,15 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
   };
 
   const ehPessoal = pessoas.length === 0;
+  const criadorId = tarefaExistente?.created_by ?? user?.id ?? null;
+  const responsavelPrincipalId = ehPessoal ? user?.id ?? null : pessoas[0] ?? null;
+  const pessoasExtrasFinalizacao = pessoas.filter(
+    (pid) => pid !== criadorId && pid !== responsavelPrincipalId,
+  );
+  const moverResponsavelPrincipal = (pid: string) => {
+    setPessoas((prev) => [pid, ...prev.filter((id) => id !== pid)]);
+    setFinalizadores((prev) => prev.filter((id) => id !== pid));
+  };
 
   return (
     <>
@@ -929,10 +944,34 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
               modulo={null}
               placeholder="Marcar pessoas (opcional)…"
             />
+            {!ehPessoal && pessoas.length > 1 && (
+              <div className="flex flex-wrap gap-1.5">
+                {pessoas.map((pid) => {
+                  const p = pessoasSistema.find((x) => x.id === pid);
+                  const responsavel = pid === responsavelPrincipalId;
+                  return (
+                    <button
+                      key={`resp-${pid}`}
+                      type="button"
+                      onClick={() => moverResponsavelPrincipal(pid)}
+                      className={cn(
+                        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors",
+                        responsavel
+                          ? "bg-primary/10 border-primary/40 text-primary"
+                          : "bg-background border-border hover:bg-muted",
+                      )}
+                    >
+                      {responsavel && <Check className="h-3 w-3" />}
+                      {p?.nome_completo || "Pessoa"}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             <p className="text-[11px] text-muted-foreground">
               {ehPessoal
                 ? "Sem ninguém marcado — esta tarefa é só pra você."
-                : "A primeira pessoa marcada é o responsável principal."}
+                : "Clique no nome para escolher o responsável principal."}
             </p>
           </div>
 
@@ -947,7 +986,13 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                   <Lock className="h-3 w-3" />
                   Você (criador) — sempre
                 </Badge>
-                {pessoas.map((pid) => {
+                {responsavelPrincipalId && (
+                  <Badge variant="outline" className="gap-1 bg-primary/10 border-primary/30 text-primary">
+                    <Lock className="h-3 w-3" />
+                    Responsável — sempre
+                  </Badge>
+                )}
+                {pessoasExtrasFinalizacao.map((pid) => {
                   const p = pessoasSistema.find((x) => x.id === pid);
                   const ativo = finalizadores.includes(pid);
                   return (

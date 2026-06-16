@@ -592,6 +592,78 @@ export function useAtualizarDemanda() {
       if (input.checklist !== undefined) patch.checklist = input.checklist as any;
       if (input.tags !== undefined) patch.tags = input.tags as any;
 
+      // Sincroniza listas antes de trocar o responsável. A RLS avalia o estado
+      // atual da tarefa; se mudarmos o responsável primeiro, o responsável antigo
+      // perde permissão para salvar as listas e o erro pode parecer que "não salvou".
+      if (input.mencionados !== undefined) {
+        const { data: existentes } = await supabase
+          .from("worklist_tarefa_mencionados")
+          .select("user_id")
+          .eq("tarefa_id", input.id);
+        const existentesSet = new Set((existentes ?? []).map((r: any) => r.user_id));
+        const { error: delMErr } = await supabase
+          .from("worklist_tarefa_mencionados")
+          .delete()
+          .eq("tarefa_id", input.id);
+        if (delMErr) throw delMErr;
+        if (input.mencionados.length) {
+          const rows = input.mencionados.map((uid) => ({
+            tarefa_id: input.id,
+            user_id: uid,
+          }));
+          const { error: mErr } = await supabase
+            .from("worklist_tarefa_mencionados")
+            .insert(rows);
+          if (mErr) throw mErr;
+          const novos = input.mencionados.filter(
+            (uid) => !existentesSet.has(uid) && uid !== user.id,
+          );
+          if (novos.length) {
+            try {
+              const { data: tarefa } = await supabase
+                .from("worklist_tarefas")
+                .select("titulo")
+                .eq("id", input.id)
+                .maybeSingle();
+              const link = `/demandas?tarefa=${input.id}`;
+              await supabase.from("system_notifications").insert(
+                novos.map((uid) => ({
+                  user_id: uid,
+                  tipo: "demanda_mencao",
+                  titulo: `Você foi marcado: ${tarefa?.titulo ?? "demanda"}`,
+                  mensagem: "Você foi adicionado a uma demanda",
+                  link,
+                  referencia_id: input.id,
+                })),
+              );
+            } catch (e) {
+              console.error("[demandas] erro ao notificar novos mencionados", e);
+            }
+          }
+        }
+      }
+
+      if (input.finalizadores !== undefined) {
+        const finSet = new Set<string>(input.finalizadores);
+        if (input.responsavel_id) finSet.add(input.responsavel_id);
+        finSet.delete(user.id);
+        const { error: delFErr } = await supabase
+          .from("worklist_tarefa_finalizadores" as any)
+          .delete()
+          .eq("tarefa_id", input.id);
+        if (delFErr) throw delFErr;
+        if (finSet.size) {
+          const rows = Array.from(finSet).map((uid) => ({
+            tarefa_id: input.id,
+            user_id: uid,
+          }));
+          const { error: fErr } = await supabase
+            .from("worklist_tarefa_finalizadores" as any)
+            .insert(rows);
+          if (fErr) throw fErr;
+        }
+      }
+
       const { error } = await supabase
         .from("worklist_tarefas")
         .update(patch)
@@ -641,73 +713,6 @@ export function useAtualizarDemanda() {
             : "Responsável removido",
           detalhes: { de: responsavelAnterior, para: novo },
         } as any);
-      }
-
-      if (input.mencionados !== undefined) {
-        // Buscar mencionados atuais para detectar novos
-        const { data: existentes } = await supabase
-          .from("worklist_tarefa_mencionados")
-          .select("user_id")
-          .eq("tarefa_id", input.id);
-        const existentesSet = new Set((existentes ?? []).map((r: any) => r.user_id));
-        await supabase
-          .from("worklist_tarefa_mencionados")
-          .delete()
-          .eq("tarefa_id", input.id);
-        if (input.mencionados.length) {
-          const rows = input.mencionados.map((uid) => ({
-            tarefa_id: input.id,
-            user_id: uid,
-          }));
-          const { error: mErr } = await supabase
-            .from("worklist_tarefa_mencionados")
-            .insert(rows);
-          if (mErr) throw mErr;
-          // Notificar apenas os novos
-          const novos = input.mencionados.filter(
-            (uid) => !existentesSet.has(uid) && uid !== user.id,
-          );
-          if (novos.length) {
-            try {
-              const { data: tarefa } = await supabase
-                .from("worklist_tarefas")
-                .select("titulo")
-                .eq("id", input.id)
-                .maybeSingle();
-              const link = `/demandas?tarefa=${input.id}`;
-              await supabase.from("system_notifications").insert(
-                novos.map((uid) => ({
-                  user_id: uid,
-                  tipo: "demanda_mencao",
-                  titulo: `Você foi marcado: ${tarefa?.titulo ?? "demanda"}`,
-                  mensagem: "Você foi adicionado a uma demanda",
-                  link,
-                  referencia_id: input.id,
-                })),
-              );
-            } catch (e) {
-              console.error("[demandas] erro ao notificar novos mencionados", e);
-            }
-          }
-        }
-      }
-
-      if (input.finalizadores !== undefined) {
-        const finSet = new Set<string>(input.finalizadores);
-        if (input.responsavel_id) finSet.add(input.responsavel_id);
-        await supabase
-          .from("worklist_tarefa_finalizadores" as any)
-          .delete()
-          .eq("tarefa_id", input.id);
-        if (finSet.size) {
-          const rows = Array.from(finSet).map((uid) => ({
-            tarefa_id: input.id,
-            user_id: uid,
-          }));
-          await supabase
-            .from("worklist_tarefa_finalizadores" as any)
-            .insert(rows);
-        }
       }
 
       await supabase.from("worklist_tarefa_atividades" as any).insert({
