@@ -6,7 +6,7 @@ create or replace function public.get_bi_esforco_equipe(p_desde date default nul
 returns json language sql stable security definer set search_path = public as $fn$
 with base as (
   select clt.id, clt.campanha_lead_id, clt.tipo, clt.status, clt.feita_por,
-         clt.prazo_at, c.nome as campanha_nome, cl.lead_id,
+         clt.prazo_at, c.nome as campanha_nome, c.id as campanha_id, cl.lead_id,
     case
       when clt.status='feita' then 'feita'
       when clt.status='descartada' then 'descartada'
@@ -31,7 +31,7 @@ select json_build_object(
     'pct_conclusao', coalesce(round(100.0*count(*) filter (where status='feita')/nullif(count(*) filter (where status<>'descartada'),0)),0)
   ) from base),
   'por_campanha', (select coalesce(json_agg(x order by x.total desc),'[]') from (
-    select campanha_nome campanha, count(*) total,
+    select campanha_nome campanha, campanha_id, count(*) total,
       count(*) filter (where status='feita') feitas,
       count(*) filter (where situacao='atrasada') atrasadas,
       count(*) filter (where situacao in ('pendente','hoje','futura','snoozed')) pendentes,
@@ -41,7 +41,7 @@ select json_build_object(
       count(distinct campanha_lead_id) filter (where status='feita') leads_trabalhados,
       coalesce(round(100.0*count(distinct campanha_lead_id) filter (where status='feita')/nullif(count(distinct campanha_lead_id),0)),0) cobertura_pct,
       count(distinct campanha_lead_id) filter (where status='feita' and tipo<>'whatsapp') leads_multicanal
-    from base group by campanha_nome) x),
+    from base group by campanha_nome, campanha_id) x),
   'por_canal', (select coalesce(json_agg(x order by x.total desc),'[]') from (
     select tipo canal, count(*) total,
       count(*) filter (where status='feita') feitas,
