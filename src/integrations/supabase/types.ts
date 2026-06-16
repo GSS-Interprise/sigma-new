@@ -15864,6 +15864,7 @@ export type Database = {
       }
       get_atividades_campo_resumo: { Args: { p_mes?: string }; Returns: Json }
       get_bi_esforco_equipe: { Args: { p_desde?: string }; Returns: Json }
+      get_bi_funil_campanha: { Args: { p_campanha_id: string }; Returns: Json }
       get_bi_prospec_dashboard: {
         Args: { p_fim: string; p_inicio: string }
         Returns: Json

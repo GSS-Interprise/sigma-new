@@ -6,7 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Check, Search, UserPlus, X } from "lucide-react";
+import { Crown, Search, UserPlus, X, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type ModuloChave = "licitacoes" | "contratos" | "disparos" | "sigzap" | null;
@@ -132,14 +132,17 @@ export function PessoasCombobox({
             return (
               <Badge
                 key={id}
-                variant="secondary"
+                variant={isResponsible ? "default" : "secondary"}
                 className={cn(
-                  "gap-1.5 pr-1 pl-1 py-0.5 border transition-colors",
+                  "gap-1.5 pr-1 pl-1 py-0.5 border transition-all",
                   isResponsible
-                    ? "bg-primary/10 border-primary/40 text-primary"
-                    : "border-transparent",
+                    ? "bg-primary text-primary-foreground border-primary shadow-sm ring-2 ring-primary/30"
+                    : "border-transparent opacity-80 hover:opacity-100",
                 )}
               >
+                {isResponsible && (
+                  <Crown className="h-3 w-3 shrink-0" fill="currentColor" />
+                )}
                 <Avatar className="h-5 w-5">
                   <AvatarImage src={p?.avatar_url || undefined} />
                   <AvatarFallback className="text-[9px]">
@@ -151,11 +154,17 @@ export function PessoasCombobox({
                     type="button"
                     onClick={() => onResponsibleChange(id)}
                     className="inline-flex items-center gap-1 text-xs"
-                    title="Definir como responsável"
+                    title={isResponsible ? "Responsável principal" : "Clique para tornar responsável"}
                     aria-label="Definir como responsável"
                   >
-                    {isResponsible && <Check className="h-3 w-3" />}
-                    <span>{p?.nome_completo || "…"}</span>
+                    <span className={cn(isResponsible && "font-semibold")}>
+                      {p?.nome_completo || "…"}
+                    </span>
+                    {isResponsible && (
+                      <span className="ml-1 text-[9px] uppercase tracking-wide font-bold opacity-90">
+                        Responsável
+                      </span>
+                    )}
                   </button>
                 ) : (
                   <span className="text-xs">{p?.nome_completo || "…"}</span>
@@ -163,7 +172,10 @@ export function PessoasCombobox({
                 <button
                   type="button"
                   onClick={() => toggle(id)}
-                  className="hover:text-destructive ml-0.5"
+                  className={cn(
+                    "ml-0.5",
+                    isResponsible ? "hover:text-destructive-foreground/70" : "hover:text-destructive",
+                  )}
                   aria-label="Remover"
                 >
                   <X className="h-3 w-3" />
