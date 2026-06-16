@@ -565,6 +565,18 @@ export function useAtualizarDemanda() {
   return useMutation({
     mutationFn: async (input: AtualizarDemandaInput) => {
       if (!user?.id) throw new Error("Sem usuário autenticado");
+      // Snapshot do responsável atual + título para detectar mudança
+      let responsavelAnterior: string | null = null;
+      let tituloAtual: string | null = null;
+      if (input.responsavel_id !== undefined) {
+        const { data: snap } = await supabase
+          .from("worklist_tarefas")
+          .select("responsavel_id, titulo")
+          .eq("id", input.id)
+          .maybeSingle();
+        responsavelAnterior = (snap?.responsavel_id as string | null) ?? null;
+        tituloAtual = (snap?.titulo as string | null) ?? null;
+      }
       const patch: any = { updated_at: new Date().toISOString() };
       if (input.titulo !== undefined) patch.titulo = input.titulo;
       if (input.descricao !== undefined) patch.descricao = input.descricao;
@@ -585,6 +597,51 @@ export function useAtualizarDemanda() {
         .update(patch)
         .eq("id", input.id);
       if (error) throw error;
+
+      // Troca de responsável: garante finalizador + notifica novo responsável + atividade
+      if (
+        input.responsavel_id !== undefined &&
+        (input.responsavel_id ?? null) !== responsavelAnterior
+      ) {
+        const novo = input.responsavel_id ?? null;
+        if (novo) {
+          try {
+            await supabase
+              .from("worklist_tarefa_finalizadores" as any)
+              .upsert(
+                { tarefa_id: input.id, user_id: novo } as any,
+                { onConflict: "tarefa_id,user_id" } as any,
+              );
+          } catch (e) {
+            console.error("[demandas] erro ao adicionar novo responsável como finalizador", e);
+          }
+          if (novo !== user.id) {
+            try {
+              await supabase.from("system_notifications").insert([
+                {
+                  user_id: novo,
+                  tipo: "demanda_responsavel",
+                  titulo: `Você é o novo responsável: ${tituloAtual ?? "demanda"}`,
+                  mensagem: "Uma demanda foi atribuída a você.",
+                  link: `/demandas?tarefa=${input.id}`,
+                  referencia_id: input.id,
+                },
+              ]);
+            } catch (e) {
+              console.error("[demandas] erro ao notificar novo responsável", e);
+            }
+          }
+        }
+        await supabase.from("worklist_tarefa_atividades" as any).insert({
+          tarefa_id: input.id,
+          user_id: user.id,
+          tipo: "atribuicao",
+          resumo: novo
+            ? "Responsável atualizado"
+            : "Responsável removido",
+          detalhes: { de: responsavelAnterior, para: novo },
+        } as any);
+      }
 
       if (input.mencionados !== undefined) {
         // Buscar mencionados atuais para detectar novos
