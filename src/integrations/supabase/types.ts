@@ -2696,6 +2696,7 @@ export type Database = {
           publico_alvo: Json | null
           regiao_cidades: string[] | null
           regiao_estado: string | null
+          regiao_estados: string[] | null
           responsaveis: string[] | null
           responsavel_id: string | null
           rotation_strategy: string | null
@@ -2777,6 +2778,7 @@ export type Database = {
           publico_alvo?: Json | null
           regiao_cidades?: string[] | null
           regiao_estado?: string | null
+          regiao_estados?: string[] | null
           responsaveis?: string[] | null
           responsavel_id?: string | null
           rotation_strategy?: string | null
@@ -2858,6 +2860,7 @@ export type Database = {
           publico_alvo?: Json | null
           regiao_cidades?: string[] | null
           regiao_estado?: string | null
+          regiao_estados?: string[] | null
           responsaveis?: string[] | null
           responsavel_id?: string | null
           rotation_strategy?: string | null
