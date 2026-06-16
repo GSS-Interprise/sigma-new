@@ -604,9 +604,27 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
   };
 
   const ehPessoal = pessoas.length === 0;
-  const responsavelPrincipalId = ehPessoal ? user?.id ?? null : pessoas[0] ?? null;
-  const moverResponsavelPrincipal = (pid: string) => {
-    setPessoas((prev) => [pid, ...prev.filter((id) => id !== pid)]);
+  // Garante que todo responsável esteja em pessoas; se nenhum chip estiver marcado
+  // como responsável, o primeiro da lista assume.
+  const responsaveisEfetivos = useMemo(() => {
+    const filtrados = responsaveisIds.filter((id) => pessoas.includes(id));
+    if (filtrados.length) return filtrados;
+    return pessoas.length ? [pessoas[0]] : [];
+  }, [responsaveisIds, pessoas]);
+  const responsavelPrincipalId = ehPessoal
+    ? user?.id ?? null
+    : responsaveisEfetivos[0] ?? null;
+  const toggleResponsavel = (pid: string) => {
+    setResponsaveisIds((prev) => {
+      if (prev.includes(pid)) {
+        if (prev.length <= 1) {
+          toast.info("É preciso ao menos 1 responsável");
+          return prev;
+        }
+        return prev.filter((id) => id !== pid);
+      }
+      return [...prev, pid];
+    });
   };
 
   return (
