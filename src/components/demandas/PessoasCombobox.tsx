@@ -146,16 +146,20 @@ export function PessoasCombobox({
                     {initialsOf(p?.nome_completo)}
                   </AvatarFallback>
                 </Avatar>
-                <button
-                  type="button"
-                  onClick={() => onResponsibleChange?.(id)}
-                  className="inline-flex items-center gap-1 text-xs"
-                  title="Definir como responsável"
-                  aria-label="Definir como responsável"
-                >
-                  {isResponsible && <Check className="h-3 w-3" />}
-                  <span>{p?.nome_completo || "…"}</span>
-                </button>
+                {onResponsibleChange ? (
+                  <button
+                    type="button"
+                    onClick={() => onResponsibleChange(id)}
+                    className="inline-flex items-center gap-1 text-xs"
+                    title="Definir como responsável"
+                    aria-label="Definir como responsável"
+                  >
+                    {isResponsible && <Check className="h-3 w-3" />}
+                    <span>{p?.nome_completo || "…"}</span>
+                  </button>
+                ) : (
+                  <span className="text-xs">{p?.nome_completo || "…"}</span>
+                )}
                 <button
                   type="button"
                   onClick={() => toggle(id)}
