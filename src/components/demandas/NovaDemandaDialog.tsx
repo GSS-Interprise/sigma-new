@@ -154,6 +154,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
   const [titulo, setTitulo] = useState("");
   const [descricao, setDescricao] = useState("");
   const [pessoas, setPessoas] = useState<string[]>([]);
+  const [responsaveisIds, setResponsaveisIds] = useState<string[]>([]);
   const [urgencia, setUrgencia] = useState<Urgencia>("media");
   const [dataLimite, setDataLimite] = useState<Date | undefined>(
     defaultDate ?? undefined,
@@ -198,6 +199,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
       setTitulo(prefillTitulo ?? "");
       setDescricao(prefillDescricao ?? "");
       setPessoas([]);
+      setResponsaveisIds([]);
       setUrgencia("media");
       setDataLimite(defaultDate ?? undefined);
       setHoraLimite("");
@@ -253,8 +255,18 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
       tarefaExistente.escopo === "setor"
     ) {
       setPessoas([]);
+      setResponsaveisIds([]);
     } else {
       setPessoas(pessoasIniciais);
+      const finIds = (tarefaExistente.finalizadores ?? [])
+        .map((f: any) => f.user_id)
+        .filter(Boolean);
+      const resps = Array.from(
+        new Set(
+          [responsavel, ...finIds].filter((id): id is string => !!id),
+        ),
+      );
+      setResponsaveisIds(resps.length ? resps : (responsavel ? [responsavel] : []));
     }
     const cl = (tarefaExistente as any).checklist;
     setChecklist(Array.isArray(cl) ? cl : []);
