@@ -604,9 +604,6 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
   const ehPessoal = pessoas.length === 0;
   const criadorId = tarefaExistente?.created_by ?? user?.id ?? null;
   const responsavelPrincipalId = ehPessoal ? user?.id ?? null : pessoas[0] ?? null;
-  const pessoasExtrasFinalizacao = pessoas.filter(
-    (pid) => pid !== criadorId && pid !== responsavelPrincipalId,
-  );
   const moverResponsavelPrincipal = (pid: string) => {
     setPessoas((prev) => [pid, ...prev.filter((id) => id !== pid)]);
     setFinalizadores((prev) => prev.filter((id) => id !== pid));
@@ -941,90 +938,17 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
             <PessoasCombobox
               value={pessoas}
               onChange={setPessoas}
+              responsibleId={responsavelPrincipalId}
+              onResponsibleChange={moverResponsavelPrincipal}
               modulo={null}
               placeholder="Marcar pessoas (opcional)…"
             />
-            {!ehPessoal && pessoas.length > 1 && (
-              <div className="flex flex-wrap gap-1.5">
-                {pessoas.map((pid) => {
-                  const p = pessoasSistema.find((x) => x.id === pid);
-                  const responsavel = pid === responsavelPrincipalId;
-                  return (
-                    <button
-                      key={`resp-${pid}`}
-                      type="button"
-                      onClick={() => moverResponsavelPrincipal(pid)}
-                      className={cn(
-                        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors",
-                        responsavel
-                          ? "bg-primary/10 border-primary/40 text-primary"
-                          : "bg-background border-border hover:bg-muted",
-                      )}
-                    >
-                      {responsavel && <Check className="h-3 w-3" />}
-                      {p?.nome_completo || "Pessoa"}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
             <p className="text-[11px] text-muted-foreground">
               {ehPessoal
                 ? "Sem ninguém marcado — esta tarefa é só pra você."
-                : "Clique no nome para escolher o responsável principal."}
+                : "Clique no nome para definir o responsável. Use o X para remover."}
             </p>
           </div>
-
-          {!ehPessoal && (
-            <div className="grid gap-1.5">
-              <Label className="text-xs flex items-center gap-1.5">
-                <CheckCircle2 className="h-3.5 w-3.5 text-destructive" />
-                Quem mais pode finalizar (opcional)
-              </Label>
-              <div className="flex flex-wrap gap-1.5 rounded-md border bg-muted/20 px-2 py-2 min-h-9">
-                <Badge variant="outline" className="gap-1 bg-primary/10 border-primary/30">
-                  <Lock className="h-3 w-3" />
-                  Você (criador) — sempre
-                </Badge>
-                {responsavelPrincipalId && (
-                  <Badge variant="outline" className="gap-1 bg-primary/10 border-primary/30 text-primary">
-                    <Lock className="h-3 w-3" />
-                    Responsável — sempre
-                  </Badge>
-                )}
-                {pessoasExtrasFinalizacao.map((pid) => {
-                  const p = pessoasSistema.find((x) => x.id === pid);
-                  const ativo = finalizadores.includes(pid);
-                  return (
-                    <button
-                      key={pid}
-                      type="button"
-                      onClick={() =>
-                        setFinalizadores((prev) =>
-                          prev.includes(pid)
-                            ? prev.filter((x) => x !== pid)
-                            : [...prev, pid],
-                        )
-                      }
-                      className={cn(
-                        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors",
-                        ativo
-                          ? "bg-destructive/15 border-destructive/40 text-destructive"
-                          : "bg-background border-border hover:bg-muted",
-                      )}
-                    >
-                      {ativo && <Check className="h-3 w-3" />}
-                      {p?.nome_completo || "Pessoa"}
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                O responsável principal (ou você, criador) já encerra a demanda sozinho.
-                Marque aqui pessoas extras se quiser que outras também possam clicar em "Finalizar".
-              </p>
-            </div>
-          )}
 
           <div className="grid gap-1.5">
             <Label className="text-xs flex items-center gap-1.5 text-muted-foreground">
