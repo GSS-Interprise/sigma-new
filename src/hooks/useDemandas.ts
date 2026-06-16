@@ -3,6 +3,45 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
+/**
+ * Notifica todos os envolvidos numa demanda que ela foi concluída.
+ * Destinatários: criador + responsável + mencionados + finalizadores, exceto o ator.
+ */
+async function notificarConclusaoDemanda(tarefaId: string, actorId: string | null) {
+  try {
+    const { data: tarefa } = await supabase
+      .from("worklist_tarefas")
+      .select("titulo, created_by, responsavel_id")
+      .eq("id", tarefaId)
+      .maybeSingle();
+    if (!tarefa) return;
+    const [mencRes, finRes] = await Promise.all([
+      supabase.from("worklist_tarefa_mencionados").select("user_id").eq("tarefa_id", tarefaId),
+      supabase.from("worklist_tarefa_finalizadores" as any).select("user_id").eq("tarefa_id", tarefaId),
+    ]);
+    const destinatarios = new Set<string>();
+    if (tarefa.created_by) destinatarios.add(tarefa.created_by);
+    if (tarefa.responsavel_id) destinatarios.add(tarefa.responsavel_id);
+    (mencRes.data ?? []).forEach((r: any) => r.user_id && destinatarios.add(r.user_id));
+    ((finRes.data ?? []) as any[]).forEach((r) => r.user_id && destinatarios.add(r.user_id));
+    if (actorId) destinatarios.delete(actorId);
+    if (!destinatarios.size) return;
+    const link = `/demandas?tarefa=${tarefaId}`;
+    await supabase.from("system_notifications").insert(
+      Array.from(destinatarios).map((uid) => ({
+        user_id: uid,
+        tipo: "demanda_concluida",
+        titulo: `Demanda concluída: ${tarefa.titulo ?? ""}`,
+        mensagem: "Todos os finalizadores confirmaram a conclusão.",
+        link,
+        referencia_id: tarefaId,
+      })),
+    );
+  } catch (e) {
+    console.error("[demandas] erro ao notificar conclusão", e);
+  }
+}
+
 export interface DemandaTarefa {
   id: string;
   modulo: string;
@@ -479,6 +518,7 @@ export function useCriarDemanda() {
 }
 
 export function useAtualizarStatusDemanda() {
+  const { user } = useAuth();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
@@ -486,6 +526,9 @@ export function useAtualizarStatusDemanda() {
       if (status === "concluida") patch.concluida_em = new Date().toISOString();
       const { error } = await supabase.from("worklist_tarefas").update(patch).eq("id", id);
       if (error) throw error;
+      if (status === "concluida") {
+        await notificarConclusaoDemanda(id, user?.id ?? null);
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["demandas"] });
@@ -522,6 +565,18 @@ export function useAtualizarDemanda() {
   return useMutation({
     mutationFn: async (input: AtualizarDemandaInput) => {
       if (!user?.id) throw new Error("Sem usuário autenticado");
+      // Snapshot do responsável atual + título para detectar mudança
+      let responsavelAnterior: string | null = null;
+      let tituloAtual: string | null = null;
+      if (input.responsavel_id !== undefined) {
+        const { data: snap } = await supabase
+          .from("worklist_tarefas")
+          .select("responsavel_id, titulo")
+          .eq("id", input.id)
+          .maybeSingle();
+        responsavelAnterior = (snap?.responsavel_id as string | null) ?? null;
+        tituloAtual = (snap?.titulo as string | null) ?? null;
+      }
       const patch: any = { updated_at: new Date().toISOString() };
       if (input.titulo !== undefined) patch.titulo = input.titulo;
       if (input.descricao !== undefined) patch.descricao = input.descricao;
@@ -542,6 +597,51 @@ export function useAtualizarDemanda() {
         .update(patch)
         .eq("id", input.id);
       if (error) throw error;
+
+      // Troca de responsável: garante finalizador + notifica novo responsável + atividade
+      if (
+        input.responsavel_id !== undefined &&
+        (input.responsavel_id ?? null) !== responsavelAnterior
+      ) {
+        const novo = input.responsavel_id ?? null;
+        if (novo) {
+          try {
+            await supabase
+              .from("worklist_tarefa_finalizadores" as any)
+              .upsert(
+                { tarefa_id: input.id, user_id: novo } as any,
+                { onConflict: "tarefa_id,user_id" } as any,
+              );
+          } catch (e) {
+            console.error("[demandas] erro ao adicionar novo responsável como finalizador", e);
+          }
+          if (novo !== user.id) {
+            try {
+              await supabase.from("system_notifications").insert([
+                {
+                  user_id: novo,
+                  tipo: "demanda_responsavel",
+                  titulo: `Você é o novo responsável: ${tituloAtual ?? "demanda"}`,
+                  mensagem: "Uma demanda foi atribuída a você.",
+                  link: `/demandas?tarefa=${input.id}`,
+                  referencia_id: input.id,
+                },
+              ]);
+            } catch (e) {
+              console.error("[demandas] erro ao notificar novo responsável", e);
+            }
+          }
+        }
+        await supabase.from("worklist_tarefa_atividades" as any).insert({
+          tarefa_id: input.id,
+          user_id: user.id,
+          tipo: "atribuicao",
+          resumo: novo
+            ? "Responsável atualizado"
+            : "Responsável removido",
+          detalhes: { de: responsavelAnterior, para: novo },
+        } as any);
+      }
 
       if (input.mencionados !== undefined) {
         // Buscar mencionados atuais para detectar novos
@@ -990,6 +1090,7 @@ export function useToggleConfirmacaoDemanda() {
               resumo: "Tarefa concluída — todos os envolvidos confirmaram",
               detalhes: {},
             } as any);
+            await notificarConclusaoDemanda(tarefaId, user.id);
           }
         }
       } else {
