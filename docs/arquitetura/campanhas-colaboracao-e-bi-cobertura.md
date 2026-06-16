@@ -5,6 +5,9 @@
 ## Princípio
 A **campanha = estratégia**. Várias operadoras dividem o trabalho por estado/especialidade dentro da mesma campanha. O BI mostra o **funil de cobertura** por campanha e por região, comparando o que foi chamado com o universo disponível na base (CFM).
 
+## Status (implementado 16/06)
+1. BI funil de cobertura ✅ · 2. Esforço sem lista infinita ✅ · 3. Filtros UF/especialidade/nome ✅ · 4. Wizard multi-especialidade (já existia) + multi-estado ✅ · 5. Tags no card + quick-select ✅ · 6. Indicador de quem assumiu ✅ · 7. UX colaborativa (indicador + base) ✅ · 8. Central de tarefas ✅
+
 ## Itens (ordem de implementação)
 
 ### 1. BI — Funil de cobertura no Esforço da Equipe  ✅ PRIORIDADE
