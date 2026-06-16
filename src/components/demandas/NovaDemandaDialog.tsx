@@ -480,11 +480,13 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
       ? [user?.id ?? ""].filter(Boolean)
       : pessoas;
     const responsavelFinal = ehPessoal ? user?.id ?? null : pessoas[0] ?? null;
-    // Só o criador (dono) reescreve as listas de mencionados/finalizadores no banco.
-    // Outros envolvidos (ex.: o responsável) podem editar título/urgência/responsável
-    // sem disparar a regravação dessas tabelas — evita "violação de row level".
-    const souCriador =
-      !!user?.id && !!tarefaExistente && tarefaExistente.created_by === user.id;
+    // Criador e responsável podem reescrever as listas de mencionados/finalizadores
+    // (a RLS libera ambos). Outros envolvidos editam só campos simples.
+    const podeEditarListas =
+      !!user?.id &&
+      !!tarefaExistente &&
+      (tarefaExistente.created_by === user.id ||
+        tarefaExistente.responsavel_id === user.id);
 
     try {
       let tarefaIdFinal: string;
@@ -536,7 +538,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
           descricao: descricao.trim() || null,
           urgencia,
           responsavel_id: responsavelFinal,
-          ...(souCriador
+          ...(podeEditarListas
             ? {
                 mencionados: mencionadosFinal,
                 finalizadores: finalizadores.filter((id) => id !== user?.id),
@@ -938,7 +940,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
             <div className="grid gap-1.5">
               <Label className="text-xs flex items-center gap-1.5">
                 <CheckCircle2 className="h-3.5 w-3.5 text-destructive" />
-                Quem pode finalizar a demanda?
+                Quem mais pode finalizar (opcional)
               </Label>
               <div className="flex flex-wrap gap-1.5 rounded-md border bg-muted/20 px-2 py-2 min-h-9">
                 <Badge variant="outline" className="gap-1 bg-primary/10 border-primary/30">
@@ -973,8 +975,8 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                 })}
               </div>
               <p className="text-[11px] text-muted-foreground">
-                Apenas você e os marcados aqui podem encerrar a demanda. Os demais envolvidos
-                continuam podendo comentar, anexar e acompanhar normalmente.
+                O responsável principal (ou você, criador) já encerra a demanda sozinho.
+                Marque aqui pessoas extras se quiser que outras também possam clicar em "Finalizar".
               </p>
             </div>
           )}
@@ -1552,25 +1554,32 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
         <DialogFooter className="shrink-0 border-t bg-background px-5 py-3 sm:justify-between gap-2">
           <div className="flex items-center gap-2">
             {isEditing && tarefaExistente ? (() => {
-              // Finalizadores = criador + lista escolhida. Apenas eles finalizam.
-              const finalizadoresIds = Array.from(new Set([
-                tarefaExistente.created_by,
-                ...(tarefaExistente.finalizadores ?? []).map((f) => f.user_id),
-              ].filter((x): x is string => !!x)));
+              // Fechamento simples: o responsável encerra a demanda.
+              // Se não houver responsável, o criador faz o papel.
+              // Os "finalizadores" extras (chips marcados) também podem confirmar,
+              // mas NÃO são obrigatórios para o fechamento.
+              const responsavelOuCriador =
+                tarefaExistente.responsavel_id || tarefaExistente.created_by;
+              const finalizadoresIds = responsavelOuCriador ? [responsavelOuCriador] : [];
+              const extras = (tarefaExistente.finalizadores ?? [])
+                .map((f) => f.user_id)
+                .filter((id) => id && id !== responsavelOuCriador);
               const confirmadosSet = new Set(confirmacoes.map((c) => c.user_id));
               const total = finalizadoresIds.length;
               const feitas = finalizadoresIds.filter((id) => confirmadosSet.has(id)).length;
-              const eFinalizador = !!user?.id && finalizadoresIds.includes(user.id);
+              const podeConfirmar =
+                !!user?.id &&
+                (finalizadoresIds.includes(user.id) || extras.includes(user.id));
               const jaConfirmou = !!user?.id && confirmadosSet.has(user.id);
               const jaConcluida = tarefaExistente.status === "concluida";
-              if (!eFinalizador && total > 0) {
+              if (!podeConfirmar && total > 0) {
                 return (
                   <span className="text-[11px] text-muted-foreground">
-                    {feitas}/{total} finalizador(es) confirmaram
+                    Aguardando o responsável finalizar
                   </span>
                 );
               }
-              if (!eFinalizador) return <span />;
+              if (!podeConfirmar) return <span />;
               return (
                 <>
                   <Button
@@ -1596,8 +1605,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                     {jaConfirmou ? "Você finalizou" : "Finalizar demanda"}
                   </Button>
                   <span className="text-[11px] text-muted-foreground">
-                    {feitas}/{total} finalizador(es)
-                    {jaConcluida && " · concluída"}
+                    {jaConcluida ? "Concluída" : "Encerra ao confirmar"}
                   </span>
                 </>
               );
