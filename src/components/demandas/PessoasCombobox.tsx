@@ -14,8 +14,10 @@ export type ModuloChave = "licitacoes" | "contratos" | "disparos" | "sigzap" | n
 interface Props {
   value: string[];
   onChange: (ids: string[]) => void;
-  responsibleId?: string | null;
-  onResponsibleChange?: (id: string) => void;
+  /** Lista de IDs marcados como responsáveis (pode ter 1 ou mais). */
+  responsibleIds?: string[];
+  /** Alterna o status de "responsável" de um id. */
+  onToggleResponsible?: (id: string) => void;
   /** Quando definido, restringe a quem tem permissão `visualizar` no módulo. null = todo mundo. */
   modulo?: ModuloChave;
   placeholder?: string;
@@ -33,8 +35,8 @@ function initialsOf(name?: string | null) {
 export function PessoasCombobox({
   value,
   onChange,
-  responsibleId,
-  onResponsibleChange,
+  responsibleIds,
+  onToggleResponsible,
   modulo = null,
   placeholder = "Marcar pessoas…",
   excludeSelf = true,
@@ -128,7 +130,7 @@ export function PessoasCombobox({
         <div className="flex flex-wrap items-center gap-1.5">
           {value.map((id) => {
             const p: any = byId.get(id);
-            const isResponsible = id === responsibleId;
+            const isResponsible = !!responsibleIds?.includes(id);
             return (
               <Badge
                 key={id}
@@ -149,13 +151,17 @@ export function PessoasCombobox({
                     {initialsOf(p?.nome_completo)}
                   </AvatarFallback>
                 </Avatar>
-                {onResponsibleChange ? (
+                {onToggleResponsible ? (
                   <button
                     type="button"
-                    onClick={() => onResponsibleChange(id)}
+                    onClick={() => onToggleResponsible(id)}
                     className="inline-flex items-center gap-1 text-xs"
-                    title={isResponsible ? "Responsável principal" : "Clique para tornar responsável"}
-                    aria-label="Definir como responsável"
+                    title={
+                      isResponsible
+                        ? "Responsável — clique para deixar de ser responsável"
+                        : "Clique para marcar como responsável"
+                    }
+                    aria-label="Alternar responsável"
                   >
                     <span className={cn(isResponsible && "font-semibold")}>
                       {p?.nome_completo || "…"}
