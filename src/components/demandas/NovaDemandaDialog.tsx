@@ -248,7 +248,9 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
     const pessoasIniciais = Array.from(
       new Set([responsavel, ...mencIds, criador].filter((id): id is string => !!id)),
     );
-    const finIds = (tarefaExistente.finalizadores ?? []).map((f) => f.user_id);
+    const finIds = (tarefaExistente.finalizadores ?? [])
+      .map((f) => f.user_id)
+      .filter((id) => id !== criador && id !== responsavel);
     setFinalizadores(finIds);
     // Se for tarefa pessoal (somente o próprio usuário), deixar vazio
     if (
@@ -480,6 +482,10 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
       ? [user?.id ?? ""].filter(Boolean)
       : pessoas;
     const responsavelFinal = ehPessoal ? user?.id ?? null : pessoas[0] ?? null;
+    const criadorFinal = tarefaExistente?.created_by ?? user?.id ?? null;
+    const finalizadoresExtras = finalizadores.filter(
+      (id) => id !== criadorFinal && id !== responsavelFinal,
+    );
     // Criador e responsável podem reescrever as listas de mencionados/finalizadores
     // (a RLS libera ambos). Outros envolvidos editam só campos simples.
     const podeEditarListas =
@@ -541,7 +547,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
           ...(podeEditarListas
             ? {
                 mencionados: mencionadosFinal,
-                finalizadores: finalizadores.filter((id) => id !== user?.id),
+                finalizadores: finalizadoresExtras,
               }
             : {}),
           data_limite: dataLimite ? format(dataLimite, "yyyy-MM-dd") : null,
@@ -571,7 +577,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
         urgencia,
         responsavel_id: responsavelFinal,
         mencionados: mencionadosFinal,
-        finalizadores: finalizadores.filter((id) => id !== user?.id),
+        finalizadores: finalizadoresExtras,
         data_limite: dataLimite ? format(dataLimite, "yyyy-MM-dd") : null,
         data_limite_hora: horaPayload,
         duracao_min: duracaoPayload,
@@ -596,6 +602,15 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
   };
 
   const ehPessoal = pessoas.length === 0;
+  const criadorId = tarefaExistente?.created_by ?? user?.id ?? null;
+  const responsavelPrincipalId = ehPessoal ? user?.id ?? null : pessoas[0] ?? null;
+  const pessoasExtrasFinalizacao = pessoas.filter(
+    (pid) => pid !== criadorId && pid !== responsavelPrincipalId,
+  );
+  const moverResponsavelPrincipal = (pid: string) => {
+    setPessoas((prev) => [pid, ...prev.filter((id) => id !== pid)]);
+    setFinalizadores((prev) => prev.filter((id) => id !== pid));
+  };
 
   return (
     <>
