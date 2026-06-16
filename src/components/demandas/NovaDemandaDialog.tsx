@@ -154,6 +154,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
   const [titulo, setTitulo] = useState("");
   const [descricao, setDescricao] = useState("");
   const [pessoas, setPessoas] = useState<string[]>([]);
+  const [responsaveisIds, setResponsaveisIds] = useState<string[]>([]);
   const [urgencia, setUrgencia] = useState<Urgencia>("media");
   const [dataLimite, setDataLimite] = useState<Date | undefined>(
     defaultDate ?? undefined,
@@ -198,6 +199,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
       setTitulo(prefillTitulo ?? "");
       setDescricao(prefillDescricao ?? "");
       setPessoas([]);
+      setResponsaveisIds([]);
       setUrgencia("media");
       setDataLimite(defaultDate ?? undefined);
       setHoraLimite("");
@@ -253,8 +255,18 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
       tarefaExistente.escopo === "setor"
     ) {
       setPessoas([]);
+      setResponsaveisIds([]);
     } else {
       setPessoas(pessoasIniciais);
+      const finIds = (tarefaExistente.finalizadores ?? [])
+        .map((f: any) => f.user_id)
+        .filter(Boolean);
+      const resps = Array.from(
+        new Set(
+          [responsavel, ...finIds].filter((id): id is string => !!id),
+        ),
+      );
+      setResponsaveisIds(resps.length ? resps : (responsavel ? [responsavel] : []));
     }
     const cl = (tarefaExistente as any).checklist;
     setChecklist(Array.isArray(cl) ? cl : []);
@@ -475,7 +487,13 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
     const mencionadosFinal = ehPessoal
       ? [user?.id ?? ""].filter(Boolean)
       : pessoas;
-    const responsavelFinal = ehPessoal ? user?.id ?? null : pessoas[0] ?? null;
+    const responsaveisFinal = ehPessoal
+      ? [user?.id].filter((id): id is string => !!id)
+      : (responsaveisEfetivos.length ? responsaveisEfetivos : [pessoas[0]]).filter(
+          (id): id is string => !!id,
+        );
+    const responsavelFinal = responsaveisFinal[0] ?? null;
+    const finalizadoresFinal = responsaveisFinal.slice(1);
     // Criador e responsável podem reescrever as listas de mencionados/finalizadores
     // (a RLS libera ambos). Outros envolvidos editam só campos simples.
     const podeEditarListas =
@@ -537,7 +555,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
           ...(podeEditarListas
             ? {
                 mencionados: mencionadosFinal,
-                finalizadores: [],
+                finalizadores: finalizadoresFinal,
               }
             : {}),
           data_limite: dataLimite ? format(dataLimite, "yyyy-MM-dd") : null,
@@ -567,7 +585,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
         urgencia,
         responsavel_id: responsavelFinal,
         mencionados: mencionadosFinal,
-        finalizadores: [],
+        finalizadores: finalizadoresFinal,
         data_limite: dataLimite ? format(dataLimite, "yyyy-MM-dd") : null,
         data_limite_hora: horaPayload,
         duracao_min: duracaoPayload,
@@ -592,9 +610,27 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
   };
 
   const ehPessoal = pessoas.length === 0;
-  const responsavelPrincipalId = ehPessoal ? user?.id ?? null : pessoas[0] ?? null;
-  const moverResponsavelPrincipal = (pid: string) => {
-    setPessoas((prev) => [pid, ...prev.filter((id) => id !== pid)]);
+  // Garante que todo responsável esteja em pessoas; se nenhum chip estiver marcado
+  // como responsável, o primeiro da lista assume.
+  const responsaveisEfetivos = useMemo(() => {
+    const filtrados = responsaveisIds.filter((id) => pessoas.includes(id));
+    if (filtrados.length) return filtrados;
+    return pessoas.length ? [pessoas[0]] : [];
+  }, [responsaveisIds, pessoas]);
+  const responsavelPrincipalId = ehPessoal
+    ? user?.id ?? null
+    : responsaveisEfetivos[0] ?? null;
+  const toggleResponsavel = (pid: string) => {
+    setResponsaveisIds((prev) => {
+      if (prev.includes(pid)) {
+        if (prev.length <= 1) {
+          toast.info("É preciso ao menos 1 responsável");
+          return prev;
+        }
+        return prev.filter((id) => id !== pid);
+      }
+      return [...prev, pid];
+    });
   };
 
   return (
@@ -925,16 +961,20 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
             <Label className="text-xs">Pessoas envolvidas</Label>
             <PessoasCombobox
               value={pessoas}
-              onChange={setPessoas}
-              responsibleId={responsavelPrincipalId}
-              onResponsibleChange={moverResponsavelPrincipal}
+              onChange={(ids) => {
+                setPessoas(ids);
+                // Remover responsáveis que saíram da lista
+                setResponsaveisIds((prev) => prev.filter((id) => ids.includes(id)));
+              }}
+              responsibleIds={responsaveisEfetivos}
+              onToggleResponsible={toggleResponsavel}
               modulo={null}
               placeholder="Marcar pessoas (opcional)…"
             />
             <p className="text-[11px] text-muted-foreground">
               {ehPessoal
                 ? "Sem ninguém marcado — esta tarefa é só pra você."
-                : "Clique no nome para definir o responsável. Use o X para remover."}
+                : "Clique no nome para marcar/desmarcar como responsável (pode ter mais de um). Use o X para remover."}
             </p>
           </div>
 
@@ -1511,28 +1551,31 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
         <DialogFooter className="shrink-0 border-t bg-background px-5 py-3 sm:justify-between gap-2">
           <div className="flex items-center gap-2">
             {isEditing && tarefaExistente ? (() => {
-              // Fechamento simples: o responsável encerra a demanda.
-              // Se não houver responsável, o criador faz o papel.
-              // Os "finalizadores" extras (chips marcados) também podem confirmar,
-              // mas NÃO são obrigatórios para o fechamento.
-              const responsavelOuCriador =
+              // Todos os responsáveis (responsavel_id + finalizadores) precisam
+              // confirmar para encerrar. Se não houver nenhum, o criador assume.
+              const principal =
                 tarefaExistente.responsavel_id || tarefaExistente.created_by;
-              const finalizadoresIds = responsavelOuCriador ? [responsavelOuCriador] : [];
-              const extras = (tarefaExistente.finalizadores ?? [])
+              const extrasResp = (tarefaExistente.finalizadores ?? [])
                 .map((f) => f.user_id)
-                .filter((id) => id && id !== responsavelOuCriador);
+                .filter((id): id is string => !!id && id !== principal);
+              const finalizadoresIds = Array.from(
+                new Set(
+                  [principal, ...extrasResp].filter((id): id is string => !!id),
+                ),
+              );
+              const extras: string[] = [];
               const confirmadosSet = new Set(confirmacoes.map((c) => c.user_id));
               const total = finalizadoresIds.length;
               const feitas = finalizadoresIds.filter((id) => confirmadosSet.has(id)).length;
               const podeConfirmar =
                 !!user?.id &&
-                (finalizadoresIds.includes(user.id) || extras.includes(user.id));
+                finalizadoresIds.includes(user.id);
               const jaConfirmou = !!user?.id && confirmadosSet.has(user.id);
               const jaConcluida = tarefaExistente.status === "concluida";
               if (!podeConfirmar && total > 0) {
                 return (
                   <span className="text-[11px] text-muted-foreground">
-                    Aguardando o responsável finalizar
+                    Aguardando {total > 1 ? "os responsáveis" : "o responsável"} finalizar ({feitas}/{total})
                   </span>
                 );
               }
@@ -1562,7 +1605,11 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                     {jaConfirmou ? "Você finalizou" : "Finalizar demanda"}
                   </Button>
                   <span className="text-[11px] text-muted-foreground">
-                    {jaConcluida ? "Concluída" : "Encerra ao confirmar"}
+                    {jaConcluida
+                      ? "Concluída"
+                      : total > 1
+                      ? `Aguardando ${total - feitas} de ${total} responsáveis`
+                      : "Encerra ao confirmar"}
                   </span>
                 </>
               );
