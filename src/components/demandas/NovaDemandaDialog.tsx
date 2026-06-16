@@ -938,7 +938,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
             <div className="grid gap-1.5">
               <Label className="text-xs flex items-center gap-1.5">
                 <CheckCircle2 className="h-3.5 w-3.5 text-destructive" />
-                Quem pode finalizar a demanda?
+                Quem mais pode finalizar (opcional)
               </Label>
               <div className="flex flex-wrap gap-1.5 rounded-md border bg-muted/20 px-2 py-2 min-h-9">
                 <Badge variant="outline" className="gap-1 bg-primary/10 border-primary/30">
@@ -973,8 +973,8 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                 })}
               </div>
               <p className="text-[11px] text-muted-foreground">
-                Apenas você e os marcados aqui podem encerrar a demanda. Os demais envolvidos
-                continuam podendo comentar, anexar e acompanhar normalmente.
+                O responsável principal (ou você, criador) já encerra a demanda sozinho.
+                Marque aqui pessoas extras se quiser que outras também possam clicar em "Finalizar".
               </p>
             </div>
           )}
