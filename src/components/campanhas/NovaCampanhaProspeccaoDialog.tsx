@@ -58,7 +58,6 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
   const regiaoEstado = regiaoEstados[0] || "";
   const [chipIds, setChipIds] = useState<string[]>([]);
   const [rotationStrategy, setRotationStrategy] = useState("round_robin");
-  const [limiteDiario, setLimiteDiario] = useState(120);
   const [batchSize, setBatchSize] = useState(10);
   const [delayMinMs, setDelayMinMs] = useState(8);
   const [delayMaxMs, setDelayMaxMs] = useState(25);
@@ -250,7 +249,8 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
           chip_id: chipIds[0] || null,
           chip_fallback_id: chipIds[1] || null,
           rotation_strategy: rotationStrategy,
-          limite_diario_campanha: limiteDiario,
+          // teto diário NÃO é definido na campanha — o sistema controla pelo limite de cada chip (anti-ban)
+          limite_diario_campanha: null,
           batch_size: batchSize,
           delay_min_ms: delayMinMs * 1000,
           delay_max_ms: delayMaxMs * 1000,
@@ -315,7 +315,6 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
     setRegiaoEstados([]);
     setChipIds([]);
     setRotationStrategy("round_robin");
-    setLimiteDiario(120);
     setBatchSize(10);
     setDelayMinMs(8);
     setDelayMaxMs(25);
@@ -748,15 +747,8 @@ GSS Saúde`}
               Configurações de proteção anti-bloqueio. Valores conservadores recomendados.
             </p>
 
-            <div className="space-y-1.5">
-              <Label>Limite diário de disparos</Label>
-              <Input
-                type="number"
-                value={limiteDiario}
-                onChange={(e) => setLimiteDiario(Number(e.target.value))}
-                min={1}
-                max={500}
-              />
+            <div className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+              O <b>volume diário é controlado automaticamente pelo sistema</b> (limite de cada chip + proteção anti-bloqueio). Não há teto fixo por campanha — os controles abaixo (lote, delays, janela) é que regulam o ritmo com segurança.
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -837,20 +829,11 @@ GSS Saúde`}
               </div>
             </div>
 
-            {limiteDiario > 0 && batchSize > 0 && (
-              <div className="bg-muted/50 rounded-lg p-3 text-sm space-y-1">
-                <p>
-                  <span className="font-medium">~{limiteDiario}</span> msgs/dia
-                  {chipIds.length > 1 && (
-                    <> ÷ {chipIds.length} chips = <span className="font-medium">~{Math.round(limiteDiario / chipIds.length)}</span>/chip</>
-                  )}
-                </p>
+            {batchSize > 0 && (
+              <div className="bg-muted/50 rounded-lg p-3 text-sm">
                 <p className="text-xs text-muted-foreground">
                   Cada lote de {batchSize} msgs demora ~{Math.round((batchSize * (delayMinMs + delayMaxMs)) / 2 / 60)}min,
-                  pausa de {delayBatchMin}-{delayBatchMax}min entre lotes.
-                  {poolCount ? (
-                    <> Estimativa: ~{Math.ceil((poolCount || 0) / limiteDiario)} dias para {poolCount?.toLocaleString("pt-BR")} leads.</>
-                  ) : null}
+                  com pausa de {delayBatchMin}-{delayBatchMax}min entre lotes. O ritmo diário se ajusta sozinho ao limite seguro de cada chip.
                 </p>
               </div>
             )}

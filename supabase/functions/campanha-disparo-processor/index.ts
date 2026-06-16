@@ -126,7 +126,20 @@ serve(async (req) => {
     const delayMaxMs = camp.delay_max_ms || 25000;
     const chipIds: string[] = camp.chip_ids || [];
     const rotation = camp.rotation_strategy || "round_robin";
-    const limiteDiario = camp.limite_diario_campanha || 120;
+    // Teto diário: a campanha NÃO define mais um número fixo (removido do wizard).
+    // Quando null, o SISTEMA governa pela soma do limite diário dos chips da campanha
+    // (respeita o limite seguro de cada chip — anti-ban). Campanhas antigas com valor
+    // explícito continuam respeitando o que foi configurado.
+    let limiteDiario = camp.limite_diario_campanha as number | null;
+    if (!limiteDiario) {
+      const limIds: string[] = camp.chip_ids?.length ? camp.chip_ids : (camp.chip_id ? [camp.chip_id] : []);
+      if (limIds.length > 0) {
+        const { data: chipLims } = await supabase.from("chips").select("limite_diario").in("id", limIds);
+        limiteDiario = (chipLims || []).reduce((s: number, c: any) => s + (c.limite_diario || 0), 0) || 120;
+      } else {
+        limiteDiario = 120;
+      }
+    }
 
     // ── Verificar limite diário (fronteira = meia-noite BRT, não UTC) ──
     const brtAgora = new Date(Date.now() - 3 * 3600 * 1000);
