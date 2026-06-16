@@ -1330,8 +1330,8 @@ function EspecialidadesMultiPicker({
                 autoFocus
               />
             </div>
-            <ScrollArea className="max-h-72">
-              <div className="p-1">
+            <div className="max-h-72 overflow-y-auto overscroll-contain p-1">
+              <div>
                 {ordenadas.length === 0 ? (
                   <div className="text-center text-xs text-muted-foreground py-4">
                     Nenhuma especialidade encontrada
@@ -1372,7 +1372,7 @@ function EspecialidadesMultiPicker({
                   })
                 )}
               </div>
-            </ScrollArea>
+            </div>
           </div>
         </>
       )}
