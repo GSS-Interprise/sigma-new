@@ -480,11 +480,13 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
       ? [user?.id ?? ""].filter(Boolean)
       : pessoas;
     const responsavelFinal = ehPessoal ? user?.id ?? null : pessoas[0] ?? null;
-    // Só o criador (dono) reescreve as listas de mencionados/finalizadores no banco.
-    // Outros envolvidos (ex.: o responsável) podem editar título/urgência/responsável
-    // sem disparar a regravação dessas tabelas — evita "violação de row level".
-    const souCriador =
-      !!user?.id && !!tarefaExistente && tarefaExistente.created_by === user.id;
+    // Criador e responsável podem reescrever as listas de mencionados/finalizadores
+    // (a RLS libera ambos). Outros envolvidos editam só campos simples.
+    const podeEditarListas =
+      !!user?.id &&
+      !!tarefaExistente &&
+      (tarefaExistente.created_by === user.id ||
+        tarefaExistente.responsavel_id === user.id);
 
     try {
       let tarefaIdFinal: string;
@@ -536,7 +538,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
           descricao: descricao.trim() || null,
           urgencia,
           responsavel_id: responsavelFinal,
-          ...(souCriador
+          ...(podeEditarListas
             ? {
                 mencionados: mencionadosFinal,
                 finalizadores: finalizadores.filter((id) => id !== user?.id),
