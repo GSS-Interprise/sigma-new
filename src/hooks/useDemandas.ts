@@ -1033,6 +1033,7 @@ export function useToggleConfirmacaoDemanda() {
               resumo: "Tarefa concluída — todos os envolvidos confirmaram",
               detalhes: {},
             } as any);
+            await notificarConclusaoDemanda(tarefaId, user.id);
           }
         }
       } else {
