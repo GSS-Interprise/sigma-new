@@ -3,6 +3,45 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
+/**
+ * Notifica todos os envolvidos numa demanda que ela foi concluída.
+ * Destinatários: criador + responsável + mencionados + finalizadores, exceto o ator.
+ */
+async function notificarConclusaoDemanda(tarefaId: string, actorId: string | null) {
+  try {
+    const { data: tarefa } = await supabase
+      .from("worklist_tarefas")
+      .select("titulo, created_by, responsavel_id")
+      .eq("id", tarefaId)
+      .maybeSingle();
+    if (!tarefa) return;
+    const [mencRes, finRes] = await Promise.all([
+      supabase.from("worklist_tarefa_mencionados").select("user_id").eq("tarefa_id", tarefaId),
+      supabase.from("worklist_tarefa_finalizadores" as any).select("user_id").eq("tarefa_id", tarefaId),
+    ]);
+    const destinatarios = new Set<string>();
+    if (tarefa.created_by) destinatarios.add(tarefa.created_by);
+    if (tarefa.responsavel_id) destinatarios.add(tarefa.responsavel_id);
+    (mencRes.data ?? []).forEach((r: any) => r.user_id && destinatarios.add(r.user_id));
+    ((finRes.data ?? []) as any[]).forEach((r) => r.user_id && destinatarios.add(r.user_id));
+    if (actorId) destinatarios.delete(actorId);
+    if (!destinatarios.size) return;
+    const link = `/demandas?tarefa=${tarefaId}`;
+    await supabase.from("system_notifications").insert(
+      Array.from(destinatarios).map((uid) => ({
+        user_id: uid,
+        tipo: "demanda_concluida",
+        titulo: `Demanda concluída: ${tarefa.titulo ?? ""}`,
+        mensagem: "Todos os finalizadores confirmaram a conclusão.",
+        link,
+        referencia_id: tarefaId,
+      })),
+    );
+  } catch (e) {
+    console.error("[demandas] erro ao notificar conclusão", e);
+  }
+}
+
 export interface DemandaTarefa {
   id: string;
   modulo: string;
