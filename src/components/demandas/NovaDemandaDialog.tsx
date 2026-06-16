@@ -487,7 +487,13 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
     const mencionadosFinal = ehPessoal
       ? [user?.id ?? ""].filter(Boolean)
       : pessoas;
-    const responsavelFinal = ehPessoal ? user?.id ?? null : pessoas[0] ?? null;
+    const responsaveisFinal = ehPessoal
+      ? [user?.id].filter((id): id is string => !!id)
+      : (responsaveisEfetivos.length ? responsaveisEfetivos : [pessoas[0]]).filter(
+          (id): id is string => !!id,
+        );
+    const responsavelFinal = responsaveisFinal[0] ?? null;
+    const finalizadoresFinal = responsaveisFinal.slice(1);
     // Criador e responsável podem reescrever as listas de mencionados/finalizadores
     // (a RLS libera ambos). Outros envolvidos editam só campos simples.
     const podeEditarListas =
@@ -549,7 +555,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
           ...(podeEditarListas
             ? {
                 mencionados: mencionadosFinal,
-                finalizadores: [],
+                finalizadores: finalizadoresFinal,
               }
             : {}),
           data_limite: dataLimite ? format(dataLimite, "yyyy-MM-dd") : null,
@@ -579,7 +585,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
         urgencia,
         responsavel_id: responsavelFinal,
         mencionados: mencionadosFinal,
-        finalizadores: [],
+        finalizadores: finalizadoresFinal,
         data_limite: dataLimite ? format(dataLimite, "yyyy-MM-dd") : null,
         data_limite_hora: horaPayload,
         duracao_min: duracaoPayload,
