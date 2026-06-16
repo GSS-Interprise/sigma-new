@@ -955,16 +955,20 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
             <Label className="text-xs">Pessoas envolvidas</Label>
             <PessoasCombobox
               value={pessoas}
-              onChange={setPessoas}
-              responsibleId={responsavelPrincipalId}
-              onResponsibleChange={moverResponsavelPrincipal}
+              onChange={(ids) => {
+                setPessoas(ids);
+                // Remover responsáveis que saíram da lista
+                setResponsaveisIds((prev) => prev.filter((id) => ids.includes(id)));
+              }}
+              responsibleIds={responsaveisEfetivos}
+              onToggleResponsible={toggleResponsavel}
               modulo={null}
               placeholder="Marcar pessoas (opcional)…"
             />
             <p className="text-[11px] text-muted-foreground">
               {ehPessoal
                 ? "Sem ninguém marcado — esta tarefa é só pra você."
-                : "Clique no nome para definir o responsável. Use o X para remover."}
+                : "Clique no nome para marcar/desmarcar como responsável (pode ter mais de um). Use o X para remover."}
             </p>
           </div>
 
