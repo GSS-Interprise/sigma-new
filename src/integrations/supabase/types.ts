@@ -15994,6 +15994,10 @@ export type Database = {
       }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
       is_captacao_leader: { Args: { _user_id: string }; Returns: boolean }
+      is_channel_creator: {
+        Args: { _canal_id: string; _user_id: string }
+        Returns: boolean
+      }
       is_channel_participant: {
         Args: { _canal_id: string; _user_id: string }
         Returns: boolean
