@@ -97,7 +97,7 @@ export function GerenciarCanalDialog({
 
   // Buscar participantes atuais do canal
   const { data: participantesAtuais } = useQuery({
-    queryKey: ["canal-participantes", canalId],
+    queryKey: ["gerenciar-canal-participante-ids", canalId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("comunicacao_participantes")
@@ -107,7 +107,7 @@ export function GerenciarCanalDialog({
       if (error) throw error;
       return data.map((p) => p.user_id);
     },
-    enabled: open,
+    enabled: open && !!canalId,
   });
 
   // Usuários que já estão no canal
@@ -191,6 +191,7 @@ export function GerenciarCanalDialog({
         title: "Participantes adicionados",
         description: "Os participantes foram adicionados ao canal com sucesso.",
       });
+      queryClient.invalidateQueries({ queryKey: ["gerenciar-canal-participante-ids", canalId] });
       queryClient.invalidateQueries({ queryKey: ["canal-participantes", canalId] });
       queryClient.invalidateQueries({ queryKey: ["comunicacao-canais"] });
       setNovosSelecionados([]);
@@ -219,6 +220,7 @@ export function GerenciarCanalDialog({
         title: "Participante removido",
         description: "O participante foi removido do canal.",
       });
+      queryClient.invalidateQueries({ queryKey: ["gerenciar-canal-participante-ids", canalId] });
       queryClient.invalidateQueries({ queryKey: ["canal-participantes", canalId] });
       queryClient.invalidateQueries({ queryKey: ["comunicacao-canais"] });
       queryClient.invalidateQueries({ queryKey: ["canal-participantes-full", canalId] });
