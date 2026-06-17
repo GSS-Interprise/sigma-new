@@ -85,13 +85,22 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
     queryKey: ["acompanhamento-chips-campanha", campanhaId],
     enabled: !!campanhaId,
     queryFn: async () => {
+      type ChipOpt = { instance_name: string; nome: string; open: boolean; daCampanha: boolean };
       const { data: camp } = await (supabase as any)
         .from("campanhas").select("chip_ids, chip_id").eq("id", campanhaId).maybeSingle();
       const ids: string[] = (camp?.chip_ids?.length ? camp.chip_ids : [camp?.chip_id]).filter(Boolean);
-      if (!ids.length) return [] as Array<{ instance_name: string; nome: string; open: boolean }>;
-      const { data: chips } = await (supabase as any)
-        .from("chips").select("nome, instance_name, connection_state").in("id", ids);
-      return (chips ?? []).map((c: any) => ({ instance_name: c.instance_name, nome: c.nome, open: c.connection_state === "open" }));
+      const doCamp = ids.length
+        ? (await (supabase as any).from("chips").select("nome, instance_name, connection_state").in("id", ids)).data
+        : [];
+      // Fallback: qualquer chip de disparo CONECTADO — pra não travar a equipe quando
+      // o chip da campanha cai (pedido Bruna: "busca o mesmo chip e não consigo enviar").
+      const { data: abertos } = await (supabase as any)
+        .from("chips").select("nome, instance_name, connection_state")
+        .eq("tipo_instancia", "disparos").eq("pode_disparar", true).eq("connection_state", "open");
+      const map = new Map<string, ChipOpt>();
+      (doCamp ?? []).forEach((c: any) => map.set(c.instance_name, { instance_name: c.instance_name, nome: c.nome, open: c.connection_state === "open", daCampanha: true }));
+      (abertos ?? []).forEach((c: any) => { if (!map.has(c.instance_name)) map.set(c.instance_name, { instance_name: c.instance_name, nome: c.nome, open: true, daCampanha: false }); });
+      return [...map.values()].sort((a, b) => (b.daCampanha ? 1 : 0) - (a.daCampanha ? 1 : 0));
     },
     staleTime: 60_000,
   });
@@ -296,7 +305,7 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
           <div className="flex items-center gap-2 mb-2 text-xs">
             <Smartphone className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
             <span className="text-muted-foreground shrink-0">Enviando pelo chip:</span>
-            {chipsCampanha.length > 1 ? (
+            {chipsCampanha.length >= 1 ? (
               <select
                 value={instanceAtual ?? ""}
                 onChange={(e) => setInstanceEscolhida(e.target.value)}
@@ -304,7 +313,7 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
               >
                 {chipsCampanha.map((c) => (
                   <option key={c.instance_name} value={c.instance_name} disabled={!c.open}>
-                    {c.nome}{!c.open ? " (offline)" : ""}
+                    {c.nome}{!c.daCampanha ? " · outro chip" : ""}{!c.open ? " (offline)" : ""}
                   </option>
                 ))}
               </select>

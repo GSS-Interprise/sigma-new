@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   AlertDialog,
@@ -93,6 +94,9 @@ export function LeadCampanhaTasks({ campanhaLeadId }: Props) {
   const [observacao, setObservacao] = useState("");
   const [descartarTaskId, setDescartarTaskId] = useState<string | null>(null);
   const [motivoDescarte, setMotivoDescarte] = useState("");
+  const [addOpen, setAddOpen] = useState(false);
+  const [novoTipo, setNovoTipo] = useState("");
+  const [novoRotulo, setNovoRotulo] = useState("");
 
   const { data: tasks, isLoading } = useQuery({
     queryKey: ["campanha-lead-tasks", campanhaLeadId],
@@ -127,6 +131,28 @@ export function LeadCampanhaTasks({ campanhaLeadId }: Props) {
       setObservacao("");
     },
     onError: (e: any) => toast.error(e.message || "Erro ao marcar task"),
+  });
+
+  // Adicionar tarefa avulsa a este lead (pedido Bruna: "não consigo adicionar as tarefas")
+  const adicionarTask = useMutation({
+    mutationFn: async ({ tipo, rotulo }: { tipo: string; rotulo: string }) => {
+      const proxOrdem = (tasks?.reduce((m, t) => Math.max(m, t.ordem), 0) ?? 0) + 1;
+      const { error } = await supabase.from("campanha_lead_tasks" as any).insert({
+        campanha_lead_id: campanhaLeadId,
+        tipo,
+        rotulo: rotulo.trim() || null,
+        status: "pendente",
+        ordem: proxOrdem,
+        prazo_at: new Date().toISOString(),
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Tarefa adicionada");
+      queryClient.invalidateQueries({ queryKey: ["campanha-lead-tasks", campanhaLeadId] });
+      setAddOpen(false); setNovoTipo(""); setNovoRotulo("");
+    },
+    onError: (e: any) => toast.error(e.message || "Erro ao adicionar tarefa"),
   });
 
   const snooze = useMutation({
@@ -221,6 +247,42 @@ export function LeadCampanhaTasks({ campanhaLeadId }: Props) {
             />
           ))}
         </div>
+
+        {/* Adicionar tarefa avulsa */}
+        <Popover open={addOpen} onOpenChange={setAddOpen}>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm" className="w-full border-dashed">
+              <ClipboardList className="h-3.5 w-3.5 mr-1.5" /> Adicionar tarefa
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-72 p-3 space-y-2" align="start">
+            <p className="text-xs font-medium">Nova tarefa pra este lead</p>
+            <select
+              value={novoTipo}
+              onChange={(e) => setNovoTipo(e.target.value)}
+              className="w-full border rounded px-2 py-1.5 text-sm bg-background"
+            >
+              <option value="">Canal / tipo…</option>
+              {tipos.map((t) => (
+                <option key={t.codigo} value={t.codigo}>{t.label}</option>
+              ))}
+            </select>
+            <Input
+              value={novoRotulo}
+              onChange={(e) => setNovoRotulo(e.target.value)}
+              placeholder="Rótulo (opcional). Ex: 2ª tentativa"
+              className="h-8 text-sm"
+            />
+            <Button
+              size="sm"
+              className="w-full"
+              disabled={!novoTipo || adicionarTask.isPending}
+              onClick={() => adicionarTask.mutate({ tipo: novoTipo, rotulo: novoRotulo })}
+            >
+              Adicionar
+            </Button>
+          </PopoverContent>
+        </Popover>
       </div>
 
       {/* Dialog: marcar feita com observação */}
