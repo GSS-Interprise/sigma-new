@@ -15,6 +15,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { UserPlus, Loader2, Save, Search, Users, UserMinus, Trash2 } from "lucide-react";
+import { Crown } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -326,18 +327,28 @@ export function GerenciarCanalDialog({
                 <div className="space-y-2">
                   {participantesFiltrados.map((usuario) => {
                     const setor = setores?.find(s => s.id === usuario.setor_id);
+                    const ehCriador = canalData?.criado_por === usuario.id;
                     return (
                       <div
                         key={usuario.id}
                         className="flex items-center justify-between p-3 rounded-lg bg-accent/30 hover:bg-accent/50 transition-colors group"
                       >
                         <div className="flex-1 min-w-0">
-                          <div className="font-medium truncate">{usuario.nome_completo}</div>
+                          <div className="font-medium truncate flex items-center gap-2">
+                            {usuario.nome_completo}
+                            {ehCriador && (
+                              <Badge variant="default" className="h-5 px-1.5 text-[10px] gap-1">
+                                <Crown className="h-3 w-3" />
+                                Admin do canal
+                              </Badge>
+                            )}
+                          </div>
                           <div className="text-sm text-muted-foreground truncate">
                             {usuario.email}
                             {setor && <span className="ml-2">• {setor.nome}</span>}
                           </div>
                         </div>
+                        {!ehCriador && (
                         <Button
                           variant="ghost"
                           size="icon"
@@ -347,6 +358,7 @@ export function GerenciarCanalDialog({
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
+                        )}
                       </div>
                     );
                   })}
