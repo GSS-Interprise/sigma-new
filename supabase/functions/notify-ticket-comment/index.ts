@@ -1,8 +1,8 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
+import { Resend } from "https://esm.sh/resend@4.0.0";
 
-const gmailUser = Deno.env.get("GMAIL_USER");
-const gmailPassword = Deno.env.get("GMAIL_APP_PASSWORD");
+const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
+const resendFromEmail = "Sistema SIGMA <bi@gestaoservicosaude.com.br>";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -25,10 +25,10 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
-    if (!gmailUser || !gmailPassword) {
-      console.error("Missing GMAIL_USER or GMAIL_APP_PASSWORD secrets");
+    if (!Deno.env.get("RESEND_API_KEY")) {
+      console.error("Missing RESEND_API_KEY secret");
       return new Response(
-        JSON.stringify({ success: false, error: "Email service not configured. Set GMAIL_USER and GMAIL_APP_PASSWORD secrets." }),
+        JSON.stringify({ success: false, error: "Email service not configured. Set RESEND_API_KEY secret." }),
         { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
@@ -97,37 +97,30 @@ const handler = async (req: Request): Promise<Response> => {
       </div>
     `;
 
-    // Enviar email usando Gmail SMTP
     console.log("Enviando notificação de comentário para:", solicitanteEmail);
-    
-    const client = new SMTPClient({
-      connection: {
-        hostname: "smtp.gmail.com",
-        port: 465,
-        tls: true,
-        auth: {
-          username: gmailUser!,
-          password: gmailPassword!,
-        },
-      },
-    });
 
-    await client.send({
-      from: gmailUser!,
-      to: solicitanteEmail,
-      replyTo: gmailUser!,
+    const { data, error } = await resend.emails.send({
+      from: resendFromEmail,
+      to: [solicitanteEmail],
       subject: `[#${ticketNumero}] Nova mensagem no seu ticket`,
       html: emailHtml,
     });
 
-    console.log("Comment notification email sent successfully to:", solicitanteEmail);
+    if (error) {
+      console.error("Resend error:", error);
+      return new Response(
+        JSON.stringify({ success: false, error: error.message || String(error) }),
+        { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
 
-    await client.close();
+    console.log("Comment notification email sent successfully to:", solicitanteEmail, data);
 
     return new Response(
       JSON.stringify({
         success: true,
         message: "Comment notification email sent successfully",
+        data,
       }),
       {
         status: 200,
