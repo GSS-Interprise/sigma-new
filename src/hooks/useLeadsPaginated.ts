@@ -105,7 +105,17 @@ export function useLeadsPaginated({
         query = query.ilike('cidade', cidadeFilter);
       }
       if (especialidadeFilter) {
-        query = query.eq('especialidade_id', especialidadeFilter);
+        // especialidade_id (catálogo) é preenchido em poucos leads; a maioria tem a
+        // especialidade só no campo texto. Casa pelos DOIS pra não subcontar
+        // (ex: PEDIATRIA dava ~9k por id, mas são ~54k no texto).
+        const { data: espRow } = await supabase
+          .from('especialidades').select('nome').eq('id', especialidadeFilter).maybeSingle();
+        const nome = (espRow as any)?.nome as string | undefined;
+        if (nome) {
+          query = query.or(`especialidade_id.eq.${especialidadeFilter},especialidade.ilike.%${nome}%`);
+        } else {
+          query = query.eq('especialidade_id', especialidadeFilter);
+        }
       }
       if (dataInicio) {
         query = query.gte('created_at', `${dataInicio}T00:00:00`);
