@@ -7740,6 +7740,81 @@ export type Database = {
           },
         ]
       }
+      imp_stage2: {
+        Row: {
+          arquivo: string | null
+          cidade: string | null
+          email: string | null
+          especialidade: string | null
+          etapa: string | null
+          fazer_task: boolean | null
+          hist: Json | null
+          instagram: string | null
+          instituicao: string | null
+          lead_id: string | null
+          ligacao: string | null
+          linkedin: string | null
+          match_tipo: string | null
+          motivo: string | null
+          nome: string | null
+          phone_sufs: string[] | null
+          phones: string[] | null
+          row_id: number
+          situacao: string | null
+          status: string | null
+          uf: string | null
+          wpp: string | null
+        }
+        Insert: {
+          arquivo?: string | null
+          cidade?: string | null
+          email?: string | null
+          especialidade?: string | null
+          etapa?: string | null
+          fazer_task?: boolean | null
+          hist?: Json | null
+          instagram?: string | null
+          instituicao?: string | null
+          lead_id?: string | null
+          ligacao?: string | null
+          linkedin?: string | null
+          match_tipo?: string | null
+          motivo?: string | null
+          nome?: string | null
+          phone_sufs?: string[] | null
+          phones?: string[] | null
+          row_id?: number
+          situacao?: string | null
+          status?: string | null
+          uf?: string | null
+          wpp?: string | null
+        }
+        Update: {
+          arquivo?: string | null
+          cidade?: string | null
+          email?: string | null
+          especialidade?: string | null
+          etapa?: string | null
+          fazer_task?: boolean | null
+          hist?: Json | null
+          instagram?: string | null
+          instituicao?: string | null
+          lead_id?: string | null
+          ligacao?: string | null
+          linkedin?: string | null
+          match_tipo?: string | null
+          motivo?: string | null
+          nome?: string | null
+          phone_sufs?: string[] | null
+          phones?: string[] | null
+          row_id?: number
+          situacao?: string | null
+          status?: string | null
+          uf?: string | null
+          wpp?: string | null
+        }
+        Relationships: []
+      }
       import_leads_failed_queue: {
         Row: {
           abandonment_reason: string | null
