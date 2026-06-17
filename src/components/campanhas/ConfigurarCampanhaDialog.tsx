@@ -9,6 +9,8 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { CadenciaConfig } from "./CadenciaConfig";
+import type { CadenciaPasso } from "@/hooks/useCadencia";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,6 +24,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Settings,
+  ListChecks,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useChipsEmUso } from "@/hooks/useChipsEmUso";
@@ -46,6 +49,9 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
   const [handoffNome, setHandoffNome] = useState("");
   const [handoffTelefone, setHandoffTelefone] = useState("");
   const [handoffFrase, setHandoffFrase] = useState("");
+  // Cadência de tarefas editável na campanha já criada (pedido Bruna: mais opções na Pediatras MG)
+  const [tarefaPassos, setTarefaPassos] = useState<CadenciaPasso[]>([]);
+  const [tarefaTemplateId, setTarefaTemplateId] = useState<string | null>(null);
 
   // Carrega campanha atual
   const { data: campanha, isLoading } = useQuery({
@@ -73,6 +79,8 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
     setHandoffNome(briefing.handoff_nome || "");
     setHandoffTelefone(briefing.handoff_telefone || "");
     setHandoffFrase(briefing.handoff_frase || "");
+    setTarefaPassos(campanha.tarefa_cadencia_passos || []);
+    setTarefaTemplateId(campanha.tarefa_cadencia_template_id || null);
   }, [campanha]);
 
   // Lista de chips disponíveis (open + ativo + tipo disparos)
@@ -131,6 +139,8 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
           limite_diario_campanha: limiteDiario,
           batch_size: batchSize,
           briefing_ia: briefingAtualizado,
+          tarefa_cadencia_passos: tarefaPassos.length > 0 ? tarefaPassos : null,
+          tarefa_cadencia_template_id: tarefaTemplateId,
         })
         .eq("id", campanhaId);
       if (error) throw error;
@@ -202,10 +212,14 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
           <div className="text-center py-12 text-muted-foreground">Carregando...</div>
         ) : (
           <Tabs value={tab} onValueChange={setTab} className="flex-1 overflow-hidden flex flex-col">
-            <TabsList className="grid grid-cols-3">
+            <TabsList className="grid grid-cols-4">
               <TabsTrigger value="disparo" className="gap-1.5">
                 <Smartphone className="h-3.5 w-3.5" />
                 Chips
+              </TabsTrigger>
+              <TabsTrigger value="tarefas" className="gap-1.5">
+                <ListChecks className="h-3.5 w-3.5" />
+                Tarefas
               </TabsTrigger>
               <TabsTrigger value="responsavel" className="gap-1.5">
                 <UserPlus className="h-3.5 w-3.5" />
@@ -344,6 +358,18 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
               </TabsContent>
 
               {/* ABA 2: RESPONSÁVEL */}
+              <TabsContent value="tarefas" className="m-0 space-y-4">
+                <p className="text-xs text-muted-foreground">
+                  Tarefas que cada lead desta campanha gera pra equipe executar (WhatsApp, ligação, Instagram, e-mail…). Edite pra adicionar mais opções. Vale pros leads que entrarem a partir de agora.
+                </p>
+                <CadenciaConfig
+                  passos={tarefaPassos}
+                  onChange={setTarefaPassos}
+                  templateId={tarefaTemplateId}
+                  onTemplateChange={setTarefaTemplateId}
+                />
+              </TabsContent>
+
               <TabsContent value="responsavel" className="m-0 space-y-4">
                 <div className="bg-amber-50 border border-amber-200 rounded p-3 text-xs text-amber-900">
                   <strong>Importante:</strong> quando a IA detectar um lead quente, ela vai

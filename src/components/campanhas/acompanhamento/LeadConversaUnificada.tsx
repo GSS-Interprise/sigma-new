@@ -105,7 +105,13 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
     staleTime: 60_000,
   });
   // Chip efetivo do envio: escolhido > o da conversa SigZap
-  const instanceAtual = instanceEscolhida || conv?.instance?.name || null;
+  // Default do chip: 1) o que a operadora escolheu; 2) o chip da conversa SE estiver conectado
+  // (continuidade); 3) se o chip da conversa morreu/saiu (ex: instância deletada "Radio - Prospecção"),
+  // cai no 1º chip conectado — senão a equipe trava tentando um chip que não existe mais.
+  const convChip = conv?.instance?.name || null;
+  const convChipOk = chipsCampanha.some((c) => c.instance_name === convChip && c.open);
+  const primeiroAberto = chipsCampanha.find((c) => c.open)?.instance_name || null;
+  const instanceAtual = instanceEscolhida || (convChipOk ? convChip : (primeiroAberto || convChip));
 
   // Caixa de resposta da operadora — envia pelo mesmo caminho do SigZap (send-sigzap-message).
   // Esse envio NÃO passa pelo gate anti-ban de disparo: resposta pode sair em segundos.
