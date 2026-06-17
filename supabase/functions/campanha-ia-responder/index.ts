@@ -261,15 +261,34 @@ serve(async (req) => {
 
     const rawOutput = (await aiResponse.json()).choices?.[0]?.message?.content || "";
 
-    // ── 6. Parsear JSON ──
-    let parsed: any;
-    try {
-      parsed = JSON.parse(rawOutput.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim());
-    } catch {
-      parsed = { messages: [rawOutput], ALERTA_LEAD: false, alerta_tipo: "", alerta_resumo: "", conversa_encerrada: false };
+    // ── 6. Parsear JSON (robusto — NUNCA mandar JSON cru pro médico) ──
+    // Bug 16/06: parse falhava (modelo prefixava "JSON:\njson\n{...}") e o fallback
+    // mandava o rawOutput inteiro pro médico, vazando a estrutura interna.
+    const extrairJson = (raw: string): any | null => {
+      const limpo = raw.replace(/^\s*json\s*:?/i, "").replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
+      for (const cand of [limpo, raw]) {
+        try { return JSON.parse(cand); } catch { /* tenta extrair o objeto */ }
+        const i = cand.indexOf("{"), j = cand.lastIndexOf("}");
+        if (i >= 0 && j > i) { try { return JSON.parse(cand.slice(i, j + 1)); } catch { /* segue */ } }
+      }
+      // último recurso: extrai só o array "messages"
+      const m = raw.match(/"messages"\s*:\s*(\[[\s\S]*?\])/);
+      if (m) { try { return { messages: JSON.parse(m[1]) }; } catch { /* nada */ } }
+      return null;
+    };
+
+    let parsed: any = extrairJson(rawOutput);
+    const parseFalhou = !parsed || !Array.isArray(parsed.messages);
+    if (parseFalhou) {
+      // NÃO manda nada cru pro médico — escala pra humano.
+      console.error("[ia] ⚠️ parse FALHOU — NÃO enviando raw. raw:", rawOutput.slice(0, 300));
+      parsed = { messages: [], AGUARDA_RESPOSTA_HUMANA: true, pergunta_para_responsavel: "IA não conseguiu formatar a resposta — responder manualmente." };
     }
 
-    const messages: string[] = parsed.messages || [rawOutput];
+    // Anti-vazamento: descarta qualquer "mensagem" que pareça JSON/estrutura interna.
+    const pareceJson = (t: string) => /^\s*[{[]/.test(t) || /"(maturidade_lead|ALERTA_LEAD|conversa_encerrada|AGUARDA_RESPOSTA_HUMANA|messages)"\s*:/.test(t) || /^\s*json\b/i.test(t);
+    const messages: string[] = (Array.isArray(parsed.messages) ? parsed.messages : [])
+      .filter((x: any) => typeof x === "string" && x.trim() && !pareceJson(x));
     const maturidade = String(parsed.maturidade_lead || "").toLowerCase();
     // ALERTA_LEAD só conta se maturidade explícita é "quente" (safety net contra modelo marcar errado)
     const alertaLead = parsed.ALERTA_LEAD === true && maturidade === "quente";
