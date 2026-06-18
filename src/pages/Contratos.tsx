@@ -442,11 +442,11 @@ export default function Contratos() {
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList>
-            <TabsTrigger value="contratos">Contratos</TabsTrigger>
-            <TabsTrigger value="dr-escala">Dr. Escala</TabsTrigger>
-            <TabsTrigger value="dr-oportunidade">Dr. Oportunidade</TabsTrigger>
+            {!isLicitacaoOnly && <TabsTrigger value="contratos">Contratos</TabsTrigger>}
+            {!isLicitacaoOnly && <TabsTrigger value="dr-escala">Dr. Escala</TabsTrigger>}
+            {!isLicitacaoOnly && <TabsTrigger value="dr-oportunidade">Dr. Oportunidade</TabsTrigger>}
             <TabsTrigger value="rascunhos">Rascunhos (Licitações)</TabsTrigger>
-            <TabsTrigger value="clientes">Clientes</TabsTrigger>
+            {!isLicitacaoOnly && <TabsTrigger value="clientes">Clientes</TabsTrigger>}
           </TabsList>
 
           <TabsContent value="contratos" className="mt-6">
