@@ -10,6 +10,8 @@ export const ROLE_LABELS: Record<string, string> = {
   gestor_ages: 'Gestor AGES',
   lideres: 'Líder de Setor',
   externos: 'Encerramento de Tickets',
+  licitador: 'Licitador',
+  lider_licitacao: 'Líder de Licitação',
 };
 
 export function getRoleLabel(role: string): string {

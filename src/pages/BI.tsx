@@ -14,6 +14,7 @@ import { AbaContratos } from "@/components/bi/AbaContratos";
 import { AbaAges } from "@/components/bi/AbaAges";
 import { AbaTI } from "@/components/bi/AbaTI";
 import { AbaClienteExterno } from "@/components/bi/AbaClienteExterno";
+import { usePermissions } from "@/hooks/usePermissions";
 
 const ALL_MODULE_KEYS = BI_CATEGORIES.flatMap((c) => c.modules.map((m) => m.key));
 
@@ -38,9 +39,13 @@ const MODULE_COMPONENTS: Record<string, React.ComponentType> = {
 };
 
 export default function BI() {
+  const { isAdmin, isLicitador, isLiderLicitacao } = usePermissions();
+  const restrictToLicitacoes = !isAdmin && (isLicitador || isLiderLicitacao);
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = (searchParams.get("tab") || "").toLowerCase();
-  const activeModule = ALL_MODULE_KEYS.includes(tabParam) ? tabParam : "prospeccao";
+  const defaultModule = restrictToLicitacoes ? "licitacoes" : "prospeccao";
+  const requestedModule = ALL_MODULE_KEYS.includes(tabParam) ? tabParam : defaultModule;
+  const activeModule = restrictToLicitacoes ? "licitacoes" : requestedModule;
 
   const handleSelectModule = (moduleKey: string) => {
     setSearchParams((prev) => {
@@ -63,7 +68,9 @@ export default function BI() {
   return (
     <AppLayout headerActions={headerActions}>
       <div className="p-4 space-y-6">
-        <BINavigation activeModule={activeModule} onSelectModule={handleSelectModule} />
+        {!restrictToLicitacoes && (
+          <BINavigation activeModule={activeModule} onSelectModule={handleSelectModule} />
+        )}
         <div className="space-y-6">
           {isClientModule ? (
             <AbaClienteExterno

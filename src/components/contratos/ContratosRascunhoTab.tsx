@@ -30,9 +30,10 @@ import {
 
 interface ContratosRascunhoTabProps {
   onConsolidado?: (contratoId: string) => void;
+  readOnly?: boolean;
 }
 
-export function ContratosRascunhoTab({ onConsolidado }: ContratosRascunhoTabProps) {
+export function ContratosRascunhoTab({ onConsolidado, readOnly = false }: ContratosRascunhoTabProps) {
   const { rascunhos, isLoading, cancelar } = useContratosRascunho();
   const [selectedRascunhoId, setSelectedRascunhoId] = useState<string | null>(null);
   const [rascunhoParaCancelar, setRascunhoParaCancelar] = useState<string | null>(null);
@@ -128,21 +129,25 @@ export function ContratosRascunhoTab({ onConsolidado }: ContratosRascunhoTabProp
                       <Eye className="h-4 w-4 mr-1" />
                       Ver
                     </Button>
-                    <Button
-                      size="sm"
-                      className="flex-1"
-                      onClick={() => setSelectedRascunhoId(rascunho.id)}
-                    >
-                      <ArrowRight className="h-4 w-4 mr-1" />
-                      Consolidar
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setRascunhoParaCancelar(rascunho.id)}
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
+                    {!readOnly && (
+                      <>
+                        <Button
+                          size="sm"
+                          className="flex-1"
+                          onClick={() => setSelectedRascunhoId(rascunho.id)}
+                        >
+                          <ArrowRight className="h-4 w-4 mr-1" />
+                          Consolidar
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setRascunhoParaCancelar(rascunho.id)}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </>
+                    )}
                   </div>
                 </CardContent>
               </Card>

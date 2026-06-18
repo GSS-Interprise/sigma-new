@@ -29,14 +29,15 @@ import { parseLocalDate } from "@/lib/dateUtils";
 import { registrarAcessoContrato } from "@/lib/contratoAcessoLogger";
 
 export default function Contratos() {
-  const { canView, isAdmin } = usePermissions();
+  const { canView, isAdmin, isLicitador, isLiderLicitacao } = usePermissions();
+  const isLicitacaoOnly = !isAdmin && (isLicitador || isLiderLicitacao);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingContrato, setEditingContrato] = useState<any>(null);
   const [dialogMode, setDialogMode] = useState<'view' | 'edit'>('edit');
   const [searchParams, setSearchParams] = useSearchParams();
   const [clienteDialogOpen, setClienteDialogOpen] = useState(false);
   const [editingCliente, setEditingCliente] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState("contratos");
+  const [activeTab, setActiveTab] = useState(isLicitacaoOnly ? "rascunhos" : "contratos");
   const [searchNome, setSearchNome] = useState("");
   const [selectedStatus, setSelectedStatus] = useState<string[]>([]);
   const [selectedUf, setSelectedUf] = useState<string[]>([]);
@@ -424,7 +425,7 @@ export default function Contratos() {
         <p className="text-sm text-muted-foreground">Gerencie clientes, unidades e contratos de forma integrada</p>
       </div>
       {activeTab === "contratos" && (
-        <Button onClick={() => {
+        !isLicitacaoOnly && <Button onClick={() => {
           setEditingContrato(null);
           setDialogOpen(true);
         }}>
@@ -441,11 +442,11 @@ export default function Contratos() {
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList>
-            <TabsTrigger value="contratos">Contratos</TabsTrigger>
-            <TabsTrigger value="dr-escala">Dr. Escala</TabsTrigger>
-            <TabsTrigger value="dr-oportunidade">Dr. Oportunidade</TabsTrigger>
+            {!isLicitacaoOnly && <TabsTrigger value="contratos">Contratos</TabsTrigger>}
+            {!isLicitacaoOnly && <TabsTrigger value="dr-escala">Dr. Escala</TabsTrigger>}
+            {!isLicitacaoOnly && <TabsTrigger value="dr-oportunidade">Dr. Oportunidade</TabsTrigger>}
             <TabsTrigger value="rascunhos">Rascunhos (Licitações)</TabsTrigger>
-            <TabsTrigger value="clientes">Clientes</TabsTrigger>
+            {!isLicitacaoOnly && <TabsTrigger value="clientes">Clientes</TabsTrigger>}
           </TabsList>
 
           <TabsContent value="contratos" className="mt-6">
@@ -495,6 +496,7 @@ export default function Contratos() {
 
           <TabsContent value="rascunhos" className="mt-6">
             <ContratosRascunhoTab 
+              readOnly={isLicitacaoOnly}
               onConsolidado={(contratoId) => {
                 queryClient.invalidateQueries({ queryKey: ['contratos'] });
                 setActiveTab("contratos");
