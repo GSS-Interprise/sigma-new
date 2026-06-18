@@ -2,8 +2,8 @@ import { useState, useEffect } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { LicitacoesKanban } from "@/components/licitacoes/LicitacoesKanban";
 import { Button } from "@/components/ui/button";
-import { Plus, RefreshCw, Webhook, Search } from "lucide-react";
-import { LicitacaoWebhookDialog, fetchWebhookByIdUrl } from "@/components/licitacoes/LicitacaoWebhookDialog";
+import { Plus, RefreshCw, Search } from "lucide-react";
+import { fetchWebhookByIdUrl } from "@/components/licitacoes/LicitacaoWebhookDialog";
 import { LicitacaoDetailDialog } from "@/components/licitacoes/LicitacaoDetailDialog";
 import { LicitacaoQuickEditDialog } from "@/components/licitacoes/LicitacaoQuickEditDialog";
 import { FiltroLicitacoes } from "@/components/licitacoes/FiltroLicitacoes";
@@ -35,7 +35,6 @@ export default function Licitacoes() {
   const [selectedLicitacao, setSelectedLicitacao] = useState<any>(null);
   const [filters, setFilters] = useState<any>({});
   const [isNewEdital, setIsNewEdital] = useState(false);
-  const [webhookDialogOpen, setWebhookDialogOpen] = useState(false);
   const [kanbanHasMore, setKanbanHasMore] = useState(false);
   const [kanbanLoadMore, setKanbanLoadMore] = useState<(() => void) | null>(null);
   const [addByIdOpen, setAddByIdOpen] = useState(false);
@@ -227,12 +226,6 @@ export default function Licitacoes() {
         {(isAdmin || isLiderLicitacao) && (
           <KanbanStatusManager modulo="licitacoes" canCreate={isAdmin} canDelete={isAdmin} />
         )}
-        {isAdmin && (
-          <Button variant="outline" onClick={() => setWebhookDialogOpen(true)}>
-            <Webhook className="mr-2 h-4 w-4" />
-            Webhook
-          </Button>
-        )}
         <Button variant="outline" onClick={handleSync} disabled={syncLoading}>
           <RefreshCw className={`mr-2 h-4 w-4 ${syncLoading ? "animate-spin" : ""}`} />
           {syncLoading ? "Sincronizando..." : "Sincronizar"}
@@ -242,7 +235,6 @@ export default function Licitacoes() {
           Inserir Edital
         </Button>
       </div>
-      <LicitacaoWebhookDialog open={webhookDialogOpen} onOpenChange={setWebhookDialogOpen} />
     </div>
   );
 
