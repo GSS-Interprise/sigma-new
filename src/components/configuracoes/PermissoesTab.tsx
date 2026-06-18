@@ -64,7 +64,7 @@ import { cn } from "@/lib/utils";
 
 type Modulo = 'dashboard' | 'clientes' | 'contratos' | 'medicos' | 'relacionamento' | 'disparos' | 'configuracoes' | 'financeiro' | 'radiologia' | 'licitacoes' | 'escalas' | 'patrimonio' | 'bi' | 'suporte' | 'comunicacao' | 'sigzap' | 'demandas' | 'marketing' | 'auditoria' | 'captadores' | 'ages';
 type Acao = 'visualizar' | 'criar' | 'editar' | 'excluir' | 'aprovar';
-type Perfil = 'admin' | 'gestor_contratos' | 'gestor_captacao' | 'coordenador_escalas' | 'gestor_financeiro' | 'diretoria' | 'gestor_radiologia' | 'gestor_marketing' | 'gestor_ages' | 'marketing' | 'lideres' | 'externos';
+type Perfil = 'admin' | 'gestor_contratos' | 'gestor_captacao' | 'coordenador_escalas' | 'gestor_financeiro' | 'diretoria' | 'gestor_radiologia' | 'gestor_marketing' | 'gestor_ages' | 'marketing' | 'lideres' | 'externos' | 'lider_licitacao' | 'licitador';
 
 const MODULOS: { value: Modulo; label: string; icon: any; description: string }[] = [
   { value: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, description: 'Painel principal com métricas e resumos' },
@@ -111,6 +111,8 @@ const PERFIS: { value: Perfil; label: string; description: string }[] = [
   { value: 'marketing', label: 'Marketing', description: 'Equipe de marketing' },
   { value: 'lideres', label: 'Líder de Setor', description: 'Líderes de equipe' },
   { value: 'externos', label: 'Encerramento de Tickets', description: 'Acesso exclusivo para encerrar tickets' },
+  { value: 'lider_licitacao', label: 'Líder de Licitação', description: 'Liderança da equipe de licitações' },
+  { value: 'licitador', label: 'Licitador', description: 'Operação de licitações' },
 ];
 
 // Templates de permissões pré-definidos
