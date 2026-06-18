@@ -129,6 +129,9 @@ export default function Licitacoes() {
     setSyncLoading(true);
     try {
       await refetch();
+      // Atualiza também as abas dependentes (histórico/raia e itens) do dialog aberto
+      queryClient.invalidateQueries({ queryKey: ["licitacao-raia-log"] });
+      queryClient.invalidateQueries({ queryKey: ["licitacao-itens"] });
       toast.success("Dados atualizados com sucesso!");
     } catch (error: any) {
       console.error("Erro ao atualizar:", error);
