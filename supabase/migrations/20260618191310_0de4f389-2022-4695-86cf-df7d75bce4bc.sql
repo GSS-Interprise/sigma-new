@@ -1,0 +1,1 @@
+ALTER TABLE public.licitacoes ADD COLUMN IF NOT EXISTS decorrencia_analise text;
