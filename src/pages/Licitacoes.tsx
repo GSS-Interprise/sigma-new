@@ -42,7 +42,7 @@ export default function Licitacoes() {
   const [addByIdValue, setAddByIdValue] = useState("");
   const [addByIdLoading, setAddByIdLoading] = useState(false);
 
-  const { isAdmin, userRoles, canView, isLoadingRoles, isLeader } = usePermissions();
+  const { isAdmin, userRoles, canView, isLoadingRoles, isLeader, isLiderLicitacao } = usePermissions();
   const { user } = useAuth();
   const { isSetorAges } = useUserSetor();
   const { data: columns = [], isLoading: columnsLoading } = useKanbanColumns("licitacoes");
@@ -224,7 +224,9 @@ export default function Licitacoes() {
         <p className="text-sm text-muted-foreground">Gerencie licitações e editais</p>
       </div>
       <div className="flex gap-2">
-        {isAdmin && <KanbanStatusManager modulo="licitacoes" />}
+        {(isAdmin || isLiderLicitacao) && (
+          <KanbanStatusManager modulo="licitacoes" canCreate={isAdmin} canDelete={isAdmin} />
+        )}
         {isAdmin && (
           <Button variant="outline" onClick={() => setWebhookDialogOpen(true)}>
             <Webhook className="mr-2 h-4 w-4" />
