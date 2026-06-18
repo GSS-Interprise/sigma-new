@@ -9816,6 +9816,7 @@ export type Database = {
           data_abertura: string | null
           data_disputa: string | null
           data_limite: string | null
+          decorrencia_analise: string | null
           disputa_valor_anonimo: boolean
           effect_id: string | null
           empresa_disputante: string | null
@@ -9858,6 +9859,7 @@ export type Database = {
           data_abertura?: string | null
           data_disputa?: string | null
           data_limite?: string | null
+          decorrencia_analise?: string | null
           disputa_valor_anonimo?: boolean
           effect_id?: string | null
           empresa_disputante?: string | null
@@ -9900,6 +9902,7 @@ export type Database = {
           data_abertura?: string | null
           data_disputa?: string | null
           data_limite?: string | null
+          decorrencia_analise?: string | null
           disputa_valor_anonimo?: boolean
           effect_id?: string | null
           empresa_disputante?: string | null
