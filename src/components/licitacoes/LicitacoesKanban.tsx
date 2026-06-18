@@ -95,7 +95,7 @@ const LICITACOES_KANBAN_SELECT =
   'id,created_at,updated_at,numero_edital,orgao,cnpj_orgao,valor_estimado,data_abertura,data_limite,data_disputa,status,responsavel_id,municipio_uf,tipo_modalidade,subtipo_modalidade,etiquetas,titulo,prioridade,tipo_licitacao,servicos_contrato,objeto_contrato,check_conversao_1,check_conversao_2,check_conversao_3,dados_customizados' as const;
 
 // Colunas pesadas carregadas sob demanda ao clicar no card
-const LICITACOES_HEAVY_COLUMNS = 'objeto,objeto_contrato,observacoes' as const;
+const LICITACOES_HEAVY_COLUMNS = 'objeto,decorrencia_analise,objeto_contrato,observacoes' as const;
 
 // Função para validar se a licitação pode ser movida
 const isLicitacaoValidaParaMover = (licitacao: LicitacaoWithResponsavel): { valido: boolean; motivo?: string } => {
