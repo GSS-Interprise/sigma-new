@@ -9515,6 +9515,7 @@ export type Database = {
       }
       licitacao_item_concorrentes: {
         Row: {
+          ata_anexo_id: string | null
           created_at: string
           empresa_cnpj: string | null
           empresa_id: string | null
@@ -9525,12 +9526,16 @@ export type Database = {
           item_id: string
           motivo_situacao: string | null
           observacoes: string | null
+          origem: string
           posicao: number
+          requer_revisao_manual: boolean
           situacao: string
           updated_at: string
           valor_ofertado: number
+          valor_total: number | null
         }
         Insert: {
+          ata_anexo_id?: string | null
           created_at?: string
           empresa_cnpj?: string | null
           empresa_id?: string | null
@@ -9541,12 +9546,16 @@ export type Database = {
           item_id: string
           motivo_situacao?: string | null
           observacoes?: string | null
+          origem?: string
           posicao?: number
+          requer_revisao_manual?: boolean
           situacao?: string
           updated_at?: string
           valor_ofertado: number
+          valor_total?: number | null
         }
         Update: {
+          ata_anexo_id?: string | null
           created_at?: string
           empresa_cnpj?: string | null
           empresa_id?: string | null
@@ -9557,12 +9566,22 @@ export type Database = {
           item_id?: string
           motivo_situacao?: string | null
           observacoes?: string | null
+          origem?: string
           posicao?: number
+          requer_revisao_manual?: boolean
           situacao?: string
           updated_at?: string
           valor_ofertado?: number
+          valor_total?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "licitacao_item_concorrentes_ata_anexo_id_fkey"
+            columns: ["ata_anexo_id"]
+            isOneToOne: false
+            referencedRelation: "licitacoes_anexos"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "licitacao_item_concorrentes_empresa_id_fkey"
             columns: ["empresa_id"]
@@ -9578,36 +9597,57 @@ export type Database = {
           descricao: string | null
           id: string
           licitacao_id: string
+          lote: string | null
           nome: string
+          numero_item: string | null
+          origem_extracao: string
+          qnt_unit_total: number | null
+          qnt_valor_und: number | null
           quantidade: number | null
           tipo: string
           unidade_medida: string | null
           updated_at: string
           valor_referencia: number | null
+          vlr_total_estimavel: number | null
+          vlr_und_deliberado: number | null
         }
         Insert: {
           created_at?: string
           descricao?: string | null
           id?: string
           licitacao_id: string
+          lote?: string | null
           nome: string
+          numero_item?: string | null
+          origem_extracao?: string
+          qnt_unit_total?: number | null
+          qnt_valor_und?: number | null
           quantidade?: number | null
           tipo?: string
           unidade_medida?: string | null
           updated_at?: string
           valor_referencia?: number | null
+          vlr_total_estimavel?: number | null
+          vlr_und_deliberado?: number | null
         }
         Update: {
           created_at?: string
           descricao?: string | null
           id?: string
           licitacao_id?: string
+          lote?: string | null
           nome?: string
+          numero_item?: string | null
+          origem_extracao?: string
+          qnt_unit_total?: number | null
+          qnt_valor_und?: number | null
           quantidade?: number | null
           tipo?: string
           unidade_medida?: string | null
           updated_at?: string
           valor_referencia?: number | null
+          vlr_total_estimavel?: number | null
+          vlr_und_deliberado?: number | null
         }
         Relationships: [
           {
@@ -9642,6 +9682,57 @@ export type Database = {
           nome?: string
         }
         Relationships: []
+      }
+      licitacao_raia_log: {
+        Row: {
+          duracao_segundos: number | null
+          entrou_em: string
+          id: number
+          kanban_status_id: string | null
+          licitacao_id: string
+          movido_por: string | null
+          ordem_passagem: number
+          saiu_em: string | null
+          status: Database["public"]["Enums"]["status_licitacao"]
+        }
+        Insert: {
+          duracao_segundos?: number | null
+          entrou_em?: string
+          id?: number
+          kanban_status_id?: string | null
+          licitacao_id: string
+          movido_por?: string | null
+          ordem_passagem?: number
+          saiu_em?: string | null
+          status: Database["public"]["Enums"]["status_licitacao"]
+        }
+        Update: {
+          duracao_segundos?: number | null
+          entrou_em?: string
+          id?: number
+          kanban_status_id?: string | null
+          licitacao_id?: string
+          movido_por?: string | null
+          ordem_passagem?: number
+          saiu_em?: string | null
+          status?: Database["public"]["Enums"]["status_licitacao"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "licitacao_raia_log_kanban_status_id_fkey"
+            columns: ["kanban_status_id"]
+            isOneToOne: false
+            referencedRelation: "kanban_status_config"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "licitacao_raia_log_licitacao_id_fkey"
+            columns: ["licitacao_id"]
+            isOneToOne: false
+            referencedRelation: "licitacoes"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       licitacao_resultados: {
         Row: {
@@ -9711,6 +9802,8 @@ export type Database = {
       }
       licitacoes: {
         Row: {
+          card_gemeo_id: string | null
+          card_origem_id: string | null
           check_conversao_1: boolean | null
           check_conversao_2: boolean | null
           check_conversao_3: boolean | null
@@ -9723,7 +9816,9 @@ export type Database = {
           data_abertura: string | null
           data_disputa: string | null
           data_limite: string | null
+          disputa_valor_anonimo: boolean
           effect_id: string | null
+          empresa_disputante: string | null
           etiquetas: string[] | null
           fonte: string | null
           id: string
@@ -9732,6 +9827,7 @@ export type Database = {
           numero_edital: string
           objeto: string
           objeto_contrato: string | null
+          objeto_resumo: string | null
           observacoes: string | null
           orgao: string
           prioridade: string | null
@@ -9748,6 +9844,8 @@ export type Database = {
           valor_estimado: number | null
         }
         Insert: {
+          card_gemeo_id?: string | null
+          card_origem_id?: string | null
           check_conversao_1?: boolean | null
           check_conversao_2?: boolean | null
           check_conversao_3?: boolean | null
@@ -9760,7 +9858,9 @@ export type Database = {
           data_abertura?: string | null
           data_disputa?: string | null
           data_limite?: string | null
+          disputa_valor_anonimo?: boolean
           effect_id?: string | null
+          empresa_disputante?: string | null
           etiquetas?: string[] | null
           fonte?: string | null
           id?: string
@@ -9769,6 +9869,7 @@ export type Database = {
           numero_edital: string
           objeto: string
           objeto_contrato?: string | null
+          objeto_resumo?: string | null
           observacoes?: string | null
           orgao: string
           prioridade?: string | null
@@ -9785,6 +9886,8 @@ export type Database = {
           valor_estimado?: number | null
         }
         Update: {
+          card_gemeo_id?: string | null
+          card_origem_id?: string | null
           check_conversao_1?: boolean | null
           check_conversao_2?: boolean | null
           check_conversao_3?: boolean | null
@@ -9797,7 +9900,9 @@ export type Database = {
           data_abertura?: string | null
           data_disputa?: string | null
           data_limite?: string | null
+          disputa_valor_anonimo?: boolean
           effect_id?: string | null
+          empresa_disputante?: string | null
           etiquetas?: string[] | null
           fonte?: string | null
           id?: string
@@ -9806,6 +9911,7 @@ export type Database = {
           numero_edital?: string
           objeto?: string
           objeto_contrato?: string | null
+          objeto_resumo?: string | null
           observacoes?: string | null
           orgao?: string
           prioridade?: string | null
@@ -9821,7 +9927,22 @@ export type Database = {
           updated_at?: string | null
           valor_estimado?: number | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "licitacoes_card_gemeo_id_fkey"
+            columns: ["card_gemeo_id"]
+            isOneToOne: false
+            referencedRelation: "licitacoes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "licitacoes_card_origem_id_fkey"
+            columns: ["card_origem_id"]
+            isOneToOne: false
+            referencedRelation: "licitacoes"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       licitacoes_anexos: {
         Row: {
