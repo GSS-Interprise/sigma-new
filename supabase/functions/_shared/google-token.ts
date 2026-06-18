@@ -65,7 +65,12 @@ export async function getAccessTokenForUser(userId: string): Promise<string> {
     .maybeSingle()
   const email = profile?.email as string | undefined
   if (email && shouldUseDWD(email)) {
-    return getImpersonatedAccessToken(email)
+    try {
+      return await getImpersonatedAccessToken(email)
+    } catch (e: any) {
+      console.warn('DWD failed, falling back to user OAuth:', e?.message)
+      // fall through to per-user refresh token
+    }
   }
   return getValidGoogleAccessToken(userId)
 }
