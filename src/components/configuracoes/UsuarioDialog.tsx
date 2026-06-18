@@ -36,6 +36,8 @@ const AVAILABLE_ROLES = [
   { value: "gestor_ages", label: "Gestor AGES" },
   { value: "lideres", label: "Líder de Setor" },
   { value: "externos", label: "Encerramento de Tickets" },
+  { value: "lider_licitacao", label: "Líder de Licitação" },
+  { value: "licitador", label: "Licitador" },
 ];
 
 interface UsuarioDialogProps {
