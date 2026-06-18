@@ -1767,16 +1767,18 @@ export function LicitacaoDetailDialog({
                             <div className="flex items-center gap-1.5">
                               <FileText className="h-3.5 w-3.5 text-primary" />
                               <span className="text-xs font-semibold text-primary uppercase tracking-wide">Objeto</span>
+                              <span className="text-[10px] font-normal text-muted-foreground normal-case tracking-normal">
+                                — texto fixo do contrato (automação / IA)
+                              </span>
                             </div>
                             {editando ? (
-                              <RichTextEditor
-                                value={formData.objeto}
-                                onChange={(value) =>
-                                  setFormDataSafe((prev: any) => ({ ...prev, objeto: value }))
+                              <Textarea
+                                value={formData.objeto || ""}
+                                onChange={(e) =>
+                                  setFormDataSafe((prev: any) => ({ ...prev, objeto: e.target.value }))
                                 }
-                                minHeight="300px"
-                                placeholder="Descreva o objeto..."
-                                onImagePaste={handleImagePasteUpload}
+                                className="text-sm min-h-[140px] resize-y"
+                                placeholder="Objeto vindo da automação ou da análise de IA..."
                               />
                             ) : (
                               <div 
@@ -1791,6 +1793,53 @@ export function LicitacaoDetailDialog({
                                   }
                                 }}
                                 dangerouslySetInnerHTML={{ __html: sanitizeHtml(linkifyHtml(licitacao?.objeto || "—")) }}
+                              />
+                            )}
+                          </div>
+                        </DraggableItem>
+
+                        {/* Decorrência de Análise - editor rico para registros da equipe */}
+                        <DraggableItem
+                          id="decorrencia_analise"
+                          layoutMode={layoutMode}
+                          config={getItemConfig("decorrencia_analise")}
+                          onConfigChange={handleConfigChange}
+                          onDragStart={handleDragStart}
+                          onDragEnd={handleDragEnd}
+                        >
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-1.5">
+                              <Edit2 className="h-3.5 w-3.5 text-primary" />
+                              <span className="text-xs font-semibold text-primary uppercase tracking-wide">
+                                Decorrência de Análise
+                              </span>
+                              <span className="text-[10px] font-normal text-muted-foreground normal-case tracking-normal">
+                                — anotações, decisões e detalhamento da equipe
+                              </span>
+                            </div>
+                            {editando ? (
+                              <RichTextEditor
+                                value={formData.decorrencia_analise || ""}
+                                onChange={(value) =>
+                                  setFormDataSafe((prev: any) => ({ ...prev, decorrencia_analise: value }))
+                                }
+                                minHeight="300px"
+                                placeholder="Registre análises, decisões e detalhamentos da equipe..."
+                                onImagePaste={handleImagePasteUpload}
+                              />
+                            ) : (
+                              <div
+                                className="text-sm prose prose-sm max-w-none bg-muted/30 rounded-md p-3 min-h-[200px] relative overflow-hidden [&_a]:text-blue-600 [&_a]:underline [&_a]:break-all hover:[&_a]:text-blue-800 [&_a]:cursor-pointer [&_a]:relative [&_a]:z-10 [&_table]:w-full [&_table]:border-collapse [&_table]:my-2 [&_td]:border [&_td]:border-border [&_td]:p-1.5 [&_td]:text-xs [&_th]:border [&_th]:border-border [&_th]:p-1.5 [&_th]:text-xs [&_th]:font-semibold [&_th]:bg-muted/50"
+                                onClick={(e) => {
+                                  const target = e.target as HTMLElement;
+                                  if (target.tagName === 'A') {
+                                    e.stopPropagation();
+                                    e.preventDefault();
+                                    const href = (target as HTMLAnchorElement).href;
+                                    if (href) window.open(href, '_blank', 'noopener,noreferrer');
+                                  }
+                                }}
+                                dangerouslySetInnerHTML={{ __html: sanitizeHtml(linkifyHtml((licitacao as any)?.decorrencia_analise || "—")) }}
                               />
                             )}
                           </div>
