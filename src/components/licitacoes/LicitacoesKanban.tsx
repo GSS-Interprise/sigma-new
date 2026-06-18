@@ -1085,7 +1085,7 @@ export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filt
                         )}
 
                         {/* Informações principais */}
-                        <div className="space-y-1.5 text-xs">
+                        <div className="space-y-1 text-xs">
                           {licitacao.municipio_uf && (
                             <div className="flex items-center gap-1 text-muted-foreground">
                               <MapPin className="h-3 w-3 flex-shrink-0" />
