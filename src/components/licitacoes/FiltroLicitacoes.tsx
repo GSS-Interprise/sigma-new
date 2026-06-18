@@ -14,6 +14,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 
 interface FiltroLicitacoesProps {
   onFilterChange: (filters: any) => void;
+  compact?: boolean;
 }
 
 const ETIQUETAS_DISPONIVEIS = [
@@ -27,7 +28,7 @@ const ETIQUETAS_DISPONIVEIS = [
   "Documentação",
 ];
 
-export function FiltroLicitacoes({ onFilterChange }: FiltroLicitacoesProps) {
+export function FiltroLicitacoes({ onFilterChange, compact = false }: FiltroLicitacoesProps) {
   const [search, setSearch] = useState("");
   const [selectedEtiquetas, setSelectedEtiquetas] = useState<string[]>([]);
   const [responsavel, setResponsavel] = useState<string>("");
@@ -68,6 +69,128 @@ export function FiltroLicitacoes({ onFilterChange }: FiltroLicitacoesProps) {
 
   const hasActiveFilters = search || selectedEtiquetas.length > 0 || responsavel || tipoLicitacao || dataInicio || dataFim;
   const hasAdvancedFilters = selectedEtiquetas.length > 0 || responsavel || tipoLicitacao || dataInicio || dataFim;
+
+  const activeCount = selectedEtiquetas.length + (responsavel ? 1 : 0) + (dataInicio ? 1 : 0) + (dataFim ? 1 : 0);
+
+  if (compact) {
+    return (
+      <Popover>
+        <div className="flex items-center gap-2">
+          <div className="relative w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar licitação"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="h-9 pl-9 rounded-md bg-muted/40 border-border/60 focus-visible:bg-background text-sm"
+            />
+          </div>
+          <PopoverTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-9 px-2.5 gap-1.5 text-muted-foreground hover:text-foreground relative"
+            >
+              <Filter className="h-4 w-4" />
+              <span className="hidden sm:inline">Filtros</span>
+              {activeCount > 0 && (
+                <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium text-primary-foreground">
+                  {activeCount}
+                </span>
+              )}
+            </Button>
+          </PopoverTrigger>
+        </div>
+        <PopoverContent align="end" className="w-[560px] p-5 bg-background z-50">
+          <div className="space-y-5">
+            <div className="space-y-2">
+              <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Etiquetas</Label>
+              <div className="flex flex-wrap gap-1.5">
+                {ETIQUETAS_DISPONIVEIS.map((etiqueta) => (
+                  <Badge
+                    key={etiqueta}
+                    variant={selectedEtiquetas.includes(etiqueta) ? "default" : "outline"}
+                    className="cursor-pointer text-xs py-1 px-2.5 font-normal"
+                    onClick={() => toggleEtiqueta(etiqueta)}
+                  >
+                    {etiqueta}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Responsável</Label>
+                <Select value={responsavel} onValueChange={setResponsavel}>
+                  <SelectTrigger className="h-9 text-sm">
+                    <SelectValue placeholder="Todos" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-background z-50">
+                    {profiles?.map((profile) => (
+                      <SelectItem key={profile.id} value={profile.id}>
+                        {profile.nome_completo}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Setor</Label>
+                <Select value={tipoLicitacao} onValueChange={setTipoLicitacao}>
+                  <SelectTrigger className="h-9 text-sm">
+                    <SelectValue placeholder="Todos" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-background z-50">
+                    <SelectItem value="__all__">Todos</SelectItem>
+                    <SelectItem value="GSS">GSS</SelectItem>
+                    <SelectItem value="AGES">AGES</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Data início</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="w-full h-9 justify-start text-left font-normal text-sm">
+                      <CalendarIcon className="mr-2 h-3.5 w-3.5" />
+                      {dataInicio ? format(dataInicio, "P", { locale: ptBR }) : "Selecionar"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0 bg-background z-50">
+                    <Calendar mode="single" selected={dataInicio} onSelect={setDataInicio} initialFocus className="pointer-events-auto" />
+                  </PopoverContent>
+                </Popover>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Data fim</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="w-full h-9 justify-start text-left font-normal text-sm">
+                      <CalendarIcon className="mr-2 h-3.5 w-3.5" />
+                      {dataFim ? format(dataFim, "P", { locale: ptBR }) : "Selecionar"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0 bg-background z-50">
+                    <Calendar mode="single" selected={dataFim} onSelect={setDataFim} initialFocus className="pointer-events-auto" />
+                  </PopoverContent>
+                </Popover>
+              </div>
+            </div>
+
+            {hasActiveFilters && (
+              <div className="flex justify-end pt-1 border-t border-border/60">
+                <Button variant="ghost" size="sm" onClick={limparFiltros} className="h-8 text-xs text-muted-foreground hover:text-foreground">
+                  <X className="h-3.5 w-3.5 mr-1.5" />
+                  Limpar filtros
+                </Button>
+              </div>
+            )}
+          </div>
+        </PopoverContent>
+      </Popover>
+    );
+  }
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
