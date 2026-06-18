@@ -29,14 +29,15 @@ import { parseLocalDate } from "@/lib/dateUtils";
 import { registrarAcessoContrato } from "@/lib/contratoAcessoLogger";
 
 export default function Contratos() {
-  const { canView, isAdmin } = usePermissions();
+  const { canView, isAdmin, isLicitador, isLiderLicitacao } = usePermissions();
+  const isLicitacaoOnly = !isAdmin && (isLicitador || isLiderLicitacao);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingContrato, setEditingContrato] = useState<any>(null);
   const [dialogMode, setDialogMode] = useState<'view' | 'edit'>('edit');
   const [searchParams, setSearchParams] = useSearchParams();
   const [clienteDialogOpen, setClienteDialogOpen] = useState(false);
   const [editingCliente, setEditingCliente] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState("contratos");
+  const [activeTab, setActiveTab] = useState(isLicitacaoOnly ? "rascunhos" : "contratos");
   const [searchNome, setSearchNome] = useState("");
   const [selectedStatus, setSelectedStatus] = useState<string[]>([]);
   const [selectedUf, setSelectedUf] = useState<string[]>([]);
