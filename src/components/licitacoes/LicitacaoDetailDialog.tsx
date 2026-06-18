@@ -1264,7 +1264,7 @@ export function LicitacaoDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[80vw] max-w-[1600px] h-[90vh] p-0 gap-0 overflow-hidden flex flex-col">
+      <DialogContent className="w-[90vw] max-w-[1800px] h-[90vh] p-0 gap-0 overflow-hidden flex flex-col">
         <DialogHeader className="sr-only">
           <DialogTitle>{isNew ? 'Novo Edital' : 'Detalhes da Licitação'}</DialogTitle>
           <DialogDescription>{isNew ? 'Crie um novo edital' : 'Visualize e edite as informações da licitação'}</DialogDescription>
