@@ -16231,6 +16231,8 @@ export type Database = {
         | "externos"
         | "lideres"
         | "gestor_ages"
+        | "licitador"
+        | "lider_licitacao"
       canal_campanha:
         | "whatsapp"
         | "email"
@@ -16600,6 +16602,8 @@ export const Constants = {
         "externos",
         "lideres",
         "gestor_ages",
+        "licitador",
+        "lider_licitacao",
       ],
       canal_campanha: [
         "whatsapp",
