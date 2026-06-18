@@ -35,9 +35,11 @@ import {
 
 interface KanbanStatusManagerProps {
   modulo: string;
+  canCreate?: boolean;
+  canDelete?: boolean;
 }
 
-export function KanbanStatusManager({ modulo }: KanbanStatusManagerProps) {
+export function KanbanStatusManager({ modulo, canCreate = true, canDelete = true }: KanbanStatusManagerProps) {
   const [open, setOpen] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -217,10 +219,12 @@ export function KanbanStatusManager({ modulo }: KanbanStatusManagerProps) {
           </DialogHeader>
 
           <div className="space-y-4 py-4">
-            <Button onClick={handleAddNew} className="w-full gap-2">
-              <Plus className="h-4 w-4" />
-              Adicionar Novo Status
-            </Button>
+            {canCreate && (
+              <Button onClick={handleAddNew} className="w-full gap-2">
+                <Plus className="h-4 w-4" />
+                Adicionar Novo Status
+              </Button>
+            )}
 
             {isLoading ? (
               <div className="text-center py-8 text-muted-foreground">
@@ -287,14 +291,16 @@ export function KanbanStatusManager({ modulo }: KanbanStatusManagerProps) {
                         >
                           <Pencil className="h-4 w-4" />
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDelete(status)}
-                          className="text-destructive hover:text-destructive"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        {canDelete && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDelete(status)}
+                            className="text-destructive hover:text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </Card>
