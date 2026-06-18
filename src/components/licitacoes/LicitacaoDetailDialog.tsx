@@ -1112,6 +1112,7 @@ export function LicitacaoDetailDialog({
       observacoes: formData.observacoes || null,
       tipo_licitacao: formData.tipo_licitacao || 'GSS',
       prioridade: formData.prioridade || null,
+      decorrencia_analise: formData.decorrencia_analise || null,
       dados_customizados: Object.keys(dadosCustomizados).length > 0 ? dadosCustomizados : null,
     };
     
