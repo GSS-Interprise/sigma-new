@@ -177,6 +177,18 @@ export function LicitacaoCard({ licitacao, onEdit }: LicitacaoCardProps) {
           <p className="text-sm text-muted-foreground">{licitacao.orgao}</p>
         )}
 
+        {licitacao.objeto_resumo && (
+          <p className="text-xs text-muted-foreground line-clamp-2">
+            {licitacao.objeto_resumo}
+          </p>
+        )}
+
+        {licitacao.disputa_valor_anonimo && (
+          <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
+            Valor anônimo
+          </Badge>
+        )}
+
         <div className="flex items-center gap-4 text-sm">
           {licitacao.valor_estimado && (
             <div className="flex items-center gap-1">

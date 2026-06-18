@@ -44,6 +44,10 @@ import { LicitacaoRiscoIndicator } from "./LicitacaoRiscoIndicator";
 import { LicitacaoResultadoItensDialog } from "./LicitacaoResultadoItensDialog";
 import { LicitacaoCompetitividadeViewDialog } from "./LicitacaoCompetitividadeViewDialog";
 import { LicitacaoDescarteDialog } from "./LicitacaoDescarteDialog";
+import { LicitacaoItensTab } from "./LicitacaoItensTab";
+import { LicitacaoHistoricoTab } from "./LicitacaoHistoricoTab";
+import { LicitacaoObjetoTab } from "./LicitacaoObjetoTab";
+import { Package, Activity, AlignLeft } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { supabase } from "@/integrations/supabase/client";
@@ -1525,6 +1529,22 @@ export function LicitacaoDetailDialog({
                     Competitividade
                   </TabsTrigger>
                 )}
+                {!isNew && (
+                  <>
+                    <TabsTrigger value="itens" className="text-xs">
+                      <Package className="h-3.5 w-3.5 mr-1.5" />
+                      Itens
+                    </TabsTrigger>
+                    <TabsTrigger value="objeto" className="text-xs">
+                      <AlignLeft className="h-3.5 w-3.5 mr-1.5" />
+                      Objeto
+                    </TabsTrigger>
+                    <TabsTrigger value="historico" className="text-xs">
+                      <Activity className="h-3.5 w-3.5 mr-1.5" />
+                      Histórico
+                    </TabsTrigger>
+                  </>
+                )}
                 <TabsTrigger value="converter" className="text-xs">
                   <FileSignature className="h-3.5 w-3.5 mr-1.5" />
                   Converter em Contrato
@@ -1885,6 +1905,32 @@ export function LicitacaoDetailDialog({
                       )}
                     </div>
                   </ScrollArea>
+                </TabsContent>
+              )}
+
+              {/* Aba Itens */}
+              {!isNew && licitacao?.id && (
+                <TabsContent value="itens" className="flex-1 min-h-0 overflow-hidden m-0">
+                  <LicitacaoItensTab licitacaoId={licitacao.id} />
+                </TabsContent>
+              )}
+
+              {/* Aba Objeto (resumo + valor anônimo) */}
+              {!isNew && licitacao?.id && (
+                <TabsContent value="objeto" className="flex-1 min-h-0 overflow-hidden m-0">
+                  <LicitacaoObjetoTab
+                    licitacaoId={licitacao.id}
+                    objeto={licitacao.objeto ?? null}
+                    objetoResumo={licitacao.objeto_resumo ?? null}
+                    disputaValorAnonimo={!!licitacao.disputa_valor_anonimo}
+                  />
+                </TabsContent>
+              )}
+
+              {/* Aba Histórico Licitatório */}
+              {!isNew && licitacao?.id && (
+                <TabsContent value="historico" className="flex-1 min-h-0 overflow-hidden m-0">
+                  <LicitacaoHistoricoTab licitacaoId={licitacao.id} />
                 </TabsContent>
               )}
 
