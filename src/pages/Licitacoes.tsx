@@ -223,6 +223,23 @@ export default function Licitacoes() {
         <p className="text-sm text-muted-foreground">Gerencie licitações e editais</p>
       </div>
       <div className="flex gap-2">
+        <FiltroLicitacoes onFilterChange={setFilters} />
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => { setAddByIdValue(""); setAddByIdOpen(true); }}
+        >
+          <Search className="mr-2 h-4 w-4" />
+          Adicionar por ID Effect
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => kanbanLoadMore?.()}
+          disabled={!kanbanHasMore}
+        >
+          {kanbanHasMore ? 'Carregar mais' : 'Sem mais registros'}
+        </Button>
         {(isAdmin || isLiderLicitacao) && (
           <KanbanStatusManager modulo="licitacoes" canCreate={isAdmin} canDelete={isAdmin} />
         )}
@@ -241,26 +258,6 @@ export default function Licitacoes() {
   return (
     <AppLayout headerActions={headerActions}>
       <div className="p-4 flex-1 min-h-0 flex flex-col">
-        <div className="flex items-center justify-end gap-4 mb-4 flex-shrink-0">
-          <FiltroLicitacoes onFilterChange={setFilters} />
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => { setAddByIdValue(""); setAddByIdOpen(true); }}
-          >
-            <Search className="mr-2 h-4 w-4" />
-            Adicionar por ID Effect
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => kanbanLoadMore?.()}
-            disabled={!kanbanHasMore}
-          >
-            {kanbanHasMore ? 'Carregar mais' : 'Sem mais registros'}
-          </Button>
-        </div>
-
         <div className="flex-1 min-h-0 overflow-hidden">
           {columnsLoading ? (
             <div className="flex items-center justify-center py-12">
