@@ -9,7 +9,7 @@ import { LicitacaoDetailDialog } from "@/components/licitacoes/LicitacaoDetailDi
 import { LicitacaoQuickEditDialog } from "@/components/licitacoes/LicitacaoQuickEditDialog";
 import { FiltroLicitacoes } from "@/components/licitacoes/FiltroLicitacoes";
 import { supabase } from "@/integrations/supabase/client";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useKanbanColumns } from "@/hooks/useKanbanColumns";
 import { KanbanStatusManager } from "@/components/licitacoes/KanbanStatusManager";
@@ -30,6 +30,7 @@ import { Loader2 } from "lucide-react";
 
 export default function Licitacoes() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const queryClient = useQueryClient();
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [quickEditDialogOpen, setQuickEditDialogOpen] = useState(false);
   const [syncLoading, setSyncLoading] = useState(false);
@@ -129,6 +130,9 @@ export default function Licitacoes() {
     setSyncLoading(true);
     try {
       await refetch();
+      // Atualiza também as abas dependentes (histórico/raia e itens) do dialog aberto
+      queryClient.invalidateQueries({ queryKey: ["licitacao-raia-log"] });
+      queryClient.invalidateQueries({ queryKey: ["licitacao-itens"] });
       toast.success("Dados atualizados com sucesso!");
     } catch (error: any) {
       console.error("Erro ao atualizar:", error);
