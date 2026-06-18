@@ -496,6 +496,7 @@ export default function Contratos() {
 
           <TabsContent value="rascunhos" className="mt-6">
             <ContratosRascunhoTab 
+              readOnly={isLicitacaoOnly}
               onConsolidado={(contratoId) => {
                 queryClient.invalidateQueries({ queryKey: ['contratos'] });
                 setActiveTab("contratos");
