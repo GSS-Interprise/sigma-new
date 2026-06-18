@@ -425,7 +425,7 @@ export default function Contratos() {
         <p className="text-sm text-muted-foreground">Gerencie clientes, unidades e contratos de forma integrada</p>
       </div>
       {activeTab === "contratos" && (
-        <Button onClick={() => {
+        !isLicitacaoOnly && <Button onClick={() => {
           setEditingContrato(null);
           setDialogOpen(true);
         }}>
