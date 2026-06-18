@@ -255,6 +255,16 @@ const WEBHOOK_MODULES: WebhookModule[] = [
         auth: "Bearer (Supabase Auth)",
         jsonExample: { fonte: "portal_transparencia", filtros: { uf: "SP", data_inicio: "2025-01-01" } },
       },
+      {
+        name: "licitacao-busca-por-id",
+        description: "Webhook externo (n8n) acionado pelo botão de buscar licitação por ID. Recebe apenas o ID da licitação para disparar uma busca específica.",
+        method: "POST",
+        endpoint: "(URL externa configurável)",
+        auth: "Definida no destino",
+        supabaseConfigKey: "licitacao_webhook_by_id_url",
+        configLabel: "URL do Webhook (Licitações - Busca por ID)",
+        jsonExample: { licitacao_id: "uuid" },
+      },
     ],
   },
   {
