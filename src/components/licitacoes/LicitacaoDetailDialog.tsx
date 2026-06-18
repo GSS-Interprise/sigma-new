@@ -1908,6 +1908,32 @@ export function LicitacaoDetailDialog({
                 </TabsContent>
               )}
 
+              {/* Aba Itens */}
+              {!isNew && licitacao?.id && (
+                <TabsContent value="itens" className="flex-1 min-h-0 overflow-hidden m-0">
+                  <LicitacaoItensTab licitacaoId={licitacao.id} />
+                </TabsContent>
+              )}
+
+              {/* Aba Objeto (resumo + valor anônimo) */}
+              {!isNew && licitacao?.id && (
+                <TabsContent value="objeto" className="flex-1 min-h-0 overflow-hidden m-0">
+                  <LicitacaoObjetoTab
+                    licitacaoId={licitacao.id}
+                    objeto={licitacao.objeto ?? null}
+                    objetoResumo={licitacao.objeto_resumo ?? null}
+                    disputaValorAnonimo={!!licitacao.disputa_valor_anonimo}
+                  />
+                </TabsContent>
+              )}
+
+              {/* Aba Histórico Licitatório */}
+              {!isNew && licitacao?.id && (
+                <TabsContent value="historico" className="flex-1 min-h-0 overflow-hidden m-0">
+                  <LicitacaoHistoricoTab licitacaoId={licitacao.id} />
+                </TabsContent>
+              )}
+
               {/* Aba Converter em Contrato */}
               <TabsContent value="converter" className="flex-1 min-h-0 overflow-hidden m-0">
                 <ScrollArea className="h-full px-3 py-4">
