@@ -1,50 +1,89 @@
-## Objetivo
-Criar dois novos perfis no sistema — **Licitador** e **Líder Licitação** — com acessos restritos ao fluxo de licitações.
+## Pacote Licitação — Bloco DB + UI core
 
-## Matriz de acesso
+Recorte do PDF (itens 1–4, 7, 8, 12 do roadmap §14), sem nada que dependa de N8N/Gemini. Role `lider_licitacao` (já existente) assume o papel que o PDF chama de `gestor_licitacao` — sem criar role novo.
 
-| Recurso | Licitador | Líder Licitação |
-|---|---|---|
-| Home | ✅ | ✅ |
-| Licitações (kanban + detalhe) | ✅ ler/criar/editar | ✅ ler/criar/editar |
-| Botão "Gerenciar Status" (Kanban) | ❌ | ✅ ver/editar status existentes — **sem** criar novo status |
-| Contratos → aba **Rascunhos (Licitações)** | ✅ somente leitura | ✅ somente leitura |
-| Contratos → demais abas (Contratos, Dr. Escala, Dr. Oportunidade, Clientes) | ❌ | ❌ |
-| BI → aba **Licitações** | ✅ | ✅ |
-| BI → demais abas | ❌ | ❌ |
-| Comunicação | ✅ | ✅ |
-| Suporte (abrir ticket) | ✅ | ✅ |
+---
 
-## Mudanças
+### Fase 1 — Schema do banco (1 migration)
 
-### 1. Banco (migration)
-- `ALTER TYPE public.app_role ADD VALUE 'licitador'` e `'lider_licitacao'`.
-- Inserir linhas em `public.permissoes` para os dois perfis nos módulos: `licitacoes` (visualizar/criar/editar para ambos), `contratos` (somente `visualizar`), `bi` (visualizar), `comunicacao` (visualizar/criar), `suporte` (visualizar/criar). Home não exige permissão.
-- Revisar RLS de `licitacoes`, `licitacao_itens`, `licitacoes_anexos`, `licitacoes_atividades`, `licitacao_descartes`, `licitacao_resultados`, `contrato_rascunho`, `kanban_status_config` para incluir os dois novos roles onde fizer sentido (rascunho = SELECT-only; kanban_status_config = SELECT para ambos + UPDATE só para `lider_licitacao`/admin; INSERT/DELETE continua só admin).
+**ALTER `licitacoes`** (§3.2)
+- `empresa_disputante text` ('GSS' | 'AGES' | null)
+- `card_origem_id uuid` (FK self)
+- `card_gemeo_id uuid` (FK self)
+- `disputa_valor_anonimo boolean default false`
+- `objeto_resumo text`
+- Unique index parcial `(card_origem_id, empresa_disputante) WHERE card_origem_id IS NOT NULL`
 
-### 2. Frontend — labels e tipos
-- `src/lib/roleLabels.ts`: adicionar `licitador: "Licitador"` e `lider_licitacao: "Líder de Licitação"`.
-- `src/hooks/usePermissions.ts`: nenhuma mudança no tipo `Modulo` (já cobre `licitacoes`, `contratos`, `bi`, `comunicacao`, `suporte`).
+**ALTER `licitacao_itens`** (§3.3) — coexistem com legacy
+- `lote text`, `numero_item text`
+- `qnt_unit_total numeric(14,4)`, `qnt_valor_und numeric(14,4)`
+- `vlr_total_estimavel numeric(14,2) GENERATED`
+- `vlr_und_deliberado numeric(14,4)`
+- `origem_extracao text default 'manual'`
+- Index `(licitacao_id, lote)`
 
-### 3. Sidebar (`src/components/layout/Sidebar.tsx`)
-- Itens já são filtrados por `hasPermission(modulo, 'visualizar')`. Como inseriremos as permissões no banco, os dois roles passarão a ver apenas: Home, Licitações, Clientes e Contratos, BI, Comunicação, Suporte. Verificar item "Clientes e Contratos" — não deve aparecer para esses perfis. Solução: trocar o `modulo: "contratos"` do item por uma checagem extra `hideForRoles: ['licitador','lider_licitacao']`, ou criar um módulo novo `contratos_full` e usar `contratos` apenas para acesso à aba de rascunhos. Decisão: manter `modulo: "contratos"` (eles precisam navegar até lá) e esconder o item da sidebar via flag adicional `hideForRoles`. Sidebar mostrará apenas o necessário.
+**ALTER `licitacao_item_concorrentes`** (§3.4)
+- `valor_total numeric(14,2)`, `origem text default 'manual'`
+- `ata_anexo_id uuid` (FK `licitacoes_anexos`)
+- `requer_revisao_manual boolean default false`
+- Index parcial em `ata_anexo_id`
 
-### 4. Página Contratos (`src/pages/Contratos.tsx`)
-- Detectar `userRoles` em `usePermissions`. Para `licitador` / `lider_licitacao` (e que não sejam admin):
-  - Renderizar apenas a `TabsTrigger` "Rascunhos (Licitações)" e respectivo `TabsContent`.
-  - Forçar `activeTab = "rascunhos"`.
-  - Esconder botão "Novo Contrato".
-- Passar prop `readOnly` para `ContratosRascunhoTab` que desabilita ações de mutação (consolidar/vincular/excluir). Revisar `ContratosRascunhoTab` e componentes filhos para respeitar `readOnly`.
+**Nova tabela `licitacao_raia_log`** (§3.5)
+- Schema completo do PDF + GRANTs + RLS + policy de leitura via `permissoes`
+- Trigger `fn_licitacao_raia_track` em `AFTER UPDATE OF status ON licitacoes`
+- **Backfill** a partir de `licitacoes_atividades` (tipo `mudanca_status`); cards sem histórico ganham 1 linha aberta com `created_at`
 
-### 5. Página BI (`src/pages/BI.tsx`)
-- Para `licitador`/`lider_licitacao` sem admin: renderizar somente a aba `licitacoes` (esconder demais `TabsTrigger` e fixar a aba inicial).
+---
 
-### 6. Kanban Status (`src/components/licitacoes/KanbanStatusManager.tsx` e `src/pages/Licitacoes.tsx`)
-- Hoje o botão só aparece se `isAdmin`. Alterar para aparecer também se `isLiderLicitacao`.
-- Dentro do `KanbanStatusManager`, em modo "lider_licitacao": esconder botão "Novo Status" e ação de excluir; permitir apenas edição de status existentes (nome, cor, ordem). RLS reforça no banco.
+### Fase 2 — UI: nova aba **Itens** (§5.1)
+Substitui/expande o que existe hoje em `licitacao_itens`.
+- Componente `LicitacaoItensTab.tsx` agrupado por `lote`
+- Edição inline com auto-save (debounce 1s) — reusa padrão de `useLicitacaoAutoSave`
+- Colunas: nº | Descrição | Und | Qtd | Vlr Un | Vlr Tot (calculado pelo `GENERATED`)
+- Ações: **Adicionar item**, **Adicionar lote**, **Remover**, **Exportar CSV**
+- Sem botão "Extrair com IA" (fora de escopo nesta fase)
 
-### 7. Permissões captação
-- Garantir que `useCaptacaoPermissions`/`hasAnyCaptacaoAccess` retorne `false` para esses perfis (eles não devem ver "Prospecção"). Como nenhuma permissão captação será concedida, nada precisa mudar.
+---
 
-## Validação
-- Logar com um usuário em cada novo perfil (via UI de gestão de usuários) e conferir: itens da sidebar, aba única em Contratos (read only), aba única em BI, presença/ausência do botão "Gerenciar Status" e da ação "Novo Status" no kanban.
+### Fase 3 — UI: nova aba **Histórico Licitatório** (§7.3)
+- Componente `LicitacaoHistoricoTab.tsx`
+- Hook `useLicitacaoRaiaLog(licitacao_id)` lê `licitacao_raia_log` agregado por `status`
+- Linha do tempo visual (barras horizontais proporcionais) + tabela de passagens
+- Nomes/cores das raias via `useKanbanColumns('licitacoes')` (já existe)
+- Cabeçalho: "Tempo total no funil", "Raia atual"
+- Sem cron/relatório mensal (fora de escopo nesta fase)
+
+---
+
+### Fase 4 — UI: separar **Objeto** + flag **Valor anônimo** (§9)
+- `LicitacaoDetailDialog.tsx`: nova aba **Objeto** com editor rich-text (campo `objeto`); aba **Resumo** passa a exibir/editar `objeto_resumo` (textarea, ≤500 chars)
+- Listagens (`LicitacoesKanban`, lista de cards) trocam exibição de `objeto` → `objeto_resumo` com fallback ao `objeto` truncado
+- Exports CSV usam `objeto_resumo`
+- Checkbox **Disputa de valor anônimo** próximo ao status no header do card → grava `disputa_valor_anonimo`
+
+---
+
+### Fora deste pacote (próximos blocos)
+- Aba Competitividade reestruturada + AtaReader (depende de N8N)
+- Workflow ItemExtractor + botão "Extrair com IA" (depende de N8N)
+- Duplicar AGES↔GSS (edge `licitacao-card-duplicator`) — possível adicionar como bloco extra se priorizado
+- Separação de permissões Contratos↔Licitação + role `gestor_licitacao`
+- Relatório mensal de raia (cron + edge)
+- Prompt v2 / re-análise IA
+- Segurança N8N (header auth, IP allowlist)
+
+---
+
+### Pontos abertos (a confirmar antes da migration)
+1. **`quantidade` legacy vs `qnt_unit_total` novo** em `licitacao_itens`: o doc recomenda convergir. Plano atual: **coexistem** (mais seguro); convergência fica como follow-up depois que o frontend novo estiver estável.
+2. **Backfill de raia**: cards muito antigos podem gerar inconsistências. O backfill loga em `licitacao_raia_backfill_log` (tabela temporária) pra revisão manual.
+3. **`empresa_disputante` em cards existentes**: começa `null` (legado). Sem migração automática — fica pra UI marcar quando o card for tocado.
+
+---
+
+### Entregáveis
+- 1 migration Supabase (5 ALTERs + 1 CREATE TABLE + trigger + backfill)
+- 2 hooks novos: `useLicitacaoRaiaLog`, `useLicitacaoItens` (CRUD)
+- 3 componentes novos: `LicitacaoItensTab`, `LicitacaoHistoricoTab`, `LicitacaoObjetoTab`
+- Edição de `LicitacaoDetailDialog.tsx` (novas abas, checkbox valor anônimo, swap objeto)
+- Edição de `LicitacoesKanban.tsx` (exibe `objeto_resumo`)
