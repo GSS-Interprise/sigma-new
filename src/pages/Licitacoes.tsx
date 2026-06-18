@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { LicitacoesKanban } from "@/components/licitacoes/LicitacoesKanban";
 import { Button } from "@/components/ui/button";
-import { Plus, RefreshCw, Webhook, Search } from "lucide-react";
+import { Plus, RefreshCw, Search } from "lucide-react";
 import { fetchWebhookByIdUrl } from "@/components/licitacoes/LicitacaoWebhookDialog";
 import { LicitacaoDetailDialog } from "@/components/licitacoes/LicitacaoDetailDialog";
 import { LicitacaoQuickEditDialog } from "@/components/licitacoes/LicitacaoQuickEditDialog";
