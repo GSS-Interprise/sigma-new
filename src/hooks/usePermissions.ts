@@ -51,6 +51,8 @@ export function usePermissions() {
   const roles = userRoles || [];
   const isAdmin = roles.some(r => r.role === 'admin');
   const isLeader = roles.some(r => r.role === 'lideres');
+  const isLicitador = roles.some(r => r.role === 'licitador');
+  const isLiderLicitacao = roles.some(r => r.role === 'lider_licitacao');
 
   const { data: permissions, isLoading: isLoadingPermissions } = useQuery({
     queryKey: ['user-permissions', user?.id, roles],
@@ -86,6 +88,8 @@ export function usePermissions() {
   return {
     isAdmin,
     isLeader,
+    isLicitador,
+    isLiderLicitacao,
     isLoadingRoles: isLoadingPermissions_,
     hasPermission,
     canView,
