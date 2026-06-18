@@ -1529,6 +1529,22 @@ export function LicitacaoDetailDialog({
                     Competitividade
                   </TabsTrigger>
                 )}
+                {!isNew && (
+                  <>
+                    <TabsTrigger value="itens" className="text-xs">
+                      <Package className="h-3.5 w-3.5 mr-1.5" />
+                      Itens
+                    </TabsTrigger>
+                    <TabsTrigger value="objeto" className="text-xs">
+                      <AlignLeft className="h-3.5 w-3.5 mr-1.5" />
+                      Objeto
+                    </TabsTrigger>
+                    <TabsTrigger value="historico" className="text-xs">
+                      <Activity className="h-3.5 w-3.5 mr-1.5" />
+                      Histórico
+                    </TabsTrigger>
+                  </>
+                )}
                 <TabsTrigger value="converter" className="text-xs">
                   <FileSignature className="h-3.5 w-3.5 mr-1.5" />
                   Converter em Contrato
