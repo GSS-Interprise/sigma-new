@@ -93,11 +93,11 @@ export function AlertaDemandasAtrasadasModal() {
   return (
     <>
       {/* Overlay escuro — sem fechar ao clicar fora (precisa confirmar) */}
-      <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm animate-in fade-in" />
+      <div className="fixed inset-0 z-[2147483646] bg-black/70 backdrop-blur-sm animate-in fade-in pointer-events-auto" />
       {/* Modal */}
       <div
         key={shakeKey}
-        className="demanda-modal-shake fixed left-1/2 top-1/2 z-[101] w-[92vw] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-xl border-4 border-red-600 bg-black text-white shadow-[0_0_60px_rgba(220,38,38,0.7)]"
+        className="demanda-modal-shake fixed left-1/2 top-1/2 z-[2147483647] w-[92vw] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-xl border-4 border-red-600 bg-black text-white shadow-[0_0_60px_rgba(220,38,38,0.7)] pointer-events-auto"
         role="alertdialog"
         aria-modal="true"
       >
