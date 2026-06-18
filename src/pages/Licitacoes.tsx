@@ -2,7 +2,8 @@ import { useState, useEffect } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { LicitacoesKanban } from "@/components/licitacoes/LicitacoesKanban";
 import { Button } from "@/components/ui/button";
-import { Plus, RefreshCw, Search } from "lucide-react";
+import { Plus, RefreshCw, Search, Settings2, ChevronDown } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { fetchWebhookByIdUrl } from "@/components/licitacoes/LicitacaoWebhookDialog";
 import { LicitacaoDetailDialog } from "@/components/licitacoes/LicitacaoDetailDialog";
 import { LicitacaoQuickEditDialog } from "@/components/licitacoes/LicitacaoQuickEditDialog";
@@ -217,42 +218,74 @@ export default function Licitacoes() {
   }
 
   const headerActions = (
-    <div className="flex items-center justify-between w-full">
-      <div>
-        <h1 className="text-2xl font-bold">Licitações</h1>
-        <p className="text-sm text-muted-foreground">Gerencie licitações e editais</p>
+    <TooltipProvider delayDuration={200}>
+      <div className="flex items-center justify-between w-full gap-4">
+        <div className="min-w-0">
+          <h1 className="text-xl font-semibold tracking-tight">Licitações</h1>
+          <p className="text-xs text-muted-foreground">Gerencie licitações e editais</p>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <FiltroLicitacoes onFilterChange={setFilters} compact />
+
+          <div className="mx-1 h-6 w-px bg-border/60" aria-hidden />
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                onClick={() => { setAddByIdValue(""); setAddByIdOpen(true); }}
+              >
+                <Search className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Adicionar por ID Effect</TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 text-muted-foreground hover:text-foreground disabled:opacity-40"
+                onClick={() => kanbanLoadMore?.()}
+                disabled={!kanbanHasMore}
+              >
+                <ChevronDown className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{kanbanHasMore ? "Carregar mais" : "Sem mais registros"}</TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                onClick={handleSync}
+                disabled={syncLoading}
+              >
+                <RefreshCw className={`h-4 w-4 ${syncLoading ? "animate-spin" : ""}`} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{syncLoading ? "Sincronizando..." : "Sincronizar"}</TooltipContent>
+          </Tooltip>
+
+          {(isAdmin || isLiderLicitacao) && (
+            <KanbanStatusManager modulo="licitacoes" canCreate={isAdmin} canDelete={isAdmin} />
+          )}
+
+          <div className="mx-1 h-6 w-px bg-border/60" aria-hidden />
+
+          <Button size="sm" onClick={handleOpenNewEdital} className="h-9 px-3.5 gap-1.5">
+            <Plus className="h-4 w-4" />
+            <span>Novo Edital</span>
+          </Button>
+        </div>
       </div>
-      <div className="flex gap-2">
-        <FiltroLicitacoes onFilterChange={setFilters} />
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => { setAddByIdValue(""); setAddByIdOpen(true); }}
-        >
-          <Search className="mr-2 h-4 w-4" />
-          Adicionar por ID Effect
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => kanbanLoadMore?.()}
-          disabled={!kanbanHasMore}
-        >
-          {kanbanHasMore ? 'Carregar mais' : 'Sem mais registros'}
-        </Button>
-        {(isAdmin || isLiderLicitacao) && (
-          <KanbanStatusManager modulo="licitacoes" canCreate={isAdmin} canDelete={isAdmin} />
-        )}
-        <Button variant="outline" onClick={handleSync} disabled={syncLoading}>
-          <RefreshCw className={`mr-2 h-4 w-4 ${syncLoading ? "animate-spin" : ""}`} />
-          {syncLoading ? "Sincronizando..." : "Sincronizar"}
-        </Button>
-        <Button onClick={handleOpenNewEdital}>
-          <Plus className="mr-2 h-4 w-4" />
-          Inserir Edital
-        </Button>
-      </div>
-    </div>
+    </TooltipProvider>
   );
 
   return (
