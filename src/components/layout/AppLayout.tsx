@@ -5,7 +5,6 @@ import { Footer } from "./Footer";
 import { GlobalBreadcrumb } from "./GlobalBreadcrumb";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { useLicitacoesRealtimeAccess } from "@/hooks/useLicitacoesRealtimeAccess";
-import { useLicitacoesRealtimeNotifications } from "@/hooks/useLicitacoesRealtimeNotifications";
 import { useLicitacoesRealtime } from "@/hooks/useLicitacoesRealtime";
 
 interface AppLayoutProps {
@@ -16,7 +15,7 @@ interface AppLayoutProps {
 
 /** Componente wrapper — garante que os hooks são chamados incondicionalmente */
 function LicitacoesRealtimeLoader() {
-  useLicitacoesRealtimeNotifications();
+  // Notificações de licitação agora chegam via system_notifications (sininho).
   useLicitacoesRealtime();
   return null;
 }
