@@ -58,6 +58,18 @@ export async function getAccessTokenForUser(userId: string): Promise<string> {
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
   )
+  // 1) If the user already has individual OAuth tokens configured, use them.
+  //    This lets users with their own Google config bypass DWD entirely.
+  const { data: existingTok } = await service
+    .from('user_google_calendar_tokens')
+    .select('user_id')
+    .eq('user_id', userId)
+    .maybeSingle()
+  if (existingTok) {
+    return getValidGoogleAccessToken(userId)
+  }
+
+  // 2) Otherwise, try DWD impersonation if the user belongs to the Workspace domain.
   const { data: profile } = await service
     .from('profiles')
     .select('email')
