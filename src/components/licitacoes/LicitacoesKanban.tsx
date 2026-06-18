@@ -930,17 +930,17 @@ export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filt
 
         <div 
           ref={scrollContainerRef}
-          className="flex-1 min-h-0 flex gap-2 sm:gap-3 overflow-x-auto overflow-y-hidden pb-2 px-1"
+          className="flex-1 min-h-0 flex gap-1.5 sm:gap-2 overflow-x-auto overflow-y-hidden pb-2 px-0.5"
           onDragOver={handleDragOver}
         >
         {columns.map((column) => (
         <Card 
           key={column.id} 
-          className="w-[260px] sm:w-[280px] md:w-[300px] lg:w-[320px] flex-shrink-0 flex flex-col h-full"
+          className="w-[240px] sm:w-[256px] md:w-[272px] lg:w-[288px] flex-shrink-0 flex flex-col h-full"
           onDragOver={handleDragOver}
           onDrop={(e) => handleDrop(e, column.id)}
         >
-          <CardHeader className="pb-3">
+          <CardHeader className="px-3 py-2">
             <CardTitle className="text-sm flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <div 
@@ -954,9 +954,9 @@ export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filt
               </Badge>
             </CardTitle>
           </CardHeader>
-          <CardContent className="flex-1 overflow-hidden pt-0">
+          <CardContent className="flex-1 overflow-hidden px-2 pt-0 pb-2">
             <ScrollArea className="h-full">
-              <div className="space-y-2 pr-3">
+              <div className="space-y-1.5 pr-2">
                 {getLicitacoesByStatus(column.id).map((licitacao) => {
                   const diasAteDisputa = getDiasAteDisputa(licitacao.data_disputa);
                   const isUrgente = diasAteDisputa !== null && diasAteDisputa <= 10 && diasAteDisputa >= 0;
@@ -1030,7 +1030,7 @@ export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filt
                           <span className="text-xs text-muted-foreground">Enviando...</span>
                         </div>
                       )}
-                      <CardContent className="p-3 space-y-2">
+                      <CardContent className="p-2.5 space-y-1.5">
                         {/* Menu 3 pontinhos no canto superior direito */}
                         <div className="absolute top-1 right-1 z-20" onClick={(e) => e.stopPropagation()}>
                           <CardActionsMenu
