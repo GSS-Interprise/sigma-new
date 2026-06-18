@@ -20,7 +20,6 @@ const STATUS_LABELS: Record<string, string> = {
 const LICITACOES_ALLOWED_ROLES = [
   'admin',
   'diretoria',
-  'gestor_contratos',
 ];
 
 // Roles que precisam de verificação adicional de permissão
@@ -62,22 +61,22 @@ export function useLicitacoesRealtimeNotifications() {
           return;
         }
 
-        // Se for líder, verificar se tem permissão de captação ou contratos
+        // Se for líder, verificar se tem permissão de captação (acompanhamento ou leads).
+        // Líderes de Contratos NÃO recebem notificações de licitações.
         const isLider = userRoles.includes('lideres');
         if (isLider) {
           const { data: captacaoPerms } = await supabase
             .from('captacao_permissoes_usuario')
-            .select('pode_acompanhamento, pode_leads, pode_contratos_servicos')
+            .select('pode_acompanhamento, pode_leads')
             .eq('user_id', user.id)
             .maybeSingle();
 
-          const hasCaptacaoOrContratosAccess = captacaoPerms && (
-            captacaoPerms.pode_acompanhamento || 
-            captacaoPerms.pode_leads || 
-            captacaoPerms.pode_contratos_servicos
+          const hasCaptacaoAccess = captacaoPerms && (
+            captacaoPerms.pode_acompanhamento ||
+            captacaoPerms.pode_leads
           );
 
-          setHasAccess(!!hasCaptacaoOrContratosAccess);
+          setHasAccess(!!hasCaptacaoAccess);
           return;
         }
         
