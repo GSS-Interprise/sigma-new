@@ -25,6 +25,7 @@ import {
   Clock,
   RotateCcw,
   Repeat,
+  Trash2,
 } from "lucide-react";
 import { format, isPast } from "date-fns";
 import { parseLocalDate } from "@/lib/dateUtils";
@@ -36,6 +37,7 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { useAuth } from "@/contexts/AuthContext";
 import { extractMensagemLink } from "@/lib/mensagemLink";
 import { useNavigate } from "react-router-dom";
+import { useSoftDeleteDemanda } from "@/hooks/useDemandas";
 
 interface Props {
   tarefa: DemandaTarefa;
@@ -60,6 +62,7 @@ export function TarefaCard({ tarefa, onConcluir, onReabrir, onClick, compact }: 
   const { isAdmin } = usePermissions();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const softDelete = useSoftDeleteDemanda();
   const mensagemLink = extractMensagemLink(tarefa.descricao);
   const atrasada =
     tarefa.data_limite &&
@@ -72,6 +75,8 @@ export function TarefaCard({ tarefa, onConcluir, onReabrir, onClick, compact }: 
     (!!user?.id && (tarefa.created_by === user.id || finalizadoresIds.includes(user.id)));
   const souFinalizador =
     !!user?.id && (tarefa.created_by === user.id || finalizadoresIds.includes(user.id));
+
+  const podeExcluir = isAdmin || (!!user?.id && tarefa.created_by === user.id);
 
   const urgClass =
     URGENCIA_CLASS[tarefa.urgencia] ?? URGENCIA_CLASS.media;
@@ -317,6 +322,40 @@ export function TarefaCard({ tarefa, onConcluir, onReabrir, onClick, compact }: 
         >
           <RotateCcw className="h-4 w-4 text-primary" />
         </Button>
+      )}
+
+      {podeExcluir && (
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="absolute top-1 right-1 h-6 w-6 p-0 opacity-0 group-hover:opacity-100 bg-card/80 hover:bg-card hover:text-red-600"
+              onClick={(e) => e.stopPropagation()}
+              title="Excluir tarefa"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Excluir tarefa?</AlertDialogTitle>
+              <AlertDialogDescription>
+                A tarefa <b>{tarefa.titulo}</b> sairá da sua tela. O histórico
+                permanece no banco e pode ser recuperado por um administrador.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-red-600 hover:bg-red-700 text-white"
+                onClick={() => softDelete.mutate(tarefa.id)}
+              >
+                Excluir
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       )}
     </Card>
   );
