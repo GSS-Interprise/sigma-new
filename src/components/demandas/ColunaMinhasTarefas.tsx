@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 import { format, isToday, isTomorrow, isPast } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { parseLocalDate } from "@/lib/dateUtils";
+import { cn } from "@/lib/utils";
 import {
   useDemandasMinhasEnviadas,
   useDemandasParaMim,
