@@ -739,8 +739,6 @@ export function useAtualizarDemanda() {
 }
 
 export function useAdicionarComentarioDemanda() {
-  // placeholder anchor
-}
   const { user } = useAuth();
   const qc = useQueryClient();
   return useMutation({
