@@ -166,6 +166,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
   const [recFrequencia, setRecFrequencia] = useState<"diaria" | "semanal" | "mensal">("semanal");
   const [recDiasSemana, setRecDiasSemana] = useState<number[]>([]);
   const [recDiaMes, setRecDiaMes] = useState<string>("");
+  const [recDataInicio, setRecDataInicio] = useState<Date | undefined>(undefined);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [checklist, setChecklist] = useState<{ texto: string; ok: boolean }[]>([]);
