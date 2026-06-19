@@ -87,15 +87,18 @@ Deno.serve(async (req) => {
     const hoje = new Date();
     hoje.setUTCHours(0, 0, 0, 0);
     const janelaCustomizada = !!(dataInicio && dataFim);
-    const inicioJanela = dataInicio ?? hoje;
+    // Nunca permitir início no passado, mesmo se calendário pedir mês anterior.
+    const inicioJanela = dataInicio && dataInicio > hoje ? dataInicio : hoje;
     const fimJanela = dataFim ?? null;
 
     let criadas = 0;
     for (const rec of recorrencias ?? []) {
-      const inicio = rec.proxima_geracao
+      const inicioRec = rec.proxima_geracao
         ? new Date(rec.proxima_geracao + "T00:00:00Z")
         : inicioJanela;
-      const start = janelaCustomizada ? inicioJanela : inicio > hoje ? inicio : hoje;
+      // Clamp absoluto: nada antes de hoje, nunca.
+      const candidato = janelaCustomizada ? inicioJanela : inicioRec;
+      const start = candidato > hoje ? candidato : hoje;
       const limiteExclusivo = janelaCustomizada && fimJanela
         ? addDays(fimJanela, 1)
         : addDays(start, HORIZONTE_DIAS);
