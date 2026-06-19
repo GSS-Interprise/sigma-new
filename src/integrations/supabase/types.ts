@@ -14810,6 +14810,8 @@ export type Database = {
           created_by: string | null
           data_limite: string | null
           data_limite_hora: string | null
+          deleted_at: string | null
+          deleted_by: string | null
           descricao: string | null
           duracao_min: number | null
           escopo: string
@@ -14840,6 +14842,8 @@ export type Database = {
           created_by?: string | null
           data_limite?: string | null
           data_limite_hora?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
           descricao?: string | null
           duracao_min?: number | null
           escopo?: string
@@ -14870,6 +14874,8 @@ export type Database = {
           created_by?: string | null
           data_limite?: string | null
           data_limite_hora?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
           descricao?: string | null
           duracao_min?: number | null
           escopo?: string

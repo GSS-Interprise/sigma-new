@@ -1,0 +1,2 @@
+ALTER TABLE public.worklist_tarefas ADD COLUMN IF NOT EXISTS deleted_at timestamptz, ADD COLUMN IF NOT EXISTS deleted_by uuid;
+CREATE INDEX IF NOT EXISTS worklist_tarefas_deleted_at_idx ON public.worklist_tarefas(deleted_at);
