@@ -140,6 +140,7 @@ export function useLicitacaoAutoSave(licitacaoId: string | null, onSuccess?: () 
         observacoes: "Observações",
         prioridade: "Prioridade",
         tipo_licitacao: "Tipo",
+        decorrencia_analise: "Decorrência de Análise",
       };
 
       const camposAlterados = changedFields
@@ -273,6 +274,7 @@ export function useLicitacaoAutoSave(licitacaoId: string | null, onSuccess?: () 
       checkAndAdd('observacoes', formData.observacoes);
       checkAndAdd('tipo_licitacao', formData.tipo_licitacao);
       checkAndAdd('prioridade', formData.prioridade);
+      checkAndAdd('decorrencia_analise', formData.decorrencia_analise);
 
       // Campos customizados
       const dadosCustomizados: Record<string, any> = {};
