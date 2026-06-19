@@ -1140,6 +1140,46 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                 <div className="grid gap-2">
                   <div className="grid gap-1.5">
                     <Label className="text-[11px] text-muted-foreground">
+                      Início da recorrência
+                    </Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className={cn(
+                            "h-8 justify-start text-left font-normal text-xs",
+                            !recDataInicio && "text-muted-foreground",
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-3.5 w-3.5" />
+                          {recDataInicio
+                            ? format(recDataInicio, "dd 'de' MMM yyyy", { locale: ptBR })
+                            : "Hoje (padrão)"}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={recDataInicio}
+                          onSelect={setRecDataInicio}
+                          disabled={(d) => {
+                            const hoje = new Date();
+                            hoje.setHours(0, 0, 0, 0);
+                            return d < hoje;
+                          }}
+                          initialFocus
+                          className="p-3 pointer-events-auto"
+                        />
+                      </PopoverContent>
+                    </Popover>
+                    <p className="text-[10px] text-muted-foreground">
+                      Nenhuma ocorrência será criada antes desta data. Padrão: hoje.
+                    </p>
+                  </div>
+
+                  <div className="grid gap-1.5">
+                    <Label className="text-[11px] text-muted-foreground">
                       Frequência
                     </Label>
                     <Select
