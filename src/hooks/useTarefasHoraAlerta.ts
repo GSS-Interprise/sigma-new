@@ -39,6 +39,7 @@ export function useTarefasHoraAlerta() {
         .select("id, titulo, data_limite, data_limite_hora, status, modulo")
         .eq("modulo", "demandas")
         .neq("status", "concluida")
+        .is("deleted_at", null)
         .eq("data_limite", hojeISO)
         .not("data_limite_hora", "is", null)
         .or(orParts.join(","));

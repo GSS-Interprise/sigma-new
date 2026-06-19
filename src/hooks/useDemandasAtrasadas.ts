@@ -50,6 +50,7 @@ export function useDemandasAtrasadas() {
         .select("id, titulo, data_limite, urgencia, responsavel_id, created_by, status, modulo")
         .eq("modulo", "demandas")
         .neq("status", "concluida")
+        .is("deleted_at", null)
         .not("data_limite", "is", null)
         .lt("data_limite", hojeStr)
         .or(orParts.join(","));

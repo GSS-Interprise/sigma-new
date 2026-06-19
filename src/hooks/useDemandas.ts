@@ -209,6 +209,7 @@ export function useDemandasMinhasEnviadas() {
         .select("*")
         .eq("modulo", "demandas")
         .eq("created_by", user!.id)
+        .is("deleted_at", null)
         .order("created_at", { ascending: false });
       if (error) throw error;
       return enrich(data || []);
@@ -227,6 +228,7 @@ export function useDemandasParaMim() {
         .from("worklist_tarefas")
         .select("*")
         .eq("modulo", "demandas")
+        .is("deleted_at", null)
         .eq("responsavel_id", user!.id);
 
       // Tarefas em que fui mencionado
@@ -246,6 +248,7 @@ export function useDemandasParaMim() {
           .from("worklist_tarefas")
           .select("*")
           .eq("modulo", "demandas")
+          .is("deleted_at", null)
           .in("id", mencIds);
         if (error) throw error;
         mencionadasRows = data || [];
@@ -289,6 +292,7 @@ export function useDemandasDoSetor(
         .from("worklist_tarefas")
         .select("*")
         .eq("modulo", "demandas")
+        .is("deleted_at", null)
         .not("data_limite", "is", null);
       if (inicioISO) q = q.gte("data_limite", inicioISO);
       if (fimISO) q = q.lte("data_limite", fimISO);
@@ -309,6 +313,7 @@ export function useDemandasTodas() {
         .from("worklist_tarefas")
         .select("*")
         .eq("modulo", "demandas")
+        .is("deleted_at", null)
         .order("data_limite", { ascending: true, nullsFirst: false })
         .order("created_at", { ascending: false });
       if (error) throw error;
