@@ -166,6 +166,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
   const [recFrequencia, setRecFrequencia] = useState<"diaria" | "semanal" | "mensal">("semanal");
   const [recDiasSemana, setRecDiasSemana] = useState<number[]>([]);
   const [recDiaMes, setRecDiaMes] = useState<string>("");
+  const [recDataInicio, setRecDataInicio] = useState<Date | undefined>(undefined);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [checklist, setChecklist] = useState<{ texto: string; ok: boolean }[]>([]);
@@ -208,6 +209,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
       setRecFrequencia("semanal");
       setRecDiasSemana([]);
       setRecDiaMes("");
+      setRecDataInicio(undefined);
       setPendingFiles([]);
       setChecklist([]);
       setNovoItem("");
@@ -535,7 +537,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
           frequencia: recFrequencia,
           dias_semana: recFrequencia === "semanal" ? recDiasSemana : null,
           dia_mes: recFrequencia === "mensal" ? parseInt(recDiaMes, 10) : null,
-          data_inicio: dataLimite ? format(dataLimite, "yyyy-MM-dd") : null,
+          data_inicio: format(recDataInicio ?? new Date(), "yyyy-MM-dd"),
           hora: horaPayload,
           duracao_min: duracaoPayload ?? 60,
           participantes: mencionadosFinal,
@@ -1136,6 +1138,46 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
               </div>
               {recorrenteAtivo && (
                 <div className="grid gap-2">
+                  <div className="grid gap-1.5">
+                    <Label className="text-[11px] text-muted-foreground">
+                      Início da recorrência
+                    </Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className={cn(
+                            "h-8 justify-start text-left font-normal text-xs",
+                            !recDataInicio && "text-muted-foreground",
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-3.5 w-3.5" />
+                          {recDataInicio
+                            ? format(recDataInicio, "dd 'de' MMM yyyy", { locale: ptBR })
+                            : "Hoje (padrão)"}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={recDataInicio}
+                          onSelect={setRecDataInicio}
+                          disabled={(d) => {
+                            const hoje = new Date();
+                            hoje.setHours(0, 0, 0, 0);
+                            return d < hoje;
+                          }}
+                          initialFocus
+                          className="p-3 pointer-events-auto"
+                        />
+                      </PopoverContent>
+                    </Popover>
+                    <p className="text-[10px] text-muted-foreground">
+                      Nenhuma ocorrência será criada antes desta data. Padrão: hoje.
+                    </p>
+                  </div>
+
                   <div className="grid gap-1.5">
                     <Label className="text-[11px] text-muted-foreground">
                       Frequência

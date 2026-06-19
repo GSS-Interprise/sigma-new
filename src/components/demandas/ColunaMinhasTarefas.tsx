@@ -3,6 +3,10 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { ListTodo, Plus, Eye, EyeOff } from "lucide-react";
 import { useMemo, useState } from "react";
+import { format, isToday, isTomorrow, isPast } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import { parseLocalDate } from "@/lib/dateUtils";
+import { cn } from "@/lib/utils";
 import {
   useDemandasMinhasEnviadas,
   useDemandasParaMim,
@@ -14,6 +18,17 @@ import { NovaDemandaDialog } from "./NovaDemandaDialog";
 
 interface Props {
   onTarefaClick?: (id: string) => void;
+}
+
+function labelGrupo(dataISO: string | null): string {
+  if (!dataISO) return "Sem data";
+  const d = parseLocalDate(dataISO) ?? new Date(dataISO);
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  if (isToday(d)) return `Hoje • ${format(d, "dd 'de' MMM", { locale: ptBR })}`;
+  if (isTomorrow(d)) return `Amanhã • ${format(d, "dd 'de' MMM", { locale: ptBR })}`;
+  if (d < hoje) return `Atrasada • ${format(d, "dd 'de' MMM", { locale: ptBR })}`;
+  return format(d, "EEE, dd 'de' MMM", { locale: ptBR });
 }
 
 export function ColunaMinhasTarefas({ onTarefaClick }: Props) {
@@ -39,8 +54,78 @@ export function ColunaMinhasTarefas({ onTarefaClick }: Props) {
     return list;
   }, [enviadas, paraMim]);
 
-  const abertas = tarefas.filter((t) => t.status !== "concluida");
+  const abertasRaw = tarefas.filter((t) => t.status !== "concluida");
   const concluidas = tarefas.filter((t) => t.status === "concluida");
+
+  // Dedup recorrentes: apenas a próxima ocorrência da semana atual (até domingo)
+  const abertas = useMemo(() => {
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    const fimSemana = new Date(hoje);
+    const diasParaDomingo = 7 - hoje.getDay(); // 0=dom -> 7; mantém semana corrente
+    fimSemana.setDate(hoje.getDate() + diasParaDomingo);
+    fimSemana.setHours(23, 59, 59, 999);
+
+    const naoRecorrentes = abertasRaw.filter((t) => !t.recorrencia_id);
+    const recorrentesPorId = new Map<string, DemandaTarefa[]>();
+    abertasRaw
+      .filter((t) => !!t.recorrencia_id)
+      .forEach((t) => {
+        const arr = recorrentesPorId.get(t.recorrencia_id!) ?? [];
+        arr.push(t);
+        recorrentesPorId.set(t.recorrencia_id!, arr);
+      });
+
+    const recorrentesDedup: DemandaTarefa[] = [];
+    recorrentesPorId.forEach((arr) => {
+      // ordena por data_limite asc; pega a primeira dentro da janela [hoje, fimSemana]
+      const sorted = [...arr].sort((a, b) =>
+        (a.data_limite ?? "").localeCompare(b.data_limite ?? ""),
+      );
+      const naSemana = sorted.find((t) => {
+        if (!t.data_limite) return false;
+        const d = parseLocalDate(t.data_limite) ?? new Date(t.data_limite);
+        return d >= hoje && d <= fimSemana;
+      });
+      // se não houver na semana mas houver atrasada, mostra a mais recente atrasada
+      const atrasada = !naSemana
+        ? sorted.find((t) => {
+            if (!t.data_limite) return false;
+            const d = parseLocalDate(t.data_limite) ?? new Date(t.data_limite);
+            return d < hoje;
+          })
+        : null;
+      const escolhida = naSemana ?? atrasada;
+      if (escolhida) recorrentesDedup.push(escolhida);
+    });
+
+    const todas = [...naoRecorrentes, ...recorrentesDedup];
+    todas.sort((a, b) => {
+      if (a.data_limite && b.data_limite)
+        return a.data_limite.localeCompare(b.data_limite);
+      if (a.data_limite) return -1;
+      if (b.data_limite) return 1;
+      return b.created_at.localeCompare(a.created_at);
+    });
+    return todas;
+  }, [abertasRaw]);
+
+  // Agrupar por data_limite para renderizar headers de dia
+  const grupos = useMemo(() => {
+    const m = new Map<string, DemandaTarefa[]>();
+    abertas.forEach((t) => {
+      const key = t.data_limite ?? "__sem__";
+      if (!m.has(key)) m.set(key, []);
+      m.get(key)!.push(t);
+    });
+    const entries = Array.from(m.entries());
+    entries.sort(([a], [b]) => {
+      if (a === "__sem__") return 1;
+      if (b === "__sem__") return -1;
+      return a.localeCompare(b);
+    });
+    return entries;
+  }, [abertas]);
 
   return (
     <Card className="flex flex-col h-full rounded-2xl border-border/70 shadow-sm overflow-hidden">
@@ -91,15 +176,42 @@ export function ColunaMinhasTarefas({ onTarefaClick }: Props) {
               Sem tarefas. Clique em <b>Nova</b> para começar.
             </div>
           )}
-          {abertas.map((t) => (
-            <TarefaCard
-              key={t.id}
-              tarefa={t}
-              onConcluir={(id) => concluir.mutate({ id, status: "concluida" })}
-              onReabrir={(id) => concluir.mutate({ id, status: "aberta" })}
-              onClick={() => onTarefaClick?.(t.id)}
-            />
-          ))}
+          {grupos.map(([key, items]) => {
+            const isAtrasado =
+              key !== "__sem__" &&
+              (() => {
+                const d = parseLocalDate(key) ?? new Date(key);
+                const hoje = new Date();
+                hoje.setHours(0, 0, 0, 0);
+                return d < hoje;
+              })();
+            return (
+              <div key={key} className="space-y-2">
+                <div
+                  className={cn(
+                    "sticky top-0 z-[1] -mx-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded",
+                    isAtrasado
+                      ? "text-red-600 bg-red-50/80 dark:bg-red-950/30"
+                      : "text-muted-foreground bg-muted/60 backdrop-blur",
+                  )}
+                >
+                  {labelGrupo(key === "__sem__" ? null : key)}
+                  <span className="ml-2 opacity-60 font-normal normal-case tracking-normal">
+                    {items.length} tarefa{items.length === 1 ? "" : "s"}
+                  </span>
+                </div>
+                {items.map((t) => (
+                  <TarefaCard
+                    key={t.id}
+                    tarefa={t}
+                    onConcluir={(id) => concluir.mutate({ id, status: "concluida" })}
+                    onReabrir={(id) => concluir.mutate({ id, status: "aberta" })}
+                    onClick={() => onTarefaClick?.(t.id)}
+                  />
+                ))}
+              </div>
+            );
+          })}
           {mostrarConcluidas && concluidas.length > 0 && (
             <div className="pt-3 mt-3 border-t">
               <p className="text-[11px] text-muted-foreground mb-2 px-1">
