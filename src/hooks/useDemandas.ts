@@ -1200,3 +1200,38 @@ export function useCriarRecorrencia() {
     onError: (e: any) => toast.error(e.message ?? "Erro ao criar recorrência"),
   });
 }
+
+// =============================================================
+// Soft delete
+// =============================================================
+export function useSoftDeleteDemanda() {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (tarefaId: string) => {
+      if (!user?.id) throw new Error("Sem usuário autenticado");
+      const { error } = await supabase
+        .from("worklist_tarefas")
+        .update({ deleted_at: new Date().toISOString(), deleted_by: user.id } as any)
+        .eq("id", tarefaId);
+      if (error) throw error;
+      try {
+        await supabase.from("worklist_tarefa_atividades" as any).insert({
+          tarefa_id: tarefaId,
+          user_id: user.id,
+          tipo: "exclusao",
+          resumo: "Tarefa removida (soft delete)",
+          detalhes: {},
+        } as any);
+      } catch {
+        /* atividade é opcional */
+      }
+      return tarefaId;
+    },
+    onSuccess: () => {
+      toast.success("Tarefa removida");
+      qc.invalidateQueries({ queryKey: ["demandas"] });
+    },
+    onError: (e: any) => toast.error(e.message ?? "Erro ao remover tarefa"),
+  });
+}
