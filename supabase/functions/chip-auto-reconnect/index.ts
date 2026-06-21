@@ -39,9 +39,10 @@ Deno.serve(async (req) => {
     const { data: cfg } = await supabase
       .from("config_lista_items")
       .select("campo_nome, valor")
-      .in("campo_nome", ["evolution_api_url", "evolution_api_key"]);
+      .in("campo_nome", ["evolution_api_url", "evolution_api_key", "report_grupo_jid"]);
     const url = cfg?.find((c: any) => c.campo_nome === "evolution_api_url")?.valor?.replace(/\/+$/, "");
     const key = cfg?.find((c: any) => c.campo_nome === "evolution_api_key")?.valor;
+    const grupoJid = cfg?.find((c: any) => c.campo_nome === "report_grupo_jid")?.valor || "120363423136911817@g.us";
     if (!url || !key) return json({ error: "Evolution não configurada" }, 500);
 
     // só as categorias da máquina de prospecção; pessoal_restrito/suporte ficam de fora
@@ -66,6 +67,7 @@ Deno.serve(async (req) => {
     let restarted = 0;
     const summary = { total: chips?.length || 0, open: 0, connecting: 0, close: 0, restarted: 0, skipped_cooldown: 0, skipped_cap: 0, skipped_qr_grace: 0, needs_qr: 0, err: 0, uazapi: 0 };
     const details: any[] = [];
+    const novosNeedsQr: string[] = []; // #3: chips que VIRARAM needs_qr nesta rodada (alerta)
 
     for (const c of chips || []) {
       // ── uazapi: só sincroniza estado, sem restart (reconexão é do provider) ──
@@ -113,23 +115,24 @@ Deno.serve(async (req) => {
 
       if (state === "close") {
         summary.close++; summary.needs_qr++;
-        await supabase.from("chip_auto_reconnect_log").insert({ chip_id: c.id, instance_name: c.instance_name, state_before: state, action: "needs_qr" });
-        details.push({ instance: c.instance_name, state, action: "needs_qr" });
+        // #2: loga needs_qr só na TRANSIÇÃO (estava não-close → virou close). Antes logava
+        // todo ciclo (5min) por chip morto = bloat (47k linhas). Agora ~1 por queda.
+        const transicao = c.connection_state !== "close";
+        if (transicao) {
+          await supabase.from("chip_auto_reconnect_log").insert({ chip_id: c.id, instance_name: c.instance_name, state_before: c.connection_state || "unknown", action: "needs_qr" });
+          novosNeedsQr.push(c.instance_name); // #3: alerta agregado no fim
+        }
+        details.push({ instance: c.instance_name, state, action: transicao ? "needs_qr" : "needs_qr_ja_logado" });
         continue;
       }
 
       if (state === "connecting") {
         summary.connecting++;
         if (restarted >= MAX_RESTARTS) { summary.skipped_cap++; details.push({ instance: c.instance_name, state, action: "skipped_cap" }); continue; }
-        const qrGraceCutoff = new Date(Date.now() - QR_GRACE_MIN * 60 * 1000).toISOString();
-        const { data: recentQr } = await supabase
-          .from("chip_auto_reconnect_log")
-          .select("id")
-          .eq("chip_id", c.id)
-          .eq("action", "needs_qr")
-          .gte("created_at", qrGraceCutoff)
-          .limit(1);
-        if (recentQr && recentQr.length) { summary.skipped_qr_grace++; details.push({ instance: c.instance_name, state, action: "skipped_qr_grace" }); continue; }
+        // Grace de pareamento: se o estado ANTERIOR era 'close' e agora está 'connecting',
+        // é alguém escaneando o QR → não reinicia (restart mata o pairing). Usa o estado
+        // anterior (c.connection_state), não mais o log (que agora só grava na transição).
+        if (c.connection_state === "close") { summary.skipped_qr_grace++; details.push({ instance: c.instance_name, state, action: "skipped_qr_grace" }); continue; }
         const { data: recent } = await supabase
           .from("chip_auto_reconnect_log")
           .select("id")
@@ -148,8 +151,21 @@ Deno.serve(async (req) => {
       }
     }
 
-    console.log("[chip-auto-reconnect]", JSON.stringify(summary));
-    return json({ ok: true, summary, details });
+    // #3: alerta agregado — chips que CAÍRAM nesta rodada precisam de QR. 1 msg pro grupo.
+    if (novosNeedsQr.length > 0) {
+      const lista = novosNeedsQr.map((n) => `• ${n}`).join("\n");
+      const texto = `⚠️ *Chip(s) precisam de QR* (caíram e precisam reconectar):\n${lista}\n\nReconecte em Disparos & Chips → escanear QR.`;
+      try {
+        await fetch(`${url}/message/sendText/${encodeURIComponent("Prospec-chapecó")}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", apikey: key },
+          body: JSON.stringify({ number: grupoJid, text: texto }),
+        });
+      } catch (e) { console.error("[chip-auto-reconnect] alerta QR falhou:", e); }
+    }
+
+    console.log("[chip-auto-reconnect]", JSON.stringify({ ...summary, alertou_qr: novosNeedsQr.length }));
+    return json({ ok: true, summary, details, novos_needs_qr: novosNeedsQr });
   } catch (e: any) {
     console.error("[chip-auto-reconnect] erro:", e?.message || e);
     return json({ error: String(e?.message || e) }, 500);
