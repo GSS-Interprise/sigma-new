@@ -39,10 +39,13 @@ Deno.serve(async (req) => {
     const { data: cfg } = await supabase
       .from("config_lista_items")
       .select("campo_nome, valor")
-      .in("campo_nome", ["evolution_api_url", "evolution_api_key", "report_grupo_jid"]);
+      .in("campo_nome", ["evolution_api_url", "evolution_api_key", "report_grupo_jid", "chip_qr_alerta_numeros"]);
     const url = cfg?.find((c: any) => c.campo_nome === "evolution_api_url")?.valor?.replace(/\/+$/, "");
     const key = cfg?.find((c: any) => c.campo_nome === "evolution_api_key")?.valor;
     const grupoJid = cfg?.find((c: any) => c.campo_nome === "report_grupo_jid")?.valor || "120363423136911817@g.us";
+    // Destinos extras do alerta de QR (além do grupo): números diretos, ex: Bruna. Configurável.
+    const qrNumerosRaw = cfg?.find((c: any) => c.campo_nome === "chip_qr_alerta_numeros")?.valor || "5547996968403";
+    const qrDestinos = [grupoJid, ...qrNumerosRaw.split(",").map((s: string) => s.trim()).filter(Boolean)];
     if (!url || !key) return json({ error: "Evolution não configurada" }, 500);
 
     // só as categorias da máquina de prospecção; pessoal_restrito/suporte ficam de fora
@@ -155,13 +158,16 @@ Deno.serve(async (req) => {
     if (novosNeedsQr.length > 0) {
       const lista = novosNeedsQr.map((n) => `• ${n}`).join("\n");
       const texto = `⚠️ *Chip(s) precisam de QR* (caíram e precisam reconectar):\n${lista}\n\nReconecte em Disparos & Chips → escanear QR.`;
-      try {
-        await fetch(`${url}/message/sendText/${encodeURIComponent("Prospec-chapecó")}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", apikey: key },
-          body: JSON.stringify({ number: grupoJid, text: texto }),
-        });
-      } catch (e) { console.error("[chip-auto-reconnect] alerta QR falhou:", e); }
+      // manda pro grupo E pros números diretos (ex: Bruna) — quem reconecta precisa ver
+      for (const dest of qrDestinos) {
+        try {
+          await fetch(`${url}/message/sendText/${encodeURIComponent("Prospec-chapecó")}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", apikey: key },
+            body: JSON.stringify({ number: dest, text: texto }),
+          });
+        } catch (e) { console.error(`[chip-auto-reconnect] alerta QR falhou (${dest}):`, e); }
+      }
     }
 
     console.log("[chip-auto-reconnect]", JSON.stringify({ ...summary, alertou_qr: novosNeedsQr.length }));
