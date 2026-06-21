@@ -32,6 +32,7 @@ import Noticias from "./pages/Noticias";
 import Parecer from "./pages/Parecer";
 import AtividadesCampo from "./pages/AtividadesCampo";
 import MinhasTarefas from "./pages/MinhasTarefas";
+import ChipsSaude from "./pages/ChipsSaude";
 import Contratos from "./pages/Contratos";
 import RelacionamentoMedico from "./pages/RelacionamentoMedico";
 import Medicos from "./pages/Medicos";
@@ -105,6 +106,7 @@ const App = () => (
             <Route path="/parecer" element={<ProtectedRoute><PermissionRoute adminOrLeader><Parecer /></PermissionRoute></ProtectedRoute>} />
             <Route path="/atividades-campo" element={<ProtectedRoute><PermissionRoute adminOrLeader><AtividadesCampo /></PermissionRoute></ProtectedRoute>} />
             <Route path="/tarefas" element={<ProtectedRoute><PermissionRoute modulo="disparos"><MinhasTarefas /></PermissionRoute></ProtectedRoute>} />
+            <Route path="/disparos/chips-saude" element={<ProtectedRoute><PermissionRoute modulo="disparos"><ChipsSaude /></PermissionRoute></ProtectedRoute>} />
             <Route path="/disparos/tarefas" element={<ProtectedRoute><PermissionRoute modulo="disparos"><DisparosCampanhas /></PermissionRoute></ProtectedRoute>} />
             <Route path="/marketing" element={<ProtectedRoute><PermissionRoute modulo="marketing"><Marketing /></PermissionRoute></ProtectedRoute>} />
             <Route path="/contratos" element={<ProtectedRoute><PermissionRoute modulo="contratos"><Contratos /></PermissionRoute></ProtectedRoute>} />

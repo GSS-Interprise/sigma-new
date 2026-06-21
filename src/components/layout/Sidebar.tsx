@@ -74,6 +74,7 @@ const navigationGroups: NavGroup[] = [
       { name: "Leads", href: "/leads", icon: UserSearch, modulo: "disparos" },
       { name: "Notícias", href: "/noticias", icon: Newspaper, modulo: "disparos" },
       { name: "Disparos & Chips", href: "/disparos", icon: Send, modulo: "disparos" },
+      { name: "Saúde dos Chips", href: "/disparos/chips-saude", icon: Activity, modulo: "disparos" },
     ],
   },
   {
