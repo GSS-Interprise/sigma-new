@@ -196,6 +196,29 @@ export function LicitacaoDetailDialog({
   const [salvandoConversao, setSalvandoConversao] = useState(false);
   // Estado para controle do dialog de descarte
   const [descarteDialogOpen, setDescarteDialogOpen] = useState(false);
+  const [isDuplicating, setIsDuplicating] = useState(false);
+
+  const handleDuplicarCard = useCallback(async () => {
+    if (!licitacao?.id || isDuplicating) return;
+    const tipoAtual = (licitacao.tipo_licitacao || "GSS").toUpperCase();
+    const tipoDestino = tipoAtual === "AGES" ? "GSS" : "AGES";
+    if (!confirm(`Duplicar este card para ${tipoDestino}? Os itens serão copiados.`)) return;
+    setIsDuplicating(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("licitacao-card-duplicator", {
+        body: { licitacao_id: licitacao.id, tipo_destino: tipoDestino },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      toast.success(`Card duplicado para ${tipoDestino}`);
+      qc.invalidateQueries({ queryKey: ["licitacoes"] });
+      qc.invalidateQueries({ queryKey: ["licitacao", licitacao.id] });
+    } catch (err: any) {
+      toast.error("Falha ao duplicar card", { description: err?.message ?? String(err) });
+    } finally {
+      setIsDuplicating(false);
+    }
+  }, [licitacao?.id, licitacao?.tipo_licitacao, isDuplicating]);
   const queryClient = useQueryClient();
   const { isAdmin, isLeader } = usePermissions();
   // Qualquer usuário autenticado pode alterar o tipo de licitação (GSS/AGES)
