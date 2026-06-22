@@ -1,18 +1,25 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { toast } from "sonner";
 
 /**
  * Alerta tarefas com horário definido: dispara toast quando faltam
  * ~10 minutos para o horário (janela 9–11 min). Cada tarefa só avisa
  * uma vez por sessão por dia.
  */
+export type TarefaHoraAlerta = {
+  id: string;
+  titulo: string;
+  data_limite_hora: string;
+  diff: number;
+};
+
 export function useTarefasHoraAlerta() {
   const { user } = useAuth();
 
   const hojeISO = new Date().toISOString().slice(0, 10);
+  const [pendentes, setPendentes] = useState<TarefaHoraAlerta[]>([]);
 
   const { data: tarefas = [] } = useQuery({
     queryKey: ["tarefas-hora-alerta", user?.id, hojeISO],
@@ -48,7 +55,10 @@ export function useTarefasHoraAlerta() {
   });
 
   useEffect(() => {
-    if (!tarefas.length) return;
+    if (!tarefas.length) {
+      setPendentes([]);
+      return;
+    }
     const storageKey = `tarefa-hora-alerta:${hojeISO}`;
     const avisadas: string[] = (() => {
       try {
@@ -61,38 +71,41 @@ export function useTarefasHoraAlerta() {
     const agora = new Date();
     const nowMin = agora.getHours() * 60 + agora.getMinutes();
 
-    let mudou = false;
+    const novosPendentes: TarefaHoraAlerta[] = [];
     for (const t of tarefas as any[]) {
-      if (avisadas.includes(t.id)) continue;
       const hora: string = t.data_limite_hora;
       const [hh, mm] = hora.split(":").map((n: string) => parseInt(n, 10));
       if (isNaN(hh) || isNaN(mm)) continue;
       const taskMin = hh * 60 + mm;
       const diff = taskMin - nowMin;
-      if (diff >= 8 && diff <= 11) {
-        toast.warning(`⏰ Tarefa em ${diff} min`, {
-          description: `${t.titulo} • ${hora.slice(0, 5)}`,
-          duration: 15000,
-        });
-        try {
-          if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-            new Notification(`Tarefa em ${diff} min`, { body: `${t.titulo} • ${hora.slice(0, 5)}` });
-          } else if (typeof Notification !== "undefined" && Notification.permission === "default") {
-            Notification.requestPermission();
+      // Janela: 0 a 15 min antes do horário => mostra modal grande
+      if (diff >= 0 && diff <= 15) {
+        novosPendentes.push({ id: t.id, titulo: t.titulo, data_limite_hora: hora, diff });
+        if (!avisadas.includes(t.id)) {
+          try {
+            if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+              new Notification(`Tarefa em ${diff} min`, { body: `${t.titulo} • ${hora.slice(0, 5)}` });
+            } else if (typeof Notification !== "undefined" && Notification.permission === "default") {
+              Notification.requestPermission();
+            }
+          } catch {
+            /* ignore */
           }
-        } catch {
-          /* ignore */
+          avisadas.push(t.id);
         }
-        avisadas.push(t.id);
-        mudou = true;
       }
     }
-    if (mudou) {
-      try {
-        sessionStorage.setItem(storageKey, JSON.stringify(avisadas));
-      } catch {
-        /* ignore */
-      }
+    try {
+      sessionStorage.setItem(storageKey, JSON.stringify(avisadas));
+    } catch {
+      /* ignore */
     }
+    setPendentes(novosPendentes);
   }, [tarefas, hojeISO]);
+
+  const dispensar = (id: string) => {
+    setPendentes((p) => p.filter((t) => t.id !== id));
+  };
+
+  return { pendentes, dispensar };
 }
