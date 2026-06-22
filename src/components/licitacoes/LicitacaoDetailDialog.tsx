@@ -432,6 +432,21 @@ export function LicitacaoDetailDialog({
       // Verificar se é a MESMA licitação (para decidir se podemos usar refs como fallback)
       const isSameLicitacao = lastLoadedIdRef.current === licitacao.id;
 
+      // CRÍTICO: Se é a MESMA licitação que já está carregada, NÃO sobrescrever o formData.
+      // Refetches do React Query (causados por notificações realtime, invalidações,
+      // mudanças de janela etc.) trazem o prop `licitacao` novo, e isso fazia o usuário
+      // perder tudo que estava digitando. Apenas atualizamos o updated_at do controle de
+      // concorrência para que o auto-save continue funcionando contra a versão mais nova.
+      if (isSameLicitacao) {
+        if (previousDataRef.current && licitacao.updated_at) {
+          previousDataRef.current = {
+            ...previousDataRef.current,
+            updated_at: licitacao.updated_at,
+          };
+        }
+        return;
+      }
+
       // Algumas queries (ex: listagens/kanban com select parcial) podem NÃO trazer certas colunas.
       // Nesses casos, o valor vem como `undefined` e não podemos sobrescrever o texto
       // já digitado/carregado no formulário (senão o campo "some" ao salvar/refetch).
