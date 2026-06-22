@@ -35,7 +35,9 @@ import {
   FileSignature,
   CheckCircle2,
   AlertCircle,
-  TrendingUp
+  TrendingUp,
+  Copy,
+  Link2
 } from "lucide-react";
 import { LicitacaoAnexosBar } from "./LicitacaoAnexosBar";
 import { LicitacaoComentarioAvancadoInput } from "./LicitacaoComentarioAvancadoInput";
