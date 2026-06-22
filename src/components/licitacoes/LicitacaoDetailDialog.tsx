@@ -1512,6 +1512,41 @@ export function LicitacaoDetailDialog({
                           Competitividade
                         </Button>
                       )}
+                      {!isNew && licitacao?.id && (
+                        licitacao?.card_gemeo_id ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2 text-xs gap-1"
+                            title="Abrir card gêmeo"
+                            onClick={() => {
+                              const gemeoId = licitacao.card_gemeo_id;
+                              if (!gemeoId) return;
+                              onOpenChange?.(false);
+                              setTimeout(() => {
+                                window.dispatchEvent(
+                                  new CustomEvent("open-licitacao", { detail: { id: gemeoId } }),
+                                );
+                              }, 50);
+                            }}
+                          >
+                            <Link2 className="h-3 w-3" />
+                            Card gêmeo ({(licitacao.tipo_licitacao || "GSS").toUpperCase() === "AGES" ? "GSS" : "AGES"})
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2 text-xs gap-1"
+                            disabled={isDuplicating}
+                            onClick={() => handleDuplicarCard()}
+                            title={`Duplicar para ${(licitacao.tipo_licitacao || "GSS").toUpperCase() === "AGES" ? "GSS" : "AGES"}`}
+                          >
+                            <Copy className="h-3 w-3" />
+                            {isDuplicating ? "Duplicando..." : `Duplicar ${(licitacao.tipo_licitacao || "GSS").toUpperCase() === "AGES" ? "→ GSS" : "→ AGES"}`}
+                          </Button>
+                        )
+                      )}
                       <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setEditando(true)}>
                         <Edit2 className="h-3 w-3" />
                       </Button>
