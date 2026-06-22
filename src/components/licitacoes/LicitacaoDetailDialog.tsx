@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -35,7 +36,9 @@ import {
   FileSignature,
   CheckCircle2,
   AlertCircle,
-  TrendingUp
+  TrendingUp,
+  Copy,
+  Link2
 } from "lucide-react";
 import { LicitacaoAnexosBar } from "./LicitacaoAnexosBar";
 import { LicitacaoComentarioAvancadoInput } from "./LicitacaoComentarioAvancadoInput";
@@ -194,6 +197,30 @@ export function LicitacaoDetailDialog({
   const [salvandoConversao, setSalvandoConversao] = useState(false);
   // Estado para controle do dialog de descarte
   const [descarteDialogOpen, setDescarteDialogOpen] = useState(false);
+  const [isDuplicating, setIsDuplicating] = useState(false);
+  const navigate = useNavigate();
+
+  const handleDuplicarCard = useCallback(async () => {
+    if (!licitacao?.id || isDuplicating) return;
+    const tipoAtual = (licitacao.tipo_licitacao || "GSS").toUpperCase();
+    const tipoDestino = tipoAtual === "AGES" ? "GSS" : "AGES";
+    if (!confirm(`Duplicar este card para ${tipoDestino}? Os itens serão copiados.`)) return;
+    setIsDuplicating(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("licitacao-card-duplicator", {
+        body: { licitacao_id: licitacao.id, tipo_destino: tipoDestino },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      toast.success(`Card duplicado para ${tipoDestino}`);
+      queryClient.invalidateQueries({ queryKey: ["licitacoes"] });
+      queryClient.invalidateQueries({ queryKey: ["licitacao", licitacao.id] });
+    } catch (err: any) {
+      toast.error("Falha ao duplicar card", { description: err?.message ?? String(err) });
+    } finally {
+      setIsDuplicating(false);
+    }
+  }, [licitacao?.id, licitacao?.tipo_licitacao, isDuplicating]);
   const queryClient = useQueryClient();
   const { isAdmin, isLeader } = usePermissions();
   // Qualquer usuário autenticado pode alterar o tipo de licitação (GSS/AGES)
@@ -1509,6 +1536,39 @@ export function LicitacaoDetailDialog({
                           <TrendingUp className="h-3 w-3" />
                           Competitividade
                         </Button>
+                      )}
+                      {!isNew && licitacao?.id && (
+                        licitacao?.card_gemeo_id ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2 text-xs gap-1"
+                            title="Abrir card gêmeo"
+                            onClick={() => {
+                              const gemeoId = licitacao.card_gemeo_id;
+                              if (!gemeoId) return;
+                              onOpenChange?.(false);
+                              setTimeout(() => {
+                                navigate(`/licitacoes?open=${gemeoId}`);
+                              }, 100);
+                            }}
+                          >
+                            <Link2 className="h-3 w-3" />
+                            Card gêmeo ({(licitacao.tipo_licitacao || "GSS").toUpperCase() === "AGES" ? "GSS" : "AGES"})
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2 text-xs gap-1"
+                            disabled={isDuplicating}
+                            onClick={() => handleDuplicarCard()}
+                            title={`Duplicar para ${(licitacao.tipo_licitacao || "GSS").toUpperCase() === "AGES" ? "GSS" : "AGES"}`}
+                          >
+                            <Copy className="h-3 w-3" />
+                            {isDuplicating ? "Duplicando..." : `Duplicar ${(licitacao.tipo_licitacao || "GSS").toUpperCase() === "AGES" ? "→ GSS" : "→ AGES"}`}
+                          </Button>
+                        )
                       )}
                       <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setEditando(true)}>
                         <Edit2 className="h-3 w-3" />

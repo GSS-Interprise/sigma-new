@@ -9944,6 +9944,7 @@ export type Database = {
           observacoes: string | null
           orgao: string
           prioridade: string | null
+          regiao_estado: string | null
           responsavel_id: string | null
           servicos_contrato: Json | null
           servicos_licitacao: Json | null
@@ -9987,6 +9988,7 @@ export type Database = {
           observacoes?: string | null
           orgao: string
           prioridade?: string | null
+          regiao_estado?: string | null
           responsavel_id?: string | null
           servicos_contrato?: Json | null
           servicos_licitacao?: Json | null
@@ -10030,6 +10032,7 @@ export type Database = {
           observacoes?: string | null
           orgao?: string
           prioridade?: string | null
+          regiao_estado?: string | null
           responsavel_id?: string | null
           servicos_contrato?: Json | null
           servicos_licitacao?: Json | null
