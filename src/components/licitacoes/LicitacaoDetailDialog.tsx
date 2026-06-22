@@ -211,8 +211,8 @@ export function LicitacaoDetailDialog({
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
       toast.success(`Card duplicado para ${tipoDestino}`);
-      qc.invalidateQueries({ queryKey: ["licitacoes"] });
-      qc.invalidateQueries({ queryKey: ["licitacao", licitacao.id] });
+      queryClient.invalidateQueries({ queryKey: ["licitacoes"] });
+      queryClient.invalidateQueries({ queryKey: ["licitacao", licitacao.id] });
     } catch (err: any) {
       toast.error("Falha ao duplicar card", { description: err?.message ?? String(err) });
     } finally {
