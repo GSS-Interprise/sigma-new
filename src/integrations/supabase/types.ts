@@ -1151,6 +1151,13 @@ export type Database = {
             referencedColumns: ["chip_id"]
           },
           {
+            foreignKeyName: "aquecedor_par_chip_a_id_fkey"
+            columns: ["chip_a_id"]
+            isOneToOne: false
+            referencedRelation: "vw_chip_saude"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "aquecedor_par_chip_b_id_fkey"
             columns: ["chip_b_id"]
             isOneToOne: false
@@ -1177,6 +1184,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "vw_chip_performance_7d"
             referencedColumns: ["chip_id"]
+          },
+          {
+            foreignKeyName: "aquecedor_par_chip_b_id_fkey"
+            columns: ["chip_b_id"]
+            isOneToOne: false
+            referencedRelation: "vw_chip_saude"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -1911,6 +1925,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "vw_chip_performance_7d"
             referencedColumns: ["chip_id"]
+          },
+          {
+            foreignKeyName: "campanha_lead_touches_chip_usado_id_fkey"
+            columns: ["chip_usado_id"]
+            isOneToOne: false
+            referencedRelation: "vw_chip_saude"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "campanha_lead_touches_contato_usado_id_fkey"
@@ -2928,6 +2949,13 @@ export type Database = {
             referencedColumns: ["chip_id"]
           },
           {
+            foreignKeyName: "campanhas_chip_fallback_id_fkey"
+            columns: ["chip_fallback_id"]
+            isOneToOne: false
+            referencedRelation: "vw_chip_saude"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "campanhas_chip_id_fkey"
             columns: ["chip_id"]
             isOneToOne: false
@@ -2954,6 +2982,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "vw_chip_performance_7d"
             referencedColumns: ["chip_id"]
+          },
+          {
+            foreignKeyName: "campanhas_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: false
+            referencedRelation: "vw_chip_saude"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "campanhas_especialidade_id_fkey"
@@ -3461,6 +3496,13 @@ export type Database = {
             referencedRelation: "vw_chip_performance_7d"
             referencedColumns: ["chip_id"]
           },
+          {
+            foreignKeyName: "chip_health_event_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: false
+            referencedRelation: "vw_chip_saude"
+            referencedColumns: ["id"]
+          },
         ]
       }
       chip_persona: {
@@ -3547,6 +3589,13 @@ export type Database = {
             referencedRelation: "vw_chip_performance_7d"
             referencedColumns: ["chip_id"]
           },
+          {
+            foreignKeyName: "chip_persona_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: true
+            referencedRelation: "vw_chip_saude"
+            referencedColumns: ["id"]
+          },
         ]
       }
       chip_provider_secrets: {
@@ -3602,6 +3651,13 @@ export type Database = {
             isOneToOne: true
             referencedRelation: "vw_chip_performance_7d"
             referencedColumns: ["chip_id"]
+          },
+          {
+            foreignKeyName: "chip_provider_secrets_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: true
+            referencedRelation: "vw_chip_saude"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -3667,6 +3723,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "vw_chip_performance_7d"
             referencedColumns: ["chip_id"]
+          },
+          {
+            foreignKeyName: "chip_receive_log_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: false
+            referencedRelation: "vw_chip_saude"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -3747,6 +3810,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "vw_chip_performance_7d"
             referencedColumns: ["chip_id"]
+          },
+          {
+            foreignKeyName: "chip_send_log_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: false
+            referencedRelation: "vw_chip_saude"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -3839,6 +3909,13 @@ export type Database = {
             isOneToOne: true
             referencedRelation: "vw_chip_performance_7d"
             referencedColumns: ["chip_id"]
+          },
+          {
+            foreignKeyName: "chip_state_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: true
+            referencedRelation: "vw_chip_saude"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -5707,6 +5784,13 @@ export type Database = {
             referencedColumns: ["chip_id"]
           },
           {
+            foreignKeyName: "disparo_manual_envios_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
+            referencedRelation: "vw_chip_saude"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "disparo_manual_envios_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
@@ -5910,6 +5994,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "vw_chip_performance_7d"
             referencedColumns: ["chip_id"]
+          },
+          {
+            foreignKeyName: "disparos_campanhas_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: false
+            referencedRelation: "vw_chip_saude"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -6195,6 +6286,13 @@ export type Database = {
             referencedColumns: ["chip_id"]
           },
           {
+            foreignKeyName: "disparos_log_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: false
+            referencedRelation: "vw_chip_saude"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "disparos_log_disparo_programado_id_fkey"
             columns: ["disparo_programado_id"]
             isOneToOne: false
@@ -6295,6 +6393,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "vw_chip_performance_7d"
             referencedColumns: ["chip_id"]
+          },
+          {
+            foreignKeyName: "disparos_programados_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: false
+            referencedRelation: "vw_chip_saude"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -7960,6 +8065,13 @@ export type Database = {
             isOneToOne: true
             referencedRelation: "vw_chip_performance_7d"
             referencedColumns: ["chip_id"]
+          },
+          {
+            foreignKeyName: "instance_proxy_settings_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: true
+            referencedRelation: "vw_chip_saude"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -13483,6 +13595,13 @@ export type Database = {
             referencedRelation: "vw_chip_performance_7d"
             referencedColumns: ["chip_id"]
           },
+          {
+            foreignKeyName: "sigzap_instances_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: false
+            referencedRelation: "vw_chip_saude"
+            referencedColumns: ["id"]
+          },
         ]
       }
       sigzap_messages: {
@@ -15449,6 +15568,23 @@ export type Database = {
           instance_name: string | null
           pode_disparar: boolean | null
           ultimo_disparo: string | null
+        }
+        Relationships: []
+      }
+      vw_chip_saude: {
+        Row: {
+          categoria_uso: string | null
+          connection_state: string | null
+          estado_desde: string | null
+          fase: string | null
+          health: number | null
+          id: string | null
+          nome: string | null
+          pode_disparar: boolean | null
+          provedor: string | null
+          quedas_24h: number | null
+          ultima_queda: string | null
+          usavel: boolean | null
         }
         Relationships: []
       }
