@@ -198,6 +198,7 @@ export function LicitacaoDetailDialog({
   // Estado para controle do dialog de descarte
   const [descarteDialogOpen, setDescarteDialogOpen] = useState(false);
   const [isDuplicating, setIsDuplicating] = useState(false);
+  const navigate = useNavigate();
 
   const handleDuplicarCard = useCallback(async () => {
     if (!licitacao?.id || isDuplicating) return;
