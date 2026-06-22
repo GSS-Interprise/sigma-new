@@ -57,6 +57,7 @@ import AdminImport from "./pages/AdminImport";
 import Notificacoes from "./pages/Notificacoes";
 import NotFound from "./pages/NotFound";
 import { AlertaDemandasAtrasadasModal } from "@/components/demandas/AlertaDemandasAtrasadasModal";
+import { AlertaTarefasHoraModal } from "@/components/demandas/AlertaTarefasHoraModal";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -78,6 +79,7 @@ const App = () => (
         <BrowserRouter>
           <AuthProvider>
             <AlertaDemandasAtrasadasModal />
+            <AlertaTarefasHoraModal />
             <Routes>
             <Route path="/auth" element={<Auth />} />
             <Route path="/reset-password" element={<ResetPassword />} />
