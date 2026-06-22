@@ -1208,28 +1208,64 @@ export function useSoftDeleteDemanda() {
   const { user } = useAuth();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (tarefaId: string) => {
+    mutationFn: async (
+      params:
+        | string
+        | { tarefaId: string; scope?: "single" | "serie"; recorrenciaId?: string | null },
+    ) => {
       if (!user?.id) throw new Error("Sem usuário autenticado");
-      const { error } = await supabase
-        .from("worklist_tarefas")
-        .update({ deleted_at: new Date().toISOString(), deleted_by: user.id } as any)
-        .eq("id", tarefaId);
-      if (error) throw error;
+      const tarefaId = typeof params === "string" ? params : params.tarefaId;
+      const scope = typeof params === "string" ? "single" : params.scope ?? "single";
+      const recorrenciaId =
+        typeof params === "string" ? null : params.recorrenciaId ?? null;
+
+      const nowIso = new Date().toISOString();
+
+      if (scope === "serie" && recorrenciaId) {
+        // Apaga todas tarefas (ativas) da série
+        const { error: errTarefas } = await supabase
+          .from("worklist_tarefas")
+          .update({ deleted_at: nowIso, deleted_by: user.id } as any)
+          .eq("recorrencia_id", recorrenciaId)
+          .is("deleted_at", null);
+        if (errTarefas) throw errTarefas;
+
+        // Desativa a regra de recorrência para não gerar novas
+        try {
+          await supabase
+            .from("worklist_tarefa_recorrencias" as any)
+            .update({ ativo: false } as any)
+            .eq("id", recorrenciaId);
+        } catch {
+          /* opcional */
+        }
+      } else {
+        const { error } = await supabase
+          .from("worklist_tarefas")
+          .update({ deleted_at: nowIso, deleted_by: user.id } as any)
+          .eq("id", tarefaId);
+        if (error) throw error;
+      }
       try {
         await supabase.from("worklist_tarefa_atividades" as any).insert({
           tarefa_id: tarefaId,
           user_id: user.id,
           tipo: "exclusao",
-          resumo: "Tarefa removida (soft delete)",
-          detalhes: {},
+          resumo:
+            scope === "serie"
+              ? "Recorrência removida (soft delete da série)"
+              : "Tarefa removida (soft delete)",
+          detalhes: { scope, recorrencia_id: recorrenciaId },
         } as any);
       } catch {
         /* atividade é opcional */
       }
-      return tarefaId;
+      return { tarefaId, scope };
     },
-    onSuccess: () => {
-      toast.success("Tarefa removida");
+    onSuccess: (res) => {
+      toast.success(
+        res.scope === "serie" ? "Recorrência removida" : "Tarefa removida",
+      );
       qc.invalidateQueries({ queryKey: ["demandas"] });
     },
     onError: (e: any) => toast.error(e.message ?? "Erro ao remover tarefa"),

@@ -343,16 +343,48 @@ export function TarefaCard({ tarefa, onConcluir, onReabrir, onClick, compact }: 
               <AlertDialogDescription>
                 A tarefa <b>{tarefa.titulo}</b> sairá da sua tela. O histórico
                 permanece no banco e pode ser recuperado por um administrador.
+                {tarefa.recorrencia_id && (
+                  <>
+                    {" "}
+                    Esta é uma tarefa <b>recorrente</b> — escolha se quer remover
+                    apenas esta ocorrência ou toda a série.
+                  </>
+                )}
               </AlertDialogDescription>
             </AlertDialogHeader>
-            <AlertDialogFooter>
+            <AlertDialogFooter className="flex-wrap gap-2">
               <AlertDialogCancel>Cancelar</AlertDialogCancel>
-              <AlertDialogAction
-                className="bg-red-600 hover:bg-red-700 text-white"
-                onClick={() => softDelete.mutate(tarefa.id)}
-              >
-                Excluir
-              </AlertDialogAction>
+              {tarefa.recorrencia_id ? (
+                <>
+                  <AlertDialogAction
+                    className="bg-red-600 hover:bg-red-700 text-white"
+                    onClick={() =>
+                      softDelete.mutate({ tarefaId: tarefa.id, scope: "single" })
+                    }
+                  >
+                    Só esta
+                  </AlertDialogAction>
+                  <AlertDialogAction
+                    className="bg-red-700 hover:bg-red-800 text-white"
+                    onClick={() =>
+                      softDelete.mutate({
+                        tarefaId: tarefa.id,
+                        scope: "serie",
+                        recorrenciaId: tarefa.recorrencia_id,
+                      })
+                    }
+                  >
+                    Toda a recorrência
+                  </AlertDialogAction>
+                </>
+              ) : (
+                <AlertDialogAction
+                  className="bg-red-600 hover:bg-red-700 text-white"
+                  onClick={() => softDelete.mutate({ tarefaId: tarefa.id })}
+                >
+                  Excluir
+                </AlertDialogAction>
+              )}
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
