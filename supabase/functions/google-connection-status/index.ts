@@ -6,6 +6,7 @@ import {
   isDWDConfigured,
   getWorkspaceDomains,
   validateDWDConfig,
+  getImpersonatedAccessToken,
 } from '../_shared/google-sa.ts'
 
 Deno.serve(async (req) => {
@@ -51,7 +52,26 @@ Deno.serve(async (req) => {
     const hasAnyDwdEnv =
       !!Deno.env.get('GOOGLE_SERVICE_ACCOUNT_JSON') ||
       !!Deno.env.get('GOOGLE_WORKSPACE_DOMAIN')
-    if (dwdEligible) {
+    let dwdFailure: string | null = null
+    if (dwdEligible && validation.ok) {
+      try {
+        await getImpersonatedAccessToken(email!)
+        return new Response(
+          JSON.stringify({
+            mode: 'dwd',
+            connected: true,
+            email,
+            hasConfig: true,
+            dwdConfigured: true,
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        )
+      } catch (e: any) {
+        dwdFailure = e?.message ?? 'dwd_exchange_failed'
+        console.warn('DWD status check failed, allowing OAuth fallback:', dwdFailure)
+      }
+    }
+    if (dwdEligible && !dwdFailure && validation.ok) {
       return new Response(
         JSON.stringify({
           mode: 'dwd',
@@ -70,8 +90,15 @@ Deno.serve(async (req) => {
         email: tok?.google_email ?? null,
         hasConfig: !!cfg,
         dwdConfigured: isDWDConfigured(),
-        dwdIntendedButInvalid: hasAnyDwdEnv && !validation.ok,
-        dwdIssues: hasAnyDwdEnv ? validation.issues : [],
+        dwdIntendedButInvalid: hasAnyDwdEnv && (!validation.ok || (!!dwdFailure && !tok)),
+        dwdIssues: hasAnyDwdEnv
+          ? [
+              ...validation.issues,
+              ...(dwdFailure && !tok
+                ? [{ code: 'dwd_exchange_failed', message: `Falha ao validar DWD: ${dwdFailure}` }]
+                : []),
+            ]
+          : [],
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     )

@@ -15,6 +15,41 @@ export interface GCalEvent {
   conferenceData?: any;
 }
 
+async function readFunctionError(error: any) {
+  const status = error?.context?.status;
+  let body = "";
+  try {
+    body = typeof error?.context?.text === "function" ? await error.context.text() : "";
+  } catch {
+    body = "";
+  }
+  const message = `${error?.message ?? ""} ${status ?? ""} ${body}`;
+  return {
+    status,
+    message,
+    isReconnectRequired:
+      status === 412 ||
+      status === 401 ||
+      message.includes("not_connected") ||
+      message.includes("no_refresh_token") ||
+      message.includes("no_config") ||
+      message.includes("refresh_failed"),
+  };
+}
+
+function markGoogleDisconnected(qc: ReturnType<typeof useQueryClient>) {
+  qc.setQueryData(["google-calendar-connection"], (prev: any) => ({
+    ...(prev ?? {}),
+    connected: false,
+    needsReauth: true,
+  }));
+  qc.invalidateQueries({ queryKey: ["google-calendar-connection"] });
+  toast.warning(
+    "Sua conexão com o Google expirou. Faça login novamente para ver a agenda.",
+    { id: "google-reauth" },
+  );
+}
+
 export function useGoogleConnection() {
   return useQuery({
     queryKey: ["google-calendar-connection"],
@@ -126,24 +161,16 @@ export function useGoogleCalendarEvents(
         body: { timeMin: timeMin.toISOString(), timeMax: timeMax.toISOString() },
       });
       if (error) {
-        const msg = `${(error as any)?.message ?? ""} ${JSON.stringify((error as any)?.context ?? {})}`;
-        const isNotConnected = msg.includes("not_connected") || msg.includes("412");
-        const isUnauthorized = msg.includes("unauthorized") || msg.includes("401");
-        if (isNotConnected || isUnauthorized) {
-          // Token Google expirou ou foi revogado — marca como desconectado e pede re-login
-          qc.setQueryData(["google-calendar-connection"], (prev: any) => ({
-            ...(prev ?? {}),
-            connected: false,
-            needsReauth: true,
-          }));
-          qc.invalidateQueries({ queryKey: ["google-calendar-connection"] });
-          toast.warning(
-            "Sua conexão com o Google expirou. Faça login novamente para ver a agenda.",
-            { id: "google-reauth" },
-          );
+        const details = await readFunctionError(error);
+        if (details.isReconnectRequired) {
+          markGoogleDisconnected(qc);
           return [];
         }
         throw error;
+      }
+      if (data?.needsReauth) {
+        markGoogleDisconnected(qc);
+        return [];
       }
       return (data?.events ?? []) as GCalEvent[];
     },

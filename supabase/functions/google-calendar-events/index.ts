@@ -30,7 +30,20 @@ Deno.serve(async (req) => {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   } catch (e: any) {
-    const status = e.message === 'unauthorized' ? 401 : e.message === 'not_connected' ? 412 : 500
+    const message = e?.message ?? 'unknown_error'
+    if (
+      message === 'not_connected' ||
+      message === 'no_refresh_token' ||
+      message === 'no_config' ||
+      message.startsWith('refresh_failed:')
+    ) {
+      return new Response(JSON.stringify({ events: [], connected: false, needsReauth: true, error: message }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    const status = message === 'unauthorized' ? 401 : 500
     return new Response(JSON.stringify({ error: e.message }), {
       status, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
