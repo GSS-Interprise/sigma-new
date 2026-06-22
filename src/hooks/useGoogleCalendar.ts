@@ -117,6 +117,7 @@ export function useGoogleCalendarEvents(
   timeMin: Date,
   timeMax: Date,
 ) {
+  const qc = useQueryClient();
   return useQuery({
     queryKey: ["google-calendar-events", timeMin.toISOString(), timeMax.toISOString()],
     enabled,
@@ -125,9 +126,21 @@ export function useGoogleCalendarEvents(
         body: { timeMin: timeMin.toISOString(), timeMax: timeMax.toISOString() },
       });
       if (error) {
-        // 412 = conta Google ainda não conectada — trate como "sem eventos"
         const msg = `${(error as any)?.message ?? ""} ${JSON.stringify((error as any)?.context ?? {})}`;
-        if (msg.includes("not_connected") || msg.includes("412")) {
+        const isNotConnected = msg.includes("not_connected") || msg.includes("412");
+        const isUnauthorized = msg.includes("unauthorized") || msg.includes("401");
+        if (isNotConnected || isUnauthorized) {
+          // Token Google expirou ou foi revogado — marca como desconectado e pede re-login
+          qc.setQueryData(["google-calendar-connection"], (prev: any) => ({
+            ...(prev ?? {}),
+            connected: false,
+            needsReauth: true,
+          }));
+          qc.invalidateQueries({ queryKey: ["google-calendar-connection"] });
+          toast.warning(
+            "Sua conexão com o Google expirou. Faça login novamente para ver a agenda.",
+            { id: "google-reauth" },
+          );
           return [];
         }
         throw error;
