@@ -115,12 +115,24 @@ export default function Licitacoes() {
     if (openLicitacaoId && licitacoes) {
       const licitacaoToOpen = licitacoes.find((l) => l.id === openLicitacaoId);
       if (licitacaoToOpen) {
-        setSelectedLicitacao(licitacaoToOpen);
-        setIsNewEdital(false);
-        setDetailDialogOpen(true);
-        // Limpar o parâmetro da URL após abrir
-        searchParams.delete("open");
-        setSearchParams(searchParams, { replace: true });
+        // Buscar colunas pesadas (decorrencia_analise, objeto, etc.) antes de abrir
+        (async () => {
+          try {
+            const { data: heavy } = await supabase
+              .from("licitacoes")
+              .select("objeto,decorrencia_analise,objeto_contrato,observacoes")
+              .eq("id", openLicitacaoId)
+              .single();
+            setSelectedLicitacao({ ...licitacaoToOpen, ...(heavy || {}) } as any);
+          } catch {
+            setSelectedLicitacao(licitacaoToOpen);
+          }
+          setIsNewEdital(false);
+          setDetailDialogOpen(true);
+          // Limpar o parâmetro da URL após abrir
+          searchParams.delete("open");
+          setSearchParams(searchParams, { replace: true });
+        })();
       }
     }
   }, [searchParams, licitacoes, setSearchParams]);
