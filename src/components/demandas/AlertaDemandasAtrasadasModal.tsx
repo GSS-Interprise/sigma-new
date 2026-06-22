@@ -5,7 +5,6 @@ import { ptBR } from "date-fns/locale";
 import { AlertTriangle, ArrowRight, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useDemandasAtrasadas } from "@/hooks/useDemandasAtrasadas";
-import { useTarefasHoraAlerta } from "@/hooks/useTarefasHoraAlerta";
 import { usePendenciasSetor } from "@/hooks/useDemandas";
 import { useUserSetor } from "@/hooks/useUserSetor";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -23,7 +22,6 @@ const SNOOZE_KEY = "demandas-atrasadas-modal:last-shown";
  * relógio dos 40 min, mas o card no kanban continua piscando.
  */
 export function AlertaDemandasAtrasadasModal() {
-  useTarefasHoraAlerta();
   const { user } = useAuth();
   const location = useLocation();
   const { data: atrasadas = [] } = useDemandasAtrasadas();
