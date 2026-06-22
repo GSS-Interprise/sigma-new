@@ -124,10 +124,18 @@ export function useGoogleCalendarEvents(
       const { data, error } = await supabase.functions.invoke("google-calendar-events", {
         body: { timeMin: timeMin.toISOString(), timeMax: timeMax.toISOString() },
       });
-      if (error) throw error;
+      if (error) {
+        // 412 = conta Google ainda não conectada — trate como "sem eventos"
+        const msg = `${(error as any)?.message ?? ""} ${JSON.stringify((error as any)?.context ?? {})}`;
+        if (msg.includes("not_connected") || msg.includes("412")) {
+          return [];
+        }
+        throw error;
+      }
       return (data?.events ?? []) as GCalEvent[];
     },
     staleTime: 60_000,
+    retry: false,
   });
 }
 
