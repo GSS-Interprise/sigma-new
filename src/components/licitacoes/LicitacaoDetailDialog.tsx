@@ -1547,10 +1547,11 @@ export function LicitacaoDetailDialog({
                               if (!gemeoId) return;
                               onOpenChange?.(false);
                               setTimeout(() => {
-                                window.dispatchEvent(
-                                  new CustomEvent("open-licitacao", { detail: { id: gemeoId } }),
-                                );
-                              }, 50);
+                                const url = new URL(window.location.href);
+                                url.searchParams.set("open", String(gemeoId));
+                                window.history.replaceState({}, "", url.toString());
+                                window.dispatchEvent(new PopStateEvent("popstate"));
+                              }, 100);
                             }}
                           >
                             <Link2 className="h-3 w-3" />
