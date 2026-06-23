@@ -592,6 +592,7 @@ Deno.serve(async (req) => {
         responsavel_id: body.responsavel_id,
         tipo_licitacao: body.tipo_licitacao || null,
         prioridade: body.prioridade || null,
+        decorrencia_analise: body.decorrencia_analise ?? body.decorrenciaAnalise ?? null,
       };
 
       if (existingLicitacao && isN8n) {
