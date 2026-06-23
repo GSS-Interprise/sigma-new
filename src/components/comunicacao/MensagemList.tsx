@@ -53,6 +53,8 @@ interface MensagemListProps {
   onUserNameClick?: (userId: string) => void;
   canalId?: string;
   isAdmin?: boolean;
+  /** Se o usuário atual é criador/admin do canal (pode apagar mensagens de outros). */
+  isChannelAdmin?: boolean;
   /** Se informado, dá scroll e destaca a mensagem assim que ela aparecer na lista. */
   targetMensagemId?: string | null;
   /** Disparado após realizar o scroll (para limpar o param da URL no pai). */
@@ -61,7 +63,7 @@ interface MensagemListProps {
 
 const EDIT_TIME_LIMIT_SECONDS = 300; // 5 minutos
 
-export function MensagemList({ mensagens, currentUserId, currentUserNome, reacoesByMensagem, onReply, onEdit, onDelete, onUserNameClick, canalId, isAdmin, targetMensagemId, onTargetMensagemHandled }: MensagemListProps) {
+export function MensagemList({ mensagens, currentUserId, currentUserNome, reacoesByMensagem, onReply, onEdit, onDelete, onUserNameClick, canalId, isAdmin, isChannelAdmin, targetMensagemId, onTargetMensagemHandled }: MensagemListProps) {
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [fileViewerOpen, setFileViewerOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -221,7 +223,7 @@ export function MensagemList({ mensagens, currentUserId, currentUserNome, reacoe
           const canEditMsg = canEdit(mensagem);
           const isEdited = wasEdited(mensagem);
           const isDeleted = !!mensagem.deleted_at;
-          const canDelete = !isDeleted && (mensagem.user_id === currentUserId || !!isAdmin);
+          const canDelete = !isDeleted && (mensagem.user_id === currentUserId || !!isAdmin || !!isChannelAdmin);
           const hideContent = isDeleted && !isAdmin;
 
           return (
