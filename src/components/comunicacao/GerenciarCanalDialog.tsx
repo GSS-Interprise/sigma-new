@@ -75,7 +75,8 @@ export function GerenciarCanalDialog({
     queryFn: async () => {
       const { data, error } = await supabase
         .from("profiles")
-        .select("id, nome_completo, email, setor_id")
+        .select("id, nome_completo, email, setor_id, status")
+        .eq("status", "ativo")
         .order("nome_completo");
 
       if (error) throw error;
@@ -286,7 +287,7 @@ export function GerenciarCanalDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-2xl h-[85vh] sm:h-[680px] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>Gerenciar Canal</DialogTitle>
           <DialogDescription>
