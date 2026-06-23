@@ -239,17 +239,8 @@ export function MensagemList({ mensagens, currentUserId, currentUserNome, reacoe
               {/* Action Buttons - visible on hover */}
               <div className={cn(
                 "mt-2 flex gap-1 opacity-60 group-hover:opacity-100 transition-opacity shrink-0",
-                isOwn ? "flex-row-reverse" : ""
+                isOwn ? "" : "flex-row-reverse order-2"
               )}>
-                {onReply && !isEditing && (
-                  <button
-                    onClick={() => onReply(mensagem)}
-                    className="p-1.5 rounded hover:bg-muted"
-                    title="Responder"
-                  >
-                    <Reply className="h-4 w-4 text-muted-foreground" />
-                  </button>
-                )}
                 {canEditMsg && !isEditing && !isDeleted && onEdit && (
                   <button
                     onClick={() => handleStartEdit(mensagem)}
@@ -270,6 +261,12 @@ export function MensagemList({ mensagens, currentUserId, currentUserNome, reacoe
                       </button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align={isOwn ? "end" : "start"} className="w-52">
+                      {onReply && (
+                        <DropdownMenuItem onClick={() => onReply(mensagem)}>
+                          <Reply className="h-4 w-4 mr-2" />
+                          Responder
+                        </DropdownMenuItem>
+                      )}
                       <DropdownMenuItem onClick={() => handleCriarDemandaDaMensagem(mensagem)}>
                         <ListTodo className="h-4 w-4 mr-2" />
                         Criar demanda dessa mensagem
