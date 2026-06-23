@@ -326,7 +326,7 @@ export function GerenciarCanalDialog({
             </div>
             
             {participantesFiltrados && participantesFiltrados.length > 0 ? (
-              <ScrollArea className="flex-1 max-h-[300px] pr-4">
+              <ScrollArea className="flex-1 pr-4">
                 <div className="space-y-2">
                   {participantesFiltrados.map((usuario) => {
                     const setor = setores?.find(s => s.id === usuario.setor_id);
@@ -395,7 +395,7 @@ export function GerenciarCanalDialog({
                 <div className="text-sm text-muted-foreground">
                   Selecione os usuários que deseja adicionar ao canal:
                 </div>
-                <div className="flex-1 max-h-[280px] overflow-y-auto border rounded-lg pr-1">
+                <div className="flex-1 overflow-y-auto border rounded-lg pr-1">
                   <div className="space-y-2">
                     {usuariosFiltrados.map((usuario) => {
                       const setor = setores?.find(s => s.id === usuario.setor_id);
