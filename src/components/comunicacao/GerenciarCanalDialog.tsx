@@ -314,7 +314,7 @@ export function GerenciarCanalDialog({
           </TabsList>
 
           {/* Participantes Atuais */}
-          <TabsContent value="participantes-atuais" className="flex-1 overflow-hidden flex flex-col gap-3 mt-4">
+          <TabsContent value="participantes-atuais" className="flex-1 overflow-hidden data-[state=active]:flex data-[state=inactive]:hidden flex-col gap-3 mt-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -379,7 +379,7 @@ export function GerenciarCanalDialog({
           </TabsContent>
 
           {/* Adicionar Participantes */}
-          <TabsContent value="adicionar" className="flex-1 overflow-hidden flex flex-col gap-3 mt-4">
+          <TabsContent value="adicionar" className="flex-1 overflow-hidden data-[state=active]:flex data-[state=inactive]:hidden flex-col gap-3 mt-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -465,7 +465,7 @@ export function GerenciarCanalDialog({
           </TabsContent>
 
           {/* Informações */}
-          <TabsContent value="info" className="flex-1 space-y-4 mt-4">
+          <TabsContent value="info" className="flex-1 overflow-y-auto space-y-4 mt-4">
             <div className="space-y-2">
               <Label htmlFor="canal-nome">Nome do Canal *</Label>
               <Input
