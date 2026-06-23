@@ -323,23 +323,33 @@ export function useDemandasTodas() {
 }
 
 export function usePendenciasSetor(setorId: string | null | undefined, isAdmin = false) {
-  // Para admin: setorId pode ser usado como override (filtrar 1 setor) ou
-  // undefined/null → mostrar todos os setores.
+  // Mostra apenas tarefas em que o usuário está envolvido (criador, responsável
+  // ou mencionado). Admin enxerga tudo. RLS de worklist_tarefas faz o filtro.
   return useQuery({
     queryKey: ["demandas", "pendencias-setor", setorId ?? null, isAdmin],
     enabled: !!setorId || isAdmin,
     queryFn: async () => {
-      let q: any = supabase.from("vw_worklist_pendencias_setor" as any).select("*");
-      if (isAdmin) {
-        if (setorId) q = q.eq("setor_id", setorId);
-      } else if (setorId) {
-        q = q.eq("setor_id", setorId);
-      }
+      let q: any = supabase
+        .from("worklist_tarefas")
+        .select("id, setor_destino_id, modulo, recurso_id, titulo, descricao, urgencia, data_limite, created_at")
+        .is("deleted_at", null)
+        .neq("status", "concluida");
+      if (setorId) q = q.eq("setor_destino_id", setorId);
       const { data, error } = await q
-        .order("referencia_data", { ascending: true, nullsFirst: false })
+        .order("data_limite", { ascending: true, nullsFirst: false })
         .limit(200);
       if (error) throw error;
-      return (data || []) as unknown as Array<{
+      return ((data || []) as any[]).map((r) => ({
+        id: r.id,
+        setor_id: r.setor_destino_id,
+        origem: r.modulo,
+        recurso_id: r.recurso_id,
+        titulo: r.titulo,
+        descricao: r.descricao,
+        urgencia: r.urgencia,
+        referencia_data: r.data_limite ?? r.created_at,
+        link: "",
+      })) as Array<{
         id: string;
         setor_id: string;
         origem: string;
