@@ -289,7 +289,7 @@ export function MensagemList({ mensagens, currentUserId, currentUserNome, reacoe
                 )}
               </div>
 
-              <div className="flex flex-col min-w-0">
+              <div className={cn("flex flex-col min-w-0", !isOwn && "order-1")}>
                 {!isOwn && (
                   <button
                     onClick={() => onUserNameClick?.(mensagem.user_id)}
