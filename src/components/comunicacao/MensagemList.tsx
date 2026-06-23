@@ -232,7 +232,7 @@ export function MensagemList({ mensagens, currentUserId, currentUserNome, reacoe
               ref={(el) => setMessageRef(mensagem.id, el)}
               className={cn(
                 "flex items-start gap-0.5 max-w-[75%] group transition-all duration-500",
-                isOwn ? "ml-auto flex-row-reverse" : "mr-auto",
+                isOwn ? "ml-auto" : "mr-auto",
                 highlightedId === mensagem.id && "ring-2 ring-primary ring-offset-2 rounded-lg"
               )}
             >
