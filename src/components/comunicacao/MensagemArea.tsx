@@ -448,6 +448,7 @@ export function MensagemArea({ canalId, onOpenDM, targetMensagemId, onTargetMens
           onEdit={handleEdit}
           onDelete={handleDelete}
           isAdmin={isAdmin}
+          isChannelAdmin={!!user?.id && canal?.criado_por === user.id}
           onUserNameClick={onOpenDM}
           canalId={canalId}
           targetMensagemId={targetMensagemId}
