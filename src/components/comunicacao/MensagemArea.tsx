@@ -316,6 +316,27 @@ export function MensagemArea({ canalId, onOpenDM, targetMensagemId, onTargetMens
     },
   });
 
+  const apagarMensagemMutation = useMutation({
+    mutationFn: async (mensagemId: string) => {
+      const { error } = await supabase
+        .from("comunicacao_mensagens")
+        .update({ deleted_at: new Date().toISOString() })
+        .eq("id", mensagemId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["mensagens", canalId] });
+      toast({ title: "Mensagem apagada para todos" });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Erro ao apagar mensagem",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleReply = (mensagem: { id: string; user_nome: string; mensagem: string }) => {
     setReplyingTo({
       id: mensagem.id,
@@ -326,6 +347,10 @@ export function MensagemArea({ canalId, onOpenDM, targetMensagemId, onTargetMens
 
   const handleEdit = (mensagemId: string, novoTexto: string) => {
     editarMensagemMutation.mutate({ mensagemId, novoTexto });
+  };
+
+  const handleDelete = (mensagemId: string) => {
+    apagarMensagemMutation.mutate(mensagemId);
   };
 
   const handleCanalDeleted = () => {
@@ -421,6 +446,8 @@ export function MensagemArea({ canalId, onOpenDM, targetMensagemId, onTargetMens
           reacoesByMensagem={reacoesByMensagem}
           onReply={handleReply}
           onEdit={handleEdit}
+          onDelete={handleDelete}
+          isAdmin={isAdmin}
           onUserNameClick={onOpenDM}
           canalId={canalId}
           targetMensagemId={targetMensagemId}

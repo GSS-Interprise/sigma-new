@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { format, differenceInSeconds } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
-import { Check, CheckCheck, Paperclip, Reply, Pencil, X, Check as CheckIcon, FileText, Download, Play, MoreVertical, ListTodo } from "lucide-react";
+import { Check, CheckCheck, Paperclip, Reply, Pencil, X, Check as CheckIcon, FileText, Download, Play, MoreVertical, ListTodo, Trash2, Ban } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ComunicacaoFileViewerDialog } from "./ComunicacaoFileViewerDialog";
@@ -38,6 +38,7 @@ interface Mensagem {
   data_envio: string;
   updated_at?: string;
   reply_to_id?: string | null;
+  deleted_at?: string | null;
   comunicacao_leituras?: Array<{ user_id: string; data_leitura: string }>;
 }
 
@@ -48,8 +49,10 @@ interface MensagemListProps {
   reacoesByMensagem?: Record<string, Reacao[]>;
   onReply?: (mensagem: Mensagem) => void;
   onEdit?: (mensagemId: string, novoTexto: string) => void;
+  onDelete?: (mensagemId: string) => void;
   onUserNameClick?: (userId: string) => void;
   canalId?: string;
+  isAdmin?: boolean;
   /** Se informado, dá scroll e destaca a mensagem assim que ela aparecer na lista. */
   targetMensagemId?: string | null;
   /** Disparado após realizar o scroll (para limpar o param da URL no pai). */
@@ -58,7 +61,7 @@ interface MensagemListProps {
 
 const EDIT_TIME_LIMIT_SECONDS = 300; // 5 minutos
 
-export function MensagemList({ mensagens, currentUserId, currentUserNome, reacoesByMensagem, onReply, onEdit, onUserNameClick, canalId, targetMensagemId, onTargetMensagemHandled }: MensagemListProps) {
+export function MensagemList({ mensagens, currentUserId, currentUserNome, reacoesByMensagem, onReply, onEdit, onDelete, onUserNameClick, canalId, isAdmin, targetMensagemId, onTargetMensagemHandled }: MensagemListProps) {
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [fileViewerOpen, setFileViewerOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -217,6 +220,9 @@ export function MensagemList({ mensagens, currentUserId, currentUserNome, reacoe
           const isEditing = editingId === mensagem.id;
           const canEditMsg = canEdit(mensagem);
           const isEdited = wasEdited(mensagem);
+          const isDeleted = !!mensagem.deleted_at;
+          const canDelete = !isDeleted && (mensagem.user_id === currentUserId || !!isAdmin);
+          const hideContent = isDeleted && !isAdmin;
 
           return (
             <div
@@ -242,7 +248,7 @@ export function MensagemList({ mensagens, currentUserId, currentUserNome, reacoe
                     <Reply className="h-4 w-4 text-muted-foreground" />
                   </button>
                 )}
-                {canEditMsg && !isEditing && onEdit && (
+                {canEditMsg && !isEditing && !isDeleted && onEdit && (
                   <button
                     onClick={() => handleStartEdit(mensagem)}
                     className="p-1.5 rounded hover:bg-muted"
@@ -266,6 +272,19 @@ export function MensagemList({ mensagens, currentUserId, currentUserNome, reacoe
                         <ListTodo className="h-4 w-4 mr-2" />
                         Criar demanda dessa mensagem
                       </DropdownMenuItem>
+                      {canDelete && onDelete && (
+                        <DropdownMenuItem
+                          onClick={() => {
+                            if (window.confirm("Apagar esta mensagem para todos? Ela ficará oculta para os usuários, mas os administradores ainda poderão visualizá-la.")) {
+                              onDelete(mensagem.id);
+                            }
+                          }}
+                          className="text-destructive focus:text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Apagar para todos
+                        </DropdownMenuItem>
+                      )}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 )}
@@ -353,13 +372,26 @@ export function MensagemList({ mensagens, currentUserId, currentUserNome, reacoe
                         </Button>
                       </div>
                     </div>
+                  ) : hideContent ? (
+                    <p className="whitespace-pre-wrap break-words italic opacity-70 flex items-center gap-1.5">
+                      <Ban className="h-3.5 w-3.5" />
+                      Esta mensagem foi apagada
+                    </p>
                   ) : (
+                    <>
+                      {isDeleted && isAdmin && (
+                        <div className="mb-1 flex items-center gap-1 text-[10px] uppercase tracking-wide font-semibold text-destructive">
+                          <Ban className="h-3 w-3" />
+                          Apagada — visível apenas para ADM
+                        </div>
+                      )}
                     <p className="whitespace-pre-wrap break-words">
                       {renderMensagemComMencoes(mensagem.mensagem, isOwn)}
                     </p>
+                    </>
                   )}
                   
-                  {mensagem.anexos && mensagem.anexos.length > 0 && (
+                  {!hideContent && mensagem.anexos && mensagem.anexos.length > 0 && (
                     <div className="mt-2 space-y-2">
                       {mensagem.anexos.map((anexo, idx) => {
                         const fullFileName = anexo.split("/").pop() || `Anexo ${idx + 1}`;
