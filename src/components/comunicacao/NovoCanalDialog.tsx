@@ -42,7 +42,8 @@ export function NovoCanalDialog({ open, onOpenChange }: NovoCanalDialogProps) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("profiles")
-        .select("id, nome_completo, email, setor_id")
+        .select("id, nome_completo, email, setor_id, status")
+        .eq("status", "ativo")
         .order("nome_completo");
 
       if (error) throw error;
