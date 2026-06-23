@@ -592,6 +592,7 @@ Deno.serve(async (req) => {
         responsavel_id: body.responsavel_id,
         tipo_licitacao: body.tipo_licitacao || null,
         prioridade: body.prioridade || null,
+        decorrencia_analise: body.decorrencia_analise ?? body.decorrenciaAnalise ?? null,
       };
 
       if (existingLicitacao && isN8n) {
@@ -735,6 +736,8 @@ Deno.serve(async (req) => {
       if (body.responsavel_id) updateData.responsavel_id = body.responsavel_id;
       
       // Campos legados (compatibilidade)
+      if (body.decorrencia_analise !== undefined) updateData.decorrencia_analise = body.decorrencia_analise;
+      if (body.decorrenciaAnalise !== undefined) updateData.decorrencia_analise = body.decorrenciaAnalise;
       if (body.licitacaoCodigo) {
         updateData.licitacao_codigo = body.licitacaoCodigo;
         updateData.numero_edital = body.licitacaoCodigo;
@@ -824,6 +827,8 @@ Deno.serve(async (req) => {
       if (body.responsavel_id !== undefined) updateData.responsavel_id = body.responsavel_id;
       
       // Campos legados (camelCase - compatibilidade)
+      if (body.decorrencia_analise !== undefined) updateData.decorrencia_analise = body.decorrencia_analise;
+      if (body.decorrenciaAnalise !== undefined) updateData.decorrencia_analise = body.decorrenciaAnalise;
       if (body.licitacaoCodigo !== undefined) {
         updateData.licitacao_codigo = body.licitacaoCodigo;
         updateData.numero_edital = body.licitacaoCodigo;
