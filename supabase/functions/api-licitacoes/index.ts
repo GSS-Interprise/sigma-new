@@ -826,6 +826,8 @@ Deno.serve(async (req) => {
       if (body.responsavel_id !== undefined) updateData.responsavel_id = body.responsavel_id;
       
       // Campos legados (camelCase - compatibilidade)
+      if (body.decorrencia_analise !== undefined) updateData.decorrencia_analise = body.decorrencia_analise;
+      if (body.decorrenciaAnalise !== undefined) updateData.decorrencia_analise = body.decorrenciaAnalise;
       if (body.licitacaoCodigo !== undefined) {
         updateData.licitacao_codigo = body.licitacaoCodigo;
         updateData.numero_edital = body.licitacaoCodigo;
