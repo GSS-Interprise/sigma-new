@@ -26,6 +26,7 @@ import {
   RotateCcw,
   Repeat,
   Trash2,
+  Ticket,
 } from "lucide-react";
 import { format, isPast } from "date-fns";
 import { parseLocalDate } from "@/lib/dateUtils";
@@ -38,6 +39,9 @@ import { useAuth } from "@/contexts/AuthContext";
 import { extractMensagemLink } from "@/lib/mensagemLink";
 import { useNavigate } from "react-router-dom";
 import { useSoftDeleteDemanda } from "@/hooks/useDemandas";
+import { useIsTI } from "@/hooks/useIsTI";
+import { useState } from "react";
+import { TransformDemandaTicketDialog } from "@/components/suporte/TransformDemandaTicketDialog";
 
 interface Props {
   tarefa: DemandaTarefa;
@@ -63,6 +67,9 @@ export function TarefaCard({ tarefa, onConcluir, onReabrir, onClick, compact }: 
   const { user } = useAuth();
   const navigate = useNavigate();
   const softDelete = useSoftDeleteDemanda();
+  const { isTI } = useIsTI();
+  const [transformOpen, setTransformOpen] = useState(false);
+  const ticketId = (tarefa as any).ticket_id as string | null | undefined;
   const mensagemLink = extractMensagemLink(tarefa.descricao);
   const atrasada =
     tarefa.data_limite &&
@@ -121,6 +128,19 @@ export function TarefaCard({ tarefa, onConcluir, onReabrir, onClick, compact }: 
           {atrasada && (
             <Badge data-overdue-keep className="text-[10px] px-2 py-0.5 bg-rose-500/20 text-rose-300 border border-rose-500/40 font-bold tracking-wider uppercase">
               Atrasada
+            </Badge>
+          )}
+          {ticketId && (
+            <Badge
+              variant="outline"
+              className="text-[10px] px-1.5 py-0 gap-1 cursor-pointer hover:bg-primary/10"
+              title="Abrir ticket gerado"
+              onClick={(e) => {
+                e.stopPropagation();
+                navigate(`/suporte?ticket=${ticketId}`);
+              }}
+            >
+              <Ticket className="h-3 w-3" /> Ticket
             </Badge>
           )}
           {souFinalizador && tarefa.status !== "concluida" && !atrasada && (
@@ -388,6 +408,30 @@ export function TarefaCard({ tarefa, onConcluir, onReabrir, onClick, compact }: 
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+      )}
+
+      {isTI && !ticketId && tarefa.status !== "concluida" && (
+        <>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="absolute top-1 right-8 h-6 w-6 p-0 opacity-0 group-hover:opacity-100 bg-card/80 hover:bg-card hover:text-primary"
+            onClick={(e) => {
+              e.stopPropagation();
+              setTransformOpen(true);
+            }}
+            title="Transformar em ticket de suporte"
+          >
+            <Ticket className="h-3.5 w-3.5" />
+          </Button>
+          {transformOpen && (
+            <TransformDemandaTicketDialog
+              open={transformOpen}
+              onOpenChange={setTransformOpen}
+              demandaId={tarefa.id}
+            />
+          )}
+        </>
       )}
     </Card>
   );
