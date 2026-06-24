@@ -212,49 +212,10 @@ export function NovoTicketForm({ onSuccess }: NovoTicketFormProps) {
 
       if (error) throw error;
 
-      // Enviar email automático para o solicitante (sempre) e fornecedor externo (se aplicável)
-      try {
-        const { error: emailError } = await supabase.functions.invoke(
-          "send-support-email",
-          {
-            body: {
-              ticketId: ticket.id,
-              ticketNumero: ticket.numero,
-              solicitanteNome: ticket.solicitante_nome,
-              solicitanteEmail: profile.email,
-              setorNome: ticket.setor_nome || "Sem setor",
-              dataAbertura: ticket.data_abertura,
-              tipo: ticket.tipo,
-              destino: ticket.destino,
-              fornecedorExterno: ticket.fornecedor_externo || null,
-              descricao: ticket.descricao,
-              anexosCount: anexos.length,
-              anexos: anexos,
-            },
-          }
-        );
-
-        if (emailError) {
-          console.error("Erro ao enviar email:", emailError);
-          toast({
-            title: "Ticket criado com aviso",
-            description: `Ticket ${ticket.numero} criado, mas houve erro ao enviar emails de confirmação.`,
-            variant: "destructive",
-          });
-        } else {
-          const msgExtra = values.destino === "externo" ? " e para o fornecedor externo" : "";
-          toast({
-            title: "Sucesso!",
-            description: `Ticket ${ticket.numero} criado! Email de confirmação enviado${msgExtra}.`,
-          });
-        }
-      } catch (emailError) {
-        console.error("Erro ao invocar função de email:", emailError);
-        toast({
-          title: "Ticket criado",
-          description: `Ticket ${ticket.numero} criado com sucesso! Emails serão enviados em breve.`,
-        });
-      }
+      toast({
+        title: "Sucesso!",
+        description: `Ticket ${ticket.numero} criado. O email será enviado apenas quando o ticket aguardar sua confirmação ou for encerrado.`,
+      });
 
       form.reset();
       setSelectedFiles([]);

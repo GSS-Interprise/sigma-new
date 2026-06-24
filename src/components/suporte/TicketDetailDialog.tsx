@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { usePermissions } from "@/hooks/usePermissions";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { triggerTicketStatusEmail } from "@/lib/ticketStatusEmail";
 
 interface TicketDetailDialogProps {
   ticketId: string | null;
@@ -166,6 +167,22 @@ export function TicketDetailDialog({ ticketId, open, onOpenChange }: TicketDetai
     },
   });
 
+  const { data: solicitantesExtras = [] } = useQuery({
+    queryKey: ['ticket-solicitantes', ticketId],
+    enabled: !!ticketId && open,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('suporte_ticket_solicitantes')
+        .select('user_id, nome, email, is_principal')
+        .eq('ticket_id', ticketId!);
+      if (error) {
+        console.error('Erro ao buscar solicitantes vinculados', error);
+        return [];
+      }
+      return data || [];
+    },
+  });
+
   // Mutation para atualizar campos de gestão TI
   const updateGestaoTIMutation = useMutation({
     mutationFn: async (updates: {
@@ -306,6 +323,8 @@ export function TicketDetailDialog({ ticketId, open, onOpenChange }: TicketDetai
       }
 
       console.log('Comentário adicionado com sucesso');
+      // Quando o ticket vai para "concluido" via essa mutation, dispara email
+      await triggerTicketStatusEmail(ticketId, novoStatus);
       console.log('=== CONFIRMAÇÃO CONCLUÍDA COM SUCESSO ===');
     },
     onSuccess: (_, resolvido) => {
@@ -393,41 +412,8 @@ export function TicketDetailDialog({ ticketId, open, onOpenChange }: TicketDetai
         .update({ data_ultima_atualizacao: new Date().toISOString() })
         .eq('id', ticketId!);
 
-      // Enviar email de notificação para o solicitante (se não for o próprio autor)
-      if (ticket && ticket.solicitante_id !== user?.id) {
-        try {
-          // Buscar email do solicitante
-          const { data: solicitanteProfile } = await supabase
-            .from('profiles')
-            .select('email')
-            .eq('id', ticket.solicitante_id)
-            .single();
-
-          if (solicitanteProfile?.email) {
-            const { error: emailError } = await supabase.functions.invoke(
-              "notify-ticket-comment",
-              {
-                body: {
-                  ticketNumero: ticket.numero,
-                  solicitanteNome: ticket.solicitante_nome,
-                  solicitanteEmail: solicitanteProfile.email,
-                  autorNome: autorNome,
-                  mensagem: mensagem,
-                  dataComentario: new Date().toISOString(),
-                },
-              }
-            );
-
-            if (emailError) {
-              console.error("Erro ao enviar email de notificação:", emailError);
-              // Não bloqueia o processo se falhar o email
-            }
-          }
-        } catch (emailError) {
-          console.error("Erro ao enviar email de notificação:", emailError);
-          // Não bloqueia o processo se falhar o email
-        }
-      }
+      // Email por comentário foi desativado: emails só saem em mudança de status
+      // (aguardando_confirmacao e concluido). Veja handleSetStatusComEmail.
     },
     onSuccess: () => {
       console.log('=== COMENTÁRIO ADICIONADO COM SUCESSO ===');
@@ -564,6 +550,17 @@ export function TicketDetailDialog({ ticketId, open, onOpenChange }: TicketDetai
                 <User className="h-4 w-4" />
                 <p className="text-sm">{ticket.solicitante_nome}</p>
               </div>
+              {solicitantesExtras.filter((s: any) => !s.is_principal && s.user_id !== ticket.solicitante_id).length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {solicitantesExtras
+                    .filter((s: any) => !s.is_principal && s.user_id !== ticket.solicitante_id)
+                    .map((s: any) => (
+                      <Badge key={s.user_id} variant="outline" className="text-[10px]">
+                        + {s.nome}
+                      </Badge>
+                    ))}
+                </div>
+              )}
             </div>
 
             <div className="space-y-1">
