@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { triggerTicketStatusEmail } from "@/lib/ticketStatusEmail";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -164,6 +165,7 @@ export function TicketKanbanBoard({ onTicketClick, filtros }: TicketKanbanBoardP
         .eq("id", ticketId);
 
       if (error) throw error;
+      await triggerTicketStatusEmail(ticketId, validStatus);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-tickets-kanban"] });
@@ -196,6 +198,7 @@ export function TicketKanbanBoard({ onTicketClick, filtros }: TicketKanbanBoardP
         .eq("id", ticketId);
 
       if (error) throw error;
+      await triggerTicketStatusEmail(ticketId, "aguardando_confirmacao");
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-tickets-kanban"] });
