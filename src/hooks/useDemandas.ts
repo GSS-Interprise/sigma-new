@@ -73,6 +73,7 @@ export interface DemandaTarefa {
   mencionados?: { user_id: string; nome?: string | null }[];
   finalizadores?: { user_id: string; nome?: string | null }[];
   anexos_count?: number;
+  ticket_id?: string | null;
 }
 
 function isoDate(date: Date) {
