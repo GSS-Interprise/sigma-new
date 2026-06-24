@@ -550,6 +550,17 @@ export function TicketDetailDialog({ ticketId, open, onOpenChange }: TicketDetai
                 <User className="h-4 w-4" />
                 <p className="text-sm">{ticket.solicitante_nome}</p>
               </div>
+              {solicitantesExtras.filter((s: any) => !s.is_principal && s.user_id !== ticket.solicitante_id).length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {solicitantesExtras
+                    .filter((s: any) => !s.is_principal && s.user_id !== ticket.solicitante_id)
+                    .map((s: any) => (
+                      <Badge key={s.user_id} variant="outline" className="text-[10px]">
+                        + {s.nome}
+                      </Badge>
+                    ))}
+                </div>
+              )}
             </div>
 
             <div className="space-y-1">
