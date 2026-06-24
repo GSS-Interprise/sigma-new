@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { usePermissions } from "@/hooks/usePermissions";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { triggerTicketStatusEmail } from "@/lib/ticketStatusEmail";
 
 interface TicketDetailDialogProps {
   ticketId: string | null;
@@ -306,6 +307,8 @@ export function TicketDetailDialog({ ticketId, open, onOpenChange }: TicketDetai
       }
 
       console.log('Comentário adicionado com sucesso');
+      // Quando o ticket vai para "concluido" via essa mutation, dispara email
+      await triggerTicketStatusEmail(ticketId, novoStatus);
       console.log('=== CONFIRMAÇÃO CONCLUÍDA COM SUCESSO ===');
     },
     onSuccess: (_, resolvido) => {
