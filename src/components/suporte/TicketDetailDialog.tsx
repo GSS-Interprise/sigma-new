@@ -167,6 +167,22 @@ export function TicketDetailDialog({ ticketId, open, onOpenChange }: TicketDetai
     },
   });
 
+  const { data: solicitantesExtras = [] } = useQuery({
+    queryKey: ['ticket-solicitantes', ticketId],
+    enabled: !!ticketId && open,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('suporte_ticket_solicitantes')
+        .select('user_id, nome, email, is_principal')
+        .eq('ticket_id', ticketId!);
+      if (error) {
+        console.error('Erro ao buscar solicitantes vinculados', error);
+        return [];
+      }
+      return data || [];
+    },
+  });
+
   // Mutation para atualizar campos de gestão TI
   const updateGestaoTIMutation = useMutation({
     mutationFn: async (updates: {
