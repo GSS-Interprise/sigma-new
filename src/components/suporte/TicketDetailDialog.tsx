@@ -393,41 +393,8 @@ export function TicketDetailDialog({ ticketId, open, onOpenChange }: TicketDetai
         .update({ data_ultima_atualizacao: new Date().toISOString() })
         .eq('id', ticketId!);
 
-      // Enviar email de notificação para o solicitante (se não for o próprio autor)
-      if (ticket && ticket.solicitante_id !== user?.id) {
-        try {
-          // Buscar email do solicitante
-          const { data: solicitanteProfile } = await supabase
-            .from('profiles')
-            .select('email')
-            .eq('id', ticket.solicitante_id)
-            .single();
-
-          if (solicitanteProfile?.email) {
-            const { error: emailError } = await supabase.functions.invoke(
-              "notify-ticket-comment",
-              {
-                body: {
-                  ticketNumero: ticket.numero,
-                  solicitanteNome: ticket.solicitante_nome,
-                  solicitanteEmail: solicitanteProfile.email,
-                  autorNome: autorNome,
-                  mensagem: mensagem,
-                  dataComentario: new Date().toISOString(),
-                },
-              }
-            );
-
-            if (emailError) {
-              console.error("Erro ao enviar email de notificação:", emailError);
-              // Não bloqueia o processo se falhar o email
-            }
-          }
-        } catch (emailError) {
-          console.error("Erro ao enviar email de notificação:", emailError);
-          // Não bloqueia o processo se falhar o email
-        }
-      }
+      // Email por comentário foi desativado: emails só saem em mudança de status
+      // (aguardando_confirmacao e concluido). Veja handleSetStatusComEmail.
     },
     onSuccess: () => {
       console.log('=== COMENTÁRIO ADICIONADO COM SUCESSO ===');
