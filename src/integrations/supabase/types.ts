@@ -13838,6 +13838,44 @@ export type Database = {
         }
         Relationships: []
       }
+      suporte_ticket_solicitantes: {
+        Row: {
+          created_at: string
+          email: string | null
+          id: string
+          is_principal: boolean
+          nome: string | null
+          ticket_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          id?: string
+          is_principal?: boolean
+          nome?: string | null
+          ticket_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          id?: string
+          is_principal?: boolean
+          nome?: string | null
+          ticket_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "suporte_ticket_solicitantes_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "suporte_tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       suporte_tickets: {
         Row: {
           anexos: string[] | null
@@ -14950,6 +14988,7 @@ export type Database = {
           sigzap_conversation_id: string | null
           status: string
           tags: Json
+          ticket_id: string | null
           tipo: string
           titulo: string
           updated_at: string | null
@@ -14982,6 +15021,7 @@ export type Database = {
           sigzap_conversation_id?: string | null
           status: string
           tags?: Json
+          ticket_id?: string | null
           tipo?: string
           titulo: string
           updated_at?: string | null
@@ -15014,6 +15054,7 @@ export type Database = {
           sigzap_conversation_id?: string | null
           status?: string
           tags?: Json
+          ticket_id?: string | null
           tipo?: string
           titulo?: string
           updated_at?: string | null
@@ -15060,6 +15101,13 @@ export type Database = {
             columns: ["setor_origem_id"]
             isOneToOne: false
             referencedRelation: "setores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "worklist_tarefas_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "suporte_tickets"
             referencedColumns: ["id"]
           },
         ]
