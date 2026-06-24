@@ -1,55 +1,117 @@
-## Problema
+## Objetivo
 
-Antonia (e outros) está enxergando tarefas de `worklist_tarefas` em que não está envolvida. A causa é a policy de SELECT atual, que ainda permite:
+1. Permitir que usuários do setor **TI** transformem uma demanda em um ticket de suporte.
+2. Suportar **múltiplos solicitantes** no ticket (espelhando os envolvidos da demanda).
+3. Trazer os **comentários da demanda como histórico de comunicação** dentro do ticket.
+4. Mudar regra de email: **não enviar a cada mensagem**. Enviar apenas quando o ticket entra em **"Aguardando confirmação"** e quando é **"Encerrado/Concluído"**.
 
-- `escopo = 'geral'` → qualquer usuário autenticado vê (50 tarefas hoje)
-- `setor_destino_id = user_setor_id(auth.uid())` → todo mundo do mesmo setor vê (1.372 tarefas hoje)
+---
 
-O mesmo vale para a policy de UPDATE.
+## 1. Botão "Transformar em ticket" na demanda
 
-## Regra desejada
+- Adicionar item **"Transformar em ticket"** no menu de 3 pontinhos (`src/components/demandas/CardActionsMenu.tsx`) e no detalhe da demanda.
+- O item só aparece para usuários cujo `setor` é TI/Tecnologia (mesma regra já usada em `TicketDetailDialog.tsx` para listar analistas: nome do setor `inclui "tecnologia"` ou é `"ti"`). Para os demais usuários a opção fica oculta.
+- Como só TI vê a opção, o ticket é sempre **interno** (sem fornecedor externo).
 
-Uma tarefa só é visível para:
-1. Quem criou (`created_by = auth.uid()`)
-2. Quem é responsável (`responsavel_id = auth.uid()`)
-3. Quem foi mencionado (`worklist_tarefa_mencionados`)
-4. Administradores (`is_admin(auth.uid())`)
+## 2. Modal "Novo ticket" pré-preenchido
 
-Sem exceções por escopo "geral" ou por setor.
+- Ao clicar em "Transformar em ticket", abrir o modal de novo ticket (reaproveitar `NovoTicketForm`) em modo "a partir de demanda".
+- Pré-preencher:
+  - `descricao` = **título** da demanda + quebra de linha + **conteúdo/descrição** da demanda.
+  - `destino` = `interno` (travado).
+  - `tipo` = padrão `software` (editável).
+  - `solicitantes` (multi) = criador da demanda + finalizadores + mencionados + setor_destino (deduplicado), editável.
+- Campos que o usuário TI precisa preencher no modal antes de criar:
+  - **Nível de urgência** (`nivel_urgencia` já existe na tabela).
+  - **Tipo de impacto** (`tipo_impacto` já existe).
+  - **Tipo** (software/hardware).
+  - Lista de solicitantes (chips removíveis + busca para adicionar).
+- Ao confirmar:
+  - Criar o `suporte_tickets` (solicitante principal = criador da demanda, demais vão para a nova tabela de solicitantes).
+  - Copiar todos os comentários da demanda (`worklist_tarefa_comentarios`) para `suporte_comentarios` com `autor_id/nome` originais, prefixo `[Histórico da demanda]` na mensagem, mantendo a ordem cronológica.
+  - Registrar no `historico` do ticket a origem (`demanda_id`, número/título).
+  - Marcar a demanda com referência ao ticket criado (campo `tags` JSON: `{ ticket_id, ticket_numero }`) e mostrar no card da demanda um badge "Virou ticket #NNN" que abre o ticket.
+  - Disparar email **somente** se o status inicial cair nas regras da seção 4 (no fluxo normal, o ticket nasce em `aberto` → **nenhum email** é enviado na criação).
 
-## Mudanças
+## 3. Multi-solicitante no ticket
 
-### 1. Migration — recriar policies de `worklist_tarefas`
+- Nova tabela `suporte_ticket_solicitantes` com `ticket_id`, `user_id`, `nome`, `email`, `is_principal`, timestamps.
+- Migrar leitura/escrita:
+  - `TicketDetailDialog`/`TicketCard`/`AbaEmails` passam a mostrar todos os solicitantes (chips). O "solicitante_nome/id" do ticket continua sendo o principal por compatibilidade.
+  - Permissões: cada solicitante listado pode ver o ticket (ajuste nas policies de leitura de `suporte_tickets` e `suporte_comentarios`).
+  - No modal de novo ticket, adicionar UI de seleção múltipla (autocomplete de profiles, chips removíveis).
 
-`SELECT`:
+## 4. Nova regra de emails
+
+- Remover envios automáticos de email:
+  - Na criação do ticket (remover `supabase.functions.invoke("send-support-email")` do `NovoTicketForm`).
+  - A cada novo comentário (remover invocação de `notify-ticket-comment` em `TicketDetailDialog`).
+- Centralizar o envio em um único trigger no front (e/ou hook server-side), disparando email **apenas** quando:
+  - O status muda para **`aguardando_confirmacao`** → email "Seu ticket aguarda sua confirmação" para todos os solicitantes.
+  - O status muda para **`concluido`** (encerrado) → email "Seu ticket foi encerrado" para todos os solicitantes.
+- Reescrever templates da função `send-support-email` (ou criar `send-ticket-status-email`) com dois layouts: "aguardando confirmação" e "encerrado", listando todos os solicitantes no destinatário (To + CC) e incluindo número, título, descrição e link.
+- O botão "Reenviar email" (`ResendEmailButton`) passa a reenviar o último email de status (não cria email novo por comentário).
+
+---
+
+## Detalhes técnicos
+
+### Migration (Supabase)
+
 ```sql
-USING (
-  created_by = auth.uid()
-  OR responsavel_id = auth.uid()
-  OR EXISTS (SELECT 1 FROM worklist_tarefa_mencionados m
-             WHERE m.tarefa_id = worklist_tarefas.id AND m.user_id = auth.uid())
-  OR is_admin(auth.uid())
-)
+-- multi solicitantes
+CREATE TABLE public.suporte_ticket_solicitantes (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  ticket_id uuid NOT NULL REFERENCES public.suporte_tickets(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL,
+  nome text,
+  email text,
+  is_principal boolean NOT NULL DEFAULT false,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (ticket_id, user_id)
+);
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.suporte_ticket_solicitantes TO authenticated;
+GRANT ALL ON public.suporte_ticket_solicitantes TO service_role;
+ALTER TABLE public.suporte_ticket_solicitantes ENABLE ROW LEVEL SECURITY;
+
+-- policies: solicitantes podem ler o seu próprio vínculo; TI e admins podem tudo
+CREATE POLICY "Solicitante vê seu vínculo"
+  ON public.suporte_ticket_solicitantes FOR SELECT TO authenticated
+  USING (user_id = auth.uid() OR public.has_role(auth.uid(),'admin'));
+
+CREATE POLICY "TI/admin gerencia"
+  ON public.suporte_ticket_solicitantes FOR ALL TO authenticated
+  USING (public.has_role(auth.uid(),'admin'))
+  WITH CHECK (public.has_role(auth.uid(),'admin'));
 ```
 
-`UPDATE`: mesma expressão acima (remove o ramo de setor). DELETE permanece como está (criador ou admin).
+- Ajustar a policy de SELECT em `suporte_tickets` e `suporte_comentarios` para aceitar também `EXISTS (SELECT 1 FROM suporte_ticket_solicitantes s WHERE s.ticket_id = id AND s.user_id = auth.uid())`.
+- Backfill: para tickets existentes inserir uma linha com `is_principal=true` para o `solicitante_id`.
 
-### 2. View `vw_worklist_pendencias_setor`
+### Arquivos a tocar
 
-É uma materialized view usada na home/worklist por setor. Como agora a visibilidade é estritamente "envolvido + admin", essa agregação por setor deixa de fazer sentido para usuários comuns. Plano:
+- `src/components/demandas/CardActionsMenu.tsx` — novo item de menu (visível só para TI).
+- `src/components/demandas/TarefaCard.tsx` — badge "Virou ticket #NNN".
+- `src/components/suporte/NovoTicketForm.tsx` — modo "a partir de demanda", multi-solicitante, novos campos urgência/impacto, remoção do envio de email na criação, cópia dos comentários da demanda.
+- `src/components/suporte/TicketDetailDialog.tsx` — exibir lista de solicitantes; remover envio de email no comentário; disparar email só em transições de status (aguardando_confirmacao / concluido).
+- `src/components/suporte/TicketCard.tsx` / `AbaEmails.tsx` — exibir múltiplos solicitantes.
+- `supabase/functions/send-support-email/index.ts` — refatorar para dois templates (aguardando confirmação e encerrado) e suportar lista de destinatários.
+- Remover/limpar `notify-ticket-comment` do fluxo do front (manter função deployada para compatibilidade ou marcar como obsoleta).
+- Hook utilitário `useTransformDemandaEmTicket` para encapsular: criar ticket, inserir solicitantes, copiar comentários, atualizar tags da demanda.
 
-- Manter a MV (não dropar agora para não quebrar consultas existentes), mas **revogar `SELECT` de `anon` e `authenticated`**, deixando só `service_role`.
-- Em build mode eu busco quem consome essa view no frontend (`rg "vw_worklist_pendencias_setor"`) e ajusto para usar `worklist_tarefas` direto (RLS aplica). Se houver tela "pendências do setor" que dependia disso, mostro só as tarefas em que o usuário está envolvido.
+### Fluxo de email final
 
-### 3. Frontend
+| Transição de status                  | Email enviado | Para                          |
+|--------------------------------------|---------------|-------------------------------|
+| criar / aberto / em_analise / em_validacao | não           | —                             |
+| → aguardando_confirmacao             | sim           | todos os solicitantes do ticket |
+| → concluido (encerrado)              | sim           | todos os solicitantes do ticket |
+| novo comentário                      | não           | —                             |
 
-Buscar usos de `escopo` / `setor_destino_id` em listagens de tarefas e remover qualquer filtro que ainda assuma "tarefa do setor aparece para todos". RLS passa a ser a fonte da verdade.
+---
 
-## O que **não** muda
+## Perguntas em aberto (posso assumir os defaults se não responder)
 
-- Coluna `escopo` e `setor_destino_id` permanecem na tabela (não derruba dados nem n8n / edge functions que ainda gravam). Só param de influenciar visibilidade.
-- Edge function `api-licitacoes` que cria tarefas continua igual; quem precisar ver precisa virar `responsavel_id` ou ser mencionado.
-
-## Pergunta antes de aplicar
-
-As 1.422 tarefas existentes hoje (1.372 setor + 50 geral) vão sumir da tela de quem não é criador/responsável/mencionado. Isso é o esperado, certo? Se quiser, posso, como passo extra, **migrar `setor_destino_id` → menção automática para todos os usuários daquele setor** nas tarefas já criadas, para não "perder" tarefas legadas. Me diz se quer esse passo de migração de dados também.
+1. Solicitantes default ao transformar: **criador + finalizadores + mencionados** (assumir sim).
+2. Quem além de TI pode transformar? Assumir apenas TI + admin.
+3. Manter `notify-ticket-comment` para notificação **in-app** (sino) mesmo sem email? Assumir sim — só o email some.
