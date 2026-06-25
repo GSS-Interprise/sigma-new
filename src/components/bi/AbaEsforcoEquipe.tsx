@@ -252,8 +252,8 @@ function FunilCampanha({ funil }: { funil: Funil }) {
             <FunnelChart>
               <RechartsTooltip contentStyle={tooltipStyle} />
               <Funnel dataKey="value" data={etapas} isAnimationActive>
-                <LabelList position="right" dataKey="name" fill={C.ink} stroke="none" fontSize={11} />
-                <LabelList position="left" dataKey="value" fill={C.soft} stroke="none" fontSize={11} formatter={(v: number) => fmt(v)} />
+                <LabelList position="right" dataKey="name" fill={C.ink} stroke="none" fontSize={13} fontWeight={600} />
+                <LabelList position="left" dataKey="value" fill={C.ink} stroke="none" fontSize={14} fontWeight={700} formatter={(v: number) => fmt(v)} />
                 {etapas.map((e, i) => <Cell key={i} fill={e.fill} />)}
               </Funnel>
             </FunnelChart>
@@ -276,9 +276,9 @@ function FunilCampanha({ funil }: { funil: Funil }) {
                 <GaugePergunta titulo="Da região" sub={funil.regiao_label} pct={cobRegiao} chamados={chamRegiao} universo={uRegiao} />
                 <GaugePergunta titulo="Do Brasil" sub="toda a base" pct={cobBrasil} chamados={chamados} universo={uBrasil} />
               </div>
-              <div className="mt-2 pt-2 border-t flex items-center justify-around text-center">
-                <div><div className="text-base font-bold" style={{ color: C.blue }}>{fmt(f.na_campanha)}</div><div className="text-[10px] text-slate-400">na campanha</div></div>
-                <div><div className="text-base font-bold" style={{ color: C.cyan }}>{fmt(f.chamados)}</div><div className="text-[10px] text-slate-400">já chamados</div></div>
+              <div className="mt-3 pt-3 border-t flex items-center justify-around text-center">
+                <div><div className="text-3xl font-bold tabular-nums" style={{ color: C.blue }}>{fmt(f.na_campanha)}</div><div className="text-xs text-slate-500 mt-0.5">na campanha</div></div>
+                <div><div className="text-3xl font-bold tabular-nums" style={{ color: C.cyan }}>{fmt(f.chamados)}</div><div className="text-xs text-slate-500 mt-0.5">já chamados</div></div>
               </div>
             </>
           )}
@@ -293,8 +293,8 @@ function FunilCampanha({ funil }: { funil: Funil }) {
             <BarChart data={ufData} margin={{ left: 0, right: 8 }} barGap={2}>
               <defs><Grad id="gSlate" c={C.soft} /><Grad id="gGreen2" c={C.green} /></defs>
               <CartesianGrid strokeDasharray="3 3" stroke={C.grid} vertical={false} />
-              <XAxis dataKey="uf" stroke={C.soft} tick={{ fill: C.soft, fontSize: 11 }} />
-              <YAxis stroke={C.soft} tick={{ fill: C.soft, fontSize: 11 }} allowDecimals={false} />
+              <XAxis dataKey="uf" stroke={C.soft} tick={{ fill: C.ink, fontSize: 12, fontWeight: 600 }} />
+              <YAxis stroke={C.soft} tick={{ fill: C.soft, fontSize: 12 }} allowDecimals={false} />
               <RechartsTooltip contentStyle={tooltipStyle} cursor={{ fill: "rgba(100,116,139,.05)" }} />
               <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" />
               <Bar dataKey="disponiveis" name="Disponíveis na base" fill="url(#gSlate)" radius={[5, 5, 0, 0]} />
@@ -323,8 +323,8 @@ function Donut({ data }: { data: Canal[] }) {
           </PieChart>
         </ResponsiveContainer>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-xl font-bold text-slate-800">{fmt(total)}</span>
-          <span className="text-[10px] text-slate-400">tarefas</span>
+          <span className="text-2xl font-bold tabular-nums text-slate-800">{fmt(total)}</span>
+          <span className="text-[11px] text-slate-400">tarefas</span>
         </div>
       </div>
       <div className="flex-1 space-y-1.5">
@@ -357,8 +357,8 @@ function Stat({ icon: Icon, label, value, cor, sub }: any) {
       <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-slate-400">
         <Icon className="h-3.5 w-3.5" style={{ color: cor }} /> {label}
       </div>
-      <div className="text-2xl font-bold mt-1" style={{ color: cor }}>{value}</div>
-      {sub && <div className="text-[10px] text-slate-400">{sub}</div>}
+      <div className="text-3xl font-bold mt-1 tabular-nums" style={{ color: cor }}>{value}</div>
+      {sub && <div className="text-[11px] text-slate-400">{sub}</div>}
     </div>
   );
 }
@@ -367,20 +367,20 @@ function GaugePergunta({ titulo, sub, pct, chamados, universo }: { titulo: strin
   const cor = pct == null ? C.soft : pct >= 70 ? C.green : pct >= 30 ? C.amber : C.red;
   return (
     <div className="flex flex-col items-center text-center">
-      <div className="text-[11px] font-semibold text-slate-600">{titulo}</div>
-      {sub && <div className="text-[9px] text-slate-400 -mt-0.5 mb-0.5 truncate max-w-[130px]">{sub}</div>}
-      <div className="relative" style={{ width: 104, height: 104 }}>
+      <div className="text-sm font-semibold text-slate-700">{titulo}</div>
+      {sub && <div className="text-[11px] text-slate-400 -mt-0.5 mb-1 truncate max-w-[150px]">{sub}</div>}
+      <div className="relative" style={{ width: 132, height: 132 }}>
         <ResponsiveContainer width="100%" height="100%">
-          <RadialBarChart innerRadius="70%" outerRadius="100%" data={[{ value: pct ?? 0 }]} startAngle={90} endAngle={-270}>
+          <RadialBarChart innerRadius="72%" outerRadius="100%" data={[{ value: pct ?? 0 }]} startAngle={90} endAngle={-270}>
             <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
             <RadialBar background={{ fill: "#e9eef5" }} dataKey="value" cornerRadius={20} fill={cor} />
           </RadialBarChart>
         </ResponsiveContainer>
         <div className="absolute inset-0 flex items-center justify-center">
-          <span className="text-xl font-bold text-slate-800">{pct == null ? "—" : `${pct}%`}</span>
+          <span className="text-4xl font-bold tabular-nums text-slate-800">{pct == null ? "—" : `${pct}%`}</span>
         </div>
       </div>
-      <div className="text-[10px] text-slate-500 mt-0.5">{fmt(chamados)} de {fmt(universo)}</div>
+      <div className="text-xs font-medium text-slate-600 mt-1 tabular-nums">{fmt(chamados)} <span className="text-slate-400 font-normal">de</span> {fmt(universo)}</div>
     </div>
   );
 }
