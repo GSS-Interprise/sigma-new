@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  Loader2, ListChecks, Clock, AlertTriangle, Target, Users, Filter,
+  Loader2, ListChecks, Clock, XCircle, Target, Users, Filter,
   MessageCircle, Phone, Instagram, Mail, MapPin, TrendingUp,
 } from "lucide-react";
 import {
@@ -26,7 +26,7 @@ const C = {
 const tooltipStyle = { backgroundColor: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, fontSize: 12, boxShadow: "0 4px 16px rgba(15,23,42,.08)" };
 const CANAL = { whatsapp: { label: "WhatsApp", cor: C.green }, ligacao: { label: "Ligação", cor: C.amber }, instagram: { label: "Instagram", cor: C.purple }, email: { label: "E-mail", cor: C.blue } } as Record<string, { label: string; cor: string }>;
 
-type Resumo = { total: number; feitas: number; pendentes: number; atrasadas: number; descartadas: number; pct_conclusao: number };
+type Resumo = { total: number; feitas: number; pendentes: number; atrasadas: number; fila: number; descartadas: number; leads: number; leads_trabalhados: number; cobertura_pct: number; pct_conclusao: number };
 type Campanha = { campanha: string; campanha_id: string; total: number; feitas: number; atrasadas: number; pendentes: number; pct: number; leads: number; leads_trabalhados: number; cobertura_pct: number; leads_multicanal: number };
 type Canal = { canal: string; total: number };
 type Pessoa = { pessoa: string; feitas: number; wpp: number; ligacao: number; instagram: number; email: number };
@@ -75,7 +75,7 @@ export function AbaEsforcoEquipe() {
   if (isLoading) return <BISkeleton />;
   if (!data) return null;
   const { resumo, por_campanha, por_canal, por_pessoa } = data;
-  const naoDescartadas = Math.max(resumo.feitas + resumo.pendentes + resumo.atrasadas, 1);
+  const totalBarra = Math.max(resumo.feitas + resumo.descartadas + resumo.fila, 1);
 
   return (
     <div className="space-y-5">
@@ -97,18 +97,21 @@ export function AbaEsforcoEquipe() {
         <CardContent className="p-0">
           <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-y md:divide-y-0 divide-slate-100">
             <Stat icon={ListChecks} label="Concluídas" value={fmt(resumo.feitas)} cor={C.green} />
-            <Stat icon={Clock} label="Pendentes" value={fmt(resumo.pendentes)} cor={C.amber} />
-            <Stat icon={AlertTriangle} label="Atrasadas" value={fmt(resumo.atrasadas)} cor={C.red} />
-            <Stat icon={Target} label="Conclusão" value={`${resumo.pct_conclusao}%`} cor={C.blue} sub="tarefas não descartadas" />
+            <Stat icon={Clock} label="Na fila (a fazer)" value={fmt(resumo.fila)} cor={C.amber} sub="backlog gerado pela cadência" />
+            <Stat icon={XCircle} label="Descartadas" value={fmt(resumo.descartadas)} cor={C.soft} />
+            <Stat icon={Target} label="Leads trabalhados" value={fmt(resumo.leads_trabalhados)} cor={C.blue} sub={`de ${fmt(resumo.leads)} · ${resumo.cobertura_pct}%`} />
           </div>
-          {/* barra de proporção do total */}
+          {/* barra de proporção: trabalho real (verde+cinza) vs fila gerada (âmbar) */}
           <div className="h-2 w-full flex">
-            <div style={{ width: `${(resumo.feitas / naoDescartadas) * 100}%`, background: C.green }} />
-            <div style={{ width: `${(resumo.pendentes / naoDescartadas) * 100}%`, background: C.amber }} />
-            <div style={{ width: `${(resumo.atrasadas / naoDescartadas) * 100}%`, background: C.red }} />
+            <div style={{ width: `${(resumo.feitas / totalBarra) * 100}%`, background: C.green }} />
+            <div style={{ width: `${(resumo.descartadas / totalBarra) * 100}%`, background: C.soft }} />
+            <div style={{ width: `${(resumo.fila / totalBarra) * 100}%`, background: C.amber }} />
           </div>
         </CardContent>
       </Card>
+      <p className="-mt-3 text-[11px] text-slate-400">
+        As tarefas são geradas automaticamente pela cadência (1 por lead × etapa). "Na fila" é o backlog a trabalhar, não atraso da equipe. O esforço real aparece em "Concluídas" e "Leads trabalhados".
+      </p>
 
       {/* Funil de cobertura por campanha */}
       <Card>
