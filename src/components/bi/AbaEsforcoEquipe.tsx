@@ -33,6 +33,7 @@ type Pessoa = { pessoa: string; feitas: number; wpp: number; ligacao: number; in
 type Overview = { resumo: Resumo; por_campanha: Campanha[]; por_canal: Canal[]; por_pessoa: Pessoa[] };
 type Funil = {
   nome: string; tem_alvo_especialidade: boolean;
+  espec_inferida?: boolean; regiao_inferida?: boolean;
   universo_total: number; universo_brasil: number; universo_regiao: number;
   chamados_regiao: number; regiao_label: string;
   funil: { na_campanha: number; chamados: number; em_conversa: number; quente: number; convertido: number; descartado: number; sem_resposta: number };
@@ -266,6 +267,9 @@ function FunilCampanha({ funil }: { funil: Funil }) {
         {/* Duas perguntas: já chamamos todos da REGIÃO? e do BRASIL? */}
         <div className="rounded-xl border bg-slate-50/60 p-3 flex flex-col">
           <div className="text-xs font-medium text-slate-500 mb-2 flex items-center gap-1"><MapPin className="h-3.5 w-3.5" /> Já chamamos todos os médicos?</div>
+          {funil.tem_alvo_especialidade && (funil.espec_inferida || funil.regiao_inferida) && (
+            <div className="text-[10px] text-slate-400 -mt-1 mb-1.5">Alvo estimado a partir dos leads da campanha{funil.regiao_inferida ? ` (região: ${funil.regiao_label})` : ""}.</div>
+          )}
           {!funil.tem_alvo_especialidade ? (
             <div className="flex-1 flex items-center justify-center text-center text-xs text-slate-400 px-4">
               Campanha sem especialidade definida — sem base de comparação. (Campanhas novas pelo wizard já trazem o alvo.)
