@@ -434,7 +434,7 @@ export default function CampanhasProspeccao() {
         Máquina de Prospecção
       </h1>
       <p className="text-sm text-muted-foreground">
-        Campanhas automáticas com IA — operador só recebe lead quente
+        Campanhas de prospecção médica — IA automática ou execução manual pela equipe
       </p>
     </div>
   );
@@ -720,11 +720,13 @@ function DashboardCard({
 }) {
   return (
     <Card>
-      <CardContent className="p-4 flex items-center gap-3">
-        <Icon className={`h-8 w-8 ${color}`} />
-        <div>
-          <p className="text-2xl font-bold">{value}</p>
-          <p className="text-xs text-muted-foreground">{label}</p>
+      <CardContent className="p-4 flex items-center gap-3.5">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-50 ring-1 ring-slate-100">
+          <Icon className={`h-5 w-5 ${color}`} />
+        </div>
+        <div className="min-w-0">
+          <p className="text-3xl font-bold tabular-nums leading-none text-slate-900">{value}</p>
+          <p className="mt-1.5 text-[11px] font-medium uppercase tracking-wide text-slate-400">{label}</p>
         </div>
       </CardContent>
     </Card>
