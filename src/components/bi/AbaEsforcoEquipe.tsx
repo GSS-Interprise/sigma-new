@@ -32,7 +32,9 @@ type Canal = { canal: string; total: number };
 type Pessoa = { pessoa: string; feitas: number; wpp: number; ligacao: number; instagram: number; email: number };
 type Overview = { resumo: Resumo; por_campanha: Campanha[]; por_canal: Canal[]; por_pessoa: Pessoa[] };
 type Funil = {
-  nome: string; tem_alvo_especialidade: boolean; universo_total: number;
+  nome: string; tem_alvo_especialidade: boolean;
+  universo_total: number; universo_brasil: number; universo_regiao: number;
+  chamados_regiao: number; regiao_label: string;
   funil: { na_campanha: number; chamados: number; em_conversa: number; quente: number; convertido: number; descartado: number; sem_resposta: number };
   por_uf: { uf: string | null; disponiveis: number | null; na_campanha: number; chamados: number; cobertura_pct: number | null }[];
   tarefas: { feitas: number; pendentes: number; atrasadas: number };
@@ -230,10 +232,13 @@ function FunilCampanha({ funil }: { funil: Funil }) {
     { name: "Convertido", value: f.convertido, fill: C.green },
   ].filter((e) => e.value > 0 || e.name === "Na campanha");
 
-  const alvo = funil.por_uf.filter((u) => u.na_campanha > 0);
-  const dispAlvo = alvo.reduce((s, u) => s + (u.disponiveis || 0), 0);
-  const chamAlvo = alvo.reduce((s, u) => s + u.chamados, 0);
-  const cobAlvo = dispAlvo > 0 ? Math.round((100 * chamAlvo) / dispAlvo) : null;
+  // Dois universos vindos da RPC: região da campanha × Brasil inteiro (base via junção).
+  const uBrasil = funil.universo_brasil ?? funil.universo_total ?? 0;
+  const uRegiao = funil.universo_regiao ?? 0;
+  const chamados = funil.funil.chamados;
+  const chamRegiao = funil.chamados_regiao ?? chamados;
+  const cobBrasil = uBrasil > 0 ? Math.round((100 * chamados) / uBrasil) : null;
+  const cobRegiao = uRegiao > 0 ? Math.round((100 * chamRegiao) / uRegiao) : null;
   const ufData = funil.por_uf.filter((u) => u.uf && ((u.disponiveis || 0) > 0 || u.na_campanha > 0))
     .map((u) => ({ uf: u.uf as string, disponiveis: u.disponiveis || 0, chamados: u.chamados }));
 
@@ -258,33 +263,24 @@ function FunilCampanha({ funil }: { funil: Funil }) {
           )}
         </div>
 
-        {/* Gauge de cobertura da região alvo */}
+        {/* Duas perguntas: já chamamos todos da REGIÃO? e do BRASIL? */}
         <div className="rounded-xl border bg-slate-50/60 p-3 flex flex-col">
-          <div className="text-xs font-medium text-slate-500 mb-1 flex items-center gap-1"><MapPin className="h-3.5 w-3.5" /> Cobertura da região alvo</div>
-          {cobAlvo == null ? (
+          <div className="text-xs font-medium text-slate-500 mb-2 flex items-center gap-1"><MapPin className="h-3.5 w-3.5" /> Já chamamos todos os médicos?</div>
+          {!funil.tem_alvo_especialidade ? (
             <div className="flex-1 flex items-center justify-center text-center text-xs text-slate-400 px-4">
               Campanha sem especialidade definida — sem base de comparação. (Campanhas novas pelo wizard já trazem o alvo.)
             </div>
           ) : (
-            <div className="flex-1 flex items-center gap-3">
-              <div className="relative" style={{ width: 150, height: 150 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <RadialBarChart innerRadius="72%" outerRadius="100%" data={[{ value: cobAlvo }]} startAngle={90} endAngle={-270}>
-                    <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
-                    <RadialBar background={{ fill: "#e9eef5" }} dataKey="value" cornerRadius={20} fill={cobAlvo >= 70 ? C.green : cobAlvo >= 30 ? C.amber : C.red} />
-                  </RadialBarChart>
-                </ResponsiveContainer>
-                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="text-3xl font-bold text-slate-800">{cobAlvo}%</span>
-                  <span className="text-[10px] text-slate-400">coberto</span>
-                </div>
+            <>
+              <div className="flex-1 grid grid-cols-2 gap-2">
+                <GaugePergunta titulo="Da região" sub={funil.regiao_label} pct={cobRegiao} chamados={chamRegiao} universo={uRegiao} />
+                <GaugePergunta titulo="Do Brasil" sub="toda a base" pct={cobBrasil} chamados={chamados} universo={uBrasil} />
               </div>
-              <div className="text-sm space-y-1.5">
-                <MiniRow label="Disponíveis na base" value={fmt(funil.universo_total)} />
-                <MiniRow label="Na campanha" value={fmt(f.na_campanha)} cor={C.blue} />
-                <MiniRow label="Já chamados" value={fmt(f.chamados)} cor={C.cyan} />
+              <div className="mt-2 pt-2 border-t flex items-center justify-around text-center">
+                <div><div className="text-base font-bold" style={{ color: C.blue }}>{fmt(f.na_campanha)}</div><div className="text-[10px] text-slate-400">na campanha</div></div>
+                <div><div className="text-base font-bold" style={{ color: C.cyan }}>{fmt(f.chamados)}</div><div className="text-[10px] text-slate-400">já chamados</div></div>
               </div>
-            </div>
+            </>
           )}
         </div>
       </div>
@@ -292,7 +288,7 @@ function FunilCampanha({ funil }: { funil: Funil }) {
       {/* Cobertura por UF: disponíveis vs chamados */}
       {funil.tem_alvo_especialidade && ufData.length > 0 && (
         <div>
-          <div className="text-xs font-medium text-slate-500 mb-2">Disponíveis na base × já chamados, por estado</div>
+          <div className="text-xs font-medium text-slate-500 mb-2">Disponíveis na base (Brasil) × já chamados, por estado</div>
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={ufData} margin={{ left: 0, right: 8 }} barGap={2}>
               <defs><Grad id="gSlate" c={C.soft} /><Grad id="gGreen2" c={C.green} /></defs>
@@ -367,11 +363,24 @@ function Stat({ icon: Icon, label, value, cor, sub }: any) {
   );
 }
 
-function MiniRow({ label, value, cor }: { label: string; value: string; cor?: string }) {
+function GaugePergunta({ titulo, sub, pct, chamados, universo }: { titulo: string; sub?: string; pct: number | null; chamados: number; universo: number }) {
+  const cor = pct == null ? C.soft : pct >= 70 ? C.green : pct >= 30 ? C.amber : C.red;
   return (
-    <div className="flex items-baseline gap-2">
-      <span className="text-lg font-bold" style={{ color: cor || C.ink }}>{value}</span>
-      <span className="text-[11px] text-slate-400">{label}</span>
+    <div className="flex flex-col items-center text-center">
+      <div className="text-[11px] font-semibold text-slate-600">{titulo}</div>
+      {sub && <div className="text-[9px] text-slate-400 -mt-0.5 mb-0.5 truncate max-w-[130px]">{sub}</div>}
+      <div className="relative" style={{ width: 104, height: 104 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <RadialBarChart innerRadius="70%" outerRadius="100%" data={[{ value: pct ?? 0 }]} startAngle={90} endAngle={-270}>
+            <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
+            <RadialBar background={{ fill: "#e9eef5" }} dataKey="value" cornerRadius={20} fill={cor} />
+          </RadialBarChart>
+        </ResponsiveContainer>
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span className="text-xl font-bold text-slate-800">{pct == null ? "—" : `${pct}%`}</span>
+        </div>
+      </div>
+      <div className="text-[10px] text-slate-500 mt-0.5">{fmt(chamados)} de {fmt(universo)}</div>
     </div>
   );
 }
