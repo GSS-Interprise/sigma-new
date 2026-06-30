@@ -322,6 +322,30 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Instância inexistente na Evolution API (foi deletada/recriada com outro nome).
+    // Retornamos 200 com code=INSTANCE_NOT_FOUND pra UI tratar sem crashar (blank screen).
+    const msg = (() => {
+      const m = (responseData as any)?.response?.message;
+      if (Array.isArray(m)) return m.join(" ");
+      if (typeof m === "string") return m;
+      return "";
+    })();
+    const isInstanceNotFound =
+      response.status === 404 &&
+      /instance.*(does not exist|not exist|não existe)/i.test(msg);
+
+    if (isInstanceNotFound) {
+      console.warn(`Evolution instance not found: action=${action}, instance=${instanceName}`);
+      return new Response(
+        JSON.stringify({
+          error: `Instância "${instanceName}" não existe na Evolution API. Recrie o chip ou ajuste o instance_name.`,
+          code: "INSTANCE_NOT_FOUND",
+          instanceName,
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     return new Response(
       JSON.stringify(responseData),
       { 
