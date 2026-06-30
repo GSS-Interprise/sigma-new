@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import {
   BarChart, Bar, LineChart, Line, Area, AreaChart, XAxis, YAxis, CartesianGrid,
-  Tooltip as RechartsTooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell,
+  Tooltip as RechartsTooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, ReferenceLine,
 } from "recharts";
 
 // Paleta light (alinhada ao restante do /bi — shadcn/Tailwind)
@@ -126,13 +126,20 @@ export function AbaProspec() {
     staleTime: 5 * 60_000,
   });
 
-  // === Monitor operacional das campanhas (IA × Manual) — "estão disparando?" ===
-  const { data: monitor } = useQuery({
-    queryKey: ["bi-campanhas-monitor", dataInicio],
+  // === Resumo executivo: séries de apoio (views novas) ===
+  const META_DISPAROS_DIA = 700; // 20 chips × 35/dia (anti-ban WS2)
+
+  const { data: disparosDiariosRaw } = useQuery({
+    queryKey: ["bi-resumo-disparos-diarios", dataInicio, dataFim],
     queryFn: async () => {
-      const { data, error } = await (supabase as any).rpc("get_bi_campanhas_monitor", { p_desde: dataInicio });
+      const { data, error } = await (supabase as any)
+        .from("vw_disparos_diarios")
+        .select("dia, n_disparos")
+        .gte("dia", dataInicio)
+        .lte("dia", dataFim)
+        .order("dia");
       if (error) throw error;
-      return data as any;
+      return (data ?? []) as any[];
     },
     staleTime: 60_000,
     retry: false,
@@ -151,23 +158,15 @@ export function AbaProspec() {
     retry: false,
   });
 
-  // Série diária de disparos das CAMPANHAS (IA + manual), do monitor
-  const serieDisparos = useMemo(
-    () => (monitor?.por_dia ?? []).map((r: any) => ({
-      dia: String(r.dia).slice(5),
-      ia: Number(r.ia) || 0,
-      manual: Number(r.manual) || 0,
-      disparos: Number(r.total) || 0,
-    })),
-    [monitor]
-  );
-
-  const monitorCampanhas: any[] = monitor?.por_campanha ?? [];
-  const hoje = (monitor?.hoje ?? { ia: 0, manual: 0, total: 0 }) as any;
-  const disparosCampanhaPeriodo = useMemo(
-    () => serieDisparos.reduce((s: number, r: any) => s + (Number(r.disparos) || 0), 0),
-    [serieDisparos]
-  );
+  const serieDisparos = useMemo(() => {
+    const porDia = new Map<string, number>();
+    for (const r of disparosDiariosRaw ?? []) {
+      porDia.set(r.dia, (porDia.get(r.dia) || 0) + (Number(r.n_disparos) || 0));
+    }
+    return [...porDia.entries()]
+      .map(([dia, n]) => ({ dia: dia.slice(5), disparos: n }))
+      .sort((a, b) => (a.dia < b.dia ? -1 : 1));
+  }, [disparosDiariosRaw]);
 
   const mediaDisparosDia = useMemo(() => {
     if (!serieDisparos.length) return 0;
@@ -286,6 +285,9 @@ export function AbaProspec() {
   const taxaResp = totalGeralDisparos > 0 ? ((totaisGerais.responderam / totalGeralDisparos) * 100).toFixed(1) : "0";
   const taxaConv = totalGeralDisparos > 0 ? ((totaisGerais.convertidos / totalGeralDisparos) * 100).toFixed(1) : "0";
 
+  // Ritmo vs meta de disparos (700/dia = 20 chips × 35, anti-ban WS2)
+  const pctMeta = META_DISPAROS_DIA > 0 ? (mediaDisparosDia / META_DISPAROS_DIA) * 100 : 0;
+  const corMeta = pctMeta >= 100 ? C.green : pctMeta >= 50 ? C.amber : C.red;
   const funilMacro = [
     { nome: "Disparos", v: totalGeralDisparos, cor: C.blue },
     { nome: "Responderam", v: totaisGerais.responderam, cor: C.pink },
@@ -361,83 +363,35 @@ export function AbaProspec() {
         {/* === Resumo executivo (diretoria) === */}
         <TabsContent value="resumo" className="space-y-4">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <KPI icon={Send} label="Disparos hoje (campanhas)" value={Number(hoje.total).toLocaleString()} sub={`IA ${Number(hoje.ia)} · Man ${Number(hoje.manual)}`} color={hoje.total > 0 ? C.green : C.red} />
-            <KPI icon={BarChart3} label="Disparos no período" value={disparosCampanhaPeriodo.toLocaleString()} sub={`~${mediaDisparosDia.toLocaleString()}/dia`} color={C.blue} />
+            <KPI icon={Send} label="Disparos no período" value={totalGeralDisparos.toLocaleString()} sub={`~${mediaDisparosDia.toLocaleString()}/dia`} color={C.blue} />
             <KPI icon={MessageCircle} label="Taxa de resposta" value={`${taxaResp}%`} sub={`${totaisGerais.responderam.toLocaleString()} resp.`} color={C.pink} />
             <KPI icon={Trophy} label="Taxa de conversão" value={`${taxaConv}%`} sub={`${totaisGerais.convertidos.toLocaleString()} conv.`} color={C.green} />
+            <KPI icon={Target} label="Ritmo vs meta" value={`${Math.round(pctMeta)}%`} sub={`meta ${META_DISPAROS_DIA}/dia`} color={corMeta} />
           </div>
 
           <PanelCard
-            title="Disparos das campanhas por dia — IA × Manual"
-            description={`Média ${mediaDisparosDia.toLocaleString()}/dia · IA = disparos automáticos · Manual = tarefas feitas pela equipe`}
+            title="Ritmo de disparos por dia"
+            description={`Média ${mediaDisparosDia.toLocaleString()}/dia · meta ${META_DISPAROS_DIA}/dia · verde = bateu a meta, vermelho = abaixo de 50%`}
             icon={BarChart3}
           >
             {serieDisparos.length === 0 ? (
-              <p className="text-sm py-8 text-center text-muted-foreground">Nenhuma campanha disparou no período.</p>
+              <p className="text-sm py-8 text-center text-muted-foreground">Sem disparos no período.</p>
             ) : (
               <ResponsiveContainer width="100%" height={240}>
                 <BarChart data={serieDisparos}>
                   <CartesianGrid strokeDasharray="3 3" stroke={GRID} />
                   <XAxis dataKey="dia" stroke={AXIS} tick={{ fill: AXIS, fontSize: 11 }} />
                   <YAxis stroke={AXIS} tick={{ fill: AXIS, fontSize: 11 }} />
-                  <RechartsTooltip contentStyle={tooltipStyle} cursor={{ fill: "rgba(37,99,235,0.06)" }} formatter={(v: any, n: any) => [Number(v).toLocaleString(), n]} />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Bar dataKey="ia" stackId="d" name="IA (automático)" fill={C.purple} />
-                  <Bar dataKey="manual" stackId="d" name="Manual (equipe)" fill={C.blue} radius={[4, 4, 0, 0]} />
+                  <RechartsTooltip contentStyle={tooltipStyle} cursor={{ fill: "rgba(37,99,235,0.06)" }} formatter={(v: any) => [Number(v).toLocaleString(), "Disparos"]} />
+                  <ReferenceLine y={META_DISPAROS_DIA} stroke={C.amber} strokeDasharray="6 4" label={{ value: `meta ${META_DISPAROS_DIA}`, fill: C.amber, fontSize: 11, position: "insideTopRight" }} />
+                  <Bar dataKey="disparos" name="Disparos" radius={[4, 4, 0, 0]}>
+                    {serieDisparos.map((r, i) => (
+                      <Cell key={i} fill={r.disparos >= META_DISPAROS_DIA ? C.green : r.disparos >= META_DISPAROS_DIA * 0.5 ? C.amber : C.red} />
+                    ))}
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             )}
-          </PanelCard>
-
-          <PanelCard
-            title="Cada campanha está disparando?"
-            description="Disparos por campanha — hoje, últimos 7 dias e último disparo (IA × Manual)"
-            icon={Radio}
-          >
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left border-b">
-                    {["Campanha", "Tipo", "Status", "Hoje", "7 dias", "Total", "Último disparo"].map((h, i) => (
-                      <th key={h} className={`py-2 px-2 text-[11px] uppercase tracking-wider font-semibold text-muted-foreground ${i >= 3 && i <= 5 ? "text-right" : ""}`}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {monitorCampanhas.map((c) => {
-                    const ult = c.ultimo_disparo ? new Date(c.ultimo_disparo) : null;
-                    const diasSemDisparo = ult ? Math.floor((Date.now() - ult.getTime()) / 86400000) : null;
-                    const parada = c.status === "ativa" && (diasSemDisparo === null || diasSemDisparo >= 2);
-                    return (
-                      <tr key={c.campanha_id} className="border-b hover:bg-muted/40 transition-colors">
-                        <td className="py-2 px-2 font-medium">{c.campanha}</td>
-                        <td className="py-2 px-2">
-                          <Badge variant="outline" className={c.tipo === "ia" ? "border-purple-300 bg-purple-50 text-purple-700" : "border-blue-300 bg-blue-50 text-blue-700"}>
-                            {c.tipo === "ia" ? "IA" : "Manual"}
-                          </Badge>
-                        </td>
-                        <td className="py-2 px-2"><Badge variant="outline">{c.status}</Badge></td>
-                        <td className="py-2 px-2 text-right font-bold" style={{ color: Number(c.disparos_hoje) > 0 ? C.green : "#94a3b8" }}>{Number(c.disparos_hoje).toLocaleString()}</td>
-                        <td className="py-2 px-2 text-right text-muted-foreground">{Number(c.disparos_7d).toLocaleString()}</td>
-                        <td className="py-2 px-2 text-right text-muted-foreground">{Number(c.disparos_total).toLocaleString()}</td>
-                        <td className="py-2 px-2">
-                          {ult ? (
-                            <span className={parada ? "text-red-600 font-medium" : "text-muted-foreground"}>
-                              {ult.toLocaleDateString("pt-BR")}{parada ? ` · ${diasSemDisparo}d parada` : ""}
-                            </span>
-                          ) : (
-                            <span className="text-red-600 font-medium">nunca disparou</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {monitorCampanhas.length === 0 && (
-                    <tr><td colSpan={7} className="py-6 text-center text-muted-foreground">Nenhuma campanha ativa ou pausada.</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
           </PanelCard>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
