@@ -13,6 +13,25 @@ import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { Loader2, Plus, X, Ticket } from "lucide-react";
 
+function stripHtml(html: string): string {
+  if (!html) return "";
+  // Substitui <br>, </div>, </p> por quebras de linha antes de remover tags
+  const withBreaks = html
+    .replace(/<\s*br\s*\/?\s*>/gi, "\n")
+    .replace(/<\/\s*(div|p|li)\s*>/gi, "\n")
+    .replace(/<[^>]+>/g, "");
+  return withBreaks
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .trim();
+}
+
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -85,10 +104,15 @@ export function TransformDemandaTicketDialog({ open, onOpenChange, demandaId, on
   // Pre-fill quando abrir
   useEffect(() => {
     if (!open || !demanda) return;
-    setDescricao(`${demanda.tarefa.titulo}\n\n${demanda.tarefa.descricao || ""}`.trim());
+    const titulo = stripHtml(demanda.tarefa.titulo || "");
+    const corpo = stripHtml(demanda.tarefa.descricao || "");
+    setDescricao(`${titulo}\n\n${corpo}`.trim());
+    // Não inclui o usuário atual (TI) entre os solicitantes — quem abriu/é responsável
+    // pela demanda é o solicitante real do ticket.
     const pre = new Map<string, ProfileOpt>();
     const add = (id: string | null | undefined) => {
       if (!id) return;
+      if (user?.id && id === user.id) return;
       const p = demanda.profiles.find((x: any) => x.id === id);
       if (p) pre.set(p.id, { id: p.id, nome_completo: p.nome_completo || "Sem nome", email: p.email });
     };
@@ -98,7 +122,7 @@ export function TransformDemandaTicketDialog({ open, onOpenChange, demandaId, on
     setUrgencia("");
     setImpacto("");
     setTipo("software");
-  }, [open, demanda]);
+  }, [open, demanda, user?.id]);
 
   // Busca de usuários para adicionar
   const { data: allUsers } = useQuery({
@@ -126,6 +150,15 @@ export function TransformDemandaTicketDialog({ open, onOpenChange, demandaId, on
     setSearch(false);
   };
   const remover = (id: string) => setSolicitantes((prev) => prev.filter((p) => p.id !== id));
+  const tornarPrincipal = (id: string) =>
+    setSolicitantes((prev) => {
+      const idx = prev.findIndex((p) => p.id === id);
+      if (idx <= 0) return prev;
+      const next = [...prev];
+      const [item] = next.splice(idx, 1);
+      next.unshift(item);
+      return next;
+    });
 
   const transform = useMutation({
     mutationFn: async () => {
@@ -305,9 +338,21 @@ export function TransformDemandaTicketDialog({ open, onOpenChange, demandaId, on
             <div className="space-y-2">
               <Label>Solicitantes *</Label>
               <div className="flex flex-wrap gap-1.5 p-2 border rounded-md min-h-[42px]">
-                {solicitantes.map((s) => (
-                  <Badge key={s.id} variant="secondary" className="gap-1 pr-1">
-                    {s.nome_completo}
+                {solicitantes.map((s, idx) => (
+                  <Badge
+                    key={s.id}
+                    variant={idx === 0 ? "default" : "secondary"}
+                    className="gap-1 pr-1"
+                  >
+                    {idx === 0 && <span className="text-[10px] uppercase mr-1 opacity-80">principal</span>}
+                    <button
+                      type="button"
+                      onClick={() => tornarPrincipal(s.id)}
+                      className="hover:underline"
+                      title={idx === 0 ? "Solicitante principal" : "Definir como principal"}
+                    >
+                      {s.nome_completo}
+                    </button>
                     <button
                       type="button"
                       onClick={() => remover(s.id)}

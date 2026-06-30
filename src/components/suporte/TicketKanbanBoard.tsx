@@ -381,7 +381,16 @@ export function TicketKanbanBoard({ onTicketClick, filtros }: TicketKanbanBoardP
                             </div>
                             
                             <p className="text-xs text-muted-foreground mt-1.5 line-clamp-3 overflow-hidden break-all">
-                              {ticket.descricao}
+                              {(ticket.descricao || "")
+                                .replace(/<\s*br\s*\/?\s*>/gi, " ")
+                                .replace(/<\/(div|p|li)>/gi, " ")
+                                .replace(/<[^>]+>/g, "")
+                                .replace(/&nbsp;/g, " ")
+                                .replace(/&amp;/g, "&")
+                                .replace(/&lt;/g, "<")
+                                .replace(/&gt;/g, ">")
+                                .replace(/\s+/g, " ")
+                                .trim()}
                             </p>
                           </CardHeader>
                         
