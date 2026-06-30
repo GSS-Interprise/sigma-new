@@ -8,6 +8,7 @@ import { AbaRelacionamento } from "@/components/bi/AbaRelacionamento";
 import { AbaFinanceiro } from "@/components/bi/AbaFinanceiro";
 import { AbaProspec } from "@/components/bi/AbaProspec";
 import { AbaEsforcoEquipe } from "@/components/bi/AbaEsforcoEquipe";
+import { AbaAcompanhamentoCampanhas } from "@/components/bi/AbaAcompanhamentoCampanhas";
 import { AbaInsightsConversas } from "@/components/bi/AbaInsightsConversas";
 import { AbaEscalas } from "@/components/bi/AbaEscalas";
 import { AbaContratos } from "@/components/bi/AbaContratos";
@@ -32,6 +33,7 @@ const MODULE_COMPONENTS: Record<string, React.ComponentType> = {
   relacionamento: AbaRelacionamento,
   financeiro: AbaFinanceiro,
   prospeccao: AbaProspec,
+  acompanhamento: AbaAcompanhamentoCampanhas,
   esforco: AbaEsforcoEquipe,
   insights: AbaInsightsConversas,
   escalas: AbaEscalas,
