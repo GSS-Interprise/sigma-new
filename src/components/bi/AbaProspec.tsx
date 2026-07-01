@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Send, MessageCircle, Trophy, TrendingUp, Megaphone, Users, Target, Radio, MousePointer, BarChart3, Mail, Instagram, Stethoscope, UserCheck, XCircle, MessageSquare, RotateCcw, Lock, RefreshCw, Inbox } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import {
   BarChart, Bar, LineChart, Line, Area, AreaChart, XAxis, YAxis, CartesianGrid,
@@ -79,6 +80,8 @@ export function AbaProspec() {
   const [dataInicio, setDataInicio] = useState(startOfMonthsAgo(5));
   const [dataFim, setDataFim] = useState(new Date().toISOString().slice(0, 10));
   const [tabAtiva, setTabAtiva] = useState<string>("resumo");
+  const [funilUf, setFunilUf] = useState<string>("");
+  const [funilEsp, setFunilEsp] = useState<string>("");
 
   const PERIODO_INICIO_DEFAULT = startOfMonthsAgo(5);
   const PERIODO_FIM_DEFAULT = new Date().toISOString().slice(0, 10);
@@ -157,6 +160,44 @@ export function AbaProspec() {
     staleTime: 60_000,
     retry: false,
   });
+
+  // === Funil por especialidade/estado + coorte mensal (RPC real, campanha_leads) ===
+  const { data: funilEspData } = useQuery({
+    queryKey: ["bi-prospec-funil", funilUf, funilEsp],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).rpc("get_bi_prospec_funil", {
+        p_uf: funilUf || null,
+        p_especialidade_id: funilEsp || null,
+      });
+      if (error) throw error;
+      return data as any;
+    },
+    staleTime: 60_000,
+    retry: false,
+  });
+
+  const especiesSerie: string[] = funilEspData?.especialidades_serie ?? [];
+  const funilEtapas = useMemo(() => {
+    const f = (funilEspData?.funil ?? {}) as any;
+    return [
+      { nome: "Na base (universo)", v: Number(f.universo) || 0, cor: C.purple },
+      { nome: "Em campanha", v: Number(f.em_campanha) || 0, cor: C.blue },
+      { nome: "Contatados", v: Number(f.contatados) || 0, cor: C.cyan },
+      { nome: "Em conversa", v: Number(f.em_conversa) || 0, cor: C.amber },
+      { nome: "Quente", v: Number(f.quente) || 0, cor: C.orange },
+      { nome: "Convertido", v: Number(f.convertido) || 0, cor: C.green },
+    ];
+  }, [funilEspData]);
+  const coorteChart = useMemo(() => {
+    const rows = (funilEspData?.coorte_mensal ?? []) as any[];
+    const byMes = new Map<string, any>();
+    for (const r of rows) {
+      if (!byMes.has(r.mes)) byMes.set(r.mes, { mes: r.mes });
+      byMes.get(r.mes)[r.especialidade] = Number(r.contatados) || 0;
+    }
+    return [...byMes.values()].sort((a, b) => (a.mes < b.mes ? -1 : 1));
+  }, [funilEspData]);
+  const COORTE_CORES = [C.blue, C.green, C.amber, C.pink, C.purple, C.cyan, C.orange, "#0ea5e9"];
 
   const serieDisparos = useMemo(() => {
     const porDia = new Map<string, number>();
@@ -350,6 +391,7 @@ export function AbaProspec() {
             ["resumo", "Resumo"],
             ["visao", "Visão geral"],
             ["especialidade", "Por especialidade"],
+            ["funilesp", "Funil por especialidade"],
             ["conversao", "Conversão"],
             ["trafego", "Tráfego pago"],
             ["campanhas", "Campanhas"],
@@ -359,6 +401,77 @@ export function AbaProspec() {
             <TabsTrigger key={v} value={v}>{l}</TabsTrigger>
           ))}
         </TabsList>
+
+        {/* === Funil por especialidade/estado + coorte mensal === */}
+        <TabsContent value="funilesp" className="space-y-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground mr-1"><Stethoscope className="h-3.5 w-3.5" /> Recorte:</div>
+            <Select value={funilUf || "all"} onValueChange={(v) => setFunilUf(v === "all" ? "" : v)}>
+              <SelectTrigger className="w-[170px]"><SelectValue placeholder="Estado" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos os estados</SelectItem>
+                {(funilEspData?.filtros?.ufs ?? []).map((u: string) => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={funilEsp || "all"} onValueChange={(v) => setFunilEsp(v === "all" ? "" : v)}>
+              <SelectTrigger className="w-[280px]"><SelectValue placeholder="Especialidade" /></SelectTrigger>
+              <SelectContent className="max-h-72">
+                <SelectItem value="all">Todas as especialidades</SelectItem>
+                {(funilEspData?.filtros?.especialidades ?? []).map((e: any) => <SelectItem key={e.id} value={e.id}>{e.nome}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            {(funilUf || funilEsp) && (
+              <Button variant="ghost" size="sm" onClick={() => { setFunilUf(""); setFunilEsp(""); }}>
+                <RotateCcw className="h-4 w-4 mr-1" /> Limpar
+              </Button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <PanelCard title="Funil completo" description="Do universo à conversão, no recorte filtrado — e quanto passa de cada etapa" icon={TrendingUp}>
+              <div className="space-y-3 pt-1">
+                {funilEtapas.map((e, i, arr) => {
+                  const max = arr[0].v || 1;
+                  const w = e.v > 0 ? Math.max(4, (e.v / max) * 100) : 0;
+                  const passagem = i > 0 && arr[i - 1].v > 0 ? ((e.v / arr[i - 1].v) * 100).toFixed(1) : null;
+                  return (
+                    <div key={e.nome}>
+                      <div className="flex items-baseline justify-between text-xs mb-1">
+                        <span className="text-foreground">{e.nome}</span>
+                        <span className="font-mono" style={{ color: e.cor }}>
+                          {e.v.toLocaleString("pt-BR")}
+                          {passagem && <span className="text-muted-foreground"> · {passagem}% da etapa anterior</span>}
+                        </span>
+                      </div>
+                      <div className="h-6 rounded-md overflow-hidden bg-muted">
+                        <div className="h-full rounded-md transition-all" style={{ width: `${w}%`, background: e.cor }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </PanelCard>
+
+            <PanelCard title="Contatados por especialidade, por mês" description="Compara a evolução mensal entre especialidades (top 8 por volume)" icon={BarChart3}>
+              {coorteChart.length === 0 ? (
+                <p className="text-sm py-10 text-center text-muted-foreground">Sem contatos no recorte selecionado.</p>
+              ) : (
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={coorteChart}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
+                    <XAxis dataKey="mes" stroke={AXIS} tick={{ fill: AXIS, fontSize: 11 }} />
+                    <YAxis stroke={AXIS} tick={{ fill: AXIS, fontSize: 11 }} allowDecimals={false} />
+                    <RechartsTooltip contentStyle={tooltipStyle} cursor={{ fill: "rgba(37,99,235,.05)" }} />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    {especiesSerie.map((nome, i) => (
+                      <Bar key={nome} dataKey={nome} name={nome} fill={COORTE_CORES[i % COORTE_CORES.length]} radius={[3, 3, 0, 0]} />
+                    ))}
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </PanelCard>
+          </div>
+        </TabsContent>
 
         {/* === Resumo executivo (diretoria) === */}
         <TabsContent value="resumo" className="space-y-4">
