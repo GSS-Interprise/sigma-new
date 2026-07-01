@@ -114,6 +114,7 @@ export function AbaProspec() {
     },
     staleTime: 60_000,
     retry: false,
+    enabled: tabAtiva !== "resumo", // o Resumo (funil) não usa o dashboard antigo — não bloqueia o open
   });
 
   const semPermissao = (dashboardError as any)?.code === "42501";
@@ -135,6 +136,12 @@ export function AbaProspec() {
   const { data: funilEspData } = useQuery({
     queryKey: ["bi-prospec-funil", funilUf, funilEsp],
     queryFn: async () => {
+      // Sem filtro: lê o snapshot pré-computado (instantâneo). Com filtro: RPC ao vivo.
+      if (!funilUf && !funilEsp) {
+        const { data, error } = await (supabase as any)
+          .from("bi_prospec_funil_snapshot").select("payload").eq("id", 1).maybeSingle();
+        if (!error && data?.payload) return data.payload as any;
+      }
       const { data, error } = await (supabase as any).rpc("get_bi_prospec_funil", {
         p_uf: funilUf || null,
         p_especialidade_id: funilEsp || null,
@@ -142,7 +149,8 @@ export function AbaProspec() {
       if (error) throw error;
       return data as any;
     },
-    staleTime: 60_000,
+    staleTime: 5 * 60_000,
+    placeholderData: (prev: any) => prev,
     retry: false,
   });
 
@@ -169,6 +177,7 @@ export function AbaProspec() {
   }, [funilEspData]);
   const COORTE_CORES = [C.blue, C.green, C.amber, C.pink, C.purple, C.cyan, C.orange, "#0ea5e9"];
   const oportunidades = (funilEspData?.oportunidades ?? { dimensao: "especialidade", linhas: [] }) as any;
+  const funilInfo = (funilEspData?.funil ?? {}) as any;
 
   // Desestrutura RPC com defaults seguros
   const totais = (dashboard?.totais ?? {}) as any;
@@ -354,6 +363,12 @@ export function AbaProspec() {
 
           {/* Funil real — do universo à conversão */}
           <PanelCard title="Funil de prospecção" description="Do universo de médicos à conversão, no recorte selecionado — e onde o lead vaza" icon={TrendingUp}>
+            {funilInfo.base_total != null && (
+              <p className="text-[11px] text-muted-foreground mb-2">
+                Base total: <b className="text-foreground">{Number(funilInfo.base_total).toLocaleString("pt-BR")}</b> leads ·
+                {" "}<b className="text-foreground">{Math.max(Number(funilInfo.base_total) - Number(funilInfo.universo || 0), 0).toLocaleString("pt-BR")}</b> ainda sem especialidade classificada (não entram no funil por especialidade).
+              </p>
+            )}
             <div className="space-y-1.5 pt-1">
               {funilEtapas.map((e, i, arr) => {
                 const uni = arr[0].v || 1;
