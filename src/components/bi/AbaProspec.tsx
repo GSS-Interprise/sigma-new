@@ -5,13 +5,15 @@ import { FiltroPeriodo } from "./FiltroPeriodo";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Send, MessageCircle, Trophy, TrendingUp, Megaphone, Users, Target, Radio, MousePointer, BarChart3, Mail, Instagram, Stethoscope, UserCheck, XCircle, MessageSquare, RotateCcw, Lock, RefreshCw, Inbox } from "lucide-react";
+import { Loader2, Send, MessageCircle, Trophy, TrendingUp, Megaphone, Users, Target, Radio, MousePointer, BarChart3, Mail, Instagram, Stethoscope, UserCheck, XCircle, MessageSquare, RotateCcw, Lock, RefreshCw, Inbox, ChevronDown, ChevronsUpDown, Check, Sparkles, Filter } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
-  BarChart, Bar, LineChart, Line, Area, AreaChart, XAxis, YAxis, CartesianGrid,
-  Tooltip as RechartsTooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, ReferenceLine,
+  BarChart, Bar, Area, AreaChart, XAxis, YAxis, CartesianGrid,
+  Tooltip as RechartsTooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell,
 } from "recharts";
 
 // Paleta light (alinhada ao restante do /bi — shadcn/Tailwind)
@@ -129,38 +131,6 @@ export function AbaProspec() {
     staleTime: 5 * 60_000,
   });
 
-  // === Resumo executivo: séries de apoio (views novas) ===
-  const META_DISPAROS_DIA = 700; // 20 chips × 35/dia (anti-ban WS2)
-
-  const { data: disparosDiariosRaw } = useQuery({
-    queryKey: ["bi-resumo-disparos-diarios", dataInicio, dataFim],
-    queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from("vw_disparos_diarios")
-        .select("dia, n_disparos")
-        .gte("dia", dataInicio)
-        .lte("dia", dataFim)
-        .order("dia");
-      if (error) throw error;
-      return (data ?? []) as any[];
-    },
-    staleTime: 60_000,
-    retry: false,
-  });
-
-  const { data: captadoraProd } = useQuery({
-    queryKey: ["bi-resumo-captadora"],
-    queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from("vw_captadora_produtividade")
-        .select("nome_completo, massa_enviados, manuais_enviados, convertidos_campanha, conversoes_totais, leads_assumidos, taxa_conversao_pct");
-      if (error) throw error;
-      return (data ?? []) as any[];
-    },
-    staleTime: 60_000,
-    retry: false,
-  });
-
   // === Funil por especialidade/estado + coorte mensal (RPC real, campanha_leads) ===
   const { data: funilEspData } = useQuery({
     queryKey: ["bi-prospec-funil", funilUf, funilEsp],
@@ -198,35 +168,7 @@ export function AbaProspec() {
     return [...byMes.values()].sort((a, b) => (a.mes < b.mes ? -1 : 1));
   }, [funilEspData]);
   const COORTE_CORES = [C.blue, C.green, C.amber, C.pink, C.purple, C.cyan, C.orange, "#0ea5e9"];
-
-  const serieDisparos = useMemo(() => {
-    const porDia = new Map<string, number>();
-    for (const r of disparosDiariosRaw ?? []) {
-      porDia.set(r.dia, (porDia.get(r.dia) || 0) + (Number(r.n_disparos) || 0));
-    }
-    return [...porDia.entries()]
-      .map(([dia, n]) => ({ dia: dia.slice(5), disparos: n }))
-      .sort((a, b) => (a.dia < b.dia ? -1 : 1));
-  }, [disparosDiariosRaw]);
-
-  const mediaDisparosDia = useMemo(() => {
-    if (!serieDisparos.length) return 0;
-    const soma = serieDisparos.reduce((s, r) => s + r.disparos, 0);
-    return Math.round(soma / serieDisparos.length);
-  }, [serieDisparos]);
-
-  const topCaptadoras = useMemo(
-    () => [...(captadoraProd ?? [])]
-      .map((c) => ({
-        nome: (c.nome_completo || "—").split(" ").slice(0, 2).join(" "),
-        enviados: (Number(c.massa_enviados) || 0) + (Number(c.manuais_enviados) || 0),
-        convertidos: (Number(c.convertidos_campanha) || 0) + (Number(c.conversoes_totais) || 0),
-      }))
-      .filter((c) => c.enviados > 0)
-      .sort((a, b) => b.enviados - a.enviados)
-      .slice(0, 8),
-    [captadoraProd]
-  );
+  const oportunidades = (funilEspData?.oportunidades ?? { dimensao: "especialidade", linhas: [] }) as any;
 
   // Desestrutura RPC com defaults seguros
   const totais = (dashboard?.totais ?? {}) as any;
@@ -326,17 +268,9 @@ export function AbaProspec() {
   const taxaResp = totalGeralDisparos > 0 ? ((totaisGerais.responderam / totalGeralDisparos) * 100).toFixed(1) : "0";
   const taxaConv = totalGeralDisparos > 0 ? ((totaisGerais.convertidos / totalGeralDisparos) * 100).toFixed(1) : "0";
 
-  // Ritmo vs meta de disparos (700/dia = 20 chips × 35, anti-ban WS2)
-  const pctMeta = META_DISPAROS_DIA > 0 ? (mediaDisparosDia / META_DISPAROS_DIA) * 100 : 0;
-  const corMeta = pctMeta >= 100 ? C.green : pctMeta >= 50 ? C.amber : C.red;
-  const funilMacro = [
-    { nome: "Disparos", v: totalGeralDisparos, cor: C.blue },
-    { nome: "Responderam", v: totaisGerais.responderam, cor: C.pink },
-    { nome: "Convertidos", v: totaisGerais.convertidos, cor: C.green },
-  ];
-
   return (
     <div className="space-y-6">
+      {tabAtiva !== "resumo" && (<>
       {/* Filtro */}
       <FiltroPeriodo
         dataInicio={dataInicio}
@@ -384,14 +318,14 @@ export function AbaProspec() {
           </Button>
         </div>
       </div>
+      </>)}
 
       <Tabs value={tabAtiva} onValueChange={setTabAtiva} className="space-y-4">
         <TabsList>
           {[
-            ["resumo", "Resumo"],
+            ["resumo", "Funil & Oportunidades"],
             ["visao", "Visão geral"],
             ["especialidade", "Por especialidade"],
-            ["funilesp", "Funil por especialidade"],
             ["conversao", "Conversão"],
             ["trafego", "Tráfego pago"],
             ["campanhas", "Campanhas"],
@@ -402,24 +336,15 @@ export function AbaProspec() {
           ))}
         </TabsList>
 
-        {/* === Funil por especialidade/estado + coorte mensal === */}
-        <TabsContent value="funilesp" className="space-y-4">
+        {/* === Funil real + Oportunidades (default ao abrir Prospecção) === */}
+        <TabsContent value="resumo" className="space-y-4">
+          {/* Filtros com busca (digitável) */}
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground mr-1"><Stethoscope className="h-3.5 w-3.5" /> Recorte:</div>
-            <Select value={funilUf || "all"} onValueChange={(v) => setFunilUf(v === "all" ? "" : v)}>
-              <SelectTrigger className="w-[170px]"><SelectValue placeholder="Estado" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos os estados</SelectItem>
-                {(funilEspData?.filtros?.ufs ?? []).map((u: string) => <SelectItem key={u} value={u}>{u}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <Select value={funilEsp || "all"} onValueChange={(v) => setFunilEsp(v === "all" ? "" : v)}>
-              <SelectTrigger className="w-[280px]"><SelectValue placeholder="Especialidade" /></SelectTrigger>
-              <SelectContent className="max-h-72">
-                <SelectItem value="all">Todas as especialidades</SelectItem>
-                {(funilEspData?.filtros?.especialidades ?? []).map((e: any) => <SelectItem key={e.id} value={e.id}>{e.nome}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground mr-1"><Filter className="h-3.5 w-3.5" /> Recorte:</div>
+            <Combobox value={funilUf} onChange={setFunilUf} allLabel="Todos os estados" placeholder="Buscar estado…" width="w-[190px]"
+              options={(funilEspData?.filtros?.ufs ?? []).map((u: string) => ({ value: u, label: u }))} />
+            <Combobox value={funilEsp} onChange={setFunilEsp} allLabel="Todas as especialidades" placeholder="Buscar especialidade…" width="w-[300px]"
+              options={(funilEspData?.filtros?.especialidades ?? []).map((e: any) => ({ value: e.id, label: e.nome }))} />
             {(funilUf || funilEsp) && (
               <Button variant="ghost" size="sm" onClick={() => { setFunilUf(""); setFunilEsp(""); }}>
                 <RotateCcw className="h-4 w-4 mr-1" /> Limpar
@@ -427,129 +352,102 @@ export function AbaProspec() {
             )}
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <PanelCard title="Funil completo" description="Do universo à conversão, no recorte filtrado — e quanto passa de cada etapa" icon={TrendingUp}>
-              <div className="space-y-3 pt-1">
-                {funilEtapas.map((e, i, arr) => {
-                  const max = arr[0].v || 1;
-                  const w = e.v > 0 ? Math.max(4, (e.v / max) * 100) : 0;
-                  const passagem = i > 0 && arr[i - 1].v > 0 ? ((e.v / arr[i - 1].v) * 100).toFixed(1) : null;
-                  return (
-                    <div key={e.nome}>
-                      <div className="flex items-baseline justify-between text-xs mb-1">
-                        <span className="text-foreground">{e.nome}</span>
-                        <span className="font-mono" style={{ color: e.cor }}>
-                          {e.v.toLocaleString("pt-BR")}
-                          {passagem && <span className="text-muted-foreground"> · {passagem}% da etapa anterior</span>}
-                        </span>
+          {/* Funil real — do universo à conversão */}
+          <PanelCard title="Funil de prospecção" description="Do universo de médicos à conversão, no recorte selecionado — e onde o lead vaza" icon={TrendingUp}>
+            <div className="space-y-1.5 pt-1">
+              {funilEtapas.map((e, i, arr) => {
+                const uni = arr[0].v || 1;
+                const wUni = e.v > 0 ? Math.max(3, (e.v / uni) * 100) : 0;
+                const passagem = i > 0 && arr[i - 1].v > 0 ? Math.round((e.v / arr[i - 1].v) * 100) : null;
+                const perdidos = i > 0 ? Math.max(arr[i - 1].v - e.v, 0) : 0;
+                return (
+                  <div key={e.nome}>
+                    {i > 0 && (
+                      <div className="flex items-center gap-1.5 pl-3 py-0.5 text-[11px] text-slate-400">
+                        <ChevronDown className="h-3 w-3" /> {passagem}% seguem
+                        {perdidos > 0 && <span>· {perdidos.toLocaleString("pt-BR")} saíram</span>}
                       </div>
-                      <div className="h-6 rounded-md overflow-hidden bg-muted">
-                        <div className="h-full rounded-md transition-all" style={{ width: `${w}%`, background: e.cor }} />
+                    )}
+                    <div className="relative h-11 rounded-lg bg-slate-50 overflow-hidden ring-1 ring-slate-100">
+                      <div className="absolute inset-y-0 left-0" style={{ width: `${wUni}%`, background: e.cor, opacity: 0.85 }} />
+                      <div className="relative flex items-center justify-between h-full px-3">
+                        <span className="flex items-center gap-2 text-sm font-medium text-slate-800">
+                          <span className="h-2.5 w-2.5 rounded-full ring-2 ring-white" style={{ background: e.cor }} /> {e.nome}
+                        </span>
+                        <span className="text-lg font-bold tabular-nums text-slate-900">{e.v.toLocaleString("pt-BR")}</span>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            </PanelCard>
+                  </div>
+                );
+              })}
+            </div>
+          </PanelCard>
 
-            <PanelCard title="Contatados por especialidade, por mês" description="Compara a evolução mensal entre especialidades (top 8 por volume)" icon={BarChart3}>
-              {coorteChart.length === 0 ? (
-                <p className="text-sm py-10 text-center text-muted-foreground">Sem contatos no recorte selecionado.</p>
-              ) : (
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={coorteChart}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
-                    <XAxis dataKey="mes" stroke={AXIS} tick={{ fill: AXIS, fontSize: 11 }} />
-                    <YAxis stroke={AXIS} tick={{ fill: AXIS, fontSize: 11 }} allowDecimals={false} />
-                    <RechartsTooltip contentStyle={tooltipStyle} cursor={{ fill: "rgba(37,99,235,.05)" }} />
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
-                    {especiesSerie.map((nome, i) => (
-                      <Bar key={nome} dataKey={nome} name={nome} fill={COORTE_CORES[i % COORTE_CORES.length]} radius={[3, 3, 0, 0]} />
-                    ))}
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
-            </PanelCard>
-          </div>
-        </TabsContent>
-
-        {/* === Resumo executivo (diretoria) === */}
-        <TabsContent value="resumo" className="space-y-4">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <KPI icon={Send} label="Disparos no período" value={totalGeralDisparos.toLocaleString()} sub={`~${mediaDisparosDia.toLocaleString()}/dia`} color={C.blue} />
-            <KPI icon={MessageCircle} label="Taxa de resposta" value={`${taxaResp}%`} sub={`${totaisGerais.responderam.toLocaleString()} resp.`} color={C.pink} />
-            <KPI icon={Trophy} label="Taxa de conversão" value={`${taxaConv}%`} sub={`${totaisGerais.convertidos.toLocaleString()} conv.`} color={C.green} />
-            <KPI icon={Target} label="Ritmo vs meta" value={`${Math.round(pctMeta)}%`} sub={`meta ${META_DISPAROS_DIA}/dia`} color={corMeta} />
-          </div>
-
+          {/* Mapa de oportunidades */}
           <PanelCard
-            title="Ritmo de disparos por dia"
-            description={`Média ${mediaDisparosDia.toLocaleString()}/dia · meta ${META_DISPAROS_DIA}/dia · verde = bateu a meta, vermelho = abaixo de 50%`}
-            icon={BarChart3}
+            title={oportunidades.dimensao === "estado" ? "Oportunidades por estado" : "Oportunidades por especialidade"}
+            description="Médicos ainda NÃO contatados — onde está o maior potencial pra atacar (ordenado por tamanho da oportunidade)"
+            icon={Sparkles}
           >
-            {serieDisparos.length === 0 ? (
-              <p className="text-sm py-8 text-center text-muted-foreground">Sem disparos no período.</p>
+            {(oportunidades.linhas ?? []).length === 0 ? (
+              <p className="text-sm py-8 text-center text-muted-foreground">Sem dados no recorte selecionado.</p>
             ) : (
-              <ResponsiveContainer width="100%" height={240}>
-                <BarChart data={serieDisparos}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={GRID} />
-                  <XAxis dataKey="dia" stroke={AXIS} tick={{ fill: AXIS, fontSize: 11 }} />
-                  <YAxis stroke={AXIS} tick={{ fill: AXIS, fontSize: 11 }} />
-                  <RechartsTooltip contentStyle={tooltipStyle} cursor={{ fill: "rgba(37,99,235,0.06)" }} formatter={(v: any) => [Number(v).toLocaleString(), "Disparos"]} />
-                  <ReferenceLine y={META_DISPAROS_DIA} stroke={C.amber} strokeDasharray="6 4" label={{ value: `meta ${META_DISPAROS_DIA}`, fill: C.amber, fontSize: 11, position: "insideTopRight" }} />
-                  <Bar dataKey="disparos" name="Disparos" radius={[4, 4, 0, 0]}>
-                    {serieDisparos.map((r, i) => (
-                      <Cell key={i} fill={r.disparos >= META_DISPAROS_DIA ? C.green : r.disparos >= META_DISPAROS_DIA * 0.5 ? C.amber : C.red} />
-                    ))}
-                  </Bar>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left border-b text-muted-foreground">
+                      <th className="py-2 px-2 text-[11px] uppercase tracking-wider font-semibold">{oportunidades.dimensao === "estado" ? "Estado" : "Especialidade"}</th>
+                      <th className="py-2 px-2 text-[11px] uppercase tracking-wider font-semibold text-right">Na base</th>
+                      <th className="py-2 px-2 text-[11px] uppercase tracking-wider font-semibold text-right">Contatados</th>
+                      <th className="py-2 px-2 text-[11px] uppercase tracking-wider font-semibold">Cobertura</th>
+                      <th className="py-2 px-2 text-[11px] uppercase tracking-wider font-semibold text-right">Oportunidade</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(oportunidades.linhas ?? []).map((l: any) => {
+                      const cob = Number(l.cobertura_pct) || 0;
+                      return (
+                        <tr key={l.rotulo} className="border-b last:border-0 hover:bg-muted/40 transition-colors">
+                          <td className="py-2 px-2 font-medium text-slate-800">{l.rotulo}</td>
+                          <td className="py-2 px-2 text-right tabular-nums text-slate-600">{Number(l.universo).toLocaleString("pt-BR")}</td>
+                          <td className="py-2 px-2 text-right tabular-nums text-slate-600">{Number(l.contatados).toLocaleString("pt-BR")}</td>
+                          <td className="py-2 px-2">
+                            <div className="flex items-center gap-2">
+                              <div className="h-1.5 w-24 rounded-full bg-slate-100 overflow-hidden">
+                                <div className="h-full rounded-full" style={{ width: `${Math.min(cob, 100)}%`, background: cob >= 50 ? C.green : cob >= 15 ? C.amber : C.red }} />
+                              </div>
+                              <span className="text-xs tabular-nums text-slate-500">{cob}%</span>
+                            </div>
+                          </td>
+                          <td className="py-2 px-2 text-right tabular-nums font-bold" style={{ color: C.orange }}>{Number(l.gap).toLocaleString("pt-BR")}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </PanelCard>
+
+          {/* Coorte mensal por especialidade */}
+          <PanelCard title="Contatados por especialidade, por mês" description="Compara a evolução mensal entre especialidades (top 8 por volume no recorte)" icon={BarChart3}>
+            {coorteChart.length === 0 ? (
+              <p className="text-sm py-10 text-center text-muted-foreground">Sem contatos no recorte selecionado.</p>
+            ) : (
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={coorteChart}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
+                  <XAxis dataKey="mes" stroke={AXIS} tick={{ fill: AXIS, fontSize: 11 }} />
+                  <YAxis stroke={AXIS} tick={{ fill: AXIS, fontSize: 11 }} allowDecimals={false} />
+                  <RechartsTooltip contentStyle={tooltipStyle} cursor={{ fill: "rgba(37,99,235,.05)" }} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  {especiesSerie.map((nome, i) => (
+                    <Bar key={nome} dataKey={nome} name={nome} fill={COORTE_CORES[i % COORTE_CORES.length]} radius={[3, 3, 0, 0]} />
+                  ))}
                 </BarChart>
               </ResponsiveContainer>
             )}
           </PanelCard>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <PanelCard title="Funil — disparo → resposta → conversão" description="Onde o lead avança e onde vaza" icon={TrendingUp}>
-              <div className="space-y-3 pt-1">
-                {funilMacro.map((e, i, arr) => {
-                  const max = arr[0].v || 1;
-                  const w = e.v > 0 ? Math.max(6, (e.v / max) * 100) : 0;
-                  const passagem = i > 0 && arr[i - 1].v > 0 ? ((e.v / arr[i - 1].v) * 100).toFixed(1) : null;
-                  return (
-                    <div key={e.nome}>
-                      <div className="flex items-baseline justify-between text-xs mb-1">
-                        <span className="text-foreground">{e.nome}</span>
-                        <span className="font-mono" style={{ color: e.cor }}>
-                          {e.v.toLocaleString()}
-                          {passagem && <span className="text-muted-foreground"> · {passagem}% da etapa anterior</span>}
-                        </span>
-                      </div>
-                      <div className="h-6 rounded-md overflow-hidden bg-muted">
-                        <div className="h-full rounded-md transition-all" style={{ width: `${w}%`, background: e.cor }} />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </PanelCard>
-
-            <PanelCard title="Produtividade do time" description="Top captadoras — volume enviado e conversões" icon={Users}>
-              {topCaptadoras.length === 0 ? (
-                <p className="text-sm py-8 text-center text-muted-foreground">Sem atividade por captadora ainda. Enche conforme a equipe trabalha os leads.</p>
-              ) : (
-                <ResponsiveContainer width="100%" height={Math.max(240, topCaptadoras.length * 36)}>
-                  <BarChart data={topCaptadoras} layout="vertical" margin={{ left: 90 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={GRID} />
-                    <XAxis type="number" stroke={AXIS} tick={{ fill: AXIS, fontSize: 11 }} />
-                    <YAxis dataKey="nome" type="category" stroke={AXIS} tick={{ fill: AXIS, fontSize: 11 }} width={110} />
-                    <RechartsTooltip contentStyle={tooltipStyle} cursor={{ fill: "rgba(22,163,74,0.06)" }} />
-                    <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Bar dataKey="enviados" fill={C.blue} name="Enviados" radius={[0, 4, 4, 0]} />
-                    <Bar dataKey="convertidos" fill={C.green} name="Convertidos" radius={[0, 4, 4, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
-            </PanelCard>
-          </div>
         </TabsContent>
 
         {/* === Visão geral === */}
@@ -890,5 +788,44 @@ export function AbaProspec() {
         </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+// Filtro digitável (combobox com busca) — usa Popover + Command (cmdk).
+function Combobox({ value, onChange, options, placeholder, allLabel, width }: {
+  value: string; onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+  placeholder: string; allLabel: string; width?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const sel = options.find((o) => o.value === value);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" role="combobox" aria-expanded={open} className={cn("justify-between font-normal", width)}>
+          <span className="truncate">{sel ? sel.label : allLabel}</span>
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="p-0 w-[var(--radix-popover-trigger-width)] min-w-[220px]" align="start">
+        <Command>
+          <CommandInput placeholder={placeholder} />
+          <CommandList>
+            <CommandEmpty>Nada encontrado.</CommandEmpty>
+            <CommandGroup>
+              <CommandItem value={allLabel} onSelect={() => { onChange(""); setOpen(false); }}>
+                <Check className={cn("mr-2 h-4 w-4", !value ? "opacity-100" : "opacity-0")} /> {allLabel}
+              </CommandItem>
+              {options.map((o) => (
+                <CommandItem key={o.value} value={o.label} onSelect={() => { onChange(o.value); setOpen(false); }}>
+                  <Check className={cn("mr-2 h-4 w-4", value === o.value ? "opacity-100" : "opacity-0")} />
+                  <span className="truncate">{o.label}</span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }
