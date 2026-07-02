@@ -1589,6 +1589,24 @@ export type Database = {
         }
         Relationships: []
       }
+      bi_prospec_funil_snapshot: {
+        Row: {
+          atualizado_em: string
+          id: number
+          payload: Json
+        }
+        Insert: {
+          atualizado_em?: string
+          id?: number
+          payload: Json
+        }
+        Update: {
+          atualizado_em?: string
+          id?: number
+          payload?: Json
+        }
+        Relationships: []
+      }
       bkp_orfas_conv_20260605: {
         Row: {
           bkp_at: string | null
@@ -15114,6 +15132,36 @@ export type Database = {
       }
     }
     Views: {
+      mv_especialidade_uf_universo: {
+        Row: {
+          especialidade_id: string | null
+          n: number | null
+          uf: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_especialidades_especialidade_id_fkey"
+            columns: ["especialidade_id"]
+            isOneToOne: false
+            referencedRelation: "especialidades"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_especialidades_especialidade_id_fkey"
+            columns: ["especialidade_id"]
+            isOneToOne: false
+            referencedRelation: "vw_especialidade_pool_count"
+            referencedColumns: ["especialidade_id"]
+          },
+        ]
+      }
+      mv_uf_universo: {
+        Row: {
+          n: number | null
+          uf: string | null
+        }
+        Relationships: []
+      }
       vw_acompanhamento_kanban: {
         Row: {
           assumido_em: string | null
@@ -16269,6 +16317,10 @@ export type Database = {
         Args: { p_fim: string; p_inicio: string }
         Returns: Json
       }
+      get_bi_prospec_funil: {
+        Args: { p_especialidade_id?: string; p_uf?: string }
+        Returns: Json
+      }
       get_leads_especialidade_counts: {
         Args: never
         Returns: {
@@ -16452,6 +16504,7 @@ export type Database = {
         }
         Returns: Json
       }
+      refresh_bi_prospec_funil_snapshot: { Args: never; Returns: undefined }
       release_licitacao_lock: {
         Args: { p_licitacao_id: string }
         Returns: undefined
