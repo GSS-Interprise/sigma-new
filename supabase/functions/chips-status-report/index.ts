@@ -130,7 +130,7 @@ serve(async (req) => {
     // 2) Disparos na janela
     const { data: sendLogs, error: logErr } = await supabase
       .from("chip_send_log")
-      .select("chip_id, status")
+      .select("chip_id, status, evento_origem")
       .gte("sent_at", since.toISOString())
       .lte("sent_at", until.toISOString());
     if (logErr) throw logErr;
@@ -139,11 +139,28 @@ serve(async (req) => {
     let totalDisparos = 0;
     let totalSucesso = 0;
     let totalFalha = 0;
+    // Manual x automático (IA). Manual = evento_origem === "manual".
+    // Automático = qualquer outra origem (cold_disparo, resposta_ia, handoff, opt_out, qa_relay, cadencia...).
+    let manualTotal = 0, manualSucesso = 0, manualFalha = 0;
+    let iaTotal = 0, iaSucesso = 0, iaFalha = 0;
+    const porOrigem: Record<string, { total: number; sucesso: number; falha: number }> = {};
     for (const row of sendLogs ?? []) {
       totalDisparos++;
       const isSuccess = row.status === "success" || row.status === "sent";
       if (isSuccess) totalSucesso++;
       else totalFalha++;
+      const origem = (row as any).evento_origem || "desconhecido";
+      const bucket = porOrigem[origem] ?? { total: 0, sucesso: 0, falha: 0 };
+      bucket.total++;
+      if (isSuccess) bucket.sucesso++; else bucket.falha++;
+      porOrigem[origem] = bucket;
+      if (origem === "manual") {
+        manualTotal++;
+        if (isSuccess) manualSucesso++; else manualFalha++;
+      } else {
+        iaTotal++;
+        if (isSuccess) iaSucesso++; else iaFalha++;
+      }
       if (!row.chip_id) continue;
       const cur = disparosPorChip.get(row.chip_id) ?? { enviados: 0, falhas: 0 };
       if (isSuccess) cur.enviados++;
@@ -166,6 +183,30 @@ serve(async (req) => {
       const t = new Date(c.ultima_queda).getTime();
       if (t >= since.getTime() && t <= until.getTime()) quedasNoPeriodo++;
     }
+
+    // 5) Leads sem atendimento humano por campanha
+    //    Critério: campanha_leads aguardando resposta humana e ainda não assumido,
+    //    e que não foram descartados/convertidos.
+    const { data: pendentes, error: pendErr } = await supabase
+      .from("campanha_leads")
+      .select("campanha_id, status, aguarda_resposta_humana, humano_assumiu, campanha:campanha_id(nome)")
+      .eq("aguarda_resposta_humana", true)
+      .neq("humano_assumiu", true)
+      .not("status", "in", "(descartado,convertido,sem_resposta)");
+    if (pendErr) throw pendErr;
+
+    const pendentesPorCampanha = new Map<string, { campanha_id: string; nome: string; total: number }>();
+    for (const row of pendentes ?? []) {
+      const cid = (row as any).campanha_id as string;
+      const nome = ((row as any).campanha?.nome as string) ?? "(sem nome)";
+      const cur = pendentesPorCampanha.get(cid) ?? { campanha_id: cid, nome, total: 0 };
+      cur.total++;
+      pendentesPorCampanha.set(cid, cur);
+    }
+    const leadsSemAtendimento = {
+      total: pendentes?.length ?? 0,
+      por_campanha: Array.from(pendentesPorCampanha.values()).sort((a, b) => b.total - a.total),
+    };
 
     const instancias = list.map((c) => {
       const d = disparosPorChip.get(c.id) ?? { enviados: 0, falhas: 0 };
@@ -204,6 +245,9 @@ serve(async (req) => {
         total: totalDisparos,
         sucesso: totalSucesso,
         falha: totalFalha,
+        manual: { total: manualTotal, sucesso: manualSucesso, falha: manualFalha },
+        automatico_ia: { total: iaTotal, sucesso: iaSucesso, falha: iaFalha },
+        por_origem: porOrigem,
         por_chip: instancias
           .filter((i) => i.disparos_periodo || i.falhas_periodo)
           .map((i) => ({
@@ -213,6 +257,7 @@ serve(async (req) => {
             falhas: i.falhas_periodo,
           })),
       },
+      leads_sem_atendimento: leadsSemAtendimento,
       instancias,
     });
   } catch (e: any) {
