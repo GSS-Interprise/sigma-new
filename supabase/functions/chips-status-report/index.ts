@@ -65,6 +65,8 @@ serve(async (req) => {
   const url = new URL(req.url);
   const sinceParam = url.searchParams.get("since");
   const untilParam = url.searchParams.get("until");
+  const shortParam = (url.searchParams.get("short") ?? url.searchParams.get("shot") ?? "false").toLowerCase();
+  const isShort = shortParam === "true" || shortParam === "1";
 
   let since: Date;
   let until: Date;
@@ -84,6 +86,46 @@ serve(async (req) => {
     if (chipsErr) throw chipsErr;
 
     const list = (chips ?? []) as Array<Record<string, any>>;
+
+    // 5) Nome/numero extras (view não traz numero)
+    const { data: chipExtras } = await supabase
+      .from("chips")
+      .select("id, numero");
+    const numeroMap = new Map<string, string | null>();
+    for (const r of chipExtras ?? []) numeroMap.set(r.id as string, (r as any).numero ?? null);
+
+    const conectados = list.filter((c) => c.connection_state === "open").length;
+    const conectando = list.filter((c) => c.connection_state === "connecting").length;
+    const caidos = list.filter((c) => c.connection_state === "close").length;
+    const usaveis = list.filter((c) => c.usavel).length;
+
+    // Short mode: apenas status das instâncias
+    if (isShort) {
+      const instanciasShort = list.map((c) => ({
+        id: c.id,
+        nome: c.nome,
+        numero: numeroMap.get(c.id) ?? null,
+        provedor: c.provedor,
+        categoria_uso: c.categoria_uso,
+        connection_state: c.connection_state,
+        usavel: c.usavel,
+        pode_disparar: c.pode_disparar,
+        estado_desde: c.estado_desde,
+        ultima_queda: c.ultima_queda,
+        health: c.health,
+      }));
+      return json(200, {
+        generated_at: new Date().toISOString(),
+        resumo: {
+          total: list.length,
+          conectados,
+          conectando,
+          caidos,
+          usaveis,
+        },
+        instancias: instanciasShort,
+      });
+    }
 
     // 2) Disparos na janela
     const { data: sendLogs, error: logErr } = await supabase
@@ -124,18 +166,6 @@ serve(async (req) => {
       const t = new Date(c.ultima_queda).getTime();
       if (t >= since.getTime() && t <= until.getTime()) quedasNoPeriodo++;
     }
-
-    const conectados = list.filter((c) => c.connection_state === "open").length;
-    const conectando = list.filter((c) => c.connection_state === "connecting").length;
-    const caidos = list.filter((c) => c.connection_state === "close").length;
-    const usaveis = list.filter((c) => c.usavel).length;
-
-    // 5) Nome/numero/provedor extras (view não traz numero)
-    const { data: chipExtras } = await supabase
-      .from("chips")
-      .select("id, numero");
-    const numeroMap = new Map<string, string | null>();
-    for (const r of chipExtras ?? []) numeroMap.set(r.id as string, (r as any).numero ?? null);
 
     const instancias = list.map((c) => {
       const d = disparosPorChip.get(c.id) ?? { enviados: 0, falhas: 0 };
