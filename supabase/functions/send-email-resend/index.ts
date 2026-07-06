@@ -15,6 +15,7 @@ interface Payload {
   html?: string;
   text?: string;
   reply_to?: string;
+  from?: string; // remetente por chamada (default = env RESEND_FROM). Domínio precisa estar verificado.
   tags?: { name: string; value: string }[];
 }
 
@@ -38,7 +39,7 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: FROM,
+        from: body.from ?? FROM,
         to: Array.isArray(body.to) ? body.to : [body.to],
         subject: body.subject,
         html: body.html,

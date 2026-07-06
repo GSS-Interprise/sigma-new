@@ -41,6 +41,7 @@ serve(async (req) => {
       .select("campo_nome, valor").in("campo_nome", ["financeiro_nf_reply_domain"]);
     const replyDomain = cfgRows?.find((c: any) => c.campo_nome === "financeiro_nf_reply_domain")?.valor || "nf.gestaoservicosaude.com.br";
     const replyTo = `nf+${pag.id}@${replyDomain}`;
+    const fromFin = "GSS Saúde Financeiro <financeiro@gestaoservicosaude.com.br>";
 
     const comp = `${String(pag.mes_referencia).padStart(2, "0")}/${pag.ano_referencia}`;
     const valor = fmtBRL(Number(pag.valor_total));
@@ -56,7 +57,7 @@ serve(async (req) => {
     let emailResult: any = null;
     if ((canal === "email" || canal === "ambos") && destino) {
       const { data: er, error: ee } = await supabase.functions.invoke("send-email-resend", {
-        body: { to: destino, subject: assunto, html, reply_to: replyTo },
+        body: { to: destino, subject: assunto, html, reply_to: replyTo, from: fromFin },
       });
       emailResult = ee ? { error: ee.message } : er;
       // log
