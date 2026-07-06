@@ -9,6 +9,7 @@ import { BarChart3, FileText, Settings, Wallet } from "lucide-react";
 import { FinanceiroResumo } from "@/components/financeiro/FinanceiroResumo";
 import { FinanceiroContasPagar } from "@/components/financeiro/FinanceiroContasPagar";
 import { FinanceiroGerarDialog } from "@/components/financeiro/FinanceiroGerarDialog";
+import { FinanceiroImportProducaoDialog } from "@/components/financeiro/FinanceiroImportProducaoDialog";
 import { FinanceiroConfigValores } from "@/components/financeiro/FinanceiroConfigValores";
 import { FinanceiroSigFinc } from "@/components/financeiro/FinanceiroSigFinc";
 import { useFinanceiroPagamentos } from "@/hooks/useFinanceiroData";
@@ -49,7 +50,10 @@ export default function Financeiro() {
         <h1 className="text-2xl font-bold">Financeiro</h1>
         <p className="text-sm text-muted-foreground">Contas a pagar de médicos baseadas nas escalas</p>
       </div>
-      <FinanceiroGerarDialog />
+      <div className="flex items-center gap-2">
+        <FinanceiroImportProducaoDialog mesDefault={mes} anoDefault={ano} />
+        <FinanceiroGerarDialog />
+      </div>
     </div>
   );
 
