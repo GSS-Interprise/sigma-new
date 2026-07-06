@@ -7537,6 +7537,56 @@ export type Database = {
         }
         Relationships: []
       }
+      financeiro_anexos: {
+        Row: {
+          arquivo_nome: string | null
+          arquivo_path: string
+          created_at: string
+          criado_por: string | null
+          enviado_em: string | null
+          enviado_para: string | null
+          id: string
+          mime: string | null
+          pagamento_id: string
+          status: string
+          tipo: string
+        }
+        Insert: {
+          arquivo_nome?: string | null
+          arquivo_path: string
+          created_at?: string
+          criado_por?: string | null
+          enviado_em?: string | null
+          enviado_para?: string | null
+          id?: string
+          mime?: string | null
+          pagamento_id: string
+          status?: string
+          tipo: string
+        }
+        Update: {
+          arquivo_nome?: string | null
+          arquivo_path?: string
+          created_at?: string
+          criado_por?: string | null
+          enviado_em?: string | null
+          enviado_para?: string | null
+          id?: string
+          mime?: string | null
+          pagamento_id?: string
+          status?: string
+          tipo?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financeiro_anexos_pagamento_id_fkey"
+            columns: ["pagamento_id"]
+            isOneToOne: false
+            referencedRelation: "financeiro_pagamentos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       financeiro_config_valores: {
         Row: {
           ativo: boolean
@@ -7644,65 +7694,112 @@ export type Database = {
       financeiro_pagamentos: {
         Row: {
           ano_referencia: number
+          aprovado_em: string | null
+          aprovado_por: string | null
+          arquivo_origem: string | null
+          comprovante_status: string
+          conferido_em: string | null
+          conferido_por: string | null
           created_at: string
           data_pagamento: string | null
           data_vencimento: string | null
+          fonte: string
           gerado_por: string | null
           id: string
           integration_id: string | null
+          medico_id: string | null
           mes_referencia: number
+          nf_solicitada_em: string | null
+          nf_status: string
           observacoes: string | null
           profissional_crm: string | null
           profissional_id_externo: string | null
           profissional_nome: string
+          setor: string | null
           status: string
           total_horas_minutos: number
           total_plantoes: number
           unidade: string | null
           updated_at: string
+          valor_fixo: boolean
+          valor_hora_est: number | null
           valor_total: number
         }
         Insert: {
           ano_referencia: number
+          aprovado_em?: string | null
+          aprovado_por?: string | null
+          arquivo_origem?: string | null
+          comprovante_status?: string
+          conferido_em?: string | null
+          conferido_por?: string | null
           created_at?: string
           data_pagamento?: string | null
           data_vencimento?: string | null
+          fonte?: string
           gerado_por?: string | null
           id?: string
           integration_id?: string | null
+          medico_id?: string | null
           mes_referencia: number
+          nf_solicitada_em?: string | null
+          nf_status?: string
           observacoes?: string | null
           profissional_crm?: string | null
           profissional_id_externo?: string | null
           profissional_nome: string
+          setor?: string | null
           status?: string
           total_horas_minutos?: number
           total_plantoes?: number
           unidade?: string | null
           updated_at?: string
+          valor_fixo?: boolean
+          valor_hora_est?: number | null
           valor_total?: number
         }
         Update: {
           ano_referencia?: number
+          aprovado_em?: string | null
+          aprovado_por?: string | null
+          arquivo_origem?: string | null
+          comprovante_status?: string
+          conferido_em?: string | null
+          conferido_por?: string | null
           created_at?: string
           data_pagamento?: string | null
           data_vencimento?: string | null
+          fonte?: string
           gerado_por?: string | null
           id?: string
           integration_id?: string | null
+          medico_id?: string | null
           mes_referencia?: number
+          nf_solicitada_em?: string | null
+          nf_status?: string
           observacoes?: string | null
           profissional_crm?: string | null
           profissional_id_externo?: string | null
           profissional_nome?: string
+          setor?: string | null
           status?: string
           total_horas_minutos?: number
           total_plantoes?: number
           unidade?: string | null
           updated_at?: string
+          valor_fixo?: boolean
+          valor_hora_est?: number | null
           valor_total?: number
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "financeiro_pagamentos_medico_id_fkey"
+            columns: ["medico_id"]
+            isOneToOne: false
+            referencedRelation: "medicos"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       historico_acessos: {
         Row: {
@@ -16365,6 +16462,15 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      importar_producao_financeiro: {
+        Args: {
+          p_ano: number
+          p_arquivo: string
+          p_linhas: Json
+          p_mes: number
+        }
+        Returns: Json
       }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
       is_captacao_leader: { Args: { _user_id: string }; Returns: boolean }
