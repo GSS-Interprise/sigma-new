@@ -11,8 +11,13 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Calendar,
   Paperclip,
@@ -27,6 +32,7 @@ import {
   Repeat,
   Trash2,
   Ticket,
+  MoreVertical,
 } from "lucide-react";
 import { format, isPast } from "date-fns";
 import { parseLocalDate } from "@/lib/dateUtils";
