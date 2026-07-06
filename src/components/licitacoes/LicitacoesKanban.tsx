@@ -142,6 +142,7 @@ export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filt
   const [descarteDialogOpen, setDescarteDialogOpen] = useState(false);
   const [pendingDrop, setPendingDrop] = useState<{ licitacaoId: string; newStatus: string } | null>(null);
   const [pendingLicitacao, setPendingLicitacao] = useState<LicitacaoWithResponsavel | null>(null);
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
 
   // Estados para coluna descartadas (carregamento sob demanda)
   const [descartadasLoaded, setDescartadasLoaded] = useState(false);
