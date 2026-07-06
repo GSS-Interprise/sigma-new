@@ -1503,15 +1503,31 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                       {pastedImages.map((f, idx) => (
                         <div
                           key={`${f.name}-${idx}`}
-                          className="relative group h-16 w-16 rounded-md overflow-hidden border bg-muted"
+                          className="relative group h-20 w-20 rounded-md overflow-hidden border bg-muted flex items-center justify-center"
+                          title={f.name}
                         >
-                          {pastedPreviews[idx] && (
+                          {isImageFile(f) && pastedPreviews[idx] ? (
                             <img
                               src={pastedPreviews[idx]}
                               alt={f.name}
                               className="h-full w-full object-cover cursor-zoom-in"
                               onClick={() => setLightboxUrl(pastedPreviews[idx])}
                             />
+                          ) : (
+                            <div className="flex flex-col items-center justify-center gap-1 px-1 text-center">
+                              {getFileIconImage(f.name) ? (
+                                <img
+                                  src={getFileIconImage(f.name)}
+                                  alt=""
+                                  className="h-9 w-9 object-contain"
+                                />
+                              ) : (
+                                <Paperclip className="h-6 w-6 text-muted-foreground" />
+                              )}
+                              <span className="text-[10px] leading-tight line-clamp-2 break-all">
+                                {f.name}
+                              </span>
+                            </div>
                           )}
                           <button
                             type="button"
