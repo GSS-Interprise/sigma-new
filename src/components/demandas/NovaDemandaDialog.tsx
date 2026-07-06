@@ -1371,7 +1371,31 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                 </div>
 
                 {/* Composer fixo no rodapé */}
-                <div className="shrink-0 border-t bg-background p-3 space-y-2">
+                <div
+                  className={`shrink-0 border-t bg-background p-3 space-y-2 transition-colors ${
+                    dragOverComment ? "bg-primary/5 ring-2 ring-inset ring-primary/40" : ""
+                  }`}
+                  onDragOver={(e) => {
+                    if (e.dataTransfer?.types?.includes("Files")) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setDragOverComment(true);
+                    }
+                  }}
+                  onDragLeave={(e) => {
+                    e.preventDefault();
+                    setDragOverComment(false);
+                  }}
+                  onDrop={(e) => {
+                    const files = Array.from(e.dataTransfer?.files || []);
+                    if (files.length) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setDragOverComment(false);
+                      setPastedImages((prev) => [...prev, ...files]);
+                    }
+                  }}
+                >
                   <div className="relative">
                       <Textarea
                         value={comentarioInicial}
