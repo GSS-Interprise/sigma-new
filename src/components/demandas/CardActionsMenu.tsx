@@ -21,6 +21,8 @@ interface Props {
   /** Tamanho do botão. Default: "icon-sm" */
   size?: "icon-sm" | "icon";
   className?: string;
+  /** Itens adicionais para o menu dropdown */
+  extraItems?: React.ReactNode;
 }
 
 /**
@@ -33,6 +35,7 @@ export function CardActionsMenu({
   label,
   size = "icon-sm",
   className,
+  extraItems,
 }: Props) {
   const [tarefaOpen, setTarefaOpen] = useState(false);
 
@@ -65,6 +68,7 @@ export function CardActionsMenu({
           align="end"
           onClick={(e) => e.stopPropagation()}
         >
+          {extraItems}
           <DropdownMenuItem
             onSelect={(e) => {
               e.preventDefault();
