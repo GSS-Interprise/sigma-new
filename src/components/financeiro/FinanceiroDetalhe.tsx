@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import { FinanceiroPagamento, useFinanceiroPagamentoItens } from "@/hooks/useFinanceiroData";
+import { FinanceiroAnexos } from "./FinanceiroAnexos";
 
 interface Props {
   pagamento: FinanceiroPagamento;
@@ -125,6 +126,8 @@ export function FinanceiroDetalhe({ pagamento, onVoltar }: Props) {
           )}
         </CardContent>
       </Card>
+
+      <FinanceiroAnexos pagamentoId={pagamento.id} />
     </div>
   );
 }
