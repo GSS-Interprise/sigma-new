@@ -68,6 +68,15 @@ import { useNavigate } from "react-router-dom";
 import { useUserSetor } from "@/hooks/useUserSetor";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePermissions } from "@/hooks/usePermissions";
+import pdfIconImg from "@/assets/file-icons/pdf.png";
+import docIconImg from "@/assets/file-icons/doc.png";
+import docxIconImg from "@/assets/file-icons/docx.png";
+import xlsIconImg from "@/assets/file-icons/xls.png";
+import xlsxIconImg from "@/assets/file-icons/xlsx.png";
+import jpgIconImg from "@/assets/file-icons/jpg.png";
+import pngIconImg from "@/assets/file-icons/png.png";
+import gifIconImg from "@/assets/file-icons/gif.png";
+import bmpIconImg from "@/assets/file-icons/bmp.png";
 import {
   useCriarDemanda,
   useUploadAnexoDemanda,
