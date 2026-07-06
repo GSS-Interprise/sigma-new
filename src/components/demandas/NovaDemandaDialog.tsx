@@ -100,6 +100,28 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { sanitizeHtml } from "@/lib/sanitizeHtml";
 import { extractMensagemLink } from "@/lib/mensagemLink";
 
+const FILE_ICON_MAP: Record<string, string> = {
+  pdf: pdfIconImg,
+  doc: docIconImg,
+  docx: docxIconImg,
+  xls: xlsIconImg,
+  xlsx: xlsxIconImg,
+  jpg: jpgIconImg,
+  jpeg: jpgIconImg,
+  png: pngIconImg,
+  gif: gifIconImg,
+  bmp: bmpIconImg,
+};
+function getFileIconImage(fileName: string): string {
+  const ext = fileName?.split(".").pop()?.toLowerCase() ?? "";
+  return FILE_ICON_MAP[ext] || "";
+}
+function isImageFile(f: { type?: string; name?: string }): boolean {
+  if (f.type?.startsWith("image/")) return true;
+  const ext = f.name?.split(".").pop()?.toLowerCase() ?? "";
+  return ["jpg", "jpeg", "png", "gif", "bmp", "webp", "svg"].includes(ext);
+}
+
 interface Props {
   open: boolean;
   onOpenChange: (o: boolean) => void;
