@@ -184,6 +184,8 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
   const [pastedImages, setPastedImages] = useState<File[]>([]);
   const [pastedPreviews, setPastedPreviews] = useState<string[]>([]);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [dragOverTask, setDragOverTask] = useState(false);
+  const [dragOverComment, setDragOverComment] = useState(false);
 
   // Object URLs para preview local; libera ao desmontar/alterar
   useEffect(() => {
@@ -743,7 +745,31 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
 
         <div className="grid flex-1 min-h-0 gap-0 overflow-hidden lg:grid-cols-[minmax(0,1fr)_22rem]">
           <div className="grid gap-3 overflow-y-auto p-5 content-start">
-          <div className="grid gap-1.5">
+          <div
+            className={`grid gap-1.5 rounded-md transition-colors ${
+              dragOverTask ? "ring-2 ring-primary/50 bg-primary/5" : ""
+            }`}
+            onDragOver={(e) => {
+              if (e.dataTransfer?.types?.includes("Files")) {
+                e.preventDefault();
+                e.stopPropagation();
+                setDragOverTask(true);
+              }
+            }}
+            onDragLeave={(e) => {
+              e.preventDefault();
+              setDragOverTask(false);
+            }}
+            onDrop={(e) => {
+              const files = Array.from(e.dataTransfer?.files || []);
+              if (files.length) {
+                e.preventDefault();
+                e.stopPropagation();
+                setDragOverTask(false);
+                void enviarArquivos(files);
+              }
+            }}
+          >
             <Label className="text-xs">Descrição (cole prints com Ctrl+V)</Label>
             <RichTextEditor
               value={descricao}
@@ -1345,7 +1371,31 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                 </div>
 
                 {/* Composer fixo no rodapé */}
-                <div className="shrink-0 border-t bg-background p-3 space-y-2">
+                <div
+                  className={`shrink-0 border-t bg-background p-3 space-y-2 transition-colors ${
+                    dragOverComment ? "bg-primary/5 ring-2 ring-inset ring-primary/40" : ""
+                  }`}
+                  onDragOver={(e) => {
+                    if (e.dataTransfer?.types?.includes("Files")) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setDragOverComment(true);
+                    }
+                  }}
+                  onDragLeave={(e) => {
+                    e.preventDefault();
+                    setDragOverComment(false);
+                  }}
+                  onDrop={(e) => {
+                    const files = Array.from(e.dataTransfer?.files || []);
+                    if (files.length) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setDragOverComment(false);
+                      setPastedImages((prev) => [...prev, ...files]);
+                    }
+                  }}
+                >
                   <div className="relative">
                       <Textarea
                         value={comentarioInicial}
