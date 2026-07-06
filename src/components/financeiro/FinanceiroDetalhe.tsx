@@ -5,7 +5,11 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import { FinanceiroPagamento, useFinanceiroPagamentoItens, useConferirPagamento } from "@/hooks/useFinanceiroData";
 import { FinanceiroAnexos } from "./FinanceiroAnexos";
-import { CheckCircle2, Loader2, Send } from "lucide-react";
+import { CheckCircle2, Loader2, Send, FileText } from "lucide-react";
+import { useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 interface Props {
   pagamento: FinanceiroPagamento;
@@ -15,6 +19,18 @@ interface Props {
 export function FinanceiroDetalhe({ pagamento, onVoltar }: Props) {
   const { data: itens = [], isLoading } = useFinanceiroPagamentoItens(pagamento.id);
   const conferir = useConferirPagamento();
+  const qc = useQueryClient();
+  const [solicitando, setSolicitando] = useState(false);
+  const nfStatus = pagamento.nf_status ?? "nao_solicitada";
+
+  const solicitarNF = async () => {
+    setSolicitando(true);
+    const { data, error } = await supabase.functions.invoke("financeiro-solicitar-nf", { body: { pagamento_id: pagamento.id } });
+    setSolicitando(false);
+    if (error || (data as any)?.ok === false) { toast.error("Erro ao solicitar NF: " + (error?.message || (data as any)?.error || "")); return; }
+    toast.success("Solicitação de NF enviada ao médico.");
+    qc.invalidateQueries({ queryKey: ["financeiro-pagamentos"] });
+  };
 
   const fmt = (v: number) =>
     v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -76,6 +92,18 @@ export function FinanceiroDetalhe({ pagamento, onVoltar }: Props) {
                 <Button size="sm" onClick={() => conferir.mutate({ pagamento })} disabled={conferir.isPending}>
                   {conferir.isPending ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Send className="h-4 w-4 mr-1.5" />}
                   Conferir e enviar ao canal
+                </Button>
+              )}
+            </div>
+            <div className="mt-2 flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">NF:</span>
+              <Badge variant="outline" className="text-[11px]">
+                {nfStatus === "recebida" ? "Recebida" : nfStatus === "solicitada" ? "Solicitada" : "Não solicitada"}
+              </Badge>
+              {nfStatus !== "recebida" && (
+                <Button size="sm" variant="outline" onClick={solicitarNF} disabled={solicitando}>
+                  {solicitando ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <FileText className="h-4 w-4 mr-1.5" />}
+                  {nfStatus === "solicitada" ? "Reenviar solicitação" : "Solicitar NF"}
                 </Button>
               )}
             </div>
