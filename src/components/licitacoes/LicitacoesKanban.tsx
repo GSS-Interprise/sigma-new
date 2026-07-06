@@ -66,6 +66,7 @@ type LicitacaoWithResponsavel = {
   titulo: string | null;
   prioridade: string | null;
   tipo_licitacao: string | null;
+  card_gemeo_id?: string | null;
   responsavel?: { id: string; nome_completo: string } | null;
   // Campos de validação para conversão em contrato
   servicos_contrato?: ServicoContrato[] | null;
