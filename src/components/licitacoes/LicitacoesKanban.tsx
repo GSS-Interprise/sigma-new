@@ -92,7 +92,7 @@ const TAG_COLOR_MAP: { [key: string]: string } = {
 // NOTA: 'objeto' e 'observacoes' permanecem fora do select inicial por performance.
 // 'objeto_contrato' precisa ficar no select base porque é usado na validação de conversão para contrato.
 const LICITACOES_KANBAN_SELECT =
-  'id,created_at,updated_at,numero_edital,orgao,cnpj_orgao,valor_estimado,data_abertura,data_limite,data_disputa,status,responsavel_id,municipio_uf,tipo_modalidade,subtipo_modalidade,etiquetas,titulo,prioridade,tipo_licitacao,servicos_contrato,objeto_contrato,check_conversao_1,check_conversao_2,check_conversao_3,dados_customizados' as const;
+  'id,created_at,updated_at,numero_edital,orgao,cnpj_orgao,valor_estimado,data_abertura,data_limite,data_disputa,status,responsavel_id,municipio_uf,tipo_modalidade,subtipo_modalidade,etiquetas,titulo,prioridade,tipo_licitacao,servicos_contrato,objeto_contrato,check_conversao_1,check_conversao_2,check_conversao_3,dados_customizados,card_gemeo_id' as const;
 
 // Colunas pesadas carregadas sob demanda ao clicar no card
 const LICITACOES_HEAVY_COLUMNS = 'objeto,decorrencia_analise,objeto_contrato,observacoes' as const;
