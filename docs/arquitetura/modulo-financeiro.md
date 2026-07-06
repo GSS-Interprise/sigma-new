@@ -88,7 +88,7 @@ O financeiro da GSS opera **contas a pagar e a receber dentro do Sigma**, sem de
 
 ### Fase 2 — automação e expansão
 
-- [ ] **T08 — Contas a receber ligadas a contratos.** Tabela `financeiro_receber` a partir de `contratos` (data_inicio/status); regras por nota (fixo/hora/produção); **aviso de contrato novo a faturar** (cron + `comunicacao_notificacoes`). Reusa conceito do SigFinc. GRANT.
+- [~] **T08 — Contas a receber ligadas a contratos (meio pronto).** ✅ 06/07 base (`20260706150000_financeiro_receber.sql` + `FinanceiroContasReceber.tsx` + aba no Financeiro): tabela `financeiro_receber` + RLS/GRANT + RPC `sync_financeiro_receber(mes,ano)` (idempotente, gera "a_faturar" dos 68 contratos ativos vigentes — 47 em jul/2026) + aba de leitura com botão "Sincronizar do mês". **Falta (decisões/Fase 2):** (a) **regra de rateio mensal** — hoje `valor_previsto` = `contratos.valor_estimado` (total do contrato, NÃO mensal); definir fixo/hora/produção; (b) **aviso de contrato novo a faturar** via `system_notifications` + cron (janela dia 20→30); (c) fluxo faturado→recebido + NF de saída.
 - [ ] **T09 — Painel/resumo financeiro consolidado.** A pagar + a receber no mês (a vencer, pagas, a faturar, faturadas) com os status do novo fluxo. Estende `FinanceiroResumo.tsx`.
 - [ ] **T10 — Contrato JSON do Dr. Escala + ingestão via API.** Definir a **spec do JSON** que o Raul entrega aos responsáveis do Dr. Escala + edge que consome via API e alimenta a produção na **mesma estrutura da T02** (troca a fonte, não o fluxo).
 - [ ] **T11 — Integração Conta Azul via API (greenfield).** ⚠️ BLOQUEADA até o levantamento com a contabilidade (§5). Edge `financeiro-conta-azul-sync`.

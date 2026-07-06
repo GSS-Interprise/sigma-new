@@ -5,9 +5,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card } from "@/components/ui/card";
-import { BarChart3, FileText, Settings, Wallet } from "lucide-react";
+import { BarChart3, FileText, Settings, Wallet, TrendingUp } from "lucide-react";
 import { FinanceiroResumo } from "@/components/financeiro/FinanceiroResumo";
 import { FinanceiroContasPagar } from "@/components/financeiro/FinanceiroContasPagar";
+import { FinanceiroContasReceber } from "@/components/financeiro/FinanceiroContasReceber";
 import { FinanceiroGerarDialog } from "@/components/financeiro/FinanceiroGerarDialog";
 import { FinanceiroImportProducaoDialog } from "@/components/financeiro/FinanceiroImportProducaoDialog";
 import { FinanceiroConfigValores } from "@/components/financeiro/FinanceiroConfigValores";
@@ -105,6 +106,9 @@ export default function Financeiro() {
             <TabsTrigger value="contas" className="gap-2">
               <FileText className="h-4 w-4" /> Contas a Pagar
             </TabsTrigger>
+            <TabsTrigger value="receber" className="gap-2">
+              <TrendingUp className="h-4 w-4" /> Contas a Receber
+            </TabsTrigger>
             <TabsTrigger value="sigfinc" className="gap-2">
               <Wallet className="h-4 w-4" /> SigFinc
             </TabsTrigger>
@@ -119,6 +123,10 @@ export default function Financeiro() {
 
           <TabsContent value="contas">
             <FinanceiroContasPagar pagamentos={pagamentos} isLoading={isLoading} />
+          </TabsContent>
+
+          <TabsContent value="receber">
+            <FinanceiroContasReceber mes={mes || (now.getMonth() + 1)} ano={ano} />
           </TabsContent>
 
           <TabsContent value="sigfinc">

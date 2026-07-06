@@ -317,6 +317,54 @@ export function useGerarPagamentos() {
   });
 }
 
+// T08 — contas a receber (a partir dos contratos)
+export interface FinanceiroReceber {
+  id: string;
+  contrato_id: string | null;
+  cliente_id: string | null;
+  mes_referencia: number;
+  ano_referencia: number;
+  descricao: string | null;
+  condicao_pagamento: string | null;
+  valor_previsto: number;
+  valor_faturado: number | null;
+  status: string;
+  nf_saida_status: string;
+  data_prevista: string | null;
+  observacoes: string | null;
+}
+
+export function useFinanceiroReceber(mes: number, ano: number) {
+  return useQuery({
+    queryKey: ["financeiro-receber", mes, ano],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("financeiro_receber").select("*")
+        .eq("mes_referencia", mes).eq("ano_referencia", ano)
+        .order("valor_previsto", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as FinanceiroReceber[];
+    },
+    enabled: !!mes && !!ano,
+  });
+}
+
+export function useSyncFinanceiroReceber() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ mes, ano }: { mes: number; ano: number }) => {
+      const { data, error } = await (supabase as any).rpc("sync_financeiro_receber", { p_mes: mes, p_ano: ano });
+      if (error) throw error;
+      return data as { inseridos: number; competencia: string };
+    },
+    onSuccess: (d, v) => {
+      toast.success(`Sincronizado: ${d?.inseridos ?? 0} novos contratos a faturar em ${d?.competencia ?? ""}.`);
+      queryClient.invalidateQueries({ queryKey: ["financeiro-receber", v.mes, v.ano] });
+    },
+    onError: (e: any) => toast.error("Erro ao sincronizar: " + (e?.message || "")),
+  });
+}
+
 // T05 — posta o lançamento conferido num canal "Financeiro" da Comunicação (tipo
 // Slack), pros sócios (Diretoria) aprovarem. Canal configurado em config_lista_items
 // (campo_nome='financeiro_canal_id'). Silencioso se o canal não estiver configurado.
