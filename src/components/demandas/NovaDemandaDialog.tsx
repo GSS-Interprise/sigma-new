@@ -1363,13 +1363,25 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                           <p className="whitespace-pre-wrap text-xs leading-relaxed">
                             {c.conteudo}
                           </p>
-                          {!!c.links?.length && (
-                            <div className="mt-2 space-y-1">
-                              {c.links.some((l: any) => l?.tipo === "image") && (
-                                <div className="flex flex-wrap gap-2 mb-1">
-                                  {c.links
-                                    .filter((l: any) => l?.tipo === "image")
-                                    .map((l: any, i: number) => (
+                          {!!c.links?.length && (() => {
+                            const isImageLink = (l: any) =>
+                              l?.tipo === "image" ||
+                              (l?.tipo !== "file" && isImageFile({ name: l?.titulo || l?.url }));
+                            const isFileLink = (l: any) =>
+                              l?.tipo === "file" ||
+                              (l?.tipo !== "image" && l?.url && !/^https?:\/\//i.test(l.url));
+                            const imgs = c.links.filter(isImageLink);
+                            const files = c.links.filter(
+                              (l: any) => !isImageLink(l) && isFileLink(l),
+                            );
+                            const urls = c.links.filter(
+                              (l: any) => !isImageLink(l) && !isFileLink(l),
+                            );
+                            return (
+                              <div className="mt-2 space-y-1.5">
+                                {imgs.length > 0 && (
+                                  <div className="flex flex-wrap gap-2 mb-1">
+                                    {imgs.map((l: any, i: number) => (
                                       <CommentImageThumb
                                         key={`img-${i}`}
                                         storagePath={l.url}
@@ -1377,11 +1389,20 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                                         onOpen={(u) => setLightboxUrl(u)}
                                       />
                                     ))}
-                                </div>
-                              )}
-                              {c.links
-                                .filter((l: any) => l?.tipo !== "image")
-                                .map((l: any, i: number) => (
+                                  </div>
+                                )}
+                                {files.length > 0 && (
+                                  <div className="flex flex-wrap gap-2">
+                                    {files.map((l: any, i: number) => (
+                                      <CommentFileAttachment
+                                        key={`file-${i}`}
+                                        storagePath={l.url}
+                                        nome={l.titulo || l.url}
+                                      />
+                                    ))}
+                                  </div>
+                                )}
+                                {urls.map((l: any, i: number) => (
                                   <a
                                     key={`lnk-${i}`}
                                     href={l.url}
@@ -1393,8 +1414,9 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                                     {l.titulo || l.url}
                                   </a>
                                 ))}
-                            </div>
-                          )}
+                              </div>
+                            );
+                          })()}
                         </div>
                       ))}
                     </>
