@@ -5,7 +5,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Calendar, DollarSign, User, MapPin, AlertTriangle, Paperclip, CheckCircle2, Clock } from "lucide-react";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { Calendar, DollarSign, User, MapPin, AlertTriangle, Paperclip, CheckCircle2, Clock, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { useUserSetor } from "@/hooks/useUserSetor";
@@ -66,6 +67,7 @@ type LicitacaoWithResponsavel = {
   titulo: string | null;
   prioridade: string | null;
   tipo_licitacao: string | null;
+  card_gemeo_id?: string | null;
   responsavel?: { id: string; nome_completo: string } | null;
   // Campos de validação para conversão em contrato
   servicos_contrato?: ServicoContrato[] | null;
@@ -92,7 +94,7 @@ const TAG_COLOR_MAP: { [key: string]: string } = {
 // NOTA: 'objeto' e 'observacoes' permanecem fora do select inicial por performance.
 // 'objeto_contrato' precisa ficar no select base porque é usado na validação de conversão para contrato.
 const LICITACOES_KANBAN_SELECT =
-  'id,created_at,updated_at,numero_edital,orgao,cnpj_orgao,valor_estimado,data_abertura,data_limite,data_disputa,status,responsavel_id,municipio_uf,tipo_modalidade,subtipo_modalidade,etiquetas,titulo,prioridade,tipo_licitacao,servicos_contrato,objeto_contrato,check_conversao_1,check_conversao_2,check_conversao_3,dados_customizados' as const;
+  'id,created_at,updated_at,numero_edital,orgao,cnpj_orgao,valor_estimado,data_abertura,data_limite,data_disputa,status,responsavel_id,municipio_uf,tipo_modalidade,subtipo_modalidade,etiquetas,titulo,prioridade,tipo_licitacao,servicos_contrato,objeto_contrato,check_conversao_1,check_conversao_2,check_conversao_3,dados_customizados,card_gemeo_id' as const;
 
 // Colunas pesadas carregadas sob demanda ao clicar no card
 const LICITACOES_HEAVY_COLUMNS = 'objeto,decorrencia_analise,objeto_contrato,observacoes' as const;
@@ -142,6 +144,7 @@ export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filt
   const [descarteDialogOpen, setDescarteDialogOpen] = useState(false);
   const [pendingDrop, setPendingDrop] = useState<{ licitacaoId: string; newStatus: string } | null>(null);
   const [pendingLicitacao, setPendingLicitacao] = useState<LicitacaoWithResponsavel | null>(null);
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
 
   // Estados para coluna descartadas (carregamento sob demanda)
   const [descartadasLoaded, setDescartadasLoaded] = useState(false);
@@ -644,6 +647,29 @@ export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filt
     return filtered.sort(sortByDataDisputa);
   };
 
+  const handleDuplicarCard = async (licitacao: LicitacaoWithResponsavel) => {
+    if (duplicatingId) return;
+    const tipoAtual = (licitacao.tipo_licitacao || "GSS").toUpperCase();
+    const tipoDestino = tipoAtual === "AGES" ? "GSS" : "AGES";
+    if (!confirm(`Duplicar este card para ${tipoDestino}? Os itens serão copiados.`)) return;
+    setDuplicatingId(licitacao.id);
+    try {
+      const { data, error } = await supabase.functions.invoke("licitacao-card-duplicator", {
+        body: { licitacao_id: licitacao.id, tipo_destino: tipoDestino },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      toast.success(`Card duplicado para ${tipoDestino}`);
+      queryClient.invalidateQueries({ queryKey: ["licitacoes-kanban"] });
+      queryClient.invalidateQueries({ queryKey: ["licitacoes"] });
+      queryClient.invalidateQueries({ queryKey: ["licitacao", licitacao.id] });
+    } catch (err: any) {
+      toast.error("Falha ao duplicar card", { description: err?.message ?? String(err) });
+    } finally {
+      setDuplicatingId(null);
+    }
+  };
+
   const handleDragStart = (e: React.DragEvent, licitacaoId: string) => {
     e.dataTransfer.setData('licitacaoId', licitacaoId);
     setIsDragging(true);
@@ -1037,6 +1063,21 @@ export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filt
                             tipo="licitacao"
                             recursoId={licitacao.id}
                             label={licitacao.titulo || licitacao.numero_edital || licitacao.orgao || "Licitação"}
+                            extraItems={
+                              !licitacao.card_gemeo_id ? (
+                                <DropdownMenuItem
+                                  onSelect={(e) => {
+                                    e.preventDefault();
+                                    handleDuplicarCard(licitacao);
+                                  }}
+                                  disabled={duplicatingId === licitacao.id}
+                                  className="gap-2 cursor-pointer"
+                                >
+                                  <Copy className="h-4 w-4" />
+                                  {duplicatingId === licitacao.id ? "Duplicando..." : `Duplicar ${(licitacao.tipo_licitacao || "GSS").toUpperCase() === "AGES" ? "→ GSS" : "→ AGES"}`}
+                                </DropdownMenuItem>
+                              ) : null
+                            }
                           />
                         </div>
 
