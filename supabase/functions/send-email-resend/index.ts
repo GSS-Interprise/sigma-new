@@ -16,6 +16,7 @@ interface Payload {
   text?: string;
   reply_to?: string;
   from?: string; // remetente por chamada (default = env RESEND_FROM). Domínio precisa estar verificado.
+  attachments?: { filename: string; content?: string; path?: string }[]; // content = base64; path = URL
   tags?: { name: string; value: string }[];
 }
 
@@ -45,6 +46,7 @@ serve(async (req) => {
         html: body.html,
         text: body.text,
         reply_to: body.reply_to,
+        attachments: body.attachments,
         tags: body.tags,
       }),
     });

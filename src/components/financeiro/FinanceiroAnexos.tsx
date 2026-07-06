@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Loader2, Eye, Trash2, Receipt } from "lucide-react";
+import { FileText, Loader2, Eye, Trash2, Receipt, Send } from "lucide-react";
 import { toast } from "sonner";
 import { FinanceiroFileViewerDialog } from "./FinanceiroFileViewerDialog";
 
@@ -50,6 +50,19 @@ export function FinanceiroAnexos({ pagamentoId }: { pagamentoId: string }) {
     setUploading(null);
   };
 
+  const [enviando, setEnviando] = useState<string | null>(null);
+  const enviarComprovante = async (a: any) => {
+    setEnviando(a.id);
+    const { data, error } = await supabase.functions.invoke("financeiro-enviar-comprovante", {
+      body: { pagamento_id: pagamentoId, anexo_id: a.id, para: ["medico", "contabilidade"] },
+    });
+    setEnviando(null);
+    if (error || (data as any)?.ok === false) { toast.error("Erro ao enviar: " + (error?.message || (data as any)?.error || "")); return; }
+    toast.success(`Comprovante enviado para: ${((data as any)?.destinatarios || []).join(", ")}`);
+    qc.invalidateQueries({ queryKey: ["financeiro-anexos", pagamentoId] });
+    qc.invalidateQueries({ queryKey: ["financeiro-pagamentos"] });
+  };
+
   const remover = async (a: any) => {
     await supabase.storage.from(BUCKET).remove([a.arquivo_path]);
     await (supabase as any).from("financeiro_anexos").delete().eq("id", a.id);
@@ -86,6 +99,12 @@ export function FinanceiroAnexos({ pagamentoId }: { pagamentoId: string }) {
                   <span className="truncate">{a.arquivo_nome || a.arquivo_path.split("/").pop()}</span>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
+                  {a.tipo === "comprovante" && (
+                    <Button size="sm" variant="ghost" className="h-7 gap-1 text-xs" onClick={() => enviarComprovante(a)} disabled={enviando === a.id} title="Enviar ao médico e contabilidade">
+                      {enviando === a.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                      {a.status === "enviado" ? "Reenviar" : "Enviar"}
+                    </Button>
+                  )}
                   <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setViewer({ path: a.arquivo_path, nome: a.arquivo_nome })}><Eye className="h-4 w-4" /></Button>
                   <Button size="icon" variant="ghost" className="h-7 w-7 text-red-600" onClick={() => remover(a)}><Trash2 className="h-4 w-4" /></Button>
                 </div>
