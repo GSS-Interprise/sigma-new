@@ -1585,7 +1585,11 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                                 file: f,
                                 nome: f.name,
                               });
-                              imageLinks.push({ titulo: f.name, url: path, tipo: "image" });
+                              imageLinks.push({
+                                titulo: f.name,
+                                url: path,
+                                tipo: isImageFile(f) ? "image" : "file",
+                              });
                             }
                             await comentar.mutateAsync({
                               tarefaId,
