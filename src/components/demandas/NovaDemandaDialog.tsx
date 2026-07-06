@@ -1364,12 +1364,15 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
                             {c.conteudo}
                           </p>
                           {!!c.links?.length && (() => {
+                            // Sempre priorizar extensão do arquivo — registros antigos
+                            // foram gravados com tipo:"image" mesmo para PDFs.
+                            const nameOf = (l: any) => l?.titulo || l?.url || "";
+                            const isStoragePath = (l: any) =>
+                              l?.url && !/^https?:\/\//i.test(l.url);
                             const isImageLink = (l: any) =>
-                              l?.tipo === "image" ||
-                              (l?.tipo !== "file" && isImageFile({ name: l?.titulo || l?.url }));
+                              isImageFile({ name: nameOf(l) });
                             const isFileLink = (l: any) =>
-                              l?.tipo === "file" ||
-                              (l?.tipo !== "image" && l?.url && !/^https?:\/\//i.test(l.url));
+                              !isImageLink(l) && (l?.tipo === "file" || isStoragePath(l));
                             const imgs = c.links.filter(isImageLink);
                             const files = c.links.filter(
                               (l: any) => !isImageLink(l) && isFileLink(l),
