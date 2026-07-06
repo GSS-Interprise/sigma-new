@@ -1061,6 +1061,21 @@ export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filt
                             tipo="licitacao"
                             recursoId={licitacao.id}
                             label={licitacao.titulo || licitacao.numero_edital || licitacao.orgao || "Licitação"}
+                            extraItems={
+                              !licitacao.card_gemeo_id ? (
+                                <DropdownMenuItem
+                                  onSelect={(e) => {
+                                    e.preventDefault();
+                                    handleDuplicarCard(licitacao);
+                                  }}
+                                  disabled={duplicatingId === licitacao.id}
+                                  className="gap-2 cursor-pointer"
+                                >
+                                  <Copy className="h-4 w-4" />
+                                  {duplicatingId === licitacao.id ? "Duplicando..." : `Duplicar ${(licitacao.tipo_licitacao || "GSS").toUpperCase() === "AGES" ? "→ GSS" : "→ AGES"}`}
+                                </DropdownMenuItem>
+                              ) : null
+                            }
                           />
                         </div>
 
