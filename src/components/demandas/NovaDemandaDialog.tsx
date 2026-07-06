@@ -184,6 +184,8 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
   const [pastedImages, setPastedImages] = useState<File[]>([]);
   const [pastedPreviews, setPastedPreviews] = useState<string[]>([]);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [dragOverTask, setDragOverTask] = useState(false);
+  const [dragOverComment, setDragOverComment] = useState(false);
 
   // Object URLs para preview local; libera ao desmontar/alterar
   useEffect(() => {
