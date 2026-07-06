@@ -18,6 +18,17 @@ export interface FinanceiroPagamento {
   data_pagamento: string | null;
   observacoes: string | null;
   created_at: string;
+  // Módulo Financeiro (fluxo novo)
+  medico_id?: string | null;
+  setor?: string | null;
+  fonte?: string | null;
+  conferido_por?: string | null;
+  conferido_em?: string | null;
+  nf_status?: string | null;
+  nf_solicitada_em?: string | null;
+  aprovado_por?: string | null;
+  aprovado_em?: string | null;
+  comprovante_status?: string | null;
 }
 
 export interface FinanceiroPagamentoItem {
@@ -303,6 +314,56 @@ export function useGerarPagamentos() {
     onError: (err: Error) => {
       toast.error(err.message || "Erro ao gerar pagamentos.");
     },
+  });
+}
+
+// T05 — posta o lançamento conferido num canal "Financeiro" da Comunicação (tipo
+// Slack), pros sócios (Diretoria) aprovarem. Canal configurado em config_lista_items
+// (campo_nome='financeiro_canal_id'). Silencioso se o canal não estiver configurado.
+async function postarNoCanalFinanceiro(pagamento: FinanceiroPagamento) {
+  const { data: cfg } = await (supabase as any)
+    .from("config_lista_items").select("valor").eq("campo_nome", "financeiro_canal_id").maybeSingle();
+  const canalId = cfg?.valor as string | undefined;
+  if (!canalId) return { posted: false };
+
+  const { data: uRes } = await supabase.auth.getUser();
+  const uid = uRes?.user?.id;
+  const nome = (uRes?.user?.user_metadata as any)?.nome_completo || (uRes?.user?.user_metadata as any)?.nome || "Financeiro";
+  const valor = Number(pagamento.valor_total).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  const msg = `💰 *Lançamento para aprovação*\n${pagamento.profissional_nome}${pagamento.profissional_crm ? ` (${pagamento.profissional_crm})` : ""}\nValor: *${valor}*\nCompetência: ${String(pagamento.mes_referencia).padStart(2, "0")}/${pagamento.ano_referencia}${pagamento.unidade ? ` · ${pagamento.unidade}` : ""}\nConferido pelo financeiro — aguardando aprovação.`;
+
+  const { data: m, error } = await (supabase as any)
+    .from("comunicacao_mensagens")
+    .insert({ canal_id: canalId, user_id: uid, user_nome: nome, mensagem: msg })
+    .select("id").single();
+  if (error || !m) return { posted: false };
+
+  const { data: parts } = await (supabase as any)
+    .from("comunicacao_participantes").select("user_id").eq("canal_id", canalId);
+  const notifs = (parts ?? []).filter((p: any) => p.user_id !== uid).map((p: any) => ({ user_id: p.user_id, canal_id: canalId, mensagem_id: m.id }));
+  if (notifs.length) await (supabase as any).from("comunicacao_notificacoes").insert(notifs);
+  return { posted: true };
+}
+
+// T04 — conferência do financeiro (Mavi): marca conferido + posta no canal Financeiro (T05).
+export function useConferirPagamento() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ pagamento }: { pagamento: FinanceiroPagamento }) => {
+      const { data: uRes } = await supabase.auth.getUser();
+      const { error } = await (supabase as any)
+        .from("financeiro_pagamentos")
+        .update({ conferido_por: uRes?.user?.id ?? null, conferido_em: new Date().toISOString() })
+        .eq("id", pagamento.id);
+      if (error) throw error;
+      const r = await postarNoCanalFinanceiro(pagamento);
+      return r;
+    },
+    onSuccess: (r) => {
+      toast.success(r?.posted ? "Conferido e enviado ao canal Financeiro." : "Conferido. (Canal Financeiro não configurado — configure em config_lista_items.financeiro_canal_id)");
+      queryClient.invalidateQueries({ queryKey: ["financeiro-pagamentos"] });
+    },
+    onError: (e: any) => toast.error("Erro ao conferir: " + (e?.message || "")),
   });
 }
 

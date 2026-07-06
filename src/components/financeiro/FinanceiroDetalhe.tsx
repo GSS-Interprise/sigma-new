@@ -3,8 +3,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
-import { FinanceiroPagamento, useFinanceiroPagamentoItens } from "@/hooks/useFinanceiroData";
+import { FinanceiroPagamento, useFinanceiroPagamentoItens, useConferirPagamento } from "@/hooks/useFinanceiroData";
 import { FinanceiroAnexos } from "./FinanceiroAnexos";
+import { CheckCircle2, Loader2, Send } from "lucide-react";
 
 interface Props {
   pagamento: FinanceiroPagamento;
@@ -13,6 +14,7 @@ interface Props {
 
 export function FinanceiroDetalhe({ pagamento, onVoltar }: Props) {
   const { data: itens = [], isLoading } = useFinanceiroPagamentoItens(pagamento.id);
+  const conferir = useConferirPagamento();
 
   const fmt = (v: number) =>
     v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -65,6 +67,18 @@ export function FinanceiroDetalhe({ pagamento, onVoltar }: Props) {
                 Vencimento: {new Date(pagamento.data_vencimento + "T00:00:00").toLocaleDateString("pt-BR")}
               </p>
             )}
+            <div className="mt-3">
+              {pagamento.conferido_em ? (
+                <span className="inline-flex items-center gap-1.5 text-xs text-emerald-700">
+                  <CheckCircle2 className="h-4 w-4" /> Conferido em {new Date(pagamento.conferido_em).toLocaleDateString("pt-BR")}
+                </span>
+              ) : (
+                <Button size="sm" onClick={() => conferir.mutate({ pagamento })} disabled={conferir.isPending}>
+                  {conferir.isPending ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Send className="h-4 w-4 mr-1.5" />}
+                  Conferir e enviar ao canal
+                </Button>
+              )}
+            </div>
           </CardContent>
         </Card>
       </div>
