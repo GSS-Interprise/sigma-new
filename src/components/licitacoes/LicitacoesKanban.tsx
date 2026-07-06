@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Calendar, DollarSign, User, MapPin, AlertTriangle, Paperclip, CheckCircle2, Clock } from "lucide-react";
+import { Calendar, DollarSign, User, MapPin, AlertTriangle, Paperclip, CheckCircle2, Clock, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { useUserSetor } from "@/hooks/useUserSetor";
