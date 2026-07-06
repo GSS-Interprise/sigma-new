@@ -645,6 +645,29 @@ export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filt
     return filtered.sort(sortByDataDisputa);
   };
 
+  const handleDuplicarCard = async (licitacao: LicitacaoWithResponsavel) => {
+    if (duplicatingId) return;
+    const tipoAtual = (licitacao.tipo_licitacao || "GSS").toUpperCase();
+    const tipoDestino = tipoAtual === "AGES" ? "GSS" : "AGES";
+    if (!confirm(`Duplicar este card para ${tipoDestino}? Os itens serão copiados.`)) return;
+    setDuplicatingId(licitacao.id);
+    try {
+      const { data, error } = await supabase.functions.invoke("licitacao-card-duplicator", {
+        body: { licitacao_id: licitacao.id, tipo_destino: tipoDestino },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      toast.success(`Card duplicado para ${tipoDestino}`);
+      queryClient.invalidateQueries({ queryKey: ["licitacoes-kanban"] });
+      queryClient.invalidateQueries({ queryKey: ["licitacoes"] });
+      queryClient.invalidateQueries({ queryKey: ["licitacao", licitacao.id] });
+    } catch (err: any) {
+      toast.error("Falha ao duplicar card", { description: err?.message ?? String(err) });
+    } finally {
+      setDuplicatingId(null);
+    }
+  };
+
   const handleDragStart = (e: React.DragEvent, licitacaoId: string) => {
     e.dataTransfer.setData('licitacaoId', licitacaoId);
     setIsDragging(true);
