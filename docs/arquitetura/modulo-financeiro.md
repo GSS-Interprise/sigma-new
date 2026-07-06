@@ -75,7 +75,7 @@ O financeiro da GSS opera **contas a pagar e a receber dentro do Sigma**, sem de
 
 ### Fase 1 — produção via relatório (roda já)
 
-- [ ] **T01 — `medico_id` nos pagamentos.** Migration: add `medico_id uuid FK medicos(id)` + campos de fluxo (`nf_status`, `nf_solicitada_em`, `aprovado_por`, `aprovado_em`, `comprovante_status`, `conferido_por`, `conferido_em`) em `financeiro_pagamentos`. Sem backfill (tabela vazia) — o casamento por CRM acontece no import (T02). GRANT.
+- [x] **T01 — `medico_id` nos pagamentos.** ✅ 05/07 (`20260705120000_...sql`): add `medico_id FK medicos(id) ON DELETE SET NULL` + `nf_status`/`nf_solicitada_em`/`aprovado_por`/`aprovado_em`/`comprovante_status`/`conferido_por`/`conferido_em` + índices. Sem backfill (tabela vazia); casamento por CRM acontece no import (T02).
 - [ ] **T02 — Importação do relatório de produção.** Tela de upload do `relatorio_consolidado_previsao_financeiro.xlsx` (Consolidado - Previsão) → parse (pula cabeçalho; colunas Profissional/CRM/Local/Setor/Plantões/Horas/Itens/Valor) → upsert da **produção do mês** em `financeiro_pagamentos` (1 linha/profissional/mês/unidade), casando médico por CRM (`medico_id`) + relatório dos não-casados. Idempotente por mês (reprocessável).
 - [ ] **T03 — Anexos financeiros.** Tabela `financeiro_anexos` + bucket privado `financeiro-anexos` + RLS + GRANT. Upload/preview (reusa `ComunicacaoFileViewerDialog`).
 - [ ] **T04 — Tela de conferência + OK (Mavi).** Estende Contas a Pagar: por médico, conferir a produção importada e dar OK (conferência manual). Ao OK: `conferido_por/em` + dispara T05 e T06.
