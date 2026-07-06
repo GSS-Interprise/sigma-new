@@ -1872,6 +1872,44 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
   );
 }
 
+function CommentFileAttachment({
+  storagePath,
+  nome,
+}: {
+  storagePath: string;
+  nome: string;
+}) {
+  const [loading, setLoading] = useState(false);
+  const iconSrc = getFileIconImage(nome);
+  const handleOpen = async () => {
+    try {
+      setLoading(true);
+      const url = await getDemandaAnexoSignedUrl(storagePath);
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (e: any) {
+      toast.error(e?.message || "Não foi possível abrir o arquivo");
+    } finally {
+      setLoading(false);
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={handleOpen}
+      disabled={loading}
+      title={nome}
+      className="flex items-center gap-2 rounded-md border bg-muted/30 px-2 py-1.5 text-xs hover:bg-muted transition max-w-[240px]"
+    >
+      {iconSrc ? (
+        <img src={iconSrc} alt="" className="h-8 w-8 object-contain shrink-0" />
+      ) : (
+        <Paperclip className="h-4 w-4 text-muted-foreground shrink-0" />
+      )}
+      <span className="truncate">{nome}</span>
+    </button>
+  );
+}
+
 function CommentImageThumb({
   storagePath,
   nome,
