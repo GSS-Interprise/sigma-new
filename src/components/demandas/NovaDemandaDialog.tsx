@@ -490,14 +490,17 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
     : -1;
   const sugestoesMention = useMemo(() => {
     if (mentionStart < 0) return [];
-    // Apenas pessoas envolvidas no card (criador + responsável + mencionados) + o próprio usuário
+    // Pessoas envolvidas no card + quem já foi mencionado em comentários anteriores + o próprio usuário
     const envolvidosIds = new Set<string>(pessoas);
+    comentariosExistentes.forEach((comentario) => {
+      (comentario.mencionados ?? []).forEach((id) => envolvidosIds.add(id));
+    });
     if (user?.id) envolvidosIds.add(user.id);
     return pessoasSistema
       .filter((p) => envolvidosIds.has(p.id))
       .filter((p) => (p.nome_completo || "").toLowerCase().includes(mentionQuery))
       .slice(0, 6);
-  }, [mentionQuery, mentionStart, pessoasSistema, pessoas, user?.id]);
+  }, [mentionQuery, mentionStart, pessoasSistema, pessoas, comentariosExistentes, user?.id]);
 
   const selecionarMention = (pessoa: PessoaMention) => {
     if (mentionStart < 0) return;
