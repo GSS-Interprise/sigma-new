@@ -45,34 +45,34 @@ export default function Demandas() {
   }, [searchParams]);
 
   const headerActions = (
-    <div className="flex items-center justify-between w-full gap-3">
-      <div className="flex items-center gap-3 min-w-0">
-        <TabsList className="h-10 gap-1 rounded-2xl border border-border/60 bg-card/80 p-1 shadow-sm backdrop-blur">
+    <div className="flex flex-wrap items-center justify-between w-full gap-2">
+      <div className="flex items-center gap-2 min-w-0 order-2 sm:order-1">
+        <TabsList className="h-9 sm:h-10 gap-1 rounded-2xl border border-border/60 bg-card/80 p-1 shadow-sm backdrop-blur shrink-0">
           <TabsTrigger
             value="home"
-            className="gap-2 rounded-xl px-3 py-1.5 text-sm font-semibold text-muted-foreground transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg data-[state=active]:shadow-primary/25"
+            className="gap-1.5 rounded-xl px-2.5 sm:px-3 py-1.5 text-sm font-semibold text-muted-foreground transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg data-[state=active]:shadow-primary/25"
           >
-            <LayoutGrid className="h-4 w-4" /> Home
+            <LayoutGrid className="h-4 w-4" /> <span className="hidden xs:inline">Home</span>
           </TabsTrigger>
           <TabsTrigger
             value="kanban"
-            className="gap-2 rounded-xl px-3 py-1.5 text-sm font-semibold text-muted-foreground transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg data-[state=active]:shadow-primary/25"
+            className="gap-1.5 rounded-xl px-2.5 sm:px-3 py-1.5 text-sm font-semibold text-muted-foreground transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg data-[state=active]:shadow-primary/25"
           >
-            <Kanban className="h-4 w-4" /> Kanban de tarefas
+            <Kanban className="h-4 w-4" /> <span className="hidden xs:inline">Kanban</span>
           </TabsTrigger>
         </TabsList>
-        <h1 className="text-lg font-bold flex items-center gap-1.5 truncate">
+        <h1 className="text-base sm:text-lg font-bold flex items-center gap-1.5 truncate">
           Demandas
-          <Sparkles className="h-4 w-4 text-primary" />
+          <Sparkles className="h-4 w-4 text-primary shrink-0" />
         </h1>
         {(setorNome || isAdmin) && (
-          <Badge variant="outline" className="text-[11px] shrink-0">
+          <Badge variant="outline" className="text-[11px] shrink-0 hidden sm:inline-flex">
             {isAdmin ? "Admin · todos os setores" : setorNome}
           </Badge>
         )}
       </div>
-      <Button onClick={() => setNovaOpen(true)} className="gap-1 shrink-0">
-        <Plus className="h-4 w-4" /> Nova demanda
+      <Button onClick={() => setNovaOpen(true)} size="sm" className="gap-1 shrink-0 order-1 sm:order-2 ml-auto sm:ml-0">
+        <Plus className="h-4 w-4" /> <span className="hidden xs:inline">Nova demanda</span>
       </Button>
     </div>
   );
@@ -80,8 +80,8 @@ export default function Demandas() {
   return (
     <Tabs value={tab} onValueChange={setTab} className="contents">
       <AppLayout headerActions={headerActions}>
-        <TabsContent value="home" className="flex-1 min-h-0 p-3 mt-0 h-[calc(100vh-5rem)]">
-          <div className="grid grid-cols-1 gap-4 h-full md:grid-cols-12">
+        <TabsContent value="home" className="flex-1 min-h-0 p-3 mt-0 h-auto md:h-[calc(100vh-5rem)]">
+          <div className="grid grid-cols-1 gap-4 md:h-full md:grid-cols-12">
             <div className="min-h-0 md:col-span-3">
               <ColunaAgenda onTarefaClick={abrirDetalheTarefa} />
             </div>

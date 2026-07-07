@@ -1,7 +1,9 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
-import { Plus, Hash, MessageSquare, Lock, Shield, Search } from "lucide-react";
+import { Plus, Hash, MessageSquare, Lock, Shield, Search, ArrowLeft } from "lucide-react";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { CanalList } from "@/components/comunicacao/CanalList";
@@ -26,6 +28,7 @@ export default function Comunicacao() {
   const [vista, setVista] = useState<"comunicacao" | "monitoramento">("comunicacao");
   const [tabSidebar, setTabSidebar] = useState<"canais" | "privado">("canais");
   const [sidebarSearch, setSidebarSearch] = useState("");
+  const isMobile = useIsMobile();
 
   // Handle canal from URL query param
   useEffect(() => {
@@ -70,12 +73,12 @@ export default function Comunicacao() {
   const canaisGrupo = useMemo(() => canais?.filter(c => c.tipo === "grupo") || [], [canais]);
   const canaisDireto = useMemo(() => canais?.filter(c => c.tipo === "direto") || [], [canais]);
 
-  // Auto-select first channel
+  // Auto-select first channel (só no desktop; no mobile começa na lista de canais)
   useEffect(() => {
-    if (canais && canais.length > 0 && !canalSelecionado) {
+    if (!isMobile && canais && canais.length > 0 && !canalSelecionado) {
       setCanalSelecionado(canais[0].id);
     }
-  }, [canais, canalSelecionado]);
+  }, [canais, canalSelecionado, isMobile]);
 
   // Open or create DM with a user (used when clicking on a username in messages)
   const openDMWithUser = useCallback(async (targetUserId: string) => {
@@ -164,10 +167,21 @@ export default function Comunicacao() {
       ) : (
       <div className="flex h-full min-h-0 overflow-hidden gap-3 p-3">
         {/* Área principal de mensagens (esquerda) */}
-        <div className="flex-1 flex flex-col min-w-0 chat-card overflow-hidden">
+        <div className={cn(
+          "flex-1 flex-col min-w-0 chat-card overflow-hidden",
+          isMobile ? (canalSelecionado ? "flex" : "hidden") : "flex"
+        )}>
+          {isMobile && canalSelecionado && (
+            <button
+              onClick={() => setCanalSelecionado(null)}
+              className="flex items-center gap-1.5 px-3 py-2 border-b text-sm font-medium shrink-0"
+            >
+              <ArrowLeft className="h-4 w-4" /> Canais
+            </button>
+          )}
           {canalSelecionado ? (
-            <MensagemArea 
-              canalId={canalSelecionado} 
+            <MensagemArea
+              canalId={canalSelecionado}
               onOpenDM={openDMWithUser}
               targetMensagemId={mensagemAlvo}
               onTargetMensagemHandled={() => setMensagemAlvo(null)}
@@ -183,8 +197,11 @@ export default function Comunicacao() {
           )}
         </div>
 
-        {/* Sidebar de canais (direita) com abas Canais / Privado */}
-        <div className="w-80 chat-card flex flex-col min-h-0 overflow-hidden">
+        {/* Sidebar de canais (direita) com abas Canais / Privado — no mobile vira tela cheia */}
+        <div className={cn(
+          "chat-card flex-col min-h-0 overflow-hidden",
+          isMobile ? (canalSelecionado ? "hidden" : "flex w-full") : "flex w-80"
+        )}>
           <Tabs value={tabSidebar} onValueChange={(v) => setTabSidebar(v as any)} className="flex flex-col h-full min-h-0">
             <div className="flex items-center gap-2 p-3 chat-divider border-b shrink-0">
               <TabsList className="grid grid-cols-2 flex-1">

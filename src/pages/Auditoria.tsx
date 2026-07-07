@@ -31,7 +31,8 @@ export default function Auditoria() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList className="grid w-full grid-cols-7">
+          <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
+          <TabsList className="w-max sm:w-full sm:grid sm:grid-cols-7">
             <TabsTrigger value="overview">
               <Activity className="h-4 w-4 mr-2" />
               Visão Geral
@@ -61,6 +62,7 @@ export default function Auditoria() {
               Disparos
             </TabsTrigger>
           </TabsList>
+          </div>
 
           <TabsContent value="overview" className="space-y-4">
             <AuditoriaOverview />

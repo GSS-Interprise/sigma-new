@@ -46,12 +46,12 @@ export default function Financeiro() {
   });
 
   const headerActions = (
-    <div className="flex items-center justify-between w-full">
-      <div>
-        <h1 className="text-2xl font-bold">Financeiro</h1>
-        <p className="text-sm text-muted-foreground">Contas a pagar de médicos baseadas nas escalas</p>
+    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 w-full">
+      <div className="min-w-0">
+        <h1 className="text-xl sm:text-2xl font-bold truncate">Financeiro</h1>
+        <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">Contas a pagar de médicos baseadas nas escalas</p>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <FinanceiroImportProducaoDialog mesDefault={mes} anoDefault={ano} />
         <FinanceiroGerarDialog />
       </div>
@@ -99,23 +99,25 @@ export default function Financeiro() {
         </Card>
 
         <Tabs defaultValue="resumo" className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="resumo" className="gap-2">
-              <BarChart3 className="h-4 w-4" /> Resumo
-            </TabsTrigger>
-            <TabsTrigger value="contas" className="gap-2">
-              <FileText className="h-4 w-4" /> Contas a Pagar
-            </TabsTrigger>
-            <TabsTrigger value="receber" className="gap-2">
-              <TrendingUp className="h-4 w-4" /> Contas a Receber
-            </TabsTrigger>
-            <TabsTrigger value="sigfinc" className="gap-2">
-              <Wallet className="h-4 w-4" /> SigFinc
-            </TabsTrigger>
-            <TabsTrigger value="config" className="gap-2">
-              <Settings className="h-4 w-4" /> Valores
-            </TabsTrigger>
-          </TabsList>
+          <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
+            <TabsList className="w-max">
+              <TabsTrigger value="resumo" className="gap-2">
+                <BarChart3 className="h-4 w-4" /> Resumo
+              </TabsTrigger>
+              <TabsTrigger value="contas" className="gap-2">
+                <FileText className="h-4 w-4" /> Contas a Pagar
+              </TabsTrigger>
+              <TabsTrigger value="receber" className="gap-2">
+                <TrendingUp className="h-4 w-4" /> Contas a Receber
+              </TabsTrigger>
+              <TabsTrigger value="sigfinc" className="gap-2">
+                <Wallet className="h-4 w-4" /> SigFinc
+              </TabsTrigger>
+              <TabsTrigger value="config" className="gap-2">
+                <Settings className="h-4 w-4" /> Valores
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
           <TabsContent value="resumo">
             <FinanceiroResumo pagamentos={pagamentos} isLoading={isLoading} />
