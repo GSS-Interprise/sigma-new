@@ -28,7 +28,7 @@ function AppLayoutContent({ children, headerActions, hideFooter }: AppLayoutProp
   const navigate = useNavigate();
 
   return (
-    <div className="flex h-screen bg-background overflow-hidden w-full">
+    <div className="flex h-screen h-[100dvh] bg-background overflow-hidden w-full">
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0">
         <header className="border-b bg-card sticky top-0 z-40 flex-shrink-0">

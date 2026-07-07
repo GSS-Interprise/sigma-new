@@ -53,6 +53,24 @@ export default function Comunicacao() {
 
   const onlineUsers = useOnlinePresence(currentUser?.id);
 
+  // Busca de PESSOAS (na aba Privado) pra iniciar uma conversa nova — não só filtrar DMs existentes.
+  const { data: pessoasBusca = [] } = useQuery({
+    queryKey: ["comunicacao-buscar-pessoas", sidebarSearch, currentUser?.id],
+    queryFn: async () => {
+      if (!currentUser || sidebarSearch.trim().length < 2) return [];
+      const { data } = await supabase
+        .from("profiles")
+        .select("id, nome_completo")
+        .ilike("nome_completo", `%${sidebarSearch.trim()}%`)
+        .neq("id", currentUser.id)
+        .eq("status", "ativo")
+        .order("nome_completo")
+        .limit(15);
+      return data ?? [];
+    },
+    enabled: tabSidebar === "privado" && sidebarSearch.trim().length >= 2,
+  });
+
   const { data: canais } = useQuery({
     queryKey: ["comunicacao-canais"],
     queryFn: async () => {
@@ -139,13 +157,13 @@ export default function Comunicacao() {
   }, [currentUser, queryClient]);
 
   const headerActions = (
-    <div className="flex items-center gap-4 w-full">
-      <div className="flex items-center gap-2">
-        <h1 className="text-2xl font-bold">Comunicação</h1>
+    <div className="flex items-center gap-4 w-full min-w-0">
+      <div className="flex items-center gap-2 min-w-0">
+        <h1 className="text-lg sm:text-2xl font-bold truncate">Comunicação</h1>
         <p className="text-sm text-muted-foreground hidden md:block">Mensagens e canais internos</p>
       </div>
       {isAdmin && (
-        <Tabs value={vista} onValueChange={(v) => setVista(v as any)} className="ml-auto">
+        <Tabs value={vista} onValueChange={(v) => setVista(v as any)} className="ml-auto hidden md:block">
           <TabsList>
             <TabsTrigger value="comunicacao" className="gap-1 data-[state=active]:bg-green-600 data-[state=active]:text-white">
               <MessageSquare className="h-3.5 w-3.5" /> Comunicação
@@ -252,6 +270,25 @@ export default function Comunicacao() {
               value="privado"
               className="flex-1 min-h-0 mt-0 data-[state=active]:flex data-[state=active]:flex-col overflow-hidden py-2"
             >
+              {sidebarSearch.trim().length >= 2 && pessoasBusca.length > 0 && (
+                <div className="px-2 pb-2 shrink-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground px-1 mb-1">Iniciar conversa</p>
+                  <div className="space-y-0.5">
+                    {pessoasBusca.map((p) => (
+                      <button
+                        key={p.id}
+                        onClick={() => { openDMWithUser(p.id); setSidebarSearch(""); }}
+                        className="w-full text-left px-2 py-2 rounded-md hover:bg-accent text-sm flex items-center gap-2"
+                      >
+                        <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center text-xs font-semibold shrink-0">
+                          {p.nome_completo?.charAt(0)?.toUpperCase() ?? "?"}
+                        </div>
+                        <span className="truncate">{p.nome_completo}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               <CanalList
                 canais={canaisDireto}
                 canalSelecionado={canalSelecionado}
