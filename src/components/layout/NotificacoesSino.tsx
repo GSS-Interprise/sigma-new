@@ -15,6 +15,8 @@ import { useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import { useNotificationSystem } from "@/hooks/useNotificationSystem";
 import { toast } from "sonner";
+import { subscribeToPush, pushSupported, isPushSubscribed } from "@/lib/webPush";
+import { Smartphone } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
@@ -26,6 +28,18 @@ export function NotificacoesSino() {
   const queryClient = useQueryClient();
   const prevCountRef = useRef<number>(0);
   const [isOpen, setIsOpen] = useState(false);
+  const [pushOn, setPushOn] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
+
+  useEffect(() => { isPushSubscribed().then(setPushOn); }, []);
+
+  const handleAtivarPush = async () => {
+    setPushBusy(true);
+    const r = await subscribeToPush();
+    setPushBusy(false);
+    if (r.ok) { setPushOn(true); toast.success("Notificações no celular ativadas neste dispositivo."); }
+    else toast.error(r.error || "Não foi possível ativar as notificações.");
+  };
   
   const { 
     notify, 
@@ -433,6 +447,25 @@ export function NotificacoesSino() {
             <p className="text-xs text-destructive">
               Notificações bloqueadas. Ative nas configurações do navegador.
             </p>
+          )}
+
+          {pushSupported() && (
+            pushOn ? (
+              <p className="text-xs text-emerald-700 flex items-center gap-1.5">
+                <Smartphone className="h-3.5 w-3.5" /> Notificações no celular ativas neste dispositivo
+              </p>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full text-xs"
+                onClick={handleAtivarPush}
+                disabled={pushBusy}
+              >
+                <Smartphone className="h-3.5 w-3.5 mr-1.5" />
+                {pushBusy ? "Ativando..." : "Ativar notificações no celular"}
+              </Button>
+            )
           )}
         </div>
       </PopoverContent>
