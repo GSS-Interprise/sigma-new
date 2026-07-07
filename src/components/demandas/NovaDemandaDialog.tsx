@@ -493,16 +493,37 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
     // Apenas pessoas envolvidas no card (criador + responsável + mencionados) + o próprio usuário
     const envolvidosIds = new Set<string>(pessoas);
     if (user?.id) envolvidosIds.add(user.id);
+    // Também exclui qualquer pessoa cujo @Nome já apareça no texto do comentário
+    // (fora do trecho que está sendo digitado agora, entre mentionStart e comentarioCaret).
+    const textoSemDigitando =
+      comentarioInicial.slice(0, mentionStart) +
+      comentarioInicial.slice(comentarioCaret);
+    const textoLower = textoSemDigitando.toLowerCase();
     return pessoasSistema
       .filter((p) => envolvidosIds.has(p.id))
       .filter((p) => (p.nome_completo || "").toLowerCase().includes(mentionQuery))
       .filter((p) => !comentarioPessoas.includes(p.id))
+      .filter((p) => {
+        const nome = (p.nome_completo || "").toLowerCase().trim();
+        return nome ? !textoLower.includes(`@${nome}`) : true;
+      })
       .slice(0, 6);
-  }, [comentarioPessoas, mentionQuery, mentionStart, pessoasSistema, pessoas, user?.id]);
+  }, [comentarioPessoas, mentionQuery, mentionStart, pessoasSistema, pessoas, user?.id, comentarioInicial, comentarioCaret]);
 
   const selecionarMention = (pessoa: PessoaMention) => {
     if (mentionStart < 0) return;
     const nome = pessoa.nome_completo || "pessoa";
+    // Bloqueia marcar a mesma pessoa duas vezes no mesmo comentário
+    const antesFull = comentarioInicial.slice(0, mentionStart);
+    const depoisFull = comentarioInicial.slice(comentarioCaret);
+    const restante = (antesFull + depoisFull).toLowerCase();
+    if (
+      comentarioPessoas.includes(pessoa.id) ||
+      restante.includes(`@${nome.toLowerCase()}`)
+    ) {
+      toast.error(`${nome} já foi marcado(a) neste comentário`);
+      return;
+    }
     const antes = comentarioInicial.slice(0, mentionStart);
     const depois = comentarioInicial.slice(comentarioCaret);
     const proximoTexto = `${antes}@${nome} ${depois}`;
