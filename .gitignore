@@ -37,3 +37,6 @@ plan/
 
 # Planos de trabalho pessoais do Claude (Raul)
 .claude/plano-*.md
+
+# Playwright MCP (perfil/sessão de login local)
+.pw-profile/
