@@ -64,6 +64,7 @@ serve(async (req) => {
       .select("id, titulo, data_limite, created_by, responsavel_id, status, modulo")
       .eq("modulo", "demandas")
       .neq("status", "concluida")
+      .is("deleted_at", null)
       .not("data_limite", "is", null)
       .lte("data_limite", em2dias.toISOString().slice(0, 10));
 

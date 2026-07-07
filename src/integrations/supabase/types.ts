@@ -7801,6 +7801,71 @@ export type Database = {
           },
         ]
       }
+      financeiro_receber: {
+        Row: {
+          ano_referencia: number
+          cliente_id: string | null
+          condicao_pagamento: string | null
+          contrato_id: string | null
+          created_at: string
+          data_prevista: string | null
+          descricao: string | null
+          fonte: string
+          id: string
+          mes_referencia: number
+          nf_saida_status: string
+          observacoes: string | null
+          status: string
+          updated_at: string
+          valor_faturado: number | null
+          valor_previsto: number
+        }
+        Insert: {
+          ano_referencia: number
+          cliente_id?: string | null
+          condicao_pagamento?: string | null
+          contrato_id?: string | null
+          created_at?: string
+          data_prevista?: string | null
+          descricao?: string | null
+          fonte?: string
+          id?: string
+          mes_referencia: number
+          nf_saida_status?: string
+          observacoes?: string | null
+          status?: string
+          updated_at?: string
+          valor_faturado?: number | null
+          valor_previsto?: number
+        }
+        Update: {
+          ano_referencia?: number
+          cliente_id?: string | null
+          condicao_pagamento?: string | null
+          contrato_id?: string | null
+          created_at?: string
+          data_prevista?: string | null
+          descricao?: string | null
+          fonte?: string
+          id?: string
+          mes_referencia?: number
+          nf_saida_status?: string
+          observacoes?: string | null
+          status?: string
+          updated_at?: string
+          valor_faturado?: number | null
+          valor_previsto?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financeiro_receber_contrato_id_fkey"
+            columns: ["contrato_id"]
+            isOneToOne: false
+            referencedRelation: "contratos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       historico_acessos: {
         Row: {
           acao: string
@@ -16664,6 +16729,10 @@ export type Database = {
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
       sweeper_acompanhamento_sem_resposta: { Args: never; Returns: number }
+      sync_financeiro_receber: {
+        Args: { p_ano: number; p_mes: number }
+        Returns: Json
+      }
       test_automacao_kanban: {
         Args: never
         Returns: {
