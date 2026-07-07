@@ -26,6 +26,39 @@ function startOfTodaySaoPaulo(): Date {
   return new Date(Date.UTC(y, m, d, 3, 0, 0));
 }
 
+// Retorna a data (ano/mês/dia) atual em São Paulo.
+function todaySaoPauloParts(): { y: number; m: number; d: number } {
+  const spMs = Date.now() - 3 * 60 * 60 * 1000;
+  const sp = new Date(spMs);
+  return { y: sp.getUTCFullYear(), m: sp.getUTCMonth(), d: sp.getUTCDate() };
+}
+
+// Converte um horário local de São Paulo (h:mm) para Date UTC.
+function saoPauloDateAt(y: number, m: number, d: number, hh: number, mm: number, ss = 0, ms = 0): Date {
+  // SP = UTC-3 => UTC = local + 3h
+  return new Date(Date.UTC(y, m, d, hh + 3, mm, ss, ms));
+}
+
+function rangeForPeriod(period: 1 | 2 | 3): { since: Date; until: Date } {
+  const { y, m, d } = todaySaoPauloParts();
+  if (period === 1) {
+    // Dia anterior completo (00:00:00 até 23:59:59.999 SP)
+    const since = saoPauloDateAt(y, m, d - 1, 0, 0, 0, 0);
+    const until = saoPauloDateAt(y, m, d - 1, 23, 59, 59, 999);
+    return { since, until };
+  }
+  if (period === 2) {
+    // Hoje: 00:01 até 12:00 SP
+    const since = saoPauloDateAt(y, m, d, 0, 1, 0, 0);
+    const until = saoPauloDateAt(y, m, d, 12, 0, 0, 0);
+    return { since, until };
+  }
+  // period === 3 → Hoje: 00:01 até 16:25 SP
+  const since = saoPauloDateAt(y, m, d, 0, 1, 0, 0);
+  const until = saoPauloDateAt(y, m, d, 16, 25, 0, 0);
+  return { since, until };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -67,15 +100,44 @@ serve(async (req) => {
   const untilParam = url.searchParams.get("until");
   const shortParam = (url.searchParams.get("short") ?? url.searchParams.get("shot") ?? "false").toLowerCase();
   const isShort = shortParam === "true" || shortParam === "1";
+  const periodParam = url.searchParams.get("period");
 
   let since: Date;
   let until: Date;
-  try {
-    since = sinceParam ? new Date(sinceParam) : startOfTodaySaoPaulo();
-    until = untilParam ? new Date(untilParam) : new Date();
-    if (isNaN(since.getTime()) || isNaN(until.getTime())) throw new Error("invalid date");
-  } catch {
-    return json(400, { error: "Invalid 'since' or 'until' — must be ISO date." });
+
+  if (!isShort) {
+    // Modo completo: exige 'period' (1, 2 ou 3), a menos que since/until sejam passados explicitamente.
+    if (sinceParam || untilParam) {
+      try {
+        since = sinceParam ? new Date(sinceParam) : startOfTodaySaoPaulo();
+        until = untilParam ? new Date(untilParam) : new Date();
+        if (isNaN(since.getTime()) || isNaN(until.getTime())) throw new Error("invalid date");
+      } catch {
+        return json(400, { error: "Invalid 'since' or 'until' — must be ISO date." });
+      }
+    } else {
+      if (!periodParam) {
+        return json(400, {
+          error: "Missing 'period' query param. When 'short=false', 'period' is required. Values: 1=dia anterior completo, 2=hoje 00:01–12:00 (SP), 3=hoje 00:01–16:25 (SP).",
+        });
+      }
+      const pNum = Number(periodParam);
+      if (![1, 2, 3].includes(pNum)) {
+        return json(400, { error: "Invalid 'period'. Allowed values: 1, 2, 3." });
+      }
+      const r = rangeForPeriod(pNum as 1 | 2 | 3);
+      since = r.since;
+      until = r.until;
+    }
+  } else {
+    // Short mode: janela não é utilizada, mas mantemos defaults sadios.
+    try {
+      since = sinceParam ? new Date(sinceParam) : startOfTodaySaoPaulo();
+      until = untilParam ? new Date(untilParam) : new Date();
+      if (isNaN(since.getTime()) || isNaN(until.getTime())) throw new Error("invalid date");
+    } catch {
+      return json(400, { error: "Invalid 'since' or 'until' — must be ISO date." });
+    }
   }
 
   try {
