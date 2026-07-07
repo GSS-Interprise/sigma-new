@@ -13,6 +13,26 @@ export function pushSupported(): boolean {
   );
 }
 
+// App rodando instalado (adicionado à tela de início)?
+export function isStandalone(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia?.("(display-mode: standalone)").matches || (navigator as any).standalone === true;
+}
+
+export function isIOS(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+    // iPad no modo desktop
+    (navigator.platform === "MacIntel" && (navigator as any).maxTouchPoints > 1);
+}
+
+// No iPhone, push SÓ funciona com o app instalado (standalone). Fora do iOS, basta suporte.
+export function pushEligible(): boolean {
+  if (!pushSupported()) return false;
+  if (isIOS()) return isStandalone();
+  return true;
+}
+
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");

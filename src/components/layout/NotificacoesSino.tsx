@@ -15,8 +15,8 @@ import { useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import { useNotificationSystem } from "@/hooks/useNotificationSystem";
 import { toast } from "sonner";
-import { subscribeToPush, pushSupported, isPushSubscribed } from "@/lib/webPush";
-import { Smartphone } from "lucide-react";
+import { subscribeToPush, pushSupported, isPushSubscribed, pushEligible, isIOS, isStandalone } from "@/lib/webPush";
+import { Smartphone, Share } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
@@ -449,24 +449,30 @@ export function NotificacoesSino() {
             </p>
           )}
 
-          {pushSupported() && (
-            pushOn ? (
-              <p className="text-xs text-emerald-700 flex items-center gap-1.5">
-                <Smartphone className="h-3.5 w-3.5" /> Notificações no celular ativas neste dispositivo
-              </p>
-            ) : (
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full text-xs"
-                onClick={handleAtivarPush}
-                disabled={pushBusy}
-              >
-                <Smartphone className="h-3.5 w-3.5 mr-1.5" />
-                {pushBusy ? "Ativando..." : "Ativar notificações no celular"}
-              </Button>
-            )
-          )}
+          {pushOn ? (
+            <p className="text-xs text-emerald-700 flex items-center gap-1.5">
+              <Smartphone className="h-3.5 w-3.5" /> Notificações no celular ativas neste dispositivo
+            </p>
+          ) : pushEligible() ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full text-xs"
+              onClick={handleAtivarPush}
+              disabled={pushBusy}
+            >
+              <Smartphone className="h-3.5 w-3.5 mr-1.5" />
+              {pushBusy ? "Ativando..." : "Ativar notificações no celular"}
+            </Button>
+          ) : isIOS() && !isStandalone() ? (
+            <div className="text-xs text-muted-foreground flex items-start gap-1.5">
+              <Smartphone className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+              <span>
+                Para receber notificações no iPhone, instale o app: toque em{" "}
+                <Share className="inline h-3 w-3 align-text-bottom" /> <b>Compartilhar</b> → <b>Adicionar à Tela de Início</b>.
+              </span>
+            </div>
+          ) : null}
         </div>
       </PopoverContent>
     </Popover>

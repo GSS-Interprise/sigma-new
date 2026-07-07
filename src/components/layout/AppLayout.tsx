@@ -7,6 +7,7 @@ import { Footer } from "./Footer";
 import { GlobalBreadcrumb } from "./GlobalBreadcrumb";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
+import { InstallPrompt } from "@/components/pwa/InstallPrompt";
 import { useLicitacoesRealtimeAccess } from "@/hooks/useLicitacoesRealtimeAccess";
 import { useLicitacoesRealtime } from "@/hooks/useLicitacoesRealtime";
 
@@ -64,6 +65,7 @@ function AppLayoutContent({ children, headerActions, hideFooter }: AppLayoutProp
         {!hideFooter && <Footer />}
       </div>
       {!isLoading && hasAccess && <LicitacoesRealtimeLoader />}
+      <InstallPrompt />
     </div>
   );
 }
