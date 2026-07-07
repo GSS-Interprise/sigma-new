@@ -40,3 +40,7 @@ plan/
 
 # Playwright MCP (perfil/sessão de login local)
 .pw-profile/
+
+# Playwright MCP output (screenshots, snapshots, logs)
+.playwright-mcp/
+*.playwright-mcp.jpeg
