@@ -1,9 +1,12 @@
 import { ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
+import { Menu, MessageSquare } from "lucide-react";
 import { Sidebar } from "./Sidebar";
 import { NotificacoesSino } from "./NotificacoesSino";
 import { Footer } from "./Footer";
 import { GlobalBreadcrumb } from "./GlobalBreadcrumb";
-import { SidebarProvider } from "@/components/ui/sidebar";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { Button } from "@/components/ui/button";
 import { useLicitacoesRealtimeAccess } from "@/hooks/useLicitacoesRealtimeAccess";
 import { useLicitacoesRealtime } from "@/hooks/useLicitacoesRealtime";
 
@@ -22,17 +25,34 @@ function LicitacoesRealtimeLoader() {
 
 function AppLayoutContent({ children, headerActions, hideFooter }: AppLayoutProps) {
   const { hasAccess, isLoading } = useLicitacoesRealtimeAccess();
+  const navigate = useNavigate();
 
   return (
     <div className="flex h-screen bg-background overflow-hidden w-full">
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0">
         <header className="border-b bg-card sticky top-0 z-40 flex-shrink-0">
-          <div className="h-16 flex items-center justify-between px-4 md:px-6 gap-4">
-            <div className="flex-1 min-w-0">
-              {headerActions}
+          <div className="h-16 flex items-center justify-between px-4 md:px-6 gap-2">
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <SidebarTrigger className="md:hidden shrink-0 h-9 w-9 rounded-md" aria-label="Abrir menu">
+                <Menu className="h-5 w-5" />
+              </SidebarTrigger>
+              <div className="flex-1 min-w-0">
+                {headerActions}
+              </div>
             </div>
-            <NotificacoesSino />
+            <div className="flex items-center gap-1 shrink-0">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="md:hidden"
+                aria-label="Comunicação"
+                onClick={() => navigate("/comunicacao")}
+              >
+                <MessageSquare className="h-5 w-5" />
+              </Button>
+              <NotificacoesSino />
+            </div>
           </div>
           <div className="px-4 md:px-6 pb-1.5 -mt-1">
             <GlobalBreadcrumb />
