@@ -24,7 +24,7 @@ serve(async (req) => {
 
     const { data: pag, error: pErr } = await supabase
       .from("financeiro_pagamentos")
-      .select("id, profissional_nome, profissional_crm, medico_id, mes_referencia, ano_referencia, unidade, valor_total")
+      .select("id, profissional_nome, profissional_crm, medico_id, mes_referencia, ano_referencia, unidade, setor, total_plantoes, valor_total")
       .eq("id", pagamento_id).maybeSingle();
     if (pErr || !pag) return json({ ok: false, error: "pagamento nao encontrado" }, 404);
 
@@ -43,13 +43,30 @@ serve(async (req) => {
     const replyTo = `nf+${pag.id}@${replyDomain}`;
     const fromFin = "GSS Saúde Financeiro <financeiro@gestaoservicosaude.com.br>";
 
+    const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
     const comp = `${String(pag.mes_referencia).padStart(2, "0")}/${pag.ano_referencia}`;
+    const compExt = `${MESES[pag.mes_referencia - 1] ?? comp}/${pag.ano_referencia}`;
     const valor = fmtBRL(Number(pag.valor_total));
-    const assunto = `Emissão de NF — ${comp} — [NF-${String(pag.id).slice(0, 8)}]`;
+    const assunto = `Informações para emissão da NFS-e — ${compExt} — [NF-${String(pag.id).slice(0, 8)}]`;
+    const localTxt = [pag.unidade, pag.setor].filter(Boolean).join(" · ");
     const html = `
-      <div style="font-family:Arial,sans-serif;font-size:14px;color:#1b3a5b;line-height:1.6">
+      <div style="font-family:Arial,sans-serif;font-size:14px;color:#1b3a5b;line-height:1.6;max-width:640px">
         <p>Olá, Dr(a). <b>${pag.profissional_nome}</b>,</p>
-        <p>Referente à sua produção de <b>${comp}</b>${pag.unidade ? ` na unidade <b>${pag.unidade}</b>` : ""}, solicitamos a emissão da nota fiscal no valor de <b>${valor}</b>.</p>
+        <p>Seguem as informações para emissão da <b>NFS-e</b> referente à sua produção de <b>${compExt}</b>${localTxt ? ` (${localTxt})` : ""}, no valor de <b>${valor}</b>.</p>
+        <hr style="border:none;border-top:1px solid #e2e8f0">
+        <p><b>DADOS DO TOMADOR</b><br>
+        Razão Social: GSS - GESTAO SERVICOS A SAUDE LTDA<br>
+        Nome Fantasia: GSS - GESTAO SERVICOS A SAUDE LTDA<br>
+        CNPJ: 18.670.594/0001-03<br>
+        Endereço: Av. Osvaldo Reis, nº 2470, Andar 2, Sala 10, CEP 88.306-600, Praia Brava, Itajaí/SC</p>
+        <p><b>DESCRIÇÃO DA NOTA</b><br>
+        Prestação de serviços médicos no mês de <b>${compExt}</b>${pag.unidade ? `, no <b>${pag.unidade}</b>` : ""}.${pag.total_plantoes ? ` Qtde. ${pag.total_plantoes} plantões.` : ""}<br>
+        Valor Total: <b>${valor}</b>
+        <br><i style="color:#5a6b7b">Ajuste a descrição conforme a especialidade, o local exato de prestação e os detalhes da sua produção.</i></p>
+        <p><b>IMPORTANTE — inclua os dados bancários da conta PJ na descrição da nota:</b><br>
+        Razão Social:<br>CNPJ:<br>Banco:<br>Agência:<br>Conta:<br>PIX: <span style="color:#5a6b7b">(caso aplicável, os mesmos dados da conta PJ)</span></p>
+        <p style="color:#b45309"><b>ATENÇÃO:</b> verifique com cuidado as informações ao emitir a nota. O <b>local da prestação de serviços</b> deve ser exatamente onde o serviço foi realizado. Caso contrário, solicitaremos o cancelamento da nota e a emissão de uma nova.</p>
+        <hr style="border:none;border-top:1px solid #e2e8f0">
         <p><b>Como enviar:</b> basta <b>responder este email anexando a NF em PDF</b>. O recebimento é automático.</p>
         <p style="color:#5a6b7b;font-size:12px">GSS Saúde · Financeiro</p>
       </div>`;
