@@ -72,3 +72,6 @@ verify_jwt = false
 # OAuth callback do Google — chamado pelo browser do usuário sem header Authorization.
 [functions.google-oauth-callback]
 verify_jwt = false
+
+[functions.admin-bulk-reset-pw]
+verify_jwt = false
