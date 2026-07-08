@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { BiCombobox } from "./BiCombobox";
 import { Loader2, MessageSquareText, DollarSign, MapPin, AlertTriangle, Sparkles, Stethoscope, Filter, TrendingDown } from "lucide-react";
 import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid,
@@ -138,13 +139,14 @@ export function AbaInsightsConversas() {
       {/* Filtros */}
       <div className="flex flex-wrap items-center gap-2">
         <Filter className="h-4 w-4 text-muted-foreground" />
-        <Select value={campanhaId} onValueChange={setCampanhaId}>
-          <SelectTrigger className="w-[240px] h-9"><SelectValue placeholder="Campanha" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todas">Todas as campanhas</SelectItem>
-            {campanhas.map((c) => <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}
-          </SelectContent>
-        </Select>
+        <BiCombobox
+          value={campanhaId}
+          onChange={setCampanhaId}
+          options={[{ value: "todas", label: "Todas as campanhas" }, ...campanhas.map((c) => ({ value: c.id, label: c.nome?.trim() || c.id }))]}
+          placeholder="Campanha"
+          searchPlaceholder="Buscar campanha..."
+          className="w-[240px]"
+        />
         <Select value={periodoKey} onValueChange={setPeriodoKey}>
           <SelectTrigger className="w-[170px] h-9"><SelectValue /></SelectTrigger>
           <SelectContent>{PERIODOS.map((p) => <SelectItem key={p.key} value={p.key}>{p.label}</SelectItem>)}</SelectContent>
