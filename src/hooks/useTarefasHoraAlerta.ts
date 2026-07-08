@@ -15,13 +15,15 @@ export type TarefaHoraAlerta = {
   diff: number;
 };
 
+const EMPTY: any[] = [];
+
 export function useTarefasHoraAlerta() {
   const { user } = useAuth();
 
   const hojeISO = new Date().toISOString().slice(0, 10);
   const [pendentes, setPendentes] = useState<TarefaHoraAlerta[]>([]);
 
-  const { data: tarefas = [] } = useQuery({
+  const { data } = useQuery({
     queryKey: ["tarefas-hora-alerta", user?.id, hojeISO],
     enabled: !!user?.id,
     refetchInterval: 60 * 1000,
@@ -53,6 +55,7 @@ export function useTarefasHoraAlerta() {
       return data ?? [];
     },
   });
+  const tarefas = data ?? EMPTY;
 
   useEffect(() => {
     if (!tarefas.length) {
