@@ -7709,8 +7709,10 @@ export type Database = {
           integration_id: string | null
           medico_id: string | null
           mes_referencia: number
+          nf_lembretes: number
           nf_solicitada_em: string | null
           nf_status: string
+          nf_ultimo_lembrete_em: string | null
           observacoes: string | null
           profissional_crm: string | null
           profissional_id_externo: string | null
@@ -7742,8 +7744,10 @@ export type Database = {
           integration_id?: string | null
           medico_id?: string | null
           mes_referencia: number
+          nf_lembretes?: number
           nf_solicitada_em?: string | null
           nf_status?: string
+          nf_ultimo_lembrete_em?: string | null
           observacoes?: string | null
           profissional_crm?: string | null
           profissional_id_externo?: string | null
@@ -7775,8 +7779,10 @@ export type Database = {
           integration_id?: string | null
           medico_id?: string | null
           mes_referencia?: number
+          nf_lembretes?: number
           nf_solicitada_em?: string | null
           nf_status?: string
+          nf_ultimo_lembrete_em?: string | null
           observacoes?: string | null
           profissional_crm?: string | null
           profissional_id_externo?: string | null
@@ -12411,6 +12417,33 @@ export type Database = {
           },
         ]
       }
+      push_subscriptions: {
+        Row: {
+          created_at: string
+          endpoint: string
+          id: string
+          subscription: Json
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          endpoint: string
+          id?: string
+          subscription: Json
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          endpoint?: string
+          id?: string
+          subscription?: Json
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       radiologia_agendas: {
         Row: {
           cliente_id: string
@@ -16475,6 +16508,14 @@ export type Database = {
       get_bi_campanhas_monitor: { Args: { p_desde?: string }; Returns: Json }
       get_bi_esforco_equipe: { Args: { p_desde?: string }; Returns: Json }
       get_bi_funil_campanha: { Args: { p_campanha_id: string }; Returns: Json }
+      get_bi_funil_engajamento: {
+        Args: {
+          p_campanha_id?: string
+          p_data_fim?: string
+          p_data_ini?: string
+        }
+        Returns: Json
+      }
       get_bi_prospec_dashboard: {
         Args: { p_fim: string; p_inicio: string }
         Returns: Json
