@@ -50,25 +50,76 @@ serve(async (req) => {
     const assunto = `Informações para emissão da NFS-e — ${compExt} — [NF-${String(pag.id).slice(0, 8)}]`;
     const localTxt = [pag.unidade, pag.setor].filter(Boolean).join(" · ");
     const html = `
-      <div style="font-family:Arial,sans-serif;font-size:14px;color:#1b3a5b;line-height:1.6;max-width:640px">
-        <p>Olá, Dr(a). <b>${pag.profissional_nome}</b>,</p>
-        <p>Seguem as informações para emissão da <b>NFS-e</b> referente à sua produção de <b>${compExt}</b>${localTxt ? ` (${localTxt})` : ""}, no valor de <b>${valor}</b>.</p>
-        <hr style="border:none;border-top:1px solid #e2e8f0">
-        <p><b>DADOS DO TOMADOR</b><br>
-        Razão Social: GSS - GESTAO SERVICOS A SAUDE LTDA<br>
-        Nome Fantasia: GSS - GESTAO SERVICOS A SAUDE LTDA<br>
-        CNPJ: 18.670.594/0001-03<br>
-        Endereço: Av. Osvaldo Reis, nº 2470, Andar 2, Sala 10, CEP 88.306-600, Praia Brava, Itajaí/SC</p>
-        <p><b>DESCRIÇÃO DA NOTA</b><br>
-        Prestação de serviços médicos no mês de <b>${compExt}</b>${pag.unidade ? `, no <b>${pag.unidade}</b>` : ""}.${pag.total_plantoes ? ` Qtde. ${pag.total_plantoes} plantões.` : ""}<br>
-        Valor Total: <b>${valor}</b>
-        <br><i style="color:#5a6b7b">Ajuste a descrição conforme a especialidade, o local exato de prestação e os detalhes da sua produção.</i></p>
-        <p><b>IMPORTANTE — inclua os dados bancários da conta PJ na descrição da nota:</b><br>
-        Razão Social:<br>CNPJ:<br>Banco:<br>Agência:<br>Conta:<br>PIX: <span style="color:#5a6b7b">(caso aplicável, os mesmos dados da conta PJ)</span></p>
-        <p style="color:#b45309"><b>ATENÇÃO:</b> verifique com cuidado as informações ao emitir a nota. O <b>local da prestação de serviços</b> deve ser exatamente onde o serviço foi realizado. Caso contrário, solicitaremos o cancelamento da nota e a emissão de uma nova.</p>
-        <hr style="border:none;border-top:1px solid #e2e8f0">
-        <p><b>Como enviar:</b> basta <b>responder este email anexando a NF em PDF</b>. O recebimento é automático.</p>
-        <p style="color:#5a6b7b;font-size:12px">GSS Saúde · Financeiro</p>
+      <!-- preheader (oculto) -->
+      <div style="display:none;max-height:0;overflow:hidden;opacity:0">Solicitação de NF-e — produção ${compExt} — ${valor}. Responda anexando o PDF.</div>
+      <div style="margin:0;padding:0;background:#eef1f5;font-family:'Segoe UI',Arial,sans-serif">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef1f5;padding:24px 12px">
+          <tr><td align="center">
+            <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(27,58,91,.08)">
+              <!-- header -->
+              <tr><td style="background:#1b3a5b;padding:28px 32px">
+                <table role="presentation" width="100%"><tr>
+                  <td style="color:#fff;font-size:20px;font-weight:700;letter-spacing:.5px">GSS <span style="font-weight:400;opacity:.85">Saúde</span></td>
+                  <td align="right" style="color:#9fc0e0;font-size:12px;text-transform:uppercase;letter-spacing:1.5px">Departamento Financeiro</td>
+                </tr></table>
+              </td></tr>
+              <!-- faixa -->
+              <tr><td style="background:#2563a8;height:4px;line-height:4px;font-size:0">&nbsp;</td></tr>
+              <!-- corpo -->
+              <tr><td style="padding:32px">
+                <p style="margin:0 0 4px;font-size:16px;color:#1b3a5b">Olá, Dr(a). <b>${pag.profissional_nome}</b>,</p>
+                <p style="margin:0 0 20px;font-size:14px;color:#42546a;line-height:1.6">Seguem as informações para emissão da <b>NFS-e</b> referente à sua produção de <b>${compExt}</b>${localTxt ? ` (${localTxt})` : ""}.</p>
+
+                <!-- destaque valor -->
+                <table role="presentation" width="100%" style="background:#f2f7fc;border:1px solid #d8e6f4;border-radius:10px;margin:0 0 24px">
+                  <tr><td style="padding:18px 22px">
+                    <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#5a7594">Valor da nota</div>
+                    <div style="font-size:28px;font-weight:700;color:#1b3a5b;margin-top:2px">${valor}</div>
+                    <div style="font-size:12px;color:#5a7594;margin-top:2px">Competência ${compExt}${pag.total_plantoes ? ` · ${pag.total_plantoes} plantões` : ""}</div>
+                  </td></tr>
+                </table>
+
+                <!-- dados do tomador -->
+                <div style="font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#8a99ab;margin:0 0 8px">Dados do tomador</div>
+                <table role="presentation" width="100%" style="border-collapse:collapse;font-size:13px;color:#42546a;margin:0 0 22px">
+                  <tr><td style="padding:4px 0;width:130px;color:#8a99ab">Razão Social</td><td style="padding:4px 0"><b>GSS - GESTÃO SERVIÇOS A SAÚDE LTDA</b></td></tr>
+                  <tr><td style="padding:4px 0;color:#8a99ab">CNPJ</td><td style="padding:4px 0">18.670.594/0001-03</td></tr>
+                  <tr><td style="padding:4px 0;color:#8a99ab;vertical-align:top">Endereço</td><td style="padding:4px 0">Av. Osvaldo Reis, 2470, Andar 2, Sala 10 — Praia Brava, Itajaí/SC — CEP 88.306-600</td></tr>
+                </table>
+
+                <!-- descricao -->
+                <div style="font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#8a99ab;margin:0 0 8px">Descrição da nota</div>
+                <p style="margin:0 0 6px;font-size:13px;color:#42546a;line-height:1.6">Prestação de serviços médicos no mês de <b>${compExt}</b>${pag.unidade ? `, no <b>${pag.unidade}</b>` : ""}.${pag.total_plantoes ? ` Qtde. ${pag.total_plantoes} plantões.` : ""} Valor total: <b>${valor}</b>.</p>
+                <p style="margin:0 0 22px;font-size:12px;color:#8a99ab;font-style:italic">Ajuste a descrição conforme a especialidade e o local exato de prestação.</p>
+
+                <!-- dados bancarios -->
+                <table role="presentation" width="100%" style="background:#fafbfc;border:1px dashed #cfd8e3;border-radius:10px;margin:0 0 22px">
+                  <tr><td style="padding:16px 20px">
+                    <div style="font-size:13px;font-weight:700;color:#1b3a5b;margin:0 0 8px">Inclua os dados bancários da conta PJ na descrição da nota</div>
+                    <div style="font-size:13px;color:#42546a;line-height:1.9">Razão Social · CNPJ · Banco · Agência · Conta · PIX <span style="color:#8a99ab">(mesmos dados da conta PJ)</span></div>
+                  </td></tr>
+                </table>
+
+                <!-- atencao -->
+                <table role="presentation" width="100%" style="background:#fff7ed;border-left:3px solid #e6a23c;border-radius:6px;margin:0 0 24px">
+                  <tr><td style="padding:12px 16px;font-size:12px;color:#8a5a15;line-height:1.6"><b>Atenção:</b> o <b>local da prestação de serviços</b> deve ser exatamente onde o serviço foi realizado. Caso contrário, será necessário cancelar a nota e emitir uma nova.</td></tr>
+                </table>
+
+                <!-- CTA -->
+                <table role="presentation" width="100%" style="background:#1b3a5b;border-radius:10px">
+                  <tr><td style="padding:18px 22px;text-align:center">
+                    <div style="color:#fff;font-size:15px;font-weight:600">📎 Responda este email anexando a NF em PDF</div>
+                    <div style="color:#9fc0e0;font-size:12px;margin-top:4px">O recebimento é automático — não precisa preencher mais nada.</div>
+                  </td></tr>
+                </table>
+              </td></tr>
+              <!-- footer -->
+              <tr><td style="background:#f6f8fa;padding:18px 32px;border-top:1px solid #e6ebf1">
+                <div style="font-size:12px;color:#8a99ab">GSS Saúde · Departamento Financeiro<br>Este é um email automático — em caso de dúvida, responda que retornaremos.</div>
+              </td></tr>
+            </table>
+          </td></tr>
+        </table>
       </div>`;
 
     let emailResult: any = null;
