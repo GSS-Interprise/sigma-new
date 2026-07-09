@@ -19,7 +19,7 @@ O financeiro fecha a produção do mês e precisa de **aprovação da diretoria 
 
 1. **Mavi fecha a competência** → gera o **PDF de fechamento** (consolidado do mês) → o sistema posta no **canal "Financeiro" (Mavi + João)** e notifica o João (push).
 2. **João aprova** tocando um **botão de ação na mensagem** (não depende de interpretar texto) → o sistema posta a lista de médicos aprovados no **canal "Comprovantes" (João + Thais)**, um **card por médico**, e notifica a Thais (push).
-3. **Thais paga cada médico** e **responde no card do médico anexando o comprovante (PDF)** → o listener casa o comprovante ao médico (via `reply_to_id`), salva no bucket privado `financeiro-anexos`, marca aquele **pagamento como `pago`** e confirma no canal.
+3. **Thais paga os médicos** e **sobe os comprovantes em lote** (fluxo MUITO simples — o objetivo é alimentar a **contabilidade**). O sistema **lê o nome/dados do médico no PDF** e casa automaticamente com `medicos`, salva no bucket privado `financeiro-anexos`, marca o **pagamento como `pago`**, e encaminha pra contabilidade. O que não casar vai pra uma **fila de "não identificados"** que ela resolve na mão — nunca trava.
 
 ## 2. Estado atual (o que já existe — REAPROVEITAR, não recriar)
 
@@ -74,7 +74,7 @@ O financeiro fecha a produção do mês e precisa de **aprovação da diretoria 
 - [ ] **A3 — Fechar competência (Mavi):** ação na tela → gera PDF consolidado → cria fechamento → posta no canal Financeiro com botão "Aprovar".
 - [ ] **A4 — Ações inline no chat** (metadata `acao` + render do botão no mobile) OU link pra tela de ação. Decidir e implementar.
 - [ ] **A5 — Aprovação (João):** botão marca `aprovado` → posta um card por médico no canal Comprovantes.
-- [ ] **A6 — Listener de comprovante (Thais):** reply no card + anexo → casa médico → copia p/ `financeiro-anexos` → `pago` + confirma no canal.
+- [ ] **A6 — Comprovantes em lote (Thais):** upload de vários PDFs → edge extrai texto e casa o médico por **múltiplos sinais** (nome + razão social/CNPJ da PJ + dados bancários de `medicos` + valor) → copia p/ `financeiro-anexos` → `pago` + encaminha contabilidade (`financeiro-enviar-comprovante`). Não-casados → **fila de revisão** (casa na mão). PDFs escaneados (imagem) → OCR só se necessário; senão caem na fila.
 - [ ] **A7 — Reflexo na lista de médicos / contas a pagar:** status `pago` aparece na hora + push de confirmação.
 - [ ] **A8 — Mobile pass:** validar os 3 toques (aprovar / anexar / confirmar) no Safari iOS + Chrome Android.
 
@@ -89,13 +89,14 @@ O financeiro fecha a produção do mês e precisa de **aprovação da diretoria 
 ## 8. Decisões travadas (2026-07-09, com o Raul)
 
 - Aprovação por **lote do mês** (fechamento = PDF consolidado), não médico a médico.
-- Fluxo **chat-first** nos canais, com **botão de ação** (não palavra-chave).
-- **Um comprovante por médico**, anexado como **reply no card do médico** (associação via `reply_to_id`).
+- **João** aprova com **botão de ação** (não palavra-chave). Fluxo dele é chat-first.
+- **Thais**: fluxo **MUITO simples** — sobe comprovantes em lote, sistema **lê o nome/dados do médico no PDF** e casa automático. Comprovante serve pra **contabilidade**. Não-casados → fila de revisão.
 - Web Push já cobre a notificação mobile.
+- **Contas:** João = `jhcvillela@yahoo.com.br` · Thais = `thaissdebom@gmail.com`.
 
 ## 9. Aberto (confirmar antes de executar)
 
-- Emails do **João** e da **Thais** (criar contas).
-- Papéis: reusar `diretoria`/`gestor_financeiro` ou criar `aprovador_financeiro`/`pagador_financeiro`?
-- Canal único vs **dois canais** (Financeiro / Comprovantes) — recomendação: dois.
-- A4: **botão inline** no chat (melhor UX) vs **link pra tela** (menos esforço)?
+- Papéis: criar `aprovador_financeiro` (João) / `pagador_financeiro` (Thais) — recomendação.
+- Método de criação de conta: senha temporária (Raul repassa) vs convite por email.
+- A4 (só p/ o João): **botão inline** no chat (melhor UX) vs **link pra tela** (menos esforço)?
+- Casamento por nome no PDF: risco de o favorecido ser a **PJ**, não o médico → casar por múltiplos sinais + fila de revisão (já previsto em A6).
