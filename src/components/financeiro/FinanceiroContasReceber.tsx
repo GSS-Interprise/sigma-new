@@ -13,6 +13,7 @@ import {
   useFinanceiroReceber, useSyncFinanceiroReceber, useAtualizarReceber,
   type FinanceiroReceber, type ReceberPatch,
 } from "@/hooks/useFinanceiroData";
+import { NFClienteAnexos } from "@/components/financeiro/NFClienteAnexos";
 
 const fmt = (v: number | null | undefined) => (Number(v) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -165,6 +166,17 @@ function GerenciarReceber({ item }: { item: FinanceiroReceber }) {
             <Label className="text-xs">Observações</Label>
             <Textarea value={obs} onChange={(e) => setObs(e.target.value)} rows={2} placeholder="Ex.: faturar por hora, aguardando medição..." />
           </div>
+          {item.cliente_id && (
+            <div className="pt-3 border-t">
+              <NFClienteAnexos
+                clienteId={item.cliente_id}
+                contratoId={item.contrato_id ?? undefined}
+                receberId={item.id}
+                mes={item.mes_referencia}
+                ano={item.ano_referencia}
+              />
+            </div>
+          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>

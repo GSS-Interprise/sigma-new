@@ -39,6 +39,8 @@ import Medicos from "./pages/Medicos";
 import Leads from "./pages/Leads";
 import Escalas from "./pages/Escalas";
 import Financeiro from "./pages/Financeiro";
+import FinanceiroAprovacoes from "./pages/FinanceiroAprovacoes";
+import FinanceiroComprovantes from "./pages/FinanceiroComprovantes";
 import Patrimonio from "./pages/Patrimonio";
 import BI from "./pages/BI";
 import Configuracoes from "./pages/Configuracoes";
@@ -117,6 +119,8 @@ const App = () => (
             <Route path="/leads" element={<ProtectedRoute><PermissionRoute modulo="disparos"><Leads /></PermissionRoute></ProtectedRoute>} />
             <Route path="/escalas" element={<ProtectedRoute><PermissionRoute modulo="escalas"><Escalas /></PermissionRoute></ProtectedRoute>} />
             <Route path="/financeiro" element={<ProtectedRoute><PermissionRoute modulo="financeiro"><Financeiro /></PermissionRoute></ProtectedRoute>} />
+            <Route path="/financeiro/aprovacoes" element={<ProtectedRoute><PermissionRoute modulo="financeiro"><FinanceiroAprovacoes /></PermissionRoute></ProtectedRoute>} />
+            <Route path="/financeiro/comprovantes" element={<ProtectedRoute><PermissionRoute modulo="financeiro"><FinanceiroComprovantes /></PermissionRoute></ProtectedRoute>} />
             <Route path="/patrimonio" element={<ProtectedRoute><PermissionRoute modulo="patrimonio"><Patrimonio /></PermissionRoute></ProtectedRoute>} />
             <Route path="/radiologia" element={<ProtectedRoute><PermissionRoute modulo="radiologia"><Radiologia /></PermissionRoute></ProtectedRoute>} />
             <Route path="/bi" element={<ProtectedRoute><PermissionRoute modulo="bi"><BI /></PermissionRoute></ProtectedRoute>} />
