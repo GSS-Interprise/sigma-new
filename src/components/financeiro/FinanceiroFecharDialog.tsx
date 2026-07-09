@@ -28,7 +28,7 @@ type Fechamento = { id: string; status: string; total: number; qtd_medicos: numb
 // Segue o padrão de postarNoCanalFinanceiro (useFinanceiroData): insere a mensagem e
 // cria uma notificação por participante (exceto o autor) — é a notificação que dispara
 // o Web Push do João (diretoria). Retorna null se o canal não estiver configurado.
-async function postarFechamentoNoCanal(mensagem: string): Promise<string | null> {
+async function postarFechamentoNoCanal(mensagem: string, fechamentoId: string): Promise<string | null> {
   const { data: cfg } = await (supabase as any)
     .from("config_lista_items")
     .select("valor")
@@ -46,7 +46,8 @@ async function postarFechamentoNoCanal(mensagem: string): Promise<string | null>
 
   const { data: m, error } = await (supabase as any)
     .from("comunicacao_mensagens")
-    .insert({ canal_id: canalId, user_id: uid, user_nome: nome, mensagem })
+    .insert({ canal_id: canalId, user_id: uid, user_nome: nome, mensagem,
+      acao: { tipo: "aprovar_fechamento", referencia_id: fechamentoId, status: "pendente" } })
     .select("id")
     .single();
   if (error || !m) return null;
@@ -153,8 +154,8 @@ export function FinanceiroFecharDialog({ mes, ano }: { mes: number; ano: number 
       // Posta no canal de aprovação (dispara push do João).
       const msg =
         `📋 *Fechamento ${String(mes).padStart(2, "0")}/${ano}* — ${brl(resumo.total)}, ${resumo.qtd} médico${resumo.qtd === 1 ? "" : "s"}.\n` +
-        `Aguardando aprovação da diretoria. Abra em /financeiro/aprovacoes`;
-      const msgId = await postarFechamentoNoCanal(msg);
+        `João, aprove aqui mesmo no canal. 👇`;
+      const msgId = await postarFechamentoNoCanal(msg, fech.id);
 
       if (msgId) {
         await (supabase as any)

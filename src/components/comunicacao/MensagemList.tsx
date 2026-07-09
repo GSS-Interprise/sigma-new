@@ -6,6 +6,7 @@ import { Check, CheckCheck, Paperclip, Reply, Pencil, X, Check as CheckIcon, Fil
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ComunicacaoFileViewerDialog } from "./ComunicacaoFileViewerDialog";
+import { MensagemAcao } from "./MensagemAcao";
 import { supabase } from "@/integrations/supabase/client";
 import {
   DropdownMenu,
@@ -39,6 +40,7 @@ interface Mensagem {
   updated_at?: string;
   reply_to_id?: string | null;
   deleted_at?: string | null;
+  acao?: any;
   comunicacao_leituras?: Array<{ user_id: string; data_leitura: string }>;
 }
 
@@ -389,7 +391,11 @@ export function MensagemList({ mensagens, currentUserId, currentUserNome, reacoe
                     </p>
                     </>
                   )}
-                  
+
+                  {!hideContent && mensagem.acao && (
+                    <MensagemAcao mensagem={mensagem} currentUserId={currentUserId} currentUserNome={currentUserNome} />
+                  )}
+
                   {!hideContent && mensagem.anexos && mensagem.anexos.length > 0 && (
                     <div className="mt-2 space-y-2">
                       {mensagem.anexos.map((anexo, idx) => {
