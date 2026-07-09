@@ -328,6 +328,9 @@ export interface FinanceiroReceber {
   condicao_pagamento: string | null;
   valor_previsto: number;
   valor_faturado: number | null;
+  valor_contrato_total: number | null;
+  prazo_meses: number | null;
+  regra_rateio: string | null;
   status: string;
   nf_saida_status: string;
   data_prevista: string | null;
@@ -362,6 +365,30 @@ export function useSyncFinanceiroReceber() {
       queryClient.invalidateQueries({ queryKey: ["financeiro-receber", v.mes, v.ano] });
     },
     onError: (e: any) => toast.error("Erro ao sincronizar: " + (e?.message || "")),
+  });
+}
+
+// T08 (fluxo) — atualiza uma conta a receber: status (a_faturar→faturado→recebido),
+// valor faturado (real), NF de saída emitida, valor previsto editado, observações.
+export type ReceberPatch = Partial<
+  Pick<FinanceiroReceber, "status" | "valor_faturado" | "valor_previsto" | "nf_saida_status" | "observacoes" | "regra_rateio">
+>;
+
+export function useAtualizarReceber() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, patch }: { id: string; patch: ReceberPatch }) => {
+      const { error } = await (supabase as any)
+        .from("financeiro_receber")
+        .update({ ...patch, updated_at: new Date().toISOString() })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Conta a receber atualizada.");
+      queryClient.invalidateQueries({ queryKey: ["financeiro-receber"] });
+    },
+    onError: (e: any) => toast.error("Erro ao atualizar: " + (e?.message || "")),
   });
 }
 

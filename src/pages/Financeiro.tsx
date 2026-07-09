@@ -120,7 +120,7 @@ export default function Financeiro() {
           </div>
 
           <TabsContent value="resumo">
-            <FinanceiroResumo pagamentos={pagamentos} isLoading={isLoading} />
+            <FinanceiroResumo pagamentos={pagamentos} isLoading={isLoading} mes={mes || (now.getMonth() + 1)} ano={ano} />
           </TabsContent>
 
           <TabsContent value="contas">

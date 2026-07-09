@@ -1,15 +1,18 @@
 import { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DollarSign, Clock, CheckCircle, AlertTriangle, FileText } from "lucide-react";
+import { DollarSign, Clock, CheckCircle, AlertTriangle, FileText, TrendingUp, Scale } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { FinanceiroPagamento } from "@/hooks/useFinanceiroData";
+import { FinanceiroPagamento, useFinanceiroReceber } from "@/hooks/useFinanceiroData";
 
 interface Props {
   pagamentos: FinanceiroPagamento[];
   isLoading: boolean;
+  mes: number;
+  ano: number;
 }
 
-export function FinanceiroResumo({ pagamentos, isLoading }: Props) {
+export function FinanceiroResumo({ pagamentos, isLoading, mes, ano }: Props) {
+  const { data: receber = [] } = useFinanceiroReceber(mes, ano);
   const stats = useMemo(() => {
     const totalAPagar = pagamentos.reduce((s, p) => s + Number(p.valor_total), 0);
     const totalPago = pagamentos
@@ -40,10 +43,20 @@ export function FinanceiroResumo({ pagamentos, isLoading }: Props) {
     return { recebidas, pendentes, totalNf, pct };
   }, [pagamentos]);
 
+  // T09 — consolidado: contas a receber do mês
+  const rec = useMemo(() => {
+    const previsto = receber.reduce((s, r) => s + Number(r.valor_previsto || 0), 0);
+    const aFaturar = receber.filter((r) => r.status === "a_faturar").reduce((s, r) => s + Number(r.valor_previsto || 0), 0);
+    const recebido = receber.filter((r) => r.status === "recebido").reduce((s, r) => s + Number(r.valor_faturado ?? r.valor_previsto || 0), 0);
+    return { previsto, aFaturar, recebido, qtd: receber.length };
+  }, [receber]);
+
+  const saldoPrevisto = rec.previsto - stats.totalAPagar;
+
   const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
   const cards = [
-    { title: "Total no Período", value: fmt(stats.totalAPagar), icon: DollarSign, color: "text-primary" },
+    { title: "A Pagar (período)", value: fmt(stats.totalAPagar), icon: DollarSign, color: "text-primary" },
     { title: "Total Pago", value: fmt(stats.totalPago), icon: CheckCircle, color: "text-green-600" },
     { title: "Em Aberto", value: fmt(stats.totalEmAberto), icon: Clock, color: "text-amber-600" },
     { title: "Vencido", value: fmt(stats.totalPorVencer), icon: AlertTriangle, color: "text-destructive" },
@@ -65,6 +78,37 @@ export function FinanceiroResumo({ pagamentos, isLoading }: Props) {
             </CardContent>
           </Card>
         ))}
+      </div>
+
+      {/* T09 — consolidado a pagar × a receber */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">A Receber (previsto)</CardTitle>
+            <TrendingUp className="h-4 w-4 text-emerald-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-emerald-600">{fmt(rec.previsto)}</div>
+            <p className="text-xs text-muted-foreground">{rec.qtd} contrato(s) · {fmt(rec.aFaturar)} a faturar</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Já Recebido</CardTitle>
+            <CheckCircle className="h-4 w-4 text-emerald-600" />
+          </CardHeader>
+          <CardContent><div className="text-2xl font-bold">{fmt(rec.recebido)}</div></CardContent>
+        </Card>
+        <Card className="sm:col-span-2">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Saldo previsto do mês (a receber − a pagar)</CardTitle>
+            <Scale className={`h-4 w-4 ${saldoPrevisto >= 0 ? "text-emerald-600" : "text-destructive"}`} />
+          </CardHeader>
+          <CardContent>
+            <div className={`text-2xl font-bold ${saldoPrevisto >= 0 ? "text-emerald-600" : "text-destructive"}`}>{fmt(saldoPrevisto)}</div>
+            <p className="text-xs text-muted-foreground">Receber {fmt(rec.previsto)} − Pagar {fmt(stats.totalAPagar)}</p>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Acompanhamento de NF: quem já enviou x quem ainda falta */}
