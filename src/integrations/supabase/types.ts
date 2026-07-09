@@ -7821,8 +7821,11 @@ export type Database = {
           mes_referencia: number
           nf_saida_status: string
           observacoes: string | null
+          prazo_meses: number | null
+          regra_rateio: string | null
           status: string
           updated_at: string
+          valor_contrato_total: number | null
           valor_faturado: number | null
           valor_previsto: number
         }
@@ -7839,8 +7842,11 @@ export type Database = {
           mes_referencia: number
           nf_saida_status?: string
           observacoes?: string | null
+          prazo_meses?: number | null
+          regra_rateio?: string | null
           status?: string
           updated_at?: string
+          valor_contrato_total?: number | null
           valor_faturado?: number | null
           valor_previsto?: number
         }
@@ -7857,8 +7863,11 @@ export type Database = {
           mes_referencia?: number
           nf_saida_status?: string
           observacoes?: string | null
+          prazo_meses?: number | null
+          regra_rateio?: string | null
           status?: string
           updated_at?: string
+          valor_contrato_total?: number | null
           valor_faturado?: number | null
           valor_previsto?: number
         }
@@ -16482,6 +16491,7 @@ export type Database = {
         }
         Returns: undefined
       }
+      financeiro_receber_alerta: { Args: never; Returns: Json }
       find_lead_by_phone: { Args: { p_phone: string }; Returns: string }
       find_lead_by_phone_fuzzy: { Args: { p_phone: string }; Returns: string }
       fn_log_status_change: {

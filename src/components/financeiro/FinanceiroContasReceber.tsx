@@ -23,8 +23,8 @@ export function FinanceiroContasReceber({ mes, ano }: { mes: number; ano: number
   const sync = useSyncFinanceiroReceber();
 
   const totalPrevisto = itens.reduce((s, i) => s + Number(i.valor_previsto || 0), 0);
-  const totalFaturado = itens.filter((i) => i.status !== "a_faturar").reduce((s, i) => s + Number(i.valor_faturado ?? i.valor_previsto || 0), 0);
-  const totalRecebido = itens.filter((i) => i.status === "recebido").reduce((s, i) => s + Number(i.valor_faturado ?? i.valor_previsto || 0), 0);
+  const totalFaturado = itens.filter((i) => i.status !== "a_faturar").reduce((s, i) => s + Number(i.valor_faturado ?? (i.valor_previsto || 0)), 0);
+  const totalRecebido = itens.filter((i) => i.status === "recebido").reduce((s, i) => s + Number(i.valor_faturado ?? (i.valor_previsto || 0)), 0);
   const temTotalCru = itens.some((i) => i.regra_rateio === "total");
 
   const badge = (s: string) => (s === "recebido" ? "default" : s === "faturado" ? "secondary" : "outline");
