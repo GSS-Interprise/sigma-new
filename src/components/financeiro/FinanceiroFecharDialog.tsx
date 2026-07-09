@@ -79,13 +79,15 @@ export function FinanceiroFecharDialog({ mes, ano }: { mes: number; ano: number 
       // Resumo do mês: soma dos valores e contagem de médicos dos pagamentos da competência.
       const { data: pags, error: errPags } = await (supabase as any)
         .from("financeiro_pagamentos")
-        .select("valor_total")
+        .select("valor_total, medico_id, profissional_crm, profissional_nome")
         .eq("mes_referencia", mes)
         .eq("ano_referencia", ano);
       if (errPags) throw errPags;
-      const lista = (pags ?? []) as { valor_total: number | null }[];
+      const lista = (pags ?? []) as { valor_total: number | null; medico_id: string | null; profissional_crm: string | null; profissional_nome: string | null }[];
       const total = lista.reduce((s, p) => s + Number(p.valor_total || 0), 0);
-      setResumo({ total, qtd: lista.length });
+      // Conta MÉDICOS distintos — cada médico pode ter várias linhas (unidades/plantões).
+      const medicos = new Set(lista.map((p) => p.medico_id || p.profissional_crm || p.profissional_nome || ""));
+      setResumo({ total, qtd: medicos.size });
 
       // Já existe fechamento para o mês?
       const { data: fech } = await (supabase as any)
@@ -110,6 +112,10 @@ export function FinanceiroFecharDialog({ mes, ano }: { mes: number; ano: number 
     if (!resumo) return;
     if (resumo.qtd === 0) {
       toast.error("Nenhum pagamento nessa competência. Importe a produção antes de fechar.");
+      return;
+    }
+    if (fechamento && (fechamento.status === "aprovado" || fechamento.status === "pago")) {
+      toast.error(`Este mês já foi ${fechamento.status === "pago" ? "pago" : "aprovado"} — não pode ser refechado.`);
       return;
     }
     setFechando(true);
@@ -172,6 +178,7 @@ export function FinanceiroFecharDialog({ mes, ano }: { mes: number; ano: number 
   };
 
   const jaFechado = !!fechamento && fechamento.status !== "cancelado";
+  const bloqueado = !!fechamento && (fechamento.status === "aprovado" || fechamento.status === "pago");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -236,11 +243,11 @@ export function FinanceiroFecharDialog({ mes, ano }: { mes: number; ano: number 
         <DialogFooter>
           <Button
             onClick={fechar}
-            disabled={carregando || fechando || !resumo || resumo.qtd === 0}
+            disabled={carregando || fechando || !resumo || resumo.qtd === 0 || bloqueado}
             className="w-full sm:w-auto gap-2"
           >
             {fechando ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-            {jaFechado ? "Reenviar para aprovação" : "Fechar e enviar para aprovação"}
+            {bloqueado ? "Já aprovado — não refecha" : jaFechado ? "Reenviar para aprovação" : "Fechar e enviar para aprovação"}
           </Button>
         </DialogFooter>
       </DialogContent>

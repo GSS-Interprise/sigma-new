@@ -17,7 +17,7 @@ const sanitize = (n: string) => n.normalize("NFD").replace(/[̀-ͯ]/g, "").repla
 const fmtBRL = (v: number) => (v ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 interface ProcResult {
-  casados: { pagamento?: string; medico?: string; valor?: number }[];
+  casados: { profissional_nome?: string; arquivo_nome?: string; pagamento_id?: string }[];
   pendentes: { arquivo_nome?: string; motivo?: string }[];
 }
 
@@ -109,9 +109,15 @@ export default function FinanceiroComprovantes() {
     setCasando(pendente.id);
     try {
       const { data: u } = await supabase.auth.getUser();
+      // vincula o comprovante ao pagamento (mesmo registro que o caminho automático cria).
+      const { error: anexoErr } = await (supabase as any).from("financeiro_anexos").insert({
+        pagamento_id: pagamentoId, tipo: "comprovante", arquivo_path: pendente.arquivo_path,
+        arquivo_nome: pendente.arquivo_nome, mime: pendente.mime, status: "recebido", criado_por: u?.user?.id ?? null,
+      });
+      if (anexoErr) throw anexoErr;
       const { error: pagErr } = await (supabase as any)
         .from("financeiro_pagamentos")
-        .update({ status: "pago", comprovante_status: "recebido", data_pagamento: new Date().toISOString(), conferido_por: u?.user?.id ?? null })
+        .update({ status: "pago", data_pagamento: new Date().toISOString().slice(0, 10), conferido_por: u?.user?.id ?? null })
         .eq("id", pagamentoId);
       if (pagErr) throw pagErr;
       const { error: pendErr } = await (supabase as any)
@@ -189,8 +195,8 @@ export default function FinanceiroComprovantes() {
                 <div className="space-y-1">
                   {resultado.casados.map((c, i) => (
                     <div key={i} className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
-                      <span className="truncate">{c.medico || c.pagamento || "Médico"}</span>
-                      <span className="shrink-0 font-medium">{c.valor != null ? fmtBRL(c.valor) : ""}</span>
+                      <span className="truncate">{c.profissional_nome || "Médico"}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground truncate max-w-[45%]">{c.arquivo_nome || ""}</span>
                     </div>
                   ))}
                 </div>

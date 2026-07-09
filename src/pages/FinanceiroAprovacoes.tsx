@@ -70,7 +70,7 @@ async function postarNoCanalComprovantes(mensagem: string) {
     .eq("campo_nome", "financeiro_canal_comprovantes_id")
     .maybeSingle();
   const canalId = cfg?.valor as string | undefined;
-  if (!canalId) return { posted: false };
+  if (!canalId) return { posted: false, motivo: "nao_configurado" };
 
   const { data: uRes } = await supabase.auth.getUser();
   const uid = uRes?.user?.id;
@@ -84,7 +84,7 @@ async function postarNoCanalComprovantes(mensagem: string) {
     .insert({ canal_id: canalId, user_id: uid, user_nome: nome, mensagem })
     .select("id")
     .single();
-  if (error || !m) return { posted: false };
+  if (error || !m) return { posted: false, motivo: "falha" };
 
   const { data: parts } = await (supabase as any)
     .from("comunicacao_participantes")
@@ -158,11 +158,13 @@ export default function FinanceiroAprovacoes() {
       return r;
     },
     onSuccess: (r) => {
-      toast.success(
-        r?.posted
-          ? "Fechamento aprovado e avisado no canal de Comprovantes."
-          : "Fechamento aprovado. (Canal de Comprovantes não configurado — config_lista_items.financeiro_canal_comprovantes_id)",
-      );
+      if (r?.posted) {
+        toast.success("Fechamento aprovado e avisado no canal de Comprovantes.");
+      } else if ((r as any)?.motivo === "falha") {
+        toast.warning("Fechamento aprovado, mas falhou ao avisar no canal de Comprovantes — avise a Thais manualmente.");
+      } else {
+        toast.success("Fechamento aprovado. (Canal de Comprovantes não configurado — config_lista_items.financeiro_canal_comprovantes_id)");
+      }
       queryClient.invalidateQueries({ queryKey: ["financeiro-fechamentos"] });
     },
     onError: (e: any) => toast.error("Erro ao aprovar: " + (e?.message || "")),

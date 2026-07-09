@@ -30,10 +30,19 @@ export function NFClienteAnexos({
   const fileRef = useRef<HTMLInputElement>(null);
 
   const { data: anexos = [] } = useQuery({
-    queryKey: ["nf-cliente-anexos", clienteId],
+    queryKey: ["nf-cliente-anexos", clienteId, receberId ?? null, mes ?? null, ano ?? null],
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from("nf_cliente_anexos").select("*").eq("cliente_id", clienteId).order("created_at", { ascending: false });
+      // Escopo: dentro de uma linha de conta a receber, mostra só as NFs daquele receber;
+      // fora dele, por cliente (+ competência se informada). Evita listar NF de outra competência.
+      let q = (supabase as any).from("nf_cliente_anexos").select("*");
+      if (receberId) {
+        q = q.eq("receber_id", receberId);
+      } else {
+        q = q.eq("cliente_id", clienteId);
+        if (mes) q = q.eq("mes_referencia", mes);
+        if (ano) q = q.eq("ano_referencia", ano);
+      }
+      const { data, error } = await q.order("created_at", { ascending: false });
       if (error) throw error;
       return (data ?? []) as any[];
     },
@@ -55,7 +64,7 @@ export function NFClienteAnexos({
         mes_referencia: mes ?? null,
         ano_referencia: ano ?? null,
         numero_nf: numeroNf.trim() || null,
-        valor: valor.trim() ? Number(valor.replace(",", ".")) : null,
+        valor: valor.trim() ? Number(valor.replace(/\./g, "").replace(",", ".")) : null,
         arquivo_path: path,
         arquivo_nome: file.name,
         mime: file.type,
@@ -70,7 +79,7 @@ export function NFClienteAnexos({
       }
 
       setNumeroNf(""); setValor("");
-      qc.invalidateQueries({ queryKey: ["nf-cliente-anexos", clienteId] });
+      qc.invalidateQueries({ queryKey: ["nf-cliente-anexos"] });
       toast.success("NF anexada.");
     } catch (e: any) {
       toast.error("Erro ao anexar NF: " + (e?.message || ""));

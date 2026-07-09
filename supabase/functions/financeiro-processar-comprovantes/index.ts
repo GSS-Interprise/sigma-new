@@ -65,6 +65,16 @@ serve(async (req) => {
       return json({ ok: false, error: "paths obrigatório (array não vazio)" }, 400);
     }
 
+    // Autorização: a edge usa service_role (ignora RLS), então precisa checar o papel
+    // do chamador na mão. Só gestor_financeiro/diretoria/admin processam comprovantes.
+    const token = (req.headers.get("Authorization") ?? "").replace("Bearer ", "");
+    const { data: uData } = await supabase.auth.getUser(token);
+    const uid = uData?.user?.id;
+    if (!uid) return json({ ok: false, error: "não autenticado" }, 401);
+    const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", uid);
+    const autorizado = (roles ?? []).some((r: any) => ["gestor_financeiro", "diretoria", "admin"].includes(r.role));
+    if (!autorizado) return json({ ok: false, error: "sem permissão para processar comprovantes" }, 403);
+
     // Candidatos: pagamentos de fechamentos aprovados, ainda não pagos.
     const { data: fechAprovados } = await supabase
       .from("financeiro_fechamentos")
@@ -125,15 +135,26 @@ serve(async (req) => {
           const pag = matches[0];
           const hoje = new Date().toISOString().slice(0, 10);
 
-          // anexa o comprovante ao pagamento.
-          const { data: anexoIns } = await supabase.from("financeiro_anexos").insert({
+          // anexa o comprovante ao pagamento — só marca pago se o anexo REALMENTE gravar.
+          const { data: anexoIns, error: anexoErr } = await supabase.from("financeiro_anexos").insert({
             pagamento_id: pag.id, tipo: "comprovante", arquivo_path: path,
             arquivo_nome: nome, mime, status: "recebido",
           }).select("id").single();
+          if (anexoErr || !anexoIns) {
+            await supabase.from("financeiro_comprovantes_pendentes").insert({
+              arquivo_path: path, arquivo_nome: nome, mime,
+              texto_extraido: texto.slice(0, 2000), candidatos: [],
+              motivo: `casou (${pag.profissional_nome}) mas falhou ao anexar: ${anexoErr?.message ?? "erro"}`,
+              resolvido: false,
+            });
+            pendentes.push({ arquivo_path: path, arquivo_nome: nome, motivo: "falha ao anexar comprovante" });
+            continue;
+          }
 
-          // marca o pagamento como pago.
+          // marca o pagamento como pago. comprovante_status fica por conta da edge de envio
+          // (financeiro-enviar-comprovante), que carimba 'enviado' só quando o e-mail confirma.
           await supabase.from("financeiro_pagamentos").update({
-            status: "pago", comprovante_status: "enviado", data_pagamento: hoje,
+            status: "pago", data_pagamento: hoje,
           }).eq("id", pag.id);
 
           // encaminha à contabilidade (best-effort; não falha o casamento se der erro).
