@@ -47,7 +47,7 @@ export function FinanceiroResumo({ pagamentos, isLoading, mes, ano }: Props) {
   const rec = useMemo(() => {
     const previsto = receber.reduce((s, r) => s + Number(r.valor_previsto || 0), 0);
     const aFaturar = receber.filter((r) => r.status === "a_faturar").reduce((s, r) => s + Number(r.valor_previsto || 0), 0);
-    const recebido = receber.filter((r) => r.status === "recebido").reduce((s, r) => s + Number(r.valor_faturado ?? r.valor_previsto || 0), 0);
+    const recebido = receber.filter((r) => r.status === "recebido").reduce((s, r) => s + Number(r.valor_faturado ?? (r.valor_previsto || 0)), 0);
     return { previsto, aFaturar, recebido, qtd: receber.length };
   }, [receber]);
 
