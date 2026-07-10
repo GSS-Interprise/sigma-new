@@ -198,38 +198,11 @@ export function NotificacoesSino() {
           table: "system_notifications",
           filter: `user_id=eq.${userId}`,
         },
-        async (payload) => {
+        () => {
+          // Notificações de SISTEMA (avisos, financeiro, suporte, etc.) só atualizam o
+          // contador do sino — SEM pop-up/toast/som. Só mensagens de canal (Comunicação)
+          // disparam notificação ativa, pra não floodar. (Mesma regra do Web Push.)
           queryClientRef.current.invalidateQueries({ queryKey: ["notificacoes-sistema"] });
-          
-          const newNotif = payload.new as any;
-          
-          notifyRef.current({
-            title: newNotif.titulo || "Nova notificação",
-            body: newNotif.mensagem || "",
-            tag: `sigma-sys-${newNotif.id}`,
-            onClick: () => {
-              if (newNotif.link) {
-                if (newNotif.tipo?.startsWith('suporte_') && newNotif.referencia_id) {
-                  navigateRef.current(`${newNotif.link}?ticket=${newNotif.referencia_id}`);
-                } else {
-                  navigateRef.current(newNotif.link);
-                }
-              }
-            },
-          });
-
-          // Sempre mostrar toast na tela (independente de foco)
-          const toastLink = newNotif.tipo?.startsWith('suporte_') && newNotif.referencia_id
-            ? `${newNotif.link}?ticket=${newNotif.referencia_id}`
-            : newNotif.link;
-          toast.info(newNotif.titulo || "Nova notificação", {
-            description: newNotif.mensagem?.substring(0, 100),
-            duration: 8000,
-            action: toastLink ? {
-              label: "Ver",
-              onClick: () => navigateRef.current(toastLink),
-            } : undefined,
-          });
         }
       )
       .on(
