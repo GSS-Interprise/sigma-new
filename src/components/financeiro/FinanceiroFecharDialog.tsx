@@ -20,6 +20,7 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 const brl = (v: number) => Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const sanitize = (n: string) => n.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-zA-Z0-9.\-_]/g, "_");
 
 type Resumo = { total: number; qtd: number };
 type Fechamento = { id: string; status: string; total: number; qtd_medicos: number };
@@ -71,6 +72,7 @@ export function FinanceiroFecharDialog({ mes, ano }: { mes: number; ano: number 
   const [fechando, setFechando] = useState(false);
   const [resumo, setResumo] = useState<Resumo | null>(null);
   const [fechamento, setFechamento] = useState<Fechamento | null>(null);
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
 
   const carregar = async () => {
     setCarregando(true);
@@ -124,6 +126,15 @@ export function FinanceiroFecharDialog({ mes, ano }: { mes: number; ano: number 
       const { data: uRes } = await supabase.auth.getUser();
       const uid = uRes?.user?.id ?? null;
 
+      // Relatório PDF do fechamento (opcional) → cofre privado, pra o João abrir e conferir os lançamentos.
+      let pdfPath: string | undefined;
+      if (pdfFile) {
+        const p = `fechamentos/${ano}-${String(mes).padStart(2, "0")}/${Date.now()}_${sanitize(pdfFile.name)}`;
+        const { error: upErr } = await supabase.storage.from("financeiro-anexos").upload(p, pdfFile, { contentType: pdfFile.type });
+        if (upErr) throw upErr;
+        pdfPath = p;
+      }
+
       // Upsert do fechamento (UNIQUE mes/ano). Reabre para aguardando_aprovacao caso já exista.
       const { data: fech, error: errFech } = await (supabase as any)
         .from("financeiro_fechamentos")
@@ -135,6 +146,7 @@ export function FinanceiroFecharDialog({ mes, ano }: { mes: number; ano: number 
             total: resumo.total,
             qtd_medicos: resumo.qtd,
             criado_por: uid,
+            ...(pdfPath ? { pdf_path: pdfPath } : {}),
             updated_at: new Date().toISOString(),
           },
           { onConflict: "mes_referencia,ano_referencia" }
@@ -217,6 +229,15 @@ export function FinanceiroFecharDialog({ mes, ano }: { mes: number; ano: number 
                 </p>
                 <p className="text-lg font-bold mt-1">{resumo.qtd}</p>
               </div>
+            </div>
+          )}
+
+          {!carregando && resumo && resumo.qtd > 0 && !bloqueado && (
+            <div>
+              <label className="text-xs text-muted-foreground">Relatório do fechamento (PDF) — o João abre pra conferir os lançamentos</label>
+              <input type="file" accept=".pdf" onChange={(e) => setPdfFile(e.target.files?.[0] ?? null)}
+                className="block w-full text-sm mt-1 file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-secondary-foreground" />
+              {pdfFile && <p className="text-xs text-muted-foreground mt-1">📄 {pdfFile.name}</p>}
             </div>
           )}
 

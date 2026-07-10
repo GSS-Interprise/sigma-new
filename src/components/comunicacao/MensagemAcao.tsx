@@ -2,7 +2,7 @@ import { useRef, useState, type ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Loader2, CheckCircle2, Upload, ShieldCheck, XCircle } from "lucide-react";
+import { Loader2, CheckCircle2, Upload, ShieldCheck, XCircle, FileText } from "lucide-react";
 import { toast } from "sonner";
 
 // Ação inline numa mensagem de canal (fluxo financeiro dentro da Comunicação):
@@ -78,7 +78,7 @@ export function MensagemAcao({ mensagem, currentUserId, currentUserNome }: { men
     queryFn: async () => {
       const { data } = await (supabase as any)
         .from("financeiro_fechamentos")
-        .select("id, mes_referencia, ano_referencia, total, qtd_medicos, status")
+        .select("id, mes_referencia, ano_referencia, total, qtd_medicos, status, pdf_path")
         .eq("id", fechId).maybeSingle();
       return data as any;
     },
@@ -90,9 +90,17 @@ export function MensagemAcao({ mensagem, currentUserId, currentUserNome }: { men
 
   // ---- Aprovar fechamento (João / diretoria) ----
   if (acao.tipo === "aprovar_fechamento") {
-    if (status === "aprovado" || status === "pago") return <EstadoBadge tone="ok">Aprovado</EstadoBadge>;
+    const verPdf = fech?.pdf_path ? (
+      <Button variant="outline" size="sm" className="mt-2 h-9 gap-1.5" onClick={async () => {
+        const { data } = await supabase.storage.from("financeiro-anexos").createSignedUrl(fech.pdf_path, 3600);
+        if (data?.signedUrl) window.open(data.signedUrl, "_blank");
+        else toast.error("Não foi possível abrir o relatório do fechamento.");
+      }}><FileText className="h-4 w-4" /> Ver fechamento</Button>
+    ) : null;
+
+    if (status === "aprovado" || status === "pago") return <div className="flex flex-wrap gap-2 items-center">{verPdf}<EstadoBadge tone="ok">Aprovado</EstadoBadge></div>;
     if (status === "cancelado") return <EstadoBadge tone="no">Rejeitado</EstadoBadge>;
-    if (!podeAprovar) return <div className="mt-2 text-xs text-muted-foreground flex items-center gap-1"><ShieldCheck className="h-3.5 w-3.5" /> Aguardando aprovação da diretoria…</div>;
+    if (!podeAprovar) return <div>{verPdf}<div className="mt-1 text-xs text-muted-foreground flex items-center gap-1"><ShieldCheck className="h-3.5 w-3.5" /> Aguardando aprovação da diretoria…</div></div>;
 
     const aprovar = async () => {
       setLoading(true);
@@ -113,9 +121,12 @@ export function MensagemAcao({ mensagem, currentUserId, currentUserNome }: { men
       setLoading(false);
     };
     return (
-      <Button onClick={aprovar} disabled={loading} size="sm" className="mt-2 h-9 gap-1.5">
-        {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} Aprovar fechamento
-      </Button>
+      <div className="flex flex-wrap gap-2 items-center">
+        {verPdf}
+        <Button onClick={aprovar} disabled={loading} size="sm" className="mt-2 h-9 gap-1.5">
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} Aprovar fechamento
+        </Button>
+      </div>
     );
   }
 
