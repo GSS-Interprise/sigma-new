@@ -28,7 +28,7 @@ const CANAL = { whatsapp: { label: "WhatsApp", cor: C.green }, ligacao: { label:
 
 type Resumo = { total: number; feitas: number; pendentes: number; atrasadas: number; fila: number; descartadas: number; leads: number; leads_trabalhados: number; cobertura_pct: number; pct_conclusao: number };
 type Campanha = { campanha: string; campanha_id: string; total: number; feitas: number; atrasadas: number; pendentes: number; pct: number; leads: number; leads_trabalhados: number; cobertura_pct: number; leads_multicanal: number };
-type Canal = { canal: string; total: number };
+type Canal = { canal: string; total: number; feitas: number };
 type Pessoa = { pessoa: string; feitas: number; wpp: number; ligacao: number; instagram: number; email: number };
 type Overview = { resumo: Resumo; por_campanha: Campanha[]; por_canal: Canal[]; por_pessoa: Pessoa[] };
 type Funil = {
@@ -151,7 +151,7 @@ export function AbaEsforcoEquipe() {
             <ResponsiveContainer width="100%" height={320}>
               <BarChart data={por_campanha.map((c) => ({ ...c, nome: c.campanha.length > 20 ? c.campanha.slice(0, 20) + "…" : c.campanha }))} layout="vertical" margin={{ left: 70, right: 12 }} barCategoryGap={10}>
                 <defs>
-                  <Grad id="gG" c={C.green} /><Grad id="gA" c={C.amber} /><Grad id="gR" c={C.red} />
+                  <Grad id="gG" c={C.green} /><Grad id="gA" c={C.amber} /><Grad id="gR" c={C.red} /><Grad id="gN" c={C.soft} />
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke={C.grid} horizontal={false} />
                 <XAxis type="number" stroke={C.soft} tick={{ fill: C.soft, fontSize: 11 }} allowDecimals={false} />
@@ -160,7 +160,7 @@ export function AbaEsforcoEquipe() {
                 <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" />
                 <Bar dataKey="feitas" name="Feitas" stackId="a" fill="url(#gG)" />
                 <Bar dataKey="pendentes" name="Pendentes" stackId="a" fill="url(#gA)" />
-                <Bar dataKey="atrasadas" name="Atrasadas" stackId="a" fill="url(#gR)" radius={[0, 5, 5, 0]} />
+                <Bar dataKey="atrasadas" name="Vencidas (backlog)" stackId="a" fill="url(#gN)" radius={[0, 5, 5, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -169,7 +169,7 @@ export function AbaEsforcoEquipe() {
         <Card className="lg:col-span-2">
           <CardContent className="p-5">
             <div className="font-semibold text-slate-800 mb-1">Esforço por canal</div>
-            <p className="text-xs text-slate-500 mb-3">Insistência multicanal</p>
+            <p className="text-xs text-slate-500 mb-3">Tarefas <b>realizadas</b> por canal — vs. as geradas pela cadência</p>
             <Donut data={por_canal} />
           </CardContent>
         </Card>
@@ -191,7 +191,7 @@ export function AbaEsforcoEquipe() {
                   <div className="mt-1 h-2 w-full rounded-full bg-slate-100 overflow-hidden">
                     <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(c.cobertura_pct, 100)}%`, background: c.cobertura_pct >= 70 ? C.green : c.cobertura_pct >= 30 ? C.amber : C.red }} />
                   </div>
-                  {c.atrasadas > 0 && <div className="text-[11px] text-red-500 mt-0.5">{c.atrasadas} atrasadas{c.leads_multicanal > 0 ? ` · ${c.leads_multicanal} multicanal` : ""}</div>}
+                  {c.atrasadas > 0 && <div className="text-[11px] text-slate-400 mt-0.5">{c.atrasadas} na fila{c.leads_multicanal > 0 ? ` · ${c.leads_multicanal} multicanal` : ""}</div>}
                 </button>
               ))}
             </div>
@@ -317,30 +317,31 @@ function FunilCampanha({ funil }: { funil: Funil }) {
 
 function Donut({ data }: { data: Canal[] }) {
   const rows = data.map((c) => ({ ...c, meta: CANAL[c.canal] || { label: c.canal, cor: C.soft } }));
-  const total = rows.reduce((s, r) => s + r.total, 0) || 1;
+  const totalFeitas = rows.reduce((s, r) => s + (r.feitas ?? 0), 0) || 1;
   return (
     <div className="flex items-center gap-2">
       <div className="relative" style={{ width: 150, height: 150 }}>
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
-            <Pie data={rows} dataKey="total" nameKey="meta.label" innerRadius={52} outerRadius={72} paddingAngle={2} stroke="#fff" strokeWidth={2}>
+            <Pie data={rows} dataKey="feitas" nameKey="meta.label" innerRadius={52} outerRadius={72} paddingAngle={2} stroke="#fff" strokeWidth={2}>
               {rows.map((r, i) => <Cell key={i} fill={r.meta.cor} />)}
             </Pie>
             <RechartsTooltip contentStyle={tooltipStyle} />
           </PieChart>
         </ResponsiveContainer>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-2xl font-bold tabular-nums text-slate-800">{fmt(total)}</span>
-          <span className="text-[11px] text-slate-400">tarefas</span>
+          <span className="text-2xl font-bold tabular-nums text-slate-800">{fmt(totalFeitas)}</span>
+          <span className="text-[11px] text-slate-400">feitas</span>
         </div>
       </div>
       <div className="flex-1 space-y-1.5">
         {rows.map((r) => {
           const Icon = r.canal === "whatsapp" ? MessageCircle : r.canal === "ligacao" ? Phone : r.canal === "instagram" ? Instagram : Mail;
+          const feitas = r.feitas ?? 0;
           return (
             <div key={r.canal} className="flex items-center justify-between text-sm">
               <span className="flex items-center gap-1.5 text-slate-600"><Icon className="h-3.5 w-3.5" style={{ color: r.meta.cor }} /> {r.meta.label}</span>
-              <span className="tabular-nums text-slate-500">{fmt(r.total)} <span className="text-slate-300">·</span> {Math.round((r.total / total) * 100)}%</span>
+              <span className="tabular-nums text-slate-500"><b className="text-slate-700">{fmt(feitas)}</b> feitas <span className="text-slate-300">de</span> {fmt(r.total)}</span>
             </div>
           );
         })}
