@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Button } from "@/components/ui/button";
 import { Lock, Loader2, CheckCircle2, AlertTriangle, Users, Wallet } from "lucide-react";
 import { toast } from "sonner";
+import { gerarFechamentoPdf } from "@/lib/fechamentoPdf";
 
 const MESES = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -126,13 +127,23 @@ export function FinanceiroFecharDialog({ mes, ano }: { mes: number; ano: number 
       const { data: uRes } = await supabase.auth.getUser();
       const uid = uRes?.user?.id ?? null;
 
-      // Relatório PDF do fechamento (opcional) → cofre privado, pra o João abrir e conferir os lançamentos.
+      // Relatório PDF do fechamento → cofre privado, pra o João abrir e conferir os lançamentos.
+      // SEMPRE gera automaticamente com os lançamentos; se a Mavi anexou um PDF próprio, usa o dela.
       let pdfPath: string | undefined;
-      if (pdfFile) {
-        const p = `fechamentos/${ano}-${String(mes).padStart(2, "0")}/${Date.now()}_${sanitize(pdfFile.name)}`;
-        const { error: upErr } = await supabase.storage.from("financeiro-anexos").upload(p, pdfFile, { contentType: pdfFile.type });
+      try {
+        const { data: pags } = await (supabase as any)
+          .from("financeiro_pagamentos")
+          .select("profissional_nome, profissional_crm, unidade, total_plantoes, valor_total, medico_id")
+          .eq("mes_referencia", mes).eq("ano_referencia", ano);
+        const arquivo: File = pdfFile
+          ?? new File([gerarFechamentoPdf(mes, ano, (pags ?? []) as any[], resumo.total)], `fechamento_${ano}-${String(mes).padStart(2, "0")}.pdf`, { type: "application/pdf" });
+        const p = `fechamentos/${ano}-${String(mes).padStart(2, "0")}/${Date.now()}_${sanitize(arquivo.name)}`;
+        const { error: upErr } = await supabase.storage.from("financeiro-anexos").upload(p, arquivo, { contentType: "application/pdf" });
         if (upErr) throw upErr;
         pdfPath = p;
+      } catch (e) {
+        // se o PDF falhar, o fechamento continua (não trava o fluxo).
+        console.error("[fechamento] falha ao gerar/subir PDF", e);
       }
 
       // Upsert do fechamento (UNIQUE mes/ano). Reabre para aguardando_aprovacao caso já exista.
@@ -234,7 +245,7 @@ export function FinanceiroFecharDialog({ mes, ano }: { mes: number; ano: number 
 
           {!carregando && resumo && resumo.qtd > 0 && !bloqueado && (
             <div>
-              <label className="text-xs text-muted-foreground">Relatório do fechamento (PDF) — o João abre pra conferir os lançamentos</label>
+              <label className="text-xs text-muted-foreground">PDF do fechamento — geramos um <b>automático</b> com os lançamentos. Anexe aqui só se quiser usar um relatório próprio.</label>
               <input type="file" accept=".pdf" onChange={(e) => setPdfFile(e.target.files?.[0] ?? null)}
                 className="block w-full text-sm mt-1 file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-secondary-foreground" />
               {pdfFile && <p className="text-xs text-muted-foreground mt-1">📄 {pdfFile.name}</p>}
