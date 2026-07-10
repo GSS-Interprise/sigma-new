@@ -8,6 +8,7 @@ import { GlobalBreadcrumb } from "./GlobalBreadcrumb";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { InstallPrompt } from "@/components/pwa/InstallPrompt";
+import { NotificacaoPrompt } from "@/components/pwa/NotificacaoPrompt";
 import { useLicitacoesRealtimeAccess } from "@/hooks/useLicitacoesRealtimeAccess";
 import { useLicitacoesRealtime } from "@/hooks/useLicitacoesRealtime";
 
@@ -66,6 +67,7 @@ function AppLayoutContent({ children, headerActions, hideFooter }: AppLayoutProp
       </div>
       {!isLoading && hasAccess && <LicitacoesRealtimeLoader />}
       <InstallPrompt />
+      <NotificacaoPrompt />
     </div>
   );
 }
