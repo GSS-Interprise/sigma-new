@@ -29,6 +29,12 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   especialidadeIds: string[];
   uf: string;
+  /** Filtros do pool (13/07) — pra "Ver lista" mostrar exatamente quem o disparo vai pegar */
+  cidades?: string[];
+  temEmail?: boolean;
+  idadeMin?: string;
+  idadeMax?: string;
+  origem?: string;
   poolCount?: number;
   /** Set controlado pelo pai (wizard) — IDs que a operadora marcou pra excluir do disparo */
   excludedIds: Set<string>;
@@ -62,6 +68,11 @@ export function PreviewLeadsCampanhaModal({
   onOpenChange,
   especialidadeIds,
   uf,
+  cidades,
+  temEmail,
+  idadeMin,
+  idadeMax,
+  origem,
   poolCount,
   excludedIds,
   onExcludedChange,
@@ -70,10 +81,29 @@ export function PreviewLeadsCampanhaModal({
   const [page, setPage] = useState(0);
 
   const { data, isLoading } = useQuery<LeadPreview[]>({
-    queryKey: ["preview-leads-campanha", especialidadeIds.join(","), uf, page, busca],
+    queryKey: [
+      "preview-leads-campanha",
+      especialidadeIds.join(","),
+      uf,
+      (cidades || []).join(","),
+      temEmail,
+      idadeMin,
+      idadeMax,
+      origem,
+      page,
+      busca,
+    ],
     enabled: open,
     queryFn: async () => {
       const nowIso = new Date().toISOString();
+      // Idade → limites de data_nascimento (nulls saem sozinhos: comparação com null = false)
+      const today = new Date();
+      const maxBirth = idadeMin
+        ? (() => { const d = new Date(today); d.setFullYear(d.getFullYear() - Number(idadeMin)); return d.toISOString().slice(0, 10); })()
+        : null;
+      const minBirth = idadeMax
+        ? (() => { const d = new Date(today); d.setFullYear(d.getFullYear() - Number(idadeMax) - 1); return d.toISOString().slice(0, 10); })()
+        : null;
       if (especialidadeIds.length > 0) {
         let q = (supabase as any)
           .from("lead_especialidades")
@@ -89,6 +119,11 @@ export function PreviewLeadsCampanhaModal({
           .or(`cooldown_ate.is.null,cooldown_ate.lt.${nowIso}`, { foreignTable: "leads" })
           .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
         if (uf) q = q.eq("leads.uf", uf);
+        if (cidades?.length) q = q.in("leads.cidade", cidades);
+        if (temEmail) q = q.not("leads.email", "is", null).neq("leads.email", "");
+        if (origem) q = q.eq("leads.origem", origem);
+        if (maxBirth) q = q.lte("leads.data_nascimento", maxBirth);
+        if (minBirth) q = q.gte("leads.data_nascimento", minBirth);
         if (busca.trim()) {
           q = q.or(`nome.ilike.%${busca}%,phone_e164.ilike.%${busca}%`, {
             foreignTable: "leads",
@@ -107,7 +142,7 @@ export function PreviewLeadsCampanhaModal({
           especialidade_nome: r.especialidades?.nome,
         }));
       }
-      let q = supabase
+      let q = (supabase as any)
         .from("leads")
         .select("id, nome, phone_e164, uf, cidade, classificacao, cooldown_ate, opt_out")
         .is("merged_into_id", null)
@@ -117,6 +152,11 @@ export function PreviewLeadsCampanhaModal({
         .or(`cooldown_ate.is.null,cooldown_ate.lt.${nowIso}`)
         .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
       if (uf) q = q.eq("uf", uf);
+      if (cidades?.length) q = q.in("cidade", cidades);
+      if (temEmail) q = q.not("email", "is", null).neq("email", "");
+      if (origem) q = q.eq("origem", origem);
+      if (maxBirth) q = q.lte("data_nascimento", maxBirth);
+      if (minBirth) q = q.gte("data_nascimento", minBirth);
       if (busca.trim()) q = q.or(`nome.ilike.%${busca}%,phone_e164.ilike.%${busca}%`);
       const { data: rows } = await q;
       return (rows || []) as LeadPreview[];

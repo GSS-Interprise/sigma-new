@@ -56,6 +56,14 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
   const [regiaoEstados, setRegiaoEstados] = useState<string[]>([]);
   // derivado: primeira UF, pra retrocompat (briefing/insert legados usam single)
   const regiaoEstado = regiaoEstados[0] || "";
+  // Filtros do pool (13/07) — cidade já era suportada no backend (regiao_cidades),
+  // mas o wizard nunca expunha. As demais são novas (filtro_tem_email/idade/origem).
+  const [regiaoCidades, setRegiaoCidades] = useState<string[]>([]);
+  const [buscaCidade, setBuscaCidade] = useState("");
+  const [filtroTemEmail, setFiltroTemEmail] = useState(false);
+  const [idadeMin, setIdadeMin] = useState("");
+  const [idadeMax, setIdadeMax] = useState("");
+  const [filtroOrigem, setFiltroOrigem] = useState("");
   const [chipIds, setChipIds] = useState<string[]>([]);
   const [rotationStrategy, setRotationStrategy] = useState("round_robin");
   const [batchSize, setBatchSize] = useState(10);
@@ -163,12 +171,20 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
   // dos filtros (mesmos do selecionar_leads_campanha).
   const debouncedEspIds = useDebouncedValue(especialidadeIds, 300);
   const debouncedUfs = useDebouncedValue(regiaoEstados, 300);
+  const debouncedIdadeMin = useDebouncedValue(idadeMin, 400);
+  const debouncedIdadeMax = useDebouncedValue(idadeMax, 400);
+  const debouncedBuscaCidade = useDebouncedValue(buscaCidade, 300);
 
   const { data: previewData } = useQuery({
     queryKey: [
       "campanha-wizard-preview",
       debouncedEspIds.join(","),
       debouncedUfs.join(","),
+      regiaoCidades.join(","),
+      filtroTemEmail,
+      debouncedIdadeMin,
+      debouncedIdadeMax,
+      filtroOrigem,
     ],
     enabled: debouncedEspIds.length > 0 || debouncedUfs.length > 0,
     queryFn: async () => {
@@ -180,16 +196,29 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
           p_exclude_lead_ids: null,
           p_sample_limit: 0,
           p_sem_especialidade: debouncedEspIds.includes(GENERALISTA_ID),
+          p_cidades: regiaoCidades.length > 0 ? regiaoCidades : null,
+          p_tem_email: filtroTemEmail,
+          p_idade_min: debouncedIdadeMin ? Number(debouncedIdadeMin) : null,
+          p_idade_max: debouncedIdadeMax ? Number(debouncedIdadeMax) : null,
+          p_origem: filtroOrigem || null,
         });
         if (error) throw error;
-        return data as { count: number; count_em_outras_campanhas?: number; sample: any[] };
+        return data as {
+          count: number;
+          count_em_outras_campanhas?: number;
+          top_cidades?: { cidade: string; n: number }[];
+          sample: any[];
+        };
       };
       // Multi-UF: a RPC filtra por 1 UF; somamos por estado (UFs são disjuntas).
       if (debouncedUfs.length <= 1) return call(debouncedUfs[0] || null);
       const parts = await Promise.all(debouncedUfs.map((uf) => call(uf)));
+      const mergeCid = new Map<string, number>();
+      for (const p of parts) for (const c of p?.top_cidades || []) mergeCid.set(c.cidade, (mergeCid.get(c.cidade) || 0) + c.n);
       return {
         count: parts.reduce((s, p) => s + (p?.count || 0), 0),
         count_em_outras_campanhas: parts.reduce((s, p) => s + (p?.count_em_outras_campanhas || 0), 0),
+        top_cidades: [...mergeCid].map(([cidade, n]) => ({ cidade, n })).sort((a, b) => b.n - a.n).slice(0, 12),
         sample: [],
       };
     },
@@ -197,6 +226,46 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
   });
   const poolCount = previewData?.count;
   const poolCrossCampanha = previewData?.count_em_outras_campanhas ?? 0;
+  const topCidades = previewData?.top_cidades ?? [];
+
+  // Facetas do pool (cidades/origens disponíveis pra esse esp+uf) — popula os pickers.
+  const { data: facets } = useQuery({
+    queryKey: [
+      "campanha-pool-facets",
+      debouncedEspIds.join(","),
+      debouncedUfs.join(","),
+      debouncedBuscaCidade,
+    ],
+    enabled: debouncedEspIds.length > 0 || debouncedUfs.length > 0,
+    queryFn: async () => {
+      const idsReais = debouncedEspIds.filter((id) => id !== GENERALISTA_ID);
+      const call = async (uf: string | null) => {
+        const { data, error } = await (supabase as any).rpc("campanha_pool_facets", {
+          p_especialidade_ids: idsReais.length > 0 ? idsReais : null,
+          p_uf: uf,
+          p_sem_especialidade: debouncedEspIds.includes(GENERALISTA_ID),
+          p_busca_cidade: debouncedBuscaCidade || null,
+        });
+        if (error) throw error;
+        return data as { cidades: { cidade: string; n: number }[]; origens: { origem: string; n: number }[] };
+      };
+      if (debouncedUfs.length <= 1) return call(debouncedUfs[0] || null);
+      const parts = await Promise.all(debouncedUfs.map((uf) => call(uf)));
+      const mC = new Map<string, number>();
+      const mO = new Map<string, number>();
+      for (const p of parts) {
+        for (const c of p?.cidades || []) mC.set(c.cidade, (mC.get(c.cidade) || 0) + c.n);
+        for (const o of p?.origens || []) mO.set(o.origem, (mO.get(o.origem) || 0) + o.n);
+      }
+      return {
+        cidades: [...mC].map(([cidade, n]) => ({ cidade, n })).sort((a, b) => b.n - a.n).slice(0, 60),
+        origens: [...mO].map(([origem, n]) => ({ origem, n })).sort((a, b) => b.n - a.n).slice(0, 25),
+      };
+    },
+    staleTime: 30_000,
+  });
+  const cidadesDisponiveis = facets?.cidades ?? [];
+  const origensDisponiveis = facets?.origens ?? [];
 
   const criar = useMutation({
     mutationFn: async () => {
@@ -245,6 +314,12 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
           sem_especialidade: especialidadeIds.includes(GENERALISTA_ID),
           regiao_estado: regiaoEstado || null,
           regiao_estados: regiaoEstados.length > 0 ? regiaoEstados : null,
+          // Filtros do pool (13/07) — selecionar_leads_campanha aplica todos.
+          regiao_cidades: regiaoCidades.length > 0 ? regiaoCidades : null,
+          filtro_tem_email: filtroTemEmail,
+          filtro_idade_min: idadeMin ? Number(idadeMin) : null,
+          filtro_idade_max: idadeMax ? Number(idadeMax) : null,
+          filtro_origem: filtroOrigem || null,
           chip_ids: chipIds.length > 0 ? chipIds : null,
           chip_id: chipIds[0] || null,
           chip_fallback_id: chipIds[1] || null,
@@ -313,6 +388,12 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
     setNome("");
     setEspecialidadeIds([]);
     setRegiaoEstados([]);
+    setRegiaoCidades([]);
+    setBuscaCidade("");
+    setFiltroTemEmail(false);
+    setIdadeMin("");
+    setIdadeMax("");
+    setFiltroOrigem("");
     setChipIds([]);
     setRotationStrategy("round_robin");
     setBatchSize(10);
@@ -625,6 +706,115 @@ GSS Saúde`}
               </div>
             </div>
 
+            {/* Cidade — filtro fino (backend já suportava via regiao_cidades; agora exposto) */}
+            {(especialidadeIds.length > 0 || regiaoEstados.length > 0) && (
+              <div className="space-y-2">
+                <div className="space-y-1.5">
+                  <Label className="flex items-center gap-1.5">
+                    <MapPin className="h-3.5 w-3.5" />
+                    Cidades
+                    <span className="text-xs text-muted-foreground font-normal">(opcional — filtra dentro do estado)</span>
+                  </Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button type="button" className="w-full flex items-center justify-between rounded-md border bg-background px-3 py-2 text-sm">
+                        <span className={regiaoCidades.length ? "" : "text-muted-foreground"}>
+                          {regiaoCidades.length ? `${regiaoCidades.length} cidade(s)` : "Todas as cidades"}
+                        </span>
+                        <ChevronDown className="h-4 w-4 opacity-50" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-80 p-2" align="start">
+                      <Input
+                        placeholder="Buscar cidade..."
+                        value={buscaCidade}
+                        onChange={(e) => setBuscaCidade(e.target.value)}
+                        className="h-8 text-xs mb-2"
+                      />
+                      <div className="max-h-64 overflow-y-auto space-y-0.5">
+                        {cidadesDisponiveis.length === 0 ? (
+                          <div className="text-center text-xs text-muted-foreground py-4">
+                            {buscaCidade ? "Nenhuma cidade encontrada" : "Selecione especialidade/estado primeiro"}
+                          </div>
+                        ) : (
+                          cidadesDisponiveis.map((c) => {
+                            const on = regiaoCidades.includes(c.cidade);
+                            return (
+                              <button key={c.cidade} type="button"
+                                onClick={() => setRegiaoCidades((prev) => prev.includes(c.cidade) ? prev.filter((x) => x !== c.cidade) : [...prev, c.cidade])}
+                                className={`w-full flex items-center justify-between px-2 py-1.5 text-xs rounded hover:bg-muted/50 ${on ? "bg-primary/10 font-medium" : ""}`}>
+                                <span className="flex items-center gap-2 min-w-0">
+                                  <span className={`shrink-0 h-3.5 w-3.5 rounded border ${on ? "bg-primary border-primary" : "bg-background border-input"} flex items-center justify-center`}>
+                                    {on && <span className="text-[10px] text-primary-foreground">✓</span>}
+                                  </span>
+                                  <span className="truncate text-left">{c.cidade}</span>
+                                </span>
+                                <span className="text-[10px] text-muted-foreground tabular-nums shrink-0 ml-2">{c.n.toLocaleString("pt-BR")}</span>
+                              </button>
+                            );
+                          })
+                        )}
+                      </div>
+                      {regiaoCidades.length > 0 && (
+                        <button type="button" onClick={() => setRegiaoCidades([])} className="mt-2 text-xs text-muted-foreground hover:text-foreground underline">limpar</button>
+                      )}
+                    </PopoverContent>
+                  </Popover>
+                  {regiaoCidades.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {regiaoCidades.map((c) => (
+                        <Badge key={c} variant="secondary" className="text-xs gap-1 pr-1">
+                          {c}
+                          <button type="button" onClick={() => setRegiaoCidades((p) => p.filter((x) => x !== c))} className="hover:text-red-600">×</button>
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Filtros avançados de qualidade do lead */}
+                <details className="rounded-md border bg-muted/20 px-3 py-2">
+                  <summary className="cursor-pointer text-xs font-medium text-muted-foreground flex items-center gap-1.5 select-none">
+                    <Settings2 className="h-3.5 w-3.5" /> Filtros avançados
+                    {(filtroTemEmail || idadeMin || idadeMax || filtroOrigem) && (
+                      <Badge variant="secondary" className="text-[10px]">ativos</Badge>
+                    )}
+                  </summary>
+                  <div className="mt-3 space-y-3">
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input type="checkbox" checked={filtroTemEmail} onChange={(e) => setFiltroTemEmail(e.target.checked)} className="w-4 h-4" />
+                      Só médicos com e-mail cadastrado <span className="text-xs text-muted-foreground">(habilita a cadência de e-mail)</span>
+                    </label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Origem do lead</Label>
+                        <Select value={filtroOrigem || "__todas"} onValueChange={(v) => setFiltroOrigem(v === "__todas" ? "" : v)}>
+                          <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todas" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__todas">Todas as origens</SelectItem>
+                            {origensDisponiveis.map((o) => (
+                              <SelectItem key={o.origem} value={o.origem}>{o.origem} ({o.n.toLocaleString("pt-BR")})</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Faixa etária</Label>
+                        <div className="flex items-center gap-1.5">
+                          <Input type="number" value={idadeMin} onChange={(e) => setIdadeMin(e.target.value)} placeholder="min" className="h-8 text-xs" />
+                          <span className="text-xs text-muted-foreground">a</span>
+                          <Input type="number" value={idadeMax} onChange={(e) => setIdadeMax(e.target.value)} placeholder="max" className="h-8 text-xs" />
+                        </div>
+                      </div>
+                    </div>
+                    {(idadeMin || idadeMax) && (
+                      <p className="text-[10px] text-muted-foreground">⚠ Só ~37% dos médicos têm data de nascimento cadastrada — o filtro de idade só considera esses.</p>
+                    )}
+                  </div>
+                </details>
+              </div>
+            )}
+
             {(especialidadeIds.length > 0 || regiaoEstado) && poolCount !== undefined && (
               <div className="space-y-2">
                 <div className="bg-muted/50 rounded-lg p-3 text-sm flex items-center justify-between gap-3">
@@ -652,6 +842,18 @@ GSS Saúde`}
                     </Button>
                   )}
                 </div>
+                {/* Distribuição por cidade — a equipe vê ONDE estão os médicos, não só quantos */}
+                {topCidades.length > 0 && regiaoCidades.length === 0 && (
+                  <div className="text-xs text-muted-foreground px-1">
+                    <span className="font-medium text-foreground">Onde estão:</span>{" "}
+                    {topCidades.slice(0, 8).map((c, i) => (
+                      <span key={c.cidade}>
+                        {i > 0 && " · "}
+                        {c.cidade} <span className="tabular-nums">{c.n.toLocaleString("pt-BR")}</span>
+                      </span>
+                    ))}
+                  </div>
+                )}
                 {/* Bloco G — alerta cross-campanha */}
                 {poolCrossCampanha > 0 && (
                   <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800 flex items-start gap-2">
@@ -673,6 +875,11 @@ GSS Saúde`}
               onOpenChange={setPreviewOpen}
               especialidadeIds={especialidadeIds.filter((id) => id !== GENERALISTA_ID)}
               uf={regiaoEstado}
+              cidades={regiaoCidades}
+              temEmail={filtroTemEmail}
+              idadeMin={idadeMin}
+              idadeMax={idadeMax}
+              origem={filtroOrigem}
               poolCount={poolCount}
               excludedIds={excludedLeadIds}
               onExcludedChange={setExcludedLeadIds}
