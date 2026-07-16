@@ -124,7 +124,7 @@ export function MensagemAcao({ mensagem, currentUserId, currentUserNome }: { men
       <div className="flex flex-wrap gap-2 items-center">
         {verPdf}
         <Button onClick={aprovar} disabled={loading} size="sm" className="mt-2 h-9 gap-1.5">
-          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} Aprovar fechamento
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} Aprovar pagamento
         </Button>
       </div>
     );
