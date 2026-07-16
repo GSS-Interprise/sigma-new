@@ -95,6 +95,11 @@ serve(async (req) => {
   const t0 = Date.now();
   const DEADLINE = t0 + 110_000;
 
+  // lease lock: se outra execução está rodando, sai (evita sobreposição do cron 3min)
+  const { data: gotLock } = await supabase.rpc("pncp_acquire_lock", { p_job: "mirror-sync", p_secs: 130 });
+  if (!gotLock) return json({ ok: true, skipped: "outra execução em andamento" });
+  const soltarLock = () => supabase.from("pncp_job_lock").update({ locked_until: new Date().toISOString() }).eq("job", "mirror-sync");
+
   try {
     const body = await req.json().catch(() => ({}));
 
@@ -166,6 +171,7 @@ serve(async (req) => {
     const { count: pendentesRestantes } = await supabase
       .from("pncp_mirror_sync_state").select("*", { count: "exact", head: true }).neq("status", "completo");
 
+    await soltarLock();
     return json({
       ok: true,
       cortado_por_tempo: cortadoPorTempo,
@@ -177,6 +183,7 @@ serve(async (req) => {
       segundos: Math.round((Date.now() - t0) / 1000),
     });
   } catch (e: any) {
+    await soltarLock().catch(() => null);
     return json({ ok: false, error: String(e?.message || e) }, 500);
   }
 });
