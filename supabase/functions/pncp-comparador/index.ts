@@ -33,10 +33,16 @@ const MOD: Record<string, number> = {
 const limpaMuni = (s: string) =>
   (s || "").replace(/\s*-\s*[A-Za-z]{2}\s*$/, "").split("/")[0].trim();
 
-// número do edital do título: "DL 24/2026" → "24"; "CRE 4/2027" → "4"
-const extraiNum = (titulo: string): string | null => {
-  const m = (titulo || "").match(/(\d+)\s*\/\s*(\d{4})/);
-  return m ? String(parseInt(m[1], 10)) : null;
+// número + ano do edital: "DL 24/2026"→{24,2026}; "DL 3312026"→{331,2026}; "PE 30"→{30,null}
+const extraiNum = (titulo: string): { num: string | null; ano: number | null } => {
+  const t = titulo || "";
+  let m = t.match(/(\d+)\s*\/\s*(\d{4})/);                 // 24/2026
+  if (m) return { num: String(parseInt(m[1], 10)), ano: parseInt(m[2], 10) };
+  m = t.match(/\b(\d{1,6})(20\d{2})\b/);                   // 3312026 (colado)
+  if (m) return { num: String(parseInt(m[1], 10)), ano: parseInt(m[2], 10) };
+  m = t.match(/\b[A-Za-z]{2,5}\s+(\d+)\b/);                // "DL 24" sem ano
+  if (m) return { num: String(parseInt(m[1], 10)), ano: null };
+  return { num: null, ano: null };
 };
 
 serve(async (req) => {
@@ -56,32 +62,32 @@ serve(async (req) => {
 
     if (!effs?.length) return json({ ok: true, msg: "sem Effecti na janela", desde });
 
-    // normaliza cada Effecti → (muni, num, mod)
-    const linhas = effs.map((e: any) => ({
-      titulo: e.titulo,
-      muni: limpaMuni(e.municipio_uf || ""),
-      num: extraiNum(e.titulo || ""),
-      mod: MOD[e.subtipo_modalidade] ?? null,
-    }));
+    // normaliza cada Effecti → (muni, num, ano, mod)
+    const linhas = effs.map((e: any) => {
+      const n = extraiNum(e.titulo || "");
+      return { titulo: e.titulo, muni: limpaMuni(e.municipio_uf || ""), num: n.num, ano: n.ano, mod: MOD[e.subtipo_modalidade] ?? null };
+    });
 
-    let casados = 0, incertos = 0, ausentes = 0, semParse = 0;
+    let casados = 0, provaveis = 0, incertos = 0, ausentes = 0, semParse = 0;
     const ausentesLista: string[] = [];
 
-    // casa cada Effecti no espelho via RPC fuzzy (pg_trgm tolera o encoding corrompido)
+    // casa cada Effecti no espelho via RPC (fuzzy muni + numeroCompra/sequencial + ano)
     for (const l of linhas) {
       if (!l.muni || !l.num) { semParse++; continue; }
-      const { data: veredito } = await supabase.rpc("pncp_casa_effecti", { p_muni: l.muni, p_num: l.num, p_mod: l.mod });
+      const { data: veredito } = await supabase.rpc("pncp_casa_effecti", { p_muni: l.muni, p_num: l.num, p_mod: l.mod, p_ano: l.ano });
       if (veredito === "casado") casados++;
+      else if (veredito === "provavel") provaveis++;
       else if (veredito === "incerto") incertos++;
       else { ausentes++; if (ausentesLista.length < 25) ausentesLista.push(l.titulo); }
     }
 
     const denom = linhas.length - semParse;
-    const pct = denom > 0 ? Math.round((casados / denom) * 1000) / 10 : null;
+    // cobertura efetiva = número bate OU órgão comprovadamente presente no PNCP
+    const pct = denom > 0 ? Math.round(((casados + provaveis) / denom) * 1000) / 10 : null;
 
     const relatorio = {
       janela_desde: desde, janela_ate: new Date().toISOString().slice(0, 10),
-      total_effecti: linhas.length, casados, incertos, ausentes, sem_parse: semParse,
+      total_effecti: linhas.length, casados, provaveis, incertos, ausentes, sem_parse: semParse,
       pct_cobertura: pct, ausentes_amostra: ausentesLista,
     };
 
