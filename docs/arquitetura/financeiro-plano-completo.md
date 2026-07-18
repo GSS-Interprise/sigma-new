@@ -103,10 +103,10 @@ Contas a pagar (import xlsx + conferência + solicitar NF por e-mail com lembret
 ### ✅ Buildável agora (o loop fecha, commitando cada entrega)
 - [x] **Fix** — label "Aprovar pagamento" na página backup `FinanceiroAprovacoes.tsx` ✅ (18/07).
 - [x] **Verificar** — config em prod ✅: 4/5 setadas; **`financeiro_contabilidade_email` FALTA** → envio de comprovante à contabilidade silencia. Input externo (e-mail da contabilidade GSS).
-- [ ] **F1.a** — edge `financeiro-importar-fechamento` (config-driven: lê `financeiro_import_config`, layouts `linha`/`matriz`, dedup por hash em `financeiro_import_log`, gera `financeiro_fechamentos`+`financeiro_pagamentos`).
-- [ ] **F1.b** — seed da config do **Marieta** (layout `matriz`, soma colunas de valor por médico).
-- [ ] **F1.c** — UI **"Importar fechamento"** na página Financeiro (botão + seletor de config/fonte + upload).
-- [ ] **F1.d** — testar com o arquivo real do Marieta (parse → fechamento → pagamentos) e validar contagem/total.
+- [x] **F1.a** ✅ — edge `financeiro-importar-fechamento` config-driven (layouts `linha`/`matriz`, casa médico por CRM/nome, gera `financeiro_pagamentos` fonte='import' idempotente por config+mês, dedup por hash). Deploy via CLI.
+- [x] **F1.b** ✅ — config **Marieta** seeded (id `8a1a8d9b`, layout `linha`, valor="Total à Pagar").
+- [ ] **F1.c** — UI **"Importar fechamento"** na página Financeiro (botão + seletor de config/fonte + upload). ← próximo
+- [x] **F1.d** ✅ — testado com o arquivo real: **28 médicos, 23 casados (82%), total R$225.998,43**, dedup e idempotência OK. (5 não-casados = de-para de nomes, resolução manual.)
 - [ ] **Controladoria** — estender o SigFinc rumo ao grão **contrato × item** no que der sem input externo.
 
 ### ⛔ Travado por input externo (o loop sinaliza, NÃO fecha)

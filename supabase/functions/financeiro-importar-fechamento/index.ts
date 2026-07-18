@@ -97,22 +97,24 @@ serve(async (req) => {
     await svc.from("financeiro_pagamentos").delete()
       .eq("fonte", "import").eq("mes_referencia", mes).eq("ano_referencia", ano).like("arquivo_origem", `${tag}%`);
 
+    // pré-carrega médicos 1x (casar por nome_completo normalizado ou CRM)
+    const { data: ms } = await svc.from("medicos").select("id, nome_completo, crm");
+    const byNome = new Map<string, string>();
+    const byCrm = new Map<string, string>();
+    for (const m of ms || []) {
+      const kn = norm(m.nome_completo || "");
+      if (kn && !byNome.has(kn)) byNome.set(kn, m.id);
+      const kc = digits(m.crm || "");
+      if (kc && !byCrm.has(kc)) byCrm.set(kc, m.id);
+    }
+
     // casa médico + insere
     let inseridos = 0, casados = 0; const naoCasados: any[] = []; let total = 0;
     for (const l of linhas) {
       let medicoId: string | null = null;
       const d = digits(l.crm);
-      if (d) {
-        const { data: m } = await svc.from("medicos").select("id").filter("crm", "ilike", `%${d}%`).limit(1).maybeSingle();
-        medicoId = m?.id ?? null;
-      }
-      if (!medicoId) {
-        // casa por nome normalizado
-        const { data: ms } = await svc.from("medicos").select("id, nome");
-        const alvo = norm(l.nome);
-        const hit = (ms || []).find((m: any) => norm(m.nome) === alvo);
-        medicoId = hit?.id ?? null;
-      }
+      if (d) medicoId = byCrm.get(d) ?? null;
+      if (!medicoId) medicoId = byNome.get(norm(l.nome)) ?? null;
       const { error: insErr } = await svc.from("financeiro_pagamentos").insert({
         profissional_nome: l.nome, profissional_crm: l.crm || null, medico_id: medicoId,
         mes_referencia: mes, ano_referencia: ano, unidade: cfg.nome,
