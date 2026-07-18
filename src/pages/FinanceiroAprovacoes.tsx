@@ -283,7 +283,7 @@ export default function FinanceiroAprovacoes() {
                           <Loader2 className="h-5 w-5 animate-spin" />
                         ) : (
                           <>
-                            <CheckCircle2 className="h-5 w-5 mr-1" /> Aprovar
+                            <CheckCircle2 className="h-5 w-5 mr-1" /> Aprovar pagamento
                           </>
                         )}
                       </Button>

@@ -96,5 +96,26 @@ Contas a pagar (import xlsx + conferência + solicitar NF por e-mail com lembret
 - **Não tem:** Conta Azul, config de-para → construir.
 - ⚠️ **`.env` commitado no `financeai`** (segredos no GitHub) — rotacionar/limpar.
 
+## 7. Execução em loop (checklist) — atualizado 18/07 com o mapa verificado
+
+**Estado verificado (auditoria do código):** pagar/conferência/fechamento/aprovação chat-first/comprovantes-OCR/solicitar-NF/inbound-NF/receber-rateio/cadastro-cliente = **IMPLEMENTADOS**. Já existe aba **SigFinc** (BI por médico). O importador atual é **single-source hard-coded**.
+
+### ✅ Buildável agora (o loop fecha, commitando cada entrega)
+- [x] **Fix** — label "Aprovar pagamento" na página backup `FinanceiroAprovacoes.tsx` ✅ (18/07).
+- [x] **Verificar** — config em prod ✅: 4/5 setadas; **`financeiro_contabilidade_email` FALTA** → envio de comprovante à contabilidade silencia. Input externo (e-mail da contabilidade GSS).
+- [ ] **F1.a** — edge `financeiro-importar-fechamento` (config-driven: lê `financeiro_import_config`, layouts `linha`/`matriz`, dedup por hash em `financeiro_import_log`, gera `financeiro_fechamentos`+`financeiro_pagamentos`).
+- [ ] **F1.b** — seed da config do **Marieta** (layout `matriz`, soma colunas de valor por médico).
+- [ ] **F1.c** — UI **"Importar fechamento"** na página Financeiro (botão + seletor de config/fonte + upload).
+- [ ] **F1.d** — testar com o arquivo real do Marieta (parse → fechamento → pagamentos) e validar contagem/total.
+- [ ] **Controladoria** — estender o SigFinc rumo ao grão **contrato × item** no que der sem input externo.
+
+### ⛔ Travado por input externo (o loop sinaliza, NÃO fecha)
+- Dr. Escala: config de import + API — precisa do **formato do relatório**.
+- Conta Azul (API) — precisa **levantamento com a contabilidade**.
+- Contas a receber: produção × contrato automático — precisa **dados de contrato (Bianca)** + produção real.
+- NF de saída: emissão via provedor de **NFS-e** — decisão de provedor.
+- Teste E2E do inbound NF — precisa **pagamento real** + e-mail do Raul.
+- Aplicação de **migrations (DDL)** — precisa aprovação do prompt (Raul).
+
 ## 6. Notas de PWA / comunicação
 Substituir Slack por Sigma (driver de custo) via **PWA** (instalar como app — João/Thais/Eron). Web push já pronto. Repassar senha temporária a João/Thais. *(Operacional; foi pedido na reunião financeira mas não bloqueia F1–F6.)*
