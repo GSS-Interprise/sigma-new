@@ -105,7 +105,7 @@ Contas a pagar (import xlsx + conferência + solicitar NF por e-mail com lembret
 - [x] **Verificar** — config em prod ✅: 4/5 setadas; **`financeiro_contabilidade_email` FALTA** → envio de comprovante à contabilidade silencia. Input externo (e-mail da contabilidade GSS).
 - [x] **F1.a** ✅ — edge `financeiro-importar-fechamento` config-driven (layouts `linha`/`matriz`, casa médico por CRM/nome, gera `financeiro_pagamentos` fonte='import' idempotente por config+mês, dedup por hash). Deploy via CLI.
 - [x] **F1.b** ✅ — config **Marieta** seeded (id `8a1a8d9b`, layout `linha`, valor="Total à Pagar").
-- [ ] **F1.c** — UI **"Importar fechamento"** na página Financeiro (botão + seletor de config/fonte + upload). ← próximo
+- [x] **F1.c** ✅ — UI `FinanceiroImportarFechamentoDialog` (seletor de config/fonte + mês + upload → invoca a edge → mostra casados/não-casados) + botão na página Financeiro.
 - [x] **F1.d** ✅ — testado com o arquivo real: **28 médicos, 23 casados (82%), total R$225.998,43**, dedup e idempotência OK. (5 não-casados = de-para de nomes, resolução manual.)
 - [ ] **Controladoria** — estender o SigFinc rumo ao grão **contrato × item** no que der sem input externo.
 

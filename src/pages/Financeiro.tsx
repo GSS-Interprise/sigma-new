@@ -11,6 +11,7 @@ import { FinanceiroContasPagar } from "@/components/financeiro/FinanceiroContasP
 import { FinanceiroContasReceber } from "@/components/financeiro/FinanceiroContasReceber";
 import { FinanceiroGerarDialog } from "@/components/financeiro/FinanceiroGerarDialog";
 import { FinanceiroImportProducaoDialog } from "@/components/financeiro/FinanceiroImportProducaoDialog";
+import { FinanceiroImportarFechamentoDialog } from "@/components/financeiro/FinanceiroImportarFechamentoDialog";
 import { FinanceiroFecharDialog } from "@/components/financeiro/FinanceiroFecharDialog";
 import { FinanceiroConfigValores } from "@/components/financeiro/FinanceiroConfigValores";
 import { FinanceiroSigFinc } from "@/components/financeiro/FinanceiroSigFinc";
@@ -54,6 +55,7 @@ export default function Financeiro() {
       </div>
       <div className="flex items-center gap-2 flex-wrap">
         <FinanceiroImportProducaoDialog mesDefault={mes} anoDefault={ano} />
+        <FinanceiroImportarFechamentoDialog mesDefault={mes} anoDefault={ano} />
         <FinanceiroFecharDialog mes={mes} ano={ano} />
         <FinanceiroGerarDialog />
       </div>
