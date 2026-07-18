@@ -107,7 +107,12 @@ Contas a pagar (import xlsx + conferência + solicitar NF por e-mail com lembret
 - [x] **F1.b** ✅ — config **Marieta** seeded (id `8a1a8d9b`, layout `linha`, valor="Total à Pagar").
 - [x] **F1.c** ✅ — UI `FinanceiroImportarFechamentoDialog` (seletor de config/fonte + mês + upload → invoca a edge → mostra casados/não-casados) + botão na página Financeiro.
 - [x] **F1.d** ✅ — testado com o arquivo real: **28 médicos, 23 casados (82%), total R$225.998,43**, dedup e idempotência OK. (5 não-casados = de-para de nomes, resolução manual.)
-- [ ] **Controladoria** — estender o SigFinc rumo ao grão **contrato × item** no que der sem input externo.
+- [~] **Controladoria** — ⛔ TRAVADO por input: o grão que a Ramone quer é **contrato × item** (realizado por procedimento) → depende de estrutura de item do contrato (Bianca) + produção por item (que é o **outro projeto** de análise de exame). O nível **contrato × mês** (previsto vs faturado) já existe (ContasReceber + SigFinc). Precisa do Raul definir o grão + fonte do "contratado".
+
+### 🏁 Resultado do loop (18/07)
+Núcleo buildável **fechado**: fixes (label + config) + **F1 ingestão multi-fonte completo** (edge config-driven `financeiro-importar-fechamento` + config Marieta + UI "Importar fechamento", testado E2E com o arquivo real: 28 médicos, 23 casados, R$225.998,43). Commits: `d4ea723`, `4236a3b`, `dd98fd4`, `4829ba4`.
+
+**Travado por input externo (não buildável no loop):** e-mail da contabilidade (`financeiro_contabilidade_email`); formato/API Dr. Escala; Conta Azul (contabilidade); contratos da Bianca (p/ receber×contrato e controladoria); NFS-e; de-para de nomes de médicos (5/28 do Marieta não casaram). Nota: `TriagemLicitacoes.tsx` (outra sessão) tem erros de tipo por types do Supabase desatualizados — não é do financeiro.
 
 ### ⛔ Travado por input externo (o loop sinaliza, NÃO fecha)
 - Dr. Escala: config de import + API — precisa do **formato do relatório**.
