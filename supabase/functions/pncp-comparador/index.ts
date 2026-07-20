@@ -4,15 +4,25 @@
 // Prova (ou refuta) que podemos cortar a Effecti. Pra cada licitação que a
 // Effecti trouxe (fonte='n8n' em licitacoes), verifica se está no espelho.
 //
-// Dados da Effecti são POBRES e SUJOS (sem controle PNCP/CNPJ, objeto vazio,
-// data de disputa corrompida). Só dá pra casar por: município + número do
-// edital (extraído do título) + modalidade. Sem data.
+// A lógica toda vive no SQL (pncp_cobertura_medir → resolve_municipio_ibge
+// → pncp_casa_effecti_ibge). Aqui só agenda e grava. Isso é de propósito:
+// dá pra auditar o número rodando a função à mão, e foi assim que os
+// defeitos do critério anterior apareceram.
 //
-// 3 buckets:
-//   casado   = muni + número + modalidade batem no espelho  → coberto
-//   incerto  = muni existe no espelho mas número não bateu   → casamento duvidoso (revisar)
-//   ausente  = muni nem aparece no espelho na janela         → CANDIDATO A FONTE EXTERNA
-// O bucket `ausente` é o ponto 2 (fontes fora do PNCP) — o número que decide.
+// Buckets:
+//   casado    = nº do edital + ano + modalidade batem no espelho
+//   provavel  = nº + ano batem, modalidade diverge (a Effecti classifica
+//               modalidade de forma inconsistente; o número manda)
+//   incerto   = município ESTÁ no PNCP mas o número não foi achado →
+//               revisar (parse do título ou edital fora do PNCP)
+//   ausente   = município sem NENHUM registro no espelho → único sinal
+//               real de fonte fora do PNCP. É o número que decide o corte.
+//   sem_parse = município não resolve pro IBGE (consórcio, cotação
+//               estadual sem município) → fora do denominador
+//
+// Histórico: a versão anterior casava município por similarity de nome e
+// dava 'provavel' sem olhar o número do edital, o que inflava a cobertura
+// pra 100%. Ver docs/arquitetura/licitacoes-espelho-pncp.md.
 //
 // Input: { desde?: 'YYYY-MM-DD' (default 8d), gravar?: true }
 // =====================================================================
@@ -20,30 +30,6 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
-
-// "Pregão Eletrônico" → codigoModalidade PNCP
-const MOD: Record<string, number> = {
-  "Pregão Eletrônico": 6, "Pregão Presencial": 7, "Credenciamento": 12,
-  "Concorrência": 4, "Dispensa": 8, "Inexigibilidade": 9, "Concurso": 3,
-  "Edital Chamamento": 12, "Chamamento": 12, "Leilão": 1,
-};
-
-// só tira a UF e o sufixo — o casamento fuzzy (pg_trgm) tolera o encoding
-// corrompido da Effecti, então NÃO reduzimos a ASCII aqui (perderia sinal).
-const limpaMuni = (s: string) =>
-  (s || "").replace(/\s*-\s*[A-Za-z]{2}\s*$/, "").split("/")[0].trim();
-
-// número + ano do edital: "DL 24/2026"→{24,2026}; "DL 3312026"→{331,2026}; "PE 30"→{30,null}
-const extraiNum = (titulo: string): { num: string | null; ano: number | null } => {
-  const t = titulo || "";
-  let m = t.match(/(\d+)\s*\/\s*(\d{4})/);                 // 24/2026
-  if (m) return { num: String(parseInt(m[1], 10)), ano: parseInt(m[2], 10) };
-  m = t.match(/\b(\d{1,6})(20\d{2})\b/);                   // 3312026 (colado)
-  if (m) return { num: String(parseInt(m[1], 10)), ano: parseInt(m[2], 10) };
-  m = t.match(/\b[A-Za-z]{2,5}\s+(\d+)\b/);                // "DL 24" sem ano
-  if (m) return { num: String(parseInt(m[1], 10)), ano: null };
-  return { num: null, ano: null };
-};
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
@@ -54,48 +40,19 @@ serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const gravar = body?.gravar !== false;
     const desde = body?.desde || new Date(Date.now() - 8 * 864e5).toISOString().slice(0, 10);
+    const hoje = new Date().toISOString().slice(0, 10);
 
-    // Effecti da janela (usa created_at — data_disputa está corrompida)
-    const { data: effs } = await supabase
-      .from("licitacoes").select("titulo, municipio_uf, subtipo_modalidade")
-      .eq("fonte", "n8n").gte("created_at", desde);
+    const { data: rel, error } = await supabase.rpc("pncp_cobertura_medir", { p_desde: desde });
+    if (error) return json({ ok: false, error: error.message }, 500);
+    if (!rel) return json({ ok: true, msg: "sem Effecti na janela", desde });
 
-    if (!effs?.length) return json({ ok: true, msg: "sem Effecti na janela", desde });
-
-    // normaliza cada Effecti → (muni, num, ano, mod)
-    const linhas = effs.map((e: any) => {
-      const n = extraiNum(e.titulo || "");
-      return { titulo: e.titulo, muni: limpaMuni(e.municipio_uf || ""), num: n.num, ano: n.ano, mod: MOD[e.subtipo_modalidade] ?? null };
-    });
-
-    let casados = 0, provaveis = 0, incertos = 0, ausentes = 0, semParse = 0;
-    const ausentesLista: string[] = [];
-
-    // casa cada Effecti no espelho via RPC (fuzzy muni + numeroCompra/sequencial + ano)
-    for (const l of linhas) {
-      if (!l.muni || !l.num) { semParse++; continue; }
-      const { data: veredito } = await supabase.rpc("pncp_casa_effecti", { p_muni: l.muni, p_num: l.num, p_mod: l.mod, p_ano: l.ano });
-      if (veredito === "casado") casados++;
-      else if (veredito === "provavel") provaveis++;
-      else if (veredito === "incerto") incertos++;
-      else { ausentes++; if (ausentesLista.length < 25) ausentesLista.push(l.titulo); }
-    }
-
-    const denom = linhas.length - semParse;
-    // cobertura efetiva = número bate OU órgão comprovadamente presente no PNCP
-    const pct = denom > 0 ? Math.round(((casados + provaveis) / denom) * 1000) / 10 : null;
-
-    const relatorio = {
-      janela_desde: desde, janela_ate: new Date().toISOString().slice(0, 10),
-      total_effecti: linhas.length, casados, provaveis, incertos, ausentes, sem_parse: semParse,
-      pct_cobertura: pct, ausentes_amostra: ausentesLista,
-    };
+    const relatorio = { janela_desde: desde, janela_ate: hoje, ...rel };
 
     if (gravar) {
-      await supabase.from("licitacao_cobertura_diaria").upsert({
-        data_ref: new Date().toISOString().slice(0, 10),
-        ...relatorio, medido_em: new Date().toISOString(),
+      const { error: e2 } = await supabase.from("licitacao_cobertura_diaria").upsert({
+        data_ref: hoje, ...relatorio, medido_em: new Date().toISOString(),
       }, { onConflict: "data_ref" });
+      if (e2) return json({ ok: false, error: e2.message }, 500);
     }
 
     return json({ ok: true, ...relatorio });
