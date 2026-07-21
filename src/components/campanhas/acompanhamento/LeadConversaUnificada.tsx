@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo, Fragment } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, MessageSquare, ExternalLink, Send } from "lucide-react";
+import { Loader2, MessageSquare, ExternalLink, Send, Clock, RefreshCw, XCircle } from "lucide-react";
 import { format, isSameDay, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Badge } from "@/components/ui/badge";
@@ -28,6 +28,16 @@ interface SigzapMsg {
   message_type: string | null;
   sent_at: string;
   message_status: string | null;
+}
+
+interface OutboxMsg {
+  id: string;
+  client_message_id: string;
+  message_text: string | null;
+  status: "queued" | "processing" | "failed";
+  attempts: number;
+  max_attempts: number;
+  created_at: string;
 }
 
 /**
@@ -118,7 +128,7 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
   const qc = useQueryClient();
   const [texto, setTexto] = useState("");
   const enviar = useMutation({
-    mutationFn: async (msg: string) => {
+    mutationFn: async ({ msg, clientMessageId = crypto.randomUUID() }: { msg: string; clientMessageId?: string }) => {
       const instanceName = instanceAtual;
       const contactJid =
         conv?.contact?.contact_jid ||
@@ -129,7 +139,7 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
         throw new Error("Conversa sem instância/contato vinculado — responda pelo SigZap.");
       }
       const { data, error } = await supabase.functions.invoke("send-sigzap-message", {
-        body: { action: "send", conversationId: conv.id, instanceName, contactJid, message: msg },
+        body: { action: "send", conversationId: conv.id, instanceName, contactJid, message: msg, clientMessageId },
       });
       if (error) {
         // Extrai o motivo real do corpo (o invoke só dá "non-2xx" genérico).
@@ -140,10 +150,17 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
       if ((data as any)?.error) throw new Error(traduzErroEnvio((data as any).error));
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       setTexto("");
       qc.invalidateQueries({ queryKey: ["acompanhamento-conv-msgs", conv?.id] });
-      toast.success("Mensagem enviada ✅");
+      qc.invalidateQueries({ queryKey: ["acompanhamento-outbox", conv?.id] });
+      if (data?.queued) {
+        toast.warning("Mensagem aguardando conexao", {
+          description: "Ela foi salva, mas ainda nao chegou ao WhatsApp.",
+        });
+      } else {
+        toast.success("Mensagem enviada");
+      }
     },
     onError: (e: any) => toast.error(e?.message || "Não foi possível enviar."),
   });
@@ -161,12 +178,18 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
       if ((data as any)?.error) throw new Error((data as any).error); // já vem traduzido da edge
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       setTexto1o("");
       // Envio síncrono: a mensagem já saiu e a conversa tem a 1ª mensagem.
       qc.invalidateQueries({ queryKey: ["acompanhamento-conv-by-lead", leadId] });
       qc.invalidateQueries({ queryKey: ["acompanhamento-conv-msgs"] });
       qc.invalidateQueries({ queryKey: ["acompanhamento-leads"] });
+      if (data?.queued) {
+        toast.warning("Mensagem aguardando conexao", {
+          description: "Ela foi salva, mas o lead ainda nao foi marcado como contatado.",
+        });
+        return;
+      }
       toast.success("1ª mensagem enviada! 🎉 O lead já está como contatado.");
     },
     onError: (e: any) => toast.error(e?.message || "Não foi possível enviar."),
@@ -185,6 +208,22 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
         .limit(500);
       return (data ?? []) as SigzapMsg[];
     },
+  });
+
+  const { data: outbox = [] } = useQuery({
+    queryKey: ["acompanhamento-outbox", conv?.id],
+    enabled: !!conv?.id,
+    queryFn: async (): Promise<OutboxMsg[]> => {
+      const { data, error } = await (supabase as any)
+        .from("sigzap_outbox")
+        .select("id, client_message_id, message_text, status, attempts, max_attempts, created_at")
+        .eq("conversation_id", conv!.id)
+        .in("status", ["queued", "processing", "failed"])
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as OutboxMsg[];
+    },
+    refetchInterval: 5_000,
   });
 
   // ─────────────────────────────────────────────────────────────────────
@@ -220,7 +259,7 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
     })();
   }, [conv?.id, qc]);
 
-  type TimelineMsg = { id: string; mine: boolean; text: string; ts: Date | null; source: "sigzap" | "historico"; status?: string | null };
+  type TimelineMsg = { id: string; mine: boolean; text: string; ts: Date | null; source: "sigzap" | "historico" | "outbox"; status?: string | null; clientMessageId?: string };
   const timeline: TimelineMsg[] = useMemo(() => {
     const items: TimelineMsg[] = [];
     for (const m of mensagens ?? []) {
@@ -231,6 +270,17 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
         ts: m.sent_at ? new Date(m.sent_at) : null,
         source: "sigzap",
         status: m.message_status,
+      });
+    }
+    for (const m of outbox) {
+      items.push({
+        id: `o_${m.id}`,
+        mine: true,
+        text: m.message_text || "[Mensagem]",
+        ts: new Date(m.created_at),
+        source: "outbox",
+        status: m.status,
+        clientMessageId: m.client_message_id,
       });
     }
     (historicoCampanhaFallback ?? []).forEach((h, i) => {
@@ -259,7 +309,7 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
       out.push({ ...it, _k: k });
     }
     return out;
-  }, [mensagens, historicoCampanhaFallback]);
+  }, [mensagens, outbox, historicoCampanhaFallback]);
 
   // Scroll automático pro fim quando a conversa carrega ou chega mensagem nova
   const endRef = useRef<HTMLDivElement>(null);
@@ -321,7 +371,13 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
             return (
               <Fragment key={msg.id}>
                 {showSep && msg.ts && <DateSeparator iso={msg.ts.toISOString()} />}
-                <BubbleTimeline msg={msg} />
+                <BubbleTimeline
+                  msg={msg}
+                  onRetry={msg.status === "failed" && msg.clientMessageId
+                    ? () => enviar.mutate({ msg: msg.text, clientMessageId: msg.clientMessageId })
+                    : undefined}
+                  retrying={enviar.isPending}
+                />
               </Fragment>
             );
           })}
@@ -367,7 +423,7 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
-                if (texto.trim()) enviar.mutate(texto.trim());
+                if (texto.trim()) enviar.mutate({ msg: texto.trim() });
               }
             }}
           />
@@ -375,7 +431,7 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
             size="sm"
             className="shrink-0"
             disabled={!texto.trim() || enviar.isPending}
-            onClick={() => texto.trim() && enviar.mutate(texto.trim())}
+            onClick={() => texto.trim() && enviar.mutate({ msg: texto.trim() })}
           >
             {enviar.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </Button>
@@ -421,8 +477,14 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
 }
 
 // Bubble da timeline unificada (sigzap + histórico IA), estilo WhatsApp
-function BubbleTimeline({ msg }: { msg: { mine: boolean; text: string; ts: Date | null; source: string } }) {
+function BubbleTimeline({ msg, onRetry, retrying }: {
+  msg: { mine: boolean; text: string; ts: Date | null; source: string; status?: string | null };
+  onRetry?: () => void;
+  retrying?: boolean;
+}) {
   const mine = msg.mine;
+  const queued = msg.source === "outbox" && msg.status !== "failed";
+  const failed = msg.source === "outbox" && msg.status === "failed";
   let hora = "";
   if (msg.ts) { try { hora = format(msg.ts, "HH:mm", { locale: ptBR }); } catch {} }
   return (
@@ -430,13 +492,26 @@ function BubbleTimeline({ msg }: { msg: { mine: boolean; text: string; ts: Date 
       <div
         className={cn(
           "max-w-[78%] rounded-2xl px-3 py-1.5 text-sm shadow-sm",
-          mine
-            ? "bg-emerald-100 text-emerald-950 rounded-br-sm"
-            : "bg-background border border-border rounded-bl-sm"
+          failed
+            ? "bg-destructive/10 text-destructive border border-destructive/30 rounded-br-sm"
+            : queued
+              ? "bg-amber-50 text-amber-950 border border-amber-300 rounded-br-sm"
+              : mine
+                ? "bg-emerald-100 text-emerald-950 rounded-br-sm"
+                : "bg-background border border-border rounded-bl-sm"
         )}
       >
         <p className="whitespace-pre-wrap break-words leading-snug">{msg.text}</p>
-        <div className="text-[10px] mt-0.5 opacity-50 text-right">{hora}</div>
+        <div className="text-[10px] mt-1 flex flex-col xs:flex-row xs:items-center xs:justify-end gap-1 xs:gap-2">
+          <span className="opacity-60">{hora}</span>
+          {queued && <span className="inline-flex items-center gap-1 text-amber-700"><Clock className="h-3 w-3" /> Aguardando conexao</span>}
+          {failed && <span className="inline-flex items-center gap-1"><XCircle className="h-3 w-3" /> Nao enviada</span>}
+          {failed && onRetry && (
+            <Button type="button" variant="outline" size="sm" className="h-11 xs:h-8 w-full xs:w-auto" onClick={onRetry} disabled={retrying}>
+              <RefreshCw className={cn("h-3.5 w-3.5 mr-1", retrying && "animate-spin")} /> Tentar novamente
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -157,7 +157,7 @@ serve(async (req) => {
       sendResp = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/send-sigzap-message`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: authHeader },
-        body: JSON.stringify({ action: "send", conversationId, instanceName: chip.instance_name, contactJid, message: msgFinal }),
+        body: JSON.stringify({ action: "send", conversationId, instanceName: chip.instance_name, contactJid, message: msgFinal, clientMessageId: crypto.randomUUID() }),
         signal: ac.signal,
       });
     } catch (_e) {
@@ -176,6 +176,18 @@ serve(async (req) => {
         metadados: { origem: "manual_1o_contato", campanha_id, erro: det.slice(0, 500) },
       }).then(() => {}, () => {});
       return json({ error: traduzErroEnvio(det) });
+    }
+
+    const sendResult = await sendResp.json().catch(() => ({}));
+    if (sendResult?.queued) {
+      return json({
+        success: false,
+        queued: true,
+        conversation_id: conversationId,
+        message: msgFinal,
+        chip_usado: chip.instance_name,
+        aviso: "Mensagem salva, mas ainda nao enviada ao WhatsApp.",
+      });
     }
 
     // ── Sucesso: marca o campanha_leads + lead ──
