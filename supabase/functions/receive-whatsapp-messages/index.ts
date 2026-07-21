@@ -222,7 +222,16 @@ function extractMessageContent(payload: EvolutionMessage): {
     };
   }
 
-  const msg = payload.message;
+  // messageContextInfo tambem acompanha mensagens de texto normais nas versoes
+  // recentes do WhatsApp. So o envelope exclusivamente criptografado e tecnico;
+  // descartar pelo contexto faria mensagens visiveis sumirem do Sigma.
+  if (evolutionMessage.secretEncryptedMessage) {
+    return { text: '[Evento tecnico]', type: 'technical' };
+  }
+
+  // No webhook nativo da Evolution a mensagem vive em data.message. O payload
+  // achatado e apenas um formato legado; priorizar evolutionMessage preserva texto.
+  const msg = Object.keys(evolutionMessage).length > 0 ? evolutionMessage : payload.message;
   if (!msg) {
     return { text: '[Mensagem sem conteúdo]', type: 'unknown' };
   }
@@ -613,8 +622,9 @@ serve(async (req) => {
     // IMPORTANTE: Ignorar eventos que NÃO são mensagens novas
     // messages.update = atualização de status (lida, entregue, etc) - NÃO é mensagem nova
     // Só processar: messages.upsert (nova mensagem) ou payloads sem event (formato legado)
-    const isMessageUpdate = eventType === 'messages.update';
-    const isNewMessage = eventType === 'messages.upsert' || !eventType;
+    const normalizedEventType = String(eventType || '').toLowerCase();
+    const isMessageUpdate = normalizedEventType === 'messages.update';
+    const isNewMessage = normalizedEventType === 'messages.upsert' || !eventType;
     
     // HANDLER: Reações recebidas via messages.upsert com reactionMessage
     const rawData = (() => {
@@ -698,16 +708,19 @@ serve(async (req) => {
     const instanceName = payload.instance || payload.instanceName || payload.instance_name || 'unknown';
     const instanceUuid = payload.instance_uuid || instanceName;
     
-    // Formato Evolution: remoteJid | Formato n8n: contact_jid | Formato legado: numero
-    let remoteJid = payload.remoteJid || payload.contact_jid || payload.sender_jid || payload.numero || '';
+    const data = (payload as any).data || {};
+    const key = data.key || {};
+
+    // O webhook nativo da Evolution envia o destinatario em data.key.remoteJid.
+    // O bridge n8n preserva esse envelope; ignorar o key fazia a persistencia abortar
+    // com "numero nao encontrado" enquanto a automacao seguia normalmente.
+    const remoteJid = key.remoteJid || payload.remoteJid || payload.contact_jid || payload.sender_jid || payload.numero || '';
 
     // IMPORTANTE: Evolution API pode enviar 'lid' (Link ID) em vez do número real
     // Quando isso acontece, o número real está em remoteJidAlt ou no campo sender
     const isLidJid = remoteJid.includes('@lid');
 
     // Buscar número real de campos alternativos quando for lid
-    const data = (payload as any).data || {};
-    const key = data.key || {};
     const remoteJidAlt = key.remoteJidAlt || (payload as any).sender || '';
 
     // Se for lid e tiver alternativa, usar o número real
@@ -763,6 +776,18 @@ serve(async (req) => {
     // Extrai conteúdo da mensagem
     const messageContent = extractMessageContent(payload);
     console.log('📝 Conteúdo extraído:', messageContent);
+
+    // O healthcheck testa o transporte do bridge, nao representa conversa real.
+    // Ignorar aqui evita criar instancia, contato e mensagem sinteticos.
+    if (
+      instanceName === '_healthcheck_' ||
+      messageContent.text === '[healthcheck-ping-ignore]' ||
+      messageContent.type === 'technical'
+    ) {
+      return new Response(JSON.stringify({ success: true, message: 'Healthcheck ignorado' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     // 1. Buscar instância - PRIORIZAR o nome da instância sobre o UUID
     // O n8n pode enviar valores incorretos no instance_uuid (como o sender_jid)
@@ -835,13 +860,39 @@ serve(async (req) => {
     // 2. Buscar ou criar contato
     let { data: contact, error: contactError } = await supabase
       .from('sigzap_contacts')
-      .select('id')
+      // contact_phone e necessario para o match com leads logo abaixo.
+      .select('id, contact_phone')
       .eq('contact_jid', contactJid)
       .eq('instance_id', instance.id)
       .maybeSingle();
 
     if (contactError) {
       console.error('❌ Erro ao buscar contato:', contactError);
+    }
+
+    // O WhatsApp ainda pode usar o JID brasileiro legado sem o nono digito,
+    // enquanto o CRM guarda o E.164 moderno. Reusar o contato equivalente evita
+    // criar duas conversas para o mesmo medico.
+    if (!contact && contactPhone.startsWith('55')) {
+      const variants = new Set<string>([contactPhone, `+${contactPhone}`]);
+      if (contactPhone.length === 12) {
+        const withNine = `${contactPhone.slice(0, 4)}9${contactPhone.slice(4)}`;
+        variants.add(withNine);
+        variants.add(`+${withNine}`);
+      } else if (contactPhone.length === 13 && contactPhone[4] === '9') {
+        const withoutNine = `${contactPhone.slice(0, 4)}${contactPhone.slice(5)}`;
+        variants.add(withoutNine);
+        variants.add(`+${withoutNine}`);
+      }
+
+      const { data: equivalentContact } = await supabase
+        .from('sigzap_contacts')
+        .select('id, contact_phone')
+        .eq('instance_id', instance.id)
+        .in('contact_phone', [...variants])
+        .limit(1)
+        .maybeSingle();
+      if (equivalentContact) contact = equivalentContact;
     }
 
     if (!contact) {
@@ -857,7 +908,7 @@ serve(async (req) => {
           contact_name: contactNameToUse,
           instance_id: instance.id
         })
-        .select('id')
+        .select('id, contact_phone')
         .single();
 
       if (createContactError) {
@@ -876,6 +927,10 @@ serve(async (req) => {
           .eq('id', contact.id);
         console.log('✅ Nome do contato atualizado:', contact.id, '->', pushName);
       }
+    }
+
+    if (!contact) {
+      throw new Error('Contato nao foi criado nem encontrado');
     }
 
     // 3. Buscar ou criar conversa
@@ -969,7 +1024,7 @@ serve(async (req) => {
         console.log('✅ Lead vinculado à conversa:', leadId);
 
         // 3.6 Auto-routing: se lead está em campanha ativa, chamar IA (non-blocking)
-        if (!isFromMe && messageText) {
+        if (!fromMe && messageContent.text) {
           try {
             const { data: campLeadCheck } = await supabase
               .from('campanha_leads')
@@ -1003,21 +1058,21 @@ serve(async (req) => {
                 console.log('📋 Lead em campanha MANUAL respondeu — IA NÃO responde, encaminhado pra operadora:', JSON.stringify({
                   lead_id: leadId,
                   campanha_id: campLeadCheck.campanha_id,
-                  msg_preview: messageText?.slice(0, 50),
+                  msg_preview: messageContent.text?.slice(0, 50),
                 }));
               } else {
                 const iaPayload = {
                   phone: normalizedPhone.replace('+', ''),
-                  message_text: messageText,
+                  message_text: messageContent.text,
                   instance_name: instanceName,
-                  message_type: messageType || 'text',
+                  message_type: messageContent.type || 'text',
                 };
                 console.log('🤖 Lead em campanha IA ativa, chamando IA...', JSON.stringify({
                   lead_id: leadId,
                   campanha_id: campLeadCheck.campanha_id,
                   phone: iaPayload.phone,
                   instance: iaPayload.instance_name,
-                  msg_preview: messageText?.slice(0, 50),
+                  msg_preview: messageContent.text?.slice(0, 50),
                 }));
                 // Fire-and-forget: não bloqueia o webhook
                 supabase.functions.invoke('campanha-ia-responder', {

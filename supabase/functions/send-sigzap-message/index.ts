@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { sendWhatsAppText, sendWhatsAppMedia } from "../_shared/evo-sender.ts";
+import { processSigzapOutboxRow, type SigzapOutboxRow } from "../_shared/sigzap-outbox.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -19,6 +19,7 @@ interface SendMessageRequest {
   mediaFilename?: string;
   mediaCaption?: string;
   quotedMessageId?: string;
+  clientMessageId?: string;
   // New action types
   action?: 'send' | 'react' | 'delete' | 'edit';
   // For reactions
@@ -97,6 +98,7 @@ serve(async (req) => {
       mediaFilename,
       mediaCaption,
       quotedMessageId,
+      clientMessageId,
       action = 'send',
       reaction,
       targetMessageId,
@@ -381,6 +383,104 @@ serve(async (req) => {
         }
 
         // Envio via helper anti-ban (passa por pre_send_check + log + retry)
+        {
+          // Clientes ainda em cache nao enviam clientMessageId. Nesse caso,
+          // reaproveita uma tentativa identica recente para conter duplo clique.
+          let legacyDuplicate: any = null;
+          if (!clientMessageId) {
+            let duplicateQuery = supabase.from('sigzap_outbox').select('*')
+              .eq('conversation_id', conversationId)
+              .eq('message_type', mediaType || 'text')
+              .in('status', ['queued', 'processing'])
+              .gte('created_at', new Date(Date.now() - 5 * 60_000).toISOString())
+              .order('created_at', { ascending: false })
+              .limit(1);
+            duplicateQuery = message
+              ? duplicateQuery.eq('message_text', message)
+              : duplicateQuery.eq('media_url', publicMediaUrl);
+            const { data } = await duplicateQuery.maybeSingle();
+            legacyDuplicate = data;
+          }
+          const stableClientId = clientMessageId || legacyDuplicate?.client_message_id || crypto.randomUUID();
+          const { data: existingOutbox } = await supabase
+            .from('sigzap_outbox').select('*').eq('client_message_id', stableClientId).maybeSingle();
+          if (existingOutbox?.status === 'sent') {
+            return Response.json({ success: true, alreadySent: true, messageId: existingOutbox.sigzap_message_id, waMessageId: existingOutbox.wa_message_id }, { headers: corsHeaders });
+          }
+          if (!clientMessageId && existingOutbox && ['queued', 'processing'].includes(existingOutbox.status)) {
+            return Response.json({
+              success: false, queued: true, code: existingOutbox.last_error_code,
+              outboxId: existingOutbox.id, clientMessageId: stableClientId,
+              message: 'Esta mensagem ja esta aguardando envio.',
+            }, { status: 202, headers: corsHeaders });
+          }
+
+          let outbox: any;
+          if (existingOutbox) {
+            const { data, error } = await supabase.from('sigzap_outbox').update({
+              status: 'processing',
+              // Clique manual em "Tentar novamente" abre um novo ciclo de
+              // tentativas; retries automaticos continuam limitados no worker.
+              attempts: existingOutbox.status === 'failed'
+                ? 1
+                : Math.min((existingOutbox.attempts || 0) + 1, existingOutbox.max_attempts || 6),
+              next_retry_at: new Date().toISOString(),
+              last_error_code: null,
+              last_error_detail: null,
+              updated_at: new Date().toISOString(),
+            }).eq('id', existingOutbox.id).select('*').single();
+            if (error) throw error;
+            outbox = data;
+          } else {
+            const { data, error } = await supabase.from('sigzap_outbox').insert({
+              client_message_id: stableClientId,
+              conversation_id: conversationId,
+              chip_id: chipId,
+              instance_name: instanceName,
+              contact_jid: `${number}@s.whatsapp.net`,
+              message_text: message || null,
+              message_type: mediaType || 'text',
+              media_url: publicMediaUrl,
+              media_mime_type: mediaMimeType || null,
+              media_caption: mediaCaption || null,
+              media_filename: mediaFilename || null,
+              quoted_message_id: quotedMessageId || null,
+              status: 'processing',
+              attempts: 1,
+              next_retry_at: new Date().toISOString(),
+              created_by: user.id,
+            }).select('*').single();
+            if (error) throw error;
+            outbox = data;
+          }
+
+          const processed = await processSigzapOutboxRow({
+            supabase,
+            evo: { url: evolutionUrl, apiKey: evolutionKey },
+            row: outbox as SigzapOutboxRow,
+          });
+          if (!processed.sent) {
+            return Response.json({
+              success: false,
+              queued: processed.queued,
+              failed: processed.failed,
+              code: processed.code,
+              outboxId: outbox.id,
+              clientMessageId: stableClientId,
+              message: processed.queued
+                ? 'Mensagem salva. Aguardando reconexao do chip.'
+                : 'Mensagem nao enviada. Tente novamente ou escolha outro chip.',
+            }, { status: processed.queued ? 202 : 409, headers: corsHeaders });
+          }
+          return Response.json({
+            success: true,
+            messageId: processed.messageId,
+            waMessageId: processed.waMessageId,
+            clientMessageId: stableClientId,
+          }, { headers: corsHeaders });
+        }
+
+        /* Fluxo legado preservado temporariamente no diff para facilitar auditoria.
         const evoCfg = { url: evolutionUrl, apiKey: evolutionKey };
         const helperResult = isMediaSend
           ? await sendWhatsAppMedia({
@@ -445,7 +545,7 @@ serve(async (req) => {
             media_filename: mediaFilename,
             quoted_message_id: quotedMessageId,
             sent_at: new Date().toISOString(),
-            sent_by_user_id: user.id,
+            sent_by_user_id: user!.id,
             sent_via_instance_name: instanceName,
           })
           .select('id')
@@ -472,6 +572,7 @@ serve(async (req) => {
         }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
+        */
       }
     }
 

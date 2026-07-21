@@ -194,6 +194,32 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
   // médico tinha conversa IA rica no histórico + uma conversa SigZap curta de
   // OUTRA campanha, a IA sumia. Agora junta as duas por timestamp e deduplica.
   // ─────────────────────────────────────────────────────────────────────
+  // O webhook e a fonte primaria em tempo real, mas a Evolution mantem uma copia
+  // para reconciliar quedas e mensagens enviadas direto pelo celular. Sincroniza
+  // uma vez ao abrir e atualiza a timeline somente quando houver novidade.
+  const syncTriggeredRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!conv?.id || syncTriggeredRef.current === conv.id) return;
+    syncTriggeredRef.current = conv.id;
+
+    void (async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke("sigzap-fetch-history", {
+          body: { conversationId: conv.id, page: 1 },
+        });
+        const imported = data && typeof data === "object" && "imported" in data
+          ? Number(data.imported || 0)
+          : 0;
+        if (!error && imported > 0) {
+          await qc.invalidateQueries({ queryKey: ["acompanhamento-conv-msgs", conv.id] });
+        }
+      } catch (error) {
+        // A conversa carregada segue utilizavel; a proxima abertura tenta novamente.
+        console.warn("Falha ao sincronizar historico da Evolution:", error);
+      }
+    })();
+  }, [conv?.id, qc]);
+
   type TimelineMsg = { id: string; mine: boolean; text: string; ts: Date | null; source: "sigzap" | "historico"; status?: string | null };
   const timeline: TimelineMsg[] = useMemo(() => {
     const items: TimelineMsg[] = [];
@@ -431,4 +457,3 @@ function DateSeparator({ iso }: { iso: string }) {
     </div>
   );
 }
-

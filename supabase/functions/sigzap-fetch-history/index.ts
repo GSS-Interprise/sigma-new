@@ -25,15 +25,27 @@ Deno.serve(async (req) => {
     }
 
     const token = authHeader.replace("Bearer ", "");
-    const anonClient = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const { data: claimsData, error: claimsError } = await anonClient.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims?.sub) {
-      return new Response(
-        JSON.stringify({ error: "Token inválido" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    let tokenRole = "";
+    try {
+      const payloadPart = (token.split(".")[1] || "")
+        .replace(/-/g, "+")
+        .replace(/_/g, "/");
+      const paddedPayload = payloadPart.padEnd(Math.ceil(payloadPart.length / 4) * 4, "=");
+      tokenRole = JSON.parse(atob(paddedPayload)).role || "";
+    } catch (_) {
+      tokenRole = "";
+    }
+    if (token !== supabaseServiceKey && tokenRole !== "service_role") {
+      const anonClient = createClient(supabaseUrl, supabaseAnonKey, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: claimsData, error: claimsError } = await anonClient.auth.getClaims(token);
+      if (claimsError || !claimsData?.claims?.sub) {
+        return new Response(
+          JSON.stringify({ error: "Token inválido" }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
     }
 
     // Use service role client for data operations
@@ -54,7 +66,7 @@ Deno.serve(async (req) => {
       .from("sigzap_conversations")
       .select(`
         id,
-        contact:sigzap_contacts(contact_jid, contact_phone),
+        contact:sigzap_contacts(id, contact_jid, contact_phone),
         instance:sigzap_instances(name, instance_uuid)
       `)
       .eq("id", conversationId)
@@ -103,18 +115,37 @@ Deno.serve(async (req) => {
     const isLid = jid.includes("@lid");
     const phoneJid = phone ? `${phone.replace(/\D/g, "")}@s.whatsapp.net` : null;
 
+    // No Brasil, contas antigas podem continuar usando o JID sem o nono digito
+    // mesmo quando o CRM guarda o E.164 moderno. Consultar as duas formas evita
+    // historico vazio e duplicacao de conversa.
+    const phoneJids = new Set<string>();
+    if (phoneJid) {
+      phoneJids.add(phoneJid);
+      const digits = phoneJid.replace(/@.*$/, "");
+      if (digits.startsWith("55") && digits.length === 12) {
+        phoneJids.add(`${digits.slice(0, 4)}9${digits.slice(4)}@s.whatsapp.net`);
+      } else if (digits.startsWith("55") && digits.length === 13 && digits[4] === "9") {
+        phoneJids.add(`${digits.slice(0, 4)}${digits.slice(5)}@s.whatsapp.net`);
+      }
+    }
+
     const whereClauses: Array<Record<string, any>> = [];
     if (isLid) {
       // Contact stored as LID: query by remoteJid (LID) and also by phone via remoteJidAlt
       whereClauses.push({ key: { remoteJid: jid } });
-      if (phoneJid) {
-        whereClauses.push({ key: { remoteJidAlt: phoneJid } });
-        whereClauses.push({ key: { remoteJid: phoneJid } });
+      for (const candidateJid of phoneJids) {
+        whereClauses.push({ key: { remoteJidAlt: candidateJid } });
+        whereClauses.push({ key: { remoteJid: candidateJid } });
       }
     } else {
       // Contact stored as phone JID: query both remoteJid and remoteJidAlt
       whereClauses.push({ key: { remoteJid: jid } });
       whereClauses.push({ key: { remoteJidAlt: jid } });
+      for (const candidateJid of phoneJids) {
+        if (candidateJid === jid) continue;
+        whereClauses.push({ key: { remoteJid: candidateJid } });
+        whereClauses.push({ key: { remoteJidAlt: candidateJid } });
+      }
     }
 
     const callApi = async (where: Record<string, any>) => {

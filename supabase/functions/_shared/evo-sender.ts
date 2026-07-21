@@ -15,7 +15,9 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-type SupabaseClient = ReturnType<typeof createClient>;
+// Edge Functions compartilham tabelas que ainda nao estao no schema generico
+// inferido pelo SDK; manter o client estrutural evita o tipo `never` enganoso.
+type SupabaseClient = any;
 
 export type EventoOrigem =
   | "aquecimento"
@@ -274,9 +276,12 @@ async function executeEvolutionSend(args: {
     lastErrSlice = errText.slice(0, 500);
 
     // Transitório → retry
-    if (TRANSIENT_CODES.has(resp.status) && attempt < maxRetries) {
+    // Evolution responde HTTP 400 quando o socket fecha temporariamente.
+    // O corpo, e nao apenas o status, define se vale tentar de novo.
+    const connectionClosed = errText.toLowerCase().includes("connection closed");
+    if ((TRANSIENT_CODES.has(resp.status) || connectionClosed) && attempt < maxRetries) {
       const backoff = Math.min(8000, 1000 * Math.pow(2, attempt));
-      console.warn(`[evo-sender] HTTP ${resp.status} attempt ${attempt + 1}/${maxRetries + 1}, retrying in ${backoff}ms`);
+      console.warn(`[evo-sender] HTTP ${resp.status}${connectionClosed ? " Connection Closed" : ""} attempt ${attempt + 1}/${maxRetries + 1}, retrying in ${backoff}ms`);
       await sleep(backoff);
       attempt++;
       continue;
@@ -380,7 +385,9 @@ async function executeEvolutionSend(args: {
 
   return {
     sent: false,
-    reason: `evolution_${lastErrCode}`,
+    reason: lastErrSlice?.toLowerCase().includes("connection closed")
+      ? "connection_closed"
+      : `evolution_${lastErrCode}`,
     errorCode: lastErrCode,
     evolutionResponse: lastErrSlice,
     preSendCheck: check,

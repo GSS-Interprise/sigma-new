@@ -82,6 +82,22 @@ interface SenderInfo {
   initials: string;
 }
 
+interface SigZapOutboxItem {
+  id: string;
+  client_message_id: string;
+  message_text: string | null;
+  message_type: string;
+  media_caption: string | null;
+  media_url: string | null;
+  media_mime_type: string | null;
+  media_filename: string | null;
+  status: 'queued' | 'processing' | 'failed';
+  attempts: number;
+  max_attempts: number;
+  last_error_code: string | null;
+  created_at: string;
+}
+
 const MAX_FILE_SIZE = 16 * 1024 * 1024; // 16MB
 
 export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapChatColumnProps) {
@@ -375,6 +391,23 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
     staleTime: 0, // Always refetch on conversation change
   });
 
+  const { data: outboxItems = [] } = useQuery({
+    queryKey: ['sigzap-outbox', conversaId],
+    queryFn: async () => {
+      if (!conversaId) return [];
+      const { data, error } = await (supabase as any)
+        .from('sigzap_outbox')
+        .select('id, client_message_id, message_text, message_type, media_url, media_mime_type, media_caption, media_filename, status, attempts, max_attempts, last_error_code, created_at')
+        .eq('conversation_id', conversaId)
+        .in('status', ['queued', 'processing', 'failed'])
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      return (data || []) as SigZapOutboxItem[];
+    },
+    enabled: !!conversaId,
+    staleTime: 0,
+  });
+
   // Fetch sender info for all unique senders in messages
   const senderIds = [...new Set(
     (mensagens || [])
@@ -479,6 +512,18 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
     filter: conversaId ? `conversation_id=eq.${conversaId}` : undefined,
     enabled: !!conversaId,
     onChange: () => {
+      queryClient.invalidateQueries({ queryKey: ['sigzap-messages', conversaId] });
+    },
+  });
+
+  useSupabaseRealtimeChannel({
+    channelName: `sigzap-outbox-${conversaId}`,
+    table: 'sigzap_outbox' as any,
+    event: '*',
+    filter: conversaId ? `conversation_id=eq.${conversaId}` : undefined,
+    enabled: !!conversaId,
+    onChange: () => {
+      queryClient.invalidateQueries({ queryKey: ['sigzap-outbox', conversaId] });
       queryClient.invalidateQueries({ queryKey: ['sigzap-messages', conversaId] });
     },
   });
@@ -711,7 +756,8 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
       mediaCaption,
       mediaFilename,
       mediaMimeType,
-      quotedMessageId
+      quotedMessageId,
+      clientMessageId,
     }: { 
       texto?: string; 
       mediaUrl?: string; 
@@ -720,6 +766,7 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
       mediaFilename?: string;
       mediaMimeType?: string;
       quotedMessageId?: string;
+      clientMessageId: string;
     }) => {
       if (!conversaId || !conversa) throw new Error('Conversa não encontrada');
       
@@ -746,23 +793,55 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
           mediaFilename,
           mediaMimeType,
           quotedMessageId,
+          clientMessageId,
         },
       });
       
-      if (error) throw error;
+      if (error) {
+        let details: any = null;
+        try {
+          const response = (error as any)?.context as Response | undefined;
+          details = response ? await response.clone().json() : null;
+        } catch {
+          // A resposta pode ja ter sido consumida pelo client; mantemos o fallback.
+        }
+        const enriched = new Error(details?.message || error.message || 'Erro ao enviar mensagem') as Error & { code?: string; details?: any };
+        enriched.code = details?.code;
+        enriched.details = details;
+        throw enriched;
+      }
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['sigzap-messages', conversaId] });
+      queryClient.invalidateQueries({ queryKey: ['sigzap-outbox', conversaId] });
       queryClient.invalidateQueries({ queryKey: ['sigzap-conversations'] });
       queryClient.invalidateQueries({ queryKey: ['lead-status-proposta'] });
       queryClient.invalidateQueries({ queryKey: ['lead-canais'] });
       queryClient.invalidateQueries({ queryKey: ['acompanhamento-leads'] });
       queryClient.invalidateQueries({ queryKey: ['campanha-lista-leads'] });
+      if (data?.queued) {
+        toast.warning("Mensagem aguardando conexÃ£o", {
+          description: "O texto foi salvo e serÃ¡ reenviado quando o chip reconectar.",
+        });
+      }
       // Note: setReplyingTo(null) and setMensagem("") are now handled in handleSendText for optimistic UX
     },
-    onError: (error: any) => {
+    onError: (error: any, variables) => {
       console.error('Error sending message:', error);
+
+      // Nunca perde o que a operadora digitou. Evita sobrescrever algo novo
+      // que ela ja tenha comecado a escrever enquanto o envio acontecia.
+      if (variables.texto) {
+        setMensagem(current => current.trim() ? current : variables.texto || "");
+      }
+
+      if (error?.code === 'INSTANCE_DISCONNECTED') {
+        toast.error("Chip desconectado", {
+          description: "A mensagem ficou salva. Reconecte o chip ou tente novamente.",
+        });
+        return;
+      }
 
       // Parse error for better user feedback
       try {
@@ -881,7 +960,8 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
     }
     
     // Generate a temporary ID for tracking
-    const tempId = `pending-${Date.now()}`;
+    const clientMessageId = crypto.randomUUID();
+    const tempId = `pending-${clientMessageId}`;
     
     // Clear input immediately for better UX
     const currentReplyingTo = replyingTo;
@@ -894,12 +974,25 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
     // Send in background - mutation handles success/error
     sendMutation.mutate({ 
       texto: textoToSend,
-      quotedMessageId: currentReplyingTo?.waMessageId || undefined
+      quotedMessageId: currentReplyingTo?.waMessageId || undefined,
+      clientMessageId,
     }, {
       onSettled: () => {
         // Remove from pending after complete (success or error)
         setPendingMessages(prev => prev.filter(m => m.id !== tempId));
       }
+    });
+  };
+
+  const handleRetryOutbox = (item: SigZapOutboxItem) => {
+    sendMutation.mutate({
+      clientMessageId: item.client_message_id,
+      texto: item.message_text || undefined,
+      mediaUrl: item.media_url || undefined,
+      mediaType: item.message_type !== 'text' ? item.message_type : undefined,
+      mediaCaption: item.media_caption || undefined,
+      mediaFilename: item.media_filename || undefined,
+      mediaMimeType: item.media_mime_type || undefined,
     });
   };
 
@@ -990,6 +1083,7 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
         const fileCaption = i === 0 ? caption : '';
         
         await sendMutation.mutateAsync({
+          clientMessageId: crypto.randomUUID(),
           mediaUrl,
           mediaType: stagedFile.type,
           mediaCaption: fileCaption,
@@ -1036,7 +1130,7 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
       const mediaUrl = await uploadAudioBlob(audioBlob);
       console.log('Audio uploaded, URL:', mediaUrl);
       
-      await sendMutation.mutateAsync({ mediaUrl, mediaType: 'audio' });
+      await sendMutation.mutateAsync({ clientMessageId: crypto.randomUUID(), mediaUrl, mediaType: 'audio' });
       
       // Only close recording mode after successful send
       setIsRecording(false);
@@ -2024,6 +2118,50 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
             })
           )}
           
+          {/* Caixa de saida persistida: continua visivel mesmo apos refresh. */}
+          {outboxItems.map((item) => {
+            const failed = item.status === 'failed';
+            const label = failed
+              ? 'NÃ£o enviada'
+              : item.status === 'processing'
+                ? 'Enviando...'
+                : 'Aguardando conexÃ£o';
+            return (
+              <div key={item.id} className="flex justify-end px-2 my-1">
+                <div className={cn(
+                  "max-w-[88%] sm:max-w-[78%] min-w-0 rounded-lg border px-3 py-2 shadow-sm",
+                  failed ? "border-destructive/40 bg-destructive/10" : "border-amber-300 bg-amber-50",
+                )}>
+                  <div className="text-sm whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-foreground">
+                    {formatWhatsappText(item.message_text || item.media_caption || `[${item.message_type}]`)}
+                  </div>
+                  <div className={cn(
+                    "mt-1 flex flex-col xs:flex-row xs:items-center gap-1 xs:gap-2 text-xs",
+                    failed ? "text-destructive" : "text-amber-800",
+                  )}>
+                    <span className="inline-flex items-center gap-1">
+                      {failed ? <X className="h-3.5 w-3.5" /> : <Clock className="h-3.5 w-3.5" />}
+                      {label} Â· tentativa {item.attempts}/{item.max_attempts}
+                    </span>
+                    {failed && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-11 xs:h-9 w-full xs:w-auto border-destructive/40 text-destructive"
+                        disabled={sendMutation.isPending}
+                        onClick={() => handleRetryOutbox(item)}
+                      >
+                        <RefreshCw className={cn("h-4 w-4 mr-1.5", sendMutation.isPending && "animate-spin")} />
+                        Tentar novamente
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+
           {/* Pending messages (optimistic UI) */}
           {pendingMessages.map((pending) => (
             <div key={pending.id} className="flex justify-end animate-pulse">
