@@ -467,11 +467,19 @@ Deno.serve(async (req) => {
       // Idempotência para n8n: se já existe, atualiza ao invés de rejeitar
       let existingLicitacao: any = null;
 
+      // .limit(1) ANTES do maybeSingle é vital: com linhas DUPLICADAS (corrida
+      // entre os captadores GSS/AGES semeou 2 cards do mesmo effect_id em
+      // 20/07), maybeSingle sem limit LANÇA erro, o erro virava "não existe"
+      // e cada POST horário inseria MAIS uma cópia — 18 cards do mesmo edital
+      // em 2 dias ("eu descarto e volta"). Com limit(1), duplicata degrada
+      // pra update do card mais antigo, que é o comportamento certo.
       if (body.effect_id) {
         const { data: existing, error: existingError } = await supabase
           .from('licitacoes')
           .select('id, titulo, licitacao_codigo, effect_id')
           .eq('effect_id', body.effect_id)
+          .order('created_at', { ascending: true })
+          .limit(1)
           .maybeSingle();
 
         if (existingError) {
@@ -496,6 +504,8 @@ Deno.serve(async (req) => {
           .from('licitacoes')
           .select('id, titulo, effect_id, licitacao_codigo')
           .eq('licitacao_codigo', body.licitacao_codigo)
+          .order('created_at', { ascending: true })
+          .limit(1)
           .maybeSingle();
 
         if (existingError) {
@@ -633,6 +643,40 @@ Deno.serve(async (req) => {
           updated_existing: true,
           attachment_endpoint: `/api-licitacoes/${updatedLicitacao.id}/attachments`,
         }, 'Licitação já existia — atualizada com sucesso', 200);
+      }
+
+      // Descarte da equipe é decisão FINAL. Sem este guard, o captador n8n
+      // re-posta o favorito a cada hora, o effect_id já não existe (descartar
+      // apaga o card) e a licitação RENASCE — a equipe descartou o MESMO
+      // edital 18x em 2 dias ("eu descarto e volta", 22/07). O dedup do n8n
+      // não segura; a defesa fica aqui, central, valendo pra GSS e AGES.
+      // Ressalva: descarte por engano não volta pelo robô — recriar manual.
+      if (isN8n) {
+        const chavesDescarte = [body.numero_edital, body.licitacao_codigo, body.effect_id]
+          .filter((c: unknown): c is string => typeof c === 'string' && c.length > 0);
+        if (chavesDescarte.length) {
+          const { data: descartada, error: descarteError } = await supabase
+            .from('licitacao_descartes')
+            .select('id, numero_edital, created_at, created_by_nome, motivo_nome')
+            .in('numero_edital', chavesDescarte)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (descarteError) {
+            // melhor esforço: falha na consulta não pode travar a captação
+            console.warn('DESCARTE_CHECK_WARNING', descarteError);
+          } else if (descartada) {
+            console.log('SKIP_DESCARTADA', { numero_edital: descartada.numero_edital, descartada_em: descartada.created_at });
+            return successResponse({
+              card_id: null,
+              skipped: 'descartada_pela_equipe',
+              descartada_em: descartada.created_at,
+              descartada_por: descartada.created_by_nome,
+              motivo: descartada.motivo_nome,
+            }, 'Licitação já descartada pela equipe — não recriada', 200);
+          }
+        }
       }
 
       const { data: newLicitacao, error } = await supabase

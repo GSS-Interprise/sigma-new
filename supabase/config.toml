@@ -75,3 +75,10 @@ verify_jwt = false
 
 [functions.admin-bulk-reset-pw]
 verify_jwt = false
+
+# Recebe POST do n8n (captadores Effecti GSS e AGES) com token proprio
+# `sigma_...` validado DENTRO da edge — nao e' JWT. verify_jwt=true aqui
+# derruba a captacao inteira com "Invalid JWT" (aconteceu 22/07: deploy sem
+# --no-verify-jwt reativou a verificacao). NUNCA remover esta entrada.
+[functions.api-licitacoes]
+verify_jwt = false
