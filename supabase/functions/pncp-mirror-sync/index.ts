@@ -26,6 +26,9 @@ const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers
 const BASE = "https://pncp.gov.br/api/consulta/v1/contratacoes/publicacao";
 const MODALIDADES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
 const TAM_PAGINA = 50;
+// Só sela um dia como "completo" depois que ele parou de receber
+// publicação. Antes disso o dia é re-varrido a cada passe do cron.
+const DIAS_ATE_SELAR = 2;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const ymd = (d: Date) => `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, "0")}${String(d.getUTCDate()).padStart(2, "0")}`;
@@ -153,15 +156,33 @@ serve(async (req) => {
           if (error) erros++; else registrosUpsert += registros.length;
         }
 
-        // grava progresso a cada página (retomável). `registros` conta o
-        // acumulado por unidade — soma incremental da página atual.
-        const completo = totalPaginas === 0 || pagina >= totalPaginas || items.length < TAM_PAGINA;
+        // Fim do lote = acabaram as páginas DESTE instante. Não confundir
+        // com "o dia acabou": um dia ainda em curso recebe publicação nova
+        // o tempo todo.
+        const fimDoLote = totalPaginas === 0 || pagina >= totalPaginas || items.length < TAM_PAGINA;
+
+        // O selo depende da IDADE do dia, nunca do fim do lote. Selar cedo
+        // congela o espelho: o lote só busca status <> 'completo', então
+        // dia selado nunca mais é revisitado. Foi o que travou a ingestão
+        // por 5 dias — o cron criava o dia à meia-noite, o PNCP respondia
+        // 204 (nada publicado ainda), totalPaginas=0 selava o dia vazio.
+        // Mesmo defeito, versão silenciosa: dia varrido ao meio-dia selava
+        // com metade dos registros (16/07 pegou 1.162 de ~6.000).
+        const idadeDias = Math.floor(
+          (Date.now() - new Date(p.data_ref + "T00:00:00Z").getTime()) / 864e5,
+        );
+        const completo = fimDoLote && idadeDias >= DIAS_ATE_SELAR;
+
         await supabase.rpc("pncp_sync_bump", {
-          p_data: p.data_ref, p_mod: p.modalidade_id, p_pagina: pagina,
+          p_data: p.data_ref, p_mod: p.modalidade_id,
+          // dia ainda vivo volta pra página 1 no próximo passe: publicação
+          // nova desloca a paginação, retomar de ultima_pagina+1 pularia
+          // registro. O upsert é idempotente, então re-varrer não duplica.
+          p_pagina: completo ? pagina : 0,
           p_total: totalPaginas, p_delta: items.length, p_completo: completo,
         });
 
-        if (completo) { unidadesCompletas++; break; }
+        if (fimDoLote) { if (completo) unidadesCompletas++; break; }
         pagina++;
         await sleep(150); // gentileza com a API instável
       }
