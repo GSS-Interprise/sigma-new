@@ -21,6 +21,7 @@ export interface AcompanhamentoLead {
   status: string;
   assumido_por: string | null;
   assumido_em: string | null;
+  humano_assumiu: boolean;
   validacoes: Record<string, ValidacaoItem>;
   validacoes_ok: number;
   resultado_final: string | null;

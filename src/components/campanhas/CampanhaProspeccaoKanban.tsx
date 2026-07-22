@@ -195,13 +195,14 @@ export function CampanhaProspeccaoKanban({ campanhaId }: Props) {
                 </div>
                 <p className="text-xs text-muted-foreground mt-0.5">{col.description}</p>
               </div>
-              <ScrollArea className="h-[calc(100vh-360px)] p-2">
+              <ScrollArea className="h-auto md:h-[calc(100dvh-360px)] p-2">
                 <div className="space-y-2">
                   {colLeads.map((cl) => (
                     <LeadCard
                       key={cl.id}
                       campLead={cl}
                       assumidoNome={cl.assumido_por ? profilesMap[cl.assumido_por] : undefined}
+                      tipoEnvio={tipoEnvio}
                       tagsSugeridas={tagsSugeridas}
                       onDragStart={() => setDraggedLead(cl.lead_id)}
                       onClick={() => setCampanhaLeadAbertoId(cl.id)}
@@ -232,10 +233,11 @@ function iniciais(nome?: string) {
 }
 
 function LeadCard({
-  campLead, assumidoNome, tagsSugeridas, onDragStart, onClick, onToggleTag,
+  campLead, assumidoNome, tipoEnvio, tagsSugeridas, onDragStart, onClick, onToggleTag,
 }: {
   campLead: CampanhaLead;
   assumidoNome?: string;
+  tipoEnvio: string | undefined;
   tagsSugeridas: string[];
   onDragStart: () => void;
   onClick: () => void;
@@ -245,6 +247,8 @@ function LeadCard({
   const [novaTag, setNovaTag] = useState("");
   if (!lead) return null;
   const tags = lead.tags || [];
+  const atendimentoHumano = campLead.humano_assumiu === true;
+  const campanhaManual = tipoEnvio === "manual";
 
   return (
     <Card className="cursor-pointer hover:shadow-md hover:border-primary/50 transition-all" draggable onDragStart={onDragStart}>
@@ -269,11 +273,31 @@ function LeadCard({
           {lead.uf && <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{lead.cidade ? `${lead.cidade}/${lead.uf}` : lead.uf}</span>}
         </div>
 
-        {assumidoNome && (
-          <div className="pl-6 flex items-center gap-1 text-[11px] text-primary">
-            <UserCheck className="h-3 w-3" /> {assumidoNome}
-          </div>
-        )}
+        <div className="pl-6">
+          {atendimentoHumano ? (
+            <Badge
+              variant="outline"
+              className="max-w-full gap-1 border-blue-200 bg-blue-50 text-blue-700"
+              title={`IA pausada. Atendimento humano${assumidoNome ? ` por ${assumidoNome}` : ""}.`}
+            >
+              <UserCheck className="h-3 w-3 shrink-0" />
+              <span className="truncate">Atendimento humano{assumidoNome ? ` · ${assumidoNome}` : ""}</span>
+            </Badge>
+          ) : campanhaManual ? (
+            <Badge variant="outline" className="gap-1 border-slate-200 bg-slate-50 text-slate-600">
+              <UserCheck className="h-3 w-3" /> Equipe conduz
+            </Badge>
+          ) : (
+            <Badge
+              variant="outline"
+              className="gap-1 border-cyan-200 bg-cyan-50 text-cyan-700"
+              title="A IA está habilitada para responder este lead."
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-cyan-500" aria-hidden="true" />
+              <Bot className="h-3 w-3" /> IA atuando
+            </Badge>
+          )}
+        </div>
 
         {/* tags + editor rápido */}
         <div className="pl-6 flex flex-wrap items-center gap-1">

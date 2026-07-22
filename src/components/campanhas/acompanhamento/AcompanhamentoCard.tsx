@@ -1,7 +1,7 @@
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Flame, MessageSquare, MapPin, Stethoscope, Clock, Layers, Tag, DollarSign, Sparkles } from "lucide-react";
+import { Bot, Flame, MessageSquare, MapPin, Stethoscope, Clock, Layers, Tag, DollarSign, Sparkles, UserCheck } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { AcompanhamentoLead } from "@/hooks/useAcompanhamentoLeads";
@@ -33,6 +33,8 @@ export function AcompanhamentoCard({
     : null;
 
   const semDono = !lead.assumido_por;
+  const atendimentoHumano = lead.humano_assumiu === true;
+  const campanhaManual = lead.tipo_envio === "manual";
   const iniciaisDono = lead.assumido_por_nome
     ? lead.assumido_por_nome.split(" ").map((p) => p[0]).join("").slice(0, 2).toUpperCase()
     : "";
@@ -119,6 +121,32 @@ export function AcompanhamentoCard({
       </div>
 
       {/* A2 — tags de insight do perfil IA (banco_interesse_leads) */}
+      <div className="mb-2">
+        {atendimentoHumano ? (
+          <Badge
+            variant="outline"
+            className="max-w-full gap-1 border-blue-200 bg-blue-50 text-blue-700"
+            title={`IA pausada. Atendimento humano${lead.assumido_por_nome ? ` por ${lead.assumido_por_nome}` : ""}.`}
+          >
+            <UserCheck className="h-3 w-3 shrink-0" />
+            <span className="truncate">Atendimento humano{lead.assumido_por_nome ? ` · ${lead.assumido_por_nome}` : ""}</span>
+          </Badge>
+        ) : campanhaManual ? (
+          <Badge variant="outline" className="gap-1 border-slate-200 bg-slate-50 text-slate-600">
+            <UserCheck className="h-3 w-3" /> Equipe conduz
+          </Badge>
+        ) : (
+          <Badge
+            variant="outline"
+            className="gap-1 border-cyan-200 bg-cyan-50 text-cyan-700"
+            title="A IA está habilitada para responder este lead."
+          >
+            <span className="h-1.5 w-1.5 rounded-full bg-cyan-500" aria-hidden="true" />
+            <Bot className="h-3 w-3" /> IA atuando
+          </Badge>
+        )}
+      </div>
+
       {((lead.perfil_modalidade && lead.perfil_modalidade.length > 0) || (lead.perfil_valor_min != null && lead.perfil_valor_min > 0)) && (
         <div className="flex flex-wrap items-center gap-1 mb-2" title={lead.perfil_resumo || undefined}>
           {lead.perfil_modalidade?.slice(0, 2).map((m) => (
