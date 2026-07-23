@@ -129,7 +129,7 @@ serve(async (req) => {
     // a Effecti; o backlog deixa de morrer de fome.
     const { data: pendentes } = await supabase
       .from("pncp_mirror_sync_state")
-      .select("data_ref, modalidade_id, ultima_pagina, total_paginas")
+      .select("data_ref, modalidade_id, ultima_pagina, total_paginas, atualizado_em")
       .neq("status", "completo")
       .order("atualizado_em", { ascending: true })
       .limit(400);
@@ -139,6 +139,15 @@ serve(async (req) => {
 
     for (const p of pendentes ?? []) {
       if (Date.now() > DEADLINE) { cortadoPorTempo = true; break; }
+
+      // Dia vivo re-varre no máximo a cada 30 min. Re-varredura a cada passe
+      // (3 min) consumia ~200 páginas/ciclo do orçamento de rate-limit do
+      // PNCP e o backlog morria de fome mesmo com o rodízio (16-20/07
+      // estagnou 1h30 em 23/07). A API rejeita tamanhoPagina > 50 (HTTP
+      // 400), então economizar requisição é a única alavanca de vazão.
+      const idadeDiaRef = Math.floor((Date.now() - new Date(p.data_ref + "T00:00:00Z").getTime()) / 864e5);
+      const tocadoHaMs = p.atualizado_em ? Date.now() - new Date(p.atualizado_em).getTime() : Infinity;
+      if (idadeDiaRef < DIAS_ATE_SELAR && tocadoHaMs < 30 * 60_000) continue;
       const dataYmd = p.data_ref.replaceAll("-", "");
       let pagina = (p.ultima_pagina ?? 0) + 1;
       let totalPaginas = p.total_paginas ?? null;
