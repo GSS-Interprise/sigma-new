@@ -607,14 +607,26 @@ Deno.serve(async (req) => {
 
       if (existingLicitacao && isN8n) {
         const updateData: any = { ...insertData };
-        if (!Array.isArray(body.etiquetas)) delete updateData.etiquetas;
         // CRITICAL: Never overwrite status on n8n updates — users manage status manually
         delete updateData.status;
         // Also preserve user-managed fields
         delete updateData.responsavel_id;
         delete updateData.prioridade;
-        delete updateData.etiquetas;
         delete updateData.tipo_licitacao;
+
+        // Etiquetas: UNIÃO, nunca sobrescrita nem drop. GSS e AGES capturam o
+        // MESMO edital (favoritado nas 2 contas Effecti; o id de aviso é
+        // global) e caem no MESMO card. Sobrescrever perderia a tag da outra
+        // empresa; dropar (comportamento antigo) deixava o card AGES
+        // invisível. Une o que veio com o que já está lá — tags manuais da
+        // equipe sobrevivem, e a tag de origem (GSS/AGES) sempre gruda.
+        if (Array.isArray(body.etiquetas) && body.etiquetas.length) {
+          const { data: atual } = await supabase
+            .from('licitacoes').select('etiquetas').eq('id', existingLicitacao.id).single();
+          updateData.etiquetas = Array.from(new Set([...(atual?.etiquetas ?? []), ...body.etiquetas]));
+        } else {
+          delete updateData.etiquetas;
+        }
 
         const { data: updatedLicitacao, error: updateError } = await supabase
           .from('licitacoes')

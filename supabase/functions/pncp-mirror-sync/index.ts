@@ -174,7 +174,17 @@ serve(async (req) => {
         // Fim do lote = acabaram as páginas DESTE instante. Não confundir
         // com "o dia acabou": um dia ainda em curso recebe publicação nova
         // o tempo todo.
-        const fimDoLote = totalPaginas === 0 || pagina >= totalPaginas || items.length < TAM_PAGINA;
+        //
+        // `totalPaginas` é a ÚNICA autoridade de fim (o PNCP devolve confiável:
+        // testado, 121 registros = 3 páginas). NÃO usar `items.length <
+        // TAM_PAGINA`: sob carga o PNCP devolve página TRUNCADA (30 de 50 itens,
+        // HTTP 200), o `30 < 50` disparava fim e selava o dia no meio — 18/07
+        // selou com 232 de ~6.000, 19/07 com 37. `items.length === 0` (página
+        // vazia = genuinamente após o fim) é o único fallback seguro quando
+        // totalPaginas vem nulo.
+        const fimDoLote = totalPaginas === 0
+          || (totalPaginas != null && pagina >= totalPaginas)
+          || items.length === 0;
 
         // O selo depende da IDADE do dia, nunca do fim do lote. Selar cedo
         // congela o espelho: o lote só busca status <> 'completo', então
