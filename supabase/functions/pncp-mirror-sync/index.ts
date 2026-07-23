@@ -120,12 +120,18 @@ serve(async (req) => {
     // insere só as que ainda não existem (não reseta progresso de quem já rodou)
     await supabase.from("pncp_mirror_sync_state").upsert(novasLinhas, { onConflict: "data_ref,modalidade_id", ignoreDuplicates: true });
 
-    // ── 2. Pega o lote pendente (mais recente primeiro — cobre o "agora" antes do histórico) ──
+    // ── 2. Pega o lote pendente — RODÍZIO pelo menos-recentemente-tocado. ──
+    // "Mais recente primeiro" + re-varredura de dia vivo fazia cada passe
+    // gastar o orçamento inteiro nos dias 22-23 e NUNCA chegar no backlog:
+    // o buraco do congelamento (16-20/07) ficou 24h sem drenar. Ordenar por
+    // atualizado_em asc alterna naturalmente entre buraco e dia vivo — o
+    // dia vivo atrasa uns minutos por ciclo, o que não afeta paridade com
+    // a Effecti; o backlog deixa de morrer de fome.
     const { data: pendentes } = await supabase
       .from("pncp_mirror_sync_state")
       .select("data_ref, modalidade_id, ultima_pagina, total_paginas")
       .neq("status", "completo")
-      .order("data_ref", { ascending: false })
+      .order("atualizado_em", { ascending: true })
       .limit(400);
 
     let paginasFeitas = 0, registrosUpsert = 0, unidadesCompletas = 0, erros = 0;
