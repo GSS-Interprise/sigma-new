@@ -200,10 +200,17 @@ serve(async (req) => {
 
         await supabase.rpc("pncp_sync_bump", {
           p_data: p.data_ref, p_mod: p.modalidade_id,
-          // dia ainda vivo volta pra página 1 no próximo passe: publicação
-          // nova desloca a paginação, retomar de ultima_pagina+1 pularia
-          // registro. O upsert é idempotente, então re-varrer não duplica.
-          p_pagina: completo ? pagina : 0,
+          // Checkpoint: SÓ o dia vivo volta pra página 1 (publicação nova
+          // desloca a paginação, retomar de ultima_pagina+1 pularia registro;
+          // o upsert é idempotente, re-varrer não duplica).
+          //
+          // Dia histórico PRECISA guardar a página, senão cada passe recomeça
+          // do 1, re-busca as mesmas páginas iniciais, queima o rate-limit e
+          // nunca alcança as páginas do fim: 16-22/07 ficaram presos com
+          // ultima_pagina=0 e total_paginas=57, acumulando 22k registros
+          // repetidos num dia que tem ~3k. Zerar aqui era o que impedia o
+          // backfill de fechar.
+          p_pagina: (!completo && idadeDias < DIAS_ATE_SELAR) ? 0 : pagina,
           p_total: totalPaginas, p_delta: items.length, p_completo: completo,
         });
 
