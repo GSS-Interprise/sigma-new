@@ -523,6 +523,11 @@ export function LicitacaoAnexosBar({ licitacaoId }: LicitacaoAnexosBarProps) {
     const extension = anexo.arquivo_nome?.split('.').pop()?.toLowerCase() || '';
 
     if (extension === 'pdf') {
+      // Abre a aba SINCRONAMENTE, ainda dentro do gesto de clique. Se o
+      // window.open rodasse depois do await (como era antes), o navegador o
+      // trata como popup fora de gesto e BLOQUEIA — era o "anexo não abre
+      // direto". Abrimos em branco já e só apontamos a URL quando ela chega.
+      const win = window.open('', '_blank');
       try {
         const key = anexo.arquivo_url.startsWith('http')
           ? (() => {
@@ -540,8 +545,10 @@ export function LicitacaoAnexosBar({ licitacaoId }: LicitacaoAnexosBarProps) {
           .createSignedUrl(key, 3600);
 
         if (error) throw error;
-        window.open(data.signedUrl, '_blank');
+        if (win) win.location.href = data.signedUrl;
+        else window.open(data.signedUrl, '_blank');
       } catch (err) {
+        win?.close();
         console.error('Erro ao abrir PDF:', err);
         toast.error('Erro ao abrir PDF');
       }

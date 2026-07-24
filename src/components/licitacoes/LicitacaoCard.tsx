@@ -70,6 +70,9 @@ export function LicitacaoCard({ licitacao, onEdit }: LicitacaoCardProps) {
 
   const handleOpenPdf = async (e: React.MouseEvent) => {
     e.stopPropagation();
+    // Abre a aba SINCRONAMENTE, dentro do gesto de clique — senão o
+    // window.open depois do await vira popup bloqueado ("não abre direto").
+    const win = window.open('', '_blank');
     try {
       const { data: files, error } = await supabase.storage
         .from("editais-pdfs")
@@ -78,6 +81,7 @@ export function LicitacaoCard({ licitacao, onEdit }: LicitacaoCardProps) {
       if (error) throw error;
 
       if (!files || files.length === 0) {
+        win?.close();
         toast.info("Nenhum PDF anexado a esta licitação");
         return;
       }
@@ -87,9 +91,13 @@ export function LicitacaoCard({ licitacao, onEdit }: LicitacaoCardProps) {
         .createSignedUrl(`${licitacao.id}/${files[0].name}`, 3600);
 
       if (urlData?.signedUrl) {
-        window.open(urlData.signedUrl, "_blank");
+        if (win) win.location.href = urlData.signedUrl;
+        else window.open(urlData.signedUrl, "_blank");
+      } else {
+        win?.close();
       }
     } catch (error) {
+      win?.close();
       console.error("Erro ao abrir PDF:", error);
       toast.error("Erro ao abrir PDF");
     }
