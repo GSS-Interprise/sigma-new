@@ -525,6 +525,35 @@ Deno.serve(async (req) => {
         }
       }
 
+      // Idempotência por TÍTULO — o discriminante REAL do edital.
+      // A Effecti emite VÁRIOS avisos pro mesmo edital (republicação,
+      // retificação, perfis distintos), cada um com effect_id diferente. Casar
+      // só por effect_id nunca pega esses: 78 títulos duplicados, 26 deles com
+      // um card descartado pela equipe e outro vivo — é o "descarto e volta"
+      // (o edital descartado reaparece sob um aviso novo). O título é montado
+      // pelo captador de forma determinística (Sigla + nº + município/UF), então
+      // título igual = mesmo edital. Ao casar aqui, a recaptura ATUALIZA o card
+      // existente (preservando status, inclusive descarte) em vez de criar cópia.
+      // Guarda: só casa título "completo" — ' - /Uf' (município vazio) casaria
+      // editais diferentes, então é ignorado.
+      if (!existingLicitacao && isN8n && typeof body.titulo === 'string'
+          && body.titulo.trim().length > 8 && !/ - \//.test(body.titulo)) {
+        const { data: existing, error: existingError } = await supabase
+          .from('licitacoes')
+          .select('id, titulo, effect_id, licitacao_codigo, status')
+          .eq('titulo', body.titulo.trim())
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+
+        if (existingError) {
+          console.warn('DUPLICATE_CHECK_WARNING(titulo)', existingError);
+        } else if (existing) {
+          console.log('IDEMPOTENTE_POR_TITULO', { titulo: body.titulo, existing_id: existing.id, status: existing.status });
+          existingLicitacao = existing;
+        }
+      }
+
       const prioridade = calculatePriority(body.data_disputa, body.prioridade);
 
       // Determinar status via column_id ou status direto
@@ -613,6 +642,13 @@ Deno.serve(async (req) => {
         delete updateData.responsavel_id;
         delete updateData.prioridade;
         delete updateData.tipo_licitacao;
+        // NUNCA sobrescrever a identidade do card. Num match por TÍTULO, o
+        // aviso que chega tem effect_id/numero DIFERENTE (é republicação); se
+        // gravasse, trocaria a identidade do card existente pela do aviso novo
+        // a cada captura — o card ficaria "pulando" de id. Mantém a original.
+        delete updateData.effect_id;
+        delete updateData.numero_edital;
+        delete updateData.licitacao_codigo;
 
         // Etiquetas: UNIÃO, nunca sobrescrita nem drop. GSS e AGES capturam o
         // MESMO edital (favoritado nas 2 contas Effecti; o id de aviso é
