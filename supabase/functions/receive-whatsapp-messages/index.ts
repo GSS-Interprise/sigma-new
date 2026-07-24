@@ -1061,27 +1061,17 @@ serve(async (req) => {
                   msg_preview: messageContent.text?.slice(0, 50),
                 }));
               } else {
-                const iaPayload = {
-                  phone: normalizedPhone.replace('+', ''),
-                  message_text: messageContent.text,
-                  instance_name: instanceName,
-                  message_type: messageContent.type || 'text',
-                };
-                console.log('🤖 Lead em campanha IA ativa, chamando IA...', JSON.stringify({
+                // A resposta automática é orquestrada exclusivamente pelo
+                // Campanha Webhook Bridge. Ele agrega rajadas e elege um único
+                // dono antes de chamar a IA; disparar também daqui criava duas
+                // respostas para a mesma mensagem.
+                console.log('🤖 Lead em campanha IA ativa — resposta delegada ao bridge N8N', JSON.stringify({
                   lead_id: leadId,
                   campanha_id: campLeadCheck.campanha_id,
-                  phone: iaPayload.phone,
-                  instance: iaPayload.instance_name,
+                  phone: normalizedPhone.replace('+', ''),
+                  instance: instanceName,
                   msg_preview: messageContent.text?.slice(0, 50),
                 }));
-                // Fire-and-forget: não bloqueia o webhook
-                supabase.functions.invoke('campanha-ia-responder', {
-                  body: iaPayload,
-                }).then((result: any) => {
-                  console.log('🤖 IA resultado:', JSON.stringify(result?.data || result?.error || 'sem resposta'));
-                }).catch((iaErr: any) => {
-                  console.warn('⚠️ Erro ao chamar IA (não-crítico):', iaErr?.message);
-                });
               }
             }
           } catch (campCheckErr) {

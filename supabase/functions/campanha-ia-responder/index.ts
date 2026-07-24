@@ -13,6 +13,7 @@ serve(async (req) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const supabase = createClient(supabaseUrl, supabaseKey);
+  let claimedMessageId: string | null = null;
 
   try {
     const {
@@ -57,12 +58,18 @@ serve(async (req) => {
 
     // ── 2. Buscar campanha ativa ──
     const { data: campLead } = await supabase.from("campanha_leads")
-      .select("id, campanha_id, status, humano_assumiu, aguarda_resposta_humana, historico_conversa, campanha:campanha_id(id, nome, briefing_ia, responsaveis)")
+      .select("id, campanha_id, status, humano_assumiu, aguarda_resposta_humana, historico_conversa, campanha:campanha_id(id, nome, briefing_ia, responsaveis, tipo_envio)")
       .eq("lead_id", lead.id).in("status", ["contatado", "em_conversa", "aquecido"])
       .order("data_ultimo_contato", { ascending: false }).limit(1).maybeSingle();
 
     if (!campLead) return json({ ok: false, reason: "not_in_campaign" });
     if (campLead.humano_assumiu) return json({ ok: true, reason: "humano_assumiu" });
+
+    const campanha = campLead.campanha as any;
+    const tipoEnvio = String(campanha?.tipo_envio || "ia").toLowerCase();
+    if (!["ia", "ambos"].includes(tipoEnvio)) {
+      return json({ ok: true, reason: "campanha_manual" });
+    }
 
     // ── Guard: o chip que recebeu a mensagem precisa estar na campanha do lead ──
     // Sem isso, a IA responde por QUALQUER chip que o lead messagear (ex: chip
@@ -113,6 +120,22 @@ serve(async (req) => {
       }
     }
 
+    // Respostas automáticas explícitas são registradas, mas não qualificam o
+    // lead nem iniciam um loop entre robôs.
+    if (isExplicitAutoReply(finalText)) {
+      const histTmp: any[] = campLead.historico_conversa || [];
+      histTmp.push({
+        role: "medico",
+        text: finalText,
+        ts: new Date().toISOString(),
+        resposta_automatica: true,
+      });
+      await supabase.from("campanha_leads")
+        .update({ historico_conversa: histTmp, data_ultimo_contato: new Date().toISOString() })
+        .eq("id", campLead.id);
+      return json({ ok: true, reason: "resposta_automatica_ignorada" });
+    }
+
     // Se lead está aguardando resposta do responsável, registra msg no histórico mas não responde ainda
     if (campLead.aguarda_resposta_humana) {
       const histTmp: any[] = campLead.historico_conversa || [];
@@ -122,8 +145,23 @@ serve(async (req) => {
       return json({ ok: true, reason: "aguardando_resposta_humana", msg: "IA pausada até responsável responder pergunta pendente" });
     }
 
-    const campanha = campLead.campanha as any;
     const briefing = campanha?.briefing_ia || {};
+
+    // Segunda barreira contra reentrega/retry: mesmo que outro webhook tente
+    // processar a mensagem, apenas um worker recebe o lease do msg_id.
+    if (msg_id) {
+      const { data: claimed, error: claimError } = await supabase.rpc(
+        "campanha_ia_claim_message",
+        {
+          p_msg_id: msg_id,
+          p_phone: phoneDigits,
+          p_instance_name: instance_name || null,
+        },
+      );
+      if (claimError) throw new Error(`idempotency_claim: ${claimError.message}`);
+      if (!claimed) return json({ ok: true, reason: "duplicate_msg_id", msg_id });
+      claimedMessageId = msg_id;
+    }
 
     // ── 2b. Buscar perfil unificado (Trilha B) ──
     const { data: perfilInteresse } = await supabase
@@ -288,7 +326,10 @@ serve(async (req) => {
     // Anti-vazamento: descarta qualquer "mensagem" que pareça JSON/estrutura interna.
     const pareceJson = (t: string) => /^\s*[{[]/.test(t) || /"(maturidade_lead|ALERTA_LEAD|conversa_encerrada|AGUARDA_RESPOSTA_HUMANA|messages)"\s*:/.test(t) || /^\s*json\b/i.test(t);
     const messages: string[] = (Array.isArray(parsed.messages) ? parsed.messages : [])
-      .filter((x: any) => typeof x === "string" && x.trim() && !pareceJson(x));
+      .filter((x: any) => typeof x === "string" && x.trim() && !pareceJson(x))
+      // Uma rodada consolidada gera uma única bolha. Isso evita rajadas mesmo
+      // quando o modelo tenta fragmentar a resposta em várias mensagens.
+      .slice(0, 1);
     const maturidade = String(parsed.maturidade_lead || "").toLowerCase();
     // ALERTA_LEAD só conta se maturidade explícita é "quente" (safety net contra modelo marcar errado)
     const alertaLead = parsed.ALERTA_LEAD === true && maturidade === "quente";
@@ -451,14 +492,30 @@ serve(async (req) => {
       }
     }
 
-    return json({
+    const resultPayload = {
       ok: true, lead_id: lead.id, campanha_id: campLead.campanha_id,
       status: novoStatus, messages_sent: messages.length, alerta: alertaLead,
       maturidade_lead: maturidade || null,
       aguarda_humano: aguardaHumano,
       historico_length: historico.length,
-    });
+    };
+    if (claimedMessageId) {
+      await supabase.from("campanha_ia_processed_messages").update({
+        status: "completed",
+        completed_at: new Date().toISOString(),
+        result: resultPayload,
+        updated_at: new Date().toISOString(),
+      }).eq("msg_id", claimedMessageId);
+    }
+    return json(resultPayload);
   } catch (err: any) {
+    if (claimedMessageId) {
+      await supabase.from("campanha_ia_processed_messages").update({
+        status: "failed",
+        result: { error: err.message },
+        updated_at: new Date().toISOString(),
+      }).eq("msg_id", claimedMessageId);
+    }
     console.error("[ia] ERRO:", err.message);
     return new Response(JSON.stringify({ ok: false, error: err.message }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -470,6 +527,15 @@ function json(body: Record<string, unknown>) {
   return new Response(JSON.stringify(body), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 }
 function sleep(ms: number) { return new Promise((r) => setTimeout(r, ms)); }
+
+function isExplicitAutoReply(text: string): boolean {
+  const normalized = text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  return /\b(mensagem|msg|resposta)\s+automatic[ao]\b/.test(normalized)
+    || /\besta\s+e\s+uma\s+(mensagem|msg)\s+automatic[ao]\b/.test(normalized);
+}
 
 async function decryptMedia(
   evoUrl: string,
@@ -854,7 +920,7 @@ NÃO use pra valores (usa <regra_valor>).
 <saida>
 JSON válido apenas:
 {
-  "messages": ["msg1","msg2"],
+  "messages": ["uma única resposta curta e completa"],
   "maturidade_lead": "frio|morno|quente",
   "ALERTA_LEAD": false,
   "alerta_tipo": "",
@@ -867,6 +933,7 @@ JSON válido apenas:
 }
 
 Regras:
+- messages: no máximo UMA mensagem por rodada; consolide tudo em uma resposta curta
 - maturidade_lead: SEMPRE preencha
 - ALERTA_LEAD=true SÓ com maturidade_lead="quente" E sinais explícitos de fechamento
 - conversa_encerrada=true quando: sem perfil OU recusou explicitamente OU JA_NO_QUADRO=true OU NUMERO_ERRADO=true
