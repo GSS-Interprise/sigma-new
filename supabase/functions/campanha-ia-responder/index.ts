@@ -120,33 +120,6 @@ serve(async (req) => {
       }
     }
 
-    // Respostas automáticas explícitas são registradas, mas não qualificam o
-    // lead nem iniciam um loop entre robôs.
-    if (isExplicitAutoReply(finalText)) {
-      const histTmp: any[] = campLead.historico_conversa || [];
-      histTmp.push({
-        role: "medico",
-        text: finalText,
-        ts: new Date().toISOString(),
-        resposta_automatica: true,
-      });
-      await supabase.from("campanha_leads")
-        .update({ historico_conversa: histTmp, data_ultimo_contato: new Date().toISOString() })
-        .eq("id", campLead.id);
-      return json({ ok: true, reason: "resposta_automatica_ignorada" });
-    }
-
-    // Se lead está aguardando resposta do responsável, registra msg no histórico mas não responde ainda
-    if (campLead.aguarda_resposta_humana) {
-      const histTmp: any[] = campLead.historico_conversa || [];
-      histTmp.push({ role: "medico", text: finalText, ts: new Date().toISOString(), pendente_humano: true });
-      await supabase.from("campanha_leads").update({ historico_conversa: histTmp, data_ultimo_contato: new Date().toISOString() }).eq("id", campLead.id);
-      console.log(`[ia] ⏸️ lead aguardando resposta humana — msg registrada mas IA não responde`);
-      return json({ ok: true, reason: "aguardando_resposta_humana", msg: "IA pausada até responsável responder pergunta pendente" });
-    }
-
-    const briefing = campanha?.briefing_ia || {};
-
     // Segunda barreira contra reentrega/retry: mesmo que outro webhook tente
     // processar a mensagem, apenas um worker recebe o lease do msg_id.
     if (msg_id) {
@@ -162,6 +135,42 @@ serve(async (req) => {
       if (!claimed) return json({ ok: true, reason: "duplicate_msg_id", msg_id });
       claimedMessageId = msg_id;
     }
+
+    // Respostas automáticas explícitas são registradas, mas não qualificam o
+    // lead nem iniciam um loop entre robôs.
+    if (isExplicitAutoReply(finalText)) {
+      const histTmp: any[] = campLead.historico_conversa || [];
+      histTmp.push({
+        role: "medico",
+        text: finalText,
+        ts: new Date().toISOString(),
+        resposta_automatica: true,
+      });
+      await supabase.from("campanha_leads")
+        .update({ historico_conversa: histTmp, data_ultimo_contato: new Date().toISOString() })
+        .eq("id", campLead.id);
+      const autoReplyResult = { ok: true, reason: "resposta_automatica_ignorada" };
+      if (claimedMessageId) {
+        await supabase.from("campanha_ia_processed_messages").update({
+          status: "completed",
+          completed_at: new Date().toISOString(),
+          result: autoReplyResult,
+          updated_at: new Date().toISOString(),
+        }).eq("msg_id", claimedMessageId);
+      }
+      return json(autoReplyResult);
+    }
+
+    // Se lead está aguardando resposta do responsável, registra msg no histórico mas não responde ainda
+    if (campLead.aguarda_resposta_humana) {
+      const histTmp: any[] = campLead.historico_conversa || [];
+      histTmp.push({ role: "medico", text: finalText, ts: new Date().toISOString(), pendente_humano: true });
+      await supabase.from("campanha_leads").update({ historico_conversa: histTmp, data_ultimo_contato: new Date().toISOString() }).eq("id", campLead.id);
+      console.log(`[ia] ⏸️ lead aguardando resposta humana — msg registrada mas IA não responde`);
+      return json({ ok: true, reason: "aguardando_resposta_humana", msg: "IA pausada até responsável responder pergunta pendente" });
+    }
+
+    const briefing = campanha?.briefing_ia || {};
 
     // ── 2b. Buscar perfil unificado (Trilha B) ──
     const { data: perfilInteresse } = await supabase

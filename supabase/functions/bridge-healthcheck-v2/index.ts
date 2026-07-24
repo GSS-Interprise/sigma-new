@@ -3,7 +3,7 @@
 // Verifica 5 sinais independentes:
 //   1. bridge_http      — endpoint do webhook responde 200 (igual ao v1)
 //   2. webhooks_ok      — todas instances ativas com URL = /campanha-webhook-bridge
-//   3. fluxo_entrada    — campanha_msg_queue recebeu mensagens em horário comercial
+//   3. fluxo_entrada    — entradas elegíveis de IA possuem processamento durável
 //   4. fluxo_processa   — campanha_leads ganhou response da IA recente
 //   5. fluxo_saida      — campanha_lead_touches com touches executados recente
 //
@@ -17,7 +17,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const BRIDGE_URL = "https://disparador-n8n.r0pfyf.easypanel.host/webhook/campanha-webhook-bridge";
+const N8N_HEALTH_URL = "https://disparador-n8n.srv983143.hstgr.cloud/healthz";
 const BRIDGE_PATH_FRAGMENT = "campanha-webhook-bridge"; // todo webhook saudável tem este fragmento
 const ALERT_PHONE = "555484351512";
 const HTTP_TIMEOUT_MS = 10_000;
@@ -31,7 +31,7 @@ const HOR_COMERCIAL_UTC_FIM = 22;
 const FLUXO_ENTRADA_GAP_HORAS = 3;   // sem msgs incoming há 3h em horário comercial = suspeito
 const FLUXO_SAIDA_GAP_HORAS = 6;     // sem touches há 6h em horário comercial com campanha ativa = suspeito
 
-type Metric = { ok: boolean; detail: string };
+type Metric = { ok: boolean; detail: string; evaluated?: boolean };
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -50,7 +50,7 @@ serve(async (req) => {
   // ── 2. Webhooks das instances saudáveis apontam pro path certo? ──
   const webhooksOk = await checkWebhooksConfig(supabase);
 
-  // ── 3. Fluxo de entrada: campanha_msg_queue tem volume recente em horário comercial? ──
+  // ── 3. Fluxo de entrada: mensagens elegíveis chegaram ao processamento durável? ──
   const fluxoEntrada = await checkFluxoEntrada(supabase, isHorarioComercial);
 
   // ── 4. Fluxo de processamento: campanha_leads ganhou resposta IA recente? ──
@@ -61,7 +61,8 @@ serve(async (req) => {
 
   // ── Composição final ──
   const metricas = { bridge_http: bridgeHttp, webhooks_ok: webhooksOk, fluxo_entrada: fluxoEntrada, fluxo_processa: fluxoProcessa, fluxo_saida: fluxoSaida };
-  const overall = Object.values(metricas).every(m => m.ok) ? "ok" : "down";
+  const avaliadas = Object.values(metricas).filter((m) => m.evaluated !== false);
+  const overall = avaliadas.every((m) => m.ok) ? "ok" : "down";
 
   // ── Persiste estado granular ──
   await upsertConfig(supabase, "bridge_health_status", overall);
@@ -69,15 +70,18 @@ serve(async (req) => {
   await upsertConfig(supabase, "bridge_health_last_detail", JSON.stringify({
     bridge_http: metricas.bridge_http.ok ? "ok" : metricas.bridge_http.detail,
     webhooks_ok: metricas.webhooks_ok.ok ? "ok" : metricas.webhooks_ok.detail,
-    fluxo_entrada: metricas.fluxo_entrada.ok ? "ok" : metricas.fluxo_entrada.detail,
-    fluxo_processa: metricas.fluxo_processa.ok ? "ok" : metricas.fluxo_processa.detail,
-    fluxo_saida: metricas.fluxo_saida.ok ? "ok" : metricas.fluxo_saida.detail,
+    fluxo_entrada: metricas.fluxo_entrada.evaluated === false ? "não avaliado" : metricas.fluxo_entrada.ok ? "ok" : metricas.fluxo_entrada.detail,
+    fluxo_processa: metricas.fluxo_processa.evaluated === false ? "não avaliado" : metricas.fluxo_processa.ok ? "ok" : metricas.fluxo_processa.detail,
+    fluxo_saida: metricas.fluxo_saida.evaluated === false ? "não avaliado" : metricas.fluxo_saida.ok ? "ok" : metricas.fluxo_saida.detail,
     horario_comercial: isHorarioComercial,
   }).slice(0, 1000));
 
   // ── Alertas idempotentes por categoria (só em mudança ok→down) ──
   const alertas: string[] = [];
   for (const [name, m] of Object.entries(metricas)) {
+    // Fora da janela de avaliação não é recuperação. Preserva o último estado
+    // observado e evita alertas "VOLTOU" causados apenas pela troca de horário.
+    if (m.evaluated === false) continue;
     const key = `bridge_health_${name}_status`;
     const { data: prev } = await supabase.from("config_lista_items").select("valor").eq("campo_nome", key).maybeSingle();
     const prevOk = (prev?.valor || "ok") === "ok";
@@ -109,19 +113,8 @@ async function checkBridgeHttp(): Promise<Metric> {
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), HTTP_TIMEOUT_MS);
-    const resp = await fetch(BRIDGE_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        event: "messages.upsert",
-        instance: "_healthcheck_",
-        data: {
-          key: { id: "HEALTHCHECK-" + Date.now(), remoteJid: "550000000001@s.whatsapp.net", fromMe: false },
-          message: { conversation: "[healthcheck-ping-ignore]" },
-        },
-      }),
-      signal: ctrl.signal,
-    });
+    // Testa o runtime do n8n sem injetar uma mensagem falsa no workflow.
+    const resp = await fetch(N8N_HEALTH_URL, { method: "GET", signal: ctrl.signal });
     clearTimeout(t);
     if (resp.status === 200) return { ok: true, detail: "http=200" };
     return { ok: false, detail: `http=${resp.status}` };
@@ -176,7 +169,7 @@ async function checkWebhooksConfig(supabase: any): Promise<Metric> {
 }
 
 async function checkFluxoEntrada(supabase: any, isHorComercial: boolean): Promise<Metric> {
-  if (!isHorComercial) return { ok: true, detail: "fora horário comercial" };
+  if (!isHorComercial) return { ok: true, detail: "fora horário comercial", evaluated: false };
 
   // Tem campanha ativa com leads em status que esperam interação?
   const { count: campanhasAtivas } = await supabase
@@ -187,56 +180,46 @@ async function checkFluxoEntrada(supabase: any, isHorComercial: boolean): Promis
 
   if (!campanhasAtivas || campanhasAtivas === 0) return { ok: true, detail: "sem campanhas ativas" };
 
-  // Houve msg incoming nas últimas N horas?
   const desde = new Date(Date.now() - FLUXO_ENTRADA_GAP_HORAS * 3600_000).toISOString();
-  const { count: msgsRecentes } = await supabase
-    .from("campanha_msg_queue")
-    .select("id", { count: "exact", head: true })
-    .gte("created_at", desde);
+  const { data: snapshot, error } = await supabase.rpc("bridge_ia_health_snapshot", {
+    p_since: desde,
+    p_grace: "2 minutes",
+  });
+  if (error) return { ok: false, detail: `snapshot_error: ${error.message}` };
 
-  // ALSO: tem mensagens em sigzap_messages from_me=false recentes? (sinal externo de tráfego)
-  const { count: incomingSigzap } = await supabase
-    .from("sigzap_messages")
-    .select("id", { count: "exact", head: true })
-    .eq("from_me", false)
-    .gte("created_at", desde);
-
-  if ((msgsRecentes || 0) > 0) return { ok: true, detail: `${msgsRecentes} msgs na fila ${FLUXO_ENTRADA_GAP_HORAS}h` };
-
-  // Sem msgs na queue, mas houve incoming no sigzap = bridge não tá roteando pra fila!
-  if ((incomingSigzap || 0) > 0) {
-    return { ok: false, detail: `${incomingSigzap} msgs incoming no sigzap mas 0 na queue da IA — bridge não tá roteando` };
-  }
-
-  return { ok: true, detail: `0 msgs ${FLUXO_ENTRADA_GAP_HORAS}h mas tb 0 incoming = sem tráfego (não é falha)` };
+  const eligible = Number(snapshot?.eligible_phones || 0);
+  const covered = Number(snapshot?.covered_phones || 0);
+  const missing = Number(snapshot?.missing_phones || 0);
+  if (eligible === 0) return { ok: true, detail: "sem incoming elegível de campanha IA" };
+  if (missing === 0) return { ok: true, detail: `${covered}/${eligible} contatos IA roteados` };
+  return {
+    ok: false,
+    detail: `${missing}/${eligible} contatos de campanha IA sem processamento durável; amostras=${JSON.stringify(snapshot?.missing_samples || [])}`,
+  };
 }
 
 async function checkFluxoProcessamento(supabase: any, isHorComercial: boolean): Promise<Metric> {
-  if (!isHorComercial) return { ok: true, detail: "fora horário comercial" };
-
-  // Se houve msgs entrando, IA deveria ter respondido (registros role=gss em historico_conversa)
+  if (!isHorComercial) return { ok: true, detail: "fora horário comercial", evaluated: false };
   const desde = new Date(Date.now() - FLUXO_ENTRADA_GAP_HORAS * 3600_000).toISOString();
+  const { data: snapshot, error } = await supabase.rpc("bridge_ia_health_snapshot", {
+    p_since: desde,
+    p_grace: "2 minutes",
+  });
+  if (error) return { ok: false, detail: `snapshot_error: ${error.message}` };
 
-  // Houve mensagens na queue que JÁ deveriam ter sido processadas?
-  const { count: incomingRecente } = await supabase
-    .from("campanha_msg_queue")
-    .select("id", { count: "exact", head: true })
-    .gte("created_at", desde);
-
-  if (!incomingRecente || incomingRecente === 0) return { ok: true, detail: "sem incoming pra processar" };
-
-  // data_ultimo_contato em campanha_leads dispara quando IA grava resposta
-  const { count: respondidos } = await supabase
-    .from("campanha_leads")
-    .select("id", { count: "exact", head: true })
-    .gte("data_ultimo_contato", desde);
-
-  if ((respondidos || 0) > 0) return { ok: true, detail: `${respondidos} leads c/ resposta IA recente` };
-  return { ok: false, detail: `${incomingRecente} msgs entraram mas 0 leads atualizados — IA não tá processando` };
+  const completed = Number(snapshot?.completed || 0);
+  const failed = Number(snapshot?.failed || 0);
+  const stuck = Number(snapshot?.stuck || 0);
+  const total = completed + failed;
+  if (stuck > 0) return { ok: false, detail: `${stuck} processamentos travados há mais de 5 min` };
+  if (failed >= 3 && failed / Math.max(total, 1) > 0.2) {
+    return { ok: false, detail: `${failed}/${total} processamentos falharam nas últimas ${FLUXO_ENTRADA_GAP_HORAS}h` };
+  }
+  return { ok: true, detail: `${completed} concluídos, ${failed} falhos, ${stuck} travados` };
 }
 
 async function checkFluxoSaida(supabase: any, isHorComercial: boolean): Promise<Metric> {
-  if (!isHorComercial) return { ok: true, detail: "fora horário comercial" };
+  if (!isHorComercial) return { ok: true, detail: "fora horário comercial", evaluated: false };
 
   // Existe campanha ativa com pool > 0 disponível pra disparar?
   const { data: campsAtivas } = await supabase
