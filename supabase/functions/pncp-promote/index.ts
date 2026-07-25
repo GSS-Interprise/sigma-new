@@ -84,12 +84,33 @@ serve(async (req) => {
       const m: any = byNcp.get(ncp);
       if (!m) { erros++; continue; }
       try {
-        // dedup: já existe card com esse controle PNCP?
+        // dedup nível 1: já promovemos este mesmo registro do PNCP?
         const { data: existe } = await supabase.from("licitacoes").select("id").eq("licitacao_codigo", ncp).maybeSingle();
         if (existe) {
           await supabase.from("pncp_triagem").update({ promovido_licitacao_id: existe.id, status: "promovido" })
             .eq("numero_controle_pncp", ncp).eq("perfil_slug", perfil);
           pulados++; continue;
+        }
+
+        // dedup nível 2 — CRUZADO com a Effecti. Sem isto o mesmo edital vira
+        // 2 cards: o robô deduplica por numero_controle_pncp e a Effecti por
+        // effect_id, chaves DISJUNTAS que nunca colidem. São 314 editais que
+        // as duas fontes enxergam. Casa por município (IBGE) + número real do
+        // edital, a mesma regra do pncp_comparativo.
+        const numRaw = String(m.raw?.numeroCompra || "").match(/\d{1,6}/)?.[0];
+        const numInt = numRaw ? parseInt(numRaw.replace(/^0+/, "") || "0", 10) : 0;
+        if (m.codigo_ibge && numInt > 0) {
+          const { data: jaTem } = await supabase.rpc("licitacao_ja_existe", {
+            p_ibge: String(m.codigo_ibge), p_num: numInt,
+          });
+          if (jaTem) {
+            // marca a triagem apontando pro card que JÁ existe (da Effecti ou
+            // manual) — assim o comparativo mostra "os dois acharam" em vez de
+            // fingir que o robô não viu.
+            await supabase.from("pncp_triagem").update({ promovido_licitacao_id: jaTem, status: "promovido" })
+              .eq("numero_controle_pncp", ncp).eq("perfil_slug", perfil);
+            pulados++; continue;
+          }
         }
 
         const numeroCompra = String(m.raw?.numeroCompra || m.sequencial || "").trim();
@@ -111,6 +132,11 @@ serve(async (req) => {
           data_disputa: dataDisputa,
           status: "captacao_edital",
           tipo_licitacao: "GSS",
+          // Etiqueta de ORIGEM: sem ela o card do robô fica indistinguível do
+          // card da Effecti no kanban, e a equipe não consegue nem filtrar nem
+          // avaliar de onde veio a oportunidade. Mesma mecânica das etiquetas
+          // GSS/AGES dos captadores.
+          etiquetas: ["PNCP"],
         }).select("id").single();
         if (insErr || !nova) { erros++; continue; }
         const licId = nova.id;
