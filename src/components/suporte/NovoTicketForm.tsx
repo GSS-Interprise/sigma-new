@@ -1,3 +1,4 @@
+/* eslint-disable no-control-regex, @typescript-eslint/no-explicit-any */
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -25,6 +26,9 @@ const formSchema = z.object({
     required_error: "Selecione o tipo do suporte",
   }),
   fornecedor_externo: z.enum(["dr_escala", "infra_ti"]).optional(),
+  categoria_operacional: z.string().optional(),
+  objeto_tipo: z.string().optional(),
+  objeto_referencia: z.string().optional(),
   descricao: z.string().min(10, "A descrição deve ter no mínimo 10 caracteres"),
   solicitante_id: z.string().optional(),
 });
@@ -206,7 +210,10 @@ export function NovoTicketForm({ onSuccess }: NovoTicketFormProps) {
           numero: '', // Será gerado pelo trigger
           status: "aberto" as const,
           setor_responsavel: "TI",
-        })
+          categoria_operacional: values.categoria_operacional || null,
+          objeto_tipo: values.objeto_tipo || null,
+          objeto_referencia: values.objeto_referencia?.trim() || null,
+        } as never)
         .select()
         .single();
 
@@ -405,6 +412,78 @@ export function NovoTicketForm({ onSuccess }: NovoTicketFormProps) {
             )}
           />
         )}
+
+        <div className="grid gap-4 md:grid-cols-3">
+          <FormField
+            control={form.control}
+            name="categoria_operacional"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Categoria operacional</FormLabel>
+                <Select onValueChange={field.onChange} value={field.value}>
+                  <FormControl>
+                    <SelectTrigger className="min-h-11">
+                      <SelectValue placeholder="Selecione..." />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="sincronizacao_mensagens">Sincronização de mensagens</SelectItem>
+                    <SelectItem value="chip_conexao">Conexão do chip</SelectItem>
+                    <SelectItem value="qr_reconexao">QR / reconexão</SelectItem>
+                    <SelectItem value="campanha_disparo">Campanha / disparo</SelectItem>
+                    <SelectItem value="ia_handoff">IA / handoff humano</SelectItem>
+                    <SelectItem value="cadastro_lead">Cadastro do médico</SelectItem>
+                    <SelectItem value="acesso_permissao">Acesso / permissão</SelectItem>
+                    <SelectItem value="outro">Outro</SelectItem>
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="objeto_tipo"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Objeto afetado</FormLabel>
+                <Select onValueChange={field.onChange} value={field.value}>
+                  <FormControl>
+                    <SelectTrigger className="min-h-11">
+                      <SelectValue placeholder="Selecione..." />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="chip">Chip</SelectItem>
+                    <SelectItem value="campanha">Campanha</SelectItem>
+                    <SelectItem value="lead">Médico</SelectItem>
+                    <SelectItem value="conversa">Conversa</SelectItem>
+                    <SelectItem value="usuario">Usuário</SelectItem>
+                    <SelectItem value="sistema">Sistema</SelectItem>
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="objeto_referencia"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Identificação</FormLabel>
+                <FormControl>
+                  <Input
+                    className="min-h-11"
+                    placeholder="Número, campanha ou contato"
+                    {...field}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
 
         <FormField
           control={form.control}

@@ -4,8 +4,31 @@
 > dispararem de verdade** no Sigma — infra Evolution, proxy, classificação de chips,
 > roteamento de webhooks, pipeline de envio anti-ban, e o runbook de troubleshooting.
 >
-> **Última atualização:** 2026-06-01 (sessão de correção do proxy + bug de opt-out).
+> **Última atualização:** 2026-07-21 (Webshare dedicado + domínios estáveis Evolution/N8N).
 > **Leia junto:** `[[Sigma-Anti-Ban-Arquitetura]]` (Vault), `.claude/handover-proxima-sessao.md`.
+
+## Estado operacional — 2026-07-21
+
+- Provider padrão: **Webshare Dedicated ISP BR**, 25 IPs estáticos contratados.
+- Alocação: tabela `chip_proxy_assignments` garante **1 proxy exclusivo por chip**; credenciais
+  são resolvidas pela API Webshare em runtime e nunca persistidas no Postgres.
+- Rollout: 23 chips ativos receberam 23 proxies distintos; 6 estavam `open` ao fim da
+  auditoria e 17 estavam `close` aguardando novo QR. Todos os `open` usam proxy.
+- Endpoint Evolution estável: `https://disparador-evolution-api.srv983143.hstgr.cloud`.
+- Endpoint N8N estável: `https://disparador-n8n.srv983143.hstgr.cloud`.
+- Os 23 webhooks Evolution apontam para o N8N estável e estão habilitados. Os healthchecks
+  `bridge-healthcheck` e `bridge-healthcheck-v2` retornaram `ok` após a migração.
+- O pool Webshare tem menor latência que o Bright Data anterior, porém os 25 IPs pertencem
+  ao mesmo `/24`/ASN. São exclusivos, mas não oferecem diversidade de operadora móvel.
+
+### Invariantes da implementação
+
+1. Um `provider_proxy_id` não pode pertencer a dois chips (constraint única no banco).
+2. Chip que estava `open` precisa voltar a `open` depois da troca; caso contrário o rollout
+   restaura automaticamente a configuração anterior.
+3. Proxy reservado que some do plano não é substituído silenciosamente, para evitar troca
+   inesperada de IP da sessão WhatsApp.
+4. Novos chips usam `chip-bootstrap`, que aplica Webshare e grava apenas metadados públicos.
 
 ---
 
@@ -311,3 +334,40 @@ print(o.read().decode())
 - [ ] **Rescan QR** dos chips IA `close` (9003, 9007, 9009, 9011, 9012).
 - [ ] **Avaliar upgrade do Evolution** (v2.3.7 tem o bug de cache `fetchInstances` vs `connectionState`).
 - [ ] **Sincronizar `chips.webhook_url`** com a verdade do Evolution (mirror desatualizado).
+
+---
+
+## 13. Auditoria de sincronização e outbox (2026-07-21)
+
+- Evolution e N8N passaram a usar os hostnames estáveis
+  `disparador-evolution-api.srv983143.hstgr.cloud` e
+  `disparador-n8n.srv983143.hstgr.cloud`; os 23 webhooks foram atualizados.
+- Os 23 chips ativos receberam proxy Webshare dedicado 1:1. Estado no fechamento:
+  6 `open`, 2 `connecting` aguardando QR e 15 `close` aguardando QR.
+- Corrigido o cron da `sigzap_outbox`: a service role fica no Supabase Vault e o
+  worker processa uma mensagem por minuto para respeitar o antiban.
+- Mensagens de chip desconectado permanecem `queued` sem consumir tentativas.
+  Número inexistente no WhatsApp vira falha terminal `PHONE_NOT_ON_WHATSAPP`.
+- A confirmação da Evolution (`wa_message_id` + resposta) agora é gravada antes
+  da materialização no histórico. Assim, falha de banco não provoca reenvio.
+- Envios comerciais feitos por `cold_disparo`, `cadencia`, `resposta_ia` e
+  `opt_out` agora persistem automaticamente em `sigzap_messages`.
+- Backfill executado para 4.139 envios comerciais históricos: zero IDs faltantes
+  quando comparados com `chip_send_log`.
+- Reprocessadas 39 mensagens recentes encontradas na Evolution mas ausentes no
+  Sigma. A amostra final dos 50 registros mais recentes por chip conectado ficou
+  sem perda global de IDs.
+- As 101 mensagens preservadas da `Bruna 2` ficaram em retenção reversível
+  (`HELD_MANUAL_PROSPECTION`) para não duplicar a prospecção feita no aparelho.
+
+### Importação após QR
+
+- As 23 instâncias estão com `syncFullHistory=true` confirmado na Evolution.
+- `sigzap-history-sync-worker` descobre contatos e conversas diretamente no
+  histórico da Evolution; não depende de a conversa já existir no Sigma.
+- A paginação é persistida em `sigzap_history_sync_jobs`. Ao mudar de `close`
+  para `open`, um trigger reinicia a captura pela página mais recente.
+- Dez workers por minuto distribuem a recuperação entre os chips conectados.
+  O histórico recente aparece primeiro; páginas antigas continuam em background.
+- Depois do catch-up, cada instância permanece em reconciliação periódica para
+  cobrir webhooks perdidos sem duplicar mensagens já importadas.

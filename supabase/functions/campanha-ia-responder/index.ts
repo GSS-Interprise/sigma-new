@@ -368,7 +368,26 @@ serve(async (req) => {
         .maybeSingle();
       chipIaId = chipRow?.id || null;
     }
-    if (evoUrl && evoKey && instance_name && chipIaId) {
+    if (messages.length > 0 && evoUrl && evoKey && instance_name && chipIaId) {
+      const { data: responseTurnToken, error: responseTurnError } = await supabase.rpc(
+        "campanha_ia_claim_response_turn",
+        { p_campanha_lead_id: campLead.id },
+      );
+      if (responseTurnError) {
+        throw new Error(`response_turn_claim: ${responseTurnError.message}`);
+      }
+      if (!responseTurnToken) {
+        const blockedResult = { ok: true, reason: "ia_turn_blocked_by_human_state" };
+        if (claimedMessageId) {
+          await supabase.from("campanha_ia_processed_messages").update({
+            status: "completed",
+            completed_at: new Date().toISOString(),
+            result: blockedResult,
+            updated_at: new Date().toISOString(),
+          }).eq("msg_id", claimedMessageId);
+        }
+        return json(blockedResult);
+      }
       const presenceUrl = `${evoUrl}/chat/sendPresence/${encodeURIComponent(instance_name)}`;
       for (let i = 0; i < messages.length; i++) {
         if (i > 0) await sleep(1500 + Math.random() * 1500);
@@ -382,6 +401,28 @@ serve(async (req) => {
           });
         } catch (_) { /* presence é best-effort */ }
         await sleep(typingDelay);
+        const { data: canSend, error: consumeTurnError } = await supabase.rpc(
+          "campanha_ia_consume_response_turn",
+          {
+            p_campanha_lead_id: campLead.id,
+            p_token: responseTurnToken,
+          },
+        );
+        if (consumeTurnError) {
+          throw new Error(`response_turn_consume: ${consumeTurnError.message}`);
+        }
+        if (!canSend) {
+          const blockedResult = { ok: true, reason: "human_assumed_before_send" };
+          if (claimedMessageId) {
+            await supabase.from("campanha_ia_processed_messages").update({
+              status: "completed",
+              completed_at: new Date().toISOString(),
+              result: blockedResult,
+              updated_at: new Date().toISOString(),
+            }).eq("msg_id", claimedMessageId);
+          }
+          return json(blockedResult);
+        }
         const result = await sendWhatsAppText({
           supabase,
           evo: { url: evoUrl, apiKey: evoKey },

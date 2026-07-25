@@ -63,6 +63,13 @@ verify_jwt = false
 [functions.chip-bootstrap]
 verify_jwt = false
 
+# Operação administrativa de rollout; exige JWT válido e usa service_role internamente.
+[functions.chip-webshare-rollout]
+verify_jwt = true
+
+[functions.sigzap-history-sync-worker]
+verify_jwt = false
+
 # Sprint 2 antiban camada 2 — aquecedor-tick é chamado por pg_cron a cada 2min.
 # Pra cada chip em aquecimento/pronto/producao, decide se gera evento orgânico
 # (sorteia parceiro power-law, gera mensagem via OpenAI, envia via helper).

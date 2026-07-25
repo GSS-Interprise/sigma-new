@@ -19,7 +19,110 @@ const EXPECTED_COLUMNS = {
   email: ["email", "e-mail"],
   cidade: ["cidade", "city", "municipio"],
   data_nascimento: ["data_nasc", "data_nascimento", "nascimento", "datanasc", "dt_nasc", "dt_nascimento", "birth", "birthdate"],
+  classificacao_contato: ["classificacao", "classificação", "situacao_contato", "situação_contato"],
+  motivo_classificacao: ["motivo_classificacao", "motivo classificação", "motivo_bloqueio"],
+  campanha_id: ["campanha_id", "id_campanha"],
 };
+
+type ImportClassification =
+  | "opt_out"
+  | "aposentado"
+  | "sem_whatsapp"
+  | "contato_invalido"
+  | "perda_local";
+
+function normalizeClassification(value: unknown): ImportClassification | null {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[\s-]+/g, "_");
+  const aliases: Record<string, ImportClassification> = {
+    opt_out: "opt_out",
+    nao_contatar: "opt_out",
+    nao_chamar: "opt_out",
+    aposentado: "aposentado",
+    aposentada: "aposentado",
+    sem_whatsapp: "sem_whatsapp",
+    contato_invalido: "contato_invalido",
+    telefone_invalido: "contato_invalido",
+    perda: "perda_local",
+    perdido: "perda_local",
+    perda_local: "perda_local",
+  };
+  return aliases[normalized] || null;
+}
+
+async function applyImportClassification(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  leadId: string,
+  phone: string,
+  name: string,
+  classification: ImportClassification | null,
+  reason: string | null,
+  campaignId: string | null,
+) {
+  if (!classification) return;
+  const description = reason || `Classificação recebida na importação: ${classification}`;
+
+  if (classification === "opt_out") {
+    await supabase.from("leads").update({ opt_out: true }).eq("id", leadId);
+    await supabase.from("blacklist").upsert(
+      {
+        phone_e164: phone,
+        nome: name,
+        origem: "importacao",
+        reason: description,
+      },
+      { onConflict: "phone_e164" },
+    );
+  } else if (classification === "perda_local") {
+    if (!campaignId) {
+      throw new Error("Classificação perda_local exige a coluna campanha_id");
+    }
+    const { data: updated, error } = await supabase
+      .from("campanha_leads")
+      .update({
+        status: "descartado",
+        resultado_final: "perdido",
+        motivo_perdido: reason || "importacao_perda_local",
+        data_status: new Date().toISOString(),
+      })
+      .eq("campanha_id", campaignId)
+      .eq("lead_id", leadId)
+      .select("id");
+    if (error) throw error;
+    if (!updated?.length) throw new Error("Médico não pertence à campanha informada para perda_local");
+  } else {
+    const status = classification === "aposentado"
+      ? "retired"
+      : classification === "sem_whatsapp"
+        ? "no_whatsapp"
+        : "invalid_contact";
+    await supabase.from("lead_contactability").upsert({
+      lead_id: leadId,
+      status,
+      reason: description,
+      reported_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+  }
+
+  await supabase.from("lead_historico").insert({
+    lead_id: leadId,
+    tipo_evento: "campanha_status_change",
+    descricao_resumida: `Classificação importada: ${classification}`,
+    metadados: {
+      origem: "importacao_excel",
+      classificacao: classification,
+      motivo: reason,
+      campanha_id: campaignId,
+      escopo: classification === "perda_local" ? "campanha" : "global",
+    },
+  });
+}
 
 // Detecta colunas de telefones adicionais: telefone1, telefone2, tel1, celular2, whatsapp3, phone_2, etc.
 // Retorna array ordenado por número (1, 2, 3...) com o nome ORIGINAL da coluna.
@@ -543,7 +646,14 @@ serve(async (req) => {
     };
 
     // Processar linhas do chunk atual - usando Map para deduplicar por telefone (phone_e164)
-    const leadsMap = new Map<string, { rowNum: number; data: Record<string, any>; originalRow: Record<string, any> }>();
+    const leadsMap = new Map<string, {
+      rowNum: number;
+      data: Record<string, any>;
+      originalRow: Record<string, any>;
+      classification: ImportClassification | null;
+      classificationReason: string | null;
+      campaignId: string | null;
+    }>();
     
     for (let i = 0; i < chunkData.length; i++) {
       const row = chunkData[i];
@@ -554,6 +664,39 @@ serve(async (req) => {
       const cpfRaw = columnMapping.cpf ? row[columnMapping.cpf] : null;
       const ufRaw = row[columnMapping.uf!]; // UF é obrigatório
       const dataNascRaw = columnMapping.data_nascimento ? row[columnMapping.data_nascimento] : null;
+      const classificationRaw = columnMapping.classificacao_contato
+        ? row[columnMapping.classificacao_contato]
+        : null;
+      const classification = normalizeClassification(classificationRaw);
+      const classificationReason = columnMapping.motivo_classificacao && row[columnMapping.motivo_classificacao]
+        ? String(row[columnMapping.motivo_classificacao]).trim()
+        : null;
+      const campaignId = columnMapping.campanha_id && row[columnMapping.campanha_id]
+        ? String(row[columnMapping.campanha_id]).trim()
+        : null;
+
+      if (classificationRaw && !classification) {
+        results.skipped++;
+        if (results.errors.length < 500) {
+          results.errors.push({
+            linha: rowNum,
+            motivo: `Classificação inválida: ${String(classificationRaw)}`,
+            dados: { nome: String(nome || ""), classificacao: String(classificationRaw) },
+          });
+        }
+        continue;
+      }
+      if (classification === "perda_local" && !campaignId) {
+        results.skipped++;
+        if (results.errors.length < 500) {
+          results.errors.push({
+            linha: rowNum,
+            motivo: "perda_local exige Campanha_ID",
+            dados: { nome: String(nome || ""), classificacao: "perda_local" },
+          });
+        }
+        continue;
+      }
       
       // Validar Nome
       if (!nome || String(nome).trim() === "") {
@@ -678,7 +821,14 @@ serve(async (req) => {
         }
       }
 
-      leadsMap.set(phone_e164, { rowNum, data: leadData, originalRow: row });
+      leadsMap.set(phone_e164, {
+        rowNum,
+        data: leadData,
+        originalRow: row,
+        classification,
+        classificationReason,
+        campaignId,
+      });
     }
 
     // Converter Map para array para upsert
@@ -753,7 +903,18 @@ serve(async (req) => {
             }
           } else {
             results.updated++;
-            if (updated?.id) leadIdsImportados.push(updated.id);
+            if (updated?.id) {
+              leadIdsImportados.push(updated.id);
+              await applyImportClassification(
+                supabase,
+                updated.id,
+                item.data.phone_e164,
+                item.data.nome,
+                item.classification,
+                item.classificationReason,
+                item.campaignId,
+              );
+            }
           }
         }
         else {
@@ -785,8 +946,21 @@ serve(async (req) => {
           }
         } else {
           results.inserted += insertedRows?.length || insertRows.length;
-          for (const row of insertedRows || []) {
-            if (row?.id) leadIdsImportados.push(row.id);
+          for (let insertedIndex = 0; insertedIndex < (insertedRows || []).length; insertedIndex++) {
+            const row = insertedRows![insertedIndex];
+            const item = insertMeta[insertedIndex];
+            if (row?.id) {
+              leadIdsImportados.push(row.id);
+              await applyImportClassification(
+                supabase,
+                row.id,
+                item.data.phone_e164,
+                item.data.nome,
+                item.classification,
+                item.classificationReason,
+                item.campaignId,
+              );
+            }
           }
         }
       }

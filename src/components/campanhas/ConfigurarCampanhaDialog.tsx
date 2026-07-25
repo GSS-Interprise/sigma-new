@@ -25,16 +25,22 @@ import {
   CheckCircle2,
   Settings,
   ListChecks,
+  Target,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useChipsEmUso } from "@/hooks/useChipsEmUso";
 import { toast } from "sonner";
 import { ConfirmDestructive } from "@/components/common/ConfirmDestructive";
+import { CampaignStrategiesConfig } from "./CampaignStrategiesConfig";
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   campanhaId: string | null;
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Erro inesperado";
 }
 
 export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Props) {
@@ -58,7 +64,7 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
     queryKey: ["campanha-configurar", campanhaId],
     enabled: !!campanhaId && open,
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from("campanhas")
         .select("*")
         .eq("id", campanhaId)
@@ -75,11 +81,11 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
     setRotationStrategy(campanha.rotation_strategy || "round_robin");
     setLimiteDiario(campanha.limite_diario_campanha || 30);
     setBatchSize(campanha.batch_size || 5);
-    const briefing = campanha.briefing_ia || {};
-    setHandoffNome(briefing.handoff_nome || "");
-    setHandoffTelefone(briefing.handoff_telefone || "");
-    setHandoffFrase(briefing.handoff_frase || "");
-    setTarefaPassos(campanha.tarefa_cadencia_passos || []);
+    const briefing = (campanha.briefing_ia || {}) as Record<string, unknown>;
+    setHandoffNome(String(briefing.handoff_nome || ""));
+    setHandoffTelefone(String(briefing.handoff_telefone || ""));
+    setHandoffFrase(String(briefing.handoff_frase || ""));
+    setTarefaPassos((campanha.tarefa_cadencia_passos || []) as unknown as CadenciaPasso[]);
     setTarefaTemplateId(campanha.tarefa_cadencia_template_id || null);
   }, [campanha]);
 
@@ -129,7 +135,7 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
         handoff_telefone: handoffTelefone.trim(),
         handoff_frase: handoffFrase.trim() || "Vai te passar todos os detalhes sobre valores, escala e condições.",
       };
-      const { error } = await (supabase as any)
+      const { error } = await supabase
         .from("campanhas")
         .update({
           chip_ids: chipIds.length > 0 ? chipIds : null,
@@ -150,7 +156,7 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
       qc.invalidateQueries({ queryKey: ["campanha-configurar", campanhaId] });
       toast.success("Configurações salvas");
     },
-    onError: (e: any) => toast.error("Erro: " + e.message),
+    onError: (error: unknown) => toast.error("Erro: " + errorMessage(error)),
   });
 
   // Mutação: ativar
@@ -159,7 +165,7 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
       if (!podeAtivar) throw new Error("Configure chip + responsável + leads antes");
       // Salva primeiro
       await salvar.mutateAsync();
-      const { error } = await (supabase as any)
+      const { error } = await supabase
         .from("campanhas")
         .update({ status: "ativa" })
         .eq("id", campanhaId);
@@ -170,13 +176,13 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
       toast.success("Campanha ATIVADA. Em até 1 minuto começa o primeiro disparo.");
       onOpenChange(false);
     },
-    onError: (e: any) => toast.error("Erro: " + e.message),
+    onError: (error: unknown) => toast.error("Erro: " + errorMessage(error)),
   });
 
   // Mutação: pausar / despausar
   const togglePausa = useMutation({
     mutationFn: async (novoStatus: "ativa" | "pausada") => {
-      const { error } = await (supabase as any)
+      const { error } = await supabase
         .from("campanhas")
         .update({ status: novoStatus })
         .eq("id", campanhaId);
@@ -187,14 +193,14 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
       qc.invalidateQueries({ queryKey: ["campanha-configurar", campanhaId] });
       toast.success(variables === "ativa" ? "Campanha retomada" : "Campanha pausada");
     },
-    onError: (e: any) => toast.error("Erro: " + e.message),
+    onError: (error: unknown) => toast.error("Erro: " + errorMessage(error)),
   });
 
   if (!campanhaId) return null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="w-[calc(100vw-2rem)] max-w-3xl max-h-[90dvh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Settings className="h-5 w-5" />
@@ -212,20 +218,25 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
           <div className="text-center py-12 text-muted-foreground">Carregando...</div>
         ) : (
           <Tabs value={tab} onValueChange={setTab} className="flex-1 overflow-hidden flex flex-col">
-            <TabsList className="grid grid-cols-4">
-              <TabsTrigger value="disparo" className="gap-1.5">
+            <div className="overflow-x-auto pb-1">
+            <TabsList className="h-auto w-max min-w-full justify-start">
+              <TabsTrigger value="disparo" className="min-h-11 gap-1.5">
                 <Smartphone className="h-3.5 w-3.5" />
                 Chips
               </TabsTrigger>
-              <TabsTrigger value="tarefas" className="gap-1.5">
+              <TabsTrigger value="tarefas" className="min-h-11 gap-1.5">
                 <ListChecks className="h-3.5 w-3.5" />
                 Tarefas
               </TabsTrigger>
-              <TabsTrigger value="responsavel" className="gap-1.5">
+              <TabsTrigger value="responsavel" className="min-h-11 gap-1.5">
                 <UserPlus className="h-3.5 w-3.5" />
                 Responsável
               </TabsTrigger>
-              <TabsTrigger value="ativacao" className="gap-1.5">
+              <TabsTrigger value="estrategias" className="min-h-11 gap-1.5">
+                <Target className="h-3.5 w-3.5" />
+                Estratégias
+              </TabsTrigger>
+              <TabsTrigger value="ativacao" className="min-h-11 gap-1.5">
                 {campanha?.status === "ativa" ? (
                   <Pause className="h-3.5 w-3.5" />
                 ) : (
@@ -234,6 +245,7 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
                 Ativação
               </TabsTrigger>
             </TabsList>
+            </div>
 
             <div className="flex-1 overflow-y-auto py-4">
               {/* ABA 1: CHIPS */}
@@ -251,7 +263,7 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
                         Nenhum chip disponível
                       </p>
                     ) : (
-                      chips.map((c: any) => {
+                      chips.map((c) => {
                         const selected = chipIds.includes(c.id);
                         const open = c.connection_state === "open";
                         const usadoPor = !selected ? chipsEmUso?.get(c.id) : undefined;
@@ -433,7 +445,11 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
                 </div>
               </TabsContent>
 
-              {/* ABA 3: ATIVAÇÃO */}
+              <TabsContent value="estrategias" className="m-0">
+                <CampaignStrategiesConfig campanhaId={campanhaId} />
+              </TabsContent>
+
+              {/* ABA: ATIVAÇÃO */}
               <TabsContent value="ativacao" className="m-0 space-y-4">
                 <div className="border rounded p-4 space-y-2">
                   <h4 className="text-sm font-semibold">Checklist antes de ativar</h4>

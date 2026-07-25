@@ -21,6 +21,11 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  evolutionProxyPayload,
+  getOrAllocateWebshareProxy,
+  publicProxyConfig,
+} from "../_shared/webshare-proxy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -76,7 +81,11 @@ serve(async (req) => {
     }
 
     const proxyPassword = Deno.env.get("BRIGHT_DATA_PROXY_PASSWORD");
-    const wantProxy = !input.skip_proxy && cfg.proxy_provider === "bright_data" && !!proxyPassword;
+    const webshareApiKey = Deno.env.get("WEBSHARE_API_KEY");
+    const wantProxy = !input.skip_proxy && (
+      (cfg.proxy_provider === "webshare" && !!webshareApiKey) ||
+      (cfg.proxy_provider === "bright_data" && !!proxyPassword)
+    );
 
     // ── 2. Sanitiza nome da instância (Evolution não aceita certos chars) ──
     const baseName = input.nome.trim().replace(/\s+/g, " ").slice(0, 50);
@@ -105,14 +114,19 @@ serve(async (req) => {
       headers: { "Content-Type": "application/json", apikey: evoKey },
       body: JSON.stringify(createPayload),
     });
-    const createBody = await createResp.json().catch(() => null);
+    const createBody = await createResp.json().catch(() => null) as {
+      instance?: { instanceId?: string; id?: string };
+      qrcode?: { base64?: string } | string;
+    } | null;
     if (!createResp.ok) {
       console.error("[chip-bootstrap] create instance failed:", createBody);
       return json({ ok: false, error: "evolution_create_failed", detail: createBody }, 500);
     }
 
-    const instanceUuid = (createBody as any)?.instance?.instanceId || (createBody as any)?.instance?.id || null;
-    const qrcode = (createBody as any)?.qrcode?.base64 || (createBody as any)?.qrcode || null;
+    const instanceUuid = createBody?.instance?.instanceId || createBody?.instance?.id || null;
+    const qrcode = typeof createBody?.qrcode === "string"
+      ? createBody.qrcode
+      : createBody?.qrcode?.base64 || null;
 
     // ── 4. Cria registro em chips (precisamos do uuid antes do proxy) ──
     const { data: chipRow, error: chipErr } = await supabase
@@ -144,40 +158,50 @@ serve(async (req) => {
     }
     const chipId = chipRow.id as string;
 
-    // ── 5. Aplica proxy Bright Data (sticky por chip_id curto) ──
+    // ── 5. Aplica proxy e persiste somente metadados públicos ──
     let proxyApplied = false;
     if (wantProxy) {
-      const sessionId = `${slug}${chipId.slice(0, 8)}`;
-      const proxyUsername = `brd-customer-${cfg.proxy_customer_id}-zone-${cfg.proxy_zone}-country-${cfg.proxy_country}-session-${sessionId}`;
+      let proxyPayload: Record<string, unknown>;
+      let proxyConfig: Record<string, unknown>;
 
-      const proxyResp = await fetch(`${evoUrl}/proxy/set/${encodeURIComponent(instanceName)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", apikey: evoKey },
-        body: JSON.stringify({
+      if (cfg.proxy_provider === "webshare" && webshareApiKey) {
+        const proxy = await getOrAllocateWebshareProxy(supabase, chipId, webshareApiKey);
+        proxyPayload = evolutionProxyPayload(proxy);
+        proxyConfig = publicProxyConfig(proxy);
+      } else {
+        const sessionId = `${slug}${chipId.slice(0, 8)}`;
+        const proxyUsername = `brd-customer-${cfg.proxy_customer_id}-zone-${cfg.proxy_zone}-country-${cfg.proxy_country}-session-${sessionId}`;
+        proxyPayload = {
           enabled: true,
           host: cfg.proxy_host,
           port: cfg.proxy_port,
           protocol: "http",
           username: proxyUsername,
           password: proxyPassword,
-        }),
+        };
+        proxyConfig = {
+          provider: "bright_data",
+          host: cfg.proxy_host,
+          port: cfg.proxy_port,
+          session: sessionId,
+        };
+      }
+
+      const proxyResp = await fetch(`${evoUrl}/proxy/set/${encodeURIComponent(instanceName)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: evoKey },
+        body: JSON.stringify(proxyPayload),
       });
       proxyApplied = proxyResp.ok;
       if (!proxyApplied) {
         const errText = await proxyResp.text();
         console.warn(`[chip-bootstrap] proxy set failed (${proxyResp.status}):`, errText.slice(0, 200));
       } else {
-        // Salva proxy_config (sem senha) na tabela chips pra auditoria
-        await supabase.from("chips").update({
-          proxy_config: {
-            provider: "bright_data",
-            host: cfg.proxy_host,
-            port: cfg.proxy_port,
-            session: sessionId,
-          },
-        }).eq("id", chipId);
-        console.log(`[chip-bootstrap] proxy aplicado: session=${sessionId}`);
+        await supabase.from("chips").update({ proxy_config: proxyConfig }).eq("id", chipId);
+        console.log(`[chip-bootstrap] proxy ${cfg.proxy_provider} aplicado`);
       }
+    } else if (!input.skip_proxy) {
+      console.error(`[chip-bootstrap] provider ${cfg.proxy_provider || "ausente"} sem credencial`);
     }
 
     // ── 6. Configura webhook global ──
@@ -187,11 +211,13 @@ serve(async (req) => {
         method: "POST",
         headers: { "Content-Type": "application/json", apikey: evoKey },
         body: JSON.stringify({
-          enabled: true,
-          url: webhookCfg.url,
-          webhookByEvents: webhookCfg.byEvents ?? false,
-          webhookBase64: webhookCfg.base64 ?? false,
-          events: webhookCfg.events || ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED"],
+          webhook: {
+            enabled: true,
+            url: webhookCfg.url,
+            webhookByEvents: webhookCfg.byEvents ?? false,
+            webhookBase64: webhookCfg.base64 ?? false,
+            events: webhookCfg.events || ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED"],
+          },
         }),
       });
       if (webhookResp.ok) {
@@ -205,14 +231,14 @@ serve(async (req) => {
     // ── 7. Cria chip_state em fase='setup' com aquecedor ATIVO ──
     // aquecedor_ativo=true marca chip como elegível pro aquecedor automatizado
     // (chips antigos em produção têm aquecedor_ativo=false, ficam intactos).
-    await supabase.from("chip_state").insert({
+    const { error: chipStateInsertError } = await supabase.from("chip_state").insert({
       chip_id: chipId,
       fase: "setup",
       warmup_start_date: null, // só seta quando chip parear (open)
       health_score: 0,
       aquecedor_ativo: true,
-    }).then(() => null).catch(async () => {
-      // Já existe? upsert manual
+    });
+    if (chipStateInsertError) {
       await supabase.from("chip_state").update({
         fase: "setup",
         warmup_start_date: null,
@@ -220,7 +246,7 @@ serve(async (req) => {
         pause_reason: null,
         aquecedor_ativo: true,
       }).eq("chip_id", chipId);
-    });
+    }
 
     // ── 8. Gera persona (chama edge persona-generator) ──
     let personaInfo = null;
@@ -255,9 +281,9 @@ serve(async (req) => {
       persona: personaInfo,
       next_step: "Escaneie o QR code no celular do número. Após parear, chip entra em fase 'aquecimento' automaticamente.",
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error("[chip-bootstrap] error", e);
-    return json({ ok: false, error: e.message || String(e) }, 500);
+    return json({ ok: false, error: e instanceof Error ? e.message : String(e) }, 500);
   }
 });
 

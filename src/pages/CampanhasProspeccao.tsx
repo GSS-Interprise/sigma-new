@@ -40,6 +40,7 @@ import {
   Bot,
   User,
   Sparkles,
+  RotateCcw,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -56,9 +57,14 @@ import { CampanhaProspeccaoKanban } from "@/components/campanhas/CampanhaProspec
 import { AcompanhamentoView } from "@/components/campanhas/acompanhamento/AcompanhamentoView";
 import { DashboardCampanhas } from "@/components/campanhas/DashboardCampanhas";
 import { StatusOperacionalPanel } from "@/components/campanhas/StatusOperacionalPanel";
+import { StructuredLeadSearchDialog } from "@/components/campanhas/StructuredLeadSearchDialog";
 import { ErrorBoundary } from "@/components/common/ErrorBoundary";
 import { useAdicionarLeadsCampanha } from "@/hooks/useCampanhaLeads";
 import { toast } from "sonner";
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
 
 interface CampanhaRow {
   id: string;
@@ -85,10 +91,14 @@ interface CampanhaRow {
   especialidade?: { nome: string } | null;
   especialidades_nomes?: string[];
   total_real?: number | null; // contagem real (todos os status, inclui descartado/sem_resposta)
+  operational_state?: string | null;
+  operational_reason?: string | null;
 }
 
 type StatusFiltro = "ativa" | "rascunho" | "pausada" | "todas";
 type ResponsavelFiltro = "todos" | "minhas";
+type ModalidadeFiltro = "todas" | "manual" | "ia" | "ambos";
+type OperacaoFiltro = "todos" | "com_erro" | string;
 
 // v2: visibilidade liberada — todos veem TODAS as campanhas por padrão.
 // O bump da chave (-v2) descarta a preferência "minhas" antiga que escondia
@@ -107,6 +117,8 @@ export default function CampanhasProspeccao() {
   const { user } = useAuth();
   const [busca, setBusca] = useState("");
   const [statusFiltro, setStatusFiltro] = useState<StatusFiltro>("ativa");
+  const [modalidadeFiltro, setModalidadeFiltro] = useState<ModalidadeFiltro>("todas");
+  const [operacaoFiltro, setOperacaoFiltro] = useState<OperacaoFiltro>("todos");
   // Default "todos" pra todo mundo — a equipe enxerga todas as campanhas rodando.
   // "Minhas" continua disponível como filtro opcional (a escolha do usuário é salva).
   const [responsavelFiltro, setResponsavelFiltro] = useState<ResponsavelFiltro>(
@@ -127,6 +139,8 @@ export default function CampanhasProspeccao() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [configurarId, setConfigurarId] = useState<string | null>(null);
   const [selecionada, setSelecionada] = useState<string | null>(null);
+  const [strategyToAdd, setStrategyToAdd] = useState("");
+  const [structuredSearchOpen, setStructuredSearchOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const view = (searchParams.get("view") || "campanhas") as
     | "campanhas"
@@ -140,12 +154,35 @@ export default function CampanhasProspeccao() {
     setSearchParams(sp);
   };
   const adicionarLeads = useAdicionarLeadsCampanha();
+  const { data: addStrategies = [] } = useQuery({
+    queryKey: ["campaign-strategies-add-leads", selecionada],
+    enabled: !!selecionada,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("campaign_strategies" as never)
+        .select("id, nome, status, prioridade")
+        .eq("campanha_id", selecionada)
+        .in("status", ["ativa", "rascunho"])
+        .order("prioridade");
+      if (error) throw error;
+      return (data ?? []) as Array<{
+        id: string;
+        nome: string;
+        status: string;
+        prioridade: number;
+      }>;
+    },
+  });
+
+  useEffect(() => {
+    setStrategyToAdd(addStrategies[0]?.id || "");
+  }, [selecionada, addStrategies]);
 
   // Contador de leads quentes sem dono (só pra badge no toggle)
   const { data: quentesSemDono = 0 } = useQuery({
     queryKey: ["quentes-sem-dono-count"],
     queryFn: async () => {
-      const { count } = await (supabase as any)
+      const { count } = await supabase
         .from("vw_acompanhamento_kanban")
         .select("campanha_lead_id", { count: "exact", head: true })
         .eq("etapa_acompanhamento", "quente")
@@ -158,7 +195,7 @@ export default function CampanhasProspeccao() {
   const { data: campanhas = [], isLoading } = useQuery({
     queryKey: ["campanhas-prospeccao", busca],
     queryFn: async () => {
-      let q = (supabase as any)
+      let q = supabase
         .from("campanhas")
         .select(
           "id, nome, status, tipo_campanha, tipo_envio, especialidade_id, especialidade_ids, regiao_estado, limite_diario_campanha, total_frio, total_contatado, total_em_conversa, total_aquecido, total_quente, total_convertido, created_at, chip_id, chip_ids, briefing_ia, criado_por, especialidade:especialidade_id(nome)"
@@ -181,7 +218,7 @@ export default function CampanhasProspeccao() {
           .from("especialidades")
           .select("id, nome")
           .in("id", todosIds);
-        const mapa = new Map((espNomes || []).map((e: any) => [e.id, e.nome]));
+        const mapa = new Map((espNomes || []).map((specialty) => [specialty.id, specialty.nome]));
         for (const r of rows) {
           if (r.especialidade_ids && r.especialidade_ids.length > 0) {
             r.especialidades_nomes = r.especialidade_ids
@@ -195,12 +232,30 @@ export default function CampanhasProspeccao() {
       // contadores denormalizados não somam). Card mostra o número verdadeiro.
       const ids = rows.map((r) => r.id);
       if (ids.length > 0) {
-        const { data: counts } = await (supabase as any)
-          .from("vw_campanha_lead_counts")
-          .select("campanha_id, total_leads")
-          .in("campanha_id", ids);
-        const cmap = new Map((counts || []).map((c: any) => [c.campanha_id, c.total_leads]));
+        const [{ data: counts }, { data: operationalStates }] = await Promise.all([
+          supabase
+            .from("vw_campanha_lead_counts")
+            .select("campanha_id, total_leads")
+            .in("campanha_id", ids),
+          supabase
+            .from("vw_campanha_operational_state" as never)
+            .select("campanha_id, operational_state, operational_reason")
+            .in("campanha_id", ids),
+        ]);
+        const cmap = new Map((counts || []).map((count) => [count.campanha_id, count.total_leads]));
+        const omap = new Map(
+          ((operationalStates || []) as Array<{
+            campanha_id: string;
+            operational_state: string;
+            operational_reason: string | null;
+          }>).map((state) => [state.campanha_id, state]),
+        );
         for (const r of rows) r.total_real = (cmap.get(r.id) as number) ?? null;
+        for (const r of rows) {
+          const state = omap.get(r.id);
+          r.operational_state = state?.operational_state ?? null;
+          r.operational_reason = state?.operational_reason ?? null;
+        }
       }
       return rows;
     },
@@ -230,6 +285,14 @@ export default function CampanhasProspeccao() {
   // Aplica filtro de status + responsável
   const campanhasFiltradas = campanhas
     .filter((c) => statusFiltro === "todas" || c.status === statusFiltro)
+    .filter((c) => modalidadeFiltro === "todas" || c.tipo_envio === modalidadeFiltro)
+    .filter((c) => {
+      if (operacaoFiltro === "todos") return true;
+      if (operacaoFiltro === "com_erro") {
+        return ["sem_chip", "restrita", "desconectada"].includes(c.operational_state || "");
+      }
+      return c.operational_state === operacaoFiltro;
+    })
     .filter((c) => {
       if (responsavelFiltro === "todos") return true;
       // "minhas" = criadas por mim
@@ -286,7 +349,7 @@ export default function CampanhasProspeccao() {
                     campanhaSelecionada.especialidade && (
                       <span className="flex items-center gap-1">
                         <Stethoscope className="h-3 w-3" />
-                        {(campanhaSelecionada.especialidade as any)?.nome}
+                        {campanhaSelecionada.especialidade?.nome}
                       </span>
                     )
                   )}
@@ -365,13 +428,28 @@ export default function CampanhasProspeccao() {
               </div>
             )}
 
-            <div className="flex gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              {addStrategies.length > 0 && (
+                <select
+                  className="min-h-11 w-full rounded-md border bg-background px-3 text-sm sm:max-w-64"
+                  value={strategyToAdd}
+                  onChange={(event) => setStrategyToAdd(event.target.value)}
+                  aria-label="Estratégia para adicionar leads"
+                >
+                  {addStrategies.map((strategy) => (
+                    <option key={strategy.id} value={strategy.id}>
+                      {strategy.nome}
+                    </option>
+                  ))}
+                </select>
+              )}
               <Button
                 size="sm"
-                className={totalLeadsDe(campanhaSelecionada) === 0 ? "ring-2 ring-sky-400 ring-offset-1" : ""}
+                className={`min-h-11 ${totalLeadsDe(campanhaSelecionada) === 0 ? "ring-2 ring-sky-400 ring-offset-1" : ""}`}
                 onClick={() =>
                   adicionarLeads.mutate({
                     campanha_id: selecionada,
+                    strategy_id: strategyToAdd || undefined,
                     limite: campanhaSelecionada.limite_diario_campanha || 50,
                   })
                 }
@@ -381,6 +459,34 @@ export default function CampanhasProspeccao() {
                 {adicionarLeads.isPending
                   ? "Adicionando..."
                   : "Adicionar Leads à Base"}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="min-h-11"
+                disabled={adicionarLeads.isPending || !strategyToAdd}
+                onClick={() =>
+                  adicionarLeads.mutate({
+                    campanha_id: selecionada,
+                    strategy_id: strategyToAdd,
+                    limite: campanhaSelecionada.limite_diario_campanha || 50,
+                    somente_perdidos: true,
+                  })
+                }
+                title="Inclui apenas perdas locais elegíveis; opt-out, blacklist e indisponíveis continuam bloqueados"
+              >
+                <RotateCcw className="mr-1 h-4 w-4" />
+                Reaproveitar perdidos
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="min-h-11"
+                disabled={!strategyToAdd}
+                onClick={() => setStructuredSearchOpen(true)}
+              >
+                <Search className="mr-1 h-4 w-4" />
+                Buscar médicos
               </Button>
               <Button
                 size="sm"
@@ -401,7 +507,7 @@ export default function CampanhasProspeccao() {
                   const csv = [
                     "nome,email,telefone,especialidade,uf,cidade",
                     ...data.map(
-                      (r: any) =>
+                      (r) =>
                         `"${r.nome}","${r.email || ""}","${r.phone || ""}","${r.especialidade || ""}","${r.uf || ""}","${r.cidade || ""}"`
                     ),
                   ].join("\n");
@@ -421,6 +527,12 @@ export default function CampanhasProspeccao() {
             </div>
 
             <CampanhaProspeccaoKanban campanhaId={selecionada} />
+            <StructuredLeadSearchDialog
+              open={structuredSearchOpen}
+              onOpenChange={setStructuredSearchOpen}
+              campanhaId={selecionada}
+              strategyId={strategyToAdd}
+            />
           </div>
         </AppLayout>
       </CaptacaoProtectedRoute>
@@ -552,7 +664,7 @@ export default function CampanhasProspeccao() {
               </div>
 
               <Card>
-                <CardContent className="p-4 flex items-center justify-between gap-3 flex-wrap">
+                <CardContent className="flex flex-col gap-3 p-4 lg:flex-row lg:items-center lg:justify-between">
                   <div className="relative flex-1 min-w-[240px] max-w-md">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
@@ -561,6 +673,36 @@ export default function CampanhasProspeccao() {
                       onChange={(e) => setBusca(e.target.value)}
                       className="pl-9"
                     />
+                  </div>
+                  <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:w-auto">
+                    <select
+                      className="min-h-11 rounded-md border bg-background px-3 text-sm"
+                      value={modalidadeFiltro}
+                      onChange={(event) => setModalidadeFiltro(event.target.value as ModalidadeFiltro)}
+                      aria-label="Filtrar campanhas por modalidade"
+                    >
+                      <option value="todas">Todas as modalidades</option>
+                      <option value="manual">Manual</option>
+                      <option value="ia">IA</option>
+                      <option value="ambos">Manual + IA</option>
+                    </select>
+                    <select
+                      className="min-h-11 rounded-md border bg-background px-3 text-sm"
+                      value={operacaoFiltro}
+                      onChange={(event) => setOperacaoFiltro(event.target.value)}
+                      aria-label="Filtrar campanhas por estado operacional"
+                    >
+                      <option value="todos">Todos os estados operacionais</option>
+                      <option value="com_erro">Com erro operacional</option>
+                      <option value="rodando">Rodando</option>
+                      <option value="pronta">Pronta</option>
+                      <option value="pausada">Pausada</option>
+                      <option value="sem_chip">Sem chip</option>
+                      <option value="restrita">Chip restrito</option>
+                      <option value="desconectada">Desconectada</option>
+                      <option value="finalizada">Finalizada</option>
+                      <option value="configurando">Configurando</option>
+                    </select>
                   </div>
                   <Button onClick={() => setDialogOpen(true)}>
                     <Plus className="h-4 w-4 mr-2" />
@@ -789,7 +931,7 @@ function CampanhaCard({
   // Pausar/reativar/finalizar campanha (a equipe pediu poder cancelar campanha ativa)
   const mudarStatus = useMutation({
     mutationFn: async (novo: "ativa" | "pausada" | "finalizada") => {
-      const { error } = await (supabase as any).from("campanhas").update({ status: novo }).eq("id", campanha.id);
+      const { error } = await supabase.from("campanhas").update({ status: novo }).eq("id", campanha.id);
       if (error) throw error;
       return novo;
     },
@@ -797,16 +939,16 @@ function CampanhaCard({
       qcStatus.invalidateQueries();
       toast.success(novo === "pausada" ? "Campanha pausada" : novo === "ativa" ? "Campanha reativada" : "Campanha finalizada");
     },
-    onError: (e: any) => toast.error("Erro ao mudar status: " + (e?.message || e)),
+    onError: (error: unknown) => toast.error("Erro ao mudar status: " + errorMessage(error)),
   });
   // Excluir campanha (delete CASCADE: apaga vínculos da campanha; os médicos seguem na base)
   const excluir = useMutation({
     mutationFn: async () => {
-      const { error } = await (supabase as any).from("campanhas").delete().eq("id", campanha.id);
+      const { error } = await supabase.from("campanhas").delete().eq("id", campanha.id);
       if (error) throw error;
     },
     onSuccess: () => { qcStatus.invalidateQueries(); toast.success("Campanha excluída"); },
-    onError: (e: any) => toast.error("Erro ao excluir: " + (e?.message || e)),
+    onError: (error: unknown) => toast.error("Erro ao excluir: " + errorMessage(error)),
   });
 
   return (
@@ -871,7 +1013,7 @@ function CampanhaCard({
                 campanha.especialidade && (
                   <Badge variant="outline" className="text-xs">
                     <Stethoscope className="h-3 w-3 mr-1" />
-                    {(campanha.especialidade as any)?.nome}
+                    {campanha.especialidade?.nome}
                   </Badge>
                 )
               )}

@@ -14,6 +14,8 @@ export interface SigzapOutboxRow {
   media_caption: string | null;
   media_filename: string | null;
   quoted_message_id: string | null;
+  wa_message_id?: string | null;
+  evolution_response?: Record<string, unknown> | null;
   attempts: number;
   max_attempts: number;
   created_by: string | null;
@@ -31,15 +33,29 @@ export interface SigzapOutboxProcessResult {
 const retryDelaySeconds = (attempts: number) => Math.min(300, 15 * Math.pow(2, Math.max(0, attempts - 1)));
 
 async function queueAgain(supabase: any, row: SigzapOutboxRow, code: string, detail?: string) {
-  const exhausted = row.attempts >= row.max_attempts;
+  // Desconexao depende de QR/infra e nao e falha definitiva da mensagem. Preservar
+  // a tentativa evita que uma fila valida expire enquanto a equipe reconecta o chip.
+  const waitsForConnection = code === "INSTANCE_DISCONNECTED" || code === "CONNECTION_CHECK_FAILED";
+  const exhausted = !waitsForConnection && row.attempts >= row.max_attempts;
   await supabase.from("sigzap_outbox").update({
     status: exhausted ? "failed" : "queued",
-    next_retry_at: new Date(Date.now() + retryDelaySeconds(row.attempts) * 1000).toISOString(),
+    attempts: waitsForConnection ? Math.max(0, row.attempts - 1) : row.attempts,
+    next_retry_at: new Date(Date.now() + (waitsForConnection ? 300 : retryDelaySeconds(row.attempts)) * 1000).toISOString(),
     last_error_code: code,
     last_error_detail: (detail || "").slice(0, 1000),
     updated_at: new Date().toISOString(),
   }).eq("id", row.id);
   return { sent: false, queued: !exhausted, failed: exhausted, code };
+}
+
+async function failPermanently(supabase: any, row: SigzapOutboxRow, code: string, detail?: string) {
+  await supabase.from("sigzap_outbox").update({
+    status: "failed",
+    last_error_code: code,
+    last_error_detail: (detail || "").slice(0, 1000),
+    updated_at: new Date().toISOString(),
+  }).eq("id", row.id);
+  return { sent: false, queued: false, failed: true, code };
 }
 
 export async function processSigzapOutboxRow(args: {
@@ -53,7 +69,7 @@ export async function processSigzapOutboxRow(args: {
 
   // A consulta real reduz o intervalo em que o banco diz open mas o socket ja caiu.
   // uazapi gerencia a propria sessao e nao possui este endpoint da Evolution.
-  if ((chip?.provedor || "evolution") !== "uazapi") try {
+  if (!row.wa_message_id && (chip?.provedor || "evolution") !== "uazapi") try {
     const stateResponse = await fetch(
       `${evo.url}/instance/connectionState/${encodeURIComponent(row.instance_name)}`,
       { headers: { apikey: evo.apiKey } },
@@ -73,7 +89,9 @@ export async function processSigzapOutboxRow(args: {
 
   const target = row.contact_jid.replace(/@.*$/, "").replace(/\D/g, "");
   const isMedia = row.message_type !== "text" && !!row.media_url;
-  const result = isMedia
+  const result = row.wa_message_id
+    ? { sent: true, evolutionResponse: row.evolution_response || { key: { id: row.wa_message_id } } }
+    : isMedia
     ? await sendWhatsAppMedia({
         supabase, evo, chipId: row.chip_id, instanceName: row.instance_name,
         toJid: target, mediaType: row.message_type as "image" | "video" | "audio" | "document",
@@ -88,19 +106,33 @@ export async function processSigzapOutboxRow(args: {
       });
 
   if (!result.sent) {
+    const responseDetail = typeof result.evolutionResponse === "string"
+      ? result.evolutionResponse
+      : JSON.stringify(result.evolutionResponse || {});
+    if (responseDetail.includes('"exists":false')) {
+      return failPermanently(supabase, row, "PHONE_NOT_ON_WHATSAPP", responseDetail);
+    }
     const disconnected = result.reason === "connection_closed" ||
-      String(result.evolutionResponse || "").toLowerCase().includes("connection closed");
+      responseDetail.toLowerCase().includes("connection closed");
     return queueAgain(
       supabase,
       row,
       disconnected ? "INSTANCE_DISCONNECTED" : String(result.reason || "SEND_FAILED").toUpperCase(),
-      typeof result.evolutionResponse === "string" ? result.evolutionResponse : JSON.stringify(result.evolutionResponse || {}),
+      responseDetail,
     );
   }
 
   const evolutionResult = result.evolutionResponse || {};
   const waMessageId = evolutionResult.key?.id || evolutionResult.id || `sent_${Date.now()}`;
   const now = new Date().toISOString();
+  if (!row.wa_message_id) {
+    const { error: receiptError } = await supabase.from("sigzap_outbox").update({
+      wa_message_id: waMessageId,
+      evolution_response: evolutionResult,
+      updated_at: now,
+    }).eq("id", row.id);
+    if (receiptError) throw receiptError;
+  }
   const messageText = row.message_text || row.media_caption || `[${row.message_type}]`;
   const { data: saved, error: saveError } = await supabase.from("sigzap_messages").upsert({
     conversation_id: row.conversation_id,

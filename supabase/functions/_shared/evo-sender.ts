@@ -76,6 +76,97 @@ export interface SendResult {
 const DEFAULT_TIMEOUT = 15_000;
 const DEFAULT_MAX_RETRIES = 3;
 const TRANSIENT_CODES = new Set([429, 500, 502, 503, 504]);
+const SIGZAP_BUSINESS_EVENTS = new Set<EventoOrigem>([
+  "cold_disparo",
+  "cadencia",
+  "resposta_ia",
+  "opt_out",
+]);
+
+async function persistBusinessOutbound(
+  opts: SendTextOpts,
+  result: SendResult,
+): Promise<void> {
+  if (!result.sent || !SIGZAP_BUSINESS_EVENTS.has(opts.eventoOrigem)) return;
+
+  const waMessageId = result.evolutionResponse?.key?.id || result.evolutionResponse?.id;
+  if (!waMessageId) {
+    console.error("[evo-sender] envio comercial sem wa_message_id; historico nao persistido");
+    return;
+  }
+
+  try {
+    const digits = opts.toJid.replace(/@.*$/, "").replace(/\D/g, "");
+    if (!digits) throw new Error("destinatario sem digitos");
+    const contactJid = `${digits}@s.whatsapp.net`;
+    const now = new Date().toISOString();
+
+    const { data: instance, error: instanceError } = await opts.supabase
+      .from("sigzap_instances")
+      .select("id")
+      .eq("name", opts.instanceName)
+      .maybeSingle();
+    if (instanceError || !instance) throw instanceError || new Error("instancia SigZap ausente");
+
+    const { data: contact, error: contactError } = await opts.supabase
+      .from("sigzap_contacts")
+      .upsert({
+        instance_id: instance.id,
+        contact_jid: contactJid,
+        contact_phone: digits,
+        updated_at: now,
+      }, { onConflict: "contact_jid,instance_id" })
+      .select("id")
+      .single();
+    if (contactError) throw contactError;
+
+    const { data: conversation, error: conversationError } = await opts.supabase
+      .from("sigzap_conversations")
+      .upsert({
+        instance_id: instance.id,
+        contact_id: contact.id,
+        status: "open",
+        last_message_text: opts.text,
+        last_message_at: now,
+        unread_count: 0,
+        updated_at: now,
+      }, { onConflict: "contact_id,instance_id" })
+      .select("id")
+      .single();
+    if (conversationError) throw conversationError;
+
+    const { data: existing, error: existingError } = await opts.supabase
+      .from("sigzap_messages")
+      .select("id")
+      .eq("conversation_id", conversation.id)
+      .eq("wa_message_id", waMessageId)
+      .maybeSingle();
+    if (existingError) throw existingError;
+    if (!existing) {
+      const { error: messageError } = await opts.supabase.from("sigzap_messages").insert({
+        conversation_id: conversation.id,
+        wa_message_id: waMessageId,
+        from_me: true,
+        sender_jid: contactJid,
+        message_text: opts.text,
+        message_type: "text",
+        message_status: "sent",
+        raw_payload: result.evolutionResponse,
+        quoted_message_id: opts.quotedMessageId || null,
+        sent_at: now,
+        sent_via_instance_name: opts.instanceName,
+      });
+      if (messageError) throw messageError;
+    }
+  } catch (error) {
+    // O WhatsApp ja aceitou a mensagem: falha de historico nao pode provocar
+    // reenvio e duplicar o contato. O erro fica observavel para reconciliacao.
+    console.error(
+      `[evo-sender] falha ao persistir historico comercial (${opts.instanceName}):`,
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+}
 
 // uazapi (piloto 11/06): provider alternativo. A orquestração anti-ban (pre_send_check,
 // delay, retry, log) é a MESMA — muda só o transporte (endpoint + header de auth).
@@ -406,7 +497,7 @@ export async function sendWhatsAppText(opts: SendTextOpts): Promise<SendResult> 
   if (quotedMessageId) payload.quoted = { key: { id: quotedMessageId } };
 
   const t = await resolveTransporte(supabase, evo, chipId, instanceName, "text", payload);
-  return executeEvolutionSend({
+  const result = await executeEvolutionSend({
     base: opts,
     conteudoTipo: "text",
     conteudoHash,
@@ -415,6 +506,8 @@ export async function sendWhatsAppText(opts: SendTextOpts): Promise<SendResult> 
     body: t.body,
     transportHeaders: t.headers,
   });
+  await persistBusinessOutbound(opts, result);
+  return result;
 }
 
 /**

@@ -2,6 +2,10 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
+function messageFromError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error || "");
+}
+
 export type StatusLeadCampanha =
   | "frio"
   | "contatado"
@@ -10,6 +14,7 @@ export type StatusLeadCampanha =
   | "quente"
   | "convertido"
   | "sem_resposta"
+  | "sem_whatsapp"
   | "descartado";
 
 export interface CampanhaLead {
@@ -29,6 +34,7 @@ export interface CampanhaLead {
   assumido_por?: string | null;
   assumido_em?: string | null;
   humano_assumiu?: boolean | null;
+  motivo_perdido?: string | null;
   lead?: {
     id: string;
     nome: string;
@@ -88,26 +94,57 @@ export function useCampanhaLeadsByStatus(campanhaId?: string) {
 export function useAdicionarLeadsCampanha() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { campanha_id: string; limite?: number }) => {
-      const { data, error } = await supabase.rpc("selecionar_leads_campanha", {
-        p_campanha_id: input.campanha_id,
-        p_limite: input.limite || 50,
-      });
+    mutationFn: async (input: {
+      campanha_id: string;
+      strategy_id?: string;
+      limite?: number;
+      somente_perdidos?: boolean;
+    }) => {
+      if (input.somente_perdidos && !input.strategy_id) {
+        throw new Error("Selecione uma estratégia para reaproveitar perdidos.");
+      }
+      const result = input.somente_perdidos
+        ? await supabase.rpc(
+            "selecionar_perdidos_elegiveis" as never,
+            {
+              p_campanha_id: input.campanha_id,
+              p_strategy_id: input.strategy_id,
+              p_limite: input.limite || 50,
+            } as never,
+          )
+        : input.strategy_id
+        ? await supabase.rpc(
+            "selecionar_leads_estrategia" as never,
+            {
+              p_campanha_id: input.campanha_id,
+              p_strategy_id: input.strategy_id,
+              p_limite: input.limite || 50,
+            } as never,
+          )
+        : await supabase.rpc("selecionar_leads_campanha", {
+            p_campanha_id: input.campanha_id,
+            p_limite: input.limite || 50,
+          });
+      const { data, error } = result as {
+        data: Array<{ lead_id: string }> | null;
+        error: Error | null;
+      };
       if (error) throw error;
 
       if (!data || data.length === 0) {
         throw new Error("Nenhum lead disponível para os filtros desta campanha");
       }
 
-      const rows = data.map((l: any) => ({
+      const rows = data.map((lead) => ({
         campanha_id: input.campanha_id,
-        lead_id: l.lead_id,
+        lead_id: lead.lead_id,
         status: "frio" as const,
+        ...(input.strategy_id ? { strategy_id: input.strategy_id } : {}),
       }));
 
       const { error: insertError } = await supabase
         .from("campanha_leads")
-        .insert(rows);
+        .insert(rows as never);
       if (insertError) throw insertError;
 
       return data.length;
@@ -115,10 +152,14 @@ export function useAdicionarLeadsCampanha() {
     onSuccess: (count, input) => {
       qc.invalidateQueries({ queryKey: ["campanha-leads", input.campanha_id] });
       qc.invalidateQueries({ queryKey: ["campanhas-prospeccao"] });
-      toast.success(`${count} leads adicionados à campanha`);
+      toast.success(
+        input.somente_perdidos
+          ? `${count} perdidos elegíveis reaproveitados`
+          : `${count} leads adicionados à campanha`,
+      );
     },
-    onError: (e: any) => {
-      const msg = String(e?.message || "");
+    onError: (error: unknown) => {
+      const msg = messageFromError(error);
       if (msg.includes("Lead já está ativo em outra proposta")) {
         toast.error(
           "Um ou mais leads já estão ativos em outra proposta desta campanha. Encerre o vínculo atual antes de adicioná-los aqui."
@@ -135,16 +176,16 @@ export function useUpdateLeadTags(campanhaId?: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: { lead_id: string; tags: string[] }) => {
-      const { error } = await supabase
-        .from("leads")
-        .update({ tags: input.tags })
-        .eq("id", input.lead_id);
+      const { error } = await supabase.rpc(
+        "set_lead_controlled_tags" as never,
+        { p_lead_id: input.lead_id, p_tags: input.tags } as never,
+      );
       if (error) throw error;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["campanha-leads", campanhaId] });
     },
-    onError: (e: any) => toast.error("Erro ao salvar tags: " + e.message),
+    onError: (error: unknown) => toast.error(`Erro ao salvar tags: ${messageFromError(error)}`),
   });
 }
 
@@ -162,13 +203,52 @@ export function useAtualizarStatusLead() {
         p_lead_id: input.lead_id,
         p_novo_status: input.novo_status,
         p_canal: input.canal || null,
-      });
+      } as never);
       if (error) throw error;
     },
     onSuccess: (_, input) => {
       qc.invalidateQueries({ queryKey: ["campanha-leads", input.campanha_id] });
       qc.invalidateQueries({ queryKey: ["campanhas-prospeccao"] });
     },
-    onError: (e: any) => toast.error("Erro ao atualizar status: " + e.message),
+    onError: (error: unknown) => toast.error(`Erro ao atualizar status: ${messageFromError(error)}`),
+  });
+}
+
+export type MotivoSaidaCampanha =
+  | "sem_whatsapp"
+  | "aposentado"
+  | "distancia"
+  | "nao_contatar"
+  | "contato_invalido"
+  | "indisponivel_agora"
+  | "sem_interesse_oportunidade";
+
+export function useClassificarSaidaCampanha() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      campanha_id: string;
+      lead_id: string;
+      motivo: MotivoSaidaCampanha;
+      observacao?: string;
+    }) => {
+      const { data, error } = await supabase.rpc("classificar_saida_campanha" as never, {
+        p_campanha_id: input.campanha_id,
+        p_lead_id: input.lead_id,
+        p_motivo: input.motivo,
+        p_observacao: input.observacao || null,
+      } as never);
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (_, input) => {
+      queryClient.invalidateQueries({ queryKey: ["campanha-leads", input.campanha_id] });
+      queryClient.invalidateQueries({ queryKey: ["campanhas-prospeccao"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-campanhas"] });
+      toast.success(input.motivo === "sem_whatsapp"
+        ? "Médico movido para Sem WhatsApp"
+        : "Saída da campanha registrada");
+    },
+    onError: (error: Error) => toast.error(`Erro ao classificar saída: ${error.message}`),
   });
 }

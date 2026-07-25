@@ -411,6 +411,9 @@ export function ImportarLeadsDialog({ open, onOpenChange, onSuccess, listaDestin
         UF: "SP",
         Cidade: "São Paulo",
         Email: "joao@email.com",
+        Classificacao: "",
+        Motivo_Classificacao: "",
+        Campanha_ID: "",
       },
     ];
 
@@ -433,6 +436,12 @@ export function ImportarLeadsDialog({ open, onOpenChange, onSuccess, listaDestin
         <ScrollArea className="flex-1 min-h-0 -mr-4 pr-4">
         <div className="text-sm text-muted-foreground mb-4">
           Preencha os campos abaixo e depois carregue a planilha.
+        </div>
+        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+          Classificações opcionais no arquivo: <strong>opt_out</strong>, <strong>aposentado</strong>,{" "}
+          <strong>sem_whatsapp</strong>, <strong>contato_invalido</strong> ou <strong>perda_local</strong>.
+          Opt-out e indisponibilidades são globais. Perda local exige a coluna <strong>Campanha_ID</strong>
+          e afeta somente aquela oportunidade.
         </div>
 
         {/* Seleção de Especialidade e Origem ANTES do upload */}

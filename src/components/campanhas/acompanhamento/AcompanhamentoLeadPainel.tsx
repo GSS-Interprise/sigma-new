@@ -21,6 +21,8 @@ import {
   MapPin,
   Stethoscope,
   Flame,
+  StickyNote,
+  Mail,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -34,6 +36,8 @@ import { MarcarPerdidoDialog } from "./MarcarPerdidoDialog";
 import { LeadCampanhaTasks } from "./LeadCampanhaTasks";
 import { LeadConversaUnificada } from "./LeadConversaUnificada";
 import { LeadIdentidadeCard } from "./LeadIdentidadeCard";
+import { LeadNotasRapidas } from "./LeadNotasRapidas";
+import { LeadEmailDialog } from "./LeadEmailDialog";
 import {
   useAssumirLead,
   useAprovarLead,
@@ -47,13 +51,16 @@ interface Props {
   onClose: () => void;
 }
 
+type PainelTab = "conversa" | "historico" | "validacao" | "tasks" | "notas";
+
 export function AcompanhamentoLeadPainel({ lead, onClose }: Props) {
   const { user } = useAuth();
   // Mobile: 4 tabs (Validacao/Tasks/Conversa/Historico)
   // Desktop: master-detail — coluna E tem 3 tabs (Tasks/Validacao/Historico),
   // coluna D mostra Conversa sempre. F2.4 master-detail real.
-  const [tab, setTab] = useState<"conversa" | "historico" | "validacao" | "tasks">("tasks");
+  const [tab, setTab] = useState<PainelTab>("tasks");
   const [perdidoDialogOpen, setPerdidoDialogOpen] = useState(false);
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
   const assumir = useAssumirLead();
   const aprovar = useAprovarLead();
   const mover = useMoverEtapa();
@@ -63,7 +70,7 @@ export function AcompanhamentoLeadPainel({ lead, onClose }: Props) {
     queryKey: ["campanha-lead-historico-conversa", lead?.campanha_lead_id],
     enabled: !!lead?.campanha_lead_id,
     queryFn: async () => {
-      const { data } = await (supabase as any)
+      const { data } = await supabase
         .from("campanha_leads")
         .select("historico_conversa")
         .eq("id", lead!.campanha_lead_id)
@@ -76,9 +83,9 @@ export function AcompanhamentoLeadPainel({ lead, onClose }: Props) {
   const { data: profilesMap = new Map() } = useQuery({
     queryKey: ["acompanhamento-profiles-map"],
     queryFn: async () => {
-      const { data } = await (supabase as any).from("profiles").select("id, nome_completo");
+      const { data } = await supabase.from("profiles").select("id, nome_completo");
       const m = new Map<string, string>();
-      (data || []).forEach((p: any) => m.set(p.id, p.nome_completo));
+      (data || []).forEach((profile) => m.set(profile.id, profile.nome_completo));
       return m;
     },
     staleTime: 5 * 60_000,
@@ -98,8 +105,8 @@ export function AcompanhamentoLeadPainel({ lead, onClose }: Props) {
   const iniciaisLead = (lead.lead_nome || "?")
     .split(" ").filter(Boolean).map((p) => p[0]).join("").slice(0, 2).toUpperCase();
   const quente = lead.etapa_acompanhamento === "quente";
-  const ultimoContatoLabel = (lead as any).data_ultimo_contato
-    ? formatDistanceToNow(new Date((lead as any).data_ultimo_contato), { locale: ptBR, addSuffix: true })
+  const ultimoContatoLabel = lead.data_ultimo_contato
+    ? formatDistanceToNow(new Date(lead.data_ultimo_contato), { locale: ptBR, addSuffix: true })
     : null;
 
   return (
@@ -172,28 +179,34 @@ export function AcompanhamentoLeadPainel({ lead, onClose }: Props) {
           {/* MOBILE (< md): 4 tabs como antes */}
           <Tabs
             value={tab}
-            onValueChange={(v) => setTab(v as any)}
+            onValueChange={(value) => setTab(value as PainelTab)}
             className="flex-1 flex flex-col overflow-hidden md:hidden"
           >
-            <TabsList className="grid grid-cols-4 mx-5 mt-3 flex-shrink-0">
-              <TabsTrigger value="validacao" className="gap-1.5 text-xs">
+            <div className="mx-4 mt-3 flex-shrink-0 overflow-x-auto pb-1">
+            <TabsList className="h-auto w-max min-w-full justify-start">
+              <TabsTrigger value="validacao" className="min-h-11 gap-1.5 text-xs">
                 <ClipboardCheck className="h-3.5 w-3.5" />
                 Validação
                 <span className="text-muted-foreground tabular-nums">{validacoesOk}/4</span>
               </TabsTrigger>
-              <TabsTrigger value="tasks" className="gap-1.5 text-xs">
+              <TabsTrigger value="tasks" className="min-h-11 gap-1.5 text-xs">
                 <ClipboardList className="h-3.5 w-3.5" />
                 Tasks
               </TabsTrigger>
-              <TabsTrigger value="conversa" className="gap-1.5 text-xs">
+              <TabsTrigger value="conversa" className="min-h-11 gap-1.5 text-xs">
                 <MessageSquare className="h-3.5 w-3.5" />
                 Conversa
               </TabsTrigger>
-              <TabsTrigger value="historico" className="gap-1.5 text-xs">
+              <TabsTrigger value="historico" className="min-h-11 gap-1.5 text-xs">
                 <History className="h-3.5 w-3.5" />
                 Histórico
               </TabsTrigger>
+              <TabsTrigger value="notas" className="min-h-11 gap-1.5 text-xs">
+                <StickyNote className="h-3.5 w-3.5" />
+                Notas
+              </TabsTrigger>
             </TabsList>
+            </div>
 
             <div className="flex-1 min-h-0 overflow-hidden">
               <TabsContent value="validacao" className="m-0 h-full">
@@ -237,6 +250,11 @@ export function AcompanhamentoLeadPainel({ lead, onClose }: Props) {
                   </div>
                 </ScrollArea>
               </TabsContent>
+              <TabsContent value="notas" className="m-0 h-full">
+                <ScrollArea className="h-full">
+                  <LeadNotasRapidas leadId={lead.lead_id} />
+                </ScrollArea>
+              </TabsContent>
             </div>
           </Tabs>
 
@@ -246,10 +264,10 @@ export function AcompanhamentoLeadPainel({ lead, onClose }: Props) {
             <div className="border-r flex flex-col min-h-0 overflow-hidden">
               <Tabs
                 value={tab === "conversa" ? "tasks" : tab}
-                onValueChange={(v) => setTab(v as any)}
+                onValueChange={(value) => setTab(value as PainelTab)}
                 className="flex-1 flex flex-col overflow-hidden"
               >
-                <TabsList className="grid grid-cols-3 mx-4 mt-3 flex-shrink-0">
+                <TabsList className="grid grid-cols-4 mx-4 mt-3 flex-shrink-0">
                   <TabsTrigger value="tasks" className="gap-1.5 text-xs">
                     <ClipboardList className="h-3.5 w-3.5" />
                     Tasks
@@ -262,6 +280,10 @@ export function AcompanhamentoLeadPainel({ lead, onClose }: Props) {
                   <TabsTrigger value="historico" className="gap-1.5 text-xs">
                     <History className="h-3.5 w-3.5" />
                     Histórico
+                  </TabsTrigger>
+                  <TabsTrigger value="notas" className="gap-1.5 text-xs">
+                    <StickyNote className="h-3.5 w-3.5" />
+                    Notas
                   </TabsTrigger>
                 </TabsList>
 
@@ -300,6 +322,11 @@ export function AcompanhamentoLeadPainel({ lead, onClose }: Props) {
                         </p>
                         <LeadTimelineUnificadoSection leadId={lead.lead_id} />
                       </div>
+                    </ScrollArea>
+                  </TabsContent>
+                  <TabsContent value="notas" className="m-0 h-full">
+                    <ScrollArea className="h-full">
+                      <LeadNotasRapidas leadId={lead.lead_id} />
                     </ScrollArea>
                   </TabsContent>
                 </div>
@@ -395,6 +422,15 @@ export function AcompanhamentoLeadPainel({ lead, onClose }: Props) {
                 Perdido
               </Button>
             )}
+            <Button
+              size="sm"
+              variant="outline"
+              className="min-h-11 sm:min-h-9"
+              onClick={() => setEmailDialogOpen(true)}
+            >
+              <Mail className="mr-1.5 h-4 w-4" />
+              E-mail
+            </Button>
 
             <div className="ml-auto">
               <Button
@@ -420,6 +456,13 @@ export function AcompanhamentoLeadPainel({ lead, onClose }: Props) {
         leadNome={lead.lead_nome}
         onSuccess={onClose}
       />
+      <LeadEmailDialog
+        open={emailDialogOpen}
+        onOpenChange={setEmailDialogOpen}
+        leadId={lead.lead_id}
+        campanhaId={lead.campanha_id}
+        campanhaLeadId={lead.campanha_lead_id}
+      />
     </>
   );
 }
@@ -430,7 +473,9 @@ function BubbleMsg({ msg }: { msg: { role: string; text: string; ts: string } })
   let hora = "";
   try {
     hora = format(new Date(msg.ts), "dd/MM HH:mm", { locale: ptBR });
-  } catch {}
+  } catch {
+    hora = "";
+  }
 
   return (
     <div className={`flex gap-2 ${isLead ? "" : "flex-row-reverse"}`}>

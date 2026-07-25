@@ -6,20 +6,28 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Clock, Send, Bot, Flame, ThermometerSun, CheckCircle, Search, Phone,
-  MapPin, GripVertical, XCircle, Tag, Plus, X, UserCheck,
+  MapPin, GripVertical, XCircle, Tag, X, UserCheck, MessageSquareOff,
 } from "lucide-react";
 import {
   useCampanhaLeadsByStatus,
   useAtualizarStatusLead,
+  useClassificarSaidaCampanha,
   useUpdateLeadTags,
   type CampanhaLead,
+  type MotivoSaidaCampanha,
   type StatusLeadCampanha,
 } from "@/hooks/useCampanhaLeads";
 import { supabase } from "@/integrations/supabase/client";
 import { AcompanhamentoLeadPainel } from "@/components/campanhas/acompanhamento/AcompanhamentoLeadPainel";
 import type { AcompanhamentoLead } from "@/hooks/useAcompanhamentoLeads";
+import { usePermissions } from "@/hooks/usePermissions";
+import { LeadTagCatalogDialog } from "./LeadTagCatalogDialog";
 
 interface KanbanColumn {
   id: StatusLeadCampanha;
@@ -39,6 +47,7 @@ const COLUMNS: KanbanColumn[] = [
   { id: "quente", label: "Leads Quentes", color: "text-red-600", bgColor: "bg-red-50", borderColor: "border-red-200", icon: Flame, description: "Pronto pro operador" },
   { id: "convertido", label: "Convertidos", color: "text-green-600", bgColor: "bg-green-50", borderColor: "border-green-200", icon: CheckCircle, description: "Negócio fechado" },
   { id: "sem_resposta", label: "Sem resposta", color: "text-slate-500", bgColor: "bg-slate-50", borderColor: "border-slate-200", icon: Phone, description: "Contatado, não respondeu" },
+  { id: "sem_whatsapp", label: "Sem WhatsApp", color: "text-orange-600", bgColor: "bg-orange-50", borderColor: "border-orange-200", icon: MessageSquareOff, description: "Buscar canal alternativo" },
   { id: "descartado", label: "Descartados", color: "text-slate-500", bgColor: "bg-slate-50", borderColor: "border-slate-200", icon: XCircle, description: "Sem sucesso / sem interesse" },
 ];
 
@@ -50,10 +59,9 @@ const COLUMNS_MANUAL: KanbanColumn[] = [
   { id: "quente", label: "Leads Quentes", color: "text-red-600", bgColor: "bg-red-50", borderColor: "border-red-200", icon: Flame, description: "Pronto pra fechar" },
   { id: "convertido", label: "Convertidos", color: "text-green-600", bgColor: "bg-green-50", borderColor: "border-green-200", icon: CheckCircle, description: "Negócio fechado" },
   { id: "sem_resposta", label: "Sem resposta", color: "text-slate-500", bgColor: "bg-slate-50", borderColor: "border-slate-200", icon: Phone, description: "Contatado, não respondeu" },
+  { id: "sem_whatsapp", label: "Sem WhatsApp", color: "text-orange-600", bgColor: "bg-orange-50", borderColor: "border-orange-200", icon: MessageSquareOff, description: "Buscar Instagram ou e-mail" },
   { id: "descartado", label: "Descartados", color: "text-slate-500", bgColor: "bg-slate-50", borderColor: "border-slate-200", icon: XCircle, description: "Sem sucesso / sem interesse" },
 ];
-
-const TAGS_PADRAO = ["Prioridade", "Retornar", "Sem interesse", "Já é cliente", "Indicação", "Aguardando doc"];
 
 interface Props {
   campanhaId: string;
@@ -65,13 +73,19 @@ export function CampanhaProspeccaoKanban({ campanhaId }: Props) {
   const [filtroEsp, setFiltroEsp] = useState("__all");
   const [draggedLead, setDraggedLead] = useState<string | null>(null);
   const [campanhaLeadAbertoId, setCampanhaLeadAbertoId] = useState<string | null>(null);
+  const [tagCatalogOpen, setTagCatalogOpen] = useState(false);
+  const { isAdmin } = usePermissions();
+  const [saidaPendente, setSaidaPendente] = useState<{
+    leadId: string;
+    motivo: MotivoSaidaCampanha;
+  } | null>(null);
 
   const { data: leadAberto } = useQuery({
     queryKey: ["acompanhamento-lead-by-campanha-lead", campanhaLeadAbertoId],
     enabled: !!campanhaLeadAbertoId,
     queryFn: async (): Promise<AcompanhamentoLead | null> => {
-      const { data } = await (supabase as any)
-        .from("vw_acompanhamento_kanban_full")
+      const { data } = await supabase
+        .from("vw_acompanhamento_kanban_full" as never)
         .select("*")
         .eq("campanha_lead_id", campanhaLeadAbertoId)
         .maybeSingle();
@@ -81,13 +95,14 @@ export function CampanhaProspeccaoKanban({ campanhaId }: Props) {
 
   const { byStatus, leads, isLoading } = useCampanhaLeadsByStatus(campanhaId);
   const atualizarStatus = useAtualizarStatusLead();
+  const classificarSaida = useClassificarSaidaCampanha();
   const updateTags = useUpdateLeadTags(campanhaId);
 
   const { data: tipoEnvio } = useQuery({
     queryKey: ["campanha-tipo-envio", campanhaId],
     queryFn: async (): Promise<string> => {
-      const { data } = await (supabase as any).from("campanhas").select("tipo_envio").eq("id", campanhaId).maybeSingle();
-      return (data?.tipo_envio as string) || "ia";
+      const { data } = await supabase.from("campanhas").select("tipo_envio").eq("id", campanhaId).maybeSingle();
+      return data?.tipo_envio || "ia";
     },
     staleTime: 60_000,
   });
@@ -98,9 +113,9 @@ export function CampanhaProspeccaoKanban({ campanhaId }: Props) {
     queryKey: ["profiles-map"],
     staleTime: 300_000,
     queryFn: async (): Promise<Record<string, string>> => {
-      const { data } = await (supabase as any).from("profiles").select("id, nome_completo");
+      const { data } = await supabase.from("profiles").select("id, nome_completo");
       const m: Record<string, string> = {};
-      (data || []).forEach((p: any) => { m[p.id] = p.nome_completo || ""; });
+      (data || []).forEach((profile) => { m[profile.id] = profile.nome_completo || ""; });
       return m;
     },
   });
@@ -108,12 +123,20 @@ export function CampanhaProspeccaoKanban({ campanhaId }: Props) {
   // opções de filtro derivadas dos leads da campanha
   const ufs = useMemo(() => [...new Set(leads.map((l) => l.lead?.uf).filter(Boolean) as string[])].sort(), [leads]);
   const especialidades = useMemo(() => [...new Set(leads.map((l) => l.lead?.especialidade).filter(Boolean) as string[])].sort(), [leads]);
-  // tags pra quick-select = padrão + as que já existem na campanha
-  const tagsSugeridas = useMemo(() => {
-    const existentes = new Set<string>();
-    leads.forEach((l) => (l.lead?.tags || []).forEach((t) => existentes.add(t)));
-    return [...new Set([...TAGS_PADRAO, ...existentes])];
-  }, [leads]);
+  const { data: tagsSugeridas = [] } = useQuery({
+    queryKey: ["lead-tag-catalog-active"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("lead_tag_catalog" as never)
+        .select("label")
+        .eq("active", true)
+        .order("sort_order")
+        .order("label");
+      if (error) throw error;
+      return (data ?? []).map((tag) => String((tag as { label: string }).label));
+    },
+    staleTime: 5 * 60_000,
+  });
 
   const filteredByStatus = (status: StatusLeadCampanha) => {
     let arr = byStatus[status] || [];
@@ -138,6 +161,14 @@ export function CampanhaProspeccaoKanban({ campanhaId }: Props) {
     if (!draggedLead) return;
     const lead = leads.find((l) => l.lead_id === draggedLead);
     if (!lead || lead.status === targetStatus) { setDraggedLead(null); return; }
+    if (targetStatus === "sem_whatsapp" || targetStatus === "descartado") {
+      setSaidaPendente({
+        leadId: draggedLead,
+        motivo: targetStatus === "sem_whatsapp" ? "sem_whatsapp" : "sem_interesse_oportunidade",
+      });
+      setDraggedLead(null);
+      return;
+    }
     atualizarStatus.mutate({ campanha_id: campanhaId, lead_id: draggedLead, novo_status: targetStatus });
     setDraggedLead(null);
   };
@@ -152,10 +183,10 @@ export function CampanhaProspeccaoKanban({ campanhaId }: Props) {
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Buscar médico por nome, telefone ou cidade…" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9" />
+          <Input placeholder="Buscar médico por nome, telefone ou cidade…" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="min-h-11 pl-9" />
         </div>
         <Select value={filtroUf} onValueChange={setFiltroUf}>
-          <SelectTrigger className="w-[130px]"><MapPin className="h-3.5 w-3.5 mr-1 text-muted-foreground" /><SelectValue placeholder="Estado" /></SelectTrigger>
+          <SelectTrigger className="min-h-11 w-[130px]"><MapPin className="h-3.5 w-3.5 mr-1 text-muted-foreground" /><SelectValue placeholder="Estado" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="__all">Todos os estados</SelectItem>
             {ufs.map((uf) => <SelectItem key={uf} value={uf}>{uf}</SelectItem>)}
@@ -163,12 +194,23 @@ export function CampanhaProspeccaoKanban({ campanhaId }: Props) {
         </Select>
         {especialidades.length > 1 && (
           <Select value={filtroEsp} onValueChange={setFiltroEsp}>
-            <SelectTrigger className="w-[190px]"><SelectValue placeholder="Especialidade" /></SelectTrigger>
+            <SelectTrigger className="min-h-11 w-[190px]"><SelectValue placeholder="Especialidade" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="__all">Todas especialidades</SelectItem>
               {especialidades.map((e) => <SelectItem key={e} value={e}>{e}</SelectItem>)}
             </SelectContent>
           </Select>
+        )}
+        {isAdmin && (
+          <Button
+            type="button"
+            variant="outline"
+            className="min-h-11"
+            onClick={() => setTagCatalogOpen(true)}
+          >
+            <Tag className="mr-2 h-4 w-4" />
+            Catálogo de tags
+          </Button>
         )}
         {filtrando && (
           <button className="text-xs text-muted-foreground hover:text-foreground underline" onClick={() => { setSearchTerm(""); setFiltroUf("__all"); setFiltroEsp("__all"); }}>limpar filtros</button>
@@ -222,7 +264,114 @@ export function CampanhaProspeccaoKanban({ campanhaId }: Props) {
       </div>
 
       <AcompanhamentoLeadPainel lead={leadAberto ?? null} onClose={() => setCampanhaLeadAbertoId(null)} />
+      <LeadTagCatalogDialog open={tagCatalogOpen} onOpenChange={setTagCatalogOpen} />
+      <ClassificarSaidaDialog
+        key={`${saidaPendente?.leadId || "closed"}:${saidaPendente?.motivo || ""}`}
+        open={!!saidaPendente}
+        motivoInicial={saidaPendente?.motivo || "sem_interesse_oportunidade"}
+        isPending={classificarSaida.isPending}
+        onClose={() => setSaidaPendente(null)}
+        onConfirm={(motivo, observacao) => {
+          if (!saidaPendente) return;
+          classificarSaida.mutate({
+            campanha_id: campanhaId,
+            lead_id: saidaPendente.leadId,
+            motivo,
+            observacao,
+          }, { onSuccess: () => setSaidaPendente(null) });
+        }}
+      />
     </div>
+  );
+}
+
+const MOTIVOS_SAIDA: Array<{
+  value: MotivoSaidaCampanha;
+  label: string;
+  scope: "global" | "campanha";
+}> = [
+  { value: "sem_whatsapp", label: "Sem WhatsApp", scope: "global" },
+  { value: "aposentado", label: "Aposentado", scope: "global" },
+  { value: "contato_invalido", label: "Contato inválido", scope: "global" },
+  { value: "nao_contatar", label: "Não quer mais ser contatado", scope: "global" },
+  { value: "distancia", label: "Distância ou região incompatível", scope: "campanha" },
+  { value: "indisponivel_agora", label: "Indisponível nesta oportunidade", scope: "campanha" },
+  { value: "sem_interesse_oportunidade", label: "Sem interesse nesta oportunidade", scope: "campanha" },
+];
+
+function ClassificarSaidaDialog({
+  open,
+  motivoInicial,
+  isPending,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean;
+  motivoInicial: MotivoSaidaCampanha;
+  isPending: boolean;
+  onClose: () => void;
+  onConfirm: (motivo: MotivoSaidaCampanha, observacao: string) => void;
+}) {
+  const [motivo, setMotivo] = useState<MotivoSaidaCampanha>(motivoInicial);
+  const [observacao, setObservacao] = useState("");
+  const meta = MOTIVOS_SAIDA.find((item) => item.value === motivo) || MOTIVOS_SAIDA[0];
+
+  const handleOpenChange = (next: boolean) => {
+    if (next) {
+      setMotivo(motivoInicial);
+      setObservacao("");
+    } else {
+      onClose();
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="w-[calc(100vw-2rem)] max-w-md max-h-[90dvh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Classificar saída do médico</DialogTitle>
+          <DialogDescription>
+            O motivo define se a restrição vale apenas nesta oportunidade ou em todo o Sigma.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="motivo-saida">Motivo</Label>
+            <Select value={motivo} onValueChange={(value) => setMotivo(value as MotivoSaidaCampanha)}>
+              <SelectTrigger id="motivo-saida" className="min-h-11">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {MOTIVOS_SAIDA.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className={`rounded-md border p-3 text-sm ${meta.scope === "global" ? "border-orange-200 bg-orange-50 text-orange-800" : "border-blue-200 bg-blue-50 text-blue-800"}`}>
+            {meta.scope === "global"
+              ? "Efeito global: este médico não voltará automaticamente para outras campanhas."
+              : "Efeito local: o médico sai apenas desta campanha e poderá receber outra oportunidade."}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="observacao-saida">Observação</Label>
+            <Textarea
+              id="observacao-saida"
+              rows={3}
+              value={observacao}
+              onChange={(event) => setObservacao(event.target.value)}
+              placeholder="Contexto útil para a próxima pessoa que abrir o médico"
+            />
+          </div>
+        </div>
+        <DialogFooter className="gap-2 sm:gap-0">
+          <Button variant="outline" className="min-h-11" onClick={onClose}>Cancelar</Button>
+          <Button className="min-h-11" onClick={() => onConfirm(motivo, observacao)} disabled={isPending}>
+            Confirmar classificação
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -244,7 +393,6 @@ function LeadCard({
   onToggleTag: (tag: string) => void;
 }) {
   const lead = campLead.lead;
-  const [novaTag, setNovaTag] = useState("");
   if (!lead) return null;
   const tags = lead.tags || [];
   const atendimentoHumano = campLead.humano_assumiu === true;
@@ -304,12 +452,18 @@ function LeadCard({
           {tags.map((t) => (
             <Badge key={t} variant="secondary" className="text-[10px] gap-1 pr-1">
               {t}
-              <button onClick={(e) => { e.stopPropagation(); onToggleTag(t); }} className="hover:text-red-600"><X className="h-2.5 w-2.5" /></button>
+              <button
+                onClick={(e) => { e.stopPropagation(); onToggleTag(t); }}
+                className="inline-flex h-8 w-8 items-center justify-center hover:text-red-600"
+                aria-label={`Remover tag ${t}`}
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
             </Badge>
           ))}
           <Popover>
             <PopoverTrigger asChild>
-              <button onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-foreground border border-dashed rounded px-1.5 py-0.5">
+              <button onClick={(e) => e.stopPropagation()} className="inline-flex min-h-11 items-center gap-1 text-xs text-muted-foreground hover:text-foreground border border-dashed rounded px-2">
                 <Tag className="h-2.5 w-2.5" /> tag
               </button>
             </PopoverTrigger>
@@ -320,18 +474,15 @@ function LeadCard({
                   const on = tags.includes(t);
                   return (
                     <button key={t} onClick={() => onToggleTag(t)}
-                      className={`text-[11px] rounded px-2 py-0.5 border ${on ? "bg-primary text-primary-foreground border-primary" : "hover:bg-muted"}`}>
+                      className={`min-h-11 text-[11px] rounded px-2 border ${on ? "bg-primary text-primary-foreground border-primary" : "hover:bg-muted"}`}>
                       {on && <span className="mr-0.5">✓</span>}{t}
                     </button>
                   );
                 })}
               </div>
-              <div className="flex gap-1">
-                <Input value={novaTag} onChange={(e) => setNovaTag(e.target.value)} placeholder="Nova tag…" className="h-7 text-xs"
-                  onKeyDown={(e) => { if (e.key === "Enter" && novaTag.trim()) { onToggleTag(novaTag.trim()); setNovaTag(""); } }} />
-                <button onClick={() => { if (novaTag.trim()) { onToggleTag(novaTag.trim()); setNovaTag(""); } }}
-                  className="shrink-0 h-7 w-7 flex items-center justify-center rounded border hover:bg-muted"><Plus className="h-3.5 w-3.5" /></button>
-              </div>
+              <p className="text-[10px] text-muted-foreground">
+                Novas tags são cadastradas no catálogo administrativo.
+              </p>
             </PopoverContent>
           </Popover>
         </div>

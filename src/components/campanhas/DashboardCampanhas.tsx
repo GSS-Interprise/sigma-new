@@ -23,6 +23,7 @@ import { ComparativoOperadoras } from "./ComparativoOperadoras";
 import { DashboardMetasFase1 } from "./DashboardMetasFase1";
 import { DashboardFunilFase2 } from "./DashboardFunilFase2";
 import { DashboardSaudeFase3 } from "./DashboardSaudeFase3";
+import { StrategyPerformancePanel } from "./StrategyPerformancePanel";
 import {
   Rocket,
   Users,
@@ -104,7 +105,7 @@ export function DashboardCampanhas() {
   const { data: rows, isLoading } = useQuery({
     queryKey: ["dashboard-campanhas"],
     queryFn: async (): Promise<DashboardRow[]> => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from("vw_campanhas_dashboard")
         .select("*")
         .in("status", ["ativa", "pausada"])
@@ -119,12 +120,12 @@ export function DashboardCampanhas() {
   const { data: tiposMap = new Map<string, string>() } = useQuery({
     queryKey: ["dashboard-tipos-envio"],
     queryFn: async () => {
-      const { data } = await (supabase as any)
+      const { data } = await supabase
         .from("campanhas")
         .select("id, tipo_envio")
         .in("status", ["ativa", "pausada"]);
       const m = new Map<string, string>();
-      (data ?? []).forEach((c: any) => m.set(c.id, c.tipo_envio || "ia"));
+      (data ?? []).forEach((campaign) => m.set(campaign.id, campaign.tipo_envio || "ia"));
       return m;
     },
     staleTime: 60_000,
@@ -134,7 +135,7 @@ export function DashboardCampanhas() {
   const { data: especialidades = [] } = useQuery({
     queryKey: ["dashboard-especialidades"],
     queryFn: async () => {
-      const { data } = await (supabase as any)
+      const { data } = await supabase
         .from("especialidades")
         .select("id, nome")
         .eq("ativo", true)
@@ -171,23 +172,34 @@ export function DashboardCampanhas() {
 
   // Estado real dos chips por campanha — pra status honesto ("sem chip" ≠ "ativa")
   // e pros cartões de decisão. Confiável pós-sync do chip-auto-reconnect (10/06).
-  const { data: chipsPorCampanha = new Map<string, { total: number; open: number }>() } = useQuery({
-    queryKey: ["dashboard-chips-campanha"],
+  const { data: estadoPorCampanha = new Map<string, {
+    operational_state: string;
+    operational_reason: string;
+    chips_configured: number;
+    chips_usable: number;
+  }>() } = useQuery({
+    queryKey: ["campaign-operational-state"],
     queryFn: async () => {
-      const [{ data: camps }, { data: chips }] = await Promise.all([
-        (supabase as any).from("campanhas").select("id, chip_ids, chip_id").in("status", ["ativa", "pausada"]),
-        (supabase as any).from("chips").select("id, connection_state"),
-      ]);
-      const stateById = new Map<string, string>((chips ?? []).map((c: any) => [c.id, c.connection_state]));
-      const m = new Map<string, { total: number; open: number }>();
-      for (const c of camps ?? []) {
-        const ids: string[] = (c.chip_ids?.length ? c.chip_ids : [c.chip_id]).filter(Boolean);
-        m.set(c.id, {
-          total: ids.length,
-          open: ids.filter((id) => stateById.get(id) === "open").length,
-        });
+      const { data, error } = await supabase
+        .from("vw_campanha_operational_state" as never)
+        .select("campanha_id, operational_state, operational_reason, chips_configured, chips_usable");
+      if (error) throw error;
+      const map = new Map<string, {
+        operational_state: string;
+        operational_reason: string;
+        chips_configured: number;
+        chips_usable: number;
+      }>();
+      for (const row of (data ?? []) as Array<{
+        campanha_id: string;
+        operational_state: string;
+        operational_reason: string;
+        chips_configured: number;
+        chips_usable: number;
+      }>) {
+        map.set(row.campanha_id, row);
       }
-      return m;
+      return map;
     },
     refetchInterval: 60_000,
   });
@@ -197,7 +209,7 @@ export function DashboardCampanhas() {
   const { data: descartadosPhone = 0 } = useQuery({
     queryKey: ["dashboard-descartados-phone"],
     queryFn: async (): Promise<number> => {
-      const { count } = await (supabase as any)
+      const { count } = await supabase
         .from("campanha_leads")
         .select("lead_id", { count: "exact", head: false })
         .eq("status", "descartado")
@@ -256,8 +268,10 @@ export function DashboardCampanhas() {
   // ── Camada de decisão (pedido Ramone 10/06): fato → consequência → ação ──
   // Cada linha ganha diagnóstico operacional + projeção de esgotamento da base.
   const diagnostico = (r: DashboardRow) => {
-    const chips = chipsPorCampanha.get(r.campanha_id);
-    const semChip = r.status === "ativa" && chips !== undefined && chips.open === 0;
+    const operational = estadoPorCampanha.get(r.campanha_id);
+    const semChip = ["sem_chip", "restrita", "desconectada"].includes(
+      operational?.operational_state || "",
+    );
     const pendentes = r.pool_pendentes ?? 0;
     const ritmoDia = (r.disparos_7d ?? 0) / 7;
     // dias até esgotar a fila no ritmo atual (null = sem ritmo pra projetar)
@@ -275,7 +289,18 @@ export function DashboardCampanhas() {
       (paradaComFila ? 300 : 0) +
       (baseEsgotada ? 200 : 0) +
       (contatoBaixo ? 100 : 0);
-    return { semChip, pendentes, esgotaEmDias, quenteAtrasadoH, baseEsgotada, contatoBaixo, paradaComFila, score };
+    return {
+      semChip,
+      operationalState: operational?.operational_state,
+      operationalReason: operational?.operational_reason,
+      pendentes,
+      esgotaEmDias,
+      quenteAtrasadoH,
+      baseEsgotada,
+      contatoBaixo,
+      paradaComFila,
+      score,
+    };
   };
 
   const rowsComDiag = rowsFiltradas.map((r) => ({ r, d: diagnostico(r) }));
@@ -299,9 +324,9 @@ export function DashboardCampanhas() {
     if (d.semChip) {
       decisoes.push({
         tone: "red",
-        titulo: `Campanha parada sem chip conectado — ${r.nome}`,
+        titulo: `Campanha ${d.operationalState?.replace("_", " ")} — ${r.nome}`,
         consequencia: `${d.pendentes.toLocaleString("pt-BR")} lead(s) na fila sem ninguém disparando.`,
-        acao: "Pedir pra equipe reconectar o chip (QR Code em Chips & Instâncias).",
+        acao: d.operationalReason || "Revisar o estado na Saúde dos Chips.",
       });
     }
     if (d.baseEsgotada) {
@@ -626,6 +651,9 @@ export function DashboardCampanhas() {
 
       {/* Fase 2 — Funil de prospecção + comparação semanal */}
       <DashboardFunilFase2 funil={{ pool: agg.pool_total, contatado: agg.contatado, emConversa: agg.em_conversa, quentes: agg.quentes, convertidos: agg.convertidos }} />
+      <StrategyPerformancePanel
+        campanhaId={filtroCampanha !== "todas" ? filtroCampanha : undefined}
+      />
 
       {/* Fase 3 — Saúde operacional (onde agir) */}
       <DashboardSaudeFase3 tempoMedioQuente={tempoMedioQuente} quentesAtrasados={quentesAtrasados} descartadosPhone={descartadosPhone} totalQuentes={agg.quentes} contatado={agg.contatado} />
@@ -689,15 +717,21 @@ export function DashboardCampanhas() {
               ) : (
                 rowsOrdenadas.map(({ r, d }) => {
                   // status honesto: o que a campanha está FAZENDO, não o flag do banco
-                  const statusReal = r.status === "pausada"
-                    ? { label: "pausada", cls: "bg-slate-100 text-slate-700 border-slate-200" }
-                    : d.semChip
-                      ? { label: "sem chip", cls: "bg-rose-100 text-rose-700 border-rose-200" }
-                      : d.baseEsgotada
-                        ? { label: "base esgotada", cls: "bg-blue-100 text-blue-700 border-blue-200" }
-                        : (r.disparos_hoje ?? 0) > 0
-                          ? { label: "disparando", cls: "bg-emerald-100 text-emerald-700 border-emerald-200" }
-                          : { label: "aguardando", cls: "bg-amber-50 text-amber-700 border-amber-200" };
+                  const stateStyle: Record<string, { label: string; cls: string }> = {
+                    rodando: { label: "rodando", cls: "bg-emerald-100 text-emerald-700 border-emerald-200" },
+                    pronta: { label: "pronta", cls: "bg-blue-100 text-blue-700 border-blue-200" },
+                    pausada: { label: "pausada", cls: "bg-amber-50 text-amber-700 border-amber-200" },
+                    sem_chip: { label: "sem chip", cls: "bg-rose-100 text-rose-700 border-rose-200" },
+                    restrita: { label: "restrita", cls: "bg-orange-100 text-orange-700 border-orange-200" },
+                    desconectada: { label: "desconectada", cls: "bg-red-100 text-red-700 border-red-200" },
+                    configurando: { label: "configurando", cls: "bg-slate-100 text-slate-700 border-slate-200" },
+                  };
+                  const statusReal = d.baseEsgotada
+                    ? { label: "base esgotada", cls: "bg-blue-100 text-blue-700 border-blue-200" }
+                    : stateStyle[d.operationalState || ""] || {
+                        label: "a verificar",
+                        cls: "bg-slate-100 text-slate-700 border-slate-200",
+                      };
                   return (
                     <tr key={r.campanha_id} className="border-b hover:bg-muted/30">
                       <td className="px-4 py-2 truncate max-w-[220px]">

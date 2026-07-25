@@ -49,6 +49,10 @@ interface Props {
 // campanhas.sem_especialidade=true e sai do array especialidade_ids.
 const GENERALISTA_ID = "GENERALISTA";
 
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Erro inesperado";
+}
+
 export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCreated }: Props) {
   const [tab, setTab] = useState("basico");
   const [nome, setNome] = useState("");
@@ -109,6 +113,7 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
   const [bHandoffFrase, setBHandoffFrase] = useState(""); // Frase do handoff
   const [bHandoffGatilhos, setBHandoffGatilhos] = useState(""); // Regras explícitas de quando acionar handoff
   const [bPalavrasProibidas, setBPalavrasProibidas] = useState(""); // Termos que a IA não pode usar
+  const [briefingSourceId, setBriefingSourceId] = useState("");
   const [previewOpen, setPreviewOpen] = useState(false);
   const [excludedLeadIds, setExcludedLeadIds] = useState<Set<string>>(new Set());
   // Identidade do remetente — arquitetura templates-email-por-campanha.md.
@@ -125,7 +130,7 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
     queryKey: ["especialidades-lista-com-count"],
     queryFn: async () => {
       // Usa a view vw_especialidade_pool_count que pré-computa contagem
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from("vw_especialidade_pool_count")
         .select("especialidade_id, especialidade_nome, especialidade_area, total_leads")
         .order("especialidade_nome");
@@ -140,11 +145,11 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
           area: null,
           total_leads: -1,
         },
-        ...(data || []).map((e: any) => ({
-          id: e.especialidade_id,
-          nome: e.especialidade_nome,
-          area: e.especialidade_area,
-          total_leads: e.total_leads || 0,
+        ...(data || []).map((specialty) => ({
+          id: specialty.especialidade_id,
+          nome: specialty.especialidade_nome,
+          area: specialty.especialidade_area,
+          total_leads: specialty.total_leads || 0,
         })),
       ];
     },
@@ -169,6 +174,76 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
   // F2.2 — preview via RPC server-side com debounce de 300ms.
   // Reduz N queries por keystroke pra 1 e centraliza a lógica
   // dos filtros (mesmos do selecionar_leads_campanha).
+  const { data: briefingSources = [] } = useQuery({
+    queryKey: ["campaign-briefing-sources"],
+    enabled: open,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("campanhas")
+        .select("id, nome, briefing_ia, updated_at")
+        .not("briefing_ia", "is", null)
+        .order("updated_at", { ascending: false })
+        .limit(100);
+      if (error) throw error;
+      return (data || []).filter((campaign) => {
+        const briefing = campaign.briefing_ia as Record<string, unknown> | null;
+        return briefing && Object.keys(briefing).length > 0;
+      });
+    },
+    staleTime: 60_000,
+  });
+
+  const applyBriefing = (sourceId: string) => {
+    setBriefingSourceId(sourceId);
+    const source = briefingSources.find((campaign) => campaign.id === sourceId);
+    const briefing = source?.briefing_ia as Record<string, unknown> | undefined;
+    if (!briefing || !source) return;
+    const text = (key: string) => String(briefing[key] || "");
+    const textArray = (key: string) =>
+      Array.isArray(briefing[key]) ? (briefing[key] as unknown[]).map(String) : [];
+
+    setBNomeServico(text("nome_servico"));
+    setBHospital(text("hospital"));
+    setBCidade(text("cidade"));
+    setBTipoServico(text("tipo_servico"));
+    setBRequisitos(text("requisitos"));
+    setBEstrutura(text("estrutura"));
+    setBContratacao(text("contratacao") || "PJ");
+    setBValorMin(text("valor_min"));
+    setBValorMax(text("valor_max"));
+    setBValorPor(text("valor_por") || "plantão 12h");
+    setBBeneficios(textArray("beneficios"));
+    setBHandoffNome(text("handoff_nome"));
+    setBHandoffTelefone(text("handoff_telefone"));
+    setBInfoExtra(text("info_extra"));
+    setBInicioServico(text("inicio_servico"));
+    setBPagamento(text("pagamento"));
+    setBCidadeInfo(text("cidade_info"));
+    setBLinkVideo(text("link_video"));
+    setBHandoffFrase(text("handoff_frase"));
+    setBHandoffGatilhos(text("handoff_gatilhos"));
+    setBPalavrasProibidas(text("palavras_proibidas"));
+
+    const locais = Array.isArray(briefing.locais) ? briefing.locais : [];
+    setBLocaisExtras(
+      locais
+        .map((item) => item as Record<string, unknown>)
+        .slice(1)
+        .map((item) => ({
+          hospital: String(item.hospital || ""),
+          cidade: String(item.cidade || ""),
+        })),
+    );
+    const objecoes = Array.isArray(briefing.objecoes)
+      ? briefing.objecoes.map((item) => item as Record<string, unknown>)
+      : [];
+    setBObjecao1(String(objecoes[0]?.objecao || ""));
+    setBResposta1(String(objecoes[0]?.resposta || ""));
+    setBObjecao2(String(objecoes[1]?.objecao || ""));
+    setBResposta2(String(objecoes[1]?.resposta || ""));
+    toast.success(`Briefing importado de “${source.nome}”. Revise os campos antes de criar.`);
+  };
+
   const debouncedEspIds = useDebouncedValue(especialidadeIds, 300);
   const debouncedUfs = useDebouncedValue(regiaoEstados, 300);
   const debouncedIdadeMin = useDebouncedValue(idadeMin, 400);
@@ -190,7 +265,7 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
     queryFn: async () => {
       const idsReais = debouncedEspIds.filter((id) => id !== GENERALISTA_ID);
       const call = async (uf: string | null) => {
-        const { data, error } = await (supabase as any).rpc("campanha_wizard_preview", {
+        const { data, error } = await supabase.rpc("campanha_wizard_preview", {
           p_especialidade_ids: idsReais.length > 0 ? idsReais : null,
           p_uf: uf,
           p_exclude_lead_ids: null,
@@ -207,7 +282,7 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
           count: number;
           count_em_outras_campanhas?: number;
           top_cidades?: { cidade: string; n: number }[];
-          sample: any[];
+          sample: unknown[];
         };
       };
       // Multi-UF: a RPC filtra por 1 UF; somamos por estado (UFs são disjuntas).
@@ -240,7 +315,7 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
     queryFn: async () => {
       const idsReais = debouncedEspIds.filter((id) => id !== GENERALISTA_ID);
       const call = async (uf: string | null) => {
-        const { data, error } = await (supabase as any).rpc("campanha_pool_facets", {
+        const { data, error } = await supabase.rpc("campanha_pool_facets", {
           p_especialidade_ids: idsReais.length > 0 ? idsReais : null,
           p_uf: uf,
           p_sem_especialidade: debouncedEspIds.includes(GENERALISTA_ID),
@@ -301,7 +376,7 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
       };
 
       const espIdsReais = especialidadeIds.filter((id) => id !== GENERALISTA_ID);
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from("campanhas")
         .insert({
           nome,
@@ -358,7 +433,7 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
 
       // F2.9: se veio com preLead, insere manualmente em campanha_leads
       if (preLead?.id && data?.id) {
-        const { error: clError } = await (supabase as any)
+        const { error: clError } = await supabase
           .from("campanha_leads")
           .insert({
             campanha_id: data.id,
@@ -374,14 +449,14 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
 
       return data;
     },
-    onSuccess: (data: any) => {
+    onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["campanhas-prospeccao"] });
       toast.success("Campanha criada! Agora adicione os leads pra ela começar a rodar.");
       resetForm();
       onOpenChange(false);
       if (data?.id) onCreated?.(data.id);
     },
-    onError: (e: any) => toast.error("Erro: " + e.message),
+    onError: (error: unknown) => toast.error("Erro: " + errorMessage(error)),
   });
 
   const resetForm = () => {
@@ -463,7 +538,7 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="w-[calc(100vw-2rem)] max-w-2xl max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Rocket className="h-5 w-5" />
@@ -500,7 +575,7 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
             {/* F2.2: tipo de envio — define se IA conduz ou operadora executa tasks manuais */}
             <div className="space-y-2">
               <Label>Como a campanha funciona? *</Label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <button
                   type="button"
                   onClick={() => setTipoEnvio("ia")}
@@ -559,7 +634,7 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
                 </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label className="text-xs">Nome do remetente *</Label>
                   <Input
@@ -615,7 +690,7 @@ GSS Saúde`}
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label className="flex items-center gap-1.5">
                   <Stethoscope className="h-3.5 w-3.5" />
@@ -785,7 +860,7 @@ GSS Saúde`}
                       <input type="checkbox" checked={filtroTemEmail} onChange={(e) => setFiltroTemEmail(e.target.checked)} className="w-4 h-4" />
                       Só médicos com e-mail cadastrado <span className="text-xs text-muted-foreground">(habilita a cadência de e-mail)</span>
                     </label>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div className="space-y-1">
                         <Label className="text-xs">Origem do lead</Label>
                         <Select value={filtroOrigem || "__todas"} onValueChange={(v) => setFiltroOrigem(v === "__todas" ? "" : v)}>
@@ -1009,6 +1084,27 @@ GSS Saúde`}
           </TabsContent>
 
           <TabsContent value="ia" className="space-y-4 mt-4">
+            {briefingSources.length > 0 && (
+              <div className="space-y-2 rounded-lg border bg-muted/20 p-3">
+                <Label htmlFor="briefing-source">Reutilizar briefing existente</Label>
+                <select
+                  id="briefing-source"
+                  className="min-h-11 w-full rounded-md border bg-background px-3 text-sm"
+                  value={briefingSourceId}
+                  onChange={(event) => applyBriefing(event.target.value)}
+                >
+                  <option value="">Selecione uma campanha...</option>
+                  {briefingSources.map((source) => (
+                    <option key={source.id} value={source.id}>
+                      {source.nome}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  Os campos são copiados para edição; o briefing original não é alterado.
+                </p>
+              </div>
+            )}
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
               <Brain className="h-4 w-4 inline mr-1" />
               {tipoEnvio === "manual"
@@ -1016,7 +1112,7 @@ GSS Saúde`}
                 : "Preencha cada campo — a IA vai usar essas informações pra conversar com os médicos automaticamente. Quanto mais completo, melhor a conversa."}
             </div>
 
-            <ScrollArea className="h-[400px] pr-3">
+            <ScrollArea className="h-[min(400px,50dvh)] pr-3">
               <div className="space-y-4">
                 {/* BLOCO 1: Sobre a vaga */}
                 <div className="space-y-3">
@@ -1031,7 +1127,7 @@ GSS Saúde`}
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div className="space-y-1">
                       <Label>Hospital / Unidade *</Label>
                       <Input
@@ -1075,7 +1171,7 @@ GSS Saúde`}
                     </Button>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div className="space-y-1">
                       <Label>Tipo de serviço *</Label>
                       <Select value={bTipoServico} onValueChange={setBTipoServico}>
@@ -1131,7 +1227,7 @@ GSS Saúde`}
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div className="space-y-1">
                       <Label>Início do serviço (opcional)</Label>
                       <Input
@@ -1260,7 +1356,7 @@ GSS Saúde`}
                     A IA vai pedir permissão ao médico antes de passar o contato.
                   </p>
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div className="space-y-1">
                       <Label>Nome do responsável *</Label>
                       <Input
@@ -1317,7 +1413,7 @@ GSS Saúde`}
                   </p>
 
                   <div className="space-y-2">
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                       <Input
                         value={bObjecao1}
                         onChange={(e) => setBObjecao1(e.target.value)}
@@ -1329,7 +1425,7 @@ GSS Saúde`}
                         placeholder="Resposta: Oferecemos hospedagem e passagem"
                       />
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                       <Input
                         value={bObjecao2}
                         onChange={(e) => setBObjecao2(e.target.value)}

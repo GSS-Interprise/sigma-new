@@ -102,9 +102,14 @@ SELECT cron.schedule(
     url := 'https://zupsbgtoeoixfokzkjro.functions.supabase.co/sigzap-outbox-worker',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
-      'Authorization', 'Bearer ' || current_setting('app.settings.service_role_key')
+      'Authorization', 'Bearer ' || (
+        SELECT decrypted_secret
+        FROM vault.decrypted_secrets
+        WHERE name = 'sigzap_outbox_worker_service_role'
+        LIMIT 1
+      )
     ),
-    body := '{"limit":20}'::jsonb
+    body := '{"limit":1}'::jsonb
   );
   $$
 );

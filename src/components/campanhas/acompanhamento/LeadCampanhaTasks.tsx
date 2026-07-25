@@ -33,6 +33,8 @@ import {
   CheckCircle2,
   ClipboardList,
   CalendarIcon,
+  Bell,
+  UserRound,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -56,6 +58,10 @@ interface Task {
   observacao: string | null;
   snooze_ate: string | null;
   descarte_motivo: string | null;
+  responsavel_id: string | null;
+  lembrete_em: string | null;
+  origem: string;
+  criada_por: string | null;
 }
 
 /** Rótulos/ícones de tipos legados (pré-WS-A) que não existem mais em task_tipos. */
@@ -82,6 +88,15 @@ const SNOOZE_OPCOES = [
   { label: "1 semana", horas: 168 },
 ];
 
+function inputDateTime(date: Date) {
+  const offset = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Erro inesperado";
+}
+
 interface Props {
   campanhaLeadId: string;
 }
@@ -97,12 +112,14 @@ export function LeadCampanhaTasks({ campanhaLeadId }: Props) {
   const [addOpen, setAddOpen] = useState(false);
   const [novoTipo, setNovoTipo] = useState("");
   const [novoRotulo, setNovoRotulo] = useState("");
+  const [novoPrazo, setNovoPrazo] = useState(() => inputDateTime(new Date(Date.now() + 60 * 60_000)));
+  const [novoResponsavel, setNovoResponsavel] = useState(user?.id || "");
 
   const { data: tasks, isLoading } = useQuery({
     queryKey: ["campanha-lead-tasks", campanhaLeadId],
     queryFn: async (): Promise<Task[]> => {
       const { data, error } = await supabase
-        .from("campanha_lead_tasks" as any)
+        .from("campanha_lead_tasks")
         .select("*")
         .eq("campanha_lead_id", campanhaLeadId)
         .order("ordem", { ascending: true });
@@ -111,10 +128,26 @@ export function LeadCampanhaTasks({ campanhaLeadId }: Props) {
     },
   });
 
+  const { data: profiles = [] } = useQuery({
+    queryKey: ["profiles-followup"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, nome_completo")
+        .eq("status", "ativo")
+        .order("nome_completo");
+      if (error) throw error;
+      return data;
+    },
+    staleTime: 5 * 60_000,
+  });
+
+  const profilesMap = new Map(profiles.map((profile) => [profile.id, profile.nome_completo]));
+
   const marcarFeita = useMutation({
     mutationFn: async ({ taskId, obs }: { taskId: string; obs: string }) => {
       const { error } = await supabase
-        .from("campanha_lead_tasks" as any)
+        .from("campanha_lead_tasks")
         .update({
           status: "feita",
           feita_em: new Date().toISOString(),
@@ -130,36 +163,54 @@ export function LeadCampanhaTasks({ campanhaLeadId }: Props) {
       setFeitaTaskId(null);
       setObservacao("");
     },
-    onError: (e: any) => toast.error(e.message || "Erro ao marcar task"),
+    onError: (error: unknown) => toast.error(errorMessage(error) || "Erro ao marcar task"),
   });
 
   // Adicionar tarefa avulsa a este lead (pedido Bruna: "não consigo adicionar as tarefas")
   const adicionarTask = useMutation({
-    mutationFn: async ({ tipo, rotulo }: { tipo: string; rotulo: string }) => {
+    mutationFn: async ({
+      tipo,
+      rotulo,
+      prazo,
+      responsavelId,
+    }: {
+      tipo: string;
+      rotulo: string;
+      prazo: string;
+      responsavelId: string;
+    }) => {
       const proxOrdem = (tasks?.reduce((m, t) => Math.max(m, t.ordem), 0) ?? 0) + 1;
-      const { error } = await supabase.from("campanha_lead_tasks" as any).insert({
+      const { error } = await supabase.from("campanha_lead_tasks").insert({
         campanha_lead_id: campanhaLeadId,
         tipo,
         rotulo: rotulo.trim() || null,
         status: "pendente",
         ordem: proxOrdem,
-        prazo_at: new Date().toISOString(),
-      });
+        prazo_at: new Date(prazo).toISOString(),
+        lembrete_em: new Date(prazo).toISOString(),
+        responsavel_id: responsavelId || null,
+        criada_por: user?.id || null,
+        origem: "manual",
+      } as never);
       if (error) throw error;
     },
     onSuccess: () => {
       toast.success("Tarefa adicionada");
       queryClient.invalidateQueries({ queryKey: ["campanha-lead-tasks", campanhaLeadId] });
-      setAddOpen(false); setNovoTipo(""); setNovoRotulo("");
+      setAddOpen(false);
+      setNovoTipo("");
+      setNovoRotulo("");
+      setNovoPrazo(inputDateTime(new Date(Date.now() + 60 * 60_000)));
+      setNovoResponsavel(user?.id || "");
     },
-    onError: (e: any) => toast.error(e.message || "Erro ao adicionar tarefa"),
+    onError: (error: unknown) => toast.error(errorMessage(error) || "Erro ao adicionar tarefa"),
   });
 
   const snooze = useMutation({
     mutationFn: async ({ taskId, ate }: { taskId: string; ate: Date }) => {
       const novoPrazo = ate.toISOString();
       const { error } = await supabase
-        .from("campanha_lead_tasks" as any)
+        .from("campanha_lead_tasks")
         .update({ status: "snooze", snooze_ate: novoPrazo, prazo_at: novoPrazo })
         .eq("id", taskId);
       if (error) throw error;
@@ -168,13 +219,13 @@ export function LeadCampanhaTasks({ campanhaLeadId }: Props) {
       toast.success(`Adiada para ${format(vars.ate, "dd/MM 'às' HH'h'", { locale: ptBR })}`);
       queryClient.invalidateQueries({ queryKey: ["campanha-lead-tasks", campanhaLeadId] });
     },
-    onError: (e: any) => toast.error(e.message || "Erro ao adiar"),
+    onError: (error: unknown) => toast.error(errorMessage(error) || "Erro ao adiar"),
   });
 
   const descartar = useMutation({
     mutationFn: async ({ taskId, motivo }: { taskId: string; motivo: string }) => {
       const { error } = await supabase
-        .from("campanha_lead_tasks" as any)
+        .from("campanha_lead_tasks")
         .update({
           status: "descartada",
           descarte_motivo: motivo.trim() || "Sem motivo informado",
@@ -190,28 +241,17 @@ export function LeadCampanhaTasks({ campanhaLeadId }: Props) {
       setDescartarTaskId(null);
       setMotivoDescarte("");
     },
-    onError: (e: any) => toast.error(e.message || "Erro ao descartar"),
+    onError: (error: unknown) => toast.error(errorMessage(error) || "Erro ao descartar"),
   });
 
   if (isLoading) {
     return <div className="text-sm text-muted-foreground p-4">Carregando tasks...</div>;
   }
 
-  if (!tasks || tasks.length === 0) {
-    return (
-      <div className="text-center py-8 text-muted-foreground">
-        <ClipboardList className="h-10 w-10 mx-auto mb-2 opacity-30" />
-        <p className="text-sm">Sem tasks pra este lead.</p>
-        <p className="text-xs mt-1">
-          Tasks são geradas automaticamente quando lead entra em campanha manual.
-        </p>
-      </div>
-    );
-  }
-
-  const pendentes = tasks.filter((t) => t.status === "pendente" || t.status === "snooze").length;
-  const feitas = tasks.filter((t) => t.status === "feita").length;
-  const descartadas = tasks.filter((t) => t.status === "descartada").length;
+  const taskList = tasks || [];
+  const pendentes = taskList.filter((t) => t.status === "pendente" || t.status === "snooze").length;
+  const feitas = taskList.filter((t) => t.status === "feita").length;
+  const descartadas = taskList.filter((t) => t.status === "descartada").length;
 
   return (
     <>
@@ -236,11 +276,19 @@ export function LeadCampanhaTasks({ campanhaLeadId }: Props) {
 
         {/* Lista de tasks */}
         <div className="space-y-2">
-          {tasks.map((task) => (
+          {taskList.length === 0 && (
+            <div className="rounded-lg border border-dashed py-8 text-center text-muted-foreground">
+              <ClipboardList className="mx-auto mb-2 h-10 w-10 opacity-30" />
+              <p className="text-sm">Sem tarefas para este lead.</p>
+              <p className="mt-1 text-xs">Crie um follow-up abaixo.</p>
+            </div>
+          )}
+          {taskList.map((task) => (
             <TaskRow
               key={task.id}
               task={task}
               tipos={tipos}
+              profilesMap={profilesMap}
               onMarcarFeita={() => setFeitaTaskId(task.id)}
               onSnooze={(ate) => snooze.mutate({ taskId: task.id, ate })}
               onDescartar={() => setDescartarTaskId(task.id)}
@@ -255,7 +303,10 @@ export function LeadCampanhaTasks({ campanhaLeadId }: Props) {
               <ClipboardList className="h-3.5 w-3.5 mr-1.5" /> Adicionar tarefa
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-72 p-3 space-y-2" align="start">
+          <PopoverContent
+            className="w-[calc(100vw-2rem)] max-w-80 space-y-3 p-3"
+            align="start"
+          >
             <p className="text-xs font-medium">Nova tarefa pra este lead</p>
             <select
               value={novoTipo}
@@ -273,13 +324,45 @@ export function LeadCampanhaTasks({ campanhaLeadId }: Props) {
               placeholder="Rótulo (opcional). Ex: 2ª tentativa"
               className="h-8 text-sm"
             />
+            <label className="block space-y-1 text-xs font-medium">
+              Data e hora
+              <Input
+                type="datetime-local"
+                value={novoPrazo}
+                min={inputDateTime(new Date())}
+                onChange={(event) => setNovoPrazo(event.target.value)}
+                className="min-h-11 text-sm"
+              />
+            </label>
+            <label className="block space-y-1 text-xs font-medium">
+              Responsável
+              <select
+                value={novoResponsavel}
+                onChange={(event) => setNovoResponsavel(event.target.value)}
+                className="min-h-11 w-full rounded-md border bg-background px-3 text-sm"
+              >
+                <option value="">Sem responsável</option>
+                {profiles.map((profile) => (
+                  <option key={profile.id} value={profile.id}>
+                    {profile.nome_completo}
+                  </option>
+                ))}
+              </select>
+            </label>
             <Button
               size="sm"
-              className="w-full"
-              disabled={!novoTipo || adicionarTask.isPending}
-              onClick={() => adicionarTask.mutate({ tipo: novoTipo, rotulo: novoRotulo })}
+              className="min-h-11 w-full"
+              disabled={!novoTipo || !novoPrazo || adicionarTask.isPending}
+              onClick={() =>
+                adicionarTask.mutate({
+                  tipo: novoTipo,
+                  rotulo: novoRotulo,
+                  prazo: novoPrazo,
+                  responsavelId: novoResponsavel,
+                })
+              }
             >
-              Adicionar
+              Criar follow-up
             </Button>
           </PopoverContent>
         </Popover>
@@ -354,12 +437,13 @@ export function LeadCampanhaTasks({ campanhaLeadId }: Props) {
 interface TaskRowProps {
   task: Task;
   tipos: TaskTipoMeta[];
+  profilesMap: Map<string, string>;
   onMarcarFeita: () => void;
   onSnooze: (ate: Date) => void;
   onDescartar: () => void;
 }
 
-function TaskRow({ task, tipos, onMarcarFeita, onSnooze, onDescartar }: TaskRowProps) {
+function TaskRow({ task, tipos, profilesMap, onMarcarFeita, onSnooze, onDescartar }: TaskRowProps) {
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const { label, Icon, color } = metaDaTask(task, tipos);
   const prazo = new Date(task.prazo_at);
@@ -418,6 +502,21 @@ function TaskRow({ task, tipos, onMarcarFeita, onSnooze, onDescartar }: TaskRowP
               {isHoje && <span className="text-amber-700 font-medium ml-1">· HOJE</span>}
             </>
           )}
+          {task.responsavel_id && (
+            <span className="mt-1 flex items-center gap-1">
+              <UserRound className="h-3 w-3" />
+              {profilesMap.get(task.responsavel_id) || "Responsável definido"}
+            </span>
+          )}
+          {task.lembrete_em && !isFeita && !isDescartada && (
+            <span className="mt-1 flex items-center gap-1">
+              <Bell className="h-3 w-3" />
+              lembrete {format(new Date(task.lembrete_em), "dd/MM HH:mm", { locale: ptBR })}
+            </span>
+          )}
+          {task.origem && task.origem !== "cadencia" && (
+            <span className="mt-1 block">origem: {task.origem}</span>
+          )}
         </div>
       </div>
 
@@ -426,7 +525,7 @@ function TaskRow({ task, tipos, onMarcarFeita, onSnooze, onDescartar }: TaskRowP
           <Button
             size="sm"
             variant="outline"
-            className="h-7 gap-1"
+            className="min-h-11 gap-1"
             onClick={onMarcarFeita}
             title="Marcar feita"
           >
@@ -436,7 +535,7 @@ function TaskRow({ task, tipos, onMarcarFeita, onSnooze, onDescartar }: TaskRowP
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Mais ações">
+              <Button size="sm" variant="ghost" className="h-11 w-11 p-0" title="Mais ações">
                 <MoreHorizontal className="h-3.5 w-3.5" />
               </Button>
             </DropdownMenuTrigger>

@@ -5,6 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { AcompanhamentoKanban } from "./AcompanhamentoKanban";
 import { AcompanhamentoLeadPainel } from "./AcompanhamentoLeadPainel";
 import { AcompanhamentoAgingBanner } from "./AcompanhamentoAgingBanner";
+import { AiSupervisionQueue } from "./AiSupervisionQueue";
 import { usePermissions } from "@/hooks/usePermissions";
 import {
   useAcompanhamentoLeads,
@@ -71,6 +72,13 @@ export function AcompanhamentoView() {
 
   return (
     <div className="space-y-3">
+      <AiSupervisionQueue
+        onOpenLead={(campanhaLeadId) => {
+          const lead = todosLeads.find((item) => item.campanha_lead_id === campanhaLeadId);
+          if (lead) setLeadAberto(lead);
+        }}
+      />
+
       {/* F3.4 — Banner de aging de leads quentes (threshold configurável) */}
       <AcompanhamentoAgingBanner
         leads={todosLeads}
@@ -86,7 +94,7 @@ export function AcompanhamentoView() {
           value={String(agingThreshold)}
           onValueChange={(v) => setAgingThreshold(Number(v))}
         >
-          <SelectTrigger className="h-7 w-32 text-xs">
+          <SelectTrigger className="min-h-11 w-36 text-xs">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -153,7 +161,7 @@ function FiltroChip({
     <button
       type="button"
       onClick={onClick}
-      className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
+      className={`min-h-11 text-xs px-3 py-1.5 rounded-full border transition-colors ${
         ativo
           ? "bg-foreground text-background border-foreground"
           : "bg-background text-foreground border-border hover:bg-muted"
