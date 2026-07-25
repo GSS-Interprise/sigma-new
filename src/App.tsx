@@ -11,6 +11,7 @@ import { ErrorBoundary } from "@/components/common/ErrorBoundary";
 import Dashboard from "./pages/Dashboard";
 import Licitacoes from "./pages/Licitacoes";
 import TriagemLicitacoes from "./pages/TriagemLicitacoes";
+import ComparativoPncp from "./pages/ComparativoPncp";
 import Disparos from "./pages/Disparos";
 import DisparosZap from "./pages/DisparosZap";
 import DisparosEmail from "./pages/DisparosEmail";
@@ -90,6 +91,7 @@ const App = () => (
             <Route path="/comunicacao" element={<ProtectedRoute><PermissionRoute modulo="comunicacao"><Comunicacao /></PermissionRoute></ProtectedRoute>} />
             <Route path="/licitacoes" element={<ProtectedRoute><PermissionRoute modulo="licitacoes"><Licitacoes /></PermissionRoute></ProtectedRoute>} />
             <Route path="/licitacoes/triagem" element={<ProtectedRoute><PermissionRoute modulo="licitacoes"><TriagemLicitacoes /></PermissionRoute></ProtectedRoute>} />
+            <Route path="/licitacoes/comparativo" element={<ProtectedRoute><PermissionRoute modulo="licitacoes"><ComparativoPncp /></PermissionRoute></ProtectedRoute>} />
             <Route path="/disparos" element={<ProtectedRoute><PermissionRoute modulo="disparos"><Disparos /></PermissionRoute></ProtectedRoute>} />
             <Route path="/disparos/zap" element={<ProtectedRoute><PermissionRoute modulo="disparos"><DisparosZap /></PermissionRoute></ProtectedRoute>} />
             <Route path="/disparos/email" element={<ProtectedRoute><PermissionRoute modulo="disparos"><DisparosEmail /></PermissionRoute></ProtectedRoute>} />

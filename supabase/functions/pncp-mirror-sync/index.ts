@@ -47,6 +47,9 @@ async function fetchPncp(dataYmd: string, modalidade: number, pagina: number, tr
         signal: AbortSignal.timeout(8000),
       });
       if (r.status === 204) return { data: [], totalPaginas: 0 }; // sem registros nesse dia/modalidade
+      // 429 = rate limit. Insistir no mesmo IP MANTÉM o bloqueio (medido: 33
+      // 429s seguidos batendo; parando, libera em ~31s). Recuar de verdade.
+      if (r.status === 429) { if (t === tries - 1) return null; await sleep(30_000); continue; }
       if (!r.ok) { if (t === tries - 1) return null; await sleep(600 * (t + 1)); continue; }
       return await r.json();
     } catch (_e) {
@@ -216,7 +219,14 @@ serve(async (req) => {
 
         if (fimDoLote) { if (completo) unidadesCompletas++; break; }
         pagina++;
-        await sleep(150); // gentileza com a API instável
+        // Rate limit REAL do PNCP, medido: ~30 req/min por IP (1 req/2s).
+        // Acima disso vem 429 (HTML, sem Retry-After, sem X-RateLimit-*), e
+        // abuso sustentado escala pra BLACKHOLE TCP — o IP de egress fica
+        // inalcançável por horas, sem resposta nenhuma. O sleep(150) daqui
+        // era 400 req/min, 13x o limite: foi ele que derrubou a ingestão.
+        // 2000ms = 30 req/min, medido 60/60 OK sem um único 429.
+        // Volume não é problema: dia útil típico são ~130 páginas = ~4,5 min.
+        await sleep(2000);
       }
     }
 
