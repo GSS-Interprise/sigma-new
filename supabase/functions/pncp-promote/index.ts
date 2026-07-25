@@ -36,20 +36,47 @@ serve(async (req) => {
     const perfil = body?.perfil || "gss-saude";
     const limite = Math.min(Number(body?.limite) || 20, 50);
 
-    // aprovados ainda não promovidos
+    // aprovados ainda não promovidos.
+    // `humano_aprovado` passa sempre (alguém decidiu olhando). `auto_aprovado`
+    // passa pelos filtros abaixo — sem eles a fila despeja 860 Inexigibilidades
+    // vencidas no kanban da equipe.
+    const soAuto = body?.incluir_vencidas !== true;
     const { data: aprovados } = await supabase
       .from("pncp_triagem")
-      .select("numero_controle_pncp")
+      .select("numero_controle_pncp, status")
       .eq("perfil_slug", perfil)
       .in("status", ["auto_aprovado", "humano_aprovado"])
       .is("promovido_licitacao_id", null)
-      .limit(limite);
+      .limit(limite * 8); // folga: a maioria será filtrada por vigência
 
     if (!aprovados?.length) return json({ ok: true, msg: "nada a promover", promovidos: 0 });
 
-    const ncps = aprovados.map((a: any) => a.numero_controle_pncp);
-    const { data: mirror } = await supabase.from("pncp_mirror").select("*").in("numero_controle_pncp", ncps);
+    const { data: mirror } = await supabase.from("pncp_mirror").select("*")
+      .in("numero_controle_pncp", aprovados.map((a: any) => a.numero_controle_pncp));
     const byNcp = new Map((mirror || []).map((m: any) => [m.numero_controle_pncp, m]));
+
+    // FILTRO DE ENTREGA — o que a equipe consegue de fato disputar:
+    //  - proposta ainda aberta: card vencido só polui o kanban. Metade dos
+    //    registros do PNCP não traz encerramento, e são justamente as
+    //    Inexigibilidades; sem data não há o que disputar.
+    //  - modalidade 9 (Inexigibilidade) é contratação direta JÁ decidida.
+    //    Vale como inteligência de mercado, não como oportunidade — e é 82%
+    //    do que o filtro aprova.
+    const agora = Date.now();
+    const ncps = aprovados
+      .filter((a: any) => {
+        if (a.status === "humano_aprovado") return true;
+        if (!soAuto) return true;
+        const m: any = byNcp.get(a.numero_controle_pncp);
+        if (!m) return false;
+        if (m.modalidade_id === 9) return false;
+        const fim = m.data_encerramento_proposta ? new Date(m.data_encerramento_proposta).getTime() : 0;
+        return fim > agora;
+      })
+      .slice(0, limite)
+      .map((a: any) => a.numero_controle_pncp);
+
+    if (!ncps.length) return json({ ok: true, msg: "nada vigente a promover", promovidos: 0 });
 
     let promovidos = 0, pulados = 0, comPdf = 0, erros = 0;
 
@@ -109,9 +136,31 @@ serve(async (req) => {
               const dl = await fetch(a.url || a.uri, { signal: AbortSignal.timeout(20000) });
               if (!dl.ok) continue;
               const buf = new Uint8Array(await dl.arrayBuffer());
-              const nome = (a.titulo || `edital_${a.sequencialDocumento || 1}.pdf`).replace(/[^a-zA-Z0-9._-]/g, "_");
-              const path = `${licId}/${nome}`;
-              const up = await supabase.storage.from("editais-pdfs").upload(path, buf, { contentType: "application/pdf", upsert: true });
+
+              // O NOME REAL vem no content-disposition, não em a.titulo — 28%
+              // dos documentos têm titulo genérico ("Edital") e sairiam sem
+              // extensão, o que quebra o visualizador do front (que decide
+              // PDF x imagem pela extensão do nome). O `+` no filename é
+              // espaço URL-encoded e precisa ser decodificado.
+              const cd = dl.headers.get("content-disposition") || "";
+              const mFile = cd.match(/filename\*?=(?:UTF-8''|")?([^";]+)/i);
+              let nome = mFile ? decodeURIComponent(mFile[1].replace(/\+/g, " ")).trim()
+                               : (a.titulo || `edital_${a.sequencialDocumento || 1}`);
+
+              // ZIP/RAR chegam rotulados como PDF se confiarmos no titulo.
+              // Magic bytes não mentem: 50 4B = ZIP, 25 50 44 46 = %PDF.
+              const ehZip = buf[0] === 0x50 && buf[1] === 0x4b;
+              const ehPdf = buf[0] === 0x25 && buf[1] === 0x50 && buf[2] === 0x44 && buf[3] === 0x46;
+              const extAtual = (nome.match(/\.([a-z0-9]{2,5})$/i) || [])[1]?.toLowerCase();
+              if (ehZip && extAtual !== "zip") nome = nome.replace(/\.[a-z0-9]{2,5}$/i, "") + ".zip";
+              else if (ehPdf && extAtual !== "pdf") nome = nome.replace(/\.[a-z0-9]{2,5}$/i, "") + ".pdf";
+
+              const ct = ehZip ? "application/zip"
+                       : ehPdf ? "application/pdf"
+                       : (dl.headers.get("content-type") || "application/octet-stream").split(";")[0];
+
+              const path = `${licId}/${nome.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+              const up = await supabase.storage.from("editais-pdfs").upload(path, buf, { contentType: ct, upsert: true });
               if (!up.error) comPdf++;
             } catch (_e) { /* pula anexo que falhou */ }
           }
