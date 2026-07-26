@@ -185,9 +185,22 @@ serve(async (req) => {
                        : ehPdf ? "application/pdf"
                        : (dl.headers.get("content-type") || "application/octet-stream").split(";")[0];
 
-              const path = `${licId}/${nome.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+              const nomeSeguro = nome.replace(/[^a-zA-Z0-9._-]/g, "_");
+              const path = `${licId}/${nomeSeguro}`;
               const up = await supabase.storage.from("editais-pdfs").upload(path, buf, { contentType: ct, upsert: true });
-              if (!up.error) comPdf++;
+              if (!up.error) {
+                comPdf++;
+                // Registra na tabela com o bucket real — sem isso o vínculo
+                // arquivo↔card é só o nome da pasta, e fundir/deletar card
+                // torna o edital órfão invisível.
+                await supabase.from("licitacoes_anexos").insert({
+                  licitacao_id: licId,
+                  arquivo_nome: nomeSeguro,
+                  arquivo_url: path,
+                  bucket: "editais-pdfs",
+                  usuario_nome: "Robô PNCP",
+                }).then(() => null).catch(() => null);
+              }
             } catch (_e) { /* pula anexo que falhou */ }
           }
         }

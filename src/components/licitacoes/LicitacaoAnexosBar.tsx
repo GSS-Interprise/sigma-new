@@ -167,7 +167,8 @@ export function LicitacaoAnexosBar({ licitacaoId }: LicitacaoAnexosBarProps) {
         arquivo_nome: f.name,
         arquivo_url: `${licitacaoId}/${f.name}`,
         created_at: f.created_at,
-        source: 'bucket' as const
+        source: 'bucket' as const,
+        bucket: 'editais-pdfs',
       }));
     },
     enabled: !!licitacaoId,
@@ -180,16 +181,29 @@ export function LicitacaoAnexosBar({ licitacaoId }: LicitacaoAnexosBarProps) {
     arquivo_url: string;
     created_at?: string | null;
     source: 'tabela' | 'bucket';
+    // Bucket REAL do arquivo, vindo da coluna licitacoes_anexos.bucket.
+    // Antes o bucket era deduzido da origem (`source`), o que amarrava o
+    // edital ao nome da pasta = id do card: ao fundir/deletar card, o arquivo
+    // virava órfão invisível (107 editais presos assim em 24/07). Com o bucket
+    // gravado na linha, a linha pode mudar de card que o arquivo continua
+    // alcançável.
+    bucket: string;
   };
+
+  // Bucket de um anexo, com fallback pro comportamento antigo (linha criada
+  // antes da coluna existir).
+  const bucketDe = (a: { bucket?: string | null; source: 'tabela' | 'bucket' }) =>
+    a.bucket || (a.source === 'bucket' ? 'editais-pdfs' : 'licitacoes-anexos');
 
   // Combinar anexos de ambas as fontes (evitando duplicatas)
   const anexos = useMemo((): AnexoUnificado[] => {
-    const tabelaAnexos: AnexoUnificado[] = (anexosTabela || []).map(a => ({ 
+    const tabelaAnexos: AnexoUnificado[] = (anexosTabela || []).map((a: any) => ({ 
       id: a.id,
       arquivo_nome: a.arquivo_nome,
       arquivo_url: a.arquivo_url,
       created_at: a.created_at,
-      source: 'tabela' as const 
+      source: 'tabela' as const,
+      bucket: a.bucket || 'licitacoes-anexos',
     }));
     const bucketAnexos: AnexoUnificado[] = anexosBucket || [];
     
@@ -217,7 +231,7 @@ export function LicitacaoAnexosBar({ licitacaoId }: LicitacaoAnexosBarProps) {
         // Skip se já temos o thumbnail
         if (thumbnailUrls[anexo.id]) continue;
         
-        const bucketName = anexo.source === 'bucket' ? 'editais-pdfs' : 'licitacoes-anexos';
+        const bucketName = bucketDe(anexo);
         
         if (isImageFile(anexo.arquivo_nome)) {
           // Para imagens, usar URL assinada diretamente
@@ -323,7 +337,7 @@ export function LicitacaoAnexosBar({ licitacaoId }: LicitacaoAnexosBarProps) {
 
   const deleteMutation = useMutation({
     mutationFn: async (anexo: AnexoUnificado) => {
-      const bucketName = anexo.source === 'bucket' ? 'editais-pdfs' : 'licitacoes-anexos';
+      const bucketName = bucketDe(anexo);
       
       const { error: storageError } = await supabase.storage
         .from(bucketName)
@@ -496,7 +510,7 @@ export function LicitacaoAnexosBar({ licitacaoId }: LicitacaoAnexosBarProps) {
 
   const handleDownload = async (anexo: AnexoUnificado) => {
     try {
-      const bucketName = anexo.source === 'bucket' ? 'editais-pdfs' : 'licitacoes-anexos';
+      const bucketName = bucketDe(anexo);
       
       const { data, error } = await supabase.storage
         .from(bucketName)
@@ -519,7 +533,7 @@ export function LicitacaoAnexosBar({ licitacaoId }: LicitacaoAnexosBarProps) {
   };
 
   const handlePreview = async (anexo: AnexoUnificado) => {
-    const bucketName = anexo.source === 'bucket' ? 'editais-pdfs' : 'licitacoes-anexos';
+    const bucketName = bucketDe(anexo);
     const extension = anexo.arquivo_nome?.split('.').pop()?.toLowerCase() || '';
 
     if (extension === 'pdf') {
@@ -604,7 +618,7 @@ export function LicitacaoAnexosBar({ licitacaoId }: LicitacaoAnexosBarProps) {
 
       // Build array of files to send in a single request
       const files = anexos.map(anexo => ({
-        bucket_name: anexo.source === 'bucket' ? 'editais-pdfs' : 'licitacoes-anexos',
+        bucket_name: bucketDe(anexo),
         file_path: anexo.arquivo_url,
         file_name: anexo.arquivo_nome,
       }));

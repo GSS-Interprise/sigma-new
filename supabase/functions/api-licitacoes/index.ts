@@ -1137,6 +1137,21 @@ Deno.serve(async (req) => {
         return errorResponse('UPLOAD_ERROR', `Erro ao fazer upload: ${error.message}`, { storage_error: error }, 500);
       }
 
+      // Registra o anexo na TABELA, com o bucket onde ele realmente está.
+      // Sem esta linha o único vínculo arquivo↔card é o NOME DA PASTA (= id do
+      // card): ao fundir ou deletar card, o edital vira órfão invisível — foi
+      // assim que 107 editais ficaram presos em 24/07. Com a linha, o anexo
+      // acompanha o card (a linha move, o caminho continua válido).
+      // Melhor esforço: falha aqui não pode derrubar o upload que já deu certo.
+      const { error: anexoErr } = await supabase.from('licitacoes_anexos').insert({
+        licitacao_id: id,
+        arquivo_nome: uniqueFilename,
+        arquivo_url: finalPath,
+        bucket: 'editais-pdfs',
+        usuario_nome: 'Captador (API)',
+      });
+      if (anexoErr) console.warn('ANEXO_ROW_WARNING', anexoErr);
+
       // Gerar URL pública se o bucket for público
       const { data: urlData } = supabase.storage.from('editais-pdfs').getPublicUrl(finalPath);
 
