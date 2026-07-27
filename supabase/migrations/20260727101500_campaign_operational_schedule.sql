@@ -14,21 +14,14 @@ chip_rollup AS (
     count(*)::integer AS chips_configured,
     count(*) FILTER (WHERE ch.connection_state = 'open')::integer AS chips_connected,
     count(*) FILTER (WHERE ch.connection_state = 'open' AND ch.status = 'ativo'
-      AND coalesce(ch.pode_disparar, false) AND ch.operational_state = 'operational')::integer AS chips_usable,
+      AND coalesce(ch.pode_disparar, false)
+      -- Chips antigos/conectados ainda podem não ter sido classificados.
+      -- "unknown" não deve bloquear a operação; estados restritos continuam bloqueados.
+      AND coalesce(ch.operational_state, 'unknown') IN ('operational', 'unknown'))::integer AS chips_usable,
     count(*) FILTER (WHERE ch.operational_state LIKE 'restricted%')::integer AS chips_restricted
   FROM campaign_chips cc
   LEFT JOIN public.chips ch ON ch.id = cc.chip_id
   GROUP BY cc.campanha_id
-),
-lead_rollup AS (
-  SELECT
-    cl.campanha_id,
-    count(*) FILTER (WHERE cl.status = 'frio')::integer AS leads_pendentes,
-    count(*) FILTER (WHERE cl.data_primeiro_contato >=
-      date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo'
-    )::integer AS disparos_hoje
-  FROM public.campanha_leads cl
-  GROUP BY cl.campanha_id
 ),
 base AS (
   SELECT
@@ -38,8 +31,6 @@ base AS (
     coalesce(cr.chips_connected, 0) AS chips_connected_calc,
     coalesce(cr.chips_usable, 0) AS chips_usable_calc,
     coalesce(cr.chips_restricted, 0) AS chips_restricted_calc,
-    coalesce(lr.leads_pendentes, 0) AS leads_pendentes_calc,
-    coalesce(lr.disparos_hoje, 0) AS disparos_hoje_calc,
     ud.ultimo_disparo,
     CASE
       WHEN extract(isodow FROM now() AT TIME ZONE 'America/Sao_Paulo')::smallint =
@@ -50,7 +41,6 @@ base AS (
     END AS dentro_janela_calc
   FROM public.campanhas c
   LEFT JOIN chip_rollup cr ON cr.campanha_id = c.id
-  LEFT JOIN lead_rollup lr ON lr.campanha_id = c.id
   LEFT JOIN public.vw_campanha_ultimo_disparo ud ON ud.campanha_id = c.id
 )
 SELECT
@@ -72,8 +62,6 @@ SELECT
     WHEN chips_usable_calc = 0 AND chips_restricted_calc > 0 THEN 'restrita'
     WHEN chips_usable_calc = 0 THEN 'desconectada'
     WHEN tipo_envio = 'manual' THEN 'manual'
-    WHEN leads_pendentes_calc = 0 THEN 'sem_leads'
-    WHEN coalesce(limite_diario_campanha, 0) > 0 AND disparos_hoje_calc >= limite_diario_campanha THEN 'limite_atingido'
     WHEN coalesce(horario_inteligente_ativo, false) AND NOT dentro_janela_calc THEN 'fora_horario'
     WHEN ultimo_disparo >= now() - interval '30 minutes' THEN 'rodando'
     ELSE 'aguardando'
@@ -86,9 +74,6 @@ SELECT
     WHEN chips_usable_calc = 0 AND chips_restricted_calc > 0 THEN 'Todos os chips disponíveis estão restritos'
     WHEN chips_usable_calc = 0 THEN 'Nenhum chip operacional conectado'
     WHEN tipo_envio = 'manual' THEN 'O primeiro contato depende da operadora'
-    WHEN leads_pendentes_calc = 0 THEN 'Não há leads aguardando primeiro contato'
-    WHEN coalesce(limite_diario_campanha, 0) > 0 AND disparos_hoje_calc >= limite_diario_campanha
-      THEN format('Limite diário atingido (%s/%s)', disparos_hoje_calc, limite_diario_campanha)
     WHEN coalesce(horario_inteligente_ativo, false) AND NOT dentro_janela_calc THEN 'Fora da janela de envio configurada'
     WHEN ultimo_disparo >= now() - interval '30 minutes' THEN 'Envio observado nos últimos 30 minutos'
     WHEN next_batch_at > now() THEN 'Aguardando a próxima tentativa programada'
@@ -100,8 +85,8 @@ SELECT
   coalesce(dias_semana, ARRAY[1,2,3,4,5]::smallint[]) AS dias_semana,
   dentro_janela_calc AS dentro_janela,
   next_batch_at AS proxima_tentativa,
-  leads_pendentes_calc AS leads_pendentes,
-  disparos_hoje_calc AS disparos_hoje,
+  NULL::integer AS leads_pendentes,
+  NULL::integer AS disparos_hoje,
   limite_diario_campanha
 FROM base;
 
