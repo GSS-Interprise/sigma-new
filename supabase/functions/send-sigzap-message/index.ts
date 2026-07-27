@@ -460,16 +460,27 @@ serve(async (req) => {
             row: outbox as SigzapOutboxRow,
           });
           if (!processed.sent) {
+            // O Evolution usa HTTP 400 tanto para erros genéricos quanto para
+            // telefone inexistente. Preserve a causa para a UI não mandar a
+            // operadora reconectar um chip que está saudável.
+            const evolutionDetail = typeof processed.evolutionResponse === 'string'
+              ? processed.evolutionResponse.toLowerCase()
+              : JSON.stringify(processed.evolutionResponse ?? {}).toLowerCase();
+            const numberNotOnWhatsApp =
+              evolutionDetail.includes('exists":false')
+              || evolutionDetail.includes('not on whatsapp');
             return Response.json({
               success: false,
               queued: processed.queued,
               failed: processed.failed,
-              code: processed.code,
+              code: numberNotOnWhatsApp ? 'NUMBER_NOT_ON_WHATSAPP' : processed.code,
               outboxId: outbox.id,
               clientMessageId: stableClientId,
-              message: processed.queued
-                ? 'Mensagem salva. Aguardando reconexao do chip.'
-                : 'Mensagem nao enviada. Tente novamente ou escolha outro chip.',
+              message: numberNotOnWhatsApp
+                ? 'Esse número não possui WhatsApp ativo. Confira o cadastro ou marque o lead como perdido.'
+                : processed.queued
+                  ? 'Mensagem salva. Aguardando reconexao do chip.'
+                  : 'Mensagem nao enviada. Tente novamente ou escolha outro chip.',
             }, { status: processed.queued ? 202 : 409, headers: corsHeaders });
           }
           return Response.json({
