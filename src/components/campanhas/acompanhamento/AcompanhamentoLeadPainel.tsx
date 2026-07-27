@@ -23,6 +23,7 @@ import {
   Flame,
   StickyNote,
   Mail,
+  Target,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -161,6 +162,16 @@ export function AcompanhamentoLeadPainel({ lead, onClose }: Props) {
                   </span>
                   {ultimoContatoLabel && <span>· último contato {ultimoContatoLabel}</span>}
                 </div>
+                {lead.strategy_name && (
+                  <Badge
+                    variant="outline"
+                    className="mt-2 max-w-full gap-1 border-violet-200 bg-violet-50 text-violet-700"
+                    title={`Estratégia da campanha: ${lead.strategy_name}`}
+                  >
+                    <Target className="h-3 w-3 shrink-0" />
+                    <span className="truncate">Estratégia: {lead.strategy_name}</span>
+                  </Badge>
+                )}
               </div>
               {!semDono && (
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">

@@ -1,7 +1,7 @@
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Bot, Flame, MessageSquare, MapPin, Stethoscope, Clock, Layers, Tag, DollarSign, Sparkles, UserCheck } from "lucide-react";
+import { Bot, Flame, MessageSquare, MapPin, Stethoscope, Clock, Layers, Tag, DollarSign, Sparkles, UserCheck, Target } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { AcompanhamentoLead } from "@/hooks/useAcompanhamentoLeads";
@@ -119,6 +119,17 @@ export function AcompanhamentoCard({
           </Badge>
         )}
       </div>
+
+      {lead.strategy_name && (
+        <Badge
+          variant="outline"
+          className="mb-2 max-w-full gap-1 border-violet-200 bg-violet-50 text-[10px] text-violet-700"
+          title={`Estratégia da campanha: ${lead.strategy_name}`}
+        >
+          <Target className="h-2.5 w-2.5 shrink-0" />
+          <span className="truncate">Estratégia: {lead.strategy_name}</span>
+        </Badge>
+      )}
 
       {/* A2 — tags de insight do perfil IA (banco_interesse_leads) */}
       <div className="mb-2">

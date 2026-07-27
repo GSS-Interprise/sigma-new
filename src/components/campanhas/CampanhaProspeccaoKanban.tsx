@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Clock, Send, Bot, Flame, ThermometerSun, CheckCircle, Search, Phone,
-  MapPin, GripVertical, XCircle, Tag, X, UserCheck, MessageSquareOff,
+  MapPin, GripVertical, XCircle, Tag, X, UserCheck, MessageSquareOff, Target,
 } from "lucide-react";
 import {
   useCampanhaLeadsByStatus,
@@ -449,6 +449,16 @@ function LeadCard({
 
         {/* tags + editor rápido */}
         <div className="pl-6 flex flex-wrap items-center gap-1">
+          {campLead.strategy?.nome && (
+            <Badge
+              variant="outline"
+              className="max-w-full gap-1 border-violet-200 bg-violet-50 text-[10px] text-violet-700"
+              title={`Estratégia da campanha: ${campLead.strategy.nome}`}
+            >
+              <Target className="h-2.5 w-2.5 shrink-0" />
+              <span className="truncate">Estratégia: {campLead.strategy.nome}</span>
+            </Badge>
+          )}
           {tags.map((t) => (
             <Badge key={t} variant="secondary" className="text-[10px] gap-1 pr-1">
               {t}

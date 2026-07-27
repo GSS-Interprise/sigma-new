@@ -21,6 +21,7 @@ export interface CampanhaLead {
   id: string;
   campanha_id: string;
   lead_id: string;
+  strategy_id?: string | null;
   status: StatusLeadCampanha;
   data_primeiro_contato: string | null;
   data_ultimo_contato: string | null;
@@ -35,6 +36,11 @@ export interface CampanhaLead {
   assumido_em?: string | null;
   humano_assumiu?: boolean | null;
   motivo_perdido?: string | null;
+  strategy?: {
+    id: string;
+    nome: string;
+    status: string;
+  } | null;
   lead?: {
     id: string;
     nome: string;
@@ -61,7 +67,7 @@ export function useCampanhaLeads(campanhaId?: string) {
         const { data, error } = await supabase
           .from("campanha_leads")
           .select(
-            "*, lead:lead_id(id, nome, phone_e164, email, uf, cidade, especialidade, tags)"
+            "*, strategy:strategy_id(id, nome, status), lead:lead_id(id, nome, phone_e164, email, uf, cidade, especialidade, tags)"
           )
           .eq("campanha_id", campanhaId!)
           .order("data_status", { ascending: false })

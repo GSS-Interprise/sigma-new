@@ -17,6 +17,9 @@ export interface AcompanhamentoLead {
   campanha_lead_id: string;
   campanha_id: string;
   lead_id: string;
+  strategy_id: string | null;
+  strategy_name: string | null;
+  strategy_status: string | null;
   etapa_acompanhamento: EtapaAcompanhamento;
   status: string;
   assumido_por: string | null;
