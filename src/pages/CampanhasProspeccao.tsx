@@ -695,7 +695,11 @@ export default function CampanhasProspeccao() {
                       <option value="todos">Todos os estados operacionais</option>
                       <option value="com_erro">Com erro operacional</option>
                       <option value="rodando">Rodando</option>
-                      <option value="pronta">Pronta</option>
+                      <option value="aguardando">Aguardando</option>
+                      <option value="manual">Depende da operadora</option>
+                      <option value="fora_horario">Fora do horário</option>
+                      <option value="sem_leads">Sem leads</option>
+                      <option value="limite_atingido">Limite diário atingido</option>
                       <option value="pausada">Pausada</option>
                       <option value="sem_chip">Sem chip</option>
                       <option value="restrita">Chip restrito</option>
