@@ -86,6 +86,27 @@ const isPdfFile = (fileName: string) => {
   return extension === 'pdf';
 };
 
+// O anexo que a Effecti entrega chega com o nome que o PNCP usa - CNPJ do
+// orgao + ano + sequencial, e o texto com o percent-encoding "escapado" (o %
+// virou _), as vezes sem extensao nenhuma:
+//   29525092000105_2026_4_3_TERMO_20DE_20REFER_C3_8ANCIA -> "TERMO DE REFERÊNCIA"
+// Cru na tela a equipe nao consegue dizer qual arquivo e qual. Isto e SO
+// exibicao: a chave do storage e arquivo_url, que nao passa por aqui.
+const RE_NOME_PNCP = /^\d{11,14}_\d{4}_\d+_\d+_(.+)$/;
+const nomeLegivel = (nome: string): string => {
+  const m = (nome || '').match(RE_NOME_PNCP);
+  if (!m) return nome; // upload manual da equipe: preserva como esta
+  // sufixo de reenvio (..._1784905209645) - e o que duplicava o anexo na tela
+  let s = m[1].replace(/_\d{13}(?=(\.[a-z0-9]{2,5})?$)/i, '');
+  try {
+    const d = decodeURIComponent(s.replace(/_([0-9A-Fa-f]{2})/g, '%$1'));
+    // Guarda contra falso positivo: em "CE_013_2026" o _01 tambem e hex valido
+    // e decodificaria pra caractere de controle. Se saiu lixo, nao era encoding.
+    if (d.trim() && ![...d].some((c) => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127)) s = d;
+  } catch { /* nao era percent-encoding; mantem cru */ }
+  return s.trim() || nome;
+};
+
 // Gera thumbnail da primeira página do PDF com melhor qualidade
 const generatePdfThumbnail = async (pdfUrl: string): Promise<string | null> => {
   try {
@@ -206,15 +227,27 @@ export function LicitacaoAnexosBar({ licitacaoId }: LicitacaoAnexosBarProps) {
       bucket: a.bucket || 'licitacoes-anexos',
     }));
     const bucketAnexos: AnexoUnificado[] = anexosBucket || [];
-    
-    // Remover duplicatas baseado no nome do arquivo
-    const allAnexos = [...tabelaAnexos];
-    const tabelaNomes = new Set(tabelaAnexos.map(a => a.arquivo_nome.toLowerCase()));
-    
+
+    // Dedup DENTRO da propria tabela, nao so tabela-vs-bucket. A ingestao
+    // reenvia o mesmo anexo com sufixo de timestamp ("X" e "X_1784905209645"),
+    // e o dedup antigo comparava nome exato - entao os dois passavam. Era por
+    // isso que o card de Brejinho de Nazaré mostrava 12 anexos que na verdade
+    // eram 6 arquivos. nomeLegivel() tira o sufixo, virando chave canonica.
+    const chaveDe = (a: AnexoUnificado) => nomeLegivel(a.arquivo_nome).toLowerCase();
+    const vistos = new Set<string>();
+    const allAnexos: AnexoUnificado[] = [];
+
+    for (const a of tabelaAnexos) {
+      const k = chaveDe(a);
+      if (vistos.has(k)) continue;
+      vistos.add(k);
+      allAnexos.push(a);
+    }
     for (const ba of bucketAnexos) {
-      if (!tabelaNomes.has(ba.arquivo_nome.toLowerCase())) {
-        allAnexos.push(ba);
-      }
+      const k = chaveDe(ba);
+      if (vistos.has(k)) continue;
+      vistos.add(k);
+      allAnexos.push(ba);
     }
     
     return allAnexos.sort((a, b) => 
@@ -521,7 +554,13 @@ export function LicitacaoAnexosBar({ licitacaoId }: LicitacaoAnexosBarProps) {
       const url = URL.createObjectURL(data);
       const a = document.createElement('a');
       a.href = url;
-      a.download = anexo.arquivo_nome;
+      // Baixa com o nome legivel, e garante a extensao: o PNCP entrega edital
+      // sem ".pdf" no nome, e sem extensao o arquivo salvo nao abre com duplo
+      // clique no Windows - a equipe leria isso como "o anexo veio quebrado".
+      const nome = nomeLegivel(anexo.arquivo_nome);
+      a.download = /\.[a-z0-9]{2,5}$/i.test(nome) || bucketName !== 'editais-pdfs'
+        ? nome
+        : `${nome}.pdf`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -534,9 +573,16 @@ export function LicitacaoAnexosBar({ licitacaoId }: LicitacaoAnexosBarProps) {
 
   const handlePreview = async (anexo: AnexoUnificado) => {
     const bucketName = bucketDe(anexo);
-    const extension = anexo.arquivo_nome?.split('.').pop()?.toLowerCase() || '';
 
-    if (extension === 'pdf') {
+    // NAO confie na extensao do nome pra decidir o que abre em aba nova. O PNCP
+    // entrega o nome URL-encoded e SEM extensao ("..._EDITAL_20DE_20DISPENSA"),
+    // entao a regra antiga (nome termina em .pdf) mandava 638 anexos de edital
+    // - os 12 do card de Brejinho de Nazaré entre eles - pro viewer interno,
+    // que nao renderiza PDF. Era o "anexo nao abre" reportado pela equipe.
+    // Regra invertida: SO imagem tem viewer; todo o resto abre em aba nova.
+    const ehImagem = isImageFile(anexo.arquivo_nome || '');
+
+    if (!ehImagem) {
       // Abre a aba SINCRONAMENTE, ainda dentro do gesto de clique. Se o
       // window.open rodasse depois do await (como era antes), o navegador o
       // trata como popup fora de gesto e BLOQUEIA — era o "anexo não abre
@@ -659,9 +705,12 @@ export function LicitacaoAnexosBar({ licitacaoId }: LicitacaoAnexosBarProps) {
 
   const truncateFileName = (name: string, maxLength: number = 20) => {
     if (name.length <= maxLength) return name;
-    const ext = name.split('.').pop() || '';
-    const baseName = name.slice(0, name.lastIndexOf('.'));
-    const truncated = baseName.slice(0, maxLength - ext.length - 4) + '...';
+    // Nome do PNCP costuma vir SEM extensao. Nesse caso lastIndexOf('.') e -1 e
+    // o slice antigo comia o ultimo caractere e colava um "." solto no fim.
+    const ponto = name.lastIndexOf('.');
+    if (ponto <= 0) return name.slice(0, maxLength - 3) + '...';
+    const ext = name.slice(ponto + 1);
+    const truncated = name.slice(0, ponto).slice(0, Math.max(1, maxLength - ext.length - 4)) + '...';
     return `${truncated}.${ext}`;
   };
 
@@ -763,7 +812,7 @@ export function LicitacaoAnexosBar({ licitacaoId }: LicitacaoAnexosBarProps) {
                     ) : hasThumbnail ? (
                       <img 
                         src={thumbnailUrl} 
-                        alt={anexo.arquivo_nome} 
+                        alt={nomeLegivel(anexo.arquivo_nome)}
                         className="w-full h-full object-cover"
                       />
                     ) : iconSrc ? (
@@ -779,12 +828,12 @@ export function LicitacaoAnexosBar({ licitacaoId }: LicitacaoAnexosBarProps) {
                     )}
                   </div>
                   
-                  <span 
+                  <span
                     className="text-xs text-center line-clamp-2 w-full cursor-pointer leading-tight font-medium"
                     onClick={() => handlePreview(anexo)}
-                    title={anexo.arquivo_nome}
+                    title={nomeLegivel(anexo.arquivo_nome)}
                   >
-                    {truncateFileName(anexo.arquivo_nome, 25)}
+                    {truncateFileName(nomeLegivel(anexo.arquivo_nome), 25)}
                   </span>
 
                   {/* Action buttons */}
