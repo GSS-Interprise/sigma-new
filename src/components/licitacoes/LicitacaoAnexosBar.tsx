@@ -600,13 +600,24 @@ export function LicitacaoAnexosBar({ licitacaoId }: LicitacaoAnexosBarProps) {
             })()
           : anexo.arquivo_url;
 
-        const { data, error } = await supabase.storage
-          .from(bucketName)
-          .createSignedUrl(key, 3600);
-
+        // Baixa pelo SDK (XHR) e abre via blob:, em vez de mandar a aba
+        // navegar pra URL assinada no dominio do Supabase. Motivo medido em
+        // 27/07: com a URL assinada na barra de endereco, extensao de bloqueio
+        // (adblock / antivirus) casa o endereco e mata a navegacao com
+        // ERR_BLOCKED_BY_CLIENT - mesmo com o servidor entregando o arquivo
+        // normalmente (HTTP 200, application/pdf, 374KB no edital de Brejinho
+        // de Nazaré). O blob: e same-origin com o Sigma: nao ha endereco
+        // externo pra nenhuma lista de filtro casar.
+        const { data, error } = await supabase.storage.from(bucketName).download(key);
         if (error) throw error;
-        if (win) win.location.href = data.signedUrl;
-        else window.open(data.signedUrl, '_blank');
+        // type explicito: sem ele o Chrome baixa o arquivo em vez de exibir
+        const blobUrl = URL.createObjectURL(
+          new Blob([data], { type: data.type || 'application/pdf' })
+        );
+        if (win) win.location.href = blobUrl;
+        else window.open(blobUrl, '_blank');
+        // a aba ja carregou o conteudo; segurar a referencia so vaza memoria
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
       } catch (err) {
         win?.close();
         console.error('Erro ao abrir PDF:', err);
