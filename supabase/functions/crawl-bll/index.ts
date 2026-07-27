@@ -179,6 +179,21 @@ serve(async (req) => {
       gravados++;
     }
 
+    // Batimento cardíaco. O piso é 40 editais LISTADOS (não gravados): uma
+    // rodada saudável pode gravar 0 (tudo já conhecido), mas se a listagem
+    // inteira encolher, o layout mudou — que é a falha silenciosa clássica
+    // de crawler por regex.
+    await supabase.rpc("crawl_health_registrar", {
+      p_fonte: "crawl-bll",
+      p_chave: "-",
+      p_observado: itens.length,
+      p_esperado_min: 40,
+      p_detalhe: {
+        paginas_ok: paginasOk, gravados, sem_objeto: semObjeto,
+        ja_conhecidos: conhecidos.size, cortado_por_tempo: cortado,
+      },
+    }).then(() => null).catch(() => null);
+
     return json({
       ok: true, listados: itens.length, ja_conhecidos: conhecidos.size,
       novos_com_detalhe: novos.length, gravados, sem_objeto: semObjeto,

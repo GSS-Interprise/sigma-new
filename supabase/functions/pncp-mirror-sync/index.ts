@@ -234,6 +234,23 @@ serve(async (req) => {
     const { count: pendentesRestantes } = await supabase
       .from("pncp_mirror_sync_state").select("*", { count: "exact", head: true }).neq("status", "completo");
 
+    // Batimento cardíaco: declara o que a rodada fez. Sem isto, uma parada
+    // silenciosa (que já aconteceu 5x nesta frente) só aparece quando alguém
+    // vai olhar na mão. Registra páginas, não registros: uma rodada legítima
+    // pode gravar 0 registros (tudo já conhecido) mas NUNCA 0 páginas se
+    // havia trabalho pendente.
+    await supabase.rpc("crawl_health_registrar", {
+      p_fonte: "pncp-mirror-sync",
+      p_chave: "-",
+      p_observado: paginasFeitas,
+      // só cobra piso quando havia o que fazer; fila vazia com 0 página é ok
+      p_esperado_min: (pendentesRestantes ?? 0) > 0 ? 1 : null,
+      p_detalhe: {
+        registros_upsert: registrosUpsert, unidades_completas: unidadesCompletas,
+        erros, pendentes_restantes: pendentesRestantes ?? null, cortado_por_tempo: cortadoPorTempo,
+      },
+    }).then(() => null).catch(() => null);
+
     await soltarLock();
     return json({
       ok: true,
