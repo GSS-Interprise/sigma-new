@@ -17,7 +17,10 @@
 //     — mas só dos editais AINDA NÃO conhecidos, senão a cada rodada seriam
 //     100 requisições inúteis.
 //
-// Grava em pncp_mirror com portal='bll' e numero_controle_pncp='bll:<token>'.
+// Grava em pncp_mirror com portal='bll' e chave natural derivada do CONTEUDO
+// (orgao|numero|municipio) - o token do BLL e ciphertext com IV novo a cada
+// render (medido: 0 tokens em comum entre 2 requisicoes com 4s de intervalo),
+// entao usa-lo como chave reinseriria a listagem inteira a cada rodada.
 // Assim score_gss (trigger), triagem, comparativo e promote funcionam sem
 // nenhuma mudança — a mesma máquina, outra fonte.
 // =====================================================================
@@ -25,7 +28,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
-const LIST = "https://bllcompras.com/Process/ProcessSearchPublic?param1=0";
+const LIST_BASE = "https://bllcompras.com/Process/ProcessSearchPublic?param1=";
 const DETAIL = "https://bllcompras.com/Process/ProcessView?param1=";
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -52,7 +55,17 @@ function dataBr(s: string | undefined): string | null {
 async function pega(url: string, tries = 3): Promise<string | null> {
   for (let t = 0; t < tries; t++) {
     try {
-      const r = await fetch(url, { headers: { "User-Agent": UA, Accept: "text/html" }, signal: AbortSignal.timeout(25000) });
+      // redirect:"manual" é obrigatório. Parâmetro inválido no BLL responde 302
+      // para /Base/DataResult, e o fetch do Deno SEGUE o redirect por padrão:
+      // chegaria uma página de 1.7KB com ZERO edital, que o parser leria como
+      // "hoje não teve licitação". É a falha silenciosa que já custou 5 dias no
+      // espelho do PNCP — aqui ela morre como erro, não como zero.
+      const r = await fetch(url, {
+        headers: { "User-Agent": UA, Accept: "text/html" },
+        redirect: "manual",
+        signal: AbortSignal.timeout(25000),
+      });
+      if (r.status >= 300 && r.status < 400) return null; // contrato mudou
       if (r.ok) return await r.text();
     } catch (_e) { /* retry */ }
     await sleep(800 * (t + 1));
@@ -69,42 +82,71 @@ serve(async (req) => {
 
   try {
     const body = await req.json().catch(() => ({}));
-    const maxDetalhes = Math.min(Number(body?.max_detalhes) || 40, 100);
+    const maxDetalhes = Math.min(Number(body?.max_detalhes) || 40, 120);
 
-    const html = await pega(LIST);
-    if (!html) return json({ ok: false, error: "listagem do BLL nao respondeu" }, 502);
-
-    // cada <tr> com link de ProcessView é um edital
-    const linhas = (html.match(/<tr[^>]*>[\s\S]*?<\/tr>/g) || []).filter((r) => r.includes("ProcessView"));
+    // `param1` é a MODALIDADE (System.Byte), não página nem offset — a
+    // assinatura vazou na mensagem de erro do 302: ProcessSearchPublic(Byte).
+    // Varrer só param1=0 (o mix) via ~18% da vitrine pública. Modalidade 11 é
+    // CREDENCIAMENTO, que é justamente como prefeitura contrata serviço médico.
+    const MODALIDADES = [0, 1, 3, 4, 5, 11, 12];
     const itens: any[] = [];
-    for (const linha of linhas) {
-      const tok = linha.match(/ProcessView\?param1=([^"'>\s]+)/)?.[1];
-      if (!tok) continue;
-      const td = (linha.match(/<td[^>]*>[\s\S]*?<\/td>/g) || []).map(semTags);
-      // [1]=órgão [2]=número [3]=modalidade [4]=MUNICIPIO-UF [5]=situação [6]/[7]=datas
-      const munUf = td[4] || "";
-      const mUf = munUf.match(/^(.*)-([A-Z]{2})$/);
-      itens.push({
-        token: tok,
-        orgao: td[1] || null,
-        numero: td[2] || null,
-        modalidade: td[3] || null,
-        municipio: mUf ? mUf[1].trim() : (munUf || null),
-        uf: mUf ? mUf[2] : null,
-        situacao: td[5] || null,
-        encerramento: dataBr(td[6]),
-        abertura: dataBr(td[7]),
-      });
+    const vistos = new Set<string>();
+    let paginasOk = 0;
+
+    for (const mod of MODALIDADES) {
+      if (Date.now() > DEADLINE) break;
+      const html = await pega(`${LIST_BASE}${mod}`);
+      await sleep(600);
+      if (!html) continue;
+      paginasOk++;
+
+      const linhas = (html.match(/<tr[^>]*>[\s\S]*?<\/tr>/g) || []).filter((r) => r.includes("ProcessView"));
+      for (const linha of linhas) {
+        const tok = linha.match(/ProcessView\?param1=([^"'>\s]+)/)?.[1];
+        if (!tok) continue;
+        const td = (linha.match(/<td[^>]*>[\s\S]*?<\/td>/g) || []).map(semTags);
+        const munUf = td[4] || "";
+        const mUf = munUf.match(/^(.*)-([A-Z]{2})$/);
+        const numero = td[2] || null;
+        const orgao = td[1] || null;
+        // chave natural: o TOKEN NÃO SERVE — é ciphertext com IV novo a cada
+        // render (medido: 2 requisições com 4s de intervalo = 0 tokens em
+        // comum, 100 editais em comum). Usar token como chave reinseriria a
+        // listagem inteira a cada rodada.
+        const chave = `${(orgao || "").toUpperCase()}|${(numero || "").toUpperCase()}|${munUf.toUpperCase()}`;
+        if (!numero || !orgao || vistos.has(chave)) continue;
+        vistos.add(chave);
+        itens.push({
+          token: tok, chave, orgao, numero,
+          modalidade: td[3] || null,
+          municipio: mUf ? mUf[1].trim() : (munUf || null),
+          uf: mUf ? mUf[2] : null,
+          situacao: td[5] || null,
+          encerramento: dataBr(td[6]),
+          abertura: dataBr(td[7]),
+        });
+      }
     }
-    if (!itens.length) return json({ ok: false, error: "nenhuma linha extraida - layout do BLL pode ter mudado" }, 502);
+    // Assertiva de cardinalidade: o mix (param1=0) sozinho devolve 100 linhas.
+    // Se a varredura inteira voltar quase vazia, o layout mudou — falhar alto
+    // em vez de gravar "hoje não teve edital".
+    if (paginasOk === 0) return json({ ok: false, error: "nenhuma pagina do BLL respondeu" }, 502);
+    if (itens.length < 40) {
+      return json({ ok: false, error: `so ${itens.length} editais extraidos de ${paginasOk} paginas - layout do BLL provavelmente mudou`, itens: itens.length }, 502);
+    }
 
     // Só busca detalhe do que ainda não conhecemos. Sem este corte, cada
     // rodada gastaria 100 requisições pra redescobrir o mesmo objeto.
-    const ids = itens.map((i) => `bll:${i.token}`);
-    const { data: existentes } = await supabase
-      .from("pncp_mirror").select("numero_controle_pncp").in("numero_controle_pncp", ids);
-    const conhecidos = new Set((existentes || []).map((e: any) => e.numero_controle_pncp));
-    const novos = itens.filter((i) => !conhecidos.has(`bll:${i.token}`)).slice(0, maxDetalhes);
+    // id estável derivado do CONTEÚDO (órgão+número+município), nunca do token
+    const idDe = (i: any) => "bll:" + i.chave.replace(/[^A-Z0-9|]/gi, "").slice(0, 90);
+    const ids = itens.map(idDe);
+    const conhecidos = new Set<string>();
+    for (let k = 0; k < ids.length; k += 200) {
+      const { data: ex } = await supabase.from("pncp_mirror")
+        .select("numero_controle_pncp").in("numero_controle_pncp", ids.slice(k, k + 200));
+      (ex || []).forEach((e: any) => conhecidos.add(e.numero_controle_pncp));
+    }
+    const novos = itens.filter((i) => !conhecidos.has(idDe(i))).slice(0, maxDetalhes);
 
     let gravados = 0, semObjeto = 0, cortado = false;
     for (const it of novos) {
@@ -120,7 +162,7 @@ serve(async (req) => {
       if (!objeto) { semObjeto++; continue; }
 
       const { error } = await supabase.from("pncp_mirror").upsert({
-        numero_controle_pncp: `bll:${it.token}`,
+        numero_controle_pncp: idDe(it),
         portal: "bll",
         orgao_razao_social: it.orgao,
         municipio: it.municipio,
