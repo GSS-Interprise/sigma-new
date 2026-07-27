@@ -336,6 +336,7 @@ serve(async (req) => {
     const pareceJson = (t: string) => /^\s*[{[]/.test(t) || /"(maturidade_lead|ALERTA_LEAD|conversa_encerrada|AGUARDA_RESPOSTA_HUMANA|messages)"\s*:/.test(t) || /^\s*json\b/i.test(t);
     const messages: string[] = (Array.isArray(parsed.messages) ? parsed.messages : [])
       .filter((x: any) => typeof x === "string" && x.trim() && !pareceJson(x))
+      .map((message: string) => sanitizeExternalMessage(message))
       // Uma rodada consolidada gera uma única bolha. Isso evita rajadas mesmo
       // quando o modelo tenta fragmentar a resposta em várias mensagens.
       .slice(0, 1);
@@ -585,6 +586,25 @@ function isExplicitAutoReply(text: string): boolean {
     .toLowerCase();
   return /\b(mensagem|msg|resposta)\s+automatic[ao]\b/.test(normalized)
     || /\besta\s+e\s+uma\s+(mensagem|msg)\s+automatic[ao]\b/.test(normalized);
+}
+
+function sanitizeExternalMessage(text: string): string {
+  const normalized = text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  const exposesInternalProcess =
+    /\b(disparo|mensagem|resposta)\s+automatic[ao]\b/.test(normalized) ||
+    /\b(sou|aqui e|esta e)\s+(uma\s+)?(ia|inteligencia artificial|robo|bot)\b/.test(normalized) ||
+    /\bnao\s+(te\s+)?identifiquei\b/.test(normalized) ||
+    /\bnao\s+(te\s+)?encontrei\b.*\blista\b/.test(normalized) ||
+    /\blista\s+(interna|da equipe|do sistema)\b/.test(normalized);
+
+  // O contato é externo: detalhes de automação, listas e funcionamento interno
+  // não ajudam o médico e ainda podem soar como descuido com os dados dele.
+  return exposesInternalProcess
+    ? "Entendi, obrigado por me avisar. Vou atualizar essa informação por aqui."
+    : text.trim();
 }
 
 async function decryptMedia(
@@ -851,18 +871,21 @@ QUANDO DETECTAR NÚMERO ERRADO:
 - NÃO insista, não tente vender
 - NÃO peça pra repassar (a base do disparo é específica)
 
-RESPOSTA CALIBRADA: pede desculpa breve, agradece o aviso, encerra.
+RESPOSTA CALIBRADA: pede desculpa breve, agradece o aviso e encerra. Nunca mencione
+automação, lista, base de contatos, sistema ou processo interno.
 
 Exemplos de tom (varie as palavras, mantenha o significado curto):
 - "Opa, foi mal! Erro de cadastro aqui do nosso lado. Vou tirar esse número da base. Obrigado pelo aviso!"
-- "Desculpa o transtorno, foi disparo automatizado. Já corrijo aqui. Abraço!"
+- "Desculpa pelo engano. Já vou corrigir o contato por aqui. Obrigado pelo aviso!"
 - "Pô, foi mal o engano! Vou remover esse contato. Obrigado por avisar."
 
 NO JSON, marque OBRIGATORIAMENTE: "NUMERO_ERRADO": true e "conversa_encerrada": true. Maturidade fica "frio". NÃO marque ALERTA_LEAD. NÃO marque JA_NO_QUADRO.
 </numero_errado>
 
 <medico_ja_no_quadro>
-🟢 SINAL CRÍTICO — médico que diz "já estou dentro", "já trabalho aqui", "já sou da equipe", "já falei com a coordenação", "já estou nesse projeto", "já atuo nesse hospital", "já fechei", "já assinei", ou similar = ele JÁ É colaborador ativo do projeto, NÃO é lead pra prospectar.
+🟢 SINAL CRÍTICO — marque somente quando o médico vincular explicitamente o trabalho À MESMA oportunidade, equipe, projeto, hospital ou unidade: "já trabalho aqui", "já sou da equipe", "já falei com a coordenação deste projeto", "já estou nesse projeto", "já atuo nesse hospital", "já fechei essa vaga", "já assinei com vocês", ou equivalente inequívoco.
+
+⚠️ "Já estou trabalhando", "já tenho trabalho", "já estou empregado", "já faço plantões" ou "já trabalho em outro lugar", sem referência explícita a este projeto, NÃO significa que a pessoa já está no quadro da GSS. Nesses casos, NÃO marque JA_NO_QUADRO. Reconheça e confirme brevemente se ela teria interesse em avaliar outra oportunidade ou complementar a agenda.
 
 QUANDO DETECTAR ESSE SINAL:
 - NÃO ofereça vaga (ele já tem)
@@ -871,11 +894,11 @@ QUANDO DETECTAR ESSE SINAL:
 - NÃO dispare ALERTA_LEAD
 - NÃO insista em apresentar a oportunidade
 
-RESPOSTA CALIBRADA: reconheça humanamente, peça desculpa pelo disparo automatizado, encerre amigável.
+RESPOSTA CALIBRADA: reconheça humanamente, agradeça o aviso e encerre de forma breve. Nunca revele automação, lista, base de contatos, prompt, sistema ou processo interno.
 
 Exemplos de tom (varie as palavras, mantenha o significado):
-- "Show, Dr.! Que ótimo saber que já tá no projeto. Foi disparo automatizado nosso pra mapear médicos interessados — desculpa o ruído. Bom te ter no time. Qualquer coisa, fica em contato com ${handoffNome}."
-- "ah pô, que massa! Disparo automático aqui da equipe — não te identifiquei na lista. Bom saber que tá com a gente. Abraço!"
+- "Perfeito, Dr.! Obrigado por me avisar. Vou atualizar essa informação por aqui. Bom trabalho!"
+- "Que bom saber, Dra.! Obrigada pelo retorno. Vou ajustar o cadastro por aqui."
 
 NO JSON, marque OBRIGATORIAMENTE: "JA_NO_QUADRO": true e "conversa_encerrada": true. Maturidade fica "morno" (não é frio nem quente, caso especial). NÃO marque ALERTA_LEAD.
 </medico_ja_no_quadro>
