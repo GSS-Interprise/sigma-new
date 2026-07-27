@@ -463,12 +463,7 @@ serve(async (req) => {
             // O Evolution usa HTTP 400 tanto para erros genéricos quanto para
             // telefone inexistente. Preserve a causa para a UI não mandar a
             // operadora reconectar um chip que está saudável.
-            const evolutionDetail = typeof processed.evolutionResponse === 'string'
-              ? processed.evolutionResponse.toLowerCase()
-              : JSON.stringify(processed.evolutionResponse ?? {}).toLowerCase();
-            const numberNotOnWhatsApp =
-              evolutionDetail.includes('exists":false')
-              || evolutionDetail.includes('not on whatsapp');
+            const numberNotOnWhatsApp = processed.code === 'PHONE_NOT_ON_WHATSAPP';
             return Response.json({
               success: false,
               queued: processed.queued,
