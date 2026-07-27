@@ -28,7 +28,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2 } from "lucide-react";
 
-export default function Licitacoes() {
+// A MESMA pagina serve os dois boards. Duplicar o arquivo faria as telas
+// divergirem com o tempo, e ai a equipe estaria comparando UI em vez de
+// comparar a fonte dos editais - que e o unico ponto do experimento.
+interface LicitacoesProps {
+  board?: 'effecti' | 'robo';
+}
+
+export default function Licitacoes({ board = 'effecti' }: LicitacoesProps = {}) {
+  const ehRobo = board === 'robo';
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
@@ -237,8 +245,14 @@ export default function Licitacoes() {
     <TooltipProvider delayDuration={200}>
       <div className="flex items-center justify-between w-full gap-4">
         <div className="min-w-0">
-          <h1 className="text-xl font-semibold tracking-tight">Licitações</h1>
-          <p className="text-xs text-muted-foreground">Gerencie licitações e editais</p>
+          <h1 className="text-xl font-semibold tracking-tight">
+            {ehRobo ? 'Licitações (Robô PNCP)' : 'Licitações'}
+          </h1>
+          <p className="text-xs text-muted-foreground">
+            {ehRobo
+              ? 'Editais captados direto do PNCP — em validação, ao lado da Effecti'
+              : 'Gerencie licitações e editais'}
+          </p>
         </div>
         <div className="flex items-center gap-1.5">
           <FiltroLicitacoes onFilterChange={setFilters} compact />
@@ -314,6 +328,7 @@ export default function Licitacoes() {
             </div>
           ) : (
             <LicitacoesKanban
+              board={board}
               columns={columns}
               onCardClick={handleViewLicitacao}
               onCardDoubleClick={handleQuickEdit}

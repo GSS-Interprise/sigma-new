@@ -35,6 +35,11 @@ interface LicitacoesKanbanProps {
     tipoLicitacao?: string;
   };
   onHasMoreChange?: (hasMore: boolean, loadMore: () => void) => void;
+  // De qual board este kanban mostra cards. Default 'effecti' de proposito: o
+  // board da equipe e o caso comum, e omitir o prop nunca pode fazer aparecer
+  // card do robo no meio do trabalho dela - foi exatamente isso que vazou em
+  // 24/07, quando nao havia board nenhum pra filtrar.
+  board?: 'effecti' | 'robo';
 }
 
 interface ServicoContrato {
@@ -131,7 +136,7 @@ const isLicitacaoValidaParaMover = (licitacao: LicitacaoWithResponsavel): { vali
   return { valido: true };
 };
 
-export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filters, onHasMoreChange }: LicitacoesKanbanProps) {
+export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filters, onHasMoreChange, board = 'effecti' }: LicitacoesKanbanProps) {
   const queryClient = useQueryClient();
   const [fileDropTarget, setFileDropTarget] = useState<string | null>(null);
   const [uploadingFiles, setUploadingFiles] = useState<string | null>(null);
@@ -247,11 +252,14 @@ export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filt
   });
 
   const { data, isLoading } = useQuery<{ items: LicitacaoWithResponsavel[]; hasMore: boolean }>({
-    queryKey: ['licitacoes-kanban', filters, shouldFilterAgesOnly, agesLicitacaoIds, page],
+    // `board` na chave: sem ele o cache do React Query serviria os cards de um
+    // board na tela do outro ao alternar entre as rotas.
+    queryKey: ['licitacoes-kanban', board, filters, shouldFilterAgesOnly, agesLicitacaoIds, page],
     queryFn: async () => {
       let query = supabase
         .from('licitacoes')
         .select(LICITACOES_KANBAN_SELECT)
+        .eq('board', board)
         // Ordenação única: data_disputa (mais próximas primeiro)
         .order('data_disputa', { ascending: true, nullsFirst: false })
         .order('created_at', { ascending: false }); // fallback para licitações sem data_disputa
@@ -360,11 +368,12 @@ export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filt
 
   // Count de descartadas (query leve, apenas count)
   const { data: descartadasCount = 0 } = useQuery({
-    queryKey: ['licitacoes-descartadas-count', filters, shouldFilterAgesOnly, agesLicitacaoIds],
+    queryKey: ['licitacoes-descartadas-count', board, filters, shouldFilterAgesOnly, agesLicitacaoIds],
     queryFn: async () => {
       let query = supabase
         .from('licitacoes')
         .select('id', { count: 'exact', head: true })
+        .eq('board', board)
         .eq('status', 'descarte_edital');
 
       if (isGestorAgesOnly && agesLicitacaoIds) {
@@ -403,6 +412,7 @@ export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filt
       let query = supabase
         .from('licitacoes')
         .select(LICITACOES_KANBAN_SELECT)
+        .eq('board', board)
         .eq('status', 'descarte_edital')
         .order('updated_at', { ascending: false })
         .limit(100);
@@ -463,7 +473,7 @@ export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filt
     } finally {
       setDescartadasLoading(false);
     }
-  }, [filters, isGestorAgesOnly, isSetorAges, agesLicitacaoIds]);
+  }, [board, filters, isGestorAgesOnly, isSetorAges, agesLicitacaoIds]);
 
   // Buscar configuração de cores das etiquetas
   const { data: tagsConfig = [] } = useQuery({
