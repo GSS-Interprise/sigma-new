@@ -202,24 +202,26 @@ function escapeHtml(input: string): string {
     .replace(/'/g, '&#39;');
 }
 
-function appendRawPayloadToObjeto(base: string | undefined, raw: any, reason: string): string {
-  const baseText = (base ?? '').trim();
-
+// Diagnostico de payload problematico vai pro LOG, nunca pro card.
+//
+// Antes isto se chamava appendRawPayloadToObjeto e fazia o que o nome dizia:
+// despejava o JSON inteiro do n8n dentro do campo `objeto`, com <hr>, <pre> e
+// entidades HTML. O objeto e o texto que a equipe LE pra decidir se disputa o
+// edital - o texto real do edital ficava soterrado sob 1.500 a 36.000
+// caracteres de debug. A Sarah reportou em 27/07 ("cheio de codigo dentro do
+// objeto"); eram 15 cards, limpos pelo scripts/limpar_objeto_debug_n8n.sql.
+//
+// O diagnostico continua existindo - so mudou de lugar. Campo que a equipe le
+// nao e canal de debug.
+function logPayloadProblematico(raw: any, reason: string): void {
   let rawJson = '';
   try {
-    rawJson = JSON.stringify(raw, null, 2);
+    rawJson = JSON.stringify(raw);
   } catch {
     rawJson = String(raw);
   }
-
-  const limited = rawJson.length > 4000 ? `${rawJson.slice(0, 4000)}\n…` : rawJson;
-  const reasonSafe = escapeHtml(reason);
-
-  const header = `<hr><small><strong>Importado do n8n (${reasonSafe})</strong></small>`;
-  const payload = `<pre>${escapeHtml(limited)}</pre>`;
-
-  if (!baseText) return `${header}${payload}`;
-  return `${baseText}<br><br>${header}${payload}`;
+  const limited = rawJson.length > 4000 ? `${rawJson.slice(0, 4000)}…` : rawJson;
+  console.warn('N8N_PAYLOAD_PROBLEMATICO', { reason, payload: limited });
 }
 
 
@@ -422,8 +424,12 @@ Deno.serve(async (req) => {
 
         if (!body.objeto) {
           // tenta completar com itens, se existirem
+          // Texto puro, sem <br> e sem escapeHtml: o card renderiza `objeto`
+          // como TEXTO, entao a tag aparecia literal e "&quot;" ficava visivel
+          // pra equipe. Separador em traco resolve o mesmo (juntar titulo e
+          // descricao do item) sem introduzir markup no campo que ela le.
           const item0Desc = cleanText(body0?.item?.[0]?.descricao) ?? cleanText(body0?.item?.[0]?.objeto);
-          body.objeto = item0Desc ? `${body.titulo}<br>${escapeHtml(item0Desc)}` : body.titulo;
+          body.objeto = item0Desc ? `${body.titulo} — ${item0Desc}` : body.titulo;
           reasons.push('objeto ausente');
         }
 
@@ -432,7 +438,7 @@ Deno.serve(async (req) => {
         }
 
         if (reasons.length > 0) {
-          body.objeto = appendRawPayloadToObjeto(body.objeto, body0, reasons.join('; '));
+          logPayloadProblematico(body0, reasons.join('; '));
         }
       }
 
@@ -587,7 +593,7 @@ Deno.serve(async (req) => {
           }
 
           console.warn('N8N_INVALID_COLUMN_ID_FALLBACK', { column_id: body.column_id, colunaError });
-          body.objeto = appendRawPayloadToObjeto(body.objeto, body0, `column_id inválido/inativo: ${body.column_id}`);
+          logPayloadProblematico(body0, `column_id inválido/inativo: ${body.column_id}`);
         } else {
           status = coluna.status_id;
           columnInfo = coluna;
