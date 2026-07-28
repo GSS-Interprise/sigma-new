@@ -160,12 +160,12 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
     queryKey: ['sigzap-chat-conversa', conversaId],
     queryFn: async () => {
       if (!conversaId) return null;
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('sigzap_conversations')
         .select(`
           *,
           contact:sigzap_contacts(*),
-          instance:sigzap_instances(id, name, instance_uuid),
+          instance:sigzap_instances(id, name, instance_uuid, provider, external_ref),
           assigned_user:profiles!sigzap_conversations_assigned_user_id_fkey(id, nome_completo),
           lead:leads!sigzap_conversations_lead_id_fkey(id, nome, phone_e164, telefones_adicionais)
         `)
@@ -772,6 +772,30 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
       
       const contact = conversa.contact as any;
       const instance = conversa.instance as any;
+
+      if (instance?.provider === "twilio") {
+        if (mediaUrl || mediaType || quotedMessageId) {
+          throw new Error("Por enquanto, a API oficial aceita texto nesta conversa. Envie anexos pelo WhatsApp.");
+        }
+        const { data, error } = await supabase.functions.invoke("twilio-whatsapp-send", {
+          body: { conversation_id: conversaId, body: texto },
+        });
+        if (error) {
+          let details: any = null;
+          try {
+            const response = (error as any)?.context as Response | undefined;
+            details = response ? await response.clone().json() : null;
+          } catch {
+            // Mantemos a mensagem genérica caso o corpo já tenha sido consumido.
+          }
+          if (details?.error === "approved_template_required_outside_service_window") {
+            throw new Error("A janela de 24 horas encerrou. Inicie novamente usando um template aprovado.");
+          }
+          throw new Error(details?.provider_message || details?.error || error.message);
+        }
+        if ((data as any)?.error) throw new Error((data as any).error);
+        return data;
+      }
       
       // Para enviar texto, não dependemos de instance_uuid (isso pode estar vazio em instâncias novas).
       // Precisamos apenas do nome da instância e de um identificador do contato.
@@ -1181,6 +1205,7 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
   // Check if user can send messages - everyone can send, colors identify who is attending
   const assignedUser = conversa?.assigned_user as any;
   const canSendMessages = !!conversa;
+  const isOfficialConversation = (conversa?.instance as any)?.provider === "twilio";
 
   // Get message type icon
   const getMessageTypeIcon = (type: string) => {
@@ -2015,7 +2040,7 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
                     onDelete={handleDelete}
                     onEdit={handleEdit}
                     onAttachToLead={handleAttachToLead}
-                    canDelete={canSendMessages && !isDeleted}
+                    canDelete={canSendMessages && !isDeleted && !isOfficialConversation}
                     hasLinkedLead={!!linkedLead?.id}
                   >
                     <div className={cn("flex min-w-0 gap-2 my-0.5", isFromMe ? "justify-end" : "justify-start")}>
@@ -2228,7 +2253,7 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
             ) : (
               <>
                 {/* Attachment menu */}
-                <DropdownMenu>
+                {!isOfficialConversation && <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
                       type="button"
@@ -2268,7 +2293,7 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
                       Contato
                     </DropdownMenuItem>
                   </DropdownMenuContent>
-                </DropdownMenu>
+                </DropdownMenu>}
 
                 {/* Message input — autosize cresce com o conteudo ate 200px (achado heuristica #013) */}
                 <Textarea
@@ -2306,7 +2331,7 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
                       </>
                     )}
                   </Button>
-                ) : (
+                ) : isOfficialConversation ? null : (
                   <SigZapMicButton
                     onClick={() => !isUploadingAudio && setIsRecording(true)}
                     disabled={isUploadingMedia || isUploadingAudio}

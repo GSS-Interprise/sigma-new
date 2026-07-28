@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -71,6 +71,7 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
   const [chipIds, setChipIds] = useState<string[]>([]);
   const [whatsappProvider, setWhatsappProvider] = useState<"evolution" | "twilio">("evolution");
   const [officialTemplateId, setOfficialTemplateId] = useState<string | null>(null);
+  const [officialSenderId, setOfficialSenderId] = useState<string | null>(null);
   const [rotationStrategy, setRotationStrategy] = useState("round_robin");
   const [batchSize, setBatchSize] = useState(10);
   const [delayMinMs, setDelayMinMs] = useState(8);
@@ -208,6 +209,26 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
       return (data || []) as Array<{ id: string; friendly_name: string; category: string | null }>;
     },
   });
+
+  const { data: officialSenders = [] } = useQuery({
+    queryKey: ["active-whatsapp-official-senders"],
+    enabled: open && whatsappProvider === "twilio",
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("whatsapp_official_senders" as never)
+        .select("id, display_name, phone_e164, status")
+        .in("status", ["approved", "online", "active", "activated"])
+        .order("display_name");
+      if (error) throw error;
+      return (data || []) as Array<{ id: string; display_name: string | null; phone_e164: string; status: string }>;
+    },
+  });
+
+  useEffect(() => {
+    if (whatsappProvider === "twilio" && !officialSenderId && officialSenders.length === 1) {
+      setOfficialSenderId(officialSenders[0].id);
+    }
+  }, [whatsappProvider, officialSenderId, officialSenders]);
 
   const applyBriefing = (sourceId: string) => {
     setBriefingSourceId(sourceId);
@@ -416,6 +437,7 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
           chip_fallback_id: chipIds[1] || null,
           whatsapp_provider: whatsappProvider,
           official_template_id: whatsappProvider === "twilio" ? officialTemplateId : null,
+          official_sender_id: whatsappProvider === "twilio" ? officialSenderId : null,
           rotation_strategy: rotationStrategy,
           // teto diário NÃO é definido na campanha — o sistema controla pelo limite de cada chip (anti-ban)
           limite_diario_campanha: null,
@@ -546,10 +568,11 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
     nome.trim().length > 0 &&
     briefingOk &&
     janelaValida &&
-    (whatsappProvider === "evolution" || !!officialTemplateId);
+    (whatsappProvider === "evolution" || (!!officialTemplateId && !!officialSenderId));
   // Feedback claro: o que ainda falta pra liberar o botão (em vez de só desabilitar sem explicar)
   const faltaPreencher: string[] = [];
   if (whatsappProvider === "twilio" && !officialTemplateId) faltaPreencher.push("template oficial aprovado");
+  if (whatsappProvider === "twilio" && !officialSenderId) faltaPreencher.push("número oficial remetente");
   if (nome.trim().length === 0) faltaPreencher.push("nome da campanha (aba Configuração)");
   if (bNomeServico.trim().length === 0) faltaPreencher.push("nome do serviço");
   if (bHospital.trim().length === 0) faltaPreencher.push("hospital/unidade");
@@ -660,9 +683,26 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
 
             {whatsappProvider === "twilio" ? (
               <div className="space-y-2 rounded-lg border border-blue-200 bg-blue-50/50 p-3">
+                <Label>Número oficial remetente</Label>
+                <Select value={officialSenderId || ""} onValueChange={setOfficialSenderId}>
+                  <SelectTrigger className="min-h-11 bg-background">
+                    <SelectValue placeholder="Selecione o número oficial" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {officialSenders.map((sender) => (
+                      <SelectItem key={sender.id} value={sender.id}>
+                        {sender.display_name || "WhatsApp oficial"} · {sender.phone_e164}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {officialSenders.length === 0 && (
+                  <p className="text-xs text-amber-800">Nenhum número oficial ativo foi encontrado na Twilio.</p>
+                )}
+
                 <Label>Template oficial aprovado</Label>
                 <p className="text-xs text-blue-900">
-                  O envio será liberado depois do cadastro do número remetente e dos webhooks Twilio.
+                  O primeiro contato usa o template aprovado; as respostas continuam pelo mesmo número dentro do Sigma.
                 </p>
                 <Select value={officialTemplateId || ""} onValueChange={setOfficialTemplateId}>
                   <SelectTrigger className="min-h-11 bg-background">

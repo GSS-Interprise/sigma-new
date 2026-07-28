@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-internal-sync-key",
 };
 
 function response(body: unknown, status = 200) {
@@ -21,7 +21,11 @@ function twilioAuthorization() {
 }
 
 async function twilioFetch(path: string, init: RequestInit = {}) {
-  const res = await fetch(`https://content.twilio.com${path}`, {
+  return twilioFetchUrl(`https://content.twilio.com${path}`, init);
+}
+
+async function twilioFetchUrl(url: string, init: RequestInit = {}) {
+  const res = await fetch(url, {
     ...init,
     headers: {
       Authorization: twilioAuthorization(),
@@ -45,11 +49,84 @@ serve(async (req) => {
     const auth = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
       global: { headers: { Authorization: req.headers.get("Authorization") || "" } },
     });
-    const { data: { user }, error: userError } = await auth.auth.getUser();
-    if (userError || !user) return response({ ok: false, error: "unauthorized" }, 401);
+    const authorization = req.headers.get("Authorization") || "";
+    const serviceRoleToken = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+    const internalSyncKey = Deno.env.get("TWILIO_INTERNAL_SYNC_KEY") || "";
+    const isInternalSync =
+      internalSyncKey.length >= 32 &&
+      req.headers.get("x-internal-sync-key") === internalSyncKey;
+    const isServiceRole =
+      authorization === `Bearer ${serviceRoleToken}` ||
+      isInternalSync;
+    const { data: { user }, error: userError } = isServiceRole
+      ? { data: { user: null }, error: null }
+      : await auth.auth.getUser();
+    if (!isServiceRole && (userError || !user)) {
+      return response({ ok: false, error: "unauthorized" }, 401);
+    }
 
     const input = await req.json().catch(() => ({}));
     const action = input.action || "sync";
+
+    if (action === "sync_senders") {
+      const payload = await twilioFetchUrl("https://messaging.twilio.com/v2/Channels/Senders?Channel=whatsapp");
+      const senders = payload.senders || payload.channel_senders || [];
+
+      for (const sender of senders) {
+        const senderAddress = String(
+          sender.sender_id || sender.sender || sender.phone_number || sender.address || "",
+        );
+        const phone = senderAddress.replace(/^whatsapp:/i, "").trim();
+        const sid = String(sender.sid || sender.sender_sid || sender.id || "");
+        if (!sid || !phone) continue;
+
+        await admin.from("whatsapp_official_senders").upsert({
+          sender_sid: sid,
+          phone_e164: phone.startsWith("+") ? phone : `+${phone.replace(/\D/g, "")}`,
+          display_name: sender.profile?.name || sender.display_name || sender.friendly_name || null,
+          status: String(sender.status || sender.configuration_status || "unknown").toLowerCase(),
+          quality_rating: sender.quality_rating || sender.quality?.rating || null,
+          messaging_service_sid: sender.messaging_service_sid || null,
+          webhook_url: sender.webhook_url || sender.webhook?.url || null,
+          provider_payload: sender,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "sender_sid" });
+      }
+
+      return response({ ok: true, synced: senders.length, senders });
+    }
+
+    if (action === "configure_sender_webhook") {
+      const senderSid = String(input.sender_sid || "");
+      const webhookUrl = String(input.webhook_url || "");
+      if (!/^XE[0-9a-f]{32}$/i.test(senderSid) || !webhookUrl.startsWith("https://")) {
+        return response({ ok: false, error: "invalid_sender_or_webhook_url" }, 400);
+      }
+
+      const sender = await twilioFetchUrl(
+        `https://messaging.twilio.com/v2/Channels/Senders/${senderSid}`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            webhook: {
+              callback_url: webhookUrl,
+              callback_method: "POST",
+              status_callback_url: webhookUrl,
+              status_callback_method: "POST",
+            },
+          }),
+        },
+      );
+      await admin
+        .from("whatsapp_official_senders")
+        .update({
+          webhook_url: webhookUrl,
+          provider_payload: sender,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("sender_sid", senderSid);
+      return response({ ok: true, sender });
+    }
 
     if (action === "create") {
       const friendlyName = String(input.friendly_name || "").trim();
@@ -77,7 +154,7 @@ serve(async (req) => {
         variables,
         approval_status: "unsubmitted",
         twilio_payload: created,
-        created_by: user.id,
+        created_by: user?.id || null,
         updated_at: new Date().toISOString(),
       }, { onConflict: "content_sid" });
       return response({ ok: true, template: created });
@@ -107,7 +184,15 @@ serve(async (req) => {
 
     const remote = await twilioFetch("/v1/ContentAndApprovals?PageSize=500");
     for (const item of remote.contents || []) {
-      const wa = item.approvals?.whatsapp || {};
+      // ContentAndApprovals has changed shape across Twilio API versions. The
+      // per-content endpoint is the source of truth for the WhatsApp review.
+      const approval = await twilioFetch(`/v1/Content/${item.sid}/ApprovalRequests`)
+        .catch(() => ({}));
+      const wa =
+        approval.whatsapp ||
+        item.approvals?.whatsapp ||
+        item.approval_requests?.whatsapp ||
+        {};
       const typeName = Object.keys(item.types || {})[0] || "twilio/text";
       await admin.from("whatsapp_official_templates").upsert({
         content_sid: item.sid,
@@ -119,7 +204,7 @@ serve(async (req) => {
         variables: item.variables || {},
         approval_status: wa.status || "unsubmitted",
         rejection_reason: wa.rejection_reason || null,
-        twilio_payload: item,
+        twilio_payload: { ...item, approval_request: approval },
         updated_at: new Date().toISOString(),
       }, { onConflict: "content_sid" });
     }

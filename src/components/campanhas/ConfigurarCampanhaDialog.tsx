@@ -55,6 +55,7 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
   const [batchSize, setBatchSize] = useState(5);
   const [whatsappProvider, setWhatsappProvider] = useState<"evolution" | "twilio">("evolution");
   const [officialTemplateId, setOfficialTemplateId] = useState<string | null>(null);
+  const [officialSenderId, setOfficialSenderId] = useState<string | null>(null);
   const [handoffNome, setHandoffNome] = useState("");
   const [handoffTelefone, setHandoffTelefone] = useState("");
   const [handoffFrase, setHandoffFrase] = useState("");
@@ -83,6 +84,7 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
     const officialConfig = campanha as typeof campanha & {
       whatsapp_provider?: "evolution" | "twilio";
       official_template_id?: string | null;
+      official_sender_id?: string | null;
     };
     setChipIds(campanha.chip_ids || []);
     setRotationStrategy(campanha.rotation_strategy || "round_robin");
@@ -90,6 +92,7 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
     setBatchSize(campanha.batch_size || 5);
     setWhatsappProvider(officialConfig.whatsapp_provider || "evolution");
     setOfficialTemplateId(officialConfig.official_template_id || null);
+    setOfficialSenderId(officialConfig.official_sender_id || null);
     const briefing = (campanha.briefing_ia || {}) as Record<string, unknown>;
     setHandoffNome(String(briefing.handoff_nome || ""));
     setHandoffTelefone(String(briefing.handoff_telefone || ""));
@@ -129,6 +132,26 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
     },
   });
 
+  const { data: officialSenders = [] } = useQuery({
+    queryKey: ["active-whatsapp-official-senders"],
+    enabled: open && whatsappProvider === "twilio",
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("whatsapp_official_senders" as never)
+        .select("id, display_name, phone_e164, status")
+        .in("status", ["approved", "online", "active", "activated"])
+        .order("display_name");
+      if (error) throw error;
+      return (data || []) as Array<{ id: string; display_name: string | null; phone_e164: string; status: string }>;
+    },
+  });
+
+  useEffect(() => {
+    if (whatsappProvider === "twilio" && !officialSenderId && officialSenders.length === 1) {
+      setOfficialSenderId(officialSenders[0].id);
+    }
+  }, [whatsappProvider, officialSenderId, officialSenders]);
+
   // Pedido Bruna (08/06): chip já usado por outra campanha ativa fica bloqueado aqui.
   const { data: chipsEmUso } = useChipsEmUso(campanha?.id);
 
@@ -142,7 +165,7 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
 
   const handoffTelefoneValido = /^\+\d{12,13}$/.test(handoffTelefone);
   const podeAtivar =
-    (whatsappProvider === "twilio" ? !!officialTemplateId : chipIds.length > 0) &&
+    (whatsappProvider === "twilio" ? !!officialTemplateId && !!officialSenderId : chipIds.length > 0) &&
     handoffNome.trim().length > 0 &&
     handoffNome !== "[A_CONFIGURAR]" &&
     handoffTelefoneValido &&
@@ -172,6 +195,7 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
           tarefa_cadencia_template_id: tarefaTemplateId,
           whatsapp_provider: whatsappProvider,
           official_template_id: whatsappProvider === "twilio" ? officialTemplateId : null,
+          official_sender_id: whatsappProvider === "twilio" ? officialSenderId : null,
         } as never)
         .eq("id", campanhaId);
       if (error) throw error;
@@ -298,9 +322,31 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
 
                 {whatsappProvider === "twilio" && (
                   <div className="space-y-2 rounded-lg border border-blue-200 bg-blue-50/50 p-3">
+                    <Label>Número oficial remetente</Label>
+                    <Select
+                      value={officialSenderId || ""}
+                      onValueChange={setOfficialSenderId}
+                    >
+                      <SelectTrigger className="min-h-11 bg-background">
+                        <SelectValue placeholder="Selecione o número oficial" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {officialSenders.map((sender) => (
+                          <SelectItem key={sender.id} value={sender.id}>
+                            {sender.display_name || "WhatsApp oficial"} · {sender.phone_e164}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {officialSenders.length === 0 && (
+                      <p className="text-xs text-amber-800">
+                        Nenhum número oficial ativo foi encontrado na Twilio.
+                      </p>
+                    )}
+
                     <Label>Template oficial aprovado</Label>
                     <p className="text-xs text-blue-900">
-                      Fase de configuração: o envio oficial será liberado depois do cadastro do número remetente e dos webhooks Twilio.
+                      O primeiro contato usa o template aprovado; após a resposta, a equipe conversa por este mesmo número no Sigma.
                     </p>
                     <Select
                       value={officialTemplateId || ""}
