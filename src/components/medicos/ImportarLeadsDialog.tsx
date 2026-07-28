@@ -425,7 +425,7 @@ export function ImportarLeadsDialog({ open, onOpenChange, onSuccess, listaDestin
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-4xl h-[90vh] overflow-hidden flex flex-col p-6">
+      <DialogContent className="w-[calc(100vw-2rem)] max-w-4xl max-h-[90dvh] overflow-hidden flex flex-col p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileSpreadsheet className="h-5 w-5 text-green-600" />
@@ -445,7 +445,7 @@ export function ImportarLeadsDialog({ open, onOpenChange, onSuccess, listaDestin
         </div>
 
         {/* Seleção de Especialidade e Origem ANTES do upload */}
-        <div className="grid grid-cols-2 gap-4 mb-4 p-4 bg-muted/30 rounded-lg border">
+        <div className="grid grid-cols-1 gap-4 mb-4 p-4 bg-muted/30 rounded-lg border sm:grid-cols-2">
           <div className="space-y-2">
             <Label htmlFor="especialidade" className="font-medium">
               Especialidades <span className="text-destructive">*</span>

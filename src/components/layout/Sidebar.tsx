@@ -30,6 +30,7 @@ import {
   Receipt,
   Footprints,
   ListTodo,
+  ListChecks,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -73,6 +74,7 @@ const navigationGroups: NavGroup[] = [
     label: "Prospecção",
     items: [
       { name: "Campanhas", href: "/prospeccao", icon: Rocket, modulo: "disparos" },
+      { name: "Listas", href: "/disparos/leads?tab=listas", icon: ListChecks, modulo: "disparos" },
       { name: "Templates WhatsApp", href: "/prospeccao/templates-whatsapp", icon: FileText, modulo: "disparos" },
       { name: "Minhas Tarefas", href: "/tarefas", icon: ListTodo, modulo: "disparos" },
       { name: "Conversas", href: "/disparos/sigzap", icon: MessageCircle, modulo: "disparos" },

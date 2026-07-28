@@ -1206,6 +1206,9 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
   const assignedUser = conversa?.assigned_user as any;
   const canSendMessages = !!conversa;
   const isOfficialConversation = (conversa?.instance as any)?.provider === "twilio";
+  const officialWindowOpen = !isOfficialConversation ||
+    (!!conversa?.service_window_expires_at &&
+      new Date(conversa.service_window_expires_at).getTime() > Date.now());
 
   // Get message type icon
   const getMessageTypeIcon = (type: string) => {
@@ -1898,6 +1901,11 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
                     {instance.name}
                   </Badge>
                 )}
+                {isOfficialConversation && (
+                  <Badge variant="secondary" className="text-[10px] h-4 px-1">
+                    Oficial
+                  </Badge>
+                )}
               </div>
             </div>
           </div>
@@ -2231,6 +2239,10 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
           <div className="flex items-center gap-2 justify-center py-2 px-4 bg-destructive/10 rounded-lg border border-destructive/30">
             <Ban className="h-4 w-4 text-destructive" />
             <span className="text-sm font-medium text-destructive">Este contato está na blacklist — envio bloqueado</span>
+          </div>
+        ) : conversa && isOfficialConversation && !officialWindowOpen ? (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            Janela de atendimento encerrada. Para retomar, envie um template aprovado pela campanha.
           </div>
         ) : conversa ? (
           <div className="flex gap-2 items-end">

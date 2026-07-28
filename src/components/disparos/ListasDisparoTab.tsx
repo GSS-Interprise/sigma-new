@@ -73,27 +73,27 @@ export function ListasDisparoTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-lg font-semibold">Listas para disparo</h2>
           <p className="text-sm text-muted-foreground">
             Prepare listas reutilizáveis para campanhas de WhatsApp
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={handleAbrirImport} className="gap-2">
+        <div className="grid grid-cols-2 gap-2 sm:flex">
+          <Button variant="outline" onClick={handleAbrirImport} className="min-h-11 gap-2">
             <Upload className="h-4 w-4" />
             Importar lista
           </Button>
-          <Button onClick={handleNova} className="gap-2">
+          <Button onClick={handleNova} className="min-h-11 gap-2">
             <Plus className="h-4 w-4" />
             Nova lista
           </Button>
         </div>
       </div>
 
-      <Card>
-        <Table>
+      <Card className="overflow-x-auto">
+        <Table className="min-w-[720px]">
           <TableHeader>
             <TableRow>
               <TableHead>Nome</TableHead>
@@ -317,7 +317,7 @@ function ListaDetalhesDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col">
+        <DialogContent className="w-[calc(100vw-2rem)] max-w-3xl max-h-[90dvh] flex flex-col">
         <DialogHeader>
           <DialogTitle>{lista.nome}</DialogTitle>
         </DialogHeader>

@@ -7,8 +7,13 @@ import { ListasDisparoTab } from "@/components/disparos/ListasDisparoTab";
 import { CaptacaoProtectedRoute } from "@/components/auth/CaptacaoProtectedRoute";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Users, FileUp, Activity, ShieldAlert, ListChecks } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 
 export default function DisparosLeads() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const validTabs = new Set(["leads", "listas", "imports", "monitor", "bloqueio"]);
+  const requestedTab = searchParams.get("tab") || "leads";
+  const activeTab = validTabs.has(requestedTab) ? requestedTab : "leads";
   const headerActions = (
     <div>
       <h1 className="text-2xl font-bold">Leads</h1>
@@ -21,9 +26,13 @@ export default function DisparosLeads() {
       <AppLayout headerActions={headerActions}>
         {/* Wrapper que ocupa o espaço disponível com scroll interno */}
         <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-          <Tabs defaultValue="leads" className="w-full flex-1 min-h-0 flex flex-col">
-            <div className="px-4 pt-4">
-              <TabsList>
+          <Tabs
+            value={activeTab}
+            onValueChange={(tab) => setSearchParams(tab === "leads" ? {} : { tab })}
+            className="w-full flex-1 min-h-0 flex flex-col"
+          >
+            <div className="overflow-x-auto px-4 pt-4">
+              <TabsList className="h-auto w-max min-w-full justify-start">
                 <TabsTrigger value="leads" className="gap-2">
                   <Users className="h-4 w-4" />
                   Leads
