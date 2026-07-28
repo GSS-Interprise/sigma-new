@@ -37,6 +37,7 @@ type OperationalState =
 interface CampaignState {
   campanha_id: string;
   nome: string;
+  configured_status: string;
   tipo_envio: string | null;
   configured_chip_ids: string[];
   chips_configured: number;
@@ -63,8 +64,8 @@ const STATE_META: Record<OperationalState, {
   className: string;
 }> = {
   configurando: { label: "Configurando", icon: Settings2, className: "border-slate-200 bg-slate-50 text-slate-700" },
-  aguardando: { label: "Aguardando", icon: Clock3, className: "border-blue-200 bg-blue-50 text-blue-700" },
-  rodando: { label: "Enviando", icon: Play, className: "border-emerald-200 bg-emerald-50 text-emerald-700" },
+  aguardando: { label: "Ativa", icon: CheckCircle2, className: "border-blue-200 bg-blue-50 text-blue-700" },
+  rodando: { label: "Ativa · enviando agora", icon: Play, className: "border-emerald-200 bg-emerald-50 text-emerald-700" },
   manual: { label: "Depende da operadora", icon: Hand, className: "border-violet-200 bg-violet-50 text-violet-700" },
   fora_horario: { label: "Fora do horário", icon: Clock3, className: "border-slate-200 bg-slate-50 text-slate-700" },
   sem_leads: { label: "Sem leads", icon: ListX, className: "border-amber-200 bg-amber-50 text-amber-700" },
@@ -125,17 +126,19 @@ export function StatusOperacionalPanel() {
   const count = (state: OperationalState) =>
     campaigns.filter((campaign) => campaign.operational_state === state).length;
   const attention = count("desconectada") + count("restrita") + count("sem_chip");
+  const active = campaigns.filter((campaign) => campaign.configured_status === "ativa").length;
 
   return (
     <div className="space-y-5">
       <p className="text-sm text-muted-foreground">
-        O estado combina modalidade, horário, fila, limite diário, chips e atividade recente.
+        <strong>Ativa</strong> significa que a campanha está habilitada para operar.
+        “Enviando agora” é apenas a atividade observada nos últimos 30 minutos.
         Atualização automática a cada minuto.
       </p>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <SummaryCard label="Enviando" value={count("rodando")} className="text-emerald-700" />
-        <SummaryCard label="Aguardando" value={count("aguardando")} className="text-blue-700" />
+        <SummaryCard label="Campanhas ativas" value={active} className="text-blue-700" />
+        <SummaryCard label="Enviando agora" value={count("rodando")} className="text-emerald-700" />
         <SummaryCard label="Fora do horário" value={count("fora_horario")} className="text-slate-700" />
         <SummaryCard label="Manuais" value={count("manual")} className="text-violet-700" />
         <SummaryCard label="Sem leads" value={count("sem_leads")} className="text-amber-700" />

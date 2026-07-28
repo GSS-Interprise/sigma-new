@@ -35,7 +35,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
-import { usePermissions } from "@/hooks/usePermissions";
+import { usePermissions, type Modulo } from "@/hooks/usePermissions";
 import { useCaptacaoPermissions } from "@/hooks/useCaptacaoPermissions";
 import {
   Sidebar as SidebarUI,
@@ -53,7 +53,7 @@ type NavItem = {
   name: string;
   href: string;
   icon: LucideIcon;
-  modulo?: string; // módulo de permissão (vazio = sempre visível p/ autenticado)
+  modulo?: Modulo; // módulo de permissão (vazio = sempre visível p/ autenticado)
   adminOnly?: boolean;
   adminOrLeader?: boolean;
 };
@@ -73,6 +73,7 @@ const navigationGroups: NavGroup[] = [
     label: "Prospecção",
     items: [
       { name: "Campanhas", href: "/prospeccao", icon: Rocket, modulo: "disparos" },
+      { name: "Templates WhatsApp", href: "/prospeccao/templates-whatsapp", icon: FileText, modulo: "disparos" },
       { name: "Minhas Tarefas", href: "/tarefas", icon: ListTodo, modulo: "disparos" },
       { name: "Conversas", href: "/disparos/sigzap", icon: MessageCircle, modulo: "disparos" },
       { name: "Leads", href: "/leads", icon: UserSearch, modulo: "disparos" },
@@ -137,7 +138,7 @@ export function Sidebar() {
     if (modulo === "disparos") {
       return isAdmin || hasPermission("disparos", "visualizar") || hasAnyCaptacaoAccess();
     }
-    return isAdmin || hasPermission(modulo as any, "visualizar");
+    return isAdmin || hasPermission(modulo, "visualizar");
   };
 
   const renderItem = (item: NavItem) => {

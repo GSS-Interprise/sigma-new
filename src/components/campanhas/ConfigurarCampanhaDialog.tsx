@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Smartphone,
   UserPlus,
@@ -52,6 +53,8 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
   const [rotationStrategy, setRotationStrategy] = useState("round_robin");
   const [limiteDiario, setLimiteDiario] = useState(30);
   const [batchSize, setBatchSize] = useState(5);
+  const [whatsappProvider, setWhatsappProvider] = useState<"evolution" | "twilio">("evolution");
+  const [officialTemplateId, setOfficialTemplateId] = useState<string | null>(null);
   const [handoffNome, setHandoffNome] = useState("");
   const [handoffTelefone, setHandoffTelefone] = useState("");
   const [handoffFrase, setHandoffFrase] = useState("");
@@ -77,10 +80,16 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
   // Popula state quando carrega
   useEffect(() => {
     if (!campanha) return;
+    const officialConfig = campanha as typeof campanha & {
+      whatsapp_provider?: "evolution" | "twilio";
+      official_template_id?: string | null;
+    };
     setChipIds(campanha.chip_ids || []);
     setRotationStrategy(campanha.rotation_strategy || "round_robin");
     setLimiteDiario(campanha.limite_diario_campanha || 30);
     setBatchSize(campanha.batch_size || 5);
+    setWhatsappProvider(officialConfig.whatsapp_provider || "evolution");
+    setOfficialTemplateId(officialConfig.official_template_id || null);
     const briefing = (campanha.briefing_ia || {}) as Record<string, unknown>;
     setHandoffNome(String(briefing.handoff_nome || ""));
     setHandoffTelefone(String(briefing.handoff_telefone || ""));
@@ -106,6 +115,20 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
     },
   });
 
+  const { data: officialTemplates = [] } = useQuery({
+    queryKey: ["approved-whatsapp-official-templates"],
+    enabled: open,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("whatsapp_official_templates" as never)
+        .select("id, friendly_name, category, language")
+        .eq("approval_status", "approved")
+        .order("friendly_name");
+      if (error) throw error;
+      return (data || []) as Array<{ id: string; friendly_name: string; category: string | null; language: string }>;
+    },
+  });
+
   // Pedido Bruna (08/06): chip já usado por outra campanha ativa fica bloqueado aqui.
   const { data: chipsEmUso } = useChipsEmUso(campanha?.id);
 
@@ -119,7 +142,7 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
 
   const handoffTelefoneValido = /^\+\d{12,13}$/.test(handoffTelefone);
   const podeAtivar =
-    chipIds.length > 0 &&
+    (whatsappProvider === "twilio" ? !!officialTemplateId : chipIds.length > 0) &&
     handoffNome.trim().length > 0 &&
     handoffNome !== "[A_CONFIGURAR]" &&
     handoffTelefoneValido &&
@@ -147,7 +170,9 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
           briefing_ia: briefingAtualizado,
           tarefa_cadencia_passos: tarefaPassos.length > 0 ? tarefaPassos : null,
           tarefa_cadencia_template_id: tarefaTemplateId,
-        })
+          whatsapp_provider: whatsappProvider,
+          official_template_id: whatsappProvider === "twilio" ? officialTemplateId : null,
+        } as never)
         .eq("id", campanhaId);
       if (error) throw error;
     },
@@ -222,7 +247,7 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
             <TabsList className="h-auto w-max min-w-full justify-start">
               <TabsTrigger value="disparo" className="min-h-11 gap-1.5">
                 <Smartphone className="h-3.5 w-3.5" />
-                Chips
+                Canal
               </TabsTrigger>
               <TabsTrigger value="tarefas" className="min-h-11 gap-1.5">
                 <ListChecks className="h-3.5 w-3.5" />
@@ -250,6 +275,57 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
             <div className="flex-1 overflow-y-auto py-4">
               {/* ABA 1: CHIPS */}
               <TabsContent value="disparo" className="m-0 space-y-4">
+                <div className="space-y-2">
+                  <Label>Canal de WhatsApp</Label>
+                  <Select
+                    value={whatsappProvider}
+                    onValueChange={(value) => setWhatsappProvider(value as "evolution" | "twilio")}
+                  >
+                    <SelectTrigger className="min-h-11">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="evolution">API não oficial · Evolution</SelectItem>
+                      <SelectItem value="twilio">API oficial · Twilio/WhatsApp</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    {whatsappProvider === "twilio"
+                      ? "Usa template aprovado pela Meta. Não depende dos chips conectados ao Sigma."
+                      : "Usa os chips atuais conectados pela Evolution."}
+                  </p>
+                </div>
+
+                {whatsappProvider === "twilio" && (
+                  <div className="space-y-2 rounded-lg border border-blue-200 bg-blue-50/50 p-3">
+                    <Label>Template oficial aprovado</Label>
+                    <p className="text-xs text-blue-900">
+                      Fase de configuração: o envio oficial será liberado depois do cadastro do número remetente e dos webhooks Twilio.
+                    </p>
+                    <Select
+                      value={officialTemplateId || ""}
+                      onValueChange={setOfficialTemplateId}
+                    >
+                      <SelectTrigger className="min-h-11 bg-background">
+                        <SelectValue placeholder="Selecione um template aprovado" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {officialTemplates.map((template) => (
+                          <SelectItem key={template.id} value={template.id}>
+                            {template.friendly_name} · {template.category || "sem categoria"}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {officialTemplates.length === 0 && (
+                      <p className="text-xs text-amber-800">
+                        Ainda não há template aprovado. Crie e acompanhe em “Templates WhatsApp”.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {whatsappProvider === "evolution" && (
                 <div>
                   <Label className="text-sm">
                     Chips a usar no disparo
@@ -337,6 +413,7 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
                     </p>
                   )}
                 </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-3 pt-2 border-t">
                   <div className="space-y-1.5">

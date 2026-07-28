@@ -1,7 +1,7 @@
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Bot, Flame, MessageSquare, MapPin, Stethoscope, Clock, Layers, Tag, DollarSign, Sparkles, UserCheck, Target } from "lucide-react";
+import { Bot, Flame, MessageCircle, MessageSquare, MapPin, Stethoscope, Clock, Layers, Tag, DollarSign, Sparkles, UserCheck, Target } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { AcompanhamentoLead } from "@/hooks/useAcompanhamentoLeads";
@@ -49,10 +49,20 @@ export function AcompanhamentoCard({
         if ((e.target as HTMLElement).closest('[data-bulk-checkbox]')) return;
         onClick();
       }}
-      className={`group bg-card border rounded-md p-3 cursor-pointer hover:border-primary/50 hover:shadow-sm transition-all ${
+      className={`group relative bg-card border rounded-md p-3 cursor-pointer hover:border-primary/50 hover:shadow-sm transition-all ${
         semDono && lead.etapa_acompanhamento === "quente" ? "border-l-4 border-l-red-500" : ""
       } ${selected ? "ring-2 ring-primary border-primary" : ""}`}
     >
+      {lead.unread_messages > 0 && (
+        <div
+          className="absolute -right-2 -top-2 flex h-6 min-w-6 items-center justify-center gap-1 rounded-full border-2 border-background bg-emerald-600 px-1.5 text-[10px] font-bold text-white shadow-sm"
+          aria-label={`${lead.unread_messages} mensagem(ns) nova(s) do lead`}
+          title={`${lead.unread_messages} mensagem(ns) nova(s) do lead`}
+        >
+          <MessageCircle className="h-3 w-3" aria-hidden="true" />
+          {lead.unread_messages > 9 ? "9+" : lead.unread_messages}
+        </div>
+      )}
       <div className="flex items-start justify-between gap-2 mb-1.5">
         {/* Bloco C — checkbox de seleção (aparece on hover OU quando algum tá selecionado) */}
         {onToggleSelect !== undefined && (

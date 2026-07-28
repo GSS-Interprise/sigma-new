@@ -69,6 +69,8 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
   const [idadeMax, setIdadeMax] = useState("");
   const [filtroOrigem, setFiltroOrigem] = useState("");
   const [chipIds, setChipIds] = useState<string[]>([]);
+  const [whatsappProvider, setWhatsappProvider] = useState<"evolution" | "twilio">("evolution");
+  const [officialTemplateId, setOfficialTemplateId] = useState<string | null>(null);
   const [rotationStrategy, setRotationStrategy] = useState("round_robin");
   const [batchSize, setBatchSize] = useState(10);
   const [delayMinMs, setDelayMinMs] = useState(8);
@@ -191,6 +193,20 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
       });
     },
     staleTime: 60_000,
+  });
+
+  const { data: officialTemplates = [] } = useQuery({
+    queryKey: ["approved-whatsapp-official-templates"],
+    enabled: open,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("whatsapp_official_templates" as never)
+        .select("id, friendly_name, category")
+        .eq("approval_status", "approved")
+        .order("friendly_name");
+      if (error) throw error;
+      return (data || []) as Array<{ id: string; friendly_name: string; category: string | null }>;
+    },
   });
 
   const applyBriefing = (sourceId: string) => {
@@ -398,6 +414,8 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
           chip_ids: chipIds.length > 0 ? chipIds : null,
           chip_id: chipIds[0] || null,
           chip_fallback_id: chipIds[1] || null,
+          whatsapp_provider: whatsappProvider,
+          official_template_id: whatsappProvider === "twilio" ? officialTemplateId : null,
           rotation_strategy: rotationStrategy,
           // teto diário NÃO é definido na campanha — o sistema controla pelo limite de cada chip (anti-ban)
           limite_diario_campanha: null,
@@ -426,7 +444,7 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
           whatsapp_remetente: whatsappRemetente || null,
           descricao_oportunidade: descricaoOportunidade || null,
           criado_por: user.user?.id,
-        })
+        } as never)
         .select()
         .single();
       if (error) throw error;
@@ -511,6 +529,8 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
     setBHandoffGatilhos("");
     setBPalavrasProibidas("");
     setExcludedLeadIds(new Set());
+    setWhatsappProvider("evolution");
+    setOfficialTemplateId(null);
     setTab("basico");
   };
 
@@ -522,9 +542,14 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
   const briefingOk = tipoEnvio === "manual" ? briefingMinimoManual : briefingCompletoIA;
   // WS2: janela inválida (fim<=início ou sem dias) faria a campanha nunca disparar — bloqueia o submit.
   const janelaValida = !janela.ativo || (janela.dias.length > 0 && janela.fim > janela.inicio);
-  const canCreate = nome.trim().length > 0 && briefingOk && janelaValida;
+  const canCreate =
+    nome.trim().length > 0 &&
+    briefingOk &&
+    janelaValida &&
+    (whatsappProvider === "evolution" || !!officialTemplateId);
   // Feedback claro: o que ainda falta pra liberar o botão (em vez de só desabilitar sem explicar)
   const faltaPreencher: string[] = [];
+  if (whatsappProvider === "twilio" && !officialTemplateId) faltaPreencher.push("template oficial aprovado");
   if (nome.trim().length === 0) faltaPreencher.push("nome da campanha (aba Configuração)");
   if (bNomeServico.trim().length === 0) faltaPreencher.push("nome do serviço");
   if (bHospital.trim().length === 0) faltaPreencher.push("hospital/unidade");
@@ -613,6 +638,17 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
               </div>
             </div>
 
+            <div className="space-y-2">
+              <Label>Canal de WhatsApp</Label>
+              <Select value={whatsappProvider} onValueChange={(value) => setWhatsappProvider(value as "evolution" | "twilio")}>
+                <SelectTrigger className="min-h-11"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="evolution">API não oficial · Evolution</SelectItem>
+                  <SelectItem value="twilio">API oficial · Twilio/WhatsApp</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
             <div className="space-y-1.5">
               <Label>Nome da campanha *</Label>
               <Input
@@ -621,6 +657,30 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
                 placeholder="Ex: Intensivistas Pediátricos - SC"
               />
             </div>
+
+            {whatsappProvider === "twilio" ? (
+              <div className="space-y-2 rounded-lg border border-blue-200 bg-blue-50/50 p-3">
+                <Label>Template oficial aprovado</Label>
+                <p className="text-xs text-blue-900">
+                  O envio será liberado depois do cadastro do número remetente e dos webhooks Twilio.
+                </p>
+                <Select value={officialTemplateId || ""} onValueChange={setOfficialTemplateId}>
+                  <SelectTrigger className="min-h-11 bg-background">
+                    <SelectValue placeholder="Selecione um template aprovado" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {officialTemplates.map((template) => (
+                      <SelectItem key={template.id} value={template.id}>
+                        {template.friendly_name} · {template.category || "sem categoria"}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {officialTemplates.length === 0 && (
+                  <p className="text-xs text-amber-800">Ainda não há template aprovado pela Meta.</p>
+                )}
+              </div>
+            ) : null}
 
             {/* Identidade do remetente — controla quem assina email/WhatsApp e qual o conteúdo da oportunidade.
                 Sem isso, o template usa default genérico "Equipe GSS" e a frase fica fraca. */}

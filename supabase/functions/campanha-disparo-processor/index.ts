@@ -39,6 +39,11 @@ serve(async (req) => {
     if (camp.tipo_envio === "manual")
       return json({ ok: true, msg: "skipped:manual — 1o contato e manual, sem disparo automatico" });
 
+    // Nunca fazer fallback silencioso para Evolution quando a operação escolheu
+    // a API oficial. O envio Twilio só será liberado com sender e callbacks prontos.
+    if (camp.whatsapp_provider === "twilio")
+      return json({ ok: true, msg: "skipped:twilio_transport_pending" });
+
     if (["pausada", "finalizada", "arquivada"].includes(camp.status))
       return json({ ok: true, msg: `Campanha ${camp.status}` });
 

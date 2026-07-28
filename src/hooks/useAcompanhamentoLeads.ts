@@ -52,6 +52,8 @@ export interface AcompanhamentoLead {
   perfil_valor_min: number | null;
   perfil_confianca: number | null;
   tipo_envio: string | null;
+  unread_messages: number;
+  last_incoming_at: string | null;
 }
 
 // Estágios de entrada da campanha MANUAL (derivados do status, antes da triagem)
@@ -111,6 +113,11 @@ export function useAcompanhamentoLeads(filtro: FiltroAcompanhamento = "todos") {
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "campanha_leads" },
+        () => qc.invalidateQueries({ queryKey: ["acompanhamento-leads"] }),
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "sigzap_conversations" },
         () => qc.invalidateQueries({ queryKey: ["acompanhamento-leads"] }),
       )
       .subscribe();
