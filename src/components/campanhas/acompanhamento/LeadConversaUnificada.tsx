@@ -72,7 +72,7 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
     queryFn: async () => {
       const { data } = await (supabase as any)
         .from("sigzap_conversations")
-        .select("id, instance_id, last_message_at, instance:instance_id(name), contact:contact_id(contact_jid, contact_phone)")
+        .select("id, instance_id, last_message_at, instance:instance_id(name, provider), contact:contact_id(contact_jid, contact_phone)")
         .eq("lead_id", leadId)
         .order("last_message_at", { ascending: false, nullsFirst: false })
         .limit(1)
@@ -81,11 +81,26 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
         id: string;
         instance_id: string | null;
         last_message_at: string | null;
-        instance: { name: string | null } | null;
+        instance: { name: string | null; provider: string | null } | null;
         contact: { contact_jid: string | null; contact_phone: string | null } | null;
       } | null;
     },
   });
+
+  const { data: campanhaCanal } = useQuery({
+    queryKey: ["acompanhamento-campanha-canal", campanhaId],
+    enabled: !!campanhaId,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("campanhas")
+        .select("whatsapp_provider, official_template_id")
+        .eq("id", campanhaId)
+        .single();
+      if (error) throw error;
+      return data as { whatsapp_provider: "evolution" | "twilio"; official_template_id: string | null };
+    },
+  });
+  const isOfficialCampaign = campanhaCanal?.whatsapp_provider === "twilio";
 
   // #5 (pedido equipe 11/06): escolher por qual chip a resposta sai. Default = chip da
   // conversa (continuidade: médico já conhece esse número). Operadora pode trocar pra
@@ -129,6 +144,14 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
   const [texto, setTexto] = useState("");
   const enviar = useMutation({
     mutationFn: async ({ msg, clientMessageId = crypto.randomUUID() }: { msg: string; clientMessageId?: string }) => {
+      if (conv?.instance?.provider === "twilio") {
+        const { data, error } = await supabase.functions.invoke("twilio-whatsapp-send", {
+          body: { conversation_id: conv.id, body: msg },
+        });
+        if (error) throw new Error(traduzErroEnvio(error.message || ""));
+        if ((data as any)?.error) throw new Error((data as any).error);
+        return data;
+      }
       const instanceName = instanceAtual;
       const contactJid =
         conv?.contact?.contact_jid ||
@@ -171,6 +194,15 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
   const enviar1oContato = useMutation({
     mutationFn: async (msg: string) => {
       if (!campanhaId) throw new Error("Sem campanha no contexto");
+      if (isOfficialCampaign) {
+        if (!campanhaLeadId) throw new Error("Lead da campanha não identificado");
+        const { data, error } = await supabase.functions.invoke("twilio-whatsapp-send", {
+          body: { campaign_lead_id: campanhaLeadId },
+        });
+        if (error) throw new Error(error.message || "Não foi possível enviar o template oficial");
+        if ((data as any)?.error) throw new Error((data as any).error);
+        return data;
+      }
       const { data, error } = await supabase.functions.invoke("campanha-disparo-manual-1contato", {
         body: { campanha_id: campanhaId, campanha_lead_id: campanhaLeadId, lead_id: leadId, phone: leadPhone, mensagem: msg },
       });
@@ -390,7 +422,7 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
       {conv?.id ? (
         <div className="mt-3 border-t pt-3">
           {/* #5: chip que envia a resposta — transparente e trocável */}
-          <div className="flex items-center gap-2 mb-2 text-xs">
+          {conv.instance?.provider !== "twilio" && <div className="flex items-center gap-2 mb-2 text-xs">
             <Smartphone className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
             <span className="text-muted-foreground shrink-0">Enviando pelo chip:</span>
             {chipsCampanha.length >= 1 ? (
@@ -411,7 +443,7 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
             {instanceEscolhida && conv?.instance?.name && instanceEscolhida !== conv.instance.name && (
               <span className="text-amber-600 shrink-0" title="O médico vai receber de um número diferente do que vinha conversando.">⚠ número diferente</span>
             )}
-          </div>
+          </div>}
           <div className="flex items-end gap-2">
           <Textarea
             value={texto}
@@ -443,6 +475,23 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
             <Send className="h-3.5 w-3.5" />
             Enviar 1ª mensagem (disparo manual via WhatsApp)
           </div>
+          {isOfficialCampaign ? (
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">
+                O primeiro contato será enviado com o template oficial e as variáveis configuradas na campanha.
+              </p>
+              <Button
+                className="min-h-11 w-full sm:w-auto"
+                disabled={enviar1oContato.isPending}
+                onClick={() => enviar1oContato.mutate("template-oficial")}
+              >
+                {enviar1oContato.isPending
+                  ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  : <Send className="mr-2 h-4 w-4" />}
+                Enviar template oficial
+              </Button>
+            </div>
+          ) : <>
           <div className="flex items-end gap-2">
             <Textarea
               value={texto1o}
@@ -470,6 +519,7 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
           <p className="text-[11px] text-muted-foreground mt-1">
             Usa um chip conectado da campanha. Ao enviar, o lead passa pra "contatado".
           </p>
+          </>}
         </div>
       ) : null}
     </>

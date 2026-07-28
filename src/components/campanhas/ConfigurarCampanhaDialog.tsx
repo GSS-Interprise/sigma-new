@@ -33,6 +33,10 @@ import { useChipsEmUso } from "@/hooks/useChipsEmUso";
 import { toast } from "sonner";
 import { ConfirmDestructive } from "@/components/common/ConfirmDestructive";
 import { CampaignStrategiesConfig } from "./CampaignStrategiesConfig";
+import {
+  OfficialTemplateVariablesConfig,
+  type OfficialTemplateBindings,
+} from "./OfficialTemplateVariablesConfig";
 
 interface Props {
   open: boolean;
@@ -56,6 +60,7 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
   const [whatsappProvider, setWhatsappProvider] = useState<"evolution" | "twilio">("evolution");
   const [officialTemplateId, setOfficialTemplateId] = useState<string | null>(null);
   const [officialSenderId, setOfficialSenderId] = useState<string | null>(null);
+  const [officialTemplateVariables, setOfficialTemplateVariables] = useState<OfficialTemplateBindings>({});
   const [handoffNome, setHandoffNome] = useState("");
   const [handoffTelefone, setHandoffTelefone] = useState("");
   const [handoffFrase, setHandoffFrase] = useState("");
@@ -85,6 +90,7 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
       whatsapp_provider?: "evolution" | "twilio";
       official_template_id?: string | null;
       official_sender_id?: string | null;
+      official_template_variables?: OfficialTemplateBindings | null;
     };
     setChipIds(campanha.chip_ids || []);
     setRotationStrategy(campanha.rotation_strategy || "round_robin");
@@ -93,6 +99,7 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
     setWhatsappProvider(officialConfig.whatsapp_provider || "evolution");
     setOfficialTemplateId(officialConfig.official_template_id || null);
     setOfficialSenderId(officialConfig.official_sender_id || null);
+    setOfficialTemplateVariables(officialConfig.official_template_variables || {});
     const briefing = (campanha.briefing_ia || {}) as Record<string, unknown>;
     setHandoffNome(String(briefing.handoff_nome || ""));
     setHandoffTelefone(String(briefing.handoff_telefone || ""));
@@ -165,7 +172,12 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
 
   const handoffTelefoneValido = /^\+\d{12,13}$/.test(handoffTelefone);
   const podeAtivar =
-    (whatsappProvider === "twilio" ? !!officialTemplateId && !!officialSenderId : chipIds.length > 0) &&
+    (whatsappProvider === "twilio"
+      ? !!officialTemplateId &&
+        !!officialSenderId &&
+        Object.keys(officialTemplateVariables).length > 0 &&
+        Object.values(officialTemplateVariables).every((binding) => binding.trim().length > 0)
+      : chipIds.length > 0) &&
     handoffNome.trim().length > 0 &&
     handoffNome !== "[A_CONFIGURAR]" &&
     handoffTelefoneValido &&
@@ -196,6 +208,7 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
           whatsapp_provider: whatsappProvider,
           official_template_id: whatsappProvider === "twilio" ? officialTemplateId : null,
           official_sender_id: whatsappProvider === "twilio" ? officialSenderId : null,
+          official_template_variables: whatsappProvider === "twilio" ? officialTemplateVariables : {},
         } as never)
         .eq("id", campanhaId);
       if (error) throw error;
@@ -350,7 +363,10 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
                     </p>
                     <Select
                       value={officialTemplateId || ""}
-                      onValueChange={setOfficialTemplateId}
+                      onValueChange={(templateId) => {
+                        setOfficialTemplateId(templateId);
+                        setOfficialTemplateVariables({});
+                      }}
                     >
                       <SelectTrigger className="min-h-11 bg-background">
                         <SelectValue placeholder="Selecione um template aprovado" />
@@ -368,6 +384,11 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
                         Ainda não há template aprovado. Crie e acompanhe em “Templates WhatsApp”.
                       </p>
                     )}
+                    <OfficialTemplateVariablesConfig
+                      templateId={officialTemplateId}
+                      value={officialTemplateVariables}
+                      onChange={setOfficialTemplateVariables}
+                    />
                   </div>
                 )}
 

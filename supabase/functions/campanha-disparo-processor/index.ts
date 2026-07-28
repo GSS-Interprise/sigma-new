@@ -41,9 +41,6 @@ serve(async (req) => {
 
     // Nunca fazer fallback silencioso para Evolution quando a operação escolheu
     // a API oficial. O envio Twilio só será liberado com sender e callbacks prontos.
-    if (camp.whatsapp_provider === "twilio")
-      return json({ ok: true, msg: "skipped:twilio_transport_pending" });
-
     if (["pausada", "finalizada", "arquivada"].includes(camp.status))
       return json({ ok: true, msg: `Campanha ${camp.status}` });
 
@@ -108,6 +105,10 @@ serve(async (req) => {
     }
     if (!locked)
       return json({ ok: true, msg: "Outro processo rodando" });
+
+    if (camp.whatsapp_provider === "twilio") {
+      return await processTwilioBatch(supabase, camp);
+    }
 
     // ── Buscar cadência da campanha (se ativa) ──
     let cadenciaPassos: any[] = [];
@@ -583,6 +584,93 @@ function json(body: Record<string, unknown>) {
   return new Response(JSON.stringify(body), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+}
+
+async function processTwilioBatch(supabase: any, camp: any) {
+  if (!camp.official_sender_id || !camp.official_template_id) {
+    await supabase.from("campanhas").update({ next_batch_at: null }).eq("id", camp.id);
+    return json({ ok: false, error: "twilio_campaign_not_configured" });
+  }
+
+  const bindings = camp.official_template_variables || {};
+  if (
+    Object.keys(bindings).length === 0 ||
+    Object.values(bindings).some((value) => !String(value || "").trim())
+  ) {
+    await supabase.from("campanhas").update({ next_batch_at: null }).eq("id", camp.id);
+    return json({ ok: false, error: "twilio_template_variables_not_configured" });
+  }
+
+  const [{ data: sender }, { data: template }] = await Promise.all([
+    supabase
+      .from("whatsapp_official_senders")
+      .select("status")
+      .eq("id", camp.official_sender_id)
+      .maybeSingle(),
+    supabase
+      .from("whatsapp_official_templates")
+      .select("approval_status")
+      .eq("id", camp.official_template_id)
+      .maybeSingle(),
+  ]);
+  if (!sender || !["approved", "online", "active", "activated"].includes(String(sender.status).toLowerCase())) {
+    await supabase.from("campanhas").update({ next_batch_at: null }).eq("id", camp.id);
+    return json({ ok: false, error: "twilio_sender_not_active" });
+  }
+  if (template?.approval_status !== "approved") {
+    await supabase.from("campanhas").update({ next_batch_at: null }).eq("id", camp.id);
+    return json({ ok: false, error: "twilio_template_not_approved" });
+  }
+
+  const brtAgora = new Date(Date.now() - 3 * 3600 * 1000);
+  const hoje = new Date(Date.UTC(
+    brtAgora.getUTCFullYear(),
+    brtAgora.getUTCMonth(),
+    brtAgora.getUTCDate(),
+    3,
+  ));
+  const limiteDiario = camp.limite_diario_campanha || 250;
+  const { count: enviadosHoje } = await supabase
+    .from("campanha_leads")
+    .select("id", { count: "exact", head: true })
+    .eq("campanha_id", camp.id)
+    .gte("data_primeiro_contato", hoje.toISOString());
+  if ((enviadosHoje || 0) >= limiteDiario) {
+    await supabase.from("campanhas").update({ next_batch_at: null }).eq("id", camp.id);
+    return json({ ok: true, msg: "Limite diario oficial atingido", enviados: enviadosHoje });
+  }
+
+  // Um contato por ciclo mantém o piloto observável e elimina rajadas acidentais.
+  const { data: campaignLead, error: leadError } = await supabase
+    .from("campanha_leads")
+    .select("id")
+    .eq("campanha_id", camp.id)
+    .eq("status", "frio")
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (leadError) throw leadError;
+  if (!campaignLead) {
+    await supabase.from("campanhas").update({ next_batch_at: null }).eq("id", camp.id);
+    return json({ ok: true, msg: "Sem leads para disparar" });
+  }
+
+  const { data, error } = await supabase.functions.invoke("twilio-whatsapp-send", {
+    body: { campaign_lead_id: campaignLead.id },
+  });
+  if (error || !data?.ok) {
+    const reason = data?.error || error?.message || "twilio_send_failed";
+    await Promise.all([
+      supabase.from("campanha_leads").update({ erro_envio: reason }).eq("id", campaignLead.id),
+      supabase.from("campanhas").update({ next_batch_at: null }).eq("id", camp.id),
+    ]);
+    return json({ ok: false, error: reason });
+  }
+
+  const nextBatchAt = new Date(Date.now() + 60_000).toISOString();
+  await supabase.from("campanhas").update({ next_batch_at: nextBatchAt }).eq("id", camp.id);
+  selfInvoke(supabase, camp.id);
+  return json({ ok: true, sent: 1, channel: "twilio", next_batch_at: nextBatchAt });
 }
 
 function selfInvoke(supabase: any, campanha_id: string) {

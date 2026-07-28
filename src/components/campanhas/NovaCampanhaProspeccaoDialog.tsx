@@ -30,6 +30,10 @@ import { CadenciaConfig } from "./CadenciaConfig";
 import type { CadenciaPasso } from "@/hooks/useCadencia";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useChipsEmUso } from "@/hooks/useChipsEmUso";
+import {
+  OfficialTemplateVariablesConfig,
+  type OfficialTemplateBindings,
+} from "./OfficialTemplateVariablesConfig";
 
 const UF_LIST = [
   "AC","AL","AM","AP","BA","CE","DF","ES","GO","MA","MG","MS","MT",
@@ -72,6 +76,7 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
   const [whatsappProvider, setWhatsappProvider] = useState<"evolution" | "twilio">("evolution");
   const [officialTemplateId, setOfficialTemplateId] = useState<string | null>(null);
   const [officialSenderId, setOfficialSenderId] = useState<string | null>(null);
+  const [officialTemplateVariables, setOfficialTemplateVariables] = useState<OfficialTemplateBindings>({});
   const [rotationStrategy, setRotationStrategy] = useState("round_robin");
   const [batchSize, setBatchSize] = useState(10);
   const [delayMinMs, setDelayMinMs] = useState(8);
@@ -438,6 +443,7 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
           whatsapp_provider: whatsappProvider,
           official_template_id: whatsappProvider === "twilio" ? officialTemplateId : null,
           official_sender_id: whatsappProvider === "twilio" ? officialSenderId : null,
+          official_template_variables: whatsappProvider === "twilio" ? officialTemplateVariables : {},
           rotation_strategy: rotationStrategy,
           // teto diário NÃO é definido na campanha — o sistema controla pelo limite de cada chip (anti-ban)
           limite_diario_campanha: null,
@@ -568,11 +574,24 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
     nome.trim().length > 0 &&
     briefingOk &&
     janelaValida &&
-    (whatsappProvider === "evolution" || (!!officialTemplateId && !!officialSenderId));
+    (whatsappProvider === "evolution" ||
+      (
+        !!officialTemplateId &&
+        !!officialSenderId &&
+        Object.keys(officialTemplateVariables).length > 0 &&
+        Object.values(officialTemplateVariables).every((binding) => binding.trim().length > 0)
+      ));
   // Feedback claro: o que ainda falta pra liberar o botão (em vez de só desabilitar sem explicar)
   const faltaPreencher: string[] = [];
   if (whatsappProvider === "twilio" && !officialTemplateId) faltaPreencher.push("template oficial aprovado");
   if (whatsappProvider === "twilio" && !officialSenderId) faltaPreencher.push("número oficial remetente");
+  if (
+    whatsappProvider === "twilio" &&
+    (
+      Object.keys(officialTemplateVariables).length === 0 ||
+      Object.values(officialTemplateVariables).some((binding) => !binding.trim())
+    )
+  ) faltaPreencher.push("variáveis do template");
   if (nome.trim().length === 0) faltaPreencher.push("nome da campanha (aba Configuração)");
   if (bNomeServico.trim().length === 0) faltaPreencher.push("nome do serviço");
   if (bHospital.trim().length === 0) faltaPreencher.push("hospital/unidade");
@@ -704,7 +723,13 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
                 <p className="text-xs text-blue-900">
                   O primeiro contato usa o template aprovado; as respostas continuam pelo mesmo número dentro do Sigma.
                 </p>
-                <Select value={officialTemplateId || ""} onValueChange={setOfficialTemplateId}>
+                <Select
+                  value={officialTemplateId || ""}
+                  onValueChange={(templateId) => {
+                    setOfficialTemplateId(templateId);
+                    setOfficialTemplateVariables({});
+                  }}
+                >
                   <SelectTrigger className="min-h-11 bg-background">
                     <SelectValue placeholder="Selecione um template aprovado" />
                   </SelectTrigger>
@@ -719,6 +744,11 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
                 {officialTemplates.length === 0 && (
                   <p className="text-xs text-amber-800">Ainda não há template aprovado pela Meta.</p>
                 )}
+                <OfficialTemplateVariablesConfig
+                  templateId={officialTemplateId}
+                  value={officialTemplateVariables}
+                  onChange={setOfficialTemplateVariables}
+                />
               </div>
             ) : null}
 

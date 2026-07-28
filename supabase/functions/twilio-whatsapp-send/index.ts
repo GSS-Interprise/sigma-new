@@ -29,6 +29,16 @@ function twilioAuthorization() {
   return { sid, header: `Basic ${btoa(`${sid}:${token}`)}` };
 }
 
+function resolveBinding(binding: string, context: Record<string, unknown>) {
+  return binding.replace(/\{\{([^}]+)\}\}/g, (_match, path: string) => {
+    const value = path.split(".").reduce<unknown>((current, key) => {
+      if (!current || typeof current !== "object") return undefined;
+      return (current as Record<string, unknown>)[key];
+    }, context);
+    return value == null ? "" : String(value);
+  }).trim();
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") return json({ ok: false, error: "method_not_allowed" }, 405);
@@ -74,7 +84,7 @@ serve(async (req) => {
       const [campaignResult, leadResult] = await Promise.all([
         admin
           .from("campanhas")
-          .select("id, nome, whatsapp_provider, official_template_id, official_sender_id")
+          .select("id, nome, nome_remetente, briefing_ia, whatsapp_provider, official_template_id, official_sender_id, official_template_variables")
           .eq("id", campaignLead.campanha_id)
           .single(),
         admin
@@ -148,7 +158,7 @@ serve(async (req) => {
     if (templateId) {
       const { data, error } = await admin
         .from("whatsapp_official_templates")
-        .select("id, content_sid, approval_status, friendly_name")
+        .select("id, content_sid, approval_status, friendly_name, body, variables")
         .eq("id", templateId)
         .single();
       if (error) throw error;
@@ -156,6 +166,32 @@ serve(async (req) => {
         return json({ ok: false, error: "template_not_approved" }, 409);
       }
       template = data;
+    }
+
+    let resolvedTemplateVariables: Record<string, string> = {};
+    if (template) {
+      const configuredBindings =
+        Object.keys(templateVariables).length > 0
+          ? templateVariables
+          : campaign?.official_template_variables || {};
+      const positions = Object.keys(template.variables || {});
+      const context = {
+        lead,
+        campanha: campaign,
+        briefing: campaign?.briefing_ia || {},
+      };
+      for (const position of positions) {
+        const binding = String(configuredBindings[position] || "");
+        const resolved = resolveBinding(binding, context);
+        if (!resolved) {
+          return json({
+            ok: false,
+            error: "template_variable_not_configured",
+            variable: position,
+          }, 409);
+        }
+        resolvedTemplateVariables[position] = resolved;
+      }
     }
 
     if (!conversation) {
@@ -229,7 +265,7 @@ serve(async (req) => {
     });
     if (template) {
       form.set("ContentSid", template.content_sid);
-      form.set("ContentVariables", JSON.stringify(templateVariables));
+      form.set("ContentVariables", JSON.stringify(resolvedTemplateVariables));
     } else {
       form.set("Body", body);
     }
@@ -259,7 +295,10 @@ serve(async (req) => {
 
     const now = new Date().toISOString();
     const visibleBody = template
-      ? `[Template: ${template.friendly_name}]`
+      ? Object.entries(resolvedTemplateVariables).reduce(
+          (text, [position, value]) => text.replaceAll(`{{${position}}}`, value),
+          template.body || `[Template: ${template.friendly_name}]`,
+        )
       : body;
     const { error: messageError } = await admin.from("sigzap_messages").insert({
       conversation_id: conversation.id,
