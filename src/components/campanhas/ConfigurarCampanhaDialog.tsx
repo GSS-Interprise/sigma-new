@@ -64,6 +64,7 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
   const [handoffNome, setHandoffNome] = useState("");
   const [handoffTelefone, setHandoffTelefone] = useState("");
   const [handoffFrase, setHandoffFrase] = useState("");
+  const [responsavelId, setResponsavelId] = useState<string | null>(null);
   // Cadência de tarefas editável na campanha já criada (pedido Bruna: mais opções na Pediatras MG)
   const [tarefaPassos, setTarefaPassos] = useState<CadenciaPasso[]>([]);
   const [tarefaTemplateId, setTarefaTemplateId] = useState<string | null>(null);
@@ -100,6 +101,7 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
     setOfficialTemplateId(officialConfig.official_template_id || null);
     setOfficialSenderId(officialConfig.official_sender_id || null);
     setOfficialTemplateVariables(officialConfig.official_template_variables || {});
+    setResponsavelId(campanha.responsavel_id || null);
     const briefing = (campanha.briefing_ia || {}) as Record<string, unknown>;
     setHandoffNome(String(briefing.handoff_nome || ""));
     setHandoffTelefone(String(briefing.handoff_telefone || ""));
@@ -153,6 +155,20 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
     },
   });
 
+  const { data: responsaveis = [] } = useQuery({
+    queryKey: ["campanha-responsaveis-ativos"],
+    enabled: open,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, nome_completo, telefone")
+        .eq("status", "ativo")
+        .order("nome_completo");
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
   useEffect(() => {
     if (whatsappProvider === "twilio" && !officialSenderId && officialSenders.length === 1) {
       setOfficialSenderId(officialSenders[0].id);
@@ -181,6 +197,7 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
     handoffNome.trim().length > 0 &&
     handoffNome !== "[A_CONFIGURAR]" &&
     handoffTelefoneValido &&
+    !!responsavelId &&
     totalLeads > 0;
 
   // Mutação: salvar configurações
@@ -209,6 +226,7 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
           official_template_id: whatsappProvider === "twilio" ? officialTemplateId : null,
           official_sender_id: whatsappProvider === "twilio" ? officialSenderId : null,
           official_template_variables: whatsappProvider === "twilio" ? officialTemplateVariables : {},
+          responsavel_id: responsavelId,
         } as never)
         .eq("id", campanhaId);
       if (error) throw error;
@@ -531,6 +549,37 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
                   <strong>Importante:</strong> quando a IA detectar um lead quente, ela vai
                   enviar um WhatsApp <strong>pra esse número</strong>. Confirme que é um
                   número que vocês acompanham.
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-sm">Responsável dentro do Sigma *</Label>
+                  <Select
+                    value={responsavelId || ""}
+                    onValueChange={(id) => {
+                      setResponsavelId(id);
+                      const profile = responsaveis.find((item) => item.id === id);
+                      if (!profile) return;
+                      setHandoffNome(profile.nome_completo);
+                      if (profile.telefone) {
+                        const phone = profile.telefone.replace(/\D/g, "");
+                        setHandoffTelefone(phone.startsWith("55") ? `+${phone}` : `+55${phone}`);
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="min-h-11">
+                      <SelectValue placeholder="Selecione quem receberá o lead" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {responsaveis.map((profile) => (
+                        <SelectItem key={profile.id} value={profile.id}>
+                          {profile.nome_completo}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Leads quentes serão atribuídos automaticamente e a IA será pausada.
+                  </p>
                 </div>
 
                 <div className="space-y-1.5">

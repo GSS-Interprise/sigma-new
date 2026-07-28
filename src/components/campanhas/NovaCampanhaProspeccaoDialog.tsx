@@ -108,6 +108,7 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
   const [bBeneficios, setBBeneficios] = useState<string[]>([]); // Hospedagem, Alimentação, Passagem, etc.
   const [bHandoffNome, setBHandoffNome] = useState(""); // Ex: "Ester"
   const [bHandoffTelefone, setBHandoffTelefone] = useState(""); // Ex: "554799514821"
+  const [responsavelId, setResponsavelId] = useState<string | null>(null);
   const [bObjecao1, setBObjecao1] = useState("");
   const [bResposta1, setBResposta1] = useState("");
   const [bObjecao2, setBObjecao2] = useState("");
@@ -226,6 +227,20 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
         .order("display_name");
       if (error) throw error;
       return (data || []) as Array<{ id: string; display_name: string | null; phone_e164: string; status: string }>;
+    },
+  });
+
+  const { data: responsaveis = [] } = useQuery({
+    queryKey: ["campanha-responsaveis-ativos"],
+    enabled: open,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, nome_completo, telefone")
+        .eq("status", "ativo")
+        .order("nome_completo");
+      if (error) throw error;
+      return data || [];
     },
   });
 
@@ -444,6 +459,7 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
           official_template_id: whatsappProvider === "twilio" ? officialTemplateId : null,
           official_sender_id: whatsappProvider === "twilio" ? officialSenderId : null,
           official_template_variables: whatsappProvider === "twilio" ? officialTemplateVariables : {},
+          responsavel_id: responsavelId,
           rotation_strategy: rotationStrategy,
           // teto diário NÃO é definido na campanha — o sistema controla pelo limite de cada chip (anti-ban)
           limite_diario_campanha: null,
@@ -574,6 +590,7 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
     nome.trim().length > 0 &&
     briefingOk &&
     janelaValida &&
+    !!responsavelId &&
     (whatsappProvider === "evolution" ||
       (
         !!officialTemplateId &&
@@ -593,6 +610,7 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
     )
   ) faltaPreencher.push("variáveis do template");
   if (nome.trim().length === 0) faltaPreencher.push("nome da campanha (aba Configuração)");
+  if (!responsavelId) faltaPreencher.push("responsável no Sigma");
   if (bNomeServico.trim().length === 0) faltaPreencher.push("nome do serviço");
   if (bHospital.trim().length === 0) faltaPreencher.push("hospital/unidade");
   if (bCidade.trim().length === 0) faltaPreencher.push("cidade");
@@ -751,6 +769,37 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
                 />
               </div>
             ) : null}
+
+            <div className="space-y-2">
+              <Label>Responsável pela campanha no Sigma *</Label>
+              <Select
+                value={responsavelId || ""}
+                onValueChange={(id) => {
+                  setResponsavelId(id);
+                  const profile = responsaveis.find((item) => item.id === id);
+                  if (!profile) return;
+                  setBHandoffNome(profile.nome_completo);
+                  if (profile.telefone) {
+                    const phone = profile.telefone.replace(/\D/g, "");
+                    setBHandoffTelefone(phone.startsWith("55") ? `+${phone}` : `+55${phone}`);
+                  }
+                }}
+              >
+                <SelectTrigger className="min-h-11">
+                  <SelectValue placeholder="Selecione quem receberá os leads" />
+                </SelectTrigger>
+                <SelectContent>
+                  {responsaveis.map((profile) => (
+                    <SelectItem key={profile.id} value={profile.id}>
+                      {profile.nome_completo}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Quando a IA aquecer um médico, o card será atribuído automaticamente e a IA será pausada.
+              </p>
+            </div>
 
             {/* Identidade do remetente — controla quem assina email/WhatsApp e qual o conteúdo da oportunidade.
                 Sem isso, o template usa default genérico "Equipe GSS" e a frase fica fraca. */}
