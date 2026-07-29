@@ -357,6 +357,22 @@ export function ImportarLeadsDialog({ open, onOpenChange, onSuccess, listaDestin
         if (listaDestino.descricao) {
           formData.append("lista_destino_descricao", listaDestino.descricao);
         }
+      } else {
+        // O fluxo usado pela equipe nasce na aba Imports. Criar a lista aqui
+        // garante que nenhuma planilha vire um conjunto invisível na base.
+        const baseName = file.name.replace(/\.(xlsx|xls|csv)$/i, "").trim() || "Planilha";
+        const importedAt = new Date().toLocaleString("pt-BR", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        formData.append("lista_destino_nome", `${baseName} · ${importedAt}`);
+        formData.append(
+          "lista_destino_descricao",
+          `Lista criada automaticamente pela importação do arquivo ${file.name}.`,
+        );
       }
 
       const { data: session } = await supabase.auth.getSession();
@@ -377,7 +393,7 @@ export function ImportarLeadsDialog({ open, onOpenChange, onSuccess, listaDestin
         throw new Error(errorData.error || "Erro ao processar importação");
       }
 
-      toast.success("Importação iniciada! Acompanhe o progresso na aba de histórico.");
+      toast.success("Importação iniciada! A lista será criada automaticamente e preenchida em segundo plano.");
       handleClose();
       onSuccess?.();
     } catch (error: any) {
@@ -437,6 +453,12 @@ export function ImportarLeadsDialog({ open, onOpenChange, onSuccess, listaDestin
         <div className="text-sm text-muted-foreground mb-4">
           Preencha os campos abaixo e depois carregue a planilha.
         </div>
+        {!listaDestino && (
+          <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-950">
+            Esta importação criará automaticamente uma lista com o nome do arquivo.
+            Médicos que já existem no Sigma serão reaproveitados sem perder seus dados.
+          </div>
+        )}
         <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
           Classificações opcionais no arquivo: <strong>opt_out</strong>, <strong>aposentado</strong>,{" "}
           <strong>sem_whatsapp</strong>, <strong>contato_invalido</strong> ou <strong>perda_local</strong>.

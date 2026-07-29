@@ -203,16 +203,17 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
   });
 
   const { data: officialTemplates = [] } = useQuery({
-    queryKey: ["approved-whatsapp-official-templates"],
+    queryKey: ["approved-whatsapp-official-templates", "pt_BR"],
     enabled: open,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("whatsapp_official_templates" as never)
-        .select("id, friendly_name, category")
+        .select("id, friendly_name, category, language")
         .eq("approval_status", "approved")
+        .eq("language", "pt_BR")
         .order("friendly_name");
       if (error) throw error;
-      return (data || []) as Array<{ id: string; friendly_name: string; category: string | null }>;
+      return (data || []) as Array<{ id: string; friendly_name: string; category: string | null; language: string }>;
     },
   });
 

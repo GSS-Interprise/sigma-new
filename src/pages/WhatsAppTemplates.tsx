@@ -146,6 +146,7 @@ export default function WhatsAppTemplates() {
       const { data, error } = await supabase
         .from("whatsapp_official_templates" as never)
         .select("*")
+        .eq("language", "pt_BR")
         .order("updated_at", { ascending: false });
       if (error) throw error;
       return (data || []) as OfficialTemplate[];
@@ -229,7 +230,7 @@ export default function WhatsAppTemplates() {
               Templates WhatsApp oficial
             </h1>
             <p className="mt-1 hidden text-sm text-muted-foreground sm:block">
-              Crie, submeta e acompanhe templates oficiais sem sair do Sigma.
+              Crie, submeta e acompanhe templates oficiais em português do Brasil.
             </p>
           </div>
           <div className="grid grid-cols-1 gap-2 xs:grid-cols-2 sm:flex">
