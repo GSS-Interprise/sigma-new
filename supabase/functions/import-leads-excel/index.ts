@@ -380,6 +380,8 @@ serve(async (req) => {
     let especialidadesParam: string[] = [];
     let origemParam = "";
     let listaDestinoId = "";
+    let campanhaDestinoId = "";
+    let strategyDestinoId = "";
 
     if (contentType.includes("multipart/form-data")) {
       // PRIMEIRA EXECUÇÃO: receber arquivo do FormData
@@ -405,6 +407,14 @@ serve(async (req) => {
       const listaDestinoIdParam = (formData.get("lista_destino_id") as string) || "";
       const listaDestinoNomeParam = (formData.get("lista_destino_nome") as string) || "";
       const listaDestinoDescParam = (formData.get("lista_destino_descricao") as string) || "";
+      campanhaDestinoId = (formData.get("campanha_destino_id") as string) || "";
+      strategyDestinoId = (formData.get("strategy_destino_id") as string) || "";
+      if ((campanhaDestinoId && !strategyDestinoId) || (!campanhaDestinoId && strategyDestinoId)) {
+        return new Response(
+          JSON.stringify({ error: "Campanha e estratégia de destino devem ser informadas juntas" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
       
       if (!file) {
         return new Response(
@@ -478,6 +488,8 @@ serve(async (req) => {
               especialidades: especialidadesParam,
               origem: origemParam,
               lista_destino_id: listaDestinoIdFinal || null,
+              campanha_destino_id: campanhaDestinoId || null,
+              strategy_destino_id: strategyDestinoId || null,
             }
           },
         })
@@ -510,6 +522,8 @@ serve(async (req) => {
       especialidadesParam = Array.isArray(params.especialidades) ? params.especialidades : (especialidadeParam ? [especialidadeParam] : []);
       origemParam = params.origem || "Importação Excel";
       listaDestinoId = listaDestinoIdOverride || params.lista_destino_id || "";
+      campanhaDestinoId = params.campanha_destino_id || "";
+      strategyDestinoId = params.strategy_destino_id || "";
 
       if (resetCounts && chunkAtual === 0) {
         await supabase
@@ -635,6 +649,8 @@ serve(async (req) => {
               especialidades: especialidadesParam,
               origem: origemParam,
               lista_destino_id: listaDestinoId || null,
+              campanha_destino_id: campanhaDestinoId || null,
+              strategy_destino_id: strategyDestinoId || null,
             },
           },
           finished_at: new Date().toISOString(),
@@ -666,6 +682,8 @@ serve(async (req) => {
               especialidades: especialidadesParam,
               origem: origemParam,
               lista_destino_id: listaDestinoId || null,
+              campanha_destino_id: campanhaDestinoId || null,
+              strategy_destino_id: strategyDestinoId || null,
             },
           },
           total_chunks: totalChunks,
@@ -1060,6 +1078,20 @@ serve(async (req) => {
         if (itemErr) {
           console.error("Erro vinculando leads à lista:", itemErr.message);
         }
+      }
+    }
+
+    if (campanhaDestinoId && strategyDestinoId && leadIdsImportados.length > 0) {
+      const { error: campaignInsertError } = await supabase.rpc(
+        "adicionar_leads_estrategia",
+        {
+          p_campanha_id: campanhaDestinoId,
+          p_strategy_id: strategyDestinoId,
+          p_lead_ids: leadIdsImportados,
+        },
+      );
+      if (campaignInsertError) {
+        throw new Error(`Erro vinculando médicos à estratégia: ${campaignInsertError.message}`);
       }
     }
 

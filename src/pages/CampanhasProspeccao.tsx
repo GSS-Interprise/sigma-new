@@ -57,7 +57,7 @@ import { CampanhaProspeccaoKanban } from "@/components/campanhas/CampanhaProspec
 import { AcompanhamentoView } from "@/components/campanhas/acompanhamento/AcompanhamentoView";
 import { DashboardCampanhas } from "@/components/campanhas/DashboardCampanhas";
 import { StatusOperacionalPanel } from "@/components/campanhas/StatusOperacionalPanel";
-import { StructuredLeadSearchDialog } from "@/components/campanhas/StructuredLeadSearchDialog";
+import { AdicionarMedicosCampanhaDialog } from "@/components/campanhas/AdicionarMedicosCampanhaDialog";
 import { ErrorBoundary } from "@/components/common/ErrorBoundary";
 import { useAdicionarLeadsCampanha } from "@/hooks/useCampanhaLeads";
 import { toast } from "sonner";
@@ -140,7 +140,7 @@ export default function CampanhasProspeccao() {
   const [configurarId, setConfigurarId] = useState<string | null>(null);
   const [selecionada, setSelecionada] = useState<string | null>(null);
   const [strategyToAdd, setStrategyToAdd] = useState("");
-  const [structuredSearchOpen, setStructuredSearchOpen] = useState(false);
+  const [addDoctorsOpen, setAddDoctorsOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const view = (searchParams.get("view") || "campanhas") as
     | "campanhas"
@@ -482,11 +482,10 @@ export default function CampanhasProspeccao() {
                 size="sm"
                 variant="outline"
                 className="min-h-11"
-                disabled={!strategyToAdd}
-                onClick={() => setStructuredSearchOpen(true)}
+                onClick={() => setAddDoctorsOpen(true)}
               >
-                <Search className="mr-1 h-4 w-4" />
-                Buscar médicos
+                <UserPlus className="mr-1 h-4 w-4" />
+                Adicionar médicos
               </Button>
               <Button
                 size="sm"
@@ -527,11 +526,11 @@ export default function CampanhasProspeccao() {
             </div>
 
             <CampanhaProspeccaoKanban campanhaId={selecionada} />
-            <StructuredLeadSearchDialog
-              open={structuredSearchOpen}
-              onOpenChange={setStructuredSearchOpen}
+            <AdicionarMedicosCampanhaDialog
+              open={addDoctorsOpen}
+              onOpenChange={setAddDoctorsOpen}
               campanhaId={selecionada}
-              strategyId={strategyToAdd}
+              campanhaNome={campanhaSelecionada.nome}
             />
           </div>
         </AppLayout>

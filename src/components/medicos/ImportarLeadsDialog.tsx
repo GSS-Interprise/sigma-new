@@ -59,6 +59,10 @@ interface ImportarLeadsDialogProps {
   listaDestino?:
     | { mode: "new"; nome: string; descricao?: string }
     | { mode: "existing"; id: string };
+  campanhaDestino?: {
+    campanhaId: string;
+    strategyId: string;
+  };
 }
 
 // Lista de origens padronizadas
@@ -77,7 +81,13 @@ const UFS_BRASIL = [
   "RS", "RO", "RR", "SC", "SP", "SE", "TO"
 ];
 
-export function ImportarLeadsDialog({ open, onOpenChange, onSuccess, listaDestino }: ImportarLeadsDialogProps) {
+export function ImportarLeadsDialog({
+  open,
+  onOpenChange,
+  onSuccess,
+  listaDestino,
+  campanhaDestino,
+}: ImportarLeadsDialogProps) {
   const { user } = useAuth();
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<Record<string, any>[]>([]);
@@ -374,6 +384,10 @@ export function ImportarLeadsDialog({ open, onOpenChange, onSuccess, listaDestin
           `Lista criada automaticamente pela importação do arquivo ${file.name}.`,
         );
       }
+      if (campanhaDestino) {
+        formData.append("campanha_destino_id", campanhaDestino.campanhaId);
+        formData.append("strategy_destino_id", campanhaDestino.strategyId);
+      }
 
       const { data: session } = await supabase.auth.getSession();
       
@@ -393,7 +407,11 @@ export function ImportarLeadsDialog({ open, onOpenChange, onSuccess, listaDestin
         throw new Error(errorData.error || "Erro ao processar importação");
       }
 
-      toast.success("Importação iniciada! A lista será criada automaticamente e preenchida em segundo plano.");
+      toast.success(
+        campanhaDestino
+          ? "Importação iniciada! A lista será criada e os médicos elegíveis entrarão na estratégia."
+          : "Importação iniciada! A lista será criada automaticamente e preenchida em segundo plano.",
+      );
       handleClose();
       onSuccess?.();
     } catch (error: any) {
