@@ -201,6 +201,57 @@ function getLeadUniqueKey(data: Record<string, any>): string | null {
   return null;
 }
 
+/**
+ * Importação não é edição em massa: quando o médico já existe, preservamos os
+ * dados canônicos e usamos a planilha apenas para completar lacunas. Isso evita
+ * regredir etapa/status, trocar origem ou substituir o telefone principal.
+ */
+function buildExistingLeadPatch(
+  existing: Record<string, any>,
+  incoming: Record<string, any>,
+): Record<string, any> {
+  const patch: Record<string, any> = { updated_at: new Date().toISOString() };
+  const fillIfEmpty = [
+    "email",
+    "cidade",
+    "uf",
+    "data_nascimento",
+    "cpf",
+    "especialidade",
+    "especialidade_id",
+    "origem",
+    "arquivo_id",
+  ];
+
+  for (const field of fillIfEmpty) {
+    const current = existing[field];
+    const next = incoming[field];
+    if ((current === null || current === undefined || current === "") && next) {
+      patch[field] = next;
+    }
+  }
+
+  const primary = String(existing.phone_e164 || "").replace(/\D/g, "");
+  const additional = new Set<string>(
+    (Array.isArray(existing.telefones_adicionais) ? existing.telefones_adicionais : [])
+      .map((phone: unknown) => String(phone || "").replace(/\D/g, ""))
+      .filter(Boolean),
+  );
+  const importedPhones = [
+    incoming.phone_e164,
+    ...(Array.isArray(incoming.telefones_adicionais) ? incoming.telefones_adicionais : []),
+  ];
+  for (const phone of importedPhones) {
+    const normalized = String(phone || "").replace(/\D/g, "");
+    if (normalized && normalized !== primary) additional.add(normalized);
+  }
+  if (additional.size > 0) {
+    patch.telefones_adicionais = Array.from(additional);
+  }
+
+  return patch;
+}
+
 // Valida CPF (apenas verifica se tem 11 dígitos) - opcional agora
 function validateCPF(cpf: string): string | null {
   if (!cpf) return null;
@@ -388,12 +439,19 @@ serve(async (req) => {
       // Se foi solicitado criar uma nova lista de disparo, criar agora
       let listaDestinoIdFinal = listaDestinoIdParam || "";
       if (!listaDestinoIdFinal && listaDestinoNomeParam) {
+        const { data: importOwner } = await supabase
+          .from("lead_import_jobs")
+          .select("created_by, created_by_nome")
+          .eq("id", jobId)
+          .maybeSingle();
         const { data: novaLista, error: listaErr } = await supabase
           .from("disparo_listas")
           .insert({
             nome: listaDestinoNomeParam,
             descricao: listaDestinoDescParam || `Importada de ${arquivoNome}`,
             excluir_blacklist: true,
+            created_by: importOwner?.created_by || null,
+            created_by_nome: importOwner?.created_by_nome || null,
           })
           .select("id")
           .single();
@@ -846,7 +904,7 @@ serve(async (req) => {
       const chaveUnicas = Array.from(new Set(batchData.map(getLeadUniqueKey).filter(Boolean) as string[]));
       const { data: existentesPorTelefone, error: existingError } = await supabase
         .from("leads")
-        .select("id, phone_e164, chave_unica")
+        .select("id, phone_e164, chave_unica, email, cidade, uf, data_nascimento, cpf, especialidade, especialidade_id, origem, arquivo_id, status, telefones_adicionais")
         .in("phone_e164", phoneVariants)
         .order("created_at", { ascending: true });
 
@@ -855,23 +913,23 @@ serve(async (req) => {
       const { data: existentesPorChave, error: keyError } = chaveUnicas.length > 0
         ? await supabase
           .from("leads")
-          .select("id, phone_e164, chave_unica")
+          .select("id, phone_e164, chave_unica, email, cidade, uf, data_nascimento, cpf, especialidade, especialidade_id, origem, arquivo_id, status, telefones_adicionais")
           .in("chave_unica", chaveUnicas)
           .order("created_at", { ascending: true })
         : { data: [], error: null };
 
       if (keyError) throw keyError;
 
-      const leadByPhone = new Map<string, string>();
-      const leadByUniqueKey = new Map<string, string>();
+      const leadByPhone = new Map<string, Record<string, any>>();
+      const leadByUniqueKey = new Map<string, Record<string, any>>();
       for (const row of [...(existentesPorTelefone || []), ...(existentesPorChave || [])]) {
         const normalizedExistingPhone = String(row.phone_e164 || "").replace(/\D/g, "");
         if (normalizedExistingPhone && !leadByPhone.has(normalizedExistingPhone)) {
-          leadByPhone.set(normalizedExistingPhone, row.id);
+          leadByPhone.set(normalizedExistingPhone, row);
         }
         const uniqueKey = String(row.chave_unica || "");
         if (uniqueKey && !leadByUniqueKey.has(uniqueKey)) {
-          leadByUniqueKey.set(uniqueKey, row.id);
+          leadByUniqueKey.set(uniqueKey, row);
         }
       }
 
@@ -879,12 +937,14 @@ serve(async (req) => {
       const insertMeta: typeof batch = [];
 
       for (const item of batch) {
-        const existingId = leadByPhone.get(item.data.phone_e164) || leadByUniqueKey.get(getLeadUniqueKey(item.data) || "");
-        if (existingId) {
+        const existingLead = leadByPhone.get(item.data.phone_e164)
+          || leadByUniqueKey.get(getLeadUniqueKey(item.data) || "");
+        if (existingLead) {
+          const safePatch = buildExistingLeadPatch(existingLead, item.data);
           const { data: updated, error: updateError } = await supabase
             .from("leads")
-            .update(item.data)
-            .eq("id", existingId)
+            .update(safePatch)
+            .eq("id", existingLead.id)
             .select("id")
             .single();
 

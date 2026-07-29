@@ -141,7 +141,7 @@ export function LeadImportHistoryTab() {
               <TableHead>Arquivo</TableHead>
               <TableHead className="text-center">Total</TableHead>
               <TableHead className="text-center">Inseridos</TableHead>
-              <TableHead className="text-center">Atualizados</TableHead>
+              <TableHead className="text-center">Reaproveitados</TableHead>
               <TableHead className="text-center">Ignorados</TableHead>
               <TableHead className="text-center">Erros</TableHead>
               <TableHead>Criado em</TableHead>
@@ -305,13 +305,20 @@ export function LeadImportHistoryTab() {
                   <p className="text-2xl font-bold text-green-600">{selectedJob.inseridos}</p>
                 </div>
                 <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
-                  <p className="text-xs text-blue-600">Atualizados</p>
+                  <p className="text-xs text-blue-600">Reaproveitados</p>
                   <p className="text-2xl font-bold text-blue-600">{selectedJob.atualizados}</p>
                 </div>
                 <div className="bg-amber-50 p-3 rounded-lg border border-amber-200">
                   <p className="text-xs text-amber-600">Ignorados</p>
                   <p className="text-2xl font-bold text-amber-600">{selectedJob.ignorados}</p>
                 </div>
+              </div>
+
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-950">
+                <strong>Como interpretar:</strong> inseridos são médicos novos. Reaproveitados já
+                existiam no Sigma, foram vinculados à lista e tiveram apenas campos vazios
+                complementados. Ignorados são linhas inválidas ou repetidas dentro da própria
+                planilha; o motivo aparece abaixo.
               </div>
 
               {/* Info do arquivo */}
