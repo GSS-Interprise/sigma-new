@@ -712,6 +712,7 @@ serve(async (req) => {
       classificationReason: string | null;
       campaignId: string | null;
     }>();
+    const uniqueKeysSeen = new Map<string, number>();
     
     for (let i = 0; i < chunkData.length; i++) {
       const row = chunkData[i];
@@ -878,6 +879,23 @@ serve(async (req) => {
           leadData.telefones_adicionais = adicionais;
         }
       }
+
+      // Dois telefones diferentes podem representar o mesmo médico (mesmo CPF
+      // ou nome+nascimento). Sem esta deduplicação, um lote inteiro podia falhar
+      // na constraint única e descartar também linhas válidas ao redor.
+      const uniqueKey = getLeadUniqueKey(leadData);
+      if (uniqueKey && uniqueKeysSeen.has(uniqueKey)) {
+        results.skipped++;
+        if (results.errors.length < 500) {
+          results.errors.push({
+            linha: rowNum,
+            motivo: `Médico duplicado no arquivo (mesma identificação da linha ${uniqueKeysSeen.get(uniqueKey)})`,
+            dados: { nome: String(nome).trim(), telefone: phone_e164 },
+          });
+        }
+        continue;
+      }
+      if (uniqueKey) uniqueKeysSeen.set(uniqueKey, rowNum);
 
       leadsMap.set(phone_e164, {
         rowNum,
