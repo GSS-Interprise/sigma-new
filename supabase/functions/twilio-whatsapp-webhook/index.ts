@@ -113,18 +113,38 @@ serve(async (req) => {
       return xmlResponse(500);
     }
 
-    const { data: instance, error: instanceError } = await admin
+    const { data: existingInstance, error: existingInstanceError } = await admin
       .from("sigzap_instances")
-      .upsert({
+      .select("id")
+      .eq("provider", "twilio")
+      .eq("external_ref", sender.sender_sid)
+      .maybeSingle();
+    if (existingInstanceError) throw existingInstanceError;
+
+    const { data: instance, error: instanceError } = existingInstance
+      ? await admin
+        .from("sigzap_instances")
+        .update({
+          name: sender.display_name || `WhatsApp oficial ${senderPhone}`,
+          phone_number: senderPhone,
+          status: "connected",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", existingInstance.id)
+        .select("id")
+        .single()
+      : await admin
+        .from("sigzap_instances")
+        .insert({
         name: sender.display_name || `WhatsApp oficial ${senderPhone}`,
         phone_number: senderPhone,
         status: "connected",
         provider: "twilio",
         external_ref: sender.sender_sid,
         updated_at: new Date().toISOString(),
-      }, { onConflict: "provider,external_ref" })
-      .select("id")
-      .single();
+        })
+        .select("id")
+        .single();
     if (instanceError) throw instanceError;
 
     const { data: lead } = await admin
@@ -135,17 +155,36 @@ serve(async (req) => {
 
     const contactJid = `${phoneDigits(contactPhone)}@s.whatsapp.net`;
     const profileName = params.get("ProfileName") || contactPhone;
-    const { data: contact, error: contactError } = await admin
+    const { data: existingContact, error: existingContactError } = await admin
       .from("sigzap_contacts")
-      .upsert({
+      .select("id")
+      .eq("contact_jid", contactJid)
+      .eq("instance_id", instance.id)
+      .maybeSingle();
+    if (existingContactError) throw existingContactError;
+
+    const { data: contact, error: contactError } = existingContact
+      ? await admin
+        .from("sigzap_contacts")
+        .update({
+          contact_phone: contactPhone,
+          contact_name: profileName,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", existingContact.id)
+        .select("id")
+        .single()
+      : await admin
+        .from("sigzap_contacts")
+        .insert({
         contact_jid: contactJid,
         contact_phone: contactPhone,
         contact_name: profileName,
         instance_id: instance.id,
         updated_at: new Date().toISOString(),
-      }, { onConflict: "contact_jid,instance_id" })
-      .select("id")
-      .single();
+        })
+        .select("id")
+        .single();
     if (contactError) throw contactError;
 
     const { data: existingConversation } = await admin

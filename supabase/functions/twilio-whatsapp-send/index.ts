@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-internal-send-key",
 };
 
 function json(body: unknown, status = 200) {
@@ -11,6 +11,18 @@ function json(body: unknown, status = 200) {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json; charset=utf-8" },
   });
+}
+
+function errorMessage(error: unknown) {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === "object") {
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return "Erro não serializável";
+    }
+  }
+  return String(error);
 }
 
 function digits(value: string) {
@@ -47,7 +59,11 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const authorization = req.headers.get("Authorization") || "";
-    const isServiceRole = authorization === `Bearer ${serviceRole}`;
+    const internalSendKey = Deno.env.get("TWILIO_SEND_INTERNAL_KEY") || "";
+    const isInternalSend =
+      internalSendKey.length >= 32 &&
+      req.headers.get("x-internal-send-key") === internalSendKey;
+    const isServiceRole = authorization === `Bearer ${serviceRole}` || isInternalSend;
     const admin = createClient(supabaseUrl, serviceRole);
     const auth = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
       global: { headers: { Authorization: authorization } },
@@ -62,6 +78,8 @@ serve(async (req) => {
     const input = await req.json().catch(() => ({}));
     const campaignLeadId = String(input.campaign_lead_id || "");
     const conversationIdInput = String(input.conversation_id || "");
+    const leadIdInput = String(input.lead_id || "");
+    const senderIdInput = String(input.sender_id || "");
     const templateIdInput = String(input.template_id || "");
     const body = String(input.body || "").trim();
     const templateVariables =
@@ -125,6 +143,14 @@ serve(async (req) => {
         .single();
       if (leadError) throw leadError;
       lead = leadData;
+    } else if (leadIdInput && isInternalSend) {
+      const { data: leadData, error: leadError } = await admin
+        .from("leads")
+        .select("id, nome, phone_e164")
+        .eq("id", leadIdInput)
+        .single();
+      if (leadError) throw leadError;
+      lead = leadData;
     } else {
       return json({ ok: false, error: "campaign_lead_or_conversation_required" }, 400);
     }
@@ -137,6 +163,7 @@ serve(async (req) => {
       .select("id, sender_sid, phone_e164, display_name, status")
       .in("status", ["approved", "online", "active", "activated"]);
     if (campaign?.official_sender_id) senderQuery = senderQuery.eq("id", campaign.official_sender_id);
+    if (senderIdInput && isInternalSend) senderQuery = senderQuery.eq("id", senderIdInput);
     if (conversation?.instance?.external_ref) {
       senderQuery = senderQuery.eq("sender_sid", conversation.instance.external_ref);
     }
@@ -195,32 +222,71 @@ serve(async (req) => {
     }
 
     if (!conversation) {
-      const { data: instance, error: instanceError } = await admin
+      const { data: existingInstance, error: existingInstanceError } = await admin
         .from("sigzap_instances")
-        .upsert({
+        .select("id")
+        .eq("provider", "twilio")
+        .eq("external_ref", sender.sender_sid)
+        .maybeSingle();
+      if (existingInstanceError) throw existingInstanceError;
+
+      const { data: instance, error: instanceError } = existingInstance
+        ? await admin
+          .from("sigzap_instances")
+          .update({
+            name: sender.display_name || `WhatsApp oficial ${sender.phone_e164}`,
+            phone_number: sender.phone_e164,
+            status: "connected",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", existingInstance.id)
+          .select("id")
+          .single()
+        : await admin
+          .from("sigzap_instances")
+          .insert({
           name: sender.display_name || `WhatsApp oficial ${sender.phone_e164}`,
           phone_number: sender.phone_e164,
           status: "connected",
           provider: "twilio",
           external_ref: sender.sender_sid,
           updated_at: new Date().toISOString(),
-        }, { onConflict: "provider,external_ref" })
-        .select("id")
-        .single();
+          })
+          .select("id")
+          .single();
       if (instanceError) throw instanceError;
 
       const contactJid = `${digits(toPhone)}@s.whatsapp.net`;
-      const { data: contact, error: contactError } = await admin
+      const { data: existingContact, error: existingContactError } = await admin
         .from("sigzap_contacts")
-        .upsert({
+        .select("id")
+        .eq("contact_jid", contactJid)
+        .eq("instance_id", instance.id)
+        .maybeSingle();
+      if (existingContactError) throw existingContactError;
+
+      const { data: contact, error: contactError } = existingContact
+        ? await admin
+          .from("sigzap_contacts")
+          .update({
+            contact_phone: toPhone,
+            contact_name: lead.nome || toPhone,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", existingContact.id)
+          .select("id")
+          .single()
+        : await admin
+          .from("sigzap_contacts")
+          .insert({
           contact_jid: contactJid,
           contact_phone: toPhone,
           contact_name: lead.nome || toPhone,
           instance_id: instance.id,
           updated_at: new Date().toISOString(),
-        }, { onConflict: "contact_jid,instance_id" })
-        .select("id")
-        .single();
+          })
+          .select("id")
+          .single();
       if (contactError) throw contactError;
 
       const { data: existing } = await admin
@@ -348,7 +414,7 @@ serve(async (req) => {
     console.error("[twilio-send]", error);
     return json({
       ok: false,
-      error: error instanceof Error ? error.message : String(error),
+      error: errorMessage(error),
     }, 500);
   }
 });
