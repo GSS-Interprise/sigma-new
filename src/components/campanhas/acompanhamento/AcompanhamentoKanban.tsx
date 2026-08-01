@@ -1,17 +1,17 @@
-import { useState, useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
-  ChevronDown,
-  ChevronRight,
-  Flame,
-  ClipboardCheck,
+  ArrowRightToLine,
   CheckCircle2,
-  Calendar,
-  XCircle,
-  X,
   CheckSquare,
-  Inbox,
+  CircleDot,
   Clock,
-  ThermometerSun,
+  Handshake,
+  MessageCircleReply,
+  PhoneOutgoing,
+  UserCheck,
+  UserRoundPlus,
+  X,
+  XCircle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,12 +25,11 @@ import { toast } from "sonner";
 import { AcompanhamentoCard } from "./AcompanhamentoCard";
 import {
   useAcompanhamentoLeads,
-  useMoverEtapa,
   useAprovarLead,
   useMarcarPerdido,
-  type EtapaAcompanhamento,
-  type ColunaManual,
+  useMoverEtapa,
   type AcompanhamentoLead,
+  type EtapaCrm,
   type FiltroAcompanhamento,
 } from "@/hooks/useAcompanhamentoLeads";
 import { useLeadsCrossCampanha } from "@/hooks/useLeadsCrossCampanha";
@@ -41,143 +40,114 @@ interface Props {
 }
 
 const COLUNAS: Array<{
-  etapa: EtapaAcompanhamento;
+  etapa: Exclude<EtapaCrm, "perdido">;
   label: string;
+  descricao: string;
   icon: React.ElementType;
   color: string;
   bg: string;
 }> = [
-  { etapa: "quente", label: "Quente", icon: Flame, color: "text-red-600", bg: "bg-red-50" },
-  { etapa: "em_analise", label: "Em análise", icon: ClipboardCheck, color: "text-amber-600", bg: "bg-amber-50" },
-  { etapa: "aprovado", label: "Aprovado", icon: CheckCircle2, color: "text-blue-600", bg: "bg-blue-50" },
-  { etapa: "na_escala", label: "Na escala", icon: Calendar, color: "text-emerald-600", bg: "bg-emerald-50" },
+  { etapa: "novo", label: "Novo", descricao: "Ainda não contatado", icon: UserRoundPlus, color: "text-slate-600", bg: "bg-slate-50" },
+  { etapa: "contatado", label: "Contatado", descricao: "Aguardando resposta", icon: PhoneOutgoing, color: "text-violet-600", bg: "bg-violet-50" },
+  { etapa: "respondeu", label: "Respondeu", descricao: "Aguardando responsável", icon: MessageCircleReply, color: "text-orange-600", bg: "bg-orange-50" },
+  { etapa: "em_atendimento", label: "Em atendimento", descricao: "Conversa assumida", icon: UserCheck, color: "text-cyan-700", bg: "bg-cyan-50" },
+  { etapa: "qualificado", label: "Qualificado", descricao: "Interesse e requisitos", icon: CircleDot, color: "text-amber-700", bg: "bg-amber-50" },
+  { etapa: "encaminhado", label: "Encaminhado", descricao: "Avançou na oportunidade", icon: ArrowRightToLine, color: "text-blue-700", bg: "bg-blue-50" },
+  { etapa: "convertido", label: "Convertido", descricao: "Enviado para Contratos", icon: Handshake, color: "text-emerald-700", bg: "bg-emerald-50" },
 ];
 
-// Estágios de entrada da campanha MANUAL (read-only, movem automático pelo status)
-const COLUNAS_MANUAL: Array<{ col: ColunaManual; label: string; icon: React.ElementType; color: string; bg: string }> = [
-  { col: "pendentes", label: "Pendentes", icon: Inbox, color: "text-slate-600", bg: "bg-slate-50" },
-  { col: "aguardando", label: "Aguardando resposta", icon: Clock, color: "text-violet-600", bg: "bg-violet-50" },
-  { col: "aquecido", label: "Aquecido", icon: ThermometerSun, color: "text-orange-600", bg: "bg-orange-50" },
-];
+const ETAPAS_AUTOMATICAS = new Set<EtapaCrm>([
+  "novo",
+  "contatado",
+  "respondeu",
+  "em_atendimento",
+]);
 
 export function AcompanhamentoKanban({ filtro, onLeadClick }: Props) {
-  const { porEtapa, porColunaManual, temManual, todosLeads, isLoading } = useAcompanhamentoLeads(filtro);
+  const { porEtapaCrm, todosLeads, isLoading } = useAcompanhamentoLeads(filtro);
   const [perdidoExpanded, setPerdidoExpanded] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
-  const [dragOverEtapa, setDragOverEtapa] = useState<EtapaAcompanhamento | null>(null);
-  // Bloco C — bulk selection
+  const [dragOverEtapa, setDragOverEtapa] = useState<EtapaCrm | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const moverEtapa = useMoverEtapa();
   const aprovarLead = useAprovarLead();
   const marcarPerdido = useMarcarPerdido();
-  // Toggle entre o pipeline de acompanhamento (IA/quentes) e a entrada manual.
-  // Default "ia" — a aba é "Quentes (IA)". Manual fica a 1 clique pra acompanhar sem empilhar.
-  const [kanbanView, setKanbanView] = useState<"ia" | "manual">("ia");
 
-  const countIA = COLUNAS.reduce((s, c) => s + (porEtapa[c.etapa]?.length || 0), 0);
-  const countManual = COLUNAS_MANUAL.reduce((s, c) => s + (porColunaManual[c.col]?.length || 0), 0);
+  const leadIds = useMemo(() => todosLeads.map((lead) => lead.lead_id), [todosLeads]);
+  const { data: crossCampanhasMap } = useLeadsCrossCampanha(leadIds);
 
   const toggleSelect = (campanhaLeadId: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
+    setSelectedIds((current) => {
+      const next = new Set(current);
       if (next.has(campanhaLeadId)) next.delete(campanhaLeadId);
       else next.add(campanhaLeadId);
       return next;
     });
   };
+
   const clearSelection = () => setSelectedIds(new Set());
 
-  const bulkMover = async (etapa: EtapaAcompanhamento) => {
+  const moverParaEtapaComercial = async (campanhaLeadId: string, etapa: EtapaCrm) => {
+    if (ETAPAS_AUTOMATICAS.has(etapa)) {
+      throw new Error("Essa etapa muda automaticamente conforme contato, resposta e assunção.");
+    }
+    if (etapa === "qualificado") {
+      return moverEtapa.mutateAsync({ campanha_lead_id: campanhaLeadId, etapa: "quente" });
+    }
+    if (etapa === "encaminhado") return aprovarLead.mutateAsync(campanhaLeadId);
+    if (etapa === "convertido") {
+      return moverEtapa.mutateAsync({ campanha_lead_id: campanhaLeadId, etapa: "na_escala" });
+    }
+    return marcarPerdido.mutateAsync({
+      campanha_lead_id: campanhaLeadId,
+      motivo: "Marcado em massa pelo funil comercial",
+    });
+  };
+
+  const bulkMover = async (etapa: EtapaCrm) => {
     if (selectedIds.size === 0) return;
     setBulkBusy(true);
-    const ids = Array.from(selectedIds);
-    let ok = 0;
-    let fail = 0;
+    let sucessos = 0;
+    let falhas = 0;
     const erros: string[] = [];
-    for (const id of ids) {
+    for (const id of selectedIds) {
       try {
-        if (etapa === "aprovado") {
-          await aprovarLead.mutateAsync(id);
-        } else {
-          await moverEtapa.mutateAsync({ campanha_lead_id: id, etapa });
-        }
-        ok++;
-      } catch (e: any) {
-        fail++;
-        if (erros.length < 3) erros.push(e?.message || "erro");
+        await moverParaEtapaComercial(id, etapa);
+        sucessos += 1;
+      } catch (error) {
+        falhas += 1;
+        if (erros.length < 2) erros.push(error instanceof Error ? error.message : "Erro inesperado");
       }
     }
     setBulkBusy(false);
-    if (fail === 0) {
-      toast.success(`${ok} lead(s) movidos pra ${etapa.replace("_", " ")}`);
+    if (falhas === 0) {
+      toast.success(`${sucessos} lead(s) atualizados`);
       clearSelection();
     } else {
-      toast.warning(`${ok} movidos, ${fail} falharam — ${erros.join("; ")}`);
+      toast.warning(`${sucessos} atualizados, ${falhas} falharam. ${erros.join(" ")}`);
     }
   };
 
-  const bulkPerdido = async () => {
-    if (selectedIds.size === 0) return;
-    setBulkBusy(true);
-    const ids = Array.from(selectedIds);
-    let ok = 0;
-    let fail = 0;
-    for (const id of ids) {
-      try {
-        await marcarPerdido.mutateAsync({
-          campanha_lead_id: id,
-          motivo: "Marcado em massa via Kanban",
-        });
-        ok++;
-      } catch {
-        fail++;
-      }
-    }
-    setBulkBusy(false);
-    if (fail === 0) {
-      toast.success(`${ok} lead(s) marcados como perdido`);
-      clearSelection();
-    } else {
-      toast.warning(`${ok} marcados, ${fail} falharam`);
-    }
-  };
-
-  // F2.7 — busca em qual outras campanhas cada lead está, pra mostrar badge "em N campanhas"
-  const leadIds = useMemo(() => todosLeads.map((l) => l.lead_id), [todosLeads]);
-  const { data: crossCampanhasMap } = useLeadsCrossCampanha(leadIds);
-
-  const handleDragStart = (campanhaLeadId: string) => setDraggingId(campanhaLeadId);
-  const handleDragEnd = () => {
+  const handleDrop = async (etapa: EtapaCrm) => {
+    const id = draggingId;
     setDraggingId(null);
     setDragOverEtapa(null);
-  };
-
-  const handleDragOver = (e: React.DragEvent, etapa: EtapaAcompanhamento) => {
-    e.preventDefault();
-    setDragOverEtapa(etapa);
-  };
-
-  const handleDrop = (etapaDestino: EtapaAcompanhamento) => {
-    if (!draggingId) return;
-    const lead = todosLeads.find((l) => l.campanha_lead_id === draggingId);
-    if (!lead || lead.etapa_acompanhamento === etapaDestino) {
-      handleDragEnd();
-      return;
+    if (!id) return;
+    const lead = todosLeads.find((item) => item.campanha_lead_id === id);
+    if (!lead || lead.etapa_crm === etapa) return;
+    try {
+      await moverParaEtapaComercial(id, etapa);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível mover o lead");
     }
-    if (etapaDestino === "aprovado") {
-      aprovarLead.mutate(draggingId);
-    } else {
-      moverEtapa.mutate({ campanha_lead_id: draggingId, etapa: etapaDestino });
-    }
-    handleDragEnd();
   };
 
   if (isLoading) {
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-        {COLUNAS.map((c) => (
-          <div key={c.etapa} className="border rounded-md p-3 min-h-[400px] bg-muted/20 animate-pulse" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        {COLUNAS.slice(0, 4).map((coluna) => (
+          <div key={coluna.etapa} className="min-h-72 animate-pulse rounded-md border bg-muted/20" />
         ))}
       </div>
     );
@@ -185,161 +155,111 @@ export function AcompanhamentoKanban({ filtro, onLeadClick }: Props) {
 
   return (
     <>
-      {/* Toggle de visão — só quando há campanha manual (senão não há o que alternar) */}
-      {temManual && (
-        <div className="inline-flex items-center rounded-lg border p-0.5 bg-muted/40">
-          <ToggleBtn active={kanbanView === "ia"} onClick={() => setKanbanView("ia")}>
-            <Flame className="h-3.5 w-3.5 mr-1 text-red-500" /> Quentes (IA)
-            <span className="opacity-60 ml-1">{countIA}</span>
-          </ToggleBtn>
-          <ToggleBtn active={kanbanView === "manual"} onClick={() => setKanbanView("manual")}>
-            <Inbox className="h-3.5 w-3.5 mr-1" /> Manual (entrada)
-            <span className="opacity-60 ml-1">{countManual}</span>
-          </ToggleBtn>
-        </div>
-      )}
-
-      {/* Estágios de entrada manual — só na visão "manual".
-          Read-only: o card anda sozinho conforme o status (mandou msg → Aguardando; respondeu → Aquecido). */}
-      {temManual && kanbanView === "manual" && (
-        <div className="mb-3">
-          <div className="flex items-center gap-1.5 mb-2 text-xs text-muted-foreground">
-            <span className="opacity-70">O card anda sozinho: mandou 1ª msg → Aguardando · médico respondeu → Aquecido</span>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            {COLUNAS_MANUAL.map((col) => (
-              <ColunaManualView
-                key={col.col}
-                label={col.label}
-                icon={col.icon}
-                color={col.color}
-                bg={col.bg}
-                leads={porColunaManual[col.col] || []}
-                crossCampanhasMap={crossCampanhasMap}
-                onLeadClick={onLeadClick}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {kanbanView === "ia" && (
-      <>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-        {COLUNAS.map((col) => (
-          <Coluna
-            key={col.etapa}
-            etapa={col.etapa}
-            label={col.label}
-            icon={col.icon}
-            color={col.color}
-            bg={col.bg}
-            leads={porEtapa[col.etapa] || []}
-            crossCampanhasMap={crossCampanhasMap}
-            onLeadClick={onLeadClick}
-            onDragStart={handleDragStart}
-            onDragEnd={handleDragEnd}
-            onDragOver={handleDragOver}
-            onDrop={handleDrop}
-            isOver={dragOverEtapa === col.etapa}
-            selectedIds={selectedIds}
-            onToggleSelect={toggleSelect}
-          />
-        ))}
+      <div className="mb-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+        <Clock className="h-3.5 w-3.5" />
+        <span>Contato, resposta e assunção movem o card automaticamente.</span>
       </div>
 
-      {/* Bloco C — barra flutuante de bulk actions */}
+      <div className="overflow-x-auto pb-3">
+        <div className="flex min-w-max gap-3">
+          {COLUNAS.map((coluna) => (
+            <Coluna
+              key={coluna.etapa}
+              {...coluna}
+              leads={porEtapaCrm[coluna.etapa] || []}
+              crossCampanhasMap={crossCampanhasMap}
+              onLeadClick={onLeadClick}
+              onDragStart={setDraggingId}
+              onDragEnd={() => {
+                setDraggingId(null);
+                setDragOverEtapa(null);
+              }}
+              onDragOver={(event) => {
+                event.preventDefault();
+                setDragOverEtapa(coluna.etapa);
+              }}
+              onDrop={() => void handleDrop(coluna.etapa)}
+              isOver={dragOverEtapa === coluna.etapa}
+              selectedIds={selectedIds}
+              onToggleSelect={toggleSelect}
+            />
+          ))}
+        </div>
+      </div>
+
       {selectedIds.size > 0 && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 bg-background border shadow-lg rounded-lg px-3 py-2 flex items-center gap-2 animate-in slide-in-from-bottom-2">
-          <div className="flex items-center gap-1.5 px-2">
+        <div className="fixed inset-x-3 bottom-3 z-50 mx-auto flex max-w-2xl flex-wrap items-center justify-center gap-2 rounded-lg border bg-background p-3 shadow-lg sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2">
+          <div className="flex min-h-11 items-center gap-1.5 px-2">
             <CheckSquare className="h-4 w-4 text-primary" />
-            <span className="text-sm font-medium tabular-nums">
-              {selectedIds.size} selecionado{selectedIds.size === 1 ? "" : "s"}
-            </span>
+            <span className="text-sm font-medium">{selectedIds.size} selecionado(s)</span>
           </div>
-          <div className="h-5 w-px bg-border" />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button size="sm" variant="outline" disabled={bulkBusy}>
-                Mover para...
+              <Button size="sm" variant="outline" className="min-h-11" disabled={bulkBusy}>
+                Avançar para...
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="center">
-              <DropdownMenuItem onClick={() => bulkMover("quente")}>
-                <Flame className="h-3.5 w-3.5 mr-2 text-red-600" /> Quente
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => bulkMover("em_analise")}>
-                <ClipboardCheck className="h-3.5 w-3.5 mr-2 text-amber-600" /> Em análise
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => bulkMover("aprovado")}>
-                <CheckCircle2 className="h-3.5 w-3.5 mr-2 text-blue-600" /> Aprovado
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => bulkMover("na_escala")}>
-                <Calendar className="h-3.5 w-3.5 mr-2 text-emerald-600" /> Na escala
-              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => void bulkMover("qualificado")}>Qualificado</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => void bulkMover("encaminhado")}>Encaminhado</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => void bulkMover("convertido")}>Convertido</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
           <Button
             size="sm"
             variant="outline"
-            onClick={bulkPerdido}
+            className="min-h-11 text-destructive hover:text-destructive"
             disabled={bulkBusy}
-            className="text-destructive hover:text-destructive"
+            onClick={() => void bulkMover("perdido")}
           >
-            <XCircle className="h-3.5 w-3.5 mr-1.5" />
-            Perdido
+            <XCircle className="mr-1.5 h-4 w-4" /> Perdido
           </Button>
-          <div className="h-5 w-px bg-border" />
-          <Button size="sm" variant="ghost" onClick={clearSelection} disabled={bulkBusy}>
-            <X className="h-3.5 w-3.5 mr-1" />
-            Limpar
+          <Button size="sm" variant="ghost" className="min-h-11" onClick={clearSelection} disabled={bulkBusy}>
+            <X className="mr-1 h-4 w-4" /> Limpar
           </Button>
         </div>
       )}
 
-      <div className="mt-4 border rounded-md bg-muted/20">
+      <div className="mt-1 rounded-md border bg-muted/20">
         <button
           type="button"
-          onClick={() => setPerdidoExpanded(!perdidoExpanded)}
-          className="w-full flex items-center justify-between p-3 hover:bg-muted/30 transition-colors"
+          onClick={() => setPerdidoExpanded((open) => !open)}
+          className="flex min-h-11 w-full items-center justify-between p-3 transition-colors hover:bg-muted/30"
         >
           <div className="flex items-center gap-2">
-            {perdidoExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
             <XCircle className="h-4 w-4 text-slate-500" />
-            <span className="text-sm font-medium">Perdido</span>
-            <Badge variant="outline" className="text-xs">
-              {(porEtapa.perdido || []).length}
-            </Badge>
+            <span className="text-sm font-medium">Perdidos</span>
+            <Badge variant="outline" className="text-xs">{porEtapaCrm.perdido.length}</Badge>
           </div>
+          <span className="text-xs text-muted-foreground">{perdidoExpanded ? "Ocultar" : "Mostrar"}</span>
         </button>
         {perdidoExpanded && (
-          <div className="p-2 space-y-2 border-t">
-            {(porEtapa.perdido || []).length === 0 ? (
-              <p className="text-xs text-muted-foreground text-center py-4 italic">vazio</p>
+          <div className="grid grid-cols-1 gap-2 border-t p-2 sm:grid-cols-2 lg:grid-cols-4">
+            {porEtapaCrm.perdido.length === 0 ? (
+              <p className="py-4 text-center text-xs italic text-muted-foreground">Nenhum lead perdido.</p>
             ) : (
-              (porEtapa.perdido || []).map((l) => (
+              porEtapaCrm.perdido.map((lead) => (
                 <AcompanhamentoCard
-                  key={l.campanha_lead_id}
-                  lead={l}
-                  crossCampanhas={crossCampanhasMap?.get(l.lead_id)}
-                  onClick={() => onLeadClick(l)}
-                  onDragStart={() => handleDragStart(l.campanha_lead_id)}
-                  onDragEnd={handleDragEnd}
+                  key={lead.campanha_lead_id}
+                  lead={lead}
+                  crossCampanhas={crossCampanhasMap?.get(lead.lead_id)}
+                  onClick={() => onLeadClick(lead)}
+                  onDragStart={() => setDraggingId(lead.campanha_lead_id)}
+                  onDragEnd={() => setDraggingId(null)}
                 />
               ))
             )}
           </div>
         )}
       </div>
-      </>
-      )}
     </>
   );
 }
 
 interface ColunaProps {
-  etapa: EtapaAcompanhamento;
+  etapa: Exclude<EtapaCrm, "perdido">;
   label: string;
+  descricao: string;
   icon: React.ElementType;
   color: string;
   bg: string;
@@ -348,8 +268,8 @@ interface ColunaProps {
   onLeadClick: (lead: AcompanhamentoLead) => void;
   onDragStart: (id: string) => void;
   onDragEnd: () => void;
-  onDragOver: (e: React.DragEvent, etapa: EtapaAcompanhamento) => void;
-  onDrop: (etapa: EtapaAcompanhamento) => void;
+  onDragOver: (event: React.DragEvent) => void;
+  onDrop: () => void;
   isOver: boolean;
   selectedIds: Set<string>;
   onToggleSelect: (id: string) => void;
@@ -358,6 +278,7 @@ interface ColunaProps {
 function Coluna({
   etapa,
   label,
+  descricao,
   icon: Icon,
   color,
   bg,
@@ -372,94 +293,44 @@ function Coluna({
   selectedIds,
   onToggleSelect,
 }: ColunaProps) {
+  const automatica = ETAPAS_AUTOMATICAS.has(etapa);
   return (
-    <div
-      onDragOver={(e) => onDragOver(e, etapa)}
-      onDrop={() => onDrop(etapa)}
-      className={`border rounded-md ${bg} ${isOver ? "ring-2 ring-primary" : ""} transition-all`}
+    <section
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      className={`w-[min(82vw,19rem)] shrink-0 rounded-md border ${bg} ${isOver ? "ring-2 ring-primary" : ""}`}
+      aria-label={`Etapa ${label}`}
     >
-      <div className="flex items-center justify-between p-2.5 border-b bg-card/50">
-        <div className="flex items-center gap-1.5">
-          <Icon className={`h-4 w-4 ${color}`} />
-          <span className="text-sm font-medium">{label}</span>
+      <header className="border-b bg-card/60 p-2.5">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <Icon className={`h-4 w-4 shrink-0 ${color}`} />
+            <span className="truncate text-sm font-medium">{label}</span>
+          </div>
+          <Badge variant="outline" className="h-5 text-xs">{leads.length}</Badge>
         </div>
-        <Badge variant="outline" className="text-xs h-5">
-          {leads.length}
-        </Badge>
-      </div>
-      <div className="p-2 space-y-2 min-h-[400px] max-h-[70vh] overflow-y-auto">
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          {descricao}{automatica ? " · automático" : ""}
+        </p>
+      </header>
+      <div className="max-h-[65dvh] min-h-72 space-y-2 overflow-y-auto p-2">
         {leads.length === 0 ? (
-          <p className="text-xs text-muted-foreground text-center py-6 italic">vazio</p>
+          <p className="py-6 text-center text-xs italic text-muted-foreground">Vazio</p>
         ) : (
-          leads.map((l) => (
+          leads.map((lead) => (
             <AcompanhamentoCard
-              key={l.campanha_lead_id}
-              lead={l}
-              crossCampanhas={crossCampanhasMap?.get(l.lead_id)}
-              onClick={() => onLeadClick(l)}
-              onDragStart={() => onDragStart(l.campanha_lead_id)}
+              key={lead.campanha_lead_id}
+              lead={lead}
+              crossCampanhas={crossCampanhasMap?.get(lead.lead_id)}
+              onClick={() => onLeadClick(lead)}
+              onDragStart={() => onDragStart(lead.campanha_lead_id)}
               onDragEnd={onDragEnd}
-              selected={selectedIds.has(l.campanha_lead_id)}
-              onToggleSelect={() => onToggleSelect(l.campanha_lead_id)}
+              selected={selectedIds.has(lead.campanha_lead_id)}
+              onToggleSelect={() => onToggleSelect(lead.campanha_lead_id)}
             />
           ))
         )}
       </div>
-    </div>
-  );
-}
-
-function ToggleBtn({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`inline-flex items-center text-xs font-medium px-3 py-1.5 rounded-md transition-colors ${
-        active ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
-// Coluna de estágio manual — read-only (anda sozinha pelo status, sem drag/drop nem bulk).
-function ColunaManualView({
-  label, icon: Icon, color, bg, leads, crossCampanhasMap, onLeadClick,
-}: {
-  label: string;
-  icon: React.ElementType;
-  color: string;
-  bg: string;
-  leads: AcompanhamentoLead[];
-  crossCampanhasMap?: Map<string, Array<{ id: string; nome: string }>>;
-  onLeadClick: (lead: AcompanhamentoLead) => void;
-}) {
-  return (
-    <div className={`border rounded-md ${bg}`}>
-      <div className="flex items-center justify-between p-2.5 border-b bg-card/50">
-        <div className="flex items-center gap-1.5">
-          <Icon className={`h-4 w-4 ${color}`} />
-          <span className="text-sm font-medium">{label}</span>
-        </div>
-        <Badge variant="outline" className="text-xs h-5">{leads.length}</Badge>
-      </div>
-      <div className="p-2 space-y-2 min-h-[160px] max-h-[50vh] overflow-y-auto">
-        {leads.length === 0 ? (
-          <p className="text-xs text-muted-foreground text-center py-6 italic">vazio</p>
-        ) : (
-          leads.map((l) => (
-            <AcompanhamentoCard
-              key={l.campanha_lead_id}
-              lead={l}
-              crossCampanhas={crossCampanhasMap?.get(l.lead_id)}
-              onClick={() => onLeadClick(l)}
-              onDragStart={() => {}}
-              onDragEnd={() => {}}
-            />
-          ))
-        )}
-      </div>
-    </div>
+    </section>
   );
 }

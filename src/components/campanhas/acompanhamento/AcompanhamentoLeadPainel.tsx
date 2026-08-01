@@ -98,7 +98,7 @@ export function AcompanhamentoLeadPainel({ lead, onClose }: Props) {
   const sou_eu = lead.assumido_por === user?.id;
   const validacoesOk = lead.validacoes_ok || 0;
   const podeAprovar = validacoesOk === 4;
-  const ehTerminal = lead.etapa_acompanhamento === "aprovado" || lead.etapa_acompanhamento === "perdido" || lead.etapa_acompanhamento === "na_escala";
+  const ehTerminal = lead.etapa_acompanhamento === "perdido" || lead.etapa_acompanhamento === "na_escala";
 
   const iniciaisDono = lead.assumido_por_nome
     ? lead.assumido_por_nome.split(" ").map((p) => p[0]).join("").slice(0, 2).toUpperCase()
@@ -394,7 +394,7 @@ export function AcompanhamentoLeadPainel({ lead, onClose }: Props) {
                 onClick={() => mover.mutate({ campanha_lead_id: lead.campanha_lead_id, etapa: "em_analise" })}
                 disabled={mover.isPending}
               >
-                Mover pra Análise
+                Iniciar qualificação
               </Button>
             )}
 
@@ -407,7 +407,7 @@ export function AcompanhamentoLeadPainel({ lead, onClose }: Props) {
                 title={!podeAprovar ? "Marque as 4 validações primeiro" : ""}
               >
                 <CheckCircle2 className="h-4 w-4 mr-1.5" />
-                Aprovar {podeAprovar ? "" : `(${validacoesOk}/4)`}
+                Encaminhar para oportunidade {podeAprovar ? "" : `(${validacoesOk}/4)`}
               </Button>
             )}
 
@@ -418,7 +418,7 @@ export function AcompanhamentoLeadPainel({ lead, onClose }: Props) {
                 onClick={() => mover.mutate({ campanha_lead_id: lead.campanha_lead_id, etapa: "na_escala" })}
                 disabled={mover.isPending}
               >
-                Marcar na escala
+                Confirmar envio a Contratos
               </Button>
             )}
 

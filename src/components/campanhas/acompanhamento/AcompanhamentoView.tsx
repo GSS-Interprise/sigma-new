@@ -135,7 +135,7 @@ export function AcompanhamentoView() {
               Nenhum lead em acompanhamento ainda.
             </p>
             <p className="text-xs text-muted-foreground mt-1">
-              Quando a IA marcar um lead como quente, ele aparece aqui.
+              Os leads aparecem aqui conforme avançam nas campanhas e no atendimento.
             </p>
           </CardContent>
         </Card>

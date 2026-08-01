@@ -21,12 +21,18 @@ interface Props {
 }
 
 const MOTIVOS_COMUNS = [
-  "Sem fit com o perfil exigido",
-  "Valor abaixo da expectativa do médico",
-  "Sem disponibilidade na data",
-  "Médico mudou de ideia",
-  "Já estava em outra agência",
-  "Outro",
+  { value: "Sem interesse", label: "Sem interesse" },
+  { value: "Região incompatível", label: "Região incompatível" },
+  { value: "Especialidade incompatível", label: "Especialidade incompatível" },
+  { value: "Remuneração ou condições incompatíveis", label: "Remuneração/condições" },
+  { value: "Sem disponibilidade", label: "Sem disponibilidade" },
+  { value: "Já contratado", label: "Já contratado" },
+  { value: "Não respondeu após a cadência", label: "Não respondeu após a cadência" },
+  {
+    value: "solicitou_nao_receber_mensagens",
+    label: "Solicitou não receber mensagens",
+  },
+  { value: "Outro", label: "Outro" },
 ];
 
 export function MarcarPerdidoDialog({ open, onOpenChange, campanhaLeadId, leadNome, onSuccess }: Props) {
@@ -68,16 +74,16 @@ export function MarcarPerdidoDialog({ open, onOpenChange, campanhaLeadId, leadNo
             <div className="flex flex-wrap gap-1.5">
               {MOTIVOS_COMUNS.map((m) => (
                 <button
-                  key={m}
+                  key={m.value}
                   type="button"
-                  onClick={() => setMotivoSelecionado(m)}
-                  className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
-                    motivoSelecionado === m
+                  onClick={() => setMotivoSelecionado(m.value)}
+                  className={`min-h-11 text-xs px-3 py-2 rounded-full border transition-colors ${
+                    motivoSelecionado === m.value
                       ? "bg-foreground text-background border-foreground"
                       : "bg-background text-foreground border-border hover:bg-muted"
                   }`}
                 >
-                  {m}
+                  {m.label}
                 </button>
               ))}
             </div>

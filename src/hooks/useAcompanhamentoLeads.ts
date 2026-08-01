@@ -5,6 +5,15 @@ import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
 export type EtapaAcompanhamento = "quente" | "em_analise" | "aprovado" | "na_escala" | "perdido";
+export type EtapaCrm =
+  | "novo"
+  | "contatado"
+  | "respondeu"
+  | "em_atendimento"
+  | "qualificado"
+  | "encaminhado"
+  | "convertido"
+  | "perdido";
 
 export interface ValidacaoItem {
   ok: boolean;
@@ -21,6 +30,7 @@ export interface AcompanhamentoLead {
   strategy_name: string | null;
   strategy_status: string | null;
   etapa_acompanhamento: EtapaAcompanhamento;
+  etapa_crm: EtapaCrm;
   status: string;
   assumido_por: string | null;
   assumido_em: string | null;
@@ -174,7 +184,33 @@ export function useAcompanhamentoLeads(filtro: FiltroAcompanhamento = "todos") {
   }, [filtrados]);
   const temManual = porColunaManual.pendentes.length + porColunaManual.aguardando.length + porColunaManual.aquecido.length > 0;
 
-  return { leads: filtrados, todosLeads: leads, isLoading, counts, porEtapa, porColunaManual, temManual };
+  const porEtapaCrm = useMemo(() => {
+    const grupos: Record<EtapaCrm, AcompanhamentoLead[]> = {
+      novo: [],
+      contatado: [],
+      respondeu: [],
+      em_atendimento: [],
+      qualificado: [],
+      encaminhado: [],
+      convertido: [],
+      perdido: [],
+    };
+    for (const lead of filtrados) {
+      if (grupos[lead.etapa_crm]) grupos[lead.etapa_crm].push(lead);
+    }
+    return grupos;
+  }, [filtrados]);
+
+  return {
+    leads: filtrados,
+    todosLeads: leads,
+    isLoading,
+    counts,
+    porEtapa,
+    porColunaManual,
+    porEtapaCrm,
+    temManual,
+  };
 }
 
 // ── Mutações (RPCs) ──────────────────────────────────────────
@@ -271,9 +307,9 @@ export function useAprovarLead() {
     onSuccess: (data: any) => {
       qc.invalidateQueries({ queryKey: ["acompanhamento-leads"] });
       toast.success(
-        data.ewerton_propagado
-          ? "Lead aprovado e convertido no CRM"
-          : "Lead aprovado (já estava convertido no CRM)",
+        data.convertido
+          ? "Médico convertido e encaminhado para Contratos"
+          : "Médico encaminhado para a oportunidade",
       );
     },
     onError: (e: any) => toast.error(e.message),
@@ -302,10 +338,10 @@ export function useMarcarPerdido() {
 
 export function labelEtapa(etapa: EtapaAcompanhamento): string {
   const map: Record<EtapaAcompanhamento, string> = {
-    quente: "Quente",
-    em_analise: "Em análise",
-    aprovado: "Aprovado",
-    na_escala: "Na escala",
+    quente: "Qualificado",
+    em_analise: "Em qualificação",
+    aprovado: "Encaminhado",
+    na_escala: "Convertido",
     perdido: "Perdido",
   };
   return map[etapa] || etapa;
