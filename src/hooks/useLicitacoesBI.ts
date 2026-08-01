@@ -121,9 +121,14 @@ export function useLicitacoesBI() {
   const { data: licitacoes = [], isLoading } = useQuery({
     queryKey: ['licitacoes-bi-full'],
     queryFn: async () => {
+      // SO o board da equipe. O board do robo e ambiente de validacao, com
+      // ordem de magnitude a mais de cards (9 mil contra 1,5 mil) - sem este
+      // filtro todo indicador da diretoria viraria robo. Foi exatamente o que
+      // aconteceu no CRM da AGES: 46% do dashboard era card de robo.
       const { data, error } = await supabase
         .from('licitacoes')
         .select('id,status,tipo_modalidade,valor_estimado,data_disputa,created_at,municipio_uf,prioridade')
+        .eq('board', 'effecti')
         .order('created_at', { ascending: false });
       
       if (error) throw error;
