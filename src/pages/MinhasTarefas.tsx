@@ -45,6 +45,9 @@ type Task = {
   situacao: string;
   responsavel_id: string | null;
   responsavel_nome: string | null;
+  passos_restantes: number;
+  prioridade_operacional: "urgente" | "alta" | "normal";
+  fila_posicao: number;
 };
 
 export default function MinhasTarefas() {
@@ -65,9 +68,11 @@ export default function MinhasTarefas() {
     queryFn: async () => {
       let query = (supabase as any)
         .from("vw_campanha_tasks_dashboard")
-        .select("task_id, campanha_id, campanha_nome, campanha_lead_id, lead_id, lead_nome, lead_phone, tipo, rotulo, prazo_at, situacao, responsavel_id, responsavel_nome")
+        .select("task_id, campanha_id, campanha_nome, campanha_lead_id, lead_id, lead_nome, lead_phone, tipo, rotulo, prazo_at, situacao, responsavel_id, responsavel_nome, passos_restantes, prioridade_operacional, fila_posicao")
+        .eq("is_next_action", true)
+        .eq("dentro_capacidade_diaria", true)
         .in("situacao", situacoes)
-        .order("prazo_at", { ascending: true, nullsFirst: true })
+        .order("fila_posicao", { ascending: true, nullsFirst: false })
         .range(0, 599);
 
       if (escopo === "minhas") query = query.eq("responsavel_id", user!.id);
@@ -141,7 +146,7 @@ export default function MinhasTarefas() {
           <h1 className="flex items-center gap-2 text-xl font-bold sm:text-2xl">
             <ListTodo className="h-6 w-6" /> Central de tarefas
           </h1>
-          <p className="text-sm text-muted-foreground">Próximos passos dos leads, com responsável e prazo</p>
+          <p className="text-sm text-muted-foreground">Uma próxima ação por lead · até 60 ações por responsável</p>
         </div>
       }
     >
@@ -151,7 +156,7 @@ export default function MinhasTarefas() {
             {([
               ["minhas", "Minhas", UserRound],
               ["equipe", "Equipe", UsersRound],
-              ["sem_responsavel", "Sem responsável", UserX],
+              ["sem_responsavel", "Fila da equipe", UserX],
             ] as const).map(([key, label, Icon]) => (
               <Button
                 key={key}
@@ -194,8 +199,8 @@ export default function MinhasTarefas() {
           <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
             <span>
-              {semResponsavel} tarefa(s) deste recorte ainda não têm responsável.
-              Configure o responsável da campanha para organizar a fila da equipe.
+              {semResponsavel} próxima(s) ação(ões) estão na fila da equipe.
+              Ao assumir o lead, a responsabilidade passa automaticamente para a operadora.
             </span>
           </div>
         )}
@@ -214,7 +219,7 @@ export default function MinhasTarefas() {
         ) : (
           <>
             <div className="text-sm text-muted-foreground">
-              {lista.length} tarefa(s){lista.length >= 600 ? " — mostrando as 600 mais urgentes" : ""}
+              {lista.length} próxima(s) ação(ões) priorizadas
             </div>
             {porCampanha.map(([nome, itens]) => (
               <Card key={nome}>
@@ -244,6 +249,11 @@ export default function MinhasTarefas() {
                                 {task.lead_nome || task.lead_phone || "Lead"}
                               </button>
                               <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                                {task.prioridade_operacional !== "normal" && (
+                                  <Badge variant={task.prioridade_operacional === "urgente" ? "destructive" : "secondary"} className="h-5 text-[10px]">
+                                    {task.prioridade_operacional === "urgente" ? "Urgente" : "Alta prioridade"}
+                                  </Badge>
+                                )}
                                 <span className="inline-flex items-center gap-1"><Icon className="h-3 w-3" />{task.rotulo || canal.label}</span>
                                 {task.prazo_at && (
                                   <span className="inline-flex items-center gap-1">
@@ -256,6 +266,7 @@ export default function MinhasTarefas() {
                                     <UserRound className="h-3 w-3" />{task.responsavel_nome}
                                   </span>
                                 )}
+                                {task.passos_restantes > 1 && <span>{task.passos_restantes - 1} etapa(s) depois desta</span>}
                                 {atrasada && <span className="font-medium text-red-600">atrasada</span>}
                               </div>
                             </div>
