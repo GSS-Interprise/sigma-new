@@ -51,7 +51,23 @@ e as (
        || 'gastroenterolog|oncolog|geriatr|radiolog|ultrassonograf|'
        || 'fonoaudiolog|fisioterap|psicolog|psicopedagog|terapia ocupacional|'
        || 'psicomotricidade|nutricion|enfermagem|odontolog|clinica geral|'
-       || 'clinico geral|intensivist|plantonist')) as tem_especialidade
+       || 'clinico geral|intensivist|plantonist|'
+       -- Nomes de EXAME e PROCEDIMENTO. Entraram em 01/08 porque o edital
+       -- "prestacao de servicos de LAUDO EM EXAMES DE ELETROCARDIOGRAMA"
+       -- (Marialva/PR) tirava 0: o bloco 2 exigia "laudo medico" ou
+       -- "exame + medico/clinico", e o nome do exame nao casava nada.
+       --
+       -- Lista fechada de proposito. A alternativa - aceitar
+       -- "servico + exame/laudo/procedimento" de forma generica - deixaria
+       -- entrar "scanner automotivo para diagnostico eletronico" e afins.
+       -- Nome de exame e' termo tecnico: nao aparece em edital de outra
+       -- natureza, entao e' seguro sem contexto extra.
+       || 'eletrocardiograma|eletroencefalograma|ecocardiograma|eletroneuromiograf|'
+       || 'mamograf|densitometria|espirometria|holter|colonoscop|endoscop|'
+       || 'ressonancia magnetica|radiografia|raio-x|biopsia|citopatolog|'
+       || 'anatomia patologica|histopatolog|hemodialise|quimioterapia|'
+       || 'radioterapia|fisiatria|audiometria|eletrocardiografia|'
+       || 'cintilografia|doppler|videolaparoscop')) as tem_especialidade
   from t
 ),
 s as (
@@ -124,6 +140,15 @@ s as (
     (case when o ~ 'medicament|insumo|equipament|mobiliari|veicul|ambulanci|trator|frota|combustivel|obra |reforma|pavimentac|construc|alimentac|refeic|merenda|limpeza|vigilanci|dedetizac|informatica|impressora|software|licenc[a-z]* de uso|curso |capacitac|treinament|leilo|locacao de imovel|residuos'
             or o ~ 'manutenc[a-z]* (preventiva|corretiva)'
             or o ~ 'manutenc[a-z]* .{0,18}(equipament|aparelh|maquin|predial|veicul|autoclave|compressor|elevador|central de ar)'
+            -- Adicionar NOME DE EXAME a lista de especialidades fez entrar a
+            -- compra e a manutencao do APARELHO daquele exame. Medido em
+            -- 01/08, dois falsos positivos:
+            --   "MANUTENCAO, REVISAO/TROCA DE PECAS de eletrocardiograma"
+            --   "fornecimento sob regime de CONSIGNACAO de grampeadores"
+            -- Toda vez que o vocabulario medico cresce, o vocabulario de
+            -- material daquela area cresce junto.
+            or o ~ 'troca de peca|revisao/troca|reposicao de peca'
+            or o ~ 'regime de consignac|sob consignac'
           then 1 else 0 end) as excl_hit
   from e
 )
