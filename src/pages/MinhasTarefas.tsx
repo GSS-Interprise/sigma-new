@@ -13,6 +13,7 @@ import {
   ListTodo, Loader2, CheckCircle2, Clock, AlertTriangle, CalendarDays,
   MessageCircle, Phone, Instagram, Mail, Megaphone, UserRound, UsersRound,
   UserX, ExternalLink,
+  Gauge, TimerOff, Inbox, Layers3,
 } from "lucide-react";
 
 const CANAL = {
@@ -30,6 +31,7 @@ const FILTROS = [
 ] as const;
 
 type Escopo = "minhas" | "equipe" | "sem_responsavel";
+type VisaoCapacidade = "priorizada" | "completa";
 
 type Task = {
   task_id: string;
@@ -48,6 +50,8 @@ type Task = {
   passos_restantes: number;
   prioridade_operacional: "urgente" | "alta" | "normal";
   fila_posicao: number;
+  horas_atraso: number;
+  sla_status: "no_prazo" | "atencao" | "vencido";
 };
 
 export default function MinhasTarefas() {
@@ -57,30 +61,58 @@ export default function MinhasTarefas() {
   // O legado ainda possui campanhas sem dono. "Equipe" preserva a visibilidade
   // operacional enquanto a configuração de responsáveis é regularizada.
   const [escopo, setEscopo] = useState<Escopo>("equipe");
+  const [visaoCapacidade, setVisaoCapacidade] = useState<VisaoCapacidade>("priorizada");
   const [campanha, setCampanha] = useState("__all");
   const [leadAberto, setLeadAberto] = useState<string | null>(null);
 
   const situacoes = FILTROS.find((item) => item.key === filtro)?.situacoes ?? ["hoje", "atrasada"];
 
   const { data: tasks = [], isLoading } = useQuery({
-    queryKey: ["central-tarefas", filtro, escopo, user?.id],
+    queryKey: ["central-tarefas", filtro, escopo, visaoCapacidade, user?.id],
     enabled: !!user?.id,
     queryFn: async () => {
       let query = (supabase as any)
-        .from("vw_campanha_tasks_dashboard")
-        .select("task_id, campanha_id, campanha_nome, campanha_lead_id, lead_id, lead_nome, lead_phone, tipo, rotulo, prazo_at, situacao, responsavel_id, responsavel_nome, passos_restantes, prioridade_operacional, fila_posicao")
+        .from("vw_campanha_tasks_operacional")
+        .select("task_id, campanha_id, campanha_nome, campanha_lead_id, lead_id, lead_nome, lead_phone, tipo, rotulo, prazo_at, situacao:situacao_operacional, responsavel_id, responsavel_nome, passos_restantes, prioridade_operacional, fila_posicao, horas_atraso, sla_status")
         .eq("is_next_action", true)
-        .eq("dentro_capacidade_diaria", true)
         .in("situacao", situacoes)
         .order("fila_posicao", { ascending: true, nullsFirst: false })
         .range(0, 599);
 
+      if (visaoCapacidade === "priorizada") query = query.eq("dentro_capacidade_diaria", true);
       if (escopo === "minhas") query = query.eq("responsavel_id", user!.id);
       if (escopo === "sem_responsavel") query = query.is("responsavel_id", null);
 
       const { data, error } = await query;
       if (error) throw error;
       return (data ?? []) as Task[];
+    },
+  });
+
+  const { data: metricas } = useQuery({
+    queryKey: ["central-tarefas-metricas", escopo, user?.id],
+    enabled: !!user?.id,
+    queryFn: async () => {
+      const contar = async (ajustar?: (query: any) => any) => {
+        let query = (supabase as any)
+          .from("vw_campanha_tasks_operacional")
+          .select("task_id", { count: "exact", head: true })
+          .eq("is_next_action", true);
+        if (escopo === "minhas") query = query.eq("responsavel_id", user!.id);
+        if (escopo === "sem_responsavel") query = query.is("responsavel_id", null);
+        if (ajustar) query = ajustar(query);
+        const { count, error } = await query;
+        if (error) throw error;
+        return count ?? 0;
+      };
+
+      const [total, priorizadas, vencidas, urgentes] = await Promise.all([
+        contar(),
+        contar((query) => query.eq("dentro_capacidade_diaria", true)),
+        contar((query) => query.eq("situacao_operacional", "atrasada")),
+        contar((query) => query.eq("prioridade_operacional", "urgente")),
+      ]);
+      return { total, priorizadas, excedentes: Math.max(0, total - priorizadas), vencidas, urgentes };
     },
   });
 
@@ -151,6 +183,25 @@ export default function MinhasTarefas() {
       }
     >
       <div className="space-y-4 p-3 sm:p-4">
+        <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+          {[
+            { label: "Fila priorizada", valor: metricas?.priorizadas ?? 0, Icon: Gauge, cor: "text-emerald-600" },
+            { label: "Backlog excedente", valor: metricas?.excedentes ?? 0, Icon: Layers3, cor: "text-amber-600" },
+            { label: "SLA vencido", valor: metricas?.vencidas ?? 0, Icon: TimerOff, cor: "text-red-600" },
+            { label: "Leads urgentes", valor: metricas?.urgentes ?? 0, Icon: Inbox, cor: "text-primary" },
+          ].map(({ label, valor, Icon, cor }) => (
+            <Card key={label}>
+              <CardContent className="flex min-h-20 items-center gap-3 p-3 sm:p-4">
+                <Icon className={`h-5 w-5 shrink-0 ${cor}`} />
+                <div className="min-w-0">
+                  <div className="text-xl font-bold tabular-nums">{valor}</div>
+                  <div className="text-xs text-muted-foreground">{label}</div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
         <div className="grid gap-3 rounded-lg border bg-card p-3 lg:grid-cols-[auto_1fr_auto] lg:items-center">
           <div className="flex gap-2 overflow-x-auto pb-1 lg:pb-0">
             {([
@@ -193,6 +244,25 @@ export default function MinhasTarefas() {
               {campanhas.map((nome) => <SelectItem key={nome} value={nome}>{nome}</SelectItem>)}
             </SelectContent>
           </Select>
+        </div>
+
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          <Button
+            size="sm"
+            variant={visaoCapacidade === "priorizada" ? "default" : "outline"}
+            className="min-h-11 shrink-0"
+            onClick={() => setVisaoCapacidade("priorizada")}
+          >
+            Fila priorizada (até 60)
+          </Button>
+          <Button
+            size="sm"
+            variant={visaoCapacidade === "completa" ? "default" : "outline"}
+            className="min-h-11 shrink-0"
+            onClick={() => setVisaoCapacidade("completa")}
+          >
+            Ver backlog completo
+          </Button>
         </div>
 
         {escopo === "equipe" && semResponsavel > 0 && (
@@ -267,7 +337,11 @@ export default function MinhasTarefas() {
                                   </span>
                                 )}
                                 {task.passos_restantes > 1 && <span>{task.passos_restantes - 1} etapa(s) depois desta</span>}
-                                {atrasada && <span className="font-medium text-red-600">atrasada</span>}
+                                {atrasada && (
+                                  <span className="font-medium text-red-600">
+                                    SLA vencido há {task.horas_atraso < 24 ? `${task.horas_atraso}h` : `${Math.floor(task.horas_atraso / 24)}d`}
+                                  </span>
+                                )}
                               </div>
                             </div>
                           </div>
