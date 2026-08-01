@@ -14,6 +14,7 @@ import {
   MessageCircle, Phone, Instagram, Mail, Megaphone, UserRound, UsersRound,
   UserX, ExternalLink,
   Gauge, TimerOff, Inbox, Layers3,
+  UserPlus, BarChart3,
 } from "lucide-react";
 
 const CANAL = {
@@ -52,6 +53,17 @@ type Task = {
   fila_posicao: number;
   horas_atraso: number;
   sla_status: "no_prazo" | "atencao" | "vencido";
+};
+
+type CapacityRow = {
+  responsavel_id: string | null;
+  responsavel_nome: string;
+  fila_total: number;
+  fila_priorizada: number;
+  sla_vencido: number;
+  urgentes: number;
+  alertas_coordenacao: number;
+  concluidas_hoje: number;
 };
 
 export default function MinhasTarefas() {
@@ -116,6 +128,20 @@ export default function MinhasTarefas() {
     },
   });
 
+  const { data: capacidadeEquipe = [] } = useQuery({
+    queryKey: ["crm-capacidade-equipe"],
+    enabled: escopo === "equipe",
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("vw_crm_task_capacity_by_owner")
+        .select("responsavel_id, responsavel_nome, fila_total, fila_priorizada, sla_vencido, urgentes, alertas_coordenacao, concluidas_hoje")
+        .order("alertas_coordenacao", { ascending: false })
+        .order("fila_total", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as CapacityRow[];
+    },
+  });
+
   // Uma tarefa pode ser concluída no card, na campanha ou por uma automação.
   // O Realtime mantém todas essas entradas coerentes sem exigir F5 da operação.
   useEffect(() => {
@@ -124,7 +150,11 @@ export default function MinhasTarefas() {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "campanha_lead_tasks" },
-        () => qc.invalidateQueries({ queryKey: ["central-tarefas"] }),
+        () => {
+          qc.invalidateQueries({ queryKey: ["central-tarefas"] });
+          qc.invalidateQueries({ queryKey: ["central-tarefas-metricas"] });
+          qc.invalidateQueries({ queryKey: ["crm-capacidade-equipe"] });
+        },
       )
       .subscribe();
 
@@ -156,9 +186,34 @@ export default function MinhasTarefas() {
     onSuccess: () => {
       toast.success("Tarefa concluída");
       qc.invalidateQueries({ queryKey: ["central-tarefas"] });
+      qc.invalidateQueries({ queryKey: ["central-tarefas-metricas"] });
+      qc.invalidateQueries({ queryKey: ["crm-capacidade-equipe"] });
       qc.invalidateQueries({ queryKey: ["campanha-lead-tasks"] });
     },
     onError: (error: Error) => toast.error(`Não foi possível concluir: ${error.message}`),
+  });
+
+  const assumirProxima = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await (supabase as any).rpc("crm_assumir_proxima_acao");
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error || "Não foi possível assumir a próxima ação");
+      return data as { lead_id: string };
+    },
+    onSuccess: (data) => {
+      toast.success("Lead assumido e IA pausada");
+      qc.invalidateQueries({ queryKey: ["central-tarefas"] });
+      qc.invalidateQueries({ queryKey: ["central-tarefas-metricas"] });
+      qc.invalidateQueries({ queryKey: ["crm-capacidade-equipe"] });
+      setLeadAberto(data.lead_id);
+    },
+    onError: (error: Error) => {
+      const mensagens: Record<string, string> = {
+        fila_vazia: "A fila da equipe está vazia.",
+        capacidade_atingida: "Você já atingiu a capacidade de 60 ações.",
+      };
+      toast.error(mensagens[error.message] || error.message);
+    },
   });
 
   const porCampanha = useMemo(() => {
@@ -263,7 +318,41 @@ export default function MinhasTarefas() {
           >
             Ver backlog completo
           </Button>
+          <Button
+            size="sm"
+            className="min-h-11 shrink-0 sm:ml-auto"
+            onClick={() => assumirProxima.mutate()}
+            disabled={assumirProxima.isPending}
+          >
+            {assumirProxima.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <UserPlus className="mr-1.5 h-4 w-4" />}
+            Assumir próxima ação
+          </Button>
         </div>
+
+        {escopo === "equipe" && capacidadeEquipe.length > 0 && (
+          <Card>
+            <CardContent className="p-3 sm:p-4">
+              <div className="mb-3 flex items-center gap-2">
+                <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                <h2 className="text-sm font-semibold">Capacidade por operadora</h2>
+              </div>
+              <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+                {capacidadeEquipe.map((pessoa) => (
+                  <div key={pessoa.responsavel_id ?? "equipe"} className="min-w-[210px] rounded-lg border p-3">
+                    <div className="truncate text-sm font-medium">{pessoa.responsavel_nome}</div>
+                    <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                      <span className="text-muted-foreground">Fila</span><span className="text-right font-medium">{pessoa.fila_priorizada}/{pessoa.fila_total}</span>
+                      <span className="text-muted-foreground">Concluídas hoje</span><span className="text-right font-medium">{pessoa.concluidas_hoje}</span>
+                      <span className="text-muted-foreground">Urgentes</span><span className="text-right font-medium">{pessoa.urgentes}</span>
+                      <span className="text-muted-foreground">Alertas</span>
+                      <span className={`text-right font-medium ${pessoa.alertas_coordenacao > 0 ? "text-red-600" : ""}`}>{pessoa.alertas_coordenacao}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {escopo === "equipe" && semResponsavel > 0 && (
           <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
