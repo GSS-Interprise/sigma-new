@@ -502,7 +502,9 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
             campanha_id: data.id,
             lead_id: preLead.id,
             status: "pendente",
-            etapa_acompanhamento: "frio",
+            // A etapa de acompanhamento começa vazia; "frio" é status do funil,
+            // não uma etapa válida do acompanhamento pós-qualificação.
+            etapa_acompanhamento: null,
           });
         if (clError) {
           // Não falha a criação — só avisa

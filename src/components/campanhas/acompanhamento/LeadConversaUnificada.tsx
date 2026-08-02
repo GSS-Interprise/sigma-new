@@ -146,7 +146,9 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
     mutationFn: async ({ msg, clientMessageId = crypto.randomUUID() }: { msg: string; clientMessageId?: string }) => {
       if (conv?.instance?.provider === "twilio") {
         const { data, error } = await supabase.functions.invoke("twilio-whatsapp-send", {
-          body: { conversation_id: conv.id, body: msg },
+          // Mantém o card da campanha sincronizado também nas respostas livres
+          // dentro da janela oficial de 24 horas.
+          body: { conversation_id: conv.id, campaign_lead_id: campanhaLeadId, body: msg },
         });
         if (error) throw new Error(traduzErroEnvio(error.message || ""));
         if ((data as any)?.error) throw new Error((data as any).error);
@@ -177,6 +179,7 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
       setTexto("");
       qc.invalidateQueries({ queryKey: ["acompanhamento-conv-msgs", conv?.id] });
       qc.invalidateQueries({ queryKey: ["acompanhamento-outbox", conv?.id] });
+      qc.invalidateQueries({ queryKey: ["acompanhamento-leads"] });
       if (data?.queued) {
         toast.warning("Mensagem aguardando conexao", {
           description: "Ela foi salva, mas ainda nao chegou ao WhatsApp.",

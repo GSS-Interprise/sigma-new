@@ -214,15 +214,31 @@ export function StructuredLeadSearchDialog({
               </thead>
               <tbody>
                 {rows.map((row) => (
-                  <tr key={row.lead_id} className="border-b last:border-0 hover:bg-muted/20">
+                  <tr
+                    key={row.lead_id}
+                    className="cursor-pointer border-b last:border-0 hover:bg-muted/20"
+                    onClick={() => {
+                      // A linha inteira vira um alvo de toque confiável; o checkbox de 16px
+                      // isolado era difícil de acionar em navegadores mobile e na automação.
+                      setSelected((current) => {
+                        const next = new Set(current);
+                        if (next.has(row.lead_id)) next.delete(row.lead_id);
+                        else next.add(row.lead_id);
+                        return next;
+                      });
+                    }}
+                  >
                     <td className="px-3 py-3">
                       <Checkbox
                         checked={selected.has(row.lead_id)}
-                        onCheckedChange={() => {
-                          const next = new Set(selected);
-                          if (next.has(row.lead_id)) next.delete(row.lead_id);
-                          else next.add(row.lead_id);
-                          setSelected(next);
+                        onClick={(event) => event.stopPropagation()}
+                        onCheckedChange={(checked) => {
+                          setSelected((current) => {
+                            const next = new Set(current);
+                            if (checked === true) next.add(row.lead_id);
+                            else next.delete(row.lead_id);
+                            return next;
+                          });
                         }}
                         aria-label={`Selecionar ${row.nome}`}
                       />

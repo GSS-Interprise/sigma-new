@@ -391,14 +391,22 @@ serve(async (req) => {
       .eq("id", conversation.id);
 
     if (campaignLeadId) {
+      // Toda mensagem manual atualiza a atividade do card, inclusive respostas
+      // livres enviadas depois do primeiro contato dentro da janela de 24h.
+      await admin
+        .from("campanha_leads")
+        .update({
+          data_ultimo_contato: now,
+          updated_at: now,
+        })
+        .eq("id", campaignLeadId);
+
       await admin
         .from("campanha_leads")
         .update({
           status: "contatado",
           data_primeiro_contato: now,
-          data_ultimo_contato: now,
           data_status: now,
-          updated_at: now,
         })
         .eq("id", campaignLeadId)
         .eq("status", "frio");
