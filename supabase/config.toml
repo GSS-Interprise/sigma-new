@@ -74,6 +74,11 @@ verify_jwt = false
 [functions.twilio-whatsapp-webhook]
 verify_jwt = false
 
+# A funcao valida usuario, service role ou chave interna no proprio codigo.
+# O gateway nao deve bloquear os envios internos antes dessa validacao.
+[functions.twilio-whatsapp-send]
+verify_jwt = false
+
 [functions.campanha-ia-recovery]
 verify_jwt = false
 
