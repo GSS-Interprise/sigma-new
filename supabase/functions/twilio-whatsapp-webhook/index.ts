@@ -23,6 +23,24 @@ function phoneE164(value: string) {
   return digits ? `+${digits}` : "";
 }
 
+function brazilianPhoneVariants(value: string) {
+  const digits = phoneDigits(value);
+  const variants = new Set<string>();
+  if (!digits) return [];
+  variants.add(digits);
+  variants.add(`+${digits}`);
+  if (digits.startsWith("55") && digits.length === 12) {
+    const withNine = `${digits.slice(0, 4)}9${digits.slice(4)}`;
+    variants.add(withNine);
+    variants.add(`+${withNine}`);
+  } else if (digits.startsWith("55") && digits.length === 13 && digits[4] === "9") {
+    const withoutNine = `${digits.slice(0, 4)}${digits.slice(5)}`;
+    variants.add(withoutNine);
+    variants.add(`+${withoutNine}`);
+  }
+  return [...variants];
+}
+
 function bytesToBase64(bytes: Uint8Array) {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
@@ -147,21 +165,44 @@ serve(async (req) => {
         .single();
     if (instanceError) throw instanceError;
 
-    const { data: lead } = await admin
+    const contactPhoneVariants = brazilianPhoneVariants(contactPhone);
+    const { data: leadCandidates, error: leadError } = await admin
       .from("leads")
-      .select("id")
-      .eq("phone_e164", contactPhone)
-      .maybeSingle();
+      .select("id, phone_e164")
+      .in("phone_e164", contactPhoneVariants)
+      .order("created_at", { ascending: true })
+      .limit(20);
+    if (leadError) throw leadError;
+    const lead = (leadCandidates || []).sort((a, b) => {
+      const aDigits = phoneDigits(a.phone_e164 || "");
+      const bDigits = phoneDigits(b.phone_e164 || "");
+      const aHasNine = aDigits.length === 13 && aDigits[4] === "9";
+      const bHasNine = bDigits.length === 13 && bDigits[4] === "9";
+      return Number(bHasNine) - Number(aHasNine);
+    })[0] || null;
 
     const contactJid = `${phoneDigits(contactPhone)}@s.whatsapp.net`;
     const profileName = params.get("ProfileName") || contactPhone;
-    const { data: existingContact, error: existingContactError } = await admin
+    let { data: existingContact, error: existingContactError } = await admin
       .from("sigzap_contacts")
       .select("id")
       .eq("contact_jid", contactJid)
       .eq("instance_id", instance.id)
       .maybeSingle();
     if (existingContactError) throw existingContactError;
+
+    if (!existingContact) {
+      const { data: equivalentContact, error: equivalentContactError } = await admin
+        .from("sigzap_contacts")
+        .select("id")
+        .eq("instance_id", instance.id)
+        .in("contact_phone", contactPhoneVariants)
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (equivalentContactError) throw equivalentContactError;
+      existingContact = equivalentContact;
+    }
 
     const { data: contact, error: contactError } = existingContact
       ? await admin
@@ -189,7 +230,7 @@ serve(async (req) => {
 
     const { data: existingConversation } = await admin
       .from("sigzap_conversations")
-      .select("id, unread_count")
+      .select("id, lead_id, unread_count")
       .eq("contact_id", contact.id)
       .eq("instance_id", instance.id)
       .maybeSingle();
@@ -202,7 +243,7 @@ serve(async (req) => {
       const { error } = await admin
         .from("sigzap_conversations")
         .update({
-          lead_id: lead?.id || null,
+          lead_id: existingConversation.lead_id || lead?.id || null,
           last_message_text: params.get("Body") || `[${params.get("MessageType") || "mídia"}]`,
           last_message_at: now.toISOString(),
           unread_count: (existingConversation.unread_count || 0) + 1,
