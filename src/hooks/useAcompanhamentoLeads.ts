@@ -74,6 +74,14 @@ export function colunaManualDeLead(l: { status: string }): ColunaManual {
   return "aquecido"; // em_conversa / quente
 }
 
+function ordenarPorPrioridade(a: AcompanhamentoLead, b: AcompanhamentoLead) {
+  const unreadDiff = Number(b.unread_messages > 0) - Number(a.unread_messages > 0);
+  if (unreadDiff !== 0) return unreadDiff;
+  const aTime = new Date(a.last_incoming_at || a.data_ultimo_contato || a.data_status || 0).getTime();
+  const bTime = new Date(b.last_incoming_at || b.data_ultimo_contato || b.data_status || 0).getTime();
+  return bTime - aTime;
+}
+
 export type FiltroAcompanhamento = "todos" | "minha_fila" | "sem_dono" | "aguarda_maikon" | "aguarda_equipe";
 
 export function useAcompanhamentoLeads(filtro: FiltroAcompanhamento = "todos") {
@@ -198,6 +206,7 @@ export function useAcompanhamentoLeads(filtro: FiltroAcompanhamento = "todos") {
     for (const lead of filtrados) {
       if (grupos[lead.etapa_crm]) grupos[lead.etapa_crm].push(lead);
     }
+    Object.values(grupos).forEach((grupo) => grupo.sort(ordenarPorPrioridade));
     return grupos;
   }, [filtrados]);
 

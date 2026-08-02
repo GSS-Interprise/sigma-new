@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Clock, Send, Bot, Flame, ThermometerSun, CheckCircle, Search, Phone,
-  MapPin, GripVertical, XCircle, Tag, X, UserCheck, MessageSquareOff, Target,
+  MapPin, GripVertical, XCircle, Tag, X, UserCheck, MessageSquareOff, Target, MessageCircle,
 } from "lucide-react";
 import {
   useCampanhaLeadsByStatus,
@@ -55,7 +55,7 @@ const COLUMNS: KanbanColumn[] = [
 const COLUMNS_MANUAL: KanbanColumn[] = [
   { id: "frio", label: "Pendentes", color: "text-slate-600", bgColor: "bg-slate-50", borderColor: "border-slate-200", icon: Clock, description: "Aguardando 1º contato" },
   { id: "contatado", label: "Aguardando Resposta", color: "text-blue-600", bgColor: "bg-blue-50", borderColor: "border-blue-200", icon: Send, description: "1ª mensagem enviada" },
-  { id: "em_conversa", label: "Aquecido", color: "text-amber-600", bgColor: "bg-amber-50", borderColor: "border-amber-200", icon: ThermometerSun, description: "Respondeu — em conversa" },
+  { id: "em_conversa", label: "Respondeu", color: "text-orange-600", bgColor: "bg-orange-50", borderColor: "border-orange-200", icon: MessageCircle, description: "Nova resposta — equipe deve atender" },
   { id: "quente", label: "Leads Quentes", color: "text-red-600", bgColor: "bg-red-50", borderColor: "border-red-200", icon: Flame, description: "Pronto pra fechar" },
   { id: "convertido", label: "Convertidos", color: "text-green-600", bgColor: "bg-green-50", borderColor: "border-green-200", icon: CheckCircle, description: "Negócio fechado" },
   { id: "sem_resposta", label: "Sem resposta", color: "text-slate-500", bgColor: "bg-slate-50", borderColor: "border-slate-200", icon: Phone, description: "Contatado, não respondeu" },
@@ -151,7 +151,13 @@ export function CampanhaProspeccaoKanban({ campanhaId }: Props) {
           cl.lead?.cidade?.toLowerCase().includes(term)
       );
     }
-    return arr;
+    return [...arr].sort((a, b) => {
+      const unreadDiff = Number(b.unread_messages > 0) - Number(a.unread_messages > 0);
+      if (unreadDiff !== 0) return unreadDiff;
+      const aTime = new Date(a.last_incoming_at || a.data_ultimo_contato || a.data_status || 0).getTime();
+      const bTime = new Date(b.last_incoming_at || b.data_ultimo_contato || b.data_status || 0).getTime();
+      return bTime - aTime;
+    });
   };
 
   const totalFiltrado = colunas.reduce((s, c) => s + filteredByStatus(c.id).length, 0);
@@ -399,7 +405,17 @@ function LeadCard({
   const campanhaManual = tipoEnvio === "manual";
 
   return (
-    <Card className="cursor-pointer hover:shadow-md hover:border-primary/50 transition-all" draggable onDragStart={onDragStart}>
+    <Card className="relative cursor-pointer transition-all hover:border-primary/50 hover:shadow-md" draggable onDragStart={onDragStart}>
+      {campLead.unread_messages > 0 && (
+        <div
+          className="absolute -right-2 -top-2 z-10 flex h-6 min-w-6 items-center justify-center gap-1 rounded-full border-2 border-background bg-emerald-600 px-1.5 text-[10px] font-bold text-white shadow-sm"
+          aria-label={`${campLead.unread_messages} mensagem(ns) nova(s) do lead`}
+          title={`${campLead.unread_messages} mensagem(ns) nova(s) do lead`}
+        >
+          <MessageCircle className="h-3 w-3" aria-hidden="true" />
+          {campLead.unread_messages > 9 ? "9+" : campLead.unread_messages}
+        </div>
+      )}
       <CardContent className="p-3 space-y-1.5">
         <div className="flex items-start gap-2" onClick={onClick}>
           <GripVertical className="h-4 w-4 text-muted-foreground/40 mt-0.5 flex-shrink-0" />

@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -31,6 +32,8 @@ export interface CampanhaLead {
   conversa_id: string | null;
   metadados: Record<string, unknown>;
   created_at: string;
+  unread_messages: number;
+  last_incoming_at: string | null;
   // colaboração: quem está/assumiu o lead (UX multi-pessoa na mesma campanha)
   assumido_por?: string | null;
   assumido_em?: string | null;
@@ -54,7 +57,9 @@ export interface CampanhaLead {
 }
 
 export function useCampanhaLeads(campanhaId?: string) {
-  return useQuery({
+  const queryClient = useQueryClient();
+  const channelIdRef = useRef(`campanha-leads-realtime-${crypto.randomUUID()}`);
+  const query = useQuery({
     queryKey: ["campanha-leads", campanhaId],
     enabled: !!campanhaId,
     queryFn: async () => {
@@ -77,9 +82,53 @@ export function useCampanhaLeads(campanhaId?: string) {
         all = all.concat(chunk);
         if (chunk.length < PAGE) break;
       }
-      return all;
+      const activityByLead = new Map<string, { unread_messages: number; last_incoming_at: string | null }>();
+      for (let from = 0; from < CAP; from += PAGE) {
+        const { data, error } = await supabase
+          .from("vw_acompanhamento_kanban_full" as never)
+          .select("campanha_lead_id, unread_messages, last_incoming_at")
+          .eq("campanha_id", campanhaId!)
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        const chunk = (data || []) as Array<{
+          campanha_lead_id: string;
+          unread_messages: number | null;
+          last_incoming_at: string | null;
+        }>;
+        chunk.forEach((item) => activityByLead.set(item.campanha_lead_id, {
+          unread_messages: item.unread_messages || 0,
+          last_incoming_at: item.last_incoming_at,
+        }));
+        if (chunk.length < PAGE) break;
+      }
+
+      return all.map((lead) => ({
+        ...lead,
+        unread_messages: activityByLead.get(lead.id)?.unread_messages || 0,
+        last_incoming_at: activityByLead.get(lead.id)?.last_incoming_at || null,
+      }));
     },
   });
+
+  useEffect(() => {
+    if (!campanhaId) return;
+    const channel = supabase
+      .channel(`${channelIdRef.current}-${campanhaId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "campanha_leads", filter: `campanha_id=eq.${campanhaId}` }, () => {
+        void queryClient.invalidateQueries({ queryKey: ["campanha-leads", campanhaId] });
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "sigzap_conversations" }, () => {
+        // A conversa não guarda campanha_id; limitamos a invalidação ao cache
+        // da campanha aberta para a bolinha aparecer sem atualizar a página.
+        void queryClient.invalidateQueries({ queryKey: ["campanha-leads", campanhaId] });
+      })
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [campanhaId, queryClient]);
+
+  return query;
 }
 
 export function useCampanhaLeadsByStatus(campanhaId?: string) {

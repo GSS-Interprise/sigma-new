@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,7 @@ import {
   Flame,
   StickyNote,
   Mail,
+  Pencil,
   Target,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
@@ -30,6 +31,7 @@ import { ptBR } from "date-fns/locale";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { LeadPerfilIaSection } from "@/components/medicos/LeadPerfilIaSection";
 import { LeadTimelineUnificadoSection } from "@/components/medicos/LeadTimelineUnificadoSection";
 import { ValidacaoChecklist } from "./ValidacaoChecklist";
@@ -39,6 +41,7 @@ import { LeadConversaUnificada } from "./LeadConversaUnificada";
 import { LeadIdentidadeCard } from "./LeadIdentidadeCard";
 import { LeadNotasRapidas } from "./LeadNotasRapidas";
 import { LeadEmailDialog } from "./LeadEmailDialog";
+import { LeadQuickEditDialog } from "./LeadQuickEditDialog";
 import {
   useAssumirLead,
   useAprovarLead,
@@ -56,15 +59,39 @@ type PainelTab = "conversa" | "historico" | "validacao" | "tasks" | "notas";
 
 export function AcompanhamentoLeadPainel({ lead, onClose }: Props) {
   const { user } = useAuth();
+  const isMobile = useIsMobile();
   // Mobile: 4 tabs (Validacao/Tasks/Conversa/Historico)
   // Desktop: master-detail — coluna E tem 3 tabs (Tasks/Validacao/Historico),
   // coluna D mostra Conversa sempre. F2.4 master-detail real.
   const [tab, setTab] = useState<PainelTab>("tasks");
   const [perdidoDialogOpen, setPerdidoDialogOpen] = useState(false);
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
+  const [quickEditOpen, setQuickEditOpen] = useState(false);
+  const queryClient = useQueryClient();
   const assumir = useAssumirLead();
   const aprovar = useAprovarLead();
   const mover = useMoverEtapa();
+
+  useEffect(() => {
+    // No desktop a conversa fica sempre visível; no mobile só consideramos lida
+    // quando a operadora realmente abre a aba Conversa.
+    if (!lead?.lead_id || lead.unread_messages <= 0 || (isMobile && tab !== "conversa")) return;
+    let active = true;
+    const marcarComoLida = async () => {
+      const { error } = await supabase
+        .from("sigzap_conversations")
+        .update({ unread_count: 0 })
+        .eq("lead_id", lead.lead_id)
+        .gt("unread_count", 0);
+      if (!error && active) {
+        await queryClient.invalidateQueries({ queryKey: ["acompanhamento-leads"] });
+      }
+    };
+    void marcarComoLida();
+    return () => {
+      active = false;
+    };
+  }, [isMobile, lead?.lead_id, lead?.unread_messages, queryClient, tab]);
 
   // Histórico da conversa atual (campanha_leads.historico_conversa)
   const { data: historicoConversa = [] } = useQuery({
@@ -443,6 +470,16 @@ export function AcompanhamentoLeadPainel({ lead, onClose }: Props) {
               E-mail
             </Button>
 
+            <Button
+              size="sm"
+              variant="outline"
+              className="min-h-11 sm:min-h-9"
+              onClick={() => setQuickEditOpen(true)}
+            >
+              <Pencil className="mr-1.5 h-4 w-4" />
+              Editar contato
+            </Button>
+
             <div className="ml-auto">
               <Button
                 size="sm"
@@ -473,6 +510,11 @@ export function AcompanhamentoLeadPainel({ lead, onClose }: Props) {
         leadId={lead.lead_id}
         campanhaId={lead.campanha_id}
         campanhaLeadId={lead.campanha_lead_id}
+      />
+      <LeadQuickEditDialog
+        open={quickEditOpen}
+        onOpenChange={setQuickEditOpen}
+        leadId={lead.lead_id}
       />
     </>
   );
