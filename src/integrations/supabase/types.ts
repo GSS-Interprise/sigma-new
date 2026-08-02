@@ -8919,18 +8919,23 @@ export type Database = {
           created_at: string
           created_by: string | null
           created_by_nome: string | null
+          duplicados_arquivo: number
           erros: Json | null
           finished_at: string | null
           id: string
           ignorados: number | null
+          invalidos: number
           inseridos: number | null
           linhas_processadas: number | null
+          lista_criada_automaticamente: boolean
+          lista_destino_id: string | null
           mapeamento_colunas: Json | null
           started_at: string | null
           status: string
           total_chunks: number | null
           total_linhas: number | null
           updated_at: string
+          vinculados_lista: number
         }
         Insert: {
           arquivo_nome: string
@@ -8941,18 +8946,23 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           created_by_nome?: string | null
+          duplicados_arquivo?: number
           erros?: Json | null
           finished_at?: string | null
           id?: string
           ignorados?: number | null
+          invalidos?: number
           inseridos?: number | null
           linhas_processadas?: number | null
+          lista_criada_automaticamente?: boolean
+          lista_destino_id?: string | null
           mapeamento_colunas?: Json | null
           started_at?: string | null
           status?: string
           total_chunks?: number | null
           total_linhas?: number | null
           updated_at?: string
+          vinculados_lista?: number
         }
         Update: {
           arquivo_nome?: string
@@ -8963,20 +8973,69 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           created_by_nome?: string | null
+          duplicados_arquivo?: number
           erros?: Json | null
           finished_at?: string | null
           id?: string
           ignorados?: number | null
+          invalidos?: number
           inseridos?: number | null
           linhas_processadas?: number | null
+          lista_criada_automaticamente?: boolean
+          lista_destino_id?: string | null
           mapeamento_colunas?: Json | null
           started_at?: string | null
           status?: string
           total_chunks?: number | null
           total_linhas?: number | null
           updated_at?: string
+          vinculados_lista?: number
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "lead_import_jobs_lista_destino_id_fkey"
+            columns: ["lista_destino_id"]
+            isOneToOne: false
+            referencedRelation: "disparo_listas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lead_import_job_items: {
+        Row: {
+          created_at: string
+          job_id: string
+          lead_id: string
+          resultado: string
+        }
+        Insert: {
+          created_at?: string
+          job_id: string
+          lead_id: string
+          resultado: string
+        }
+        Update: {
+          created_at?: string
+          job_id?: string
+          lead_id?: string
+          resultado?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_import_job_items_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "lead_import_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_import_job_items_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       lead_liberacoes: {
         Row: {

@@ -380,6 +380,7 @@ serve(async (req) => {
     let especialidadesParam: string[] = [];
     let origemParam = "";
     let listaDestinoId = "";
+    let listaCriadaAutomaticamente = false;
     let campanhaDestinoId = "";
     let strategyDestinoId = "";
 
@@ -469,6 +470,7 @@ serve(async (req) => {
           throw new Error(`Erro ao criar lista de disparo: ${listaErr.message}`);
         }
         listaDestinoIdFinal = novaLista.id;
+        listaCriadaAutomaticamente = true;
       }
       listaDestinoId = listaDestinoIdFinal;
 
@@ -481,6 +483,11 @@ serve(async (req) => {
           arquivo_nome: arquivoNome,
           arquivo_storage_path: storagePath,
           chunk_atual: 0,
+          lista_destino_id: listaDestinoIdFinal || null,
+          lista_criada_automaticamente: listaCriadaAutomaticamente,
+          duplicados_arquivo: 0,
+          invalidos: 0,
+          vinculados_lista: 0,
           // Salvar parâmetros no job para uso em chunks subsequentes
           mapeamento_colunas: {
             _params: {
@@ -505,7 +512,7 @@ serve(async (req) => {
       // Buscar dados do job
       const { data: job, error: jobError } = await supabase
         .from("lead_import_jobs")
-        .select("arquivo_storage_path, arquivo_nome, mapeamento_colunas")
+        .select("arquivo_storage_path, arquivo_nome, mapeamento_colunas, lista_destino_id, lista_criada_automaticamente")
         .eq("id", jobId)
         .single();
 
@@ -521,14 +528,25 @@ serve(async (req) => {
       especialidadeParam = params.especialidade || "";
       especialidadesParam = Array.isArray(params.especialidades) ? params.especialidades : (especialidadeParam ? [especialidadeParam] : []);
       origemParam = params.origem || "Importação Excel";
-      listaDestinoId = listaDestinoIdOverride || params.lista_destino_id || "";
+      listaDestinoId = listaDestinoIdOverride || job.lista_destino_id || params.lista_destino_id || "";
+      listaCriadaAutomaticamente = job.lista_criada_automaticamente === true;
       campanhaDestinoId = params.campanha_destino_id || "";
       strategyDestinoId = params.strategy_destino_id || "";
 
       if (resetCounts && chunkAtual === 0) {
         await supabase
           .from("lead_import_jobs")
-          .update({ inseridos: 0, atualizados: 0, ignorados: 0, erros: [], status: "processando", finished_at: null })
+          .update({
+            inseridos: 0,
+            atualizados: 0,
+            ignorados: 0,
+            duplicados_arquivo: 0,
+            invalidos: 0,
+            vinculados_lista: 0,
+            erros: [],
+            status: "processando",
+            finished_at: null,
+          })
           .eq("id", jobId);
       }
     }
@@ -694,7 +712,7 @@ serve(async (req) => {
     // Buscar resultados atuais do job (acumular de chunks anteriores)
     const { data: currentJob } = await supabase
       .from("lead_import_jobs")
-      .select("inseridos, atualizados, ignorados, erros")
+      .select("inseridos, atualizados, ignorados, duplicados_arquivo, invalidos, erros")
       .eq("id", jobId)
       .single();
 
@@ -718,6 +736,8 @@ serve(async (req) => {
       inserted: currentJob?.inseridos || 0,
       updated: currentJob?.atualizados || 0,
       skipped: currentJob?.ignorados || 0,
+      duplicates: currentJob?.duplicados_arquivo || 0,
+      invalid: currentJob?.invalidos || 0,
       errors: previousErrors,
     };
 
@@ -754,6 +774,7 @@ serve(async (req) => {
 
       if (classificationRaw && !classification) {
         results.skipped++;
+        results.invalid++;
         if (results.errors.length < 500) {
           results.errors.push({
             linha: rowNum,
@@ -765,6 +786,7 @@ serve(async (req) => {
       }
       if (classification === "perda_local" && !campaignId) {
         results.skipped++;
+        results.invalid++;
         if (results.errors.length < 500) {
           results.errors.push({
             linha: rowNum,
@@ -778,6 +800,7 @@ serve(async (req) => {
       // Validar Nome
       if (!nome || String(nome).trim() === "") {
         results.skipped++;
+        results.invalid++;
         if (results.errors.length < 500) {
           results.errors.push({
             linha: rowNum,
@@ -792,6 +815,7 @@ serve(async (req) => {
       const phone_e164 = normalizePhone(String(telefone || ""));
       if (!phone_e164) {
         results.skipped++;
+        results.invalid++;
         if (results.errors.length < 500) {
           results.errors.push({
             linha: rowNum,
@@ -821,6 +845,7 @@ serve(async (req) => {
       const uf = validateUF(String(ufRaw || ""));
       if (!uf) {
         results.skipped++;
+        results.invalid++;
         if (results.errors.length < 500) {
           results.errors.push({
             linha: rowNum,
@@ -838,6 +863,7 @@ serve(async (req) => {
       if (leadsMap.has(phone_e164)) {
         const existing = leadsMap.get(phone_e164)!;
         results.skipped++;
+        results.duplicates++;
         if (results.errors.length < 500) {
           results.errors.push({
             linha: rowNum,
@@ -904,6 +930,7 @@ serve(async (req) => {
       const uniqueKey = getLeadUniqueKey(leadData);
       if (uniqueKey && uniqueKeysSeen.has(uniqueKey)) {
         results.skipped++;
+        results.duplicates++;
         if (results.errors.length < 500) {
           results.errors.push({
             linha: rowNum,
@@ -928,6 +955,7 @@ serve(async (req) => {
     // Converter Map para array para upsert
     const leadsToUpsert = Array.from(leadsMap.values());
     const leadIdsImportados: string[] = [];
+    const importJobItems: Array<{ job_id: string; lead_id: string; resultado: "novo" | "existente" }> = [];
 
     // Processar em lotes. A tabela leads não tem constraint única em phone_e164,
     // então upsert(onConflict: "phone_e164") falha. Fazemos merge manual por telefone.
@@ -969,6 +997,22 @@ serve(async (req) => {
         }
       }
 
+      // Um contato repetido em outro chunk do mesmo arquivo ja existe na base.
+      // O registro por job permite diferencia-lo de um lead antigo real.
+      const existingIds = Array.from(new Set([
+        ...(existentesPorTelefone || []).map((row) => row.id),
+        ...(existentesPorChave || []).map((row) => row.id),
+      ]));
+      const { data: processedInThisJob, error: processedError } = existingIds.length > 0
+        ? await supabase
+          .from("lead_import_job_items")
+          .select("lead_id")
+          .eq("job_id", jobId)
+          .in("lead_id", existingIds)
+        : { data: [], error: null };
+      if (processedError) throw processedError;
+      const processedLeadIds = new Set((processedInThisJob || []).map((row) => row.lead_id));
+
       const insertRows: Record<string, any>[] = [];
       const insertMeta: typeof batch = [];
 
@@ -976,6 +1020,18 @@ serve(async (req) => {
         const existingLead = leadByPhone.get(item.data.phone_e164)
           || leadByUniqueKey.get(getLeadUniqueKey(item.data) || "");
         if (existingLead) {
+          if (processedLeadIds.has(existingLead.id)) {
+            results.skipped++;
+            results.duplicates++;
+            if (results.errors.length < 500) {
+              results.errors.push({
+                linha: item.rowNum,
+                motivo: "Contato duplicado em outro trecho do arquivo",
+                dados: { nome: item.data.nome, telefone: item.data.phone_e164 },
+              });
+            }
+            continue;
+          }
           const safePatch = buildExistingLeadPatch(existingLead, item.data);
           const { data: updated, error: updateError } = await supabase
             .from("leads")
@@ -986,6 +1042,7 @@ serve(async (req) => {
 
           if (updateError) {
             results.skipped++;
+            results.invalid++;
             if (results.errors.length < 500) {
               results.errors.push({
                 linha: item.rowNum,
@@ -1001,6 +1058,7 @@ serve(async (req) => {
             results.updated++;
             if (updated?.id) {
               leadIdsImportados.push(updated.id);
+              importJobItems.push({ job_id: jobId, lead_id: updated.id, resultado: "existente" });
               await applyImportClassification(
                 supabase,
                 updated.id,
@@ -1028,6 +1086,7 @@ serve(async (req) => {
         if (insertError) {
           for (const item of insertMeta) {
             results.skipped++;
+            results.invalid++;
             if (results.errors.length < 500) {
               results.errors.push({
                 linha: item.rowNum,
@@ -1047,6 +1106,7 @@ serve(async (req) => {
             const item = insertMeta[insertedIndex];
             if (row?.id) {
               leadIdsImportados.push(row.id);
+              importJobItems.push({ job_id: jobId, lead_id: row.id, resultado: "novo" });
               await applyImportClassification(
                 supabase,
                 row.id,
@@ -1063,6 +1123,15 @@ serve(async (req) => {
     }
 
     // Se este import tem lista de destino, vincular leads à lista
+    if (importJobItems.length > 0) {
+      const { error: auditItemError } = await supabase
+        .from("lead_import_job_items")
+        .upsert(importJobItems, { onConflict: "job_id,lead_id", ignoreDuplicates: true });
+      if (auditItemError) {
+        throw new Error(`Erro ao auditar contatos do import: ${auditItemError.message}`);
+      }
+    }
+
     if (listaDestinoId && leadIdsImportados.length > 0) {
       const itensRows = leadIdsImportados.map((lead_id) => ({
         lista_id: listaDestinoId,
@@ -1076,7 +1145,7 @@ serve(async (req) => {
           .from("disparo_lista_itens")
           .upsert(slice, { onConflict: "lista_id,lead_id", ignoreDuplicates: true });
         if (itemErr) {
-          console.error("Erro vinculando leads à lista:", itemErr.message);
+          throw new Error(`Erro vinculando contatos a lista: ${itemErr.message}`);
         }
       }
     }
@@ -1118,6 +1187,17 @@ serve(async (req) => {
     // Atualizar progresso do job
     const linhasProcessadas = endIndex;
     const isLastChunk = chunkAtual >= totalChunks - 1;
+    let vinculadosLista = 0;
+    if (isLastChunk && listaDestinoId) {
+      const { count, error: countError } = await supabase
+        .from("lead_import_job_items")
+        .select("lead_id", { count: "exact", head: true })
+        .eq("job_id", jobId);
+      if (countError) {
+        throw new Error(`Erro ao conferir lista do import: ${countError.message}`);
+      }
+      vinculadosLista = count || 0;
+    }
 
     await supabase
       .from("lead_import_jobs")
@@ -1127,6 +1207,9 @@ serve(async (req) => {
         inseridos: results.inserted,
         atualizados: results.updated,
         ignorados: results.skipped,
+        duplicados_arquivo: results.duplicates,
+        invalidos: results.invalid,
+        ...(isLastChunk ? { vinculados_lista: vinculadosLista } : {}),
         erros: results.errors.slice(0, 500),
         ...(isLastChunk ? { 
           status: "concluido", 

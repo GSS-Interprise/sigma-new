@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { usePermissions } from "@/hooks/usePermissions";
 import { Button } from "@/components/ui/button";
-import { Upload, RefreshCw, Eye, Pencil, CheckCircle2, XCircle, Clock, Loader2, FileSpreadsheet, AlertTriangle } from "lucide-react";
+import { Upload, RefreshCw, Eye, Pencil, CheckCircle2, XCircle, Clock, Loader2, FileSpreadsheet, AlertTriangle, ListChecks } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -33,6 +33,12 @@ interface ImportJob {
   inseridos: number;
   atualizados: number;
   ignorados: number;
+  duplicados_arquivo: number;
+  invalidos: number;
+  vinculados_lista: number;
+  lista_destino_id: string | null;
+  lista_criada_automaticamente: boolean;
+  disparo_listas: { nome: string } | null;
   erros: string[];
   mapeamento_colunas: Record<string, string | null>;
   created_at: string;
@@ -65,7 +71,7 @@ export function LeadImportHistoryTab() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("lead_import_jobs")
-        .select("*")
+        .select("*, disparo_listas(nome)")
         .order("created_at", { ascending: false });
       
       if (error) throw error;
@@ -119,9 +125,9 @@ export function LeadImportHistoryTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h3 className="text-lg font-medium">Histórico de Importações</h3>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" onClick={() => refetch()}>
             <RefreshCw className="mr-2 h-4 w-4" />
             Atualizar
@@ -140,10 +146,11 @@ export function LeadImportHistoryTab() {
               <TableHead>Status</TableHead>
               <TableHead>Arquivo</TableHead>
               <TableHead className="text-center">Total</TableHead>
-              <TableHead className="text-center">Inseridos</TableHead>
-              <TableHead className="text-center">Reaproveitados</TableHead>
-              <TableHead className="text-center">Ignorados</TableHead>
-              <TableHead className="text-center">Erros</TableHead>
+              <TableHead className="text-center">Novos</TableHead>
+              <TableHead className="text-center">Já existentes</TableHead>
+              <TableHead className="text-center">Duplicados</TableHead>
+              <TableHead className="text-center">Inválidos</TableHead>
+              <TableHead>Lista criada</TableHead>
               <TableHead>Criado em</TableHead>
               <TableHead>Duração</TableHead>
               <TableHead className="text-right">Ações</TableHead>
@@ -152,14 +159,14 @@ export function LeadImportHistoryTab() {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
                   <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
                   Carregando...
                 </TableCell>
               </TableRow>
             ) : !jobs || jobs.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
                   <FileSpreadsheet className="h-8 w-8 mx-auto mb-2 opacity-50" />
                   Nenhuma importação realizada ainda
                 </TableCell>
@@ -167,7 +174,6 @@ export function LeadImportHistoryTab() {
             ) : (
               jobs.map((job) => {
                 const status = statusConfig[job.status] || statusConfig.pendente;
-                const errorsCount = Array.isArray(job.erros) ? job.erros.length : 0;
                 const isProcessing = job.status === "processando";
                 const progressPercent = job.total_linhas > 0 
                   ? Math.round((job.linhas_processadas / job.total_linhas) * 100)
@@ -202,12 +208,18 @@ export function LeadImportHistoryTab() {
                     </TableCell>
                     <TableCell className="text-center text-green-600 font-medium">{job.inseridos}</TableCell>
                     <TableCell className="text-center text-blue-600 font-medium">{job.atualizados}</TableCell>
-                    <TableCell className="text-center text-muted-foreground">{job.ignorados}</TableCell>
-                    <TableCell className="text-center">
-                      {errorsCount > 0 ? (
-                        <span className="text-red-600 font-medium">{errorsCount}</span>
+                    <TableCell className="text-center text-amber-600 font-medium">{job.duplicados_arquivo || 0}</TableCell>
+                    <TableCell className="text-center text-red-600 font-medium">{job.invalidos || 0}</TableCell>
+                    <TableCell>
+                      {job.lista_destino_id ? (
+                        <Button variant="link" className="h-auto max-w-[220px] justify-start p-0" asChild>
+                          <a href="/disparos/leads?tab=listas" title={job.disparo_listas?.nome || "Abrir listas"}>
+                            <ListChecks className="mr-1 h-3.5 w-3.5 shrink-0" />
+                            <span className="truncate">{job.disparo_listas?.nome || `${job.vinculados_lista} contatos`}</span>
+                          </a>
+                        </Button>
                       ) : (
-                        <span className="text-muted-foreground">0</span>
+                        <span className="text-xs text-muted-foreground">Importação antiga</span>
                       )}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
@@ -254,7 +266,7 @@ export function LeadImportHistoryTab() {
 
       {/* Dialog de detalhes */}
       <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-h-[85dvh] max-w-2xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FileSpreadsheet className="h-5 w-5" />
@@ -295,31 +307,50 @@ export function LeadImportHistoryTab() {
               )}
 
               {/* Resumo */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
                 <div className="bg-muted/50 p-3 rounded-lg">
                   <p className="text-xs text-muted-foreground">Total de Linhas</p>
                   <p className="text-2xl font-bold">{selectedJob.total_linhas}</p>
                 </div>
                 <div className="bg-green-50 p-3 rounded-lg border border-green-200">
-                  <p className="text-xs text-green-600">Inseridos</p>
+                  <p className="text-xs text-green-600">Novos</p>
                   <p className="text-2xl font-bold text-green-600">{selectedJob.inseridos}</p>
                 </div>
                 <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
-                  <p className="text-xs text-blue-600">Reaproveitados</p>
+                  <p className="text-xs text-blue-600">Já existentes</p>
                   <p className="text-2xl font-bold text-blue-600">{selectedJob.atualizados}</p>
                 </div>
                 <div className="bg-amber-50 p-3 rounded-lg border border-amber-200">
-                  <p className="text-xs text-amber-600">Ignorados</p>
-                  <p className="text-2xl font-bold text-amber-600">{selectedJob.ignorados}</p>
+                  <p className="text-xs text-amber-600">Duplicados</p>
+                  <p className="text-2xl font-bold text-amber-600">{selectedJob.duplicados_arquivo || 0}</p>
+                </div>
+                <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+                  <p className="text-xs text-red-600">Inválidos</p>
+                  <p className="text-2xl font-bold text-red-600">{selectedJob.invalidos || 0}</p>
                 </div>
               </div>
 
               <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-950">
-                <strong>Como interpretar:</strong> inseridos são médicos novos. Reaproveitados já
-                existiam no Sigma, foram vinculados à lista e tiveram apenas campos vazios
-                complementados. Ignorados são linhas inválidas ou repetidas dentro da própria
-                planilha; o motivo aparece abaixo.
+                <strong>Como interpretar:</strong> novos foram cadastrados no Sigma. Já existentes
+                foram reaproveitados sem criar cópias. Duplicados apareceram mais de uma vez na
+                planilha; inválidos não puderam ser usados. Todos os contatos válidos ficam na lista.
               </div>
+
+              {selectedJob.lista_destino_id && (
+                <div className="flex flex-col gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-emerald-950">
+                      Lista: {selectedJob.disparo_listas?.nome || "Lista do import"}
+                    </p>
+                    <p className="text-xs text-emerald-800">
+                      {selectedJob.vinculados_lista || 0} contatos deste import vinculados e prontos para campanha.
+                    </p>
+                  </div>
+                  <Button variant="outline" size="sm" asChild>
+                    <a href="/disparos/leads?tab=listas">Abrir lista</a>
+                  </Button>
+                </div>
+              )}
 
               {/* Info do arquivo */}
               <div className="space-y-2">
@@ -338,7 +369,9 @@ export function LeadImportHistoryTab() {
                 <div className="space-y-2">
                   <h4 className="font-medium text-sm">Mapeamento de Colunas</h4>
                   <div className="flex flex-wrap gap-2">
-                    {Object.entries(selectedJob.mapeamento_colunas).map(([field, column]) => {
+                    {Object.entries(selectedJob.mapeamento_colunas)
+                      .filter(([field]) => field !== "_params")
+                      .map(([field, column]) => {
                       // Garantir que column seja string ou null
                       const columnValue = typeof column === 'object' && column !== null
                         ? JSON.stringify(column)

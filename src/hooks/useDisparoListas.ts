@@ -220,15 +220,13 @@ export function useActiveImportJobForLista(listaId: string | null) {
       if (!listaId) return null;
       const { data, error } = await supabase
         .from("lead_import_jobs")
-        .select("id, status, total_linhas, linhas_processadas, chunk_atual, total_chunks, mapeamento_colunas")
+        .select("id, status, total_linhas, linhas_processadas, chunk_atual, total_chunks, lista_destino_id, mapeamento_colunas")
+        .eq("lista_destino_id", listaId)
         .in("status", ["pendente", "processando"])
         .order("created_at", { ascending: false })
-        .limit(20);
+        .limit(1);
       if (error) throw error;
-      const job = (data || []).find(
-        (j: any) => j?.mapeamento_colunas?._params?.lista_destino_id === listaId
-      );
-      return job || null;
+      return data?.[0] || null;
     },
     enabled: !!listaId,
     refetchInterval: (q) => (q.state.data ? 4000 : false),
@@ -245,14 +243,14 @@ export function useActiveImportJobsByLista() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("lead_import_jobs")
-        .select("id, status, total_linhas, linhas_processadas, chunk_atual, total_chunks, mapeamento_colunas")
+        .select("id, status, total_linhas, linhas_processadas, chunk_atual, total_chunks, lista_destino_id")
         .in("status", ["pendente", "processando"])
         .order("created_at", { ascending: false })
         .limit(50);
       if (error) throw error;
       const map: Record<string, any> = {};
       for (const j of data || []) {
-        const lid = (j as any)?.mapeamento_colunas?._params?.lista_destino_id;
+        const lid = j.lista_destino_id;
         if (lid && !map[lid]) map[lid] = j;
       }
       return map;
