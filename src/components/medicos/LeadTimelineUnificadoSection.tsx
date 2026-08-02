@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   MessageSquare, Mail, Bot, User, Settings, Phone, Smartphone,
-  AlertTriangle, CheckCircle2, Flame, Send, Ban
+  AlertTriangle, CheckCircle2, Flame, Send, Ban, GitBranch
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -19,7 +19,7 @@ interface Props {
 interface TimelineRow {
   lead_id: string;
   ts: string;
-  origem: "historico" | "campanha_ia" | "conversa_manual";
+  origem: "historico" | "campanha_ia" | "conversa_manual" | "funil";
   tipo: string;
   operador: "sistema" | "ia" | "humano" | "lead";
   canal: string | null;
@@ -185,6 +185,21 @@ function formatDia(dia: string): string {
 }
 
 function getVisual(ev: TimelineRow) {
+  if (ev.origem === "funil") {
+    const destino = ev.metadados?.etapa_nova;
+    const concluida = destino === "convertido";
+    const perdida = destino === "perdido";
+    return {
+      Icon: concluida ? CheckCircle2 : perdida ? Ban : GitBranch,
+      color: concluida ? "text-emerald-700" : perdida ? "text-red-600" : "text-cyan-700",
+      bg: concluida
+        ? "bg-emerald-50/50 border-emerald-100"
+        : perdida
+          ? "bg-red-50/50 border-red-100"
+          : "bg-cyan-50/50 border-cyan-100",
+      label: "Movimentação do funil",
+    };
+  }
   // IA em campanha
   if (ev.origem === "campanha_ia" && ev.operador === "ia") {
     return { Icon: Bot, color: "text-indigo-600", bg: "bg-indigo-50/50 border-indigo-100", label: "IA (GSS)" };

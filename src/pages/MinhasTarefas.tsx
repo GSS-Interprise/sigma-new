@@ -25,6 +25,7 @@ const CANAL = {
 } as Record<string, { label: string; icon: typeof MessageCircle }>;
 
 const FILTROS = [
+  { key: "fila", label: "Fila do dia", situacoes: ["hoje", "atrasada", "futura", "pendente"] },
   { key: "hoje", label: "Hoje", situacoes: ["hoje"] },
   { key: "atrasadas", label: "Atrasadas", situacoes: ["atrasada"] },
   { key: "pendentes", label: "Hoje + atrasadas", situacoes: ["hoje", "atrasada"] },
@@ -52,7 +53,7 @@ type Task = {
   prioridade_operacional: "urgente" | "alta" | "normal";
   fila_posicao: number;
   horas_atraso: number;
-  sla_status: "no_prazo" | "atencao" | "vencido";
+  sla_status: "aguardando_capacidade" | "no_prazo" | "atencao" | "vencido";
 };
 
 type CapacityRow = {
@@ -69,7 +70,7 @@ type CapacityRow = {
 export default function MinhasTarefas() {
   const qc = useQueryClient();
   const { user } = useAuth();
-  const [filtro, setFiltro] = useState<(typeof FILTROS)[number]["key"]>("pendentes");
+  const [filtro, setFiltro] = useState<(typeof FILTROS)[number]["key"]>("fila");
   // O legado ainda possui campanhas sem dono. "Equipe" preserva a visibilidade
   // operacional enquanto a configuração de responsáveis é regularizada.
   const [escopo, setEscopo] = useState<Escopo>("equipe");
