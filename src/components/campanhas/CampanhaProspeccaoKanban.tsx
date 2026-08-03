@@ -408,7 +408,7 @@ function LeadCard({
     <Card className="relative cursor-pointer transition-all hover:border-primary/50 hover:shadow-md" draggable onDragStart={onDragStart}>
       {campLead.unread_messages > 0 && (
         <div
-          className="absolute -right-2 -top-2 z-10 flex h-6 min-w-6 items-center justify-center gap-1 rounded-full border-2 border-background bg-emerald-600 px-1.5 text-[10px] font-bold text-white shadow-sm"
+          className="absolute right-2 top-2 z-10 flex h-6 min-w-6 items-center justify-center gap-1 rounded-full border-2 border-background bg-emerald-600 px-1.5 text-[10px] font-bold text-white shadow-sm"
           aria-label={`${campLead.unread_messages} mensagem(ns) nova(s) do lead`}
           title={`${campLead.unread_messages} mensagem(ns) nova(s) do lead`}
         >

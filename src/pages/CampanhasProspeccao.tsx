@@ -374,7 +374,7 @@ export default function CampanhasProspeccao() {
           }
         >
           <div className="p-4 md:p-6 space-y-4">
-            {/* Manual: a equipe conduz — sem "IA Conversando"; em_conversa = "Aquecido" (respondeu) */}
+            {/* Manual: a equipe conduz; em_conversa significa que o médico respondeu. */}
             <div className={`grid grid-cols-2 gap-3 ${campanhaSelecionada.tipo_envio === "manual" ? "md:grid-cols-5" : "md:grid-cols-6"}`}>
               <MetricCard
                 label="Pendentes"
@@ -388,9 +388,9 @@ export default function CampanhasProspeccao() {
               />
               {campanhaSelecionada.tipo_envio === "manual" ? (
                 <MetricCard
-                  label="Aquecido"
+                  label="Respondeu"
                   value={campanhaSelecionada.total_em_conversa}
-                  color="text-amber-600"
+                  color="text-orange-600"
                 />
               ) : (
                 <>
