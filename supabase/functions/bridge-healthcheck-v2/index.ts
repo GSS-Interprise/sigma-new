@@ -138,6 +138,10 @@ async function checkWebhooksConfig(supabase: any): Promise<Metric> {
     .select("instance_name")
     .eq("status", "ativo")
     .eq("tipo_instancia", "disparos")
+    // Apenas chips explicitamente classificados para prospecção IA usam o
+    // bridge automático. Chips manuais/legados sem categoria não devem gerar
+    // alerta de webhook errado nem ser roteados para a IA por acidente.
+    .eq("categoria_uso", "prospeccao_ia")
     .eq("pode_disparar", true)
     .not("instance_name", "is", null);
 
@@ -224,9 +228,13 @@ async function checkFluxoSaida(supabase: any, isHorComercial: boolean): Promise<
   // Existe campanha ativa com pool > 0 disponível pra disparar?
   const { data: campsAtivas } = await supabase
     .from("campanhas")
-    .select("id, nome, limite_diario_campanha")
+    .select("id, nome, limite_diario_campanha, tipo_envio, whatsapp_provider")
     .eq("status", "ativa")
-    .eq("tipo_campanha", "prospeccao");
+    .eq("tipo_campanha", "prospeccao")
+    // Campanhas manuais dependem da operadora e não geram touches automáticos.
+    // Incluí-las aqui produzia falso positivo de bridge caída quando havia
+    // leads frios aguardando o primeiro contato manual.
+    .in("tipo_envio", ["ia", "ambos"]);
 
   if (!campsAtivas || campsAtivas.length === 0) return { ok: true, detail: "sem campanhas ativas" };
 
