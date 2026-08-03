@@ -27,6 +27,22 @@ serve(async (req) => {
   const supabase = createClient(supabaseUrl, supabaseKey);
 
   try {
+    // A função precisa permanecer sem verificação JWT no gateway porque a
+    // cadência interna chama com service role, mas isso não pode transformá-la
+    // em um relay público usando a chave do Resend.
+    const authorization = req.headers.get("Authorization") || "";
+    const isServiceRole = authorization === `Bearer ${supabaseKey}`;
+    if (!isServiceRole) {
+      const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
+      const authClient = createClient(supabaseUrl, anonKey, {
+        global: { headers: { Authorization: authorization } },
+      });
+      const { data: { user }, error: userError } = await authClient.auth.getUser();
+      if (userError || !user) {
+        return jsonResp({ ok: false, error: "unauthorized" }, 401);
+      }
+    }
+
     const payload = (await req.json()) as EmailPayload;
     if (!payload.to) throw new Error("campo 'to' obrigatório");
     if (!payload.subject) throw new Error("campo 'subject' obrigatório");
