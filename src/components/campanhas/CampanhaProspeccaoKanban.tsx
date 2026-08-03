@@ -406,16 +406,6 @@ function LeadCard({
 
   return (
     <Card className="relative cursor-pointer transition-all hover:border-primary/50 hover:shadow-md" draggable onDragStart={onDragStart}>
-      {campLead.unread_messages > 0 && (
-        <div
-          className="absolute right-2 top-2 z-10 flex h-6 min-w-6 items-center justify-center gap-1 rounded-full border-2 border-background bg-emerald-600 px-1.5 text-[10px] font-bold text-white shadow-sm"
-          aria-label={`${campLead.unread_messages} mensagem(ns) nova(s) do lead`}
-          title={`${campLead.unread_messages} mensagem(ns) nova(s) do lead`}
-        >
-          <MessageCircle className="h-3 w-3" aria-hidden="true" />
-          {campLead.unread_messages > 9 ? "9+" : campLead.unread_messages}
-        </div>
-      )}
       <CardContent className="p-3 space-y-1.5">
         <div className="flex items-start gap-2" onClick={onClick}>
           <GripVertical className="h-4 w-4 text-muted-foreground/40 mt-0.5 flex-shrink-0" />
@@ -424,6 +414,16 @@ function LeadCard({
             {lead.especialidade && <p className="text-xs text-muted-foreground truncate">{lead.especialidade}</p>}
           </div>
           {/* quem está no lead (colaboração) */}
+          {campLead.unread_messages > 0 && (
+            <div
+              className="flex h-6 min-w-6 shrink-0 items-center justify-center gap-1 rounded-full bg-emerald-600 px-1.5 text-[10px] font-bold text-white shadow-sm"
+              aria-label={`${campLead.unread_messages} mensagem(ns) nova(s) do lead`}
+              title={`${campLead.unread_messages} mensagem(ns) nova(s) do lead`}
+            >
+              <MessageCircle className="h-3 w-3" aria-hidden="true" />
+              {campLead.unread_messages > 9 ? "9+" : campLead.unread_messages}
+            </div>
+          )}
           {assumidoNome && (
             <span title={`Em atendimento: ${assumidoNome}`}
               className="shrink-0 h-6 w-6 rounded-full bg-primary/15 text-primary text-[10px] font-bold flex items-center justify-center">

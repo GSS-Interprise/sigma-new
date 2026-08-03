@@ -62,6 +62,11 @@ export function useCampanhaLeads(campanhaId?: string) {
   const query = useQuery({
     queryKey: ["campanha-leads", campanhaId],
     enabled: !!campanhaId,
+    // O Realtime pode perder eventos quando a aba fica em segundo plano ou a
+    // conexão websocket é retomada. A reconciliação curta mantém o Kanban fiel
+    // ao banco sem exigir que a operadora atualize a página manualmente.
+    refetchInterval: 5_000,
+    refetchIntervalInBackground: true,
     queryFn: async () => {
       // PostgREST limita a 1000 linhas/request. Campanhas grandes (ex: import com 3.9k leads)
       // ficavam capadas em 1000 no Kanban. Paginar até trazer todas (cap de segurança 20k).

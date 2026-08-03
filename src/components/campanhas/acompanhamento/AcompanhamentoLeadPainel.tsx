@@ -84,14 +84,43 @@ export function AcompanhamentoLeadPainel({ lead, onClose }: Props) {
         .eq("lead_id", lead.lead_id)
         .gt("unread_count", 0);
       if (!error && active) {
-        await queryClient.invalidateQueries({ queryKey: ["acompanhamento-leads"] });
+        // Reflete a leitura imediatamente no card aberto e no Kanban. Antes só
+        // outro cache era invalidado, por isso a bolinha sumia apenas no refresh.
+        queryClient.setQueryData(
+          ["acompanhamento-lead-by-campanha-lead", lead.campanha_lead_id],
+          (current: typeof lead | null | undefined) => current
+            ? { ...current, unread_messages: 0 }
+            : current,
+        );
+        queryClient.setQueryData(
+          ["campanha-leads", lead.campanha_id],
+          (current: Array<{ lead_id: string; unread_messages: number }> | undefined) =>
+            current?.map((item) => item.lead_id === lead.lead_id
+              ? { ...item, unread_messages: 0 }
+              : item),
+        );
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["acompanhamento-leads"] }),
+          queryClient.invalidateQueries({ queryKey: ["campanha-leads", lead.campanha_id] }),
+          queryClient.invalidateQueries({
+            queryKey: ["acompanhamento-lead-by-campanha-lead", lead.campanha_lead_id],
+          }),
+        ]);
       }
     };
     void marcarComoLida();
     return () => {
       active = false;
     };
-  }, [isMobile, lead?.lead_id, lead?.unread_messages, queryClient, tab]);
+  }, [
+    isMobile,
+    lead?.campanha_id,
+    lead?.campanha_lead_id,
+    lead?.lead_id,
+    lead?.unread_messages,
+    queryClient,
+    tab,
+  ]);
 
   // Histórico da conversa atual (campanha_leads.historico_conversa)
   const { data: historicoConversa = [] } = useQuery({
