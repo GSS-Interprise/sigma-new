@@ -40,6 +40,13 @@ interface OutboxMsg {
   created_at: string;
 }
 
+interface OfficialTemplateOption {
+  id: string;
+  friendly_name: string;
+  category: string | null;
+  language: string;
+}
+
 /**
  * Mostra a conversa REAL do SigZap pelo lead_id (FK adicionada em F1.3).
  * Cross-campanha: se o mesmo médico está em N campanhas, a conversa
@@ -72,7 +79,7 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
     queryFn: async () => {
       const { data } = await (supabase as any)
         .from("sigzap_conversations")
-        .select("id, instance_id, last_message_at, instance:instance_id(name, provider), contact:contact_id(contact_jid, contact_phone)")
+        .select("id, instance_id, last_message_at, service_window_expires_at, instance:instance_id(name, provider), contact:contact_id(contact_jid, contact_phone)")
         .eq("lead_id", leadId)
         .order("last_message_at", { ascending: false, nullsFirst: false })
         .limit(1)
@@ -81,10 +88,12 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
         id: string;
         instance_id: string | null;
         last_message_at: string | null;
+        service_window_expires_at: string | null;
         instance: { name: string | null; provider: string | null } | null;
         contact: { contact_jid: string | null; contact_phone: string | null } | null;
       } | null;
     },
+    refetchInterval: 5_000,
   });
 
   const { data: campanhaCanal } = useQuery({
@@ -101,6 +110,32 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
     },
   });
   const isOfficialCampaign = campanhaCanal?.whatsapp_provider === "twilio";
+  const [officialTemplateId, setOfficialTemplateId] = useState("");
+  const { data: officialTemplates = [] } = useQuery({
+    queryKey: ["approved-official-templates-for-conversation"],
+    enabled: isOfficialCampaign,
+    queryFn: async (): Promise<OfficialTemplateOption[]> => {
+      const { data, error } = await supabase
+        .from("whatsapp_official_templates" as never)
+        .select("id, friendly_name, category, language")
+        .eq("approval_status", "approved")
+        .order("friendly_name");
+      if (error) throw error;
+      return (data || []) as OfficialTemplateOption[];
+    },
+    staleTime: 60_000,
+  });
+
+  useEffect(() => {
+    if (officialTemplateId && officialTemplates.some((template) => template.id === officialTemplateId)) return;
+    const preferred = officialTemplates.find((template) => template.id === campanhaCanal?.official_template_id);
+    setOfficialTemplateId(preferred?.id || officialTemplates[0]?.id || "");
+  }, [campanhaCanal?.official_template_id, officialTemplateId, officialTemplates]);
+
+  const isOfficialConversation = conv?.instance?.provider === "twilio";
+  const officialServiceWindowOpen = !isOfficialConversation || Boolean(
+    conv?.service_window_expires_at && new Date(conv.service_window_expires_at).getTime() > Date.now(),
+  );
 
   // #5 (pedido equipe 11/06): escolher por qual chip a resposta sai. Default = chip da
   // conversa (continuidade: médico já conhece esse número). Operadora pode trocar pra
@@ -199,8 +234,9 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
       if (!campanhaId) throw new Error("Sem campanha no contexto");
       if (isOfficialCampaign) {
         if (!campanhaLeadId) throw new Error("Lead da campanha não identificado");
+        if (!officialTemplateId) throw new Error("Escolha um template oficial aprovado.");
         const { data, error } = await supabase.functions.invoke("twilio-whatsapp-send", {
-          body: { campaign_lead_id: campanhaLeadId },
+          body: { campaign_lead_id: campanhaLeadId, template_id: officialTemplateId },
         });
         if (error) throw new Error(error.message || "Não foi possível enviar o template oficial");
         if ((data as any)?.error) throw new Error((data as any).error);
@@ -243,7 +279,29 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
         .limit(500);
       return (data ?? []) as SigzapMsg[];
     },
+    refetchInterval: 5_000,
   });
+
+  const messagesRealtimeIdRef = useRef(`acompanhamento-mensagens-${crypto.randomUUID()}`);
+  useEffect(() => {
+    if (!conv?.id) return;
+    const channel = supabase
+      .channel(`${messagesRealtimeIdRef.current}-${conv.id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "sigzap_messages", filter: `conversation_id=eq.${conv.id}` },
+        () => void qc.invalidateQueries({ queryKey: ["acompanhamento-conv-msgs", conv.id] }),
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "sigzap_conversations", filter: `id=eq.${conv.id}` },
+        () => void qc.invalidateQueries({ queryKey: ["acompanhamento-conv-by-lead", leadId] }),
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [conv?.id, leadId, qc]);
 
   const { data: outbox = [] } = useQuery({
     queryKey: ["acompanhamento-outbox", conv?.id],
@@ -447,7 +505,32 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
               <span className="text-amber-600 shrink-0" title="O médico vai receber de um número diferente do que vinha conversando.">⚠ número diferente</span>
             )}
           </div>}
-          <div className="flex items-end gap-2">
+          {isOfficialConversation && !officialServiceWindowOpen ? (
+            <div className="space-y-3 rounded-md border border-amber-300 bg-amber-50 p-3">
+              <div>
+                <p className="text-sm font-medium text-amber-900">Janela de atendimento encerrada</p>
+                <p className="mt-1 text-xs text-amber-800">
+                  Escolha um template aprovado. Nenhum texto digitado será substituído ou enviado automaticamente.
+                </p>
+              </div>
+              <OfficialTemplateSelect
+                templates={officialTemplates}
+                value={officialTemplateId}
+                onChange={setOfficialTemplateId}
+              />
+              <Button
+                type="button"
+                className="min-h-11 w-full sm:w-auto"
+                disabled={!officialTemplateId || enviar1oContato.isPending}
+                onClick={() => enviar1oContato.mutate("template-oficial")}
+              >
+                {enviar1oContato.isPending
+                  ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  : <Send className="mr-2 h-4 w-4" />}
+                Enviar template escolhido
+              </Button>
+            </div>
+          ) : <div className="flex items-end gap-2">
           <Textarea
             value={texto}
             onChange={(e) => setTexto(e.target.value)}
@@ -470,7 +553,7 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
           >
             {enviar.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </Button>
-          </div>
+          </div>}
         </div>
       ) : campanhaId ? (
         <div className="mt-4 border-t pt-3">
@@ -481,11 +564,16 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
           {isOfficialCampaign ? (
             <div className="space-y-2">
               <p className="text-xs text-muted-foreground">
-                O primeiro contato será enviado com o template oficial e as variáveis configuradas na campanha.
+                Escolha o template oficial do primeiro contato. A categoria aprovada aparece ao lado do nome.
               </p>
+              <OfficialTemplateSelect
+                templates={officialTemplates}
+                value={officialTemplateId}
+                onChange={setOfficialTemplateId}
+              />
               <Button
                 className="min-h-11 w-full sm:w-auto"
-                disabled={enviar1oContato.isPending}
+                disabled={!officialTemplateId || enviar1oContato.isPending}
                 onClick={() => enviar1oContato.mutate("template-oficial")}
               >
                 {enviar1oContato.isPending
@@ -526,6 +614,36 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
         </div>
       ) : null}
     </>
+  );
+}
+
+function OfficialTemplateSelect({
+  templates,
+  value,
+  onChange,
+}: {
+  templates: OfficialTemplateOption[];
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="block space-y-1.5 text-xs font-medium">
+      <span>Template oficial</span>
+      <select
+        className="min-h-11 w-full rounded-md border border-input bg-background px-3 text-sm"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        disabled={templates.length === 0}
+      >
+        {templates.length === 0 ? (
+          <option value="">Nenhum template aprovado disponível</option>
+        ) : templates.map((template) => (
+          <option key={template.id} value={template.id}>
+            {template.friendly_name} · {template.category || "SEM CATEGORIA"} · {template.language}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 

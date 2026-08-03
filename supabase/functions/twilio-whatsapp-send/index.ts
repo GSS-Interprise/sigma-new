@@ -181,7 +181,10 @@ serve(async (req) => {
     }
 
     let template: any = null;
-    const templateId = templateIdInput || campaign?.official_template_id || "";
+    // Em uma conversa existente, texto livre deve continuar sendo texto livre.
+    // O template só é automático no primeiro contato; depois disso precisa ser
+    // escolhido explicitamente pela operadora quando a janela estiver fechada.
+    const templateId = templateIdInput || (!conversationIdInput ? campaign?.official_template_id : "") || "";
     if (templateId) {
       const { data, error } = await admin
         .from("whatsapp_official_templates")
