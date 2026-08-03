@@ -85,6 +85,10 @@ Você está recebendo este e-mail porque foi identificado como potencial profiss
       ? `${payload.html}<hr style="margin-top:32px;border:none;border-top:1px solid #ddd"><p style="color:#888;font-size:12px;line-height:1.5;font-family:sans-serif">Você está recebendo este e-mail porque foi identificado como potencial profissional para vagas médicas da GSS Saúde. Se não deseja mais receber nossos contatos, <a href="mailto:${replyTo}?subject=PARAR">clique aqui</a> ou responda esta mensagem com "PARAR".</p>`
       : undefined;
 
+    const htmlWithCharset = htmlFinal
+      ? `<!doctype html><html><head><meta charset="UTF-8"></head><body>${htmlFinal}</body></html>`
+      : undefined;
+
     // 3. Envia via Resend API
     const resendBody: any = {
       from: `${fromName} <${fromEmail}>`,
@@ -92,7 +96,7 @@ Você está recebendo este e-mail porque foi identificado como potencial profiss
       subject: payload.subject,
       reply_to: replyTo,
     };
-    if (htmlFinal) resendBody.html = htmlFinal;
+    if (htmlWithCharset) resendBody.html = htmlWithCharset;
     if (textFinal) resendBody.text = textFinal;
 
     // Tags pra tracking (Resend aceita)
@@ -104,7 +108,7 @@ Você está recebendo este e-mail porque foi identificado como potencial profiss
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
+        "Content-Type": "application/json; charset=utf-8",
       },
       body: JSON.stringify(resendBody),
     });

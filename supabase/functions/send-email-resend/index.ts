@@ -8,7 +8,12 @@ const corsHeaders = {
 };
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
-const FROM = Deno.env.get("RESEND_FROM") ?? "Sigma GSS <onboarding@resend.dev>";
+const RESEND_FROM_EMAIL = Deno.env.get("RESEND_FROM_EMAIL");
+// Preferimos o endereço dedicado e um nome ASCII estável: a secret RESEND_FROM
+// antiga tinha bytes corrompidos no nome exibido pelo Gmail.
+const FROM = RESEND_FROM_EMAIL
+  ? `GSS Saude <${RESEND_FROM_EMAIL}>`
+  : (Deno.env.get("RESEND_FROM") ?? "Sigma GSS <onboarding@resend.dev>");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 
@@ -54,17 +59,21 @@ serve(async (req) => {
     if (!body.subject) throw new Error("'subject' obrigatório");
     if (!body.html && !body.text) throw new Error("'html' ou 'text' obrigatório");
 
+    const html = body.html
+      ? `<!doctype html><html><head><meta charset="UTF-8"></head><body>${body.html}</body></html>`
+      : undefined;
+
     const resp = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${RESEND_API_KEY}`,
-        "Content-Type": "application/json",
+        "Content-Type": "application/json; charset=utf-8",
       },
       body: JSON.stringify({
         from: body.from ?? FROM,
         to: Array.isArray(body.to) ? body.to : [body.to],
         subject: body.subject,
-        html: body.html,
+        html,
         text: body.text,
         reply_to: body.reply_to,
         attachments: body.attachments,
