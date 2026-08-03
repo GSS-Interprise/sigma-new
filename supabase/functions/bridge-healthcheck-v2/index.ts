@@ -228,7 +228,7 @@ async function checkFluxoSaida(supabase: any, isHorComercial: boolean): Promise<
   // Existe campanha ativa com pool > 0 disponível pra disparar?
   const { data: campsAtivas } = await supabase
     .from("campanhas")
-    .select("id, nome, limite_diario_campanha, tipo_envio, whatsapp_provider")
+    .select("id, nome, limite_diario_campanha, tipo_envio, whatsapp_provider, chip_id, chip_ids")
     .eq("status", "ativa")
     .eq("tipo_campanha", "prospeccao")
     // Campanhas manuais dependem da operadora e não geram touches automáticos.
@@ -248,7 +248,41 @@ async function checkFluxoSaida(supabase: any, isHorComercial: boolean): Promise<
 
   if (!friosPendentes || friosPendentes === 0) return { ok: true, detail: "sem leads frios pra disparar" };
 
-  // Houve touches executados nas últimas N horas?
+  // Primeiro confirma se existe capacidade operacional para executar touches.
+  // Diferencia ausência de capacidade operacional de uma fila realmente
+  // travada. Sem um chip IA aberto, nenhum worker consegue criar touch,
+  // portanto "0 touches" sozinho induzia a equipe a investigar a fila errada.
+  const configuredChipIds = [...new Set(
+    campsAtivas.flatMap((camp: any) => [
+      ...(Array.isArray(camp.chip_ids) ? camp.chip_ids : []),
+      ...(camp.chip_id ? [camp.chip_id] : []),
+    ].filter(Boolean)),
+  )];
+
+  if (configuredChipIds.length === 0) {
+    return {
+      ok: false,
+      detail: `${friosPendentes} frios esperando, nenhuma campanha IA tem chip atribuído — atribua um chip antes de investigar a fila`,
+    };
+  }
+
+  const { count: chipsOperacionais } = await supabase
+    .from("chips")
+    .select("id", { count: "exact", head: true })
+    .in("id", configuredChipIds)
+    .eq("status", "ativo")
+    .eq("connection_state", "open")
+    .eq("tipo_instancia", "disparos")
+    .eq("categoria_uso", "prospeccao_ia")
+    .eq("pode_disparar", true);
+
+  if (!chipsOperacionais || chipsOperacionais === 0) {
+    return {
+      ok: false,
+      detail: `${friosPendentes} frios esperando, 0 chips IA operacionais conectados — reconecte/atribua um chip antes de investigar a fila`,
+    };
+  }
+
   const desde = new Date(Date.now() - FLUXO_SAIDA_GAP_HORAS * 3600_000).toISOString();
   const { count: touchesRecentes } = await supabase
     .from("campanha_lead_touches")
