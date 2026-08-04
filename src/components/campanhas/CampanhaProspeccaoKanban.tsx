@@ -72,6 +72,7 @@ export function CampanhaProspeccaoKanban({ campanhaId }: Props) {
   const [searchTerm, setSearchTerm] = useState("");
   const [filtroUf, setFiltroUf] = useState("__all");
   const [filtroEsp, setFiltroEsp] = useState("__all");
+  const [filtroTag, setFiltroTag] = useState("__all");
   const [draggedLead, setDraggedLead] = useState<string | null>(null);
   const [campanhaLeadAbertoId, setCampanhaLeadAbertoId] = useState<string | null>(null);
   const [tagCatalogOpen, setTagCatalogOpen] = useState(false);
@@ -170,6 +171,7 @@ export function CampanhaProspeccaoKanban({ campanhaId }: Props) {
     let arr = byStatus[status] || [];
     if (filtroUf !== "__all") arr = arr.filter((cl) => cl.lead?.uf === filtroUf);
     if (filtroEsp !== "__all") arr = arr.filter((cl) => cl.lead?.especialidade === filtroEsp);
+    if (filtroTag !== "__all") arr = arr.filter((cl) => cl.lead?.tags?.includes(filtroTag));
     const term = searchTerm.trim().toLowerCase();
     if (term) {
       arr = arr.filter(
@@ -189,7 +191,7 @@ export function CampanhaProspeccaoKanban({ campanhaId }: Props) {
   };
 
   const totalFiltrado = colunas.reduce((s, c) => s + filteredByStatus(c.id).length, 0);
-  const filtrando = filtroUf !== "__all" || filtroEsp !== "__all" || !!searchTerm.trim();
+  const filtrando = filtroUf !== "__all" || filtroEsp !== "__all" || filtroTag !== "__all" || !!searchTerm.trim();
 
   const handleDrop = (targetStatus: StatusLeadCampanha) => {
     if (!draggedLead) return;
@@ -235,6 +237,20 @@ export function CampanhaProspeccaoKanban({ campanhaId }: Props) {
             </SelectContent>
           </Select>
         )}
+        {tagsSugeridas.length > 0 && (
+          <Select value={filtroTag} onValueChange={setFiltroTag}>
+            <SelectTrigger className="min-h-11 w-full sm:w-[180px]">
+              <Tag className="mr-1 h-3.5 w-3.5 text-muted-foreground" />
+              <SelectValue placeholder="Tag" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all">Todas as tags</SelectItem>
+              {tagsSugeridas.map((tag) => (
+                <SelectItem key={tag} value={tag}>{tag}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         {isAdmin && (
           <Button
             type="button"
@@ -247,7 +263,7 @@ export function CampanhaProspeccaoKanban({ campanhaId }: Props) {
           </Button>
         )}
         {filtrando && (
-          <button className="text-xs text-muted-foreground hover:text-foreground underline" onClick={() => { setSearchTerm(""); setFiltroUf("__all"); setFiltroEsp("__all"); }}>limpar filtros</button>
+          <button className="min-h-11 text-xs text-muted-foreground hover:text-foreground underline" onClick={() => { setSearchTerm(""); setFiltroUf("__all"); setFiltroEsp("__all"); setFiltroTag("__all"); }}>limpar filtros</button>
         )}
         <Badge variant="outline" className="text-sm ml-auto">
           {filtrando ? `${totalFiltrado} de ${leads.length}` : `${leads.length}`} leads
