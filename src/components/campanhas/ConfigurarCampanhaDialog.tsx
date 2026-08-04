@@ -176,6 +176,12 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
     }
   }, [whatsappProvider, officialSenderId, officialSenders]);
 
+  // Uma campanha Twilio não pode carregar chips Evolution, mesmo ao restaurar
+  // uma configuração antiga ou trocar de provedor rapidamente.
+  useEffect(() => {
+    if (whatsappProvider === "twilio" && chipIds.length > 0) setChipIds([]);
+  }, [whatsappProvider, chipIds.length]);
+
   const handleProviderChange = (provider: "evolution" | "twilio") => {
     setWhatsappProvider(provider);
     if (provider === "twilio") setChipIds([]);
@@ -357,8 +363,8 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
                   </Select>
                   <p className="text-xs text-muted-foreground">
                     {whatsappProvider === "twilio"
-                      ? "Usa template aprovado pela Meta. Não depende dos chips conectados ao Sigma."
-                      : "Usa os chips atuais conectados pela Evolution."}
+                      ? "API oficial: usa template aprovado e número remetente. Não depende dos chips conectados ao Sigma."
+                      : "Evolution: usa os chips conectados selecionados para o disparo."}
                   </p>
                 </div>
 

@@ -251,6 +251,12 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
     }
   }, [whatsappProvider, officialSenderId, officialSenders]);
 
+  // O provedor oficial nunca usa chips Evolution, inclusive se a seleção vier
+  // de um estado restaurado do navegador ou de uma troca rápida no formulário.
+  useEffect(() => {
+    if (whatsappProvider === "twilio" && chipIds.length > 0) setChipIds([]);
+  }, [whatsappProvider, chipIds.length]);
+
   const handleProviderChange = (provider: "evolution" | "twilio") => {
     setWhatsappProvider(provider);
     if (provider === "twilio") setChipIds([]);
@@ -720,6 +726,12 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
                   <SelectItem value="twilio">API oficial · Twilio/WhatsApp</SelectItem>
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">
+                {whatsappProvider === "twilio"
+                  ? "API oficial: escolha o número remetente e um template aprovado. Chips Evolution não participam desta campanha."
+                  : "Evolution: escolha os chips conectados que farão os disparos."
+                }
+              </p>
             </div>
 
             <div className="space-y-1.5">
