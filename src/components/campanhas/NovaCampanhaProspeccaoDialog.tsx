@@ -532,7 +532,7 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
     },
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["campanhas-prospeccao"] });
-      toast.success("Campanha criada! Agora adicione os leads pra ela começar a rodar.");
+      toast.success("Campanha criada! Agora escolha a lista, importe uma planilha ou selecione os médicos e defina a estratégia.");
       resetForm();
       onOpenChange(false);
       if (data?.id) onCreated?.(data.id);

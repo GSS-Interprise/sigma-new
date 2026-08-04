@@ -737,7 +737,12 @@ export default function CampanhasProspeccao() {
         <NovaCampanhaProspeccaoDialog
           open={dialogOpen}
           onOpenChange={setDialogOpen}
-          onCreated={(id) => setSelecionada(id)}
+          onCreated={(id) => {
+            // A campanha nasce vazia por segurança: o próximo passo já abre
+            // a origem dos leads e exige a estratégia antes de qualquer inclusão.
+            setSelecionada(id);
+            setAddDoctorsOpen(true);
+          }}
         />
 
         <ConfigurarCampanhaDialog
