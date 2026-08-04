@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -28,6 +28,7 @@ import { AcompanhamentoLeadPainel } from "@/components/campanhas/acompanhamento/
 import type { AcompanhamentoLead } from "@/hooks/useAcompanhamentoLeads";
 import { usePermissions } from "@/hooks/usePermissions";
 import { LeadTagCatalogDialog } from "./LeadTagCatalogDialog";
+import { toast } from "sonner";
 
 interface KanbanColumn {
   id: StatusLeadCampanha;
@@ -136,6 +137,33 @@ export function CampanhaProspeccaoKanban({ campanhaId }: Props) {
       return (data ?? []).map((tag) => String((tag as { label: string }).label));
     },
     staleTime: 5 * 60_000,
+  });
+
+  const queryClient = useQueryClient();
+  const criarTag = useMutation({
+    mutationFn: async (label: string) => {
+      const normalized = label.trim().replace(/\s+/g, " ");
+      if (normalized.length < 2 || normalized.length > 60) {
+        throw new Error("A tag precisa ter entre 2 e 60 caracteres.");
+      }
+      const { data, error } = await supabase.functions.invoke("create-lead-tag", {
+        body: { label: normalized },
+      });
+      if (error) throw error;
+      if (!data?.label) throw new Error(data?.error || "Não foi possível criar a tag.");
+      return String(data.label);
+    },
+    onSuccess: (label) => {
+      void queryClient.invalidateQueries({ queryKey: ["lead-tag-catalog-active"] });
+      void queryClient.invalidateQueries({ queryKey: ["lead-tag-catalog-admin"] });
+      toast.success(`Tag "${label}" criada.`);
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error(message.includes("duplicate") || message.includes("unique")
+        ? "Essa tag já existe no catálogo."
+        : message);
+    },
   });
 
   const filteredByStatus = (status: StatusLeadCampanha) => {
@@ -259,6 +287,7 @@ export function CampanhaProspeccaoKanban({ campanhaId }: Props) {
                         const novas = atuais.includes(tag) ? atuais.filter((t) => t !== tag) : [...atuais, tag];
                         updateTags.mutate({ lead_id: cl.lead_id, tags: novas });
                       }}
+                      onCreateTag={(label) => criarTag.mutateAsync(label)}
                     />
                   ))}
                   {colLeads.length === 0 && <p className="text-xs text-muted-foreground text-center py-8">Nenhum lead</p>}
@@ -388,7 +417,7 @@ function iniciais(nome?: string) {
 }
 
 function LeadCard({
-  campLead, assumidoNome, tipoEnvio, tagsSugeridas, onDragStart, onClick, onToggleTag,
+  campLead, assumidoNome, tipoEnvio, tagsSugeridas, onDragStart, onClick, onToggleTag, onCreateTag,
 }: {
   campLead: CampanhaLead;
   assumidoNome?: string;
@@ -397,7 +426,10 @@ function LeadCard({
   onDragStart: () => void;
   onClick: () => void;
   onToggleTag: (tag: string) => void;
+  onCreateTag: (label: string) => Promise<unknown>;
 }) {
+  const [novaTag, setNovaTag] = useState("");
+  const [criandoTag, setCriandoTag] = useState(false);
   const lead = campLead.lead;
   if (!lead) return null;
   const tags = lead.tags || [];
@@ -506,8 +538,41 @@ function LeadCard({
                   );
                 })}
               </div>
-              <p className="text-[10px] text-muted-foreground">
-                Novas tags são cadastradas no catálogo administrativo.
+              <div className="flex gap-1.5 border-t pt-2">
+                <Input
+                  value={novaTag}
+                  onChange={(event) => setNovaTag(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter" || !novaTag.trim() || criandoTag) return;
+                    event.preventDefault();
+                    setCriandoTag(true);
+                    void onCreateTag(novaTag).then((label) => {
+                      onToggleTag(String(label));
+                      setNovaTag("");
+                    }).finally(() => setCriandoTag(false));
+                  }}
+                  placeholder="Nova tag"
+                  className="h-9 min-w-0 text-xs"
+                  maxLength={60}
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-9 shrink-0"
+                  disabled={!novaTag.trim() || criandoTag}
+                  onClick={() => {
+                    setCriandoTag(true);
+                    void onCreateTag(novaTag).then((label) => {
+                      onToggleTag(String(label));
+                      setNovaTag("");
+                    }).finally(() => setCriandoTag(false));
+                  }}
+                >
+                  Criar
+                </Button>
+              </div>
+              <p className="mt-1 text-[10px] text-muted-foreground">
+                A nova tag fica disponível para toda a equipe.
               </p>
             </PopoverContent>
           </Popover>

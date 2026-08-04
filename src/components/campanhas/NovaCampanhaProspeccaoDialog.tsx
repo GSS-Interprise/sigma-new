@@ -251,6 +251,16 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
     }
   }, [whatsappProvider, officialSenderId, officialSenders]);
 
+  const handleProviderChange = (provider: "evolution" | "twilio") => {
+    setWhatsappProvider(provider);
+    if (provider === "twilio") setChipIds([]);
+    if (provider === "evolution") {
+      setOfficialTemplateId(null);
+      setOfficialSenderId(null);
+      setOfficialTemplateVariables({});
+    }
+  };
+
   const applyBriefing = (sourceId: string) => {
     setBriefingSourceId(sourceId);
     const source = briefingSources.find((campaign) => campaign.id === sourceId);
@@ -703,7 +713,7 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
 
             <div className="space-y-2">
               <Label>Canal de WhatsApp</Label>
-              <Select value={whatsappProvider} onValueChange={(value) => setWhatsappProvider(value as "evolution" | "twilio")}>
+              <Select value={whatsappProvider} onValueChange={(value) => handleProviderChange(value as "evolution" | "twilio")}>
                 <SelectTrigger className="min-h-11"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="evolution">API não oficial · Evolution</SelectItem>
@@ -1161,6 +1171,7 @@ GSS Saúde`}
               </div>
             )}
 
+            {whatsappProvider === "evolution" && (
             <div className="space-y-1.5">
               <Label className="flex items-center gap-1.5">
                 <Zap className="h-3.5 w-3.5" />
@@ -1200,6 +1211,7 @@ GSS Saúde`}
                 </p>
               )}
             </div>
+            )}
           </TabsContent>
 
           <TabsContent value="mensagem" className="space-y-4 mt-4">

@@ -434,7 +434,7 @@ export default function CampanhasProspeccao() {
                   className="min-h-11 w-full rounded-md border bg-background px-3 text-sm sm:max-w-64"
                   value={strategyToAdd}
                   onChange={(event) => setStrategyToAdd(event.target.value)}
-                  aria-label="Estratégia para adicionar leads"
+                  aria-label="Estratégia para reaproveitar perdidos"
                 >
                   {addStrategies.map((strategy) => (
                     <option key={strategy.id} value={strategy.id}>
@@ -446,19 +446,10 @@ export default function CampanhasProspeccao() {
               <Button
                 size="sm"
                 className={`min-h-11 ${totalLeadsDe(campanhaSelecionada) === 0 ? "ring-2 ring-sky-400 ring-offset-1" : ""}`}
-                onClick={() =>
-                  adicionarLeads.mutate({
-                    campanha_id: selecionada,
-                    strategy_id: strategyToAdd || undefined,
-                    limite: campanhaSelecionada.limite_diario_campanha || 50,
-                  })
-                }
-                disabled={adicionarLeads.isPending}
+                onClick={() => setAddDoctorsOpen(true)}
               >
                 <UserPlus className="h-4 w-4 mr-1" />
-                {adicionarLeads.isPending
-                  ? "Adicionando..."
-                  : "Adicionar Leads à Base"}
+                Selecionar leads e estratégia
               </Button>
               <Button
                 size="sm"

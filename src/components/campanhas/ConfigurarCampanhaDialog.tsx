@@ -176,6 +176,16 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
     }
   }, [whatsappProvider, officialSenderId, officialSenders]);
 
+  const handleProviderChange = (provider: "evolution" | "twilio") => {
+    setWhatsappProvider(provider);
+    if (provider === "twilio") setChipIds([]);
+    if (provider === "evolution") {
+      setOfficialTemplateId(null);
+      setOfficialSenderId(null);
+      setOfficialTemplateVariables({});
+    }
+  };
+
   // Pedido Bruna (08/06): chip já usado por outra campanha ativa fica bloqueado aqui.
   const { data: chipsEmUso } = useChipsEmUso(campanha?.id);
 
@@ -335,7 +345,7 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
                   <Label>Canal de WhatsApp</Label>
                   <Select
                     value={whatsappProvider}
-                    onValueChange={(value) => setWhatsappProvider(value as "evolution" | "twilio")}
+                    onValueChange={(value) => handleProviderChange(value as "evolution" | "twilio")}
                   >
                     <SelectTrigger className="min-h-11">
                       <SelectValue />
