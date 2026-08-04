@@ -24,7 +24,6 @@ import {
   Send,
   ArrowLeft,
   UserPlus,
-  Download,
   Pause,
   Play,
   Stethoscope,
@@ -477,42 +476,6 @@ export default function CampanhasProspeccao() {
               >
                 <UserPlus className="mr-1 h-4 w-4" />
                 Adicionar médicos
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={async () => {
-                  const { data, error } = await supabase.rpc(
-                    "exportar_leads_trafego_pago",
-                    { p_campanha_id: selecionada }
-                  );
-                  if (error) {
-                    toast.error("Erro ao exportar: " + error.message);
-                    return;
-                  }
-                  if (!data || data.length === 0) {
-                    toast.info("Nenhum lead para exportar");
-                    return;
-                  }
-                  const csv = [
-                    "nome,email,telefone,especialidade,uf,cidade",
-                    ...data.map(
-                      (r) =>
-                        `"${r.nome}","${r.email || ""}","${r.phone || ""}","${r.especialidade || ""}","${r.uf || ""}","${r.cidade || ""}"`
-                    ),
-                  ].join("\n");
-                  const blob = new Blob([csv], { type: "text/csv" });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download = `trafego-pago-${campanhaSelecionada.nome.replace(/\s+/g, "-")}.csv`;
-                  a.click();
-                  URL.revokeObjectURL(url);
-                  toast.success(`${data.length} leads exportados para CSV`);
-                }}
-              >
-                <Download className="h-4 w-4 mr-1" />
-                Exportar p/ Tráfego Pago
               </Button>
             </div>
 
