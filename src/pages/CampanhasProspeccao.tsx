@@ -423,7 +423,7 @@ export default function CampanhasProspeccao() {
                 <UserPlus className="h-4 w-4 mt-0.5 shrink-0" />
                 <span>
                   Esta campanha ainda <strong>não tem leads</strong> e não vai disparar. Clique em
-                  <strong> "Adicionar Leads à Base"</strong> abaixo pra puxar os leads do filtro (especialidade + UF).
+                  <strong> "Selecionar leads e estratégia"</strong> para escolher uma lista, importar uma planilha ou selecionar médicos nominalmente.
                 </span>
               </div>
             )}
@@ -736,7 +736,7 @@ export default function CampanhasProspeccao() {
                         <strong>{countSemLeads}</strong>{" "}
                         {countSemLeads === 1 ? "campanha está sem leads" : "campanhas estão sem leads"} e
                         não {countSemLeads === 1 ? "vai" : "vão"} disparar. Abra a campanha e clique em
-                        <strong> "Adicionar Leads à Base"</strong> pra ela começar a rodar.
+                        <strong> "Selecionar leads e estratégia"</strong> para ela começar a rodar.
                       </span>
                     </div>
                   )}
