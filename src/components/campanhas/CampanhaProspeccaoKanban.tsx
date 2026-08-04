@@ -100,14 +100,23 @@ export function CampanhaProspeccaoKanban({ campanhaId }: Props) {
   const classificarSaida = useClassificarSaidaCampanha();
   const updateTags = useUpdateLeadTags(campanhaId);
 
-  const { data: tipoEnvio } = useQuery({
-    queryKey: ["campanha-tipo-envio", campanhaId],
-    queryFn: async (): Promise<string> => {
-      const { data } = await supabase.from("campanhas").select("tipo_envio").eq("id", campanhaId).maybeSingle();
-      return data?.tipo_envio || "ia";
+  const { data: campanhaConfig } = useQuery({
+    queryKey: ["campanha-config-kanban", campanhaId],
+    queryFn: async (): Promise<{ tipo_envio: string; whatsapp_provider: string }> => {
+      const { data } = await supabase
+        .from("campanhas")
+        .select("tipo_envio, whatsapp_provider")
+        .eq("id", campanhaId)
+        .maybeSingle();
+      return {
+        tipo_envio: data?.tipo_envio || "ia",
+        whatsapp_provider: data?.whatsapp_provider || "evolution",
+      };
     },
     staleTime: 60_000,
   });
+  const tipoEnvio = campanhaConfig?.tipo_envio;
+  const whatsappProvider = campanhaConfig?.whatsapp_provider;
   const colunas = tipoEnvio === "manual" ? COLUMNS_MANUAL : COLUMNS;
 
   // mapa de quem assumiu → nome (colaboração multi-pessoa)
@@ -295,6 +304,7 @@ export function CampanhaProspeccaoKanban({ campanhaId }: Props) {
                       campLead={cl}
                       assumidoNome={cl.assumido_por ? profilesMap[cl.assumido_por] : undefined}
                       tipoEnvio={tipoEnvio}
+                      whatsappProvider={whatsappProvider}
                       tagsSugeridas={tagsSugeridas}
                       onDragStart={() => setDraggedLead(cl.lead_id)}
                       onClick={() => setCampanhaLeadAbertoId(cl.id)}
@@ -432,12 +442,31 @@ function iniciais(nome?: string) {
   return ((p[0]?.[0] || "") + (p[1]?.[0] || "")).toUpperCase() || "?";
 }
 
+function janelaAtendimento(lastIncomingAt?: string | null) {
+  if (!lastIncomingAt) return null;
+  const limite = new Date(lastIncomingAt).getTime() + 24 * 60 * 60 * 1000;
+  if (!Number.isFinite(limite)) return null;
+  const restante = limite - Date.now();
+  if (restante <= 0) {
+    return { fechada: true, prioridade: false, texto: "Janela fechada · usar template" };
+  }
+  const horas = Math.floor(restante / (60 * 60 * 1000));
+  const minutos = Math.floor((restante % (60 * 60 * 1000)) / (60 * 1000));
+  const prazo = new Date(limite).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  return {
+    fechada: false,
+    prioridade: restante <= 4 * 60 * 60 * 1000,
+    texto: horas > 0 ? `Janela aberta · ${horas}h${minutos ? ` ${minutos}min` : ""}` : `Responder agora · até ${prazo}`,
+  };
+}
+
 function LeadCard({
-  campLead, assumidoNome, tipoEnvio, tagsSugeridas, onDragStart, onClick, onToggleTag, onCreateTag,
+  campLead, assumidoNome, tipoEnvio, whatsappProvider, tagsSugeridas, onDragStart, onClick, onToggleTag, onCreateTag,
 }: {
   campLead: CampanhaLead;
   assumidoNome?: string;
   tipoEnvio: string | undefined;
+  whatsappProvider: string | undefined;
   tagsSugeridas: string[];
   onDragStart: () => void;
   onClick: () => void;
@@ -451,6 +480,7 @@ function LeadCard({
   const tags = lead.tags || [];
   const atendimentoHumano = campLead.humano_assumiu === true;
   const campanhaManual = tipoEnvio === "manual";
+  const janela = whatsappProvider === "twilio" ? janelaAtendimento(campLead.last_incoming_at) : null;
 
   return (
     <Card className="relative cursor-pointer transition-all hover:border-primary/50 hover:shadow-md" draggable onDragStart={onDragStart}>
@@ -471,6 +501,24 @@ function LeadCard({
               <MessageCircle className="h-3 w-3" aria-hidden="true" />
               {campLead.unread_messages > 9 ? "9+" : campLead.unread_messages}
             </div>
+          )}
+          {janela && (
+            <Badge
+              variant="outline"
+              className={`h-6 max-w-[145px] shrink-0 gap-1 truncate px-1.5 text-[10px] ${
+                janela.fechada
+                  ? "border-slate-200 bg-slate-50 text-slate-600"
+                  : janela.prioridade
+                    ? "border-red-200 bg-red-50 text-red-700"
+                    : "border-emerald-200 bg-emerald-50 text-emerald-700"
+              }`}
+              title={janela.fechada
+                ? "A janela de atendimento terminou. O próximo contato deve usar template aprovado."
+                : "O lead respondeu recentemente e a equipe pode enviar texto livre dentro desta janela."}
+            >
+              <Clock className="h-3 w-3" aria-hidden="true" />
+              {janela.texto}
+            </Badge>
           )}
           {assumidoNome && (
             <span title={`Em atendimento: ${assumidoNome}`}
