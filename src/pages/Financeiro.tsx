@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card } from "@/components/ui/card";
-import { BarChart3, FileText, Settings, Wallet, TrendingUp } from "lucide-react";
+import { BarChart3, FileText, Settings, Wallet, TrendingUp, ClipboardList } from "lucide-react";
 import { FinanceiroResumo } from "@/components/financeiro/FinanceiroResumo";
 import { FinanceiroContasPagar } from "@/components/financeiro/FinanceiroContasPagar";
 import { FinanceiroContasReceber } from "@/components/financeiro/FinanceiroContasReceber";
@@ -15,6 +15,7 @@ import { FinanceiroImportarFechamentoDialog } from "@/components/financeiro/Fina
 import { FinanceiroFecharDialog } from "@/components/financeiro/FinanceiroFecharDialog";
 import { FinanceiroConfigValores } from "@/components/financeiro/FinanceiroConfigValores";
 import { FinanceiroSigFinc } from "@/components/financeiro/FinanceiroSigFinc";
+import { FinanceiroFases } from "@/components/financeiro/FinanceiroFases";
 import { useFinanceiroPagamentos } from "@/hooks/useFinanceiroData";
 
 const MESES = [
@@ -102,9 +103,12 @@ export default function Financeiro() {
           </div>
         </Card>
 
-        <Tabs defaultValue="resumo" className="space-y-4">
+        <Tabs defaultValue="fechamento" className="space-y-4">
           <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
             <TabsList className="w-max">
+              <TabsTrigger value="fechamento" className="gap-2">
+                <ClipboardList className="h-4 w-4" /> Fechamento
+              </TabsTrigger>
               <TabsTrigger value="resumo" className="gap-2">
                 <BarChart3 className="h-4 w-4" /> Resumo
               </TabsTrigger>
@@ -122,6 +126,10 @@ export default function Financeiro() {
               </TabsTrigger>
             </TabsList>
           </div>
+
+          <TabsContent value="fechamento">
+            <FinanceiroFases mes={mes || (now.getMonth() + 1)} ano={ano} />
+          </TabsContent>
 
           <TabsContent value="resumo">
             <FinanceiroResumo pagamentos={pagamentos} isLoading={isLoading} mes={mes || (now.getMonth() + 1)} ano={ano} />

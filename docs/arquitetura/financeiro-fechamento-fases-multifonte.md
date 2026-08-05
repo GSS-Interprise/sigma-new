@@ -3,7 +3,7 @@ tags: [arquitetura, sigma, financeiro, fechamento, multifonte, dr-escala]
 projeto: SigmaGSS
 autor: Raul + Claude
 data: 2026-08-04
-status: pronto-pra-executar   # rascunho | pronto-pra-executar | em-execucao | entregue
+status: em-execucao   # rascunho | pronto-pra-executar | em-execucao | entregue
 operador: Raul
 repo: sigma-new
 parent: financeiro-fluxos-integracao-conta-azul.md
@@ -128,18 +128,22 @@ Categorias iniciais (seed, editáveis por ela): `Gestão`, `Bônus`, `Desconto`,
 
 | Fase | Escopo | Depende de |
 |---|---|---|
-| **E1** | Parser `dr_escala_completo`: mês do arquivo, checksum, à vista, itens por plantão, casamento CPF/CRM/nome normalizado | DDL das 2 colunas em `pagamento_itens` |
-| **E2** | Ajustes: 2 tabelas novas + bloco de ajustes na tela do médico + `valor_total` derivado | E1 |
-| **E3** | Fases: ativar `financeiro_fechamentos` de verdade (lista + detalhe + enviar p/ aprovação), seletor de fonte | E1 |
+| **E1** ✅ | Parser `dr_escala_completo`: mês do arquivo, checksum, à vista, itens por plantão, casamento CPF/CRM/nome normalizado | DDL das 2 colunas em `pagamento_itens` |
+| **E2** ✅ | Ajustes: 2 tabelas novas + bloco de ajustes na tela do médico + `valor_total` derivado | E1 |
+| **E3** ✅ | Fases: ativar `financeiro_fechamentos` de verdade (lista + detalhe + enviar p/ aprovação), seletor de fonte | E1 |
 | **E4** | Demais fontes (Marieta, CIS, ambulatório, São João Batista) — cada uma vira um `formato` ou uma config | arquivos que a Mavi vai mandar |
 | **E5** | Contas a receber consolidado a partir do fechamento (hoje `financeiro_receber` vem de contrato, não do fechamento) | E3 |
 
-E1+E2 é o que precisa estar de pé **antes da Mavi sair de férias (11/08)**.
+E1+E2+E3 entregues em 05/08. E4 depende dos arquivos que a Mavi vai mandar;
+E5 depende de decisão sobre o grão do contas a receber (ver §8).
+
+**Correção aplicada em 05/08:** as 14 linhas importadas como 08/2026 foram remanejadas para
+07/2026 (R$ 112.842,36, São João Batista) — os plantões eram de julho.
 
 ## 8. Riscos / pontos abertos
 
-- **Limpeza do import errado**: as 14 linhas de 8/2026 precisam ser apagadas ou remanejadas
-  pra 7/2026. Não faço sem OK — é dado que ela lançou hoje.
+- ~~Limpeza do import errado~~ — **resolvido em 05/08**: as 14 linhas foram remanejadas de
+  08/2026 para 07/2026 (nenhum dado perdido, status `pendente` preservado).
 - **`A VISTA` = já pago** vale pra todo hospital ou só pro contrato do HRO? Confirmar quando
   chegar relatório de outra unidade.
 - **Médico sem cadastro** (Silvia Garcia Ambrosio): decidir se o import cria o cadastro
