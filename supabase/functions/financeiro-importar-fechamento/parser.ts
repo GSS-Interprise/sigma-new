@@ -20,11 +20,33 @@ export type Item = {
   data: string; hIni: string; hFim: string; minutos: number;
   setor: string; local: string; vHora: number; valor: number;
   tipo: string; aVista: boolean;
+  // radiologia: agregado do mês por tipo de exame, sem data
+  descricao?: string; quantidade?: number; valorUnitario?: number;
 };
 export type Bloco = {
   nome: string; crm: string; uf: string; cpf: string; unidade: string;
   itens: Item[]; checksum: number | null;
+  acrescimos?: number; descontos?: number;
 };
+
+const itemVazio = (): Item => ({
+  data: "", hIni: "", hFim: "", minutos: 0, setor: "", local: "",
+  vHora: 0, valor: 0, tipo: "", aVista: false,
+});
+
+const MESES_ABREV = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"];
+
+/**
+ * Planilha com uma aba por mês (Marieta, CEPON): resolve a aba pela competência.
+ * Aceita 'JUN', 'JUN CUSTO', 'Junho'… — casa pelo prefixo de 3 letras.
+ */
+export function abaDoMes(abas: string[], mes: number): string | null {
+  const alvo = MESES_ABREV[mes - 1];
+  if (!alvo) return null;
+  return abas.find((a) => norm(a).toUpperCase().startsWith(norm(alvo).toUpperCase()))
+      ?? abas.find((a) => norm(a).toUpperCase().includes(norm(alvo).toUpperCase()))
+      ?? null;
+}
 
 const dataBR = (s: string): string | null => {
   const m = cell(s).match(/^(\d{2})\/(\d{2})\/(\d{4})/);
@@ -117,6 +139,82 @@ export function parseDrEscalaCompleto(grid: unknown[][]) {
     }));
 
   return { mes, ano, blocos: blocos.filter((b) => b.itens.length > 0), divergencias };
+}
+
+/**
+ * Fechamento de radiologia em MATRIZ (Marieta, CEPON) — mesma estrutura nos dois:
+ *
+ *   Nome | TC | RX | USG | … | Valor TC | Valor RX | Valor USG | … | Acréscimos | Descontos | Total À Pagar
+ *          └─ N colunas de quantidade ─┘   └─ N colunas de valor, MESMA ORDEM ─┘
+ *
+ * O pareamento é POSICIONAL, ancorado em "Acréscimos": entre a 2ª coluna e ela existem
+ * 2N colunas, a i-ésima quantidade casa com a (i+N)-ésima de valor. Isso sobrevive aos
+ * erros de digitação reais dos cabeçalhos ('URETRO' sem "Valor", 'Valor DRE. BILIAR'
+ * para a coluna 'DREN. BILIAR'), que quebrariam um pareamento por nome.
+ */
+export function parseMatrizExames(grid: unknown[][], cfg: any) {
+  const hRow = Math.max(1, Number(cfg.header_row) || 2);
+  const headers: string[] = (grid[hRow - 1] || []).map((h) => cell(h));
+  const acha = (nome: string) => headers.findIndex((h) => norm(h) === norm(nome));
+
+  const iNome = acha("Nome") >= 0 ? acha("Nome") : 0;
+  const iAcre = acha("Acréscimos");
+  const iDesc = acha("Descontos");
+  const iTotal = acha("Total À Pagar");
+  if (iAcre < 0 || iTotal < 0) {
+    return { erro: "cabeçalho não tem 'Acréscimos'/'Total À Pagar' — confira a aba e a linha do cabeçalho", headers, blocos: [] };
+  }
+
+  const largura = iAcre - (iNome + 1);
+  if (largura <= 0 || largura % 2 !== 0) {
+    return { erro: `esperava um nº par de colunas entre 'Nome' e 'Acréscimos' (achei ${largura})`, headers, blocos: [] };
+  }
+  const n = largura / 2;
+  const tipos = Array.from({ length: n }, (_, i) => ({
+    nome: headers[iNome + 1 + i] || `Tipo ${i + 1}`,
+    iQtd: iNome + 1 + i,
+    iVal: iNome + 1 + n + i,
+  }));
+
+  const blocos: Bloco[] = [];
+  for (const row of grid.slice(hRow)) {
+    const nome = cell(row[iNome]);
+    if (!nome || /^total/i.test(nome)) continue;
+
+    const itens: Item[] = [];
+    for (const t of tipos) {
+      const qtd = num(row[t.iQtd]);
+      const valor = num(row[t.iVal]);
+      if (!qtd && !valor) continue;
+      itens.push({
+        ...itemVazio(), local: cfg.nome, tipo: t.nome,
+        descricao: t.nome, quantidade: qtd,
+        valorUnitario: qtd ? Number((valor / qtd).toFixed(4)) : 0,
+        valor,
+      });
+    }
+    const acrescimos = iAcre >= 0 ? num(row[iAcre]) : 0;
+    const descontos = iDesc >= 0 ? num(row[iDesc]) : 0;
+    const total = num(row[iTotal]);
+    // médico sem produção e sem ajuste no mês não vira lançamento
+    if (!itens.length && !acrescimos && !descontos && !total) continue;
+
+    blocos.push({ nome, crm: "", uf: "", cpf: "", unidade: cfg.nome, itens, checksum: total, acrescimos, descontos });
+  }
+
+  // o "Total À Pagar" da planilha é o checksum: produção + acréscimos - descontos
+  const divergencias = blocos
+    .filter((b) => {
+      const calc = b.itens.reduce((s, i) => s + i.valor, 0) + (b.acrescimos || 0) - Math.abs(b.descontos || 0);
+      return Math.abs(calc - (b.checksum || 0)) > 0.01;
+    })
+    .map((b) => ({
+      medico: b.nome,
+      calculado: Number((b.itens.reduce((s, i) => s + i.valor, 0) + (b.acrescimos || 0) - Math.abs(b.descontos || 0)).toFixed(2)),
+      relatorio: b.checksum,
+    }));
+
+  return { blocos, divergencias };
 }
 
 /** Genérico: tabela plana guiada por mapa_colunas (Marieta, CIS…). */

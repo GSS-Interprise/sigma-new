@@ -49,6 +49,9 @@ export interface FinanceiroPagamentoItem {
   valor_total: number;
   tipo?: string | null;
   pago_a_vista?: boolean;
+  descricao?: string | null;
+  quantidade?: number | null;
+  valor_unitario?: number | null;
 }
 
 export interface FinanceiroAjusteCategoria {
@@ -66,6 +69,7 @@ export interface FinanceiroAjuste {
   justificativa: string;
   criado_por: string | null;
   created_at: string;
+  origem?: string;
 }
 
 export interface FinanceiroConfigValor {

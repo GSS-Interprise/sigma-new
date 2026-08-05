@@ -177,6 +177,19 @@ export function FinanceiroImportarFechamentoDialog({ mesDefault, anoDefault }: {
                   <div className="text-amber-700">{resultado.ajustes_perdidos} ajuste(s) não puderam ser reaplicados — médico saiu do relatório.</div>
                 )}
               </div>
+              {resultado.avisos?.length > 0 && (
+                <div className="text-amber-800 border-t pt-1.5">
+                  <p className="flex items-center gap-1.5 text-xs font-medium">
+                    <AlertTriangle className="h-3.5 w-3.5" /> {resultado.avisos.length} médico(s) com total da planilha diferente do calculado:
+                  </p>
+                  <ul className="ml-5 list-disc text-[11px] mt-0.5">
+                    {resultado.avisos.map((d: any, i: number) => (
+                      <li key={i}>{d.medico}: planilha R$ {Number(d.relatorio).toLocaleString("pt-BR", { minimumFractionDigits: 2 })} × calculado R$ {Number(d.calculado).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</li>
+                    ))}
+                  </ul>
+                  <p className="text-[11px] mt-1">Foi importado o <b>calculado</b>. Se o valor da planilha estiver certo, lance a diferença como ajuste no médico.</p>
+                </div>
+              )}
               {resultado.nao_casados?.length > 0 && (
                 <div className="text-amber-700">
                   <p className="flex items-center gap-1.5"><AlertTriangle className="h-4 w-4" /> {resultado.nao_casados.length} sem médico casado (resolver manual):</p>

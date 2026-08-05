@@ -136,7 +136,7 @@ export function FinanceiroDetalhe({ pagamento, onVoltar }: Props) {
 
       <Card>
         <CardHeader>
-          <CardTitle>Plantões Vinculados</CardTitle>
+          <CardTitle>{itens.some((i) => !i.data_plantao) ? "Produção do mês" : "Plantões vinculados"}</CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -146,8 +146,8 @@ export function FinanceiroDetalhe({ pagamento, onVoltar }: Props) {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Data</TableHead>
-                    <TableHead>Horário</TableHead>
+                    <TableHead>Data / Exame</TableHead>
+                    <TableHead>Horário / Qtde</TableHead>
                     <TableHead>Setor</TableHead>
                     <TableHead>Local</TableHead>
                     <TableHead>Tipo</TableHead>
@@ -159,11 +159,18 @@ export function FinanceiroDetalhe({ pagamento, onVoltar }: Props) {
                 <TableBody>
                   {itens.map((item) => (
                     <TableRow key={item.id} className={item.pago_a_vista ? "bg-amber-50/60" : undefined}>
-                      <TableCell>
-                        {new Date(item.data_plantao + "T00:00:00").toLocaleDateString("pt-BR")}
+                      {/* radiologia não tem data: o item é o agregado do mês por tipo de exame */}
+                      <TableCell className="whitespace-nowrap">
+                        {item.data_plantao
+                          ? new Date(item.data_plantao + "T00:00:00").toLocaleDateString("pt-BR")
+                          : <span className="font-medium">{item.descricao || "—"}</span>}
                       </TableCell>
-                      <TableCell>
-                        {item.hora_inicio} - {item.hora_fim}
+                      <TableCell className="whitespace-nowrap">
+                        {item.data_plantao
+                          ? `${item.hora_inicio} - ${item.hora_fim}`
+                          : item.quantidade
+                            ? `${Number(item.quantidade).toLocaleString("pt-BR")} × ${fmt(Number(item.valor_unitario || 0))}`
+                            : "—"}
                       </TableCell>
                       <TableCell>{item.setor || "—"}</TableCell>
                       <TableCell>{item.local_nome || "—"}</TableCell>

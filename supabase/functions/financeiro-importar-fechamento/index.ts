@@ -11,7 +11,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
-import { parseDrEscalaCompleto, parseGenerico, norm, digits, type Bloco } from "./parser.ts";
+import { parseDrEscalaCompleto, parseGenerico, parseMatrizExames, abaDoMes, norm, digits, type Bloco } from "./parser.ts";
 
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
 
@@ -47,13 +47,27 @@ serve(async (req) => {
     // decode + parse ANTES do dedup: recusa por período/checksum não pode queimar o hash
     const bin = Uint8Array.from(atob(arquivo_base64), (c) => c.charCodeAt(0));
     const wb = XLSX.read(bin, { type: "array" });
-    const sheetName = cfg.aba && wb.Sheets[cfg.aba] ? cfg.aba : wb.SheetNames[0];
+    // aba: fixa na config, ou resolvida pela competência quando a planilha tem uma aba por mês
+    const sheetName = cfg.aba && wb.Sheets[cfg.aba]
+      ? cfg.aba
+      : (cfg.aba === "@mes" && mes ? abaDoMes(wb.SheetNames, Number(mes)) : null) ?? wb.SheetNames[0];
+    if (!wb.Sheets[sheetName]) return json({ error: `aba não encontrada. Abas do arquivo: ${wb.SheetNames.join(", ")}` }, 400);
     const grid: any[][] = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, blankrows: false, defval: null });
 
     let blocos: Bloco[] = [];
     let mesRef = Number(mes), anoRef = Number(ano);
+    let avisos: any[] = [];
 
-    if (cfg.parser === "dr_escala_completo") {
+    if (cfg.parser === "matriz_exames") {
+      // planilha da equipe: não carrega período, a competência vem da tela (e escolhe a aba)
+      if (!mesRef || !anoRef) return json({ error: "faltam campos: mes, ano" }, 400);
+      const p: any = parseMatrizExames(grid, cfg);
+      if (p.erro) return json({ error: p.erro, headers: p.headers, aba: sheetName }, 400);
+      blocos = p.blocos;
+      // divergência aqui NÃO bloqueia: a Mavi legitimamente sobrescreve o total de alguns
+      // médicos à mão (ex.: Carlos Cristofaro no CEPON, que tem produção em arquivo próprio).
+      avisos = p.divergencias;
+    } else if (cfg.parser === "dr_escala_completo") {
       const p = parseDrEscalaCompleto(grid);
       if (!p.mes || !p.ano) return json({ error: "não achei o período no arquivo (esperado 'dd/mm/aaaa - dd/mm/aaaa' nas primeiras linhas)" }, 400);
       // o mês manda no ARQUIVO. Se a tela pediu outro, barra — foi assim que julho virou agosto.
@@ -121,13 +135,20 @@ serve(async (req) => {
       .eq("fonte", "import").eq("mes_referencia", mesRef).eq("ano_referencia", anoRef).like("arquivo_origem", `${tag}%`);
     const ajustesSalvos: any[] = [];
     if (antigos?.length) {
+      // só o que a equipe lançou na mão volta; o que veio da planilha é regerado do arquivo
       const { data: aj } = await svc.from("financeiro_pagamento_ajustes")
         .select("pagamento_id, categoria_id, valor, justificativa, criado_por, created_at")
+        .eq("origem", "manual")
         .in("pagamento_id", antigos.map((p: any) => p.id));
       const chave = new Map(antigos.map((p: any) => [p.id, p.medico_id || norm(p.profissional_nome)]));
       for (const a of aj || []) ajustesSalvos.push({ ...a, _chave: chave.get(a.pagamento_id) });
       await svc.from("financeiro_pagamentos").delete().in("id", antigos.map((p: any) => p.id));
     }
+
+    const { data: cats } = await svc.from("financeiro_ajuste_categorias").select("id, nome")
+      .in("nome", ["Acréscimo (planilha)", "Desconto (planilha)"]);
+    const catAcrescimo = cats?.find((c: any) => c.nome === "Acréscimo (planilha)")?.id ?? null;
+    const catDesconto = cats?.find((c: any) => c.nome === "Desconto (planilha)")?.id ?? null;
 
     // ── grava pagamento + itens ──
     let inseridos = 0, casados = 0, totalGeral = 0, totalAVista = 0;
@@ -156,16 +177,30 @@ serve(async (req) => {
 
       if (insErr || !pag) { naoCasados.push({ nome: b.nome, erro: insErr?.message }); continue; }
 
-      const itens = b.itens.filter((i) => i.data).map((i) => ({
-        pagamento_id: pag.id, data_plantao: i.data,
-        hora_inicio: i.hIni, hora_fim: i.hFim, carga_horaria_minutos: i.minutos,
+      // plantão (tem data) e exame de radiologia (tem descrição) convivem na mesma tabela
+      const itens = b.itens.filter((i) => i.data || i.descricao).map((i) => ({
+        pagamento_id: pag.id, data_plantao: i.data || null,
+        hora_inicio: i.hIni || null, hora_fim: i.hFim || null,
+        carga_horaria_minutos: i.minutos || null,
         setor: i.setor || null, local_nome: i.local || null,
         valor_hora: i.vHora, valor_total: i.valor,
         tipo: i.tipo || null, pago_a_vista: i.aVista,
+        descricao: i.descricao ?? null, quantidade: i.quantidade ?? null,
+        valor_unitario: i.valorUnitario ?? null,
       }));
       for (let k = 0; k < itens.length; k += 100) {
         const { error: itErr } = await svc.from("financeiro_pagamento_itens").insert(itens.slice(k, k + 100));
         if (itErr) return json({ ok: false, error: `falha ao gravar plantões de ${b.nome}: ${itErr.message}` }, 500);
+      }
+
+      // Acréscimos/Descontos que já vinham na planilha entram como ajuste de verdade,
+      // marcados como 'import' pra serem regerados no próximo import sem tocar nos manuais.
+      for (const [valor, cat] of [[b.acrescimos || 0, catAcrescimo], [-Math.abs(b.descontos || 0), catDesconto]] as const) {
+        if (!valor || !cat) continue;
+        await svc.from("financeiro_pagamento_ajustes").insert({
+          pagamento_id: pag.id, categoria_id: cat, valor,
+          justificativa: `Importado da planilha (${cfg.nome})`, origem: "import", criado_por: u.user.id,
+        });
       }
 
       novasChaves.set(medicoId || norm(b.nome), pag.id);
@@ -193,6 +228,7 @@ serve(async (req) => {
         parser: cfg.parser, casados, nao_casados: naoCasados.length, aba: sheetName,
         mes: mesRef, ano: anoRef, total_produzido: totalGeral, total_a_vista: totalAVista,
         ajustes_restaurados: ajustesRestaurados, ajustes_perdidos: ajustesPerdidos,
+        avisos,
       },
       criado_por: u.user.id,
     });
@@ -204,7 +240,7 @@ serve(async (req) => {
       total_produzido: totalGeral, total_a_vista: totalAVista, total: totalGeral - totalAVista,
       plantoes: blocos.reduce((s, b) => s + b.itens.filter((i) => i.data).length, 0),
       ajustes_restaurados: ajustesRestaurados, ajustes_perdidos: ajustesPerdidos,
-      aba: sheetName,
+      aba: sheetName, avisos,
     });
   } catch (e: any) {
     return json({ ok: false, error: String(e?.message || e) }, 500);
