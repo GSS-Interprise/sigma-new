@@ -9,12 +9,20 @@ const filled = (row: unknown[]) => row.filter((v) => cell(v) !== "").length;
 
 // aceita "R$ 57.500,00", "1200", "2.280,50" (nbsp incluso)
 export function num(v: unknown): number {
-  const raw = cell(v).replace(/ /g, " ");
+  // celula numerica do xlsx ja vem pronta - passar pela heuristica de milhar abaixo
+  // corromperia 3 casas decimais (31694.775 viraria 31694775, como no Carestream).
+  if (typeof v === "number") return isFinite(v) ? v : 0;
+  const raw = cell(v);
   if (!raw || raw === "-") return 0;
-  const t = raw.replace(/[^0-9,.-]/g, "").replace(/\.(?=\d{3}\b)/g, "").replace(",", ".");
+  let t = raw.replace(/[^0-9,.-]/g, "");
+  // ponto so e separador de milhar quando ha virgula decimal ("1.234,56") ou
+  // quando os grupos de 3 se repetem sem decimal ("1.234.567").
+  if (t.includes(",")) t = t.replace(/\./g, "").replace(",", ".");
+  else if (/^-?\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, "");
   const n = parseFloat(t);
   return isFinite(n) ? n : 0;
 }
+
 
 export type Item = {
   data: string; hIni: string; hFim: string; minutos: number;
@@ -179,7 +187,9 @@ export function parseMatrizExames(grid: unknown[][], cfg: any) {
   const blocos: Bloco[] = [];
   for (const row of grid.slice(hRow)) {
     const nome = cell(row[iNome]);
-    if (!nome || /^total/i.test(nome)) continue;
+    // rodapés de conferência ("QUANTIDADE DE EXAMES", "TOTAL…") somam as colunas de
+    // quantidade sem nenhum valor — sem esse filtro viram um médico fantasma.
+    if (!nome || /^total/i.test(nome) || /quantidade de exames|^soma\b|^geral\b/i.test(norm(nome))) continue;
 
     const itens: Item[] = [];
     for (const t of tipos) {
@@ -196,8 +206,10 @@ export function parseMatrizExames(grid: unknown[][], cfg: any) {
     const acrescimos = iAcre >= 0 ? num(row[iAcre]) : 0;
     const descontos = iDesc >= 0 ? num(row[iDesc]) : 0;
     const total = num(row[iTotal]);
-    // médico sem produção e sem ajuste no mês não vira lançamento
-    if (!itens.length && !acrescimos && !descontos && !total) continue;
+    // só vira lançamento quem tem dinheiro na linha. Quantidade sozinha (sem nenhum
+    // valor) é linha de conferência, não pagamento.
+    const temValor = itens.some((i) => i.valor !== 0);
+    if (!temValor && !acrescimos && !descontos && !total) continue;
 
     blocos.push({ nome, crm: "", uf: "", cpf: "", unidade: cfg.nome, itens, checksum: total, acrescimos, descontos });
   }
@@ -215,6 +227,77 @@ export function parseMatrizExames(grid: unknown[][], cfg: any) {
     }));
 
   return { blocos, divergencias };
+}
+
+/**
+ * Aba "RESUMO MÉDICO" do fechamento Carestream — blocos por médico:
+ *
+ *   <Nome do médico>
+ *   Exame Realizado | Quant. Carestream | Vlr. Uni. | Valor Total
+ *   Tomografia      | 97                | 34,65     | 3.361,05
+ *   …
+ *   Total           | 281               |           | 15.248,62      ← checksum
+ *
+ * Este é o lado A RECEBER: mesma quantidade de exames da planilha de pagamento, mas
+ * ao preço do contrato com o cliente (TC a 34,65 aqui × 20,63 que se paga ao médico).
+ */
+export function parseCarestreamResumo(grid: unknown[][]) {
+  const blocos: Bloco[] = [];
+  let atual: Bloco | null = null;
+  let cols: { tipo: number; qtd: number; uni: number; total: number } | null = null;
+
+  for (const row of grid) {
+    const vals = row.map(cell);
+    const preenchidos = vals.filter((v) => v !== "").length;
+    if (!preenchidos) { atual = null; cols = null; continue; }
+
+    // cabeçalho do bloco
+    const iTipo = vals.findIndex((v) => norm(v) === "exame realizado");
+    if (iTipo >= 0) {
+      cols = {
+        tipo: iTipo,
+        qtd: vals.findIndex((v) => norm(v).startsWith("quant")),
+        uni: vals.findIndex((v) => norm(v).startsWith("vlr")),
+        total: vals.findIndex((v) => norm(v) === "valor total"),
+      };
+      continue;
+    }
+
+    // linha só com o nome = início de bloco. NÃO condicionar a `cols` estar limpo:
+    // quando não há linha em branco entre dois médicos, as linhas do seguinte
+    // acabariam somadas no anterior.
+    if (preenchidos === 1) {
+      const nome = vals.find((v) => v !== "")!;
+      if (/^total/i.test(nome) || num(nome)) continue;
+      atual = { nome: nome.trim(), crm: "", uf: "", cpf: "", unidade: "", itens: [], checksum: null };
+      cols = null;
+      blocos.push(atual);
+      continue;
+    }
+    if (!atual || !cols) continue;
+
+    const rotulo = cell(row[cols.tipo]);
+    if (!rotulo) continue;
+    if (/^total$/i.test(rotulo)) { atual.checksum = num(row[cols.total]); atual = null; cols = null; continue; }
+
+    const qtd = num(row[cols.qtd]);
+    const valor = num(row[cols.total]);
+    if (!qtd && !valor) continue;
+    atual.itens.push({
+      ...itemVazio(), tipo: rotulo, descricao: rotulo,
+      quantidade: qtd, valorUnitario: num(row[cols.uni]), valor,
+    });
+  }
+
+  const divergencias = blocos
+    .filter((b) => b.checksum !== null && Math.abs(b.itens.reduce((s, i) => s + i.valor, 0) - b.checksum!) > 0.01)
+    .map((b) => ({
+      medico: b.nome,
+      calculado: Number(b.itens.reduce((s, i) => s + i.valor, 0).toFixed(2)),
+      relatorio: b.checksum,
+    }));
+
+  return { blocos: blocos.filter((b) => b.itens.length > 0), divergencias };
 }
 
 /** Genérico: tabela plana guiada por mapa_colunas (Marieta, CIS…). */

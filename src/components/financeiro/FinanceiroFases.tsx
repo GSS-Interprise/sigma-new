@@ -18,15 +18,18 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
   const { data, isLoading } = useQuery({
     queryKey: ["financeiro-fases", mes, ano],
     queryFn: async () => {
-      const [pagRes, fechRes] = await Promise.all([
+      const [pagRes, fechRes, recRes] = await Promise.all([
         (supabase as any).from("financeiro_pagamentos")
           .select("valor_total, valor_produzido, valor_a_vista, valor_ajustes, medico_id, profissional_nome, unidade, fonte, arquivo_origem, status")
           .eq("mes_referencia", mes).eq("ano_referencia", ano),
         (supabase as any).from("financeiro_fechamentos")
           .select("id, status, total, qtd_medicos, criado_em, aprovado_em")
           .eq("mes_referencia", mes).eq("ano_referencia", ano).maybeSingle(),
+        (supabase as any).from("financeiro_receber")
+          .select("descricao, valor_previsto, valor_faturado, fonte")
+          .eq("mes_referencia", mes).eq("ano_referencia", ano),
       ]);
-      return { pagamentos: (pagRes.data || []) as any[], fechamento: fechRes.data as any };
+      return { pagamentos: (pagRes.data || []) as any[], fechamento: fechRes.data as any, receber: (recRes.data || []) as any[] };
     },
   });
 
@@ -42,6 +45,7 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
   const aVista = soma("valor_a_vista");
   const ajustes = soma("valor_ajustes");
   const aPagar = soma("valor_total");
+  const aReceber = (data?.receber ?? []).reduce((s: number, r: any) => s + Number(r.valor_previsto || 0), 0);
   const medicos = new Set(pagamentos.map((p) => p.medico_id || p.profissional_nome)).size;
 
   // agrupa por FONTE que originou o lançamento — é o "de onde veio cada fechamento"
@@ -126,6 +130,29 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
               </div>
             ))}
           </div>
+
+          {/* os dois lados do mesmo fechamento: o que o cliente paga × o que se paga ao médico */}
+          {aReceber > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="rounded-md border p-3">
+                <p className="text-xs text-muted-foreground">A receber (contratos)</p>
+                <p className="text-lg text-blue-700">{brl(aReceber)}</p>
+              </div>
+              <div className="rounded-md border p-3">
+                <p className="text-xs text-muted-foreground">A pagar (médicos)</p>
+                <p className="text-lg">{brl(aPagar)}</p>
+              </div>
+              <div className="rounded-md border p-3 bg-muted/40">
+                <p className="text-xs text-muted-foreground">Margem da competência</p>
+                <p className={`text-lg font-bold ${aReceber - aPagar < 0 ? "text-red-600" : "text-emerald-700"}`}>
+                  {brl(aReceber - aPagar)}
+                  <span className="text-xs font-normal text-muted-foreground ml-2">
+                    {aReceber ? `${(((aReceber - aPagar) / aReceber) * 100).toFixed(1)}%` : ""}
+                  </span>
+                </p>
+              </div>
+            </div>
+          )}
 
           <div>
             <p className="text-sm font-medium mb-2">Fontes que entraram nesta competência</p>

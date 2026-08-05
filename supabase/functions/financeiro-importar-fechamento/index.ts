@@ -11,7 +11,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
-import { parseDrEscalaCompleto, parseGenerico, parseMatrizExames, abaDoMes, norm, digits, type Bloco } from "./parser.ts";
+import { parseDrEscalaCompleto, parseGenerico, parseMatrizExames, parseCarestreamResumo, abaDoMes, norm, digits, type Bloco } from "./parser.ts";
 
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
 
@@ -58,7 +58,12 @@ serve(async (req) => {
     let mesRef = Number(mes), anoRef = Number(ano);
     let avisos: any[] = [];
 
-    if (cfg.parser === "matriz_exames") {
+    if (cfg.parser === "carestream_resumo") {
+      if (!mesRef || !anoRef) return json({ error: "faltam campos: mes, ano" }, 400);
+      const p: any = parseCarestreamResumo(grid);
+      blocos = p.blocos;
+      avisos = p.divergencias;
+    } else if (cfg.parser === "matriz_exames") {
       // planilha da equipe: não carrega período, a competência vem da tela (e escolhe a aba)
       if (!mesRef || !anoRef) return json({ error: "faltam campos: mes, ano" }, 400);
       const p: any = parseMatrizExames(grid, cfg);
@@ -94,6 +99,41 @@ serve(async (req) => {
     const hash = await sha256(arquivo_base64);
     const { data: dup } = await svc.from("financeiro_import_log").select("id, created_at").eq("arquivo_hash", hash).maybeSingle();
     if (dup) return json({ ja_importado: true, msg: "Este arquivo já foi importado.", em: dup.created_at });
+
+    // ── direção 'receber': não gera pagamento a médico, gera a receita do contrato ──
+    // O grão por médico é conferência (fica no log); o cliente paga um valor só no mês.
+    if (cfg.direcao === "receber") {
+      const totalReceber = blocos.reduce((s, b) => s + b.itens.reduce((x, i) => x + i.valor, 0), 0);
+      await svc.from("financeiro_receber").delete()
+        .eq("fonte", `import:${config_id}`).eq("mes_referencia", mesRef).eq("ano_referencia", anoRef);
+      const { error: recErr } = await svc.from("financeiro_receber").insert({
+        cliente_id: cfg.cliente_id, contrato_id: cfg.contrato_id,
+        mes_referencia: mesRef, ano_referencia: anoRef,
+        descricao: `${cfg.nome} — ${String(mesRef).padStart(2, "0")}/${anoRef}`,
+        valor_previsto: totalReceber, fonte: `import:${config_id}`, status: "previsto",
+      });
+      if (recErr) return json({ ok: false, error: `falha ao gravar contas a receber: ${recErr.message}` }, 500);
+
+      await svc.from("financeiro_import_log").insert({
+        config_id, arquivo_nome: arquivo_nome || null, arquivo_hash: hash,
+        linhas_lidas: blocos.reduce((s, b) => s + b.itens.length, 0),
+        medicos: blocos.length, total: totalReceber, status: "ok",
+        detalhe: {
+          parser: cfg.parser, direcao: "receber", aba: sheetName, mes: mesRef, ano: anoRef, avisos,
+          por_medico: blocos.map((b) => ({
+            nome: b.nome, total: Number(b.itens.reduce((x, i) => x + i.valor, 0).toFixed(2)),
+            exames: b.itens.map((i) => ({ tipo: i.descricao, qtd: i.quantidade, unit: i.valorUnitario })),
+          })),
+        },
+        criado_por: u.user.id,
+      });
+      return json({
+        ok: true, ja_importado: false, parser: cfg.parser, direcao: "receber",
+        mes: mesRef, ano: anoRef, medicos: blocos.length, total_receber: totalReceber,
+        total: totalReceber, inseridos: blocos.length, casados: 0, nao_casados: [],
+        aba: sheetName, avisos,
+      });
+    }
 
     // ── casar médico: CPF > CRM (só dígitos) > nome normalizado ──
     // O banco guarda CPF e CRM em dois formatos ("74982125953" e "008.283.202-17";
