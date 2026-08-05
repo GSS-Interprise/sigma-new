@@ -29,6 +29,10 @@ export interface FinanceiroPagamento {
   aprovado_por?: string | null;
   aprovado_em?: string | null;
   comprovante_status?: string | null;
+  // E1/E2 — valor_total é derivado: produzido - à vista + ajustes
+  valor_produzido?: number;
+  valor_a_vista?: number;
+  valor_ajustes?: number;
 }
 
 export interface FinanceiroPagamentoItem {
@@ -43,6 +47,25 @@ export interface FinanceiroPagamentoItem {
   local_nome: string | null;
   valor_hora: number;
   valor_total: number;
+  tipo?: string | null;
+  pago_a_vista?: boolean;
+}
+
+export interface FinanceiroAjusteCategoria {
+  id: string;
+  nome: string;
+  sinal: "mais" | "menos" | "ambos";
+  ativo: boolean;
+}
+
+export interface FinanceiroAjuste {
+  id: string;
+  pagamento_id: string;
+  categoria_id: string;
+  valor: number;
+  justificativa: string;
+  criado_por: string | null;
+  created_at: string;
 }
 
 export interface FinanceiroConfigValor {
@@ -99,6 +122,104 @@ export function useFinanceiroPagamentoItens(pagamentoId: string | null) {
       return (data || []) as FinanceiroPagamentoItem[];
     },
     enabled: !!pagamentoId,
+  });
+}
+
+// ── E2: ajustes por categoria (valores a mais/a menos no fechamento do médico) ──
+
+export function useFinanceiroAjusteCategorias() {
+  return useQuery({
+    queryKey: ["financeiro-ajuste-categorias"],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("financeiro_ajuste_categorias")
+        .select("id, nome, sinal, ativo")
+        .eq("ativo", true)
+        .order("nome");
+      if (error) throw error;
+      return (data || []) as FinanceiroAjusteCategoria[];
+    },
+  });
+}
+
+export function useCriarAjusteCategoria() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ nome, sinal }: { nome: string; sinal: string }) => {
+      const { data, error } = await (supabase as any)
+        .from("financeiro_ajuste_categorias")
+        .insert({ nome: nome.trim(), sinal })
+        .select("id, nome, sinal, ativo")
+        .single();
+      if (error) throw error;
+      return data as FinanceiroAjusteCategoria;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["financeiro-ajuste-categorias"] });
+      toast.success("Categoria criada.");
+    },
+    onError: (e: any) =>
+      toast.error(e?.code === "23505" ? "Já existe uma categoria com esse nome." : "Erro ao criar categoria: " + e.message),
+  });
+}
+
+export function useFinanceiroAjustes(pagamentoId: string | null) {
+  return useQuery({
+    queryKey: ["financeiro-ajustes", pagamentoId],
+    queryFn: async () => {
+      if (!pagamentoId) return [];
+      const { data, error } = await (supabase as any)
+        .from("financeiro_pagamento_ajustes")
+        .select("*")
+        .eq("pagamento_id", pagamentoId)
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      return (data || []) as FinanceiroAjuste[];
+    },
+    enabled: !!pagamentoId,
+  });
+}
+
+// O trigger no banco recalcula valor_ajustes/valor_total, então toda mutação
+// precisa invalidar também a lista de pagamentos.
+export function useSalvarAjuste() {
+  const qc = useQueryClient();
+  const invalidar = (pagamentoId: string) => {
+    qc.invalidateQueries({ queryKey: ["financeiro-ajustes", pagamentoId] });
+    qc.invalidateQueries({ queryKey: ["financeiro-pagamentos"] });
+  };
+  return useMutation({
+    mutationFn: async (a: { id?: string; pagamento_id: string; categoria_id: string; valor: number; justificativa: string }) => {
+      const { data: u } = await supabase.auth.getUser();
+      const payload = {
+        pagamento_id: a.pagamento_id, categoria_id: a.categoria_id,
+        valor: a.valor, justificativa: a.justificativa.trim(),
+      };
+      const { error } = a.id
+        ? await (supabase as any).from("financeiro_pagamento_ajustes").update(payload).eq("id", a.id)
+        : await (supabase as any).from("financeiro_pagamento_ajustes").insert({ ...payload, criado_por: u.user?.id });
+      if (error) throw error;
+      return a.pagamento_id;
+    },
+    onSuccess: (pagamentoId) => { invalidar(pagamentoId); toast.success("Ajuste salvo."); },
+    onError: (e: any) => toast.error("Erro ao salvar ajuste: " + e.message),
+  });
+}
+
+export function useRemoverAjuste() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, pagamento_id }: { id: string; pagamento_id: string }) => {
+      const { error } = await (supabase as any).from("financeiro_pagamento_ajustes").delete().eq("id", id);
+      if (error) throw error;
+      return pagamento_id;
+    },
+    onSuccess: (pagamentoId) => {
+      qc.invalidateQueries({ queryKey: ["financeiro-ajustes", pagamentoId] });
+      qc.invalidateQueries({ queryKey: ["financeiro-pagamentos"] });
+      toast.success("Ajuste removido.");
+    },
+    onError: (e: any) => toast.error("Erro ao remover ajuste: " + e.message),
   });
 }
 

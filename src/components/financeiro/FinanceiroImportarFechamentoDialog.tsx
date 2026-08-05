@@ -37,6 +37,7 @@ export function FinanceiroImportarFechamentoDialog({ mesDefault, anoDefault }: {
   const [file, setFile] = useState<File | null>(null);
   const [importando, setImportando] = useState(false);
   const [resultado, setResultado] = useState<any>(null);
+  const [aviso, setAviso] = useState<any>(null);
 
   const { data: configs = [] } = useQuery({
     queryKey: ["financeiro-import-configs"],
@@ -52,21 +53,28 @@ export function FinanceiroImportarFechamentoDialog({ mesDefault, anoDefault }: {
     enabled: open,
   });
 
-  const reset = () => { setResultado(null); setFile(null); setConfigId(""); };
+  const reset = () => { setResultado(null); setFile(null); setConfigId(""); setAviso(null); };
 
-  const importar = async () => {
+  const importar = async (confirmarPeriodo = false) => {
     if (!configId || !file) return;
-    setImportando(true); setResultado(null);
+    setImportando(true); setResultado(null); setAviso(null);
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
       const arquivo_base64 = toBase64(bytes);
       const { data, error } = await supabase.functions.invoke("financeiro-importar-fechamento", {
-        body: { config_id: configId, mes, ano, arquivo_base64, arquivo_nome: file.name },
+        body: { config_id: configId, mes, ano, arquivo_base64, arquivo_nome: file.name, confirmar_periodo: confirmarPeriodo },
       });
-      if (error) throw error;
+      // non-2xx vem como erro com o corpo dentro de error.context — é lá que moram
+      // as recusas conscientes (período divergente, checksum estourado)
+      if (error) {
+        const corpo = await (error as any)?.context?.json?.().catch(() => null);
+        if (corpo?.erro_periodo || corpo?.erro_checksum) { setAviso(corpo); return; }
+        throw new Error(corpo?.error || error.message);
+      }
       if (data?.ja_importado) { toast.info("Este arquivo já foi importado antes."); setResultado(data); return; }
       if (!data?.ok) throw new Error(data?.error || "falha no import");
       setResultado(data);
+      if (data.mes) { setMes(data.mes); setAno(data.ano); }
       qc.invalidateQueries({ queryKey: ["financeiro-pagamentos"] });
       toast.success(`Importado: ${data.inseridos} médicos (${data.casados} casados).`);
     } catch (e: any) {
@@ -84,8 +92,9 @@ export function FinanceiroImportarFechamentoDialog({ mesDefault, anoDefault }: {
       <DialogContent className="max-w-lg">
         <DialogHeader><DialogTitle>Importar fechamento (multi-fonte)</DialogTitle></DialogHeader>
         <p className="text-xs text-muted-foreground -mt-2">
-          Suba o relatório <b>já consolidado</b> (Marieta, CIS, etc.). O sistema lê pela config do contrato,
-          casa os médicos e gera os pagamentos do mês. Reprocessa a fonte a cada import.
+          Suba o relatório <b>como ele vem da origem</b> (Dr. Escala Completo, Marieta, CIS…). O sistema lê pela
+          config da fonte, casa os médicos e gera os pagamentos do mês. Reimportar reprocessa a fonte e
+          <b> preserva os ajustes</b> já lançados.
         </p>
         <div className="space-y-4">
           <div>
@@ -119,13 +128,55 @@ export function FinanceiroImportarFechamentoDialog({ mesDefault, anoDefault }: {
           </div>
           <div>
             <Label>Arquivo (.xlsx)</Label>
-            <Input type="file" accept=".xlsx,.xls,.csv" onChange={(e) => { setFile(e.target.files?.[0] || null); setResultado(null); }} />
+            <Input type="file" accept=".xlsx,.xls,.csv" onChange={(e) => { setFile(e.target.files?.[0] || null); setResultado(null); setAviso(null); }} />
           </div>
+          {aviso?.erro_periodo && (
+            <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 space-y-2">
+              <p className="flex items-start gap-1.5 font-medium">
+                <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" /> {aviso.msg}
+              </p>
+              <p className="text-xs">O mês vem do próprio arquivo — foi assim que julho entrou como agosto da última vez.</p>
+              <div className="flex gap-2">
+                <Button size="sm" onClick={() => { setMes(aviso.periodo_arquivo.mes); setAno(aviso.periodo_arquivo.ano); importar(true); }}>
+                  Usar {String(aviso.periodo_arquivo.mes).padStart(2, "0")}/{aviso.periodo_arquivo.ano} (do arquivo)
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setAviso(null)}>Cancelar</Button>
+              </div>
+            </div>
+          )}
+          {aviso?.erro_checksum && (
+            <div className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-900 space-y-1.5">
+              <p className="flex items-start gap-1.5 font-medium">
+                <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" /> {aviso.msg}
+              </p>
+              <p className="text-xs">Nada foi importado. Confira o arquivo com o Dr. Escala:</p>
+              <ul className="ml-5 list-disc text-xs space-y-0.5">
+                {aviso.divergencias?.map((d: any, i: number) => (
+                  <li key={i}>{d.medico}: soma dos plantões R$ {Number(d.calculado).toLocaleString("pt-BR", { minimumFractionDigits: 2 })} × relatório R$ {Number(d.relatorio).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</li>
+                ))}
+              </ul>
+            </div>
+          )}
           {resultado && !resultado.ja_importado && (
             <div className="rounded-md border p-3 text-sm space-y-1.5">
               <p className="flex items-center gap-1.5 text-emerald-700 font-medium">
-                <CheckCircle2 className="h-4 w-4" /> {resultado.inseridos} importados · {resultado.casados} casados · total R$ {Number(resultado.total || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                <CheckCircle2 className="h-4 w-4" /> {resultado.inseridos} médicos · {resultado.casados} casados
+                {resultado.plantoes ? ` · ${resultado.plantoes} plantões` : ""}
               </p>
+              <div className="text-xs space-y-0.5 border-t pt-1.5">
+                <div className="flex justify-between"><span className="text-muted-foreground">Produzido</span><span>R$ {Number(resultado.total_produzido || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span></div>
+                {Number(resultado.total_a_vista) > 0 && (
+                  <div className="flex justify-between text-amber-700"><span>Já pago à vista</span><span>− R$ {Number(resultado.total_a_vista).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span></div>
+                )}
+                <div className="flex justify-between font-semibold"><span>A pagar</span><span>R$ {Number(resultado.total || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span></div>
+                <div className="text-muted-foreground pt-0.5">Competência: {String(resultado.mes).padStart(2, "0")}/{resultado.ano}</div>
+                {resultado.ajustes_restaurados > 0 && (
+                  <div className="text-muted-foreground">{resultado.ajustes_restaurados} ajuste(s) preservado(s) do import anterior.</div>
+                )}
+                {resultado.ajustes_perdidos > 0 && (
+                  <div className="text-amber-700">{resultado.ajustes_perdidos} ajuste(s) não puderam ser reaplicados — médico saiu do relatório.</div>
+                )}
+              </div>
               {resultado.nao_casados?.length > 0 && (
                 <div className="text-amber-700">
                   <p className="flex items-center gap-1.5"><AlertTriangle className="h-4 w-4" /> {resultado.nao_casados.length} sem médico casado (resolver manual):</p>
@@ -143,7 +194,7 @@ export function FinanceiroImportarFechamentoDialog({ mesDefault, anoDefault }: {
           )}
         </div>
         <DialogFooter>
-          <Button onClick={importar} disabled={!configId || !file || importando}>
+          <Button onClick={() => importar(false)} disabled={!configId || !file || importando}>
             {importando && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
             {resultado && !resultado.ja_importado ? "Reimportar" : "Importar"}
           </Button>

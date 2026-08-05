@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import { FinanceiroPagamento, useFinanceiroPagamentoItens, useConferirPagamento } from "@/hooks/useFinanceiroData";
 import { FinanceiroAnexos } from "./FinanceiroAnexos";
+import { FinanceiroAjustes } from "./FinanceiroAjustes";
 import { CheckCircle2, Loader2, Send, FileText } from "lucide-react";
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -35,6 +36,12 @@ export function FinanceiroDetalhe({ pagamento, onVoltar }: Props) {
   const fmt = (v: number) =>
     v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
+  const produzido = Number(pagamento.valor_produzido ?? 0);
+  const aVista = Number(pagamento.valor_a_vista ?? 0);
+  const ajustes = Number(pagamento.valor_ajustes ?? 0);
+  // depois de aprovado o fechamento não aceita mais lançamento
+  const bloqueado = pagamento.status === "aprovado" || pagamento.status === "pago";
+
   const formatHoras = (mins: number) => {
     const h = Math.floor(mins / 60);
     const m = mins % 60;
@@ -61,13 +68,29 @@ export function FinanceiroDetalhe({ pagamento, onVoltar }: Props) {
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Total Consolidado</CardTitle>
+            <CardTitle className="text-sm font-medium">A pagar</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold">{fmt(Number(pagamento.valor_total))}</p>
             <p className="text-sm text-muted-foreground">
               {pagamento.total_plantoes} plantões • {formatHoras(pagamento.total_horas_minutos)}
             </p>
+            {/* decomposição: só aparece quando o import trouxe as parcelas (relatório completo) */}
+            {(produzido > 0 || aVista > 0 || ajustes !== 0) && (
+              <div className="mt-3 space-y-1 text-xs border-t pt-2">
+                <div className="flex justify-between"><span className="text-muted-foreground">Produzido</span><span>{fmt(produzido)}</span></div>
+                {aVista > 0 && (
+                  <div className="flex justify-between text-amber-700">
+                    <span>Já pago à vista</span><span>− {fmt(aVista)}</span>
+                  </div>
+                )}
+                {ajustes !== 0 && (
+                  <div className={`flex justify-between ${ajustes < 0 ? "text-red-600" : "text-emerald-700"}`}>
+                    <span>Ajustes</span><span>{ajustes > 0 ? "+ " : "− "}{fmt(Math.abs(ajustes))}</span>
+                  </div>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
         <Card>
@@ -127,6 +150,7 @@ export function FinanceiroDetalhe({ pagamento, onVoltar }: Props) {
                     <TableHead>Horário</TableHead>
                     <TableHead>Setor</TableHead>
                     <TableHead>Local</TableHead>
+                    <TableHead>Tipo</TableHead>
                     <TableHead className="text-center">Duração</TableHead>
                     <TableHead className="text-right">Valor/Hora</TableHead>
                     <TableHead className="text-right">Valor Total</TableHead>
@@ -134,7 +158,7 @@ export function FinanceiroDetalhe({ pagamento, onVoltar }: Props) {
                 </TableHeader>
                 <TableBody>
                   {itens.map((item) => (
-                    <TableRow key={item.id}>
+                    <TableRow key={item.id} className={item.pago_a_vista ? "bg-amber-50/60" : undefined}>
                       <TableCell>
                         {new Date(item.data_plantao + "T00:00:00").toLocaleDateString("pt-BR")}
                       </TableCell>
@@ -143,6 +167,15 @@ export function FinanceiroDetalhe({ pagamento, onVoltar }: Props) {
                       </TableCell>
                       <TableCell>{item.setor || "—"}</TableCell>
                       <TableCell>{item.local_nome || "—"}</TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        {item.pago_a_vista ? (
+                          <Badge variant="outline" className="text-[11px] border-amber-400 text-amber-700">
+                            Pago à vista
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">{item.tipo || "—"}</span>
+                        )}
+                      </TableCell>
                       <TableCell className="text-center">
                         {item.carga_horaria_minutos ? formatHoras(item.carga_horaria_minutos) : "—"}
                       </TableCell>
@@ -152,7 +185,7 @@ export function FinanceiroDetalhe({ pagamento, onVoltar }: Props) {
                   ))}
                   {itens.length > 0 && (
                     <TableRow className="bg-muted/50 font-bold">
-                      <TableCell colSpan={4}>Total</TableCell>
+                      <TableCell colSpan={5}>Total produzido</TableCell>
                       <TableCell className="text-center">
                         {formatHoras(itens.reduce((s, i) => s + (i.carga_horaria_minutos || 0), 0))}
                       </TableCell>
@@ -168,6 +201,8 @@ export function FinanceiroDetalhe({ pagamento, onVoltar }: Props) {
           )}
         </CardContent>
       </Card>
+
+      <FinanceiroAjustes pagamentoId={pagamento.id} bloqueado={bloqueado} />
 
       <FinanceiroAnexos pagamentoId={pagamento.id} />
     </div>
