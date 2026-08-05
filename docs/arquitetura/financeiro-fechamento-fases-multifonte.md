@@ -131,7 +131,9 @@ Categorias iniciais (seed, editáveis por ela): `Gestão`, `Bônus`, `Desconto`,
 | **E1** ✅ | Parser `dr_escala_completo`: mês do arquivo, checksum, à vista, itens por plantão, casamento CPF/CRM/nome normalizado | DDL das 2 colunas em `pagamento_itens` |
 | **E2** ✅ | Ajustes: 2 tabelas novas + bloco de ajustes na tela do médico + `valor_total` derivado | E1 |
 | **E3** ✅ | Fases: ativar `financeiro_fechamentos` de verdade (lista + detalhe + enviar p/ aprovação), seletor de fonte | E1 |
-| **E4** | Demais fontes (Marieta, CIS, ambulatório, São João Batista) — cada uma vira um `formato` ou uma config | arquivos que a Mavi vai mandar |
+| **E4a** ✅ | Radiologia em matriz (Marieta + CEPON): parser `matriz_exames`, aba por competência, Acréscimos/Descontos viram ajustes | arquivos da Mavi (recebidos 05/08) |
+| **E4b** | Ler os PDFs do CEPON e preencher as quantidades sozinho — aí a planilha da equipe morre | tabela de preços por tipo/médico confirmada |
+| **E4c** | Carestream cru (13k linhas) e produção individual (Carlos Cristofaro) | decisão de escopo |
 | **E5** | Contas a receber consolidado a partir do fechamento (hoje `financeiro_receber` vem de contrato, não do fechamento) | E3 |
 
 E1+E2+E3 entregues em 05/08. E4 depende dos arquivos que a Mavi vai mandar;
@@ -152,3 +154,41 @@ E5 depende de decisão sobre o grão do contas a receber (ver §8).
   gravação é dívida técnica separada.
 - Um médico com **R$ 0,00 e 10 plantões** no import de hoje sugere que o consolidado às vezes
   não traz valor. Mais uma razão pro Completo — lá o checksum pegaria.
+
+
+## 9. Formatos de radiologia (análise dos arquivos de 05/08)
+
+| Arquivo | O que é | Estado |
+|---|---|---|
+| `Marieta .xlsx` | Matriz médico × exame (TC, TC TOTAL, RX, USG, DOPPLER, ANGIO, RM, MMG, URETRO), aba por mês | ✅ importa (26 médicos em JUN, R$ 238.267,38, 0 divergências) |
+| `CEPON Radiologia .xlsx` | Mesma matriz (ANGIO, TC, RX, USG, DOPPLER, BIÓPSIAS, MARCAÇÃO/CORE, DREN. BILIAR) + bloco pró-labore/INSS/distribuição | ✅ importa (21 médicos em JUN, 1 divergência real) |
+| 5 PDFs do HEMOSC/CEPON | **Quantidade** por médico+CRM por tipo de exame no período. É a FONTE do que a Mavi digita na planilha CEPON — números conferidos e batem | ⏳ E4b |
+| `PRODUÇÃO CARLOS CRISTOFARO .xlsx` | Produção individual, blocos por dia da semana, preços próprios (US 55, DOPPLER 110, BIÓPSIA 200) | ⏳ E4c |
+| `Fechamento … GSS - ENVIO AJUSTE 2.xlsx` | Carestream cru: 13.352 laudos + abas de de-para (`EQUIVALÊNCIA` modalidade→tipo, `PROCEDIMENTOS` 681 códigos com preço, `MÉDICOS GSS` de-para de nomes, `LAUDOS` prazos) + `RESUMO MÉDICO` já calculado | ⏳ E4c |
+
+**O circuito real da radiologia:** PDF (quantidade) → planilha da equipe (× preço) → Total À Pagar.
+O E4a traz o resultado dessa conta pro Sigma; o E4b elimina a digitação.
+
+### Pontos abertos da radiologia
+
+- **Preço por médico no Marieta**: TC sai a 20,63 para uns e 25,00 / 23,00 para outros. Confirmar
+  se a tabela de preço é por médico (contrato individual) ou se são subtipos misturados.
+- **CEPON, o que se paga**: `Total À Pagar` (bruto) ou `Valor Total` (líquido, depois de
+  pró-labore e INSS)? Hoje importo o bruto.
+- **Carlos Cristofaro (CEPON)**: `Total À Pagar` é **número digitado à mão** (R$ 29.947,50) e não
+  bate com as colunas de valor da própria planilha (R$ 9.383,96) nem com o arquivo de produção
+  dele (R$ 10.540,17). Perguntar de onde vem.
+
+### Vínculo com contrato (mínimo, como pedido)
+
+`financeiro_import_config.cliente_id` já existia e nunca era preenchido — agora as 3 fontes
+apontam para o cliente, e por ele chega-se ao contrato. Nada de estrutura nova.
+
+| Fonte | Cliente | Contrato |
+|---|---|---|
+| Marieta Radiologia | Hospital e Maternidade Marieta Konder Bornhausen | CT 121/2023 (Exames) — **vence 30/08/2026** |
+| CEPON Radiologia | FAHECE – Fundação de Apoio ao HEMOSC / CEPON | CT 014/2023 e CT 012/2023 |
+| Dr. Escala (HRO) | Hospital Regional do Oeste de Chapecó | CT PSM30-102025 (Plantão Presencial) |
+
+⚠️ Os dois contratos do CEPON estão com `data_fim` no passado (18/06/2024 e 08/05/2026) e
+`status_contrato = Ativo` — ou o cadastro está desatualizado, ou houve aditivo não registrado.
