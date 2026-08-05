@@ -132,8 +132,9 @@ Categorias iniciais (seed, editáveis por ela): `Gestão`, `Bônus`, `Desconto`,
 | **E2** ✅ | Ajustes: 2 tabelas novas + bloco de ajustes na tela do médico + `valor_total` derivado | E1 |
 | **E3** ✅ | Fases: ativar `financeiro_fechamentos` de verdade (lista + detalhe + enviar p/ aprovação), seletor de fonte | E1 |
 | **E4a** ✅ | Radiologia em matriz (Marieta + CEPON): parser `matriz_exames`, aba por competência, Acréscimos/Descontos viram ajustes | arquivos da Mavi (recebidos 05/08) |
-| **E4b** | Ler os PDFs do CEPON e preencher as quantidades sozinho — aí a planilha da equipe morre | tabela de preços por tipo/médico confirmada |
-| **E4c** | Carestream cru (13k linhas) e produção individual (Carlos Cristofaro) | decisão de escopo |
+| **E4b** ⏸️ | PDFs do CEPON: extração **funciona** (unpdf no Deno), mas a planilha da equipe **não é transcrição fiel** dos PDFs — ver §10 | Mavi explicar as diferenças |
+| **E4c** ✅ | Carestream `RESUMO MÉDICO` → contas a **receber** (23 médicos, R$ 325.207,58, 0 divergência) | — |
+| **E4d** | Produção individual (Carlos Cristofaro) — 1 médico, layout próprio | decisão de escopo |
 | **E5** | Contas a receber consolidado a partir do fechamento (hoje `financeiro_receber` vem de contrato, não do fechamento) | E3 |
 
 E1+E2+E3 entregues em 05/08. E4 depende dos arquivos que a Mavi vai mandar;
@@ -192,3 +193,41 @@ apontam para o cliente, e por ele chega-se ao contrato. Nada de estrutura nova.
 
 ⚠️ Os dois contratos do CEPON estão com `data_fim` no passado (18/06/2024 e 08/05/2026) e
 `status_contrato = Ativo` — ou o cadastro está desatualizado, ou houve aditivo não registrado.
+
+
+## 10. E4b — por que os PDFs ainda não são a fonte
+
+A extração de texto funciona no runtime da edge (`unpdf`), e os dois layouts (sintético e
+analítico) terminam no mesmo padrão `<n>Total <Nome> - CRM: <crm>`, então um regex serve
+para os cinco. **O problema não é técnico.**
+
+Cruzando os 5 PDFs de junho contra a matriz do CEPON: **21 pares batem, 10 divergem.**
+
+| Caso | PDF | Planilha | Leitura |
+|---|---|---|---|
+| Aline Guerrero — USG | 113 | 47 | planilha conta menos que o PDF |
+| Aline Guerrero — BIÓPSIAS | 38 | 9 | idem |
+| Carlos Cristofaro — BIÓPSIAS | 44 | 39 | diferença = as 5 biópsias de **próstata** (PDF separado) |
+| Luana Costa **de** Albuquerque — TC | 0 | 160 | nome no PDF é "Luana Costa Albuquerque" (sem "de") |
+| Pedro Afonso Mori Carrilho — TC | 23 | 0 | está no PDF e não na planilha |
+| Luíza Mello Flores — USG | 93 | 92 | diferença de 1 |
+
+Trocar a fonte hoje **mudaria os valores pagos**. Antes disso a Mavi precisa dizer se ela
+filtra algo ao transcrever (procedimentos não faturáveis? glosa?) ou se são correções.
+Com essa resposta, o caminho natural é o PDF virar **conferência** primeiro (importa a
+planilha e mostra a divergência), e só depois virar a fonte.
+
+O de-para de nomes (Luana com/sem "de", Caroline × Carolina) é o mesmo problema que a aba
+`MÉDICOS GSS` do arquivo Carestream já resolve à mão — vira tabela no Sigma quando E4b andar.
+
+## 11. Os dois lados do fechamento (E4c)
+
+| | Fonte | Preço | Total 06/2026 |
+|---|---|---|---|
+| **A receber** | `Fechamento … GSS` (Carestream, aba RESUMO MÉDICO) | contrato com o cliente (TC R$ 34,65) | **R$ 325.207,58** |
+| **A pagar** | `Marieta .xlsx` (aba do mês) | acordo com o médico (TC R$ 20,63 / 23,00 / 25,00) | **R$ 238.267,38** |
+| | | **margem** | **R$ 86.940,20 (26,7%)** |
+
+A quantidade de exames é a **mesma** nos dois (Airton TC 97, Eduardo TC 618, Gustavo TC 1) —
+é o preço que muda. Por isso `financeiro_import_config.direcao` decide se o arquivo vira
+`financeiro_pagamentos` ou `financeiro_receber`.
