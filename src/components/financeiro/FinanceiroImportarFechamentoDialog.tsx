@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
@@ -52,6 +52,10 @@ export function FinanceiroImportarFechamentoDialog({ mesDefault, anoDefault }: {
     },
     enabled: open,
   });
+
+  // a competência da tela pode mudar depois deste componente montar; sem isto o dialog
+  // abriria no mês antigo — foi assim que julho entrou como agosto.
+  useEffect(() => { setMes(mesDefault); setAno(anoDefault); }, [mesDefault, anoDefault]);
 
   const reset = () => { setResultado(null); setFile(null); setConfigId(""); setAviso(null); };
 
