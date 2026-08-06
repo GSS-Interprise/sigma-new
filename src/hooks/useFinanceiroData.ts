@@ -392,7 +392,7 @@ export function useGerarPagamentos() {
         const vencAno = mes === 12 ? ano + 1 : ano;
         const dataVencimento = `${vencAno}-${String(vencMes).padStart(2, "0")}-10`;
 
-        const { data: pagamento, error: pagErr } = await supabase
+        const { data: pagamento, error: pagErr } = await (supabase as any)
           .from("financeiro_pagamentos")
           .insert({
             profissional_nome: group.profissional_nome,
@@ -403,6 +403,9 @@ export function useGerarPagamentos() {
             unidade: group.unidade,
             total_plantoes: group.shifts.length,
             total_horas_minutos: totalMinutos,
+            // valor_produzido é a BASE do cálculo; sem ela o primeiro ajuste vira o
+            // total inteiro (incidente 06/08). Todo write-path precisa preencher.
+            valor_produzido: Math.round(valorTotal * 100) / 100,
             valor_total: Math.round(valorTotal * 100) / 100,
             status: "pendente",
             data_vencimento: dataVencimento,

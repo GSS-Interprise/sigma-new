@@ -20,7 +20,7 @@ const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", curren
  * o `check` no banco recusa vazio, então a validação aqui é só pra não ir e voltar.
  * O valor_total do pagamento é recalculado por trigger; não some nada na tela.
  */
-export function FinanceiroAjustes({ pagamentoId, bloqueado }: { pagamentoId: string; bloqueado?: boolean }) {
+export function FinanceiroAjustes({ pagamentoId, bloqueado, base = 0 }: { pagamentoId: string; bloqueado?: boolean; base?: number }) {
   const { data: ajustes = [], isLoading } = useFinanceiroAjustes(pagamentoId);
   const { data: categorias = [] } = useFinanceiroAjusteCategorias();
   const salvar = useSalvarAjuste();
@@ -31,6 +31,13 @@ export function FinanceiroAjustes({ pagamentoId, bloqueado }: { pagamentoId: str
   const [novaCat, setNovaCat] = useState<{ nome: string; sinal: string } | null>(null);
 
   const total = ajustes.reduce((s, a) => s + Number(a.valor), 0);
+  // prévia do resultado enquanto ela digita — o valor a pagar não pode ser surpresa
+  const brutoForm = parseFloat((form?.valor || "").replace(/\./g, "").replace(",", "."));
+  const deltaForm = isFinite(brutoForm)
+    ? (form?.sinal === "menos" ? -Math.abs(brutoForm) : Math.abs(brutoForm))
+    : 0;
+  const jaLancado = form?.id ? Number(ajustes.find((a) => a.id === form.id)?.valor ?? 0) : 0;
+  const totalPrevisto = base + total - jaLancado + deltaForm;
   const nomeCat = (id: string) => categorias.find((c) => c.id === id)?.nome ?? "—";
 
   const abrirNovo = () => setForm({ categoria_id: "", sinal: "mais", valor: "", justificativa: "" });
@@ -168,6 +175,17 @@ export function FinanceiroAjustes({ pagamentoId, bloqueado }: { pagamentoId: str
                 <Input inputMode="decimal" placeholder="200,00" value={form?.valor ?? ""}
                   onChange={(e) => setForm((f) => (f ? { ...f, valor: e.target.value } : f))} />
               </div>
+            </div>
+            <div className="rounded-md border bg-muted/40 p-2.5 text-xs space-y-1">
+              <div className="flex justify-between"><span className="text-muted-foreground">Produção (menos o já pago à vista)</span><span>{fmt(base)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Ajustes com este lançamento</span><span>{fmt(total - jaLancado + deltaForm)}</span></div>
+              <div className="flex justify-between font-semibold border-t pt-1">
+                <span>A pagar ficará</span>
+                <span className={totalPrevisto < 0 ? "text-red-600" : ""}>{fmt(totalPrevisto)}</span>
+              </div>
+              {totalPrevisto < 0 && (
+                <p className="text-red-600">O desconto é maior que o valor produzido — confira antes de salvar.</p>
+              )}
             </div>
             <div>
               <Label>Justificativa</Label>

@@ -209,7 +209,7 @@ export function FinanceiroDetalhe({ pagamento, onVoltar }: Props) {
         </CardContent>
       </Card>
 
-      <FinanceiroAjustes pagamentoId={pagamento.id} bloqueado={bloqueado} />
+      <FinanceiroAjustes pagamentoId={pagamento.id} bloqueado={bloqueado} base={produzido - aVista} />
 
       <FinanceiroAnexos pagamentoId={pagamento.id} />
     </div>
