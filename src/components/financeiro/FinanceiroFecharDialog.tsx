@@ -189,6 +189,7 @@ export function FinanceiroFecharDialog({ mes, ano }: { mes: number; ano: number 
 
       qc.invalidateQueries({ queryKey: ["financeiro-pagamentos"] });
       qc.invalidateQueries({ queryKey: ["financeiro-fechamentos"] });
+      qc.invalidateQueries({ queryKey: ["financeiro-fases"] });
       toast.success(
         msgId
           ? "Mês fechado e enviado para aprovação da diretoria."
@@ -207,8 +208,8 @@ export function FinanceiroFecharDialog({ mes, ano }: { mes: number; ano: number 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
-        <Button variant="outline" className="gap-2">
-          <Lock className="h-4 w-4" /> Fechar mês
+        <Button className="gap-2">
+          <Lock className="h-4 w-4" /> Enviar para aprovação
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-md">

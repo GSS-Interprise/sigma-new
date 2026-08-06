@@ -191,6 +191,7 @@ export function useSalvarAjuste() {
   const invalidar = (pagamentoId: string) => {
     qc.invalidateQueries({ queryKey: ["financeiro-ajustes", pagamentoId] });
     qc.invalidateQueries({ queryKey: ["financeiro-pagamentos"] });
+    qc.invalidateQueries({ queryKey: ["financeiro-fases"] });
   };
   return useMutation({
     mutationFn: async (a: { id?: string; pagamento_id: string; categoria_id: string; valor: number; justificativa: string }) => {
@@ -221,6 +222,7 @@ export function useRemoverAjuste() {
     onSuccess: (pagamentoId) => {
       qc.invalidateQueries({ queryKey: ["financeiro-ajustes", pagamentoId] });
       qc.invalidateQueries({ queryKey: ["financeiro-pagamentos"] });
+      qc.invalidateQueries({ queryKey: ["financeiro-fases"] });
       toast.success("Ajuste removido.");
     },
     onError: (e: any) => toast.error("Erro ao remover ajuste: " + e.message),

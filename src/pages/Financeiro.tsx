@@ -10,9 +10,6 @@ import { FinanceiroResumo } from "@/components/financeiro/FinanceiroResumo";
 import { FinanceiroContasPagar } from "@/components/financeiro/FinanceiroContasPagar";
 import { FinanceiroContasReceber } from "@/components/financeiro/FinanceiroContasReceber";
 import { FinanceiroGerarDialog } from "@/components/financeiro/FinanceiroGerarDialog";
-import { FinanceiroImportProducaoDialog } from "@/components/financeiro/FinanceiroImportProducaoDialog";
-import { FinanceiroImportarFechamentoDialog } from "@/components/financeiro/FinanceiroImportarFechamentoDialog";
-import { FinanceiroFecharDialog } from "@/components/financeiro/FinanceiroFecharDialog";
 import { FinanceiroConfigValores } from "@/components/financeiro/FinanceiroConfigValores";
 import { FinanceiroSigFinc } from "@/components/financeiro/FinanceiroSigFinc";
 import { FinanceiroFases } from "@/components/financeiro/FinanceiroFases";
@@ -55,9 +52,7 @@ export default function Financeiro() {
         <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">Contas a pagar de médicos baseadas nas escalas</p>
       </div>
       <div className="flex items-center gap-2 flex-wrap">
-        <FinanceiroImportProducaoDialog mesDefault={mes} anoDefault={ano} />
-        <FinanceiroImportarFechamentoDialog mesDefault={mes} anoDefault={ano} />
-        <FinanceiroFecharDialog mes={mes} ano={ano} />
+        {/* importar/fechar vivem na aba Fechamento, junto do trabalho — não soltos aqui */}
         <FinanceiroGerarDialog />
       </div>
     </div>

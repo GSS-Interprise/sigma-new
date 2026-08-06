@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -5,64 +6,68 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { FileSpreadsheet, CheckCircle2, Circle, ArrowRight, Wallet, ClipboardCheck } from "lucide-react";
+import { FileSpreadsheet, CheckCircle2, ArrowRight, Wallet, ClipboardCheck, SlidersHorizontal, Info } from "lucide-react";
+import { FinanceiroPagamento } from "@/hooks/useFinanceiroData";
+import { FinanceiroDetalhe } from "./FinanceiroDetalhe";
+import { FinanceiroImportarFechamentoDialog } from "./FinanceiroImportarFechamentoDialog";
+import { FinanceiroFecharDialog } from "./FinanceiroFecharDialog";
 
 const brl = (v: number) => Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 /**
- * E3 — as três fases do financeiro numa competência: Fechamento → Em aprovação → Pagamento.
- * Não reimplementa a transição: quem fecha continua sendo o FinanceiroFecharDialog (que gera
- * o PDF e manda pro canal do João). Aqui é a visão de ONDE o mês está e o que já entrou nele.
+ * E3/E6 — a jornada do fechamento numa tela só: importar → conferir → ajustar →
+ * enviar para aprovação. A transição de fase continua sendo do FinanceiroFecharDialog
+ * (que gera o PDF e manda pro canal da diretoria); aqui é a mesa de trabalho da Mavi.
  */
 export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
+  const [selecionado, setSelecionado] = useState<string | null>(null);
+
   const { data, isLoading } = useQuery({
     queryKey: ["financeiro-fases", mes, ano],
     queryFn: async () => {
       const [pagRes, fechRes, recRes] = await Promise.all([
-        (supabase as any).from("financeiro_pagamentos")
-          .select("valor_total, valor_produzido, valor_a_vista, valor_ajustes, medico_id, profissional_nome, unidade, fonte, arquivo_origem, status")
-          .eq("mes_referencia", mes).eq("ano_referencia", ano),
+        (supabase as any).from("financeiro_pagamentos").select("*")
+          .eq("mes_referencia", mes).eq("ano_referencia", ano)
+          .order("profissional_nome"),
         (supabase as any).from("financeiro_fechamentos")
           .select("id, status, total, qtd_medicos, criado_em, aprovado_em")
           .eq("mes_referencia", mes).eq("ano_referencia", ano).maybeSingle(),
         (supabase as any).from("financeiro_receber")
-          .select("descricao, valor_previsto, valor_faturado, fonte")
+          .select("descricao, valor_previsto, fonte")
           .eq("mes_referencia", mes).eq("ano_referencia", ano),
       ]);
-      return { pagamentos: (pagRes.data || []) as any[], fechamento: fechRes.data as any, receber: (recRes.data || []) as any[] };
+      return {
+        pagamentos: (pagRes.data || []) as FinanceiroPagamento[],
+        fechamento: fechRes.data as any,
+        receber: (recRes.data || []) as any[],
+      };
     },
   });
 
   const pagamentos = data?.pagamentos ?? [];
-  const fechamento = data?.fechamento;
-  const status = fechamento?.status ?? null;
+  const status = data?.fechamento?.status ?? null;
+  const fase = status === "pago" || status === "aprovado" ? 3 : status === "aguardando_aprovacao" ? 2 : 1;
+  const podeAjustar = fase === 1;
 
-  // fase corrente: sem fechamento (ou cancelado) = ainda em montagem
-  const fase = status === "pago" ? 3 : status === "aprovado" ? 3 : status === "aguardando_aprovacao" ? 2 : 1;
-
-  const soma = (campo: string) => pagamentos.reduce((s, p) => s + Number(p[campo] || 0), 0);
+  const soma = (campo: keyof FinanceiroPagamento) =>
+    pagamentos.reduce((s, p) => s + Number((p as any)[campo] || 0), 0);
   const produzido = soma("valor_produzido");
   const aVista = soma("valor_a_vista");
   const ajustes = soma("valor_ajustes");
   const aPagar = soma("valor_total");
-  const aReceber = (data?.receber ?? []).reduce((s: number, r: any) => s + Number(r.valor_previsto || 0), 0);
-  const medicos = new Set(pagamentos.map((p) => p.medico_id || p.profissional_nome)).size;
+  const aReceber = (data?.receber ?? []).reduce((s, r) => s + Number(r.valor_previsto || 0), 0);
 
-  // agrupa por FONTE que originou o lançamento — é o "de onde veio cada fechamento"
-  const fontes = Object.values(
-    pagamentos.reduce((acc: Record<string, any>, p) => {
-      const arq = String(p.arquivo_origem || "");
-      const chave = arq.startsWith("[cfg:") ? arq.slice(0, arq.indexOf("]") + 1) : (p.fonte || "manual");
-      const rotulo = arq.startsWith("[cfg:")
-        ? (arq.split("]")[1] || "").trim() || "Importado"
-        : arq || (p.fonte === "import" ? "Importado (formato antigo)" : "Lançamento manual");
-      acc[chave] ??= { rotulo, medicos: new Set<string>(), total: 0, aVista: 0 };
-      acc[chave].medicos.add(p.medico_id || p.profissional_nome);
-      acc[chave].total += Number(p.valor_total || 0);
-      acc[chave].aVista += Number(p.valor_a_vista || 0);
-      return acc;
-    }, {})
-  ) as any[];
+  // "de onde veio" cada lançamento — o prefixo [cfg:id] marca o import por fonte
+  const rotuloFonte = (p: FinanceiroPagamento) => {
+    const arq = String((p as any).arquivo_origem || "");
+    if (arq.startsWith("[cfg:")) return (arq.split("]")[1] || "").trim() || "Importado";
+    return arq || (p.fonte === "import" ? "Importado (formato antigo)" : "Manual");
+  };
+
+  if (selecionado) {
+    const pag = pagamentos.find((p) => p.id === selecionado);
+    if (pag) return <FinanceiroDetalhe pagamento={pag} onVoltar={() => setSelecionado(null)} />;
+  }
 
   const FASES = [
     { n: 1, titulo: "Fechamento", desc: "Importar, conferir e ajustar", icone: FileSpreadsheet, quem: "Mavi" },
@@ -106,90 +111,152 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
               Competência {String(mes).padStart(2, "0")}/{ano}
             </CardTitle>
             <p className="text-xs text-muted-foreground mt-0.5">
-              {medicos} médico(s) · {pagamentos.length} lançamento(s)
-              {status ? ` · fechamento ${status.replace(/_/g, " ")}` : " · ainda não fechado"}
+              {pagamentos.length} médico(s)
+              {status ? ` · fechamento ${status.replace(/_/g, " ")}` : " · ainda não enviado para aprovação"}
             </p>
           </div>
-          {fase === 2 && (
-            <Button asChild size="sm" variant="outline" className="gap-1.5 shrink-0">
-              <Link to="/financeiro/aprovacoes">Ver aprovações <ArrowRight className="h-4 w-4" /></Link>
-            </Button>
-          )}
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            {[
-              { r: "Produzido", v: produzido, cls: "" },
-              { r: "Já pago à vista", v: aVista, cls: "text-amber-700" },
-              { r: "Ajustes", v: ajustes, cls: ajustes < 0 ? "text-red-600" : "text-emerald-700" },
-              { r: "A pagar", v: aPagar, cls: "font-bold" },
-            ].map((k) => (
-              <div key={k.r} className="rounded-md border p-3">
-                <p className="text-xs text-muted-foreground">{k.r}</p>
-                <p className={`text-lg ${k.cls}`}>{brl(k.v)}</p>
-              </div>
-            ))}
-          </div>
-
-          {/* os dois lados do mesmo fechamento: o que o cliente paga × o que se paga ao médico */}
-          {aReceber > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="rounded-md border p-3">
-                <p className="text-xs text-muted-foreground">A receber (contratos)</p>
-                <p className="text-lg text-blue-700">{brl(aReceber)}</p>
-              </div>
-              <div className="rounded-md border p-3">
-                <p className="text-xs text-muted-foreground">A pagar (médicos)</p>
-                <p className="text-lg">{brl(aPagar)}</p>
-              </div>
-              <div className="rounded-md border p-3 bg-muted/40">
-                <p className="text-xs text-muted-foreground">Margem da competência</p>
-                <p className={`text-lg font-bold ${aReceber - aPagar < 0 ? "text-red-600" : "text-emerald-700"}`}>
-                  {brl(aReceber - aPagar)}
-                  <span className="text-xs font-normal text-muted-foreground ml-2">
-                    {aReceber ? `${(((aReceber - aPagar) / aReceber) * 100).toFixed(1)}%` : ""}
-                  </span>
-                </p>
-              </div>
-            </div>
-          )}
-
-          <div>
-            <p className="text-sm font-medium mb-2">Fontes que entraram nesta competência</p>
-            {isLoading ? (
-              <p className="text-muted-foreground text-sm py-3">Carregando…</p>
-            ) : fontes.length === 0 ? (
-              <p className="text-muted-foreground text-sm py-4 text-center">
-                Nenhum lançamento ainda. Use <b>Importar fechamento</b> para trazer o relatório da fonte.
-              </p>
-            ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Origem</TableHead>
-                      <TableHead className="text-center">Médicos</TableHead>
-                      <TableHead className="text-right">Já pago à vista</TableHead>
-                      <TableHead className="text-right">A pagar</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {fontes.map((f, i) => (
-                      <TableRow key={i}>
-                        <TableCell className="max-w-[22rem] truncate" title={f.rotulo}>
-                          <Circle className="h-2 w-2 inline mr-2 fill-current text-muted-foreground" />
-                          {f.rotulo}
-                        </TableCell>
-                        <TableCell className="text-center">{f.medicos.size}</TableCell>
-                        <TableCell className="text-right text-amber-700">{f.aVista > 0 ? brl(f.aVista) : "—"}</TableCell>
-                        <TableCell className="text-right font-semibold">{brl(f.total)}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+          <div className="flex items-center gap-2 flex-wrap shrink-0">
+            {podeAjustar && <FinanceiroImportarFechamentoDialog mesDefault={mes} anoDefault={ano} />}
+            {fase === 2 && (
+              <Button asChild size="sm" variant="outline" className="gap-1.5">
+                <Link to="/financeiro/aprovacoes">Ver aprovações <ArrowRight className="h-4 w-4" /></Link>
+              </Button>
             )}
           </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {pagamentos.length === 0 ? (
+            <div className="text-center py-10 space-y-3">
+              <FileSpreadsheet className="h-10 w-10 mx-auto text-muted-foreground/50" />
+              <div>
+                <p className="font-medium">Nenhum lançamento nesta competência</p>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  Comece trazendo o relatório da fonte — Dr. Escala, Marieta, CEPON, Carestream.
+                </p>
+              </div>
+              <div className="flex justify-center">
+                <FinanceiroImportarFechamentoDialog mesDefault={mes} anoDefault={ano} />
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                {[
+                  { r: "Produzido", v: produzido, cls: "" },
+                  { r: "Já pago à vista", v: aVista, cls: "text-amber-700" },
+                  { r: "Ajustes", v: ajustes, cls: ajustes < 0 ? "text-red-600" : ajustes > 0 ? "text-emerald-700" : "" },
+                  { r: "A pagar", v: aPagar, cls: "font-bold" },
+                ].map((k) => (
+                  <div key={k.r} className="rounded-md border p-3">
+                    <p className="text-xs text-muted-foreground">{k.r}</p>
+                    <p className={`text-lg ${k.cls}`}>{brl(k.v)}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* os dois lados do mesmo fechamento: o que o cliente paga × o que se paga ao médico */}
+              {aReceber > 0 && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="rounded-md border p-3">
+                    <p className="text-xs text-muted-foreground">A receber (contratos)</p>
+                    <p className="text-lg text-blue-700">{brl(aReceber)}</p>
+                  </div>
+                  <div className="rounded-md border p-3">
+                    <p className="text-xs text-muted-foreground">A pagar (médicos)</p>
+                    <p className="text-lg">{brl(aPagar)}</p>
+                  </div>
+                  <div className="rounded-md border p-3 bg-muted/40">
+                    <p className="text-xs text-muted-foreground">Margem da competência</p>
+                    <p className={`text-lg font-bold ${aReceber - aPagar < 0 ? "text-red-600" : "text-emerald-700"}`}>
+                      {brl(aReceber - aPagar)}
+                      <span className="text-xs font-normal text-muted-foreground ml-2">
+                        {(((aReceber - aPagar) / aReceber) * 100).toFixed(1)}%
+                      </span>
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm font-medium">Lançamentos do fechamento</p>
+                  {podeAjustar && (
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Info className="h-3 w-3" /> clique no médico para lançar acréscimo ou desconto
+                    </p>
+                  )}
+                </div>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Médico</TableHead>
+                        <TableHead>Origem</TableHead>
+                        <TableHead className="text-right">Produzido</TableHead>
+                        <TableHead className="text-right">À vista</TableHead>
+                        <TableHead className="text-right">Ajustes</TableHead>
+                        <TableHead className="text-right">A pagar</TableHead>
+                        <TableHead className="w-24" />
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {pagamentos.map((p) => {
+                        const aj = Number(p.valor_ajustes || 0);
+                        const av = Number(p.valor_a_vista || 0);
+                        return (
+                          <TableRow key={p.id} className="cursor-pointer" onClick={() => setSelecionado(p.id)}>
+                            <TableCell className="font-medium">
+                              {p.profissional_nome}
+                              {!p.medico_id && (
+                                <Badge variant="outline" className="ml-2 text-[10px] border-amber-400 text-amber-700">
+                                  sem cadastro
+                                </Badge>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground max-w-[14rem] truncate">
+                              {rotuloFonte(p)}
+                            </TableCell>
+                            <TableCell className="text-right">{brl(Number(p.valor_produzido || 0))}</TableCell>
+                            <TableCell className="text-right text-amber-700">{av > 0 ? brl(av) : "—"}</TableCell>
+                            <TableCell className={`text-right ${aj < 0 ? "text-red-600" : aj > 0 ? "text-emerald-700" : "text-muted-foreground"}`}>
+                              {aj !== 0 ? `${aj > 0 ? "+" : ""}${brl(aj)}` : "—"}
+                            </TableCell>
+                            <TableCell className="text-right font-semibold">{brl(Number(p.valor_total))}</TableCell>
+                            <TableCell className="text-right">
+                              <Button variant="ghost" size="sm" className="gap-1.5"
+                                onClick={(e) => { e.stopPropagation(); setSelecionado(p.id); }}>
+                                <SlidersHorizontal className="h-4 w-4" />
+                                {podeAjustar ? "Ajustar" : "Ver"}
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                      <TableRow className="bg-muted/50 font-bold">
+                        <TableCell colSpan={2}>Total</TableCell>
+                        <TableCell className="text-right">{brl(produzido)}</TableCell>
+                        <TableCell className="text-right text-amber-700">{brl(aVista)}</TableCell>
+                        <TableCell className="text-right">{brl(ajustes)}</TableCell>
+                        <TableCell className="text-right">{brl(aPagar)}</TableCell>
+                        <TableCell />
+                      </TableRow>
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+
+              {/* a saída da fase 1 fica no fim da mesa de trabalho, não perdida no header */}
+              {podeAjustar && (
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-t pt-4">
+                  <p className="text-sm text-muted-foreground">
+                    Conferiu e ajustou tudo? Envie o fechamento para a diretoria aprovar.
+                  </p>
+                  <FinanceiroFecharDialog mes={mes} ano={ano} />
+                </div>
+              )}
+            </>
+          )}
+          {isLoading && <p className="text-muted-foreground text-sm text-center py-3">Carregando…</p>}
         </CardContent>
       </Card>
     </div>

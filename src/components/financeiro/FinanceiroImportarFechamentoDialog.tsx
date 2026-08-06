@@ -76,6 +76,8 @@ export function FinanceiroImportarFechamentoDialog({ mesDefault, anoDefault }: {
       setResultado(data);
       if (data.mes) { setMes(data.mes); setAno(data.ano); }
       qc.invalidateQueries({ queryKey: ["financeiro-pagamentos"] });
+      qc.invalidateQueries({ queryKey: ["financeiro-fases"] });
+      qc.invalidateQueries({ queryKey: ["financeiro-receber"] });
       toast.success(`Importado: ${data.inseridos} médicos (${data.casados} casados).`);
     } catch (e: any) {
       toast.error("Falha no import: " + (e?.message || ""));
