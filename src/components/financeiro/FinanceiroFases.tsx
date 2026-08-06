@@ -7,8 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FileSpreadsheet, CheckCircle2, ArrowRight, Wallet, ClipboardCheck, SlidersHorizontal, Info } from "lucide-react";
-import { FinanceiroPagamento } from "@/hooks/useFinanceiroData";
+import { FileSpreadsheet, CheckCircle2, ArrowRight, Wallet, ClipboardCheck, SlidersHorizontal, Info, Circle, Loader2 } from "lucide-react";
+import { FinanceiroPagamento, useConferirEmLote } from "@/hooks/useFinanceiroData";
 import { FinanceiroDetalhe } from "./FinanceiroDetalhe";
 import { FinanceiroImportarFechamentoDialog } from "./FinanceiroImportarFechamentoDialog";
 import { FinanceiroFecharDialog } from "./FinanceiroFecharDialog";
@@ -25,6 +25,7 @@ const TODAS = "todas";
 export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
   const [selecionado, setSelecionado] = useState<string | null>(null);
   const [fonteSel, setFonteSel] = useState<string>(TODAS);
+  const conferirLote = useConferirEmLote();
 
   const { data, isLoading } = useQuery({
     queryKey: ["financeiro-fases", mes, ano],
@@ -74,6 +75,11 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
   const ajustes = soma("valor_ajustes");
   const aPagar = soma("valor_total");
   const aReceber = (data?.receber ?? []).reduce((s, r) => s + Number(r.valor_previsto || 0), 0);
+
+  // conferência é ato interno da Mavi e acontece em lote; o canal só entra na aprovação
+  const pendentes = pagamentos.filter((p) => !p.conferido_em);
+  const conferidos = pagamentos.length - pendentes.length;
+  const faltamNaCompetencia = todos.filter((p) => !p.conferido_em).length;
 
   // "de onde veio" cada lançamento — o prefixo [cfg:id] marca o import por fonte
   const rotuloFonte = (p: FinanceiroPagamento) => {
@@ -214,18 +220,40 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
               )}
 
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm font-medium">Lançamentos do fechamento</p>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
+                  <p className="text-sm font-medium">
+                    Lançamentos do fechamento
+                    <span className="ml-2 text-xs font-normal text-muted-foreground">
+                      {conferidos} de {pagamentos.length} conferidos
+                    </span>
+                  </p>
                   {podeAjustar && (
-                    <p className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Info className="h-3 w-3" /> clique no médico para lançar acréscimo ou desconto
-                    </p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Info className="h-3 w-3" /> clique no médico para lançar acréscimo ou desconto
+                      </span>
+                      {pendentes.length > 0 ? (
+                        <Button size="sm" variant="outline" className="gap-1.5"
+                          disabled={conferirLote.isPending}
+                          onClick={() => conferirLote.mutate({ ids: pendentes.map((p) => p.id) })}>
+                          {conferirLote.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                          Conferir {pendentes.length} pendente(s)
+                        </Button>
+                      ) : (
+                        <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground"
+                          disabled={conferirLote.isPending}
+                          onClick={() => conferirLote.mutate({ ids: pagamentos.map((p) => p.id), desfazer: true })}>
+                          Reabrir conferência
+                        </Button>
+                      )}
+                    </div>
                   )}
                 </div>
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead className="w-10" />
                         <TableHead>Médico</TableHead>
                         <TableHead>Origem</TableHead>
                         <TableHead className="text-right">Produzido</TableHead>
@@ -241,6 +269,19 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
                         const av = Number(p.valor_a_vista || 0);
                         return (
                           <TableRow key={p.id} className="cursor-pointer" onClick={() => setSelecionado(p.id)}>
+                            <TableCell onClick={(e) => e.stopPropagation()}>
+                              {p.conferido_em ? (
+                                <button title="Conferido — clique para reabrir" disabled={!podeAjustar}
+                                  onClick={() => conferirLote.mutate({ ids: [p.id], desfazer: true })}>
+                                  <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                                </button>
+                              ) : (
+                                <button title="Marcar como conferido" disabled={!podeAjustar}
+                                  onClick={() => conferirLote.mutate({ ids: [p.id] })}>
+                                  <Circle className="h-4 w-4 text-muted-foreground/40" />
+                                </button>
+                              )}
+                            </TableCell>
                             <TableCell className="font-medium">
                               {p.profissional_nome}
                               {!p.medico_id && (
@@ -269,7 +310,7 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
                         );
                       })}
                       <TableRow className="bg-muted/50 font-bold">
-                        <TableCell colSpan={2}>Total</TableCell>
+                        <TableCell colSpan={3}>Total</TableCell>
                         <TableCell className="text-right">{brl(produzido)}</TableCell>
                         <TableCell className="text-right text-amber-700">{brl(aVista)}</TableCell>
                         <TableCell className="text-right">{brl(ajustes)}</TableCell>
@@ -285,7 +326,9 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
               {podeAjustar && (
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-t pt-4">
                   <p className="text-sm text-muted-foreground">
-                    Conferiu e ajustou tudo? Envie o fechamento para a diretoria aprovar.
+                    {faltamNaCompetencia > 0
+                      ? `Faltam ${faltamNaCompetencia} lançamento(s) por conferir na competência.`
+                      : "Tudo conferido. Envie para a diretoria aprovar o pagamento — é aqui que vai para o canal."}
                     {fonteSel !== TODAS && (
                       <span className="block text-xs text-amber-700 mt-0.5">
                         A aprovação é da competência inteira ({todos.length} médicos), não só da fonte filtrada.

@@ -114,7 +114,7 @@ export function FinanceiroDetalhe({ pagamento, onVoltar }: Props) {
               ) : (
                 <Button size="sm" onClick={() => conferir.mutate({ pagamento })} disabled={conferir.isPending}>
                   {conferir.isPending ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Send className="h-4 w-4 mr-1.5" />}
-                  Conferir e enviar ao canal
+                  Marcar como conferido
                 </Button>
               )}
             </div>
