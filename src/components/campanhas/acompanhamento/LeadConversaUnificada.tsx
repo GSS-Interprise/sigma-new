@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Smartphone } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { SigZapAudioPlayer } from "@/components/sigzap/SigZapMediaPlayer";
 
 interface Props {
   leadId: string;
@@ -26,6 +27,8 @@ interface SigzapMsg {
   from_me: boolean;
   message_text: string | null;
   message_type: string | null;
+  media_url: string | null;
+  media_mime_type: string | null;
   sent_at: string;
   message_status: string | null;
 }
@@ -273,7 +276,7 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
     queryFn: async (): Promise<SigzapMsg[]> => {
       const { data } = await (supabase as any)
         .from("sigzap_messages")
-        .select("id, from_me, message_text, message_type, sent_at, message_status")
+        .select("id, from_me, message_text, message_type, media_url, media_mime_type, sent_at, message_status")
         .eq("conversation_id", conv!.id)
         .order("sent_at", { ascending: true })
         .limit(500);
@@ -352,7 +355,7 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
     })();
   }, [conv?.id, qc]);
 
-  type TimelineMsg = { id: string; mine: boolean; text: string; ts: Date | null; source: "sigzap" | "historico" | "outbox"; status?: string | null; clientMessageId?: string };
+  type TimelineMsg = { id: string; mine: boolean; text: string; ts: Date | null; source: "sigzap" | "historico" | "outbox"; status?: string | null; clientMessageId?: string; messageType?: string | null; mediaUrl?: string | null; mediaMimeType?: string | null };
   const timeline: TimelineMsg[] = useMemo(() => {
     const items: TimelineMsg[] = [];
     for (const m of mensagens ?? []) {
@@ -363,6 +366,9 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
         ts: m.sent_at ? new Date(m.sent_at) : null,
         source: "sigzap",
         status: m.message_status,
+        messageType: m.message_type,
+        mediaUrl: m.media_url,
+        mediaMimeType: m.media_mime_type,
       });
     }
     for (const m of outbox) {
@@ -466,6 +472,7 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
                 {showSep && msg.ts && <DateSeparator iso={msg.ts.toISOString()} />}
                 <BubbleTimeline
                   msg={msg}
+                  isOfficial={isOfficialConversation}
                   onRetry={msg.status === "failed" && msg.clientMessageId
                     ? () => enviar.mutate({ msg: msg.text, clientMessageId: msg.clientMessageId })
                     : undefined}
@@ -648,8 +655,9 @@ function OfficialTemplateSelect({
 }
 
 // Bubble da timeline unificada (sigzap + histórico IA), estilo WhatsApp
-function BubbleTimeline({ msg, onRetry, retrying }: {
-  msg: { mine: boolean; text: string; ts: Date | null; source: string; status?: string | null };
+function BubbleTimeline({ msg, isOfficial, onRetry, retrying }: {
+  msg: { mine: boolean; text: string; ts: Date | null; source: string; status?: string | null; messageType?: string | null; mediaUrl?: string | null; mediaMimeType?: string | null };
+  isOfficial: boolean;
   onRetry?: () => void;
   retrying?: boolean;
 }) {
@@ -672,7 +680,16 @@ function BubbleTimeline({ msg, onRetry, retrying }: {
                 : "bg-background border border-border rounded-bl-sm"
         )}
       >
-        <p className="whitespace-pre-wrap break-words leading-snug">{msg.text}</p>
+        {msg.messageType === "audio" && msg.mediaUrl ? (
+          <SigZapAudioPlayer
+            src={isOfficial && /^https:\/\/api\.twilio\.com\//i.test(msg.mediaUrl)
+              ? `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/proxy-whatsapp-media?url=${encodeURIComponent(msg.mediaUrl)}`
+              : msg.mediaUrl}
+            isFromMe={mine}
+          />
+        ) : (
+          <p className="whitespace-pre-wrap break-words leading-snug">{msg.text}</p>
+        )}
         <div className="text-[10px] mt-1 flex flex-col xs:flex-row xs:items-center xs:justify-end gap-1 xs:gap-2">
           <span className="opacity-60">{hora}</span>
           {queued && <span className="inline-flex items-center gap-1 text-amber-700"><Clock className="h-3 w-3" /> Aguardando conexao</span>}
