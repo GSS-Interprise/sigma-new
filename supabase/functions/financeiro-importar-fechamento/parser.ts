@@ -4,6 +4,16 @@
 export const norm = (s: string) =>
   (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
 export const digits = (s: string) => (s || "").replace(/[^0-9]/g, "");
+
+/** Nome limpo para casar médico: a planilha da equipe anota instrução no próprio nome
+ *  ("Rafael Oku Fernandes (PAGAR RDI)", "Heron Gustavo Zini (PAGAR Renan Augusto Zini)"). */
+export const nomeLimpo = (s: string) => (s || "").replace(/\([^)]*\)/g, " ").replace(/\s+/g, " ").trim();
+
+/** Padrão ilike tolerante a acento: 'Patrícia' → 'Patr_cia'. O ilike do Postgres é
+ *  sensível a acento nos DOIS sentidos, então sem isso o candidato nunca entra no pool
+ *  e a normalização em JS não chega a ser aplicada. */
+export const padraoSemAcento = (s: string) =>
+  nomeLimpo(s).replace(/[^A-Za-z0-9 .,'-]/g, "_");
 export const cell = (v: unknown) => (v === null || v === undefined ? "" : String(v).trim());
 const filled = (row: unknown[]) => row.filter((v) => cell(v) !== "").length;
 

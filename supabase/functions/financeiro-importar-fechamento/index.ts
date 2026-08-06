@@ -11,7 +11,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
-import { parseDrEscalaCompleto, parseGenerico, parseMatrizExames, parseCarestreamResumo, abaDoMes, norm, digits, type Bloco } from "./parser.ts";
+import { parseDrEscalaCompleto, parseGenerico, parseMatrizExames, parseCarestreamResumo, abaDoMes, norm, digits, nomeLimpo, padraoSemAcento, type Bloco } from "./parser.ts";
 
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
 
@@ -149,14 +149,16 @@ serve(async (req) => {
     }
     const crms = [...new Set(blocos.map((b) => digits(b.crm)).filter(Boolean))];
     if (crms.length) {
-      const { data } = await svc.from("medicos").select("id, nome_completo, crm, cpf")
-        .or(crms.map((c) => `crm.ilike.*${c}*`).join(","));
+      // o banco às vezes guarda o CRM com o dígito verificador separado
+      // ("CRM/RJ 5295110-2" para o 52951102), então busca também sem o último dígito.
+      const padroes = crms.flatMap((c) => c.length > 4 ? [`crm.ilike.*${c}*`, `crm.ilike.*${c.slice(0, -1)}*`] : [`crm.ilike.*${c}*`]);
+      const { data } = await svc.from("medicos").select("id, nome_completo, crm, cpf").or(padroes.join(","));
       pool.push(...(data || []));
     }
-    const nomes = [...new Set(blocos.map((b) => b.nome).filter(Boolean))];
+    const nomes = [...new Set(blocos.map((b) => nomeLimpo(b.nome)).filter(Boolean))];
     if (nomes.length) {
       const { data } = await svc.from("medicos").select("id, nome_completo, crm, cpf")
-        .or(nomes.map((n) => `nome_completo.ilike.${q(n)}`).join(","));
+        .or(nomes.map((n) => `nome_completo.ilike.${q(padraoSemAcento(n))}`).join(","));
       pool.push(...(data || []));
     }
     const byCpf = new Map<string, string>(), byCrm = new Map<string, string>(), byNome = new Map<string, string>();
@@ -166,7 +168,7 @@ serve(async (req) => {
       const kn = norm(m.nome_completo || ""); if (kn && !byNome.has(kn)) byNome.set(kn, m.id);
     }
     const casar = (b: Bloco): string | null =>
-      (b.cpf && byCpf.get(b.cpf)) || (digits(b.crm) && byCrm.get(digits(b.crm))) || byNome.get(norm(b.nome)) || null;
+      (b.cpf && byCpf.get(b.cpf)) || (digits(b.crm) && byCrm.get(digits(b.crm))) || byNome.get(norm(nomeLimpo(b.nome))) || null;
 
     // ── idempotência por config+mês, PRESERVANDO os ajustes já lançados ──
     const tag = `[cfg:${config_id}]`;
