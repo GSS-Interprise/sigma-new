@@ -132,7 +132,7 @@ Categorias iniciais (seed, editáveis por ela): `Gestão`, `Bônus`, `Desconto`,
 | **E2** ✅ | Ajustes: 2 tabelas novas + bloco de ajustes na tela do médico + `valor_total` derivado | E1 |
 | **E3** ✅ | Fases: ativar `financeiro_fechamentos` de verdade (lista + detalhe + enviar p/ aprovação), seletor de fonte | E1 |
 | **E4a** ✅ | Radiologia em matriz (Marieta + CEPON): parser `matriz_exames`, aba por competência, Acréscimos/Descontos viram ajustes | arquivos da Mavi (recebidos 05/08) |
-| **E4b** ⏸️ | PDFs do CEPON: extração **funciona** (unpdf no Deno), mas a planilha da equipe **não é transcrição fiel** dos PDFs — ver §10 | Mavi explicar as diferenças |
+| **E4b** ⏸️ | PDFs do CEPON: extração funciona e **confere com a planilha** (82/84) — ver §10 | de-para procedimento→coluna + PDFs que faltam |
 | **E4c** ✅ | Carestream `RESUMO MÉDICO` → contas a **receber** (23 médicos, R$ 325.207,58, 0 divergência) | — |
 | **E4d** | Produção individual (Carlos Cristofaro) — 1 médico, layout próprio | decisão de escopo |
 | **E5** | Contas a receber consolidado a partir do fechamento (hoje `financeiro_receber` vem de contrato, não do fechamento) | E3 |
@@ -195,30 +195,41 @@ apontam para o cliente, e por ele chega-se ao contrato. Nada de estrutura nova.
 `status_contrato = Ativo` — ou o cadastro está desatualizado, ou houve aditivo não registrado.
 
 
-## 10. E4b — por que os PDFs ainda não são a fonte
+## 10. E4b — os PDFs conferem; falta o de-para de procedimento
 
-A extração de texto funciona no runtime da edge (`unpdf`), e os dois layouts (sintético e
-analítico) terminam no mesmo padrão `<n>Total <Nome> - CRM: <crm>`, então um regex serve
-para os cinco. **O problema não é técnico.**
+> **Correção (05/08).** A primeira análise concluiu que "a planilha não é transcrição fiel
+> dos PDFs". Estava errada: eu comparava 1 PDF = 1 coluna. Um PDF agrega procedimentos que
+> a equipe separa em colunas diferentes.
 
-Cruzando os 5 PDFs de junho contra a matriz do CEPON: **21 pares batem, 10 divergem.**
+Com a agregação correta e nomes normalizados ignorando conectivos (de/da/do):
 
-| Caso | PDF | Planilha | Leitura |
-|---|---|---|---|
-| Aline Guerrero — USG | 113 | 47 | planilha conta menos que o PDF |
-| Aline Guerrero — BIÓPSIAS | 38 | 9 | idem |
-| Carlos Cristofaro — BIÓPSIAS | 44 | 39 | diferença = as 5 biópsias de **próstata** (PDF separado) |
-| Luana Costa **de** Albuquerque — TC | 0 | 160 | nome no PDF é "Luana Costa Albuquerque" (sem "de") |
-| Pedro Afonso Mori Carrilho — TC | 23 | 0 | está no PDF e não na planilha |
-| Luíza Mello Flores — USG | 93 | 92 | diferença de 1 |
+| PDF | Colunas da planilha |
+|---|---|
+| Radiografia | RX |
+| Tomografia | TC |
+| Ultrassonografia analítico | USG **+** DOPPLER |
+| Biopsia (+ Biopsia próstata) | BIÓPSIAS **+** MARCAÇÃO/CORE |
 
-Trocar a fonte hoje **mudaria os valores pagos**. Antes disso a Mavi precisa dizer se ela
-filtra algo ao transcrever (procedimentos não faturáveis? glosa?) ou se são correções.
-Com essa resposta, o caminho natural é o PDF virar **conferência** primeiro (importa a
-planilha e mostra a divergência), e só depois virar a fonte.
+**82 de 84 pares batem.** Os PDFs são fonte confiável.
 
-O de-para de nomes (Luana com/sem "de", Caroline × Carolina) é o mesmo problema que a aba
-`MÉDICOS GSS` do arquivo Carestream já resolve à mão — vira tabela no Sigma quando E4b andar.
+As 2 diferenças que sobram:
+
+- **Carlos Cristofaro** — PDF tem 44 biópsias (39 + 5 de próstata), a matriz conta 39. As 5 de
+  próstata ficam fora. Provavelmente ligado ao total dele ser digitado à mão (§9).
+- **Pedro Afonso Mori Carrilho** — 23 tomografias no PDF, 0 na planilha. Está no relatório do
+  hospital e não entra no fechamento.
+
+### O que falta para automatizar
+
+1. **De-para procedimento → coluna.** O caso da biópsia mostra que é limpo e derivável:
+   `Biópsia Percutânea Orientada por US, TC, ou RX` → BIÓPSIAS;
+   `Punção de Mama por Agulha Grossa (Core Biopsy)` → MARCAÇÃO/CORE.
+   É a mesma ideia das abas `EQUIVALÊNCIA`/`PROCEDIMENTOS` que o arquivo Carestream já traz.
+2. **Os PDFs que faltam.** A Mavi disse "tem outras da Radiologia" — o conjunto enviado é
+   parcial. A separação USG × DOPPLER não fecha só com o que temos.
+
+Nível de confiança por camada: **total por médico** já é confiável (regex validado nos 5 PDFs);
+**split por sub-coluna** depende do item 1.
 
 ## 11. Os dois lados do fechamento (E4c)
 
