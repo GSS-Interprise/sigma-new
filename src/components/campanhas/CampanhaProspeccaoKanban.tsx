@@ -460,6 +460,29 @@ function janelaAtendimento(lastIncomingAt?: string | null) {
   };
 }
 
+function tagOperacionalClass(tag: string) {
+  switch (tag) {
+    case "IA respondeu":
+      return "border-cyan-200 bg-cyan-50 text-cyan-700";
+    case "Resposta recebida":
+      return "border-emerald-200 bg-emerald-50 text-emerald-700";
+    case "Resposta automática":
+      return "border-slate-200 bg-slate-100 text-slate-600";
+    case "Aguardando equipe":
+      return "border-amber-200 bg-amber-50 text-amber-700";
+    case "Lead quente":
+      return "border-red-200 bg-red-50 text-red-700";
+    case "Número inválido":
+      return "border-rose-200 bg-rose-50 text-rose-700";
+    case "IA pausada":
+      return "border-blue-200 bg-blue-50 text-blue-700";
+    case "Briefing para revisar":
+      return "border-orange-200 bg-orange-50 text-orange-700";
+    default:
+      return "";
+  }
+}
+
 function LeadCard({
   campLead, assumidoNome, tipoEnvio, whatsappProvider, tagsSugeridas, onDragStart, onClick, onToggleTag, onCreateTag,
 }: {
@@ -488,7 +511,12 @@ function LeadCard({
         <div className="flex items-start gap-2" onClick={onClick}>
           <GripVertical className="h-4 w-4 text-muted-foreground/40 mt-0.5 flex-shrink-0" />
           <div className="min-w-0 flex-1">
-            <p className="font-medium text-sm truncate">{lead.nome}</p>
+            <p
+              className="font-semibold text-sm leading-tight line-clamp-2 break-words"
+              title={lead.nome}
+            >
+              {lead.nome}
+            </p>
             {lead.especialidade && <p className="text-xs text-muted-foreground truncate">{lead.especialidade}</p>}
           </div>
           {/* quem está no lead (colaboração) */}
@@ -572,7 +600,12 @@ function LeadCard({
             </Badge>
           )}
           {tags.map((t) => (
-            <Badge key={t} variant="secondary" className="text-[10px] gap-1 pr-1">
+            <Badge
+              key={t}
+              variant="secondary"
+              className={`max-w-full text-[10px] gap-1 pr-1 ${tagOperacionalClass(t)}`}
+              title={tagOperacionalClass(t) ? "Sinal automático do atendimento" : undefined}
+            >
               {t}
               <button
                 onClick={(e) => { e.stopPropagation(); onToggleTag(t); }}
