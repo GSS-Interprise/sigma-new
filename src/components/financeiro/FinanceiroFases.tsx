@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FileSpreadsheet, CheckCircle2, ArrowRight, Wallet, ClipboardCheck, SlidersHorizontal, Info } from "lucide-react";
 import { FinanceiroPagamento } from "@/hooks/useFinanceiroData";
 import { FinanceiroDetalhe } from "./FinanceiroDetalhe";
@@ -19,13 +20,16 @@ const brl = (v: number) => Number(v || 0).toLocaleString("pt-BR", { style: "curr
  * enviar para aprovação. A transição de fase continua sendo do FinanceiroFecharDialog
  * (que gera o PDF e manda pro canal da diretoria); aqui é a mesa de trabalho da Mavi.
  */
+const TODAS = "todas";
+
 export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
   const [selecionado, setSelecionado] = useState<string | null>(null);
+  const [fonteSel, setFonteSel] = useState<string>(TODAS);
 
   const { data, isLoading } = useQuery({
     queryKey: ["financeiro-fases", mes, ano],
     queryFn: async () => {
-      const [pagRes, fechRes, recRes] = await Promise.all([
+      const [pagRes, fechRes, recRes, cfgRes] = await Promise.all([
         (supabase as any).from("financeiro_pagamentos").select("*")
           .eq("mes_referencia", mes).eq("ano_referencia", ano)
           .order("profissional_nome"),
@@ -35,16 +39,30 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
         (supabase as any).from("financeiro_receber")
           .select("descricao, valor_previsto, fonte")
           .eq("mes_referencia", mes).eq("ano_referencia", ano),
+        (supabase as any).from("financeiro_import_config").select("id, nome, direcao"),
       ]);
       return {
         pagamentos: (pagRes.data || []) as FinanceiroPagamento[],
         fechamento: fechRes.data as any,
         receber: (recRes.data || []) as any[],
+        configs: (cfgRes.data || []) as any[],
       };
     },
   });
 
-  const pagamentos = data?.pagamentos ?? [];
+  const configs = data?.configs ?? [];
+  const cfgDoPagamento = (p: FinanceiroPagamento) => {
+    const arq = String((p as any).arquivo_origem || "");
+    const m = arq.match(/^\[cfg:([0-9a-f-]+)\]/i);
+    return m ? m[1] : "outros";
+  };
+  const nomeFonte = (id: string) =>
+    configs.find((c) => c.id === id)?.nome ?? (id === "outros" ? "Outros lançamentos" : "Fonte removida");
+
+  const todos = data?.pagamentos ?? [];
+  // um "fechamento" na fala da Ramone = a fonte que originou os lançamentos do mês
+  const fontesPresentes = [...new Set(todos.map(cfgDoPagamento))];
+  const pagamentos = fonteSel === TODAS ? todos : todos.filter((p) => cfgDoPagamento(p) === fonteSel);
   const status = data?.fechamento?.status ?? null;
   const fase = status === "pago" || status === "aprovado" ? 3 : status === "aguardando_aprovacao" ? 2 : 1;
   const podeAjustar = fase === 1;
@@ -59,8 +77,9 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
 
   // "de onde veio" cada lançamento — o prefixo [cfg:id] marca o import por fonte
   const rotuloFonte = (p: FinanceiroPagamento) => {
+    const id = cfgDoPagamento(p);
+    if (id !== "outros") return nomeFonte(id);
     const arq = String((p as any).arquivo_origem || "");
-    if (arq.startsWith("[cfg:")) return (arq.split("]")[1] || "").trim() || "Importado";
     return arq || (p.fonte === "import" ? "Importado (formato antigo)" : "Manual");
   };
 
@@ -106,7 +125,7 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
 
       <Card>
         <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-3">
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <CardTitle className="text-base">
               Competência {String(mes).padStart(2, "0")}/{ano}
             </CardTitle>
@@ -114,6 +133,23 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
               {pagamentos.length} médico(s)
               {status ? ` · fechamento ${status.replace(/_/g, " ")}` : " · ainda não enviado para aprovação"}
             </p>
+            {fontesPresentes.length > 0 && (
+              <div className="mt-2 max-w-xs">
+                <Select value={fonteSel} onValueChange={setFonteSel}>
+                  <SelectTrigger className="h-8 text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={TODAS}>Todos os fechamentos ({todos.length})</SelectItem>
+                    {fontesPresentes.map((id) => (
+                      <SelectItem key={id} value={id}>
+                        {nomeFonte(id)} ({todos.filter((p) => cfgDoPagamento(p) === id).length})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2 flex-wrap shrink-0">
             {podeAjustar && <FinanceiroImportarFechamentoDialog mesDefault={mes} anoDefault={ano} />}
@@ -250,6 +286,11 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-t pt-4">
                   <p className="text-sm text-muted-foreground">
                     Conferiu e ajustou tudo? Envie o fechamento para a diretoria aprovar.
+                    {fonteSel !== TODAS && (
+                      <span className="block text-xs text-amber-700 mt-0.5">
+                        A aprovação é da competência inteira ({todos.length} médicos), não só da fonte filtrada.
+                      </span>
+                    )}
                   </p>
                   <FinanceiroFecharDialog mes={mes} ano={ano} />
                 </div>
