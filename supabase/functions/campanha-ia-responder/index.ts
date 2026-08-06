@@ -23,6 +23,7 @@ serve(async (req) => {
       message_type = "text",
       media_url,
       msg_id,
+      conversation_id,
       aggregated_texts,
     } = await req.json();
 
@@ -57,12 +58,21 @@ serve(async (req) => {
     console.log(`[ia] Lead: ${lead.nome} (${lead.id})`);
 
     // ── 2. Buscar campanha ativa ──
-    const { data: campLead } = await supabase.from("campanha_leads")
-      .select("id, campanha_id, status, humano_assumiu, aguarda_resposta_humana, historico_conversa, campanha:campanha_id(id, nome, briefing_ia, responsaveis, tipo_envio)")
+    // Um mesmo medico pode estar em mais de uma campanha. Escolher apenas a
+    // linha mais recente fazia campanha pausada/manual esconder uma IA ativa.
+    const { data: campLeadCandidates } = await supabase.from("campanha_leads")
+      .select("id, campanha_id, status, humano_assumiu, aguarda_resposta_humana, historico_conversa, conversa_id, campanha:campanha_id(id, nome, status, briefing_ia, responsaveis, tipo_envio, whatsapp_provider)")
       .eq("lead_id", lead.id).in("status", ["contatado", "em_conversa", "aquecido"])
-      .order("data_ultimo_contato", { ascending: false }).limit(1).maybeSingle();
+      .order("data_ultimo_contato", { ascending: false }).limit(25);
 
-    if (!campLead) return json({ ok: false, reason: "not_in_campaign" });
+    const campLead = (campLeadCandidates || []).find((candidate: any) => {
+      const campaign = candidate.campanha as any;
+      const status = String(campaign?.status || "").toLowerCase();
+      const type = String(campaign?.tipo_envio || "ia").toLowerCase();
+      return status === "ativa" && ["ia", "ambos"].includes(type);
+    }) as any;
+
+    if (!campLead) return json({ ok: false, reason: "not_in_active_ai_campaign" });
     if (campLead.humano_assumiu) return json({ ok: true, reason: "humano_assumiu" });
 
     const campanha = campLead.campanha as any;
@@ -114,8 +124,9 @@ serve(async (req) => {
           chip_fora_da_campanha: instance_name,
         });
         await supabase.from("campanha_leads")
-          .update({ historico_conversa: histTmp, data_ultimo_contato: new Date().toISOString() })
+          .update(mergeConversationId({ historico_conversa: histTmp, data_ultimo_contato: new Date().toISOString() }, conversation_id))
           .eq("id", campLead.id);
+        await addOperationalTags(supabase, lead.id, [OPERATIONAL_TAGS.incoming]);
         return json({ ok: false, reason: "chip_not_in_campaign", chip: receivingChipId });
       }
     }
@@ -147,8 +158,9 @@ serve(async (req) => {
         resposta_automatica: true,
       });
       await supabase.from("campanha_leads")
-        .update({ historico_conversa: histTmp, data_ultimo_contato: new Date().toISOString() })
+        .update(mergeConversationId({ historico_conversa: histTmp, data_ultimo_contato: new Date().toISOString() }, conversation_id))
         .eq("id", campLead.id);
+      await addOperationalTags(supabase, lead.id, [OPERATIONAL_TAGS.incoming, OPERATIONAL_TAGS.automatic]);
       const autoReplyResult = { ok: true, reason: "resposta_automatica_ignorada" };
       if (claimedMessageId) {
         await supabase.from("campanha_ia_processed_messages").update({
@@ -165,12 +177,23 @@ serve(async (req) => {
     if (campLead.aguarda_resposta_humana) {
       const histTmp: any[] = campLead.historico_conversa || [];
       histTmp.push({ role: "medico", text: finalText, ts: new Date().toISOString(), pendente_humano: true });
-      await supabase.from("campanha_leads").update({ historico_conversa: histTmp, data_ultimo_contato: new Date().toISOString() }).eq("id", campLead.id);
+      await supabase.from("campanha_leads").update(mergeConversationId({ historico_conversa: histTmp, data_ultimo_contato: new Date().toISOString() }, conversation_id)).eq("id", campLead.id);
+      await addOperationalTags(supabase, lead.id, [OPERATIONAL_TAGS.incoming, OPERATIONAL_TAGS.waitingTeam]);
       console.log(`[ia] ⏸️ lead aguardando resposta humana — msg registrada mas IA não responde`);
       return json({ ok: true, reason: "aguardando_resposta_humana", msg: "IA pausada até responsável responder pergunta pendente" });
     }
 
     const briefing = campanha?.briefing_ia || {};
+    const briefingIssues = validateCampaignBriefing(briefing);
+    if (briefingIssues.errors.length > 0) {
+      await addOperationalTags(supabase, lead.id, [OPERATIONAL_TAGS.briefingReview]);
+      console.warn(`[ia] briefing incompleto na campanha ${campLead.campanha_id}: ${briefingIssues.errors.join("; ")}`);
+      return json({ ok: false, reason: "briefing_incompleto", errors: briefingIssues.errors });
+    }
+    if (briefingIssues.warnings.length > 0) {
+      await addOperationalTags(supabase, lead.id, [OPERATIONAL_TAGS.briefingReview]);
+      console.warn(`[ia] briefing com pontos para revisar na campanha ${campLead.campanha_id}: ${briefingIssues.warnings.join("; ")}`);
+    }
 
     // ── 2b. Buscar perfil unificado (Trilha B) ──
     const { data: perfilInteresse } = await supabase
@@ -207,10 +230,12 @@ serve(async (req) => {
     if (!apiKey) throw new Error("OPENAI_API_KEY não configurada");
 
     // Áudio: decrypt via Evolution → Whisper
-    if (message_type === "audio" && msg_id && instance_name && evoUrl && evoKey) {
+    if (message_type === "audio" && msg_id && ((instance_name && evoUrl && evoKey) || media_url)) {
       console.log(`[ia] 🎙️ Decrypt áudio (msg ${msg_id})`);
       try {
-        const media = await decryptMedia(evoUrl, evoKey, instance_name, msg_id, phone);
+        const media = media_url && !instance_name
+          ? await downloadTwilioMedia(media_url)
+          : await decryptMedia(evoUrl, evoKey, instance_name, msg_id, phone);
         if (media) {
           const ext = media.mimetype.includes("ogg") ? "ogg" : media.mimetype.includes("mp3") ? "mp3" : "m4a";
           const audioBlob = base64ToBlob(media.base64, media.mimetype);
@@ -284,6 +309,7 @@ serve(async (req) => {
     // ── 4. Histórico ──
     const historico: Array<{ role: string; text: string; ts: string }> = campLead.historico_conversa || [];
     historico.push({ role: "medico", text: processedText, ts: new Date().toISOString() });
+    await addOperationalTags(supabase, lead.id, [OPERATIONAL_TAGS.incoming]);
 
     const historicoTexto = historico
       .map((m: any) => `${m.role === "medico" ? "Médico" : "GSS"}: ${m.text}`)
@@ -340,6 +366,12 @@ serve(async (req) => {
       // Uma rodada consolidada gera uma única bolha. Isso evita rajadas mesmo
       // quando o modelo tenta fragmentar a resposta em várias mensagens.
       .slice(0, 1);
+    const respostaRepetida = messages.length > 0 && isNearDuplicate(messages[0], historico);
+    if (respostaRepetida) {
+      console.warn(`[ia] resposta repetida bloqueada para ${lead.id}`);
+      messages.splice(0, messages.length);
+      await addOperationalTags(supabase, lead.id, [OPERATIONAL_TAGS.incoming]);
+    }
     const maturidade = String(parsed.maturidade_lead || "").toLowerCase();
     // ALERTA_LEAD só conta se maturidade explícita é "quente" (safety net contra modelo marcar errado)
     const alertaLead = parsed.ALERTA_LEAD === true && maturidade === "quente";
@@ -356,29 +388,18 @@ serve(async (req) => {
       historico.push({ role: "gss", text: msg, ts: new Date().toISOString() });
     }
 
-    // ── 7. Enviar via Evolution (creds já buscadas no passo 3) ──
-    // Resolve chip_id pelo instance_name (1x). Helper anti-ban faz pre_send_check
-    // com origem='resposta_ia' que tem rate-limit mais permissivo (10/min, 30/h)
-    // e delay=0 (edge controla typing/sleep como antes pra parecer humano).
-    let chipIaId: string | null = null;
-    if (evoUrl && evoKey && instance_name) {
-      const { data: chipRow } = await supabase
-        .from("chips")
-        .select("id")
-        .eq("instance_name", instance_name)
-        .maybeSingle();
-      chipIaId = chipRow?.id || null;
-    }
-    if (messages.length > 0 && evoUrl && evoKey && instance_name && chipIaId) {
-      const { data: responseTurnToken, error: responseTurnError } = await supabase.rpc(
+    // Uma só rodada por lead: o lease vale para Evolution e Twilio. Antes
+    // ele só era adquirido no caminho Evolution.
+    let responseTurnToken: string | null = null;
+    let responseTurnConsumed = false;
+    if (messages.length > 0) {
+      const { data: claimedTurn, error: claimTurnError } = await supabase.rpc(
         "campanha_ia_claim_response_turn",
         { p_campanha_lead_id: campLead.id },
       );
-      if (responseTurnError) {
-        throw new Error(`response_turn_claim: ${responseTurnError.message}`);
-      }
-      if (!responseTurnToken) {
-        const blockedResult = { ok: true, reason: "ia_turn_blocked_by_human_state" };
+      if (claimTurnError) throw new Error(`response_turn_claim: ${claimTurnError.message}`);
+      if (!claimedTurn) {
+        const blockedResult = { ok: true, reason: "ia_turn_blocked_by_active_worker" };
         if (claimedMessageId) {
           await supabase.from("campanha_ia_processed_messages").update({
             status: "completed",
@@ -389,6 +410,48 @@ serve(async (req) => {
         }
         return json(blockedResult);
       }
+      responseTurnToken = claimedTurn as string;
+    }
+
+    // ── 7. Enviar via Evolution (creds já buscadas no passo 3) ──
+    // Resolve chip_id pelo instance_name (1x). Helper anti-ban faz pre_send_check
+    // com origem='resposta_ia' que tem rate-limit mais permissivo (10/min, 30/h)
+    // e delay=0 (edge controla typing/sleep como antes pra parecer humano).
+    if (messages.length > 0 && campanha?.whatsapp_provider === "twilio" && conversation_id) {
+      const { data: canSend, error: consumeTurnError } = await supabase.rpc(
+        "campanha_ia_consume_response_turn",
+        { p_campanha_lead_id: campLead.id, p_token: responseTurnToken },
+      );
+      if (consumeTurnError) throw new Error(`response_turn_consume: ${consumeTurnError.message}`);
+      if (!canSend) return json({ ok: true, reason: "human_assumed_before_send" });
+      responseTurnConsumed = true;
+      for (const message of messages) {
+        const response = await fetch(`${supabaseUrl}/functions/v1/twilio-whatsapp-send`, {
+          method: "POST",
+          headers: {
+            apikey: supabaseKey,
+            Authorization: `Bearer ${supabaseKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ conversation_id, body: message }),
+        });
+        const result = await response.json().catch(() => null);
+        if (!response.ok || !result?.ok) {
+          throw new Error(result?.error || `twilio_ai_send_failed_${response.status}`);
+        }
+      }
+    }
+
+    let chipIaId: string | null = null;
+    if (evoUrl && evoKey && instance_name) {
+      const { data: chipRow } = await supabase
+        .from("chips")
+        .select("id")
+        .eq("instance_name", instance_name)
+        .maybeSingle();
+      chipIaId = chipRow?.id || null;
+    }
+    if (messages.length > 0 && evoUrl && evoKey && instance_name && chipIaId && responseTurnToken) {
       const presenceUrl = `${evoUrl}/chat/sendPresence/${encodeURIComponent(instance_name)}`;
       for (let i = 0; i < messages.length; i++) {
         if (i > 0) await sleep(1500 + Math.random() * 1500);
@@ -424,6 +487,7 @@ serve(async (req) => {
           }
           return json(blockedResult);
         }
+        responseTurnConsumed = true;
         const result = await sendWhatsAppText({
           supabase,
           evo: { url: evoUrl, apiKey: evoKey },
@@ -444,6 +508,16 @@ serve(async (req) => {
       }
     }
 
+    if (responseTurnToken && !responseTurnConsumed) {
+      await supabase.rpc("campanha_ia_consume_response_turn", {
+        p_campanha_lead_id: campLead.id,
+        p_token: responseTurnToken,
+      });
+    }
+    if (messages.length > 0) {
+      await addOperationalTags(supabase, lead.id, [OPERATIONAL_TAGS.aiAnswered]);
+    }
+
     // ── 8. Status + histórico ──
     let novoStatus = campLead.status;
     if (numeroErrado) novoStatus = "descartado";
@@ -458,6 +532,7 @@ serve(async (req) => {
       historico_conversa: historico,
       data_ultimo_contato: new Date().toISOString(),
     };
+    mergeConversationId(updatePayload, conversation_id);
     if (jaNoQuadro) {
       updatePayload.proximo_touch_em = null;
       updatePayload.humano_assumiu = true;
@@ -467,6 +542,13 @@ serve(async (req) => {
       updatePayload.motivo_perdido = "numero_errado";
     }
     await supabase.from("campanha_leads").update(updatePayload).eq("id", campLead.id);
+
+    const tagsToAdd: string[] = [];
+    if (numeroErrado) tagsToAdd.push(OPERATIONAL_TAGS.invalidNumber);
+    if (jaNoQuadro) tagsToAdd.push(OPERATIONAL_TAGS.aiPaused);
+    if (alertaLead) tagsToAdd.push(OPERATIONAL_TAGS.hot, OPERATIONAL_TAGS.waitingTeam);
+    if (aguardaHumano) tagsToAdd.push(OPERATIONAL_TAGS.waitingTeam);
+    await addOperationalTags(supabase, lead.id, tagsToAdd);
 
     if (novoStatus !== campLead.status) {
       await supabase.rpc("atualizar_status_lead_campanha", {
@@ -579,13 +661,98 @@ function json(body: Record<string, unknown>) {
 }
 function sleep(ms: number) { return new Promise((r) => setTimeout(r, ms)); }
 
+const OPERATIONAL_TAGS = {
+  aiAnswered: "IA respondeu",
+  incoming: "Resposta recebida",
+  automatic: "Resposta automática",
+  waitingTeam: "Aguardando equipe",
+  hot: "Lead quente",
+  invalidNumber: "Número inválido",
+  aiPaused: "IA pausada",
+  briefingReview: "Briefing para revisar",
+} as const;
+
+async function addOperationalTags(supabase: any, leadId: string, tags: string[]) {
+  if (!leadId || tags.length === 0) return;
+  try {
+    const { error } = await supabase.rpc("append_lead_operational_tags", {
+      p_lead_id: leadId,
+      p_tags: tags,
+    });
+    if (error) throw error;
+  } catch (error: any) {
+    // Tags são observabilidade operacional; nunca podem derrubar a resposta.
+    console.warn(`[ia] falha ao registrar tags do lead ${leadId}: ${error?.message || error}`);
+  }
+}
+
+function mergeConversationId(update: Record<string, unknown>, conversationId: string | null | undefined) {
+  if (conversationId) update.conversa_id = conversationId;
+  return update;
+}
+
+function validateCampaignBriefing(briefing: Record<string, any>) {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  const service = String(briefing.nome_servico || briefing.tipo_servico || "").trim();
+  const location = String(briefing.cidade || briefing.local || "").trim();
+  const hospital = String(briefing.hospital || briefing.unidade || "").trim();
+  if (!service) errors.push("nome do serviço ausente");
+  if (!location && !(Array.isArray(briefing.locais) && briefing.locais.length > 0)) {
+    errors.push("cidade ou local ausente");
+  }
+  if (!hospital && !(Array.isArray(briefing.locais) && briefing.locais.length > 0)) {
+    warnings.push("hospital/unidade não informado");
+  }
+  if (!briefing.requisitos) warnings.push("requisitos não informados");
+  if (!briefing.contratacao) warnings.push("forma de contratação não informada");
+  return { errors, warnings };
+}
+
 function isExplicitAutoReply(text: string): boolean {
   const normalized = text
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
-  return /\b(mensagem|msg|resposta)\s+automatic[ao]\b/.test(normalized)
+  const hasHumanIntent = /\?/.test(normalized) ||
+    (normalized.length < 160 && /\b(qual seria|pode mandar|manda|tenho interesse|gostaria|quero|me fala|me conta|como funciona|posso|sim)\b/.test(normalized));
+  if (hasHumanIntent) return false;
+
+  const strongMarker = /\b(mensagem|msg|resposta)\s+automatic[ao]\b/.test(normalized)
     || /\besta\s+e\s+uma\s+(mensagem|msg)\s+automatic[ao]\b/.test(normalized);
+  if (strongMarker) return true;
+
+  const operationalMarkers = [
+    /nao estamos disponiveis/,
+    /fora do horario/,
+    /retornaremos assim que possivel/,
+    /responderemos assim que possivel/,
+    /deixe sua mensagem/,
+    /seu contato foi recebido/,
+    /atendimento .* encerrado/,
+  ];
+  const markerCount = operationalMarkers.filter((pattern) => pattern.test(normalized)).length;
+  return markerCount >= 2 || (normalized.length >= 180 && markerCount >= 1);
+}
+
+function isNearDuplicate(candidate: string, history: Array<{ role: string; text: string }>) {
+  const normalize = (value: string) => value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const current = normalize(candidate);
+  const previous = [...history].reverse().find((item) => item.role === "gss");
+  if (!previous || !current) return false;
+  const previousText = normalize(previous.text);
+  if (current === previousText) return true;
+  const a = new Set(current.split(" ").filter(Boolean));
+  const b = new Set(previousText.split(" ").filter(Boolean));
+  if (a.size < 5 || b.size < 5) return false;
+  const overlap = [...a].filter((word) => b.has(word)).length / Math.max(a.size, b.size);
+  return overlap >= 0.88;
 }
 
 function sanitizeExternalMessage(text: string): string {
@@ -632,6 +799,28 @@ async function decryptMedia(
   const data = await resp.json();
   if (!data.base64) return null;
   return { base64: data.base64, mimetype: data.mimetype || "application/octet-stream" };
+}
+
+async function downloadTwilioMedia(mediaUrl: string): Promise<{ base64: string; mimetype: string } | null> {
+  const sid = Deno.env.get("TWILIO_ACCOUNT_SID");
+  const token = Deno.env.get("TWILIO_AUTH_TOKEN");
+  if (!sid || !token) throw new Error("credenciais Twilio ausentes para baixar mídia");
+
+  const response = await fetch(mediaUrl, {
+    headers: { Authorization: `Basic ${btoa(`${sid}:${token}`)}` },
+  });
+  if (!response.ok) {
+    console.warn(`[ia] download Twilio ${response.status}: ${(await response.text()).slice(0, 200)}`);
+    return null;
+  }
+
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return {
+    base64: btoa(binary),
+    mimetype: response.headers.get("content-type") || "audio/ogg",
+  };
 }
 
 function base64ToBlob(base64: string, mimetype: string): Blob {
@@ -824,7 +1013,7 @@ Quanto mais o médico souber do serviço quando o handoff acontecer, maior a cha
 </antes_de_handoff>
 
 <regras>
-- 1 a 3 msgs por resposta, conforme o contexto: se o médico perguntou 1 coisa curta, responde em 1. Se há 2 pontos a tratar (responder pergunta dele + avançar 1 passo), use 2. Máx 3 em casos com fato + vídeo + pergunta.
+- Uma única mensagem por rodada. Una contexto, resposta e a próxima pergunta na mesma bolha; nunca fragmente a resposta em várias mensagens.
 - Não fale valores. ${handoffNome} passa detalhes.
 - Nunca invente. Use o histórico. Responda perguntas do médico primeiro, depois retoma fluxo.
 - Sem perfil ou recusou: agradeça curto e encerre.

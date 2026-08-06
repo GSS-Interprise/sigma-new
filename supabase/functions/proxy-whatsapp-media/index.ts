@@ -21,15 +21,30 @@ serve(async (req) => {
       });
     }
 
+    const parsedUrl = new URL(mediaUrl);
+    const isTwilioMedia = parsedUrl.protocol === 'https:' && parsedUrl.hostname === 'api.twilio.com';
+    if (parsedUrl.protocol !== 'https:') {
+      return new Response(JSON.stringify({ error: 'Origem de mídia não permitida' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     console.log('📥 Fazendo proxy de mídia:', mediaUrl.substring(0, 100) + '...');
 
+    const requestHeaders: Record<string, string> = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      'Accept': 'image/*,video/*,audio/*,*/*',
+    };
+    if (isTwilioMedia) {
+      const sid = Deno.env.get('TWILIO_ACCOUNT_SID');
+      const token = Deno.env.get('TWILIO_AUTH_TOKEN');
+      if (!sid || !token) throw new Error('Credenciais Twilio ausentes');
+      requestHeaders.Authorization = `Basic ${btoa(`${sid}:${token}`)}`;
+    }
+
     // Fazer fetch da mídia do WhatsApp
-    const response = await fetch(mediaUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'image/*,video/*,audio/*,*/*',
-      },
-    });
+    const response = await fetch(mediaUrl, { headers: requestHeaders });
 
     if (!response.ok) {
       console.error('❌ Erro ao buscar mídia:', response.status, response.statusText);

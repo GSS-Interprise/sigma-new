@@ -23,6 +23,14 @@ function phoneE164(value: string) {
   return digits ? `+${digits}` : "";
 }
 
+function twilioMediaType(params: URLSearchParams) {
+  const mime = (params.get("MediaContentType0") || "").toLowerCase();
+  if (mime.startsWith("audio/")) return "audio";
+  if (mime.startsWith("image/")) return "image";
+  if (mime.startsWith("video/")) return "video";
+  return "media";
+}
+
 function brazilianPhoneVariants(value: string) {
   const digits = phoneDigits(value);
   const variants = new Set<string>();
@@ -272,6 +280,7 @@ serve(async (req) => {
     }
 
     const numMedia = Number(params.get("NumMedia") || 0);
+    const incomingMessageType = numMedia > 0 ? twilioMediaType(params) : "text";
     const rawPayload = Object.fromEntries(params.entries());
     const { error: messageError } = await admin.from("sigzap_messages").insert({
       conversation_id: conversationId,
@@ -281,7 +290,7 @@ serve(async (req) => {
       from_me: false,
       sender_jid: from,
       message_text: params.get("Body") || null,
-      message_type: numMedia > 0 ? "media" : "text",
+      message_type: incomingMessageType,
       message_status: "received",
       media_url: numMedia > 0 ? params.get("MediaUrl0") : null,
       media_mime_type: numMedia > 0 ? params.get("MediaContentType0") : null,
@@ -289,6 +298,32 @@ serve(async (req) => {
       sent_at: now.toISOString(),
     });
     if (messageError) throw messageError;
+
+    // O webhook Twilio precisa responder rapidamente, mas a IA pode continuar
+    // em background. A conversa já foi aberta acima, então o responder consegue
+    // usar a janela oficial de 24h para enviar texto livre.
+    const aiPayload = {
+      phone: contactPhone,
+      message_text: params.get("Body") || "",
+      message_type: incomingMessageType,
+      media_url: numMedia > 0 ? params.get("MediaUrl0") || "" : "",
+      msg_id: messageSid,
+      conversation_id: conversationId,
+    };
+    const aiRequest = fetch(`${Deno.env.get("SUPABASE_URL")!}/functions/v1/campanha-ia-responder`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(aiPayload),
+    }).then(async (response) => {
+      if (!response.ok) console.error("[twilio-webhook] IA respondeu com erro", response.status, await response.text());
+    }).catch((error) => console.error("[twilio-webhook] falha ao acionar IA", error));
+
+    const runtime = (globalThis as { EdgeRuntime?: { waitUntil?: (promise: Promise<unknown>) => void } }).EdgeRuntime;
+    if (runtime?.waitUntil) runtime.waitUntil(aiRequest);
+    else void aiRequest;
 
     return xmlResponse();
   } catch (error) {

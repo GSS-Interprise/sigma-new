@@ -1551,6 +1551,9 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
   // Render media content inline
   const renderMediaContent = (msg: SigZapMessage, isFromMe: boolean) => {
     const { message_type, media_url, media_filename, media_mime_type } = msg;
+    const playableMediaUrl = media_url && isOfficialConversation && /^https:\/\/api\.twilio\.com\//i.test(media_url)
+      ? `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/proxy-whatsapp-media?url=${encodeURIComponent(media_url)}`
+      : media_url;
 
     // ----- Special non-media types: contact, location, poll -----
     // Reconstruct from raw_payload as fallback for messages saved before the new fields were populated.
@@ -1754,12 +1757,12 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
         return (
           <div className="mb-2">
             <img 
-              src={media_url}
+              src={playableMediaUrl || undefined}
               alt="Imagem" 
               className="max-w-[300px] rounded-lg max-h-64 object-contain cursor-pointer hover:opacity-90 transition-opacity"
-              onClick={() => setPreviewImage(media_url)}
+              onClick={() => setPreviewImage(playableMediaUrl || media_url)}
               onError={(e) => {
-                console.error('Erro ao carregar imagem:', media_url);
+                console.error('Erro ao carregar imagem:', playableMediaUrl || media_url);
                 (e.target as HTMLImageElement).style.display = 'none';
               }}
             />
@@ -1770,11 +1773,11 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
         return (
           <div className="mb-2">
             <img 
-              src={media_url}
+              src={playableMediaUrl || undefined}
               alt="Sticker" 
               className="max-w-[180px] max-h-[180px] object-contain"
               onError={(e) => {
-                console.error('Erro ao carregar sticker:', media_url);
+                console.error('Erro ao carregar sticker:', playableMediaUrl || media_url);
                 (e.target as HTMLImageElement).alt = '🏷️ Sticker';
                 (e.target as HTMLImageElement).style.display = 'none';
               }}
@@ -1785,14 +1788,14 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
       case 'video':
         return (
           <div className="mb-2">
-            <SigZapVideoPlayer src={media_url} isFromMe={isFromMe} />
+            <SigZapVideoPlayer src={playableMediaUrl || media_url} isFromMe={isFromMe} />
           </div>
         );
 
       case 'audio':
         return (
           <div className="mb-2">
-            <SigZapAudioPlayer src={media_url} isFromMe={isFromMe} />
+            <SigZapAudioPlayer src={playableMediaUrl || media_url} isFromMe={isFromMe} />
           </div>
         );
 
@@ -1800,7 +1803,7 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
         return (
           <div className="mb-2">
             <SigZapDocumentCard 
-              url={media_url} 
+              url={playableMediaUrl || media_url}
               filename={media_filename || undefined}
               mimeType={media_mime_type || undefined}
               isFromMe={isFromMe} 
