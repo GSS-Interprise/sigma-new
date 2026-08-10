@@ -38,7 +38,7 @@ serve(async (req) => {
     if (!ok) return json({ error: "sem permissão" }, 403);
 
     const body = await req.json().catch(() => ({}));
-    const { config_id, mes, ano, arquivo_base64, arquivo_nome, confirmar_periodo } = body || {};
+    const { config_id, mes, ano, arquivo_base64, arquivo_nome, confirmar_periodo, confirmar_reimport } = body || {};
     if (!config_id || !arquivo_base64) return json({ error: "faltam campos: config_id, arquivo_base64" }, 400);
 
     const { data: cfg, error: cfgErr } = await svc.from("financeiro_import_config").select("*").eq("id", config_id).single();
@@ -95,10 +95,22 @@ serve(async (req) => {
     }
     if (!blocos.length) return json({ error: "nenhuma linha de produção encontrada no arquivo" }, 400);
 
-    // dedup: mesmo arquivo não entra 2x
+    // Mesmo conteúdo já importado antes: AVISA, mas deixa reprocessar. Renomear o arquivo
+    // não muda o conteúdo, e a equipe renomeia por setor ("SJB Clínicos", "CEPON AIO") —
+    // bloquear deixava ela sem saída.
     const hash = await sha256(arquivo_base64);
-    const { data: dup } = await svc.from("financeiro_import_log").select("id, created_at").eq("arquivo_hash", hash).maybeSingle();
-    if (dup) return json({ ja_importado: true, msg: "Este arquivo já foi importado.", em: dup.created_at });
+    const { data: dups } = await svc.from("financeiro_import_log")
+      .select("id, created_at, arquivo_nome").eq("arquivo_hash", hash).order("created_at", { ascending: false });
+    if (dups?.length && !confirmar_reimport) {
+      return json({
+        ja_importado: true,
+        msg: `Este mesmo arquivo já foi importado em ${new Date(dups[0].created_at).toLocaleDateString("pt-BR")}` +
+             (dups[0].arquivo_nome ? ` como "${dups[0].arquivo_nome}"` : "") + ".",
+        em: dups[0].created_at,
+      });
+    }
+    // reprocessando: o índice de hash é único, então o registro antigo sai
+    if (dups?.length) await svc.from("financeiro_import_log").delete().in("id", dups.map((d: any) => d.id));
 
     // ── direção 'receber': não gera pagamento a médico, gera a receita do contrato ──
     // O grão por médico é conferência (fica no log); o cliente paga um valor só no mês.
@@ -172,9 +184,13 @@ serve(async (req) => {
 
     // ── idempotência por config+mês, PRESERVANDO os ajustes já lançados ──
     const tag = `[cfg:${config_id}]`;
+    // A equipe sobe VÁRIOS relatórios da mesma fonte no mesmo mês, um por setor. A chave
+    // de reprocessamento é (fonte + arquivo + mês) — apagar por fonte apagaria os outros setores.
+    const origem = `${tag} ${arquivo_nome || ""}`.trim();
     const { data: antigos } = await svc.from("financeiro_pagamentos")
       .select("id, profissional_nome, medico_id")
-      .eq("fonte", "import").eq("mes_referencia", mesRef).eq("ano_referencia", anoRef).like("arquivo_origem", `${tag}%`);
+      .eq("fonte", "import").eq("mes_referencia", mesRef).eq("ano_referencia", anoRef)
+      .eq("arquivo_origem", origem);
     const ajustesSalvos: any[] = [];
     if (antigos?.length) {
       // só o que a equipe lançou na mão volta; o que veio da planilha é regerado do arquivo
@@ -214,7 +230,7 @@ serve(async (req) => {
         valor_produzido: produzido, valor_a_vista: aVista, valor_ajustes: 0,
         valor_total: produzido - aVista,
         status: "pendente", fonte: "import",
-        arquivo_origem: `${tag} ${arquivo_nome || ""}`.trim(),
+        arquivo_origem: origem,
       }).select("id").single();
 
       if (insErr || !pag) { naoCasados.push({ nome: b.nome, erro: insErr?.message }); continue; }

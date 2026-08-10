@@ -4,8 +4,15 @@
     {
       "name": "sigma",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
-      "port": 8080
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "8090",
+        "--strictPort"
+      ],
+      "port": 8090
     }
   ]
 }

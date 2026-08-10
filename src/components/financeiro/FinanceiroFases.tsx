@@ -14,6 +14,7 @@ import { FinanceiroImportarFechamentoDialog } from "./FinanceiroImportarFechamen
 import { FinanceiroFecharDialog } from "./FinanceiroFecharDialog";
 
 const brl = (v: number) => Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const horas = (min: number) => (min ? `${Math.floor(min / 60)}h${min % 60 ? String(min % 60).padStart(2, "0") : ""}` : "—");
 
 /**
  * E3/E6 — a jornada do fechamento numa tela só: importar → conferir → ajustar →
@@ -52,18 +53,22 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
   });
 
   const configs = data?.configs ?? [];
-  const cfgDoPagamento = (p: FinanceiroPagamento) => {
-    const arq = String((p as any).arquivo_origem || "");
-    const m = arq.match(/^\[cfg:([0-9a-f-]+)\]/i);
-    return m ? m[1] : "outros";
+  // Um "fechamento" para a equipe é o ARQUIVO: ela baixa um relatório por setor do
+  // Dr. Escala e renomeia ("SJB Clínicos", "CEPON AIO"). Agrupar só por fonte juntava
+  // todos os setores numa linha só.
+  const chaveDoPagamento = (p: FinanceiroPagamento) => String((p as any).arquivo_origem || "sem-origem");
+  const nomeFechamento = (chave: string) => {
+    const m = chave.match(/^\[cfg:([0-9a-f-]+)\]\s*(.*)$/i);
+    if (!m) return chave === "sem-origem" ? "Lançamentos manuais" : chave;
+    const fonte = configs.find((c) => c.id === m[1])?.nome ?? "Fonte removida";
+    const arquivo = (m[2] || "").replace(/\.(xlsx|xls|csv)$/i, "").trim();
+    return arquivo ? `${arquivo} · ${fonte}` : fonte;
   };
-  const nomeFonte = (id: string) =>
-    configs.find((c) => c.id === id)?.nome ?? (id === "outros" ? "Outros lançamentos" : "Fonte removida");
 
   const todos = data?.pagamentos ?? [];
   // um "fechamento" na fala da Ramone = a fonte que originou os lançamentos do mês
-  const fontesPresentes = [...new Set(todos.map(cfgDoPagamento))];
-  const pagamentos = fonteSel === TODAS ? todos : todos.filter((p) => cfgDoPagamento(p) === fonteSel);
+  const fontesPresentes = [...new Set(todos.map(chaveDoPagamento))].sort();
+  const pagamentos = fonteSel === TODAS ? todos : todos.filter((p) => chaveDoPagamento(p) === fonteSel);
   const status = data?.fechamento?.status ?? null;
   const fase = status === "pago" || status === "aprovado" ? 3 : status === "aguardando_aprovacao" ? 2 : 1;
   const podeAjustar = fase === 1;
@@ -82,12 +87,7 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
   const faltamNaCompetencia = todos.filter((p) => !p.conferido_em).length;
 
   // "de onde veio" cada lançamento — o prefixo [cfg:id] marca o import por fonte
-  const rotuloFonte = (p: FinanceiroPagamento) => {
-    const id = cfgDoPagamento(p);
-    if (id !== "outros") return nomeFonte(id);
-    const arq = String((p as any).arquivo_origem || "");
-    return arq || (p.fonte === "import" ? "Importado (formato antigo)" : "Manual");
-  };
+  const rotuloFonte = (p: FinanceiroPagamento) => nomeFechamento(chaveDoPagamento(p));
 
   if (selecionado) {
     const pag = pagamentos.find((p) => p.id === selecionado);
@@ -147,9 +147,9 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value={TODAS}>Todos os fechamentos ({todos.length})</SelectItem>
-                    {fontesPresentes.map((id) => (
-                      <SelectItem key={id} value={id}>
-                        {nomeFonte(id)} ({todos.filter((p) => cfgDoPagamento(p) === id).length})
+                    {fontesPresentes.map((k) => (
+                      <SelectItem key={k} value={k}>
+                        {nomeFechamento(k)} ({todos.filter((p) => chaveDoPagamento(p) === k).length})
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -230,7 +230,7 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
                   {podeAjustar && (
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Info className="h-3 w-3" /> clique no médico para lançar acréscimo ou desconto
+                        <Info className="h-3 w-3" /> clique na linha para ver os plantões e lançar ajuste
                       </span>
                       {pendentes.length > 0 ? (
                         <Button size="sm" variant="outline" className="gap-1.5"
@@ -252,15 +252,15 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-10" />
+                      <TableRow className="[&>th]:h-8 [&>th]:py-1">
+                        <TableHead className="w-8" />
                         <TableHead>Médico</TableHead>
-                        <TableHead>Origem</TableHead>
+                        <TableHead className="text-center w-16">Plant.</TableHead>
+                        <TableHead className="text-center w-20">Horas</TableHead>
                         <TableHead className="text-right">Produzido</TableHead>
                         <TableHead className="text-right">À vista</TableHead>
                         <TableHead className="text-right">Ajustes</TableHead>
                         <TableHead className="text-right">A pagar</TableHead>
-                        <TableHead className="w-24" />
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -268,8 +268,8 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
                         const aj = Number(p.valor_ajustes || 0);
                         const av = Number(p.valor_a_vista || 0);
                         return (
-                          <TableRow key={p.id} className="cursor-pointer" onClick={() => setSelecionado(p.id)}>
-                            <TableCell onClick={(e) => e.stopPropagation()}>
+                          <TableRow key={p.id} className="cursor-pointer [&>td]:py-1" onClick={() => setSelecionado(p.id)}>
+                            <TableCell className="py-1" onClick={(e) => e.stopPropagation()}>
                               {p.conferido_em ? (
                                 <button title="Conferido — clique para reabrir" disabled={!podeAjustar}
                                   onClick={() => conferirLote.mutate({ ids: [p.id], desfazer: true })}>
@@ -282,40 +282,39 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
                                 </button>
                               )}
                             </TableCell>
-                            <TableCell className="font-medium">
-                              {p.profissional_nome}
-                              {!p.medico_id && (
-                                <Badge variant="outline" className="ml-2 text-[10px] border-amber-400 text-amber-700">
-                                  sem cadastro
-                                </Badge>
+                            <TableCell className="font-medium leading-tight">
+                              <span className="flex items-center gap-1.5">
+                                {p.profissional_nome}
+                                {!p.medico_id && (
+                                  <span title="Médico não encontrado no cadastro"
+                                    className="text-[10px] text-amber-700 border border-amber-400 rounded px-1">sem cadastro</span>
+                                )}
+                              </span>
+                              {fonteSel === TODAS && (
+                                <span className="block text-[10px] text-muted-foreground truncate max-w-[16rem]">
+                                  {rotuloFonte(p)}
+                                </span>
                               )}
                             </TableCell>
-                            <TableCell className="text-xs text-muted-foreground max-w-[14rem] truncate">
-                              {rotuloFonte(p)}
-                            </TableCell>
+                            <TableCell className="text-center text-muted-foreground">{p.total_plantoes || "—"}</TableCell>
+                            <TableCell className="text-center text-muted-foreground">{horas(p.total_horas_minutos)}</TableCell>
                             <TableCell className="text-right">{brl(Number(p.valor_produzido || 0))}</TableCell>
-                            <TableCell className="text-right text-amber-700">{av > 0 ? brl(av) : "—"}</TableCell>
-                            <TableCell className={`text-right ${aj < 0 ? "text-red-600" : aj > 0 ? "text-emerald-700" : "text-muted-foreground"}`}>
-                              {aj !== 0 ? `${aj > 0 ? "+" : ""}${brl(aj)}` : "—"}
+                            <TableCell className="text-right text-amber-700">{Number(p.valor_a_vista || 0) > 0 ? brl(Number(p.valor_a_vista)) : "—"}</TableCell>
+                            <TableCell className={`text-right ${Number(p.valor_ajustes || 0) < 0 ? "text-red-600" : Number(p.valor_ajustes || 0) > 0 ? "text-emerald-700" : "text-muted-foreground"}`}>
+                              {Number(p.valor_ajustes || 0) !== 0 ? `${Number(p.valor_ajustes) > 0 ? "+" : ""}${brl(Number(p.valor_ajustes))}` : "—"}
                             </TableCell>
                             <TableCell className="text-right font-semibold">{brl(Number(p.valor_total))}</TableCell>
-                            <TableCell className="text-right">
-                              <Button variant="ghost" size="sm" className="gap-1.5"
-                                onClick={(e) => { e.stopPropagation(); setSelecionado(p.id); }}>
-                                <SlidersHorizontal className="h-4 w-4" />
-                                {podeAjustar ? "Ajustar" : "Ver"}
-                              </Button>
-                            </TableCell>
                           </TableRow>
                         );
                       })}
-                      <TableRow className="bg-muted/50 font-bold">
-                        <TableCell colSpan={3}>Total</TableCell>
+                      <TableRow className="bg-muted/50 font-bold [&>td]:py-1.5">
+                        <TableCell colSpan={2}>Total · {pagamentos.length} médicos</TableCell>
+                        <TableCell className="text-center">{pagamentos.reduce((a, p) => a + (p.total_plantoes || 0), 0)}</TableCell>
+                        <TableCell className="text-center">{horas(pagamentos.reduce((a, p) => a + (p.total_horas_minutos || 0), 0))}</TableCell>
                         <TableCell className="text-right">{brl(produzido)}</TableCell>
                         <TableCell className="text-right text-amber-700">{brl(aVista)}</TableCell>
                         <TableCell className="text-right">{brl(ajustes)}</TableCell>
                         <TableCell className="text-right">{brl(aPagar)}</TableCell>
-                        <TableCell />
                       </TableRow>
                     </TableBody>
                   </Table>

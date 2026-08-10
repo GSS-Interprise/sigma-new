@@ -59,14 +59,14 @@ export function FinanceiroImportarFechamentoDialog({ mesDefault, anoDefault }: {
 
   const reset = () => { setResultado(null); setFile(null); setConfigId(""); setAviso(null); };
 
-  const importar = async (confirmarPeriodo = false) => {
+  const importar = async (confirmarPeriodo = false, confirmarReimport = false) => {
     if (!configId || !file) return;
     setImportando(true); setResultado(null); setAviso(null);
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
       const arquivo_base64 = toBase64(bytes);
       const { data, error } = await supabase.functions.invoke("financeiro-importar-fechamento", {
-        body: { config_id: configId, mes, ano, arquivo_base64, arquivo_nome: file.name, confirmar_periodo: confirmarPeriodo },
+        body: { config_id: configId, mes, ano, arquivo_base64, arquivo_nome: file.name, confirmar_periodo: confirmarPeriodo, confirmar_reimport: confirmarReimport },
       });
       // non-2xx vem como erro com o corpo dentro de error.context — é lá que moram
       // as recusas conscientes (período divergente, checksum estourado)
@@ -75,7 +75,7 @@ export function FinanceiroImportarFechamentoDialog({ mesDefault, anoDefault }: {
         if (corpo?.erro_periodo || corpo?.erro_checksum) { setAviso(corpo); return; }
         throw new Error(corpo?.error || error.message);
       }
-      if (data?.ja_importado) { toast.info("Este arquivo já foi importado antes."); setResultado(data); return; }
+      if (data?.ja_importado) { setResultado(data); return; }
       if (!data?.ok) throw new Error(data?.error || "falha no import");
       setResultado(data);
       if (data.mes) { setMes(data.mes); setAno(data.ano); }
@@ -207,8 +207,20 @@ export function FinanceiroImportarFechamentoDialog({ mesDefault, anoDefault }: {
             </div>
           )}
           {resultado?.ja_importado && (
-            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 flex items-center gap-1.5">
-              <Info className="h-4 w-4" /> Este arquivo já tinha sido importado.
+            <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 space-y-2">
+              <p className="flex items-start gap-1.5 font-medium">
+                <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" /> {resultado.msg || "Este arquivo já tinha sido importado."}
+              </p>
+              <p className="text-xs">
+                Renomear o arquivo não muda o conteúdo. Se quiser processar de novo — porque
+                corrigiu algo na origem, por exemplo — pode seguir: os ajustes que você lançou são preservados.
+              </p>
+              <div className="flex gap-2">
+                <Button size="sm" onClick={() => importar(true, true)} disabled={importando}>
+                  {importando && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />} Importar mesmo assim
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setResultado(null)}>Cancelar</Button>
+              </div>
             </div>
           )}
         </div>
