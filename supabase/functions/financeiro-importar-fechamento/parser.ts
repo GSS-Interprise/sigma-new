@@ -45,6 +45,9 @@ export type Bloco = {
   nome: string; crm: string; uf: string; cpf: string; unidade: string;
   itens: Item[]; checksum: number | null;
   acrescimos?: number; descontos?: number;
+  // consolidado: a equipe informa o valor já pago à vista; as horas correspondentes
+  // saem por proporção e podem ser corrigidas na tela
+  aVistaValor?: number; aVistaMinutos?: number; plantoes?: number;
 };
 
 const itemVazio = (): Item => ({
@@ -78,6 +81,20 @@ const durMin = (s: string): number => {
   const m = cell(s).match(/^(\d+):(\d{2})$/);
   return m ? parseInt(m[1]) * 60 + parseInt(m[2]) : 0;
 };
+
+/** Horas do consolidado, que saem em três formatos diferentes do mesmo relatório:
+ *  "246:00", "4 days, 0:00:00" (timedelta do Excel) e "54.0" (horas decimais). */
+export function horasEmMinutos(v: unknown): number {
+  if (typeof v === "number") return Math.round(v * 60);
+  const t = cell(v);
+  if (!t) return 0;
+  const dias = t.match(/^(\d+)\s*days?,\s*(\d+):(\d{2})(?::(\d{2}))?$/i);
+  if (dias) return (+dias[1]) * 24 * 60 + (+dias[2]) * 60 + (+dias[3]);
+  const hm = t.match(/^(\d+):(\d{2})(?::\d{2})?$/);
+  if (hm) return (+hm[1]) * 60 + (+hm[2]);
+  const n = parseFloat(t.replace(",", "."));
+  return isFinite(n) ? Math.round(n * 60) : 0;
+}
 
 /**
  * Relatório COMPLETO do Dr. Escala — layout hierárquico:
@@ -308,6 +325,80 @@ export function parseCarestreamResumo(grid: unknown[][]) {
     }));
 
   return { blocos: blocos.filter((b) => b.itens.length > 0), divergencias };
+}
+
+/**
+ * Relatório CONSOLIDADO do Dr. Escala — uma linha por médico, que é como a equipe
+ * trabalha. Mesmo preâmbulo do Completo (período na linha 3, unidade na linha 4):
+ *
+ *   Profissional | Qtde de Plantões | Qtde de Horas (h) | [À Vista] | [Coordenação] | Valor Total
+ *
+ * As colunas entre colchetes são acrescentadas À MÃO pela equipe na planilha baixada —
+ * o "À Vista" é o que o médico já recebeu e a "Coordenação" um acréscimo. Se estiverem
+ * presentes, entram como parcela já paga e como ajuste. Se não, o import segue igual.
+ */
+export function parseDrEscalaConsolidado(grid: unknown[][], gridFmt?: unknown[][]) {
+  let mes = 0, ano = 0;
+  for (const row of grid.slice(0, 10)) {
+    const m = cell(row[0]).match(/(\d{2})\/(\d{2})\/(\d{4})\s*[-–]\s*(\d{2})\/(\d{2})\/(\d{4})/);
+    if (m) { mes = parseInt(m[2]); ano = parseInt(m[3]); break; }
+  }
+
+  let hRow = -1;
+  for (let r = 0; r < Math.min(grid.length, 15); r++) {
+    if (norm(cell((grid[r] || [])[0])).startsWith("profissional")) { hRow = r; break; }
+  }
+  if (hRow < 0) return { mes, ano, blocos: [], erro: "não achei a linha de cabeçalho ('Profissional') no arquivo" };
+
+  const headers = (grid[hRow] || []).map((h) => cell(h));
+  const acha = (...nomes: string[]) =>
+    headers.findIndex((h) => nomes.some((n) => norm(h).startsWith(norm(n))));
+  const iNome = 0;
+  const iPlantoes = acha("Qtde de Plantões", "Plantões", "Qtde Plantões");
+  const iHoras = acha("Qtde de Horas", "Horas");
+  const iAVista = acha("À Vista", "A Vista");
+  const iCoord = acha("Coordenação", "Coordenacao");
+  const iTotal = acha("Valor Total", "Total");
+
+  const unidade = cell((grid[Math.max(0, hRow - 1)] || [])[0]);
+
+  const blocos: Bloco[] = [];
+  for (const row of grid.slice(hRow + 1)) {
+    const nome = cell(row[iNome]);
+    if (!nome || /^total/i.test(nome)) continue;
+    const valor = iTotal >= 0 ? num(row[iTotal]) : 0;
+    const aVista = iAVista >= 0 ? num(row[iAVista]) : 0;
+    const coord = iCoord >= 0 ? num(row[iCoord]) : 0;
+    if (!valor && !aVista && !coord) continue;
+
+    // Horas: duração do Excel chega como número em DIAS no grid cru (6,7 = 160h59).
+    // O grid formatado traz "160:59:00", que é inequívoco — mas nele o dinheiro vem
+    // em padrão americano (" R$ 27,120.00 "), então cada coisa vem de onde é confiável.
+    const linhaFmt = gridFmt?.[grid.indexOf(row)] as unknown[] | undefined;
+    const minutos = iHoras >= 0
+      ? horasEmMinutos(linhaFmt?.[iHoras] ?? row[iHoras])
+      : 0;
+    const plantoes = iPlantoes >= 0 ? Math.round(num(row[iPlantoes])) : 0;
+    // "Valor Total" da planilha dela JÁ inclui a coordenação; a produção é o que sobra
+    const producao = valor - coord;
+
+    blocos.push({
+      nome, crm: "", uf: "", cpf: "", unidade, checksum: valor,
+      acrescimos: coord, descontos: 0,
+      // um item sintético carrega a produção do mês; o consolidado não tem grão de plantão
+      itens: [{
+        ...itemVazio(), local: unidade, minutos, valor: producao,
+        descricao: plantoes ? `${plantoes} plantão(ões)` : "Produção do mês",
+        quantidade: plantoes || undefined,
+      }],
+      aVistaValor: aVista,
+      // sem detalhe de plantão não dá para saber QUAIS horas foram à vista; estima na
+      // proporção do valor e deixa a equipe corrigir na tela.
+      aVistaMinutos: aVista && producao ? Math.round(minutos * (aVista / producao)) : 0,
+      plantoes,
+    } as Bloco);
+  }
+  return { mes, ano, blocos, divergencias: [] };
 }
 
 /** Genérico: tabela plana guiada por mapa_colunas (Marieta, CIS…). */

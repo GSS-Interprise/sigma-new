@@ -33,6 +33,8 @@ export interface FinanceiroPagamento {
   valor_produzido?: number;
   valor_a_vista?: number;
   valor_ajustes?: number;
+  // horas seguem a mesma decomposição do valor: a pagar = total - à vista
+  horas_a_vista_minutos?: number;
 }
 
 export interface FinanceiroPagamentoItem {
@@ -226,6 +228,25 @@ export function useRemoverAjuste() {
       toast.success("Ajuste removido.");
     },
     onError: (e: any) => toast.error("Erro ao remover ajuste: " + e.message),
+  });
+}
+
+/** A equipe corrige as horas já pagas à vista: no Consolidado elas são estimadas por
+ *  proporção, e a nota fiscal não pode sair com as horas cheias. */
+export function useAtualizarHorasAVista() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, minutos }: { id: string; minutos: number }) => {
+      const { error } = await (supabase as any).from("financeiro_pagamentos")
+        .update({ horas_a_vista_minutos: Math.max(0, Math.round(minutos)) }).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["financeiro-pagamentos"] });
+      qc.invalidateQueries({ queryKey: ["financeiro-fases"] });
+      toast.success("Horas atualizadas.");
+    },
+    onError: (e: any) => toast.error("Erro ao atualizar horas: " + e.message),
   });
 }
 

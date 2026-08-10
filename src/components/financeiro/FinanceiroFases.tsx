@@ -256,7 +256,7 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
                         <TableHead className="w-8" />
                         <TableHead>Médico</TableHead>
                         <TableHead className="text-center w-16">Plant.</TableHead>
-                        <TableHead className="text-center w-20">Horas</TableHead>
+                        <TableHead className="text-center w-20" title="Horas a pagar (já descontadas as pagas à vista)">Horas</TableHead>
                         <TableHead className="text-right">Produzido</TableHead>
                         <TableHead className="text-right">À vista</TableHead>
                         <TableHead className="text-right">Ajustes</TableHead>
@@ -297,7 +297,9 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
                               )}
                             </TableCell>
                             <TableCell className="text-center text-muted-foreground">{p.total_plantoes || "—"}</TableCell>
-                            <TableCell className="text-center text-muted-foreground">{horas(p.total_horas_minutos)}</TableCell>
+                            <TableCell className="text-center text-muted-foreground" title={Number(p.horas_a_vista_minutos || 0) > 0 ? `${horas(p.total_horas_minutos)} trabalhadas − ${horas(Number(p.horas_a_vista_minutos))} pagas à vista` : undefined}>
+                              {horas(Math.max(0, (p.total_horas_minutos || 0) - Number(p.horas_a_vista_minutos || 0)))}
+                            </TableCell>
                             <TableCell className="text-right">{brl(Number(p.valor_produzido || 0))}</TableCell>
                             <TableCell className="text-right text-amber-700">{Number(p.valor_a_vista || 0) > 0 ? brl(Number(p.valor_a_vista)) : "—"}</TableCell>
                             <TableCell className={`text-right ${Number(p.valor_ajustes || 0) < 0 ? "text-red-600" : Number(p.valor_ajustes || 0) > 0 ? "text-emerald-700" : "text-muted-foreground"}`}>
@@ -310,7 +312,7 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
                       <TableRow className="bg-muted/50 font-bold [&>td]:py-1.5">
                         <TableCell colSpan={2}>Total · {pagamentos.length} médicos</TableCell>
                         <TableCell className="text-center">{pagamentos.reduce((a, p) => a + (p.total_plantoes || 0), 0)}</TableCell>
-                        <TableCell className="text-center">{horas(pagamentos.reduce((a, p) => a + (p.total_horas_minutos || 0), 0))}</TableCell>
+                        <TableCell className="text-center">{horas(pagamentos.reduce((a, p) => a + Math.max(0, (p.total_horas_minutos || 0) - Number(p.horas_a_vista_minutos || 0)), 0))}</TableCell>
                         <TableCell className="text-right">{brl(produzido)}</TableCell>
                         <TableCell className="text-right text-amber-700">{brl(aVista)}</TableCell>
                         <TableCell className="text-right">{brl(ajustes)}</TableCell>

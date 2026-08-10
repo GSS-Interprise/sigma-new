@@ -11,7 +11,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
-import { parseDrEscalaCompleto, parseGenerico, parseMatrizExames, parseCarestreamResumo, abaDoMes, norm, digits, nomeLimpo, padraoSemAcento, type Bloco } from "./parser.ts";
+import { parseDrEscalaCompleto, parseGenerico, parseMatrizExames, parseCarestreamResumo, parseDrEscalaConsolidado, abaDoMes, norm, digits, nomeLimpo, padraoSemAcento, type Bloco } from "./parser.ts";
 
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
 
@@ -58,7 +58,21 @@ serve(async (req) => {
     let mesRef = Number(mes), anoRef = Number(ano);
     let avisos: any[] = [];
 
-    if (cfg.parser === "carestream_resumo") {
+    if (cfg.parser === "dr_escala_consolidado") {
+      // segunda leitura formatada só para as durações (ver parser)
+      const gridFmt: any[][] = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, blankrows: false, defval: null, raw: false });
+      const p: any = parseDrEscalaConsolidado(grid, gridFmt);
+      if (p.erro) return json({ error: p.erro }, 400);
+      if (!p.mes || !p.ano) return json({ error: "não achei o período no arquivo (esperado 'dd/mm/aaaa - dd/mm/aaaa' nas primeiras linhas)" }, 400);
+      if (mes && ano && (Number(mes) !== p.mes || Number(ano) !== p.ano) && !confirmar_periodo) {
+        return json({
+          erro_periodo: true,
+          msg: `O arquivo é de ${String(p.mes).padStart(2, "0")}/${p.ano}, mas a tela está em ${String(mes).padStart(2, "0")}/${ano}.`,
+          periodo_arquivo: { mes: p.mes, ano: p.ano },
+        }, 409);
+      }
+      mesRef = p.mes; anoRef = p.ano; blocos = p.blocos;
+    } else if (cfg.parser === "carestream_resumo") {
       if (!mesRef || !anoRef) return json({ error: "faltam campos: mes, ano" }, 400);
       const p: any = parseCarestreamResumo(grid);
       blocos = p.blocos;
@@ -216,8 +230,11 @@ serve(async (req) => {
     for (const b of blocos) {
       const medicoId = casar(b);
       const produzido = b.itens.reduce((s, i) => s + i.valor, 0);
-      const aVista = b.itens.reduce((s, i) => s + (i.aVista ? i.valor : 0), 0);
+      // à vista vem dos itens (Completo) ou da coluna que a equipe preenche (Consolidado)
+      const aVista = b.aVistaValor ?? b.itens.reduce((s, i) => s + (i.aVista ? i.valor : 0), 0);
       const minutos = b.itens.reduce((s, i) => s + i.minutos, 0);
+      // horas já quitadas: exatas no Completo, estimadas no Consolidado (editável na tela)
+      const minutosAVista = b.aVistaMinutos ?? b.itens.reduce((s, i) => s + (i.aVista ? i.minutos : 0), 0);
 
       const { data: pag, error: insErr } = await svc.from("financeiro_pagamentos").insert({
         profissional_nome: b.nome,
@@ -225,8 +242,8 @@ serve(async (req) => {
         medico_id: medicoId,
         mes_referencia: mesRef, ano_referencia: anoRef,
         unidade: b.unidade || cfg.nome,
-        total_plantoes: b.itens.filter((i) => i.data).length || b.itens.length,
-        total_horas_minutos: minutos,
+        total_plantoes: b.plantoes ?? (b.itens.filter((i) => i.data).length || b.itens.length),
+        total_horas_minutos: minutos, horas_a_vista_minutos: minutosAVista,
         valor_produzido: produzido, valor_a_vista: aVista, valor_ajustes: 0,
         valor_total: produzido - aVista,
         status: "pendente", fonte: "import",

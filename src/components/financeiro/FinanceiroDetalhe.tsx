@@ -2,8 +2,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { ArrowLeft } from "lucide-react";
-import { FinanceiroPagamento, useFinanceiroPagamentoItens, useConferirPagamento } from "@/hooks/useFinanceiroData";
+import { FinanceiroPagamento, useFinanceiroPagamentoItens, useConferirPagamento, useAtualizarHorasAVista } from "@/hooks/useFinanceiroData";
 import { FinanceiroAnexos } from "./FinanceiroAnexos";
 import { FinanceiroAjustes } from "./FinanceiroAjustes";
 import { CheckCircle2, Loader2, Send, FileText } from "lucide-react";
@@ -20,6 +21,8 @@ interface Props {
 export function FinanceiroDetalhe({ pagamento, onVoltar }: Props) {
   const { data: itens = [], isLoading } = useFinanceiroPagamentoItens(pagamento.id);
   const conferir = useConferirPagamento();
+  const salvarHoras = useAtualizarHorasAVista();
+  const [editandoHoras, setEditandoHoras] = useState<string | null>(null);
   const qc = useQueryClient();
   const [solicitando, setSolicitando] = useState(false);
   const nfStatus = pagamento.nf_status ?? "nao_solicitada";
@@ -37,6 +40,9 @@ export function FinanceiroDetalhe({ pagamento, onVoltar }: Props) {
     v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
   const produzido = Number(pagamento.valor_produzido ?? 0);
+  const minTotal = Number(pagamento.total_horas_minutos ?? 0);
+  const minAVista = Number(pagamento.horas_a_vista_minutos ?? 0);
+  const minAPagar = Math.max(0, minTotal - minAVista);
   const aVista = Number(pagamento.valor_a_vista ?? 0);
   const ajustes = Number(pagamento.valor_ajustes ?? 0);
   // depois de aprovado o fechamento não aceita mais lançamento
@@ -73,7 +79,8 @@ export function FinanceiroDetalhe({ pagamento, onVoltar }: Props) {
           <CardContent>
             <p className="text-2xl font-bold">{fmt(Number(pagamento.valor_total))}</p>
             <p className="text-sm text-muted-foreground">
-              {pagamento.total_plantoes} plantões • {formatHoras(pagamento.total_horas_minutos)}
+              {pagamento.total_plantoes} plantões • <b>{formatHoras(minAPagar)}</b> a pagar
+              {minAVista > 0 && <> · {formatHoras(minTotal)} trabalhadas</>}
             </p>
             {/* decomposição: só aparece quando o import trouxe as parcelas (relatório completo) */}
             {(produzido > 0 || aVista > 0 || ajustes !== 0) && (
@@ -87,6 +94,35 @@ export function FinanceiroDetalhe({ pagamento, onVoltar }: Props) {
                 {ajustes !== 0 && (
                   <div className={`flex justify-between ${ajustes < 0 ? "text-red-600" : "text-emerald-700"}`}>
                     <span>Ajustes</span><span>{ajustes > 0 ? "+ " : "− "}{fmt(Math.abs(ajustes))}</span>
+                  </div>
+                )}
+                {/* as horas acompanham o valor: a nota não pode sair com as horas cheias
+                    quando parte do mês já foi paga à vista */}
+                {minTotal > 0 && (
+                  <div className="flex justify-between items-center border-t pt-1.5 mt-1.5">
+                    <span className="text-muted-foreground">Horas já pagas à vista</span>
+                    {editandoHoras !== null ? (
+                      <span className="flex items-center gap-1">
+                        <Input className="h-6 w-20 text-xs" value={editandoHoras} autoFocus
+                          placeholder="00:00"
+                          onChange={(e) => setEditandoHoras(e.target.value)} />
+                        <Button size="sm" variant="ghost" className="h-6 px-1.5 text-xs"
+                          onClick={() => {
+                            const m = editandoHoras.match(/^(\d+)(?::(\d{1,2}))?$/);
+                            if (m) salvarHoras.mutate({ id: pagamento.id, minutos: (+m[1]) * 60 + (+(m[2] || 0)) });
+                            setEditandoHoras(null);
+                          }}>ok</Button>
+                        <Button size="sm" variant="ghost" className="h-6 px-1.5 text-xs"
+                          onClick={() => setEditandoHoras(null)}>x</Button>
+                      </span>
+                    ) : (
+                      <button className="text-amber-700 underline decoration-dotted"
+                        title="Clique para corrigir"
+                        disabled={bloqueado}
+                        onClick={() => setEditandoHoras(`${Math.floor(minAVista / 60)}:${String(minAVista % 60).padStart(2, "0")}`)}>
+                        − {formatHoras(minAVista)}
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
