@@ -7,13 +7,16 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FileSpreadsheet, CheckCircle2, ArrowRight, Wallet, ClipboardCheck, SlidersHorizontal, Info, Circle, Loader2 } from "lucide-react";
-import { FinanceiroPagamento, useConferirEmLote } from "@/hooks/useFinanceiroData";
+import { FileSpreadsheet, CheckCircle2, ArrowRight, Wallet, ClipboardCheck, Info, Circle, Loader2, Trash2, Download } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { FinanceiroPagamento, useConferirEmLote, useExcluirImportacao } from "@/hooks/useFinanceiroData";
 import { FinanceiroDetalhe } from "./FinanceiroDetalhe";
 import { FinanceiroImportarFechamentoDialog } from "./FinanceiroImportarFechamentoDialog";
 import { FinanceiroFecharDialog } from "./FinanceiroFecharDialog";
 
 const brl = (v: number) => Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const BOM = String.fromCharCode(0xFEFF);      // Excel pt-BR precisa do BOM para ler UTF-8
+const CRLF = String.fromCharCode(13, 10);
 const horas = (min: number) => (min ? `${Math.floor(min / 60)}h${min % 60 ? String(min % 60).padStart(2, "0") : ""}` : "—");
 
 /**
@@ -27,6 +30,8 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
   const [selecionado, setSelecionado] = useState<string | null>(null);
   const [fonteSel, setFonteSel] = useState<string>(TODAS);
   const conferirLote = useConferirEmLote();
+  const excluirImport = useExcluirImportacao();
+  const [confirmandoExclusao, setConfirmandoExclusao] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ["financeiro-fases", mes, ano],
@@ -88,6 +93,31 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
 
   // "de onde veio" cada lançamento — o prefixo [cfg:id] marca o import por fonte
   const rotuloFonte = (p: FinanceiroPagamento) => nomeFechamento(chaveDoPagamento(p));
+
+  // CSV com ; e BOM — é o que o Excel em pt-BR abre sem pedir nada
+  const baixarCsv = () => {
+    const cab = ["Médico", "CRM", "Origem", "Plantões", "Horas trabalhadas", "Horas à vista",
+                 "Horas a pagar", "Produzido", "Já pago à vista", "Ajustes", "A pagar", "Conferido"];
+    const dec = (n: number) => Number(n || 0).toFixed(2).replace(".", ",");
+    const linhas = pagamentos.map((p) => {
+      const tot = Number(p.total_horas_minutos || 0), av = Number(p.horas_a_vista_minutos || 0);
+      return [
+        p.profissional_nome, p.profissional_crm ?? "", rotuloFonte(p),
+        p.total_plantoes ?? 0, horas(tot), horas(av), horas(Math.max(0, tot - av)),
+        dec(Number(p.valor_produzido || 0)), dec(Number(p.valor_a_vista || 0)),
+        dec(Number(p.valor_ajustes || 0)), dec(Number(p.valor_total || 0)),
+        p.conferido_em ? "sim" : "não",
+      ].map((c) => `"${String(c).replace(/"/g, '""')}"`).join(";");
+    });
+    const nome = fonteSel === TODAS ? `competencia-${String(mes).padStart(2, "0")}-${ano}`
+                                    : nomeFechamento(fonteSel).replace(/[^\w\- ]/g, "").trim();
+    const blob = new Blob([BOM + [cab.join(";"), ...linhas].join(CRLF)], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${nome}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
 
   if (selecionado) {
     const pag = pagamentos.find((p) => p.id === selecionado);
@@ -158,6 +188,17 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
             )}
           </div>
           <div className="flex items-center gap-2 flex-wrap shrink-0">
+            {todos.length > 0 && (
+              <Button size="sm" variant="outline" className="gap-1.5" onClick={baixarCsv}>
+                <Download className="h-4 w-4" /> Baixar
+              </Button>
+            )}
+            {podeAjustar && fonteSel !== TODAS && (
+              <Button size="sm" variant="outline" className="gap-1.5 text-red-600 hover:text-red-700"
+                onClick={() => setConfirmandoExclusao(true)}>
+                <Trash2 className="h-4 w-4" /> Excluir importação
+              </Button>
+            )}
             {podeAjustar && <FinanceiroImportarFechamentoDialog mesDefault={mes} anoDefault={ano} />}
             {fase === 2 && (
               <Button asChild size="sm" variant="outline" className="gap-1.5">
@@ -344,6 +385,38 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
           {isLoading && <p className="text-muted-foreground text-sm text-center py-3">Carregando…</p>}
         </CardContent>
       </Card>
+
+      <AlertDialog open={confirmandoExclusao} onOpenChange={setConfirmandoExclusao}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir esta importação?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p>
+                  Serão removidos <b>{pagamentos.length} lançamento(s)</b> de{" "}
+                  <b>{fonteSel !== TODAS ? nomeFechamento(fonteSel) : ""}</b> na competência{" "}
+                  {String(mes).padStart(2, "0")}/{ano}, somando <b>{brl(aPagar)}</b>.
+                </p>
+                <p className="text-amber-700">
+                  Os ajustes lançados nesses médicos vão junto. As outras importações do mês não são afetadas.
+                </p>
+                <p className="text-xs">Depois disso o arquivo pode ser importado de novo.</p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction className="bg-red-600 hover:bg-red-700"
+              onClick={() => {
+                excluirImport.mutate({ mes, ano, arquivoOrigem: fonteSel });
+                setFonteSel(TODAS);
+                setConfirmandoExclusao(false);
+              }}>
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -250,6 +250,35 @@ export function useAtualizarHorasAVista() {
   });
 }
 
+/** Excluir uma importação inteira: os pagamentos daquele arquivo na competência (o
+ *  cascade leva itens e ajustes) e o registro no log, para o arquivo poder voltar. */
+export function useExcluirImportacao() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ mes, ano, arquivoOrigem }: { mes: number; ano: number; arquivoOrigem: string }) => {
+      const { data: alvo, error: e1 } = await (supabase as any)
+        .from("financeiro_pagamentos").select("id")
+        .eq("mes_referencia", mes).eq("ano_referencia", ano).eq("arquivo_origem", arquivoOrigem);
+      if (e1) throw e1;
+      if (alvo?.length) {
+        const { error } = await (supabase as any).from("financeiro_pagamentos")
+          .delete().in("id", alvo.map((p: any) => p.id));
+        if (error) throw error;
+      }
+      // libera o arquivo para ser importado de novo sem o aviso de duplicado
+      const nome = arquivoOrigem.replace(/^\[cfg:[^\]]+\]\s*/, "").trim();
+      if (nome) await (supabase as any).from("financeiro_import_log").delete().eq("arquivo_nome", nome);
+      return alvo?.length ?? 0;
+    },
+    onSuccess: (n) => {
+      qc.invalidateQueries({ queryKey: ["financeiro-pagamentos"] });
+      qc.invalidateQueries({ queryKey: ["financeiro-fases"] });
+      toast.success(`Importação excluída (${n} lançamento(s)).`);
+    },
+    onError: (e: any) => toast.error("Erro ao excluir importação: " + e.message),
+  });
+}
+
 export function useFinanceiroConfigValores() {
   return useQuery({
     queryKey: ["financeiro-config-valores"],
