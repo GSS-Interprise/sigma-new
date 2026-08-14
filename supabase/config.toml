@@ -23,6 +23,11 @@ verify_jwt = false
 [functions.campanha-disparo-processor]
 verify_jwt = false
 
+# Scheduler interno chamado pelo pg_cron a cada minuto. A própria função
+# valida o service role recebido pelo cron antes de acordar os processors.
+[functions.campanha-disparo-scheduler]
+verify_jwt = false
+
 [functions.campanha-cadencia-processor]
 verify_jwt = false
 
@@ -78,6 +83,11 @@ verify_jwt = false
 # O gateway nao deve bloquear os envios internos antes dessa validacao.
 [functions.twilio-whatsapp-send]
 verify_jwt = false
+
+# Gera tokens e persiste conexões do Embedded Signup do Chakra.
+# A função exige JWT de usuário administrador; a chave Chakra fica em secret.
+[functions.chakra-connect]
+verify_jwt = true
 
 [functions.campanha-ia-recovery]
 verify_jwt = false

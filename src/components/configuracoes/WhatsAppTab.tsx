@@ -9,6 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { CheckCircle2, XCircle, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { ChakraConnectCard } from "./ChakraConnectCard";
 
 export function WhatsAppTab() {
   const [config, setConfig] = useState({
@@ -126,6 +127,8 @@ export function WhatsAppTab() {
 
   return (
     <div className="space-y-6">
+      <ChakraConnectCard />
+
       <Card className="p-6">
         <div className="space-y-4">
           <div className="flex items-center justify-between">
