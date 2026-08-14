@@ -46,8 +46,13 @@ serve(async (req) => {
     const { data: { user }, error: userError } = await auth.auth.getUser();
     if (userError || !user) return json({ ok: false, error: "unauthorized" }, 401);
 
-    const { data: isAdmin, error: adminError } = await admin.rpc("is_admin", { _user_id: user.id });
-    if (adminError || !isAdmin) return json({ ok: false, error: "admin_required" }, 403);
+    const [{ data: isAdmin, error: adminError }, { data: canConfigure, error: permissionError }] = await Promise.all([
+      admin.rpc("is_admin", { _user_id: user.id }),
+      admin.rpc("has_captacao_permission", { _user_id: user.id, _permission: "seigzaps_config" }),
+    ]);
+    if ((adminError && permissionError) || (!isAdmin && !canConfigure)) {
+      return json({ ok: false, error: "disparos_config_permission_required" }, 403);
+    }
 
     const input = await req.json().catch(() => ({}));
     const action = asText(input.action || "create_token", 40);

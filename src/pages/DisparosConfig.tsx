@@ -2,6 +2,7 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { InstanciaConfigTab } from "@/components/configuracoes/InstanciaConfigTab";
 import { CaptacaoProtectedRoute } from "@/components/auth/CaptacaoProtectedRoute";
 import { WebhookDisparosTab } from "@/components/disparos/WebhookDisparosTab";
+import { ChakraConnectCard } from "@/components/configuracoes/ChakraConnectCard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Send, Webhook } from "lucide-react";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -44,7 +45,10 @@ export default function DisparosConfig() {
               )}
             </TabsList>
             <TabsContent value="disparos" className="mt-4">
-              <InstanciaConfigTab tipo="disparos" />
+              <div className="space-y-6">
+                <ChakraConnectCard />
+                <InstanciaConfigTab tipo="disparos" />
+              </div>
             </TabsContent>
             {isAdmin && (
               <TabsContent value="webhook-disparos" className="mt-4">

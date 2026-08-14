@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { z } from "zod";
 import { ConfirmDestructive } from "@/components/common/ConfirmDestructive";
 import { CATEGORIAS_USO, CATEGORIA_USO_VALUES, type CategoriaUso } from "@/constants/categorias";
+import { ChakraConnectCard } from "./ChakraConnectCard";
 
 const chipSchema = z.object({
   nome: z.string().trim().min(1, "Nome é obrigatório").max(100),
@@ -157,8 +158,10 @@ export function ChipsTab() {
   };
 
   return (
-    <Card className="p-6">
-      <div className="flex justify-between items-center mb-6">
+    <div className="space-y-6">
+      <ChakraConnectCard />
+      <Card className="p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
         <div>
           <h2 className="text-2xl font-bold">Gerenciamento de Chips</h2>
           <p className="text-muted-foreground">Configure os chips para envio de disparos</p>
@@ -325,7 +328,7 @@ export function ChipsTab() {
             </form>
           </DialogContent>
         </Dialog>
-      </div>
+        </div>
 
       {isLoading ? (
         <p>Carregando...</p>
@@ -413,6 +416,7 @@ export function ChipsTab() {
           </TableBody>
         </Table>
       )}
-    </Card>
+      </Card>
+    </div>
   );
 }
