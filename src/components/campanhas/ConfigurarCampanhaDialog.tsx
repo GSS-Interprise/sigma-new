@@ -44,6 +44,11 @@ interface Props {
   campanhaId: string | null;
 }
 
+// A API oficial tem capacidade própria; não deve herdar o ritmo anti-ban dos
+// chips Evolution nem nascer artificialmente limitada a 30 contatos/dia.
+const DEFAULT_OFFICIAL_DAILY_LIMIT = 250;
+const DEFAULT_EVOLUTION_DAILY_LIMIT = 30;
+
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Erro inesperado";
 }
@@ -55,9 +60,9 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
   // State editável
   const [chipIds, setChipIds] = useState<string[]>([]);
   const [rotationStrategy, setRotationStrategy] = useState("round_robin");
-  const [limiteDiario, setLimiteDiario] = useState(30);
+  const [limiteDiario, setLimiteDiario] = useState(DEFAULT_EVOLUTION_DAILY_LIMIT);
   const [batchSize, setBatchSize] = useState(5);
-  const [whatsappProvider, setWhatsappProvider] = useState<"evolution" | "twilio">("evolution");
+  const [whatsappProvider, setWhatsappProvider] = useState<"evolution" | "twilio" | "chakra">("evolution");
   const [officialTemplateId, setOfficialTemplateId] = useState<string | null>(null);
   const [officialSenderId, setOfficialSenderId] = useState<string | null>(null);
   const [officialTemplateVariables, setOfficialTemplateVariables] = useState<OfficialTemplateBindings>({});
@@ -88,16 +93,20 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
   useEffect(() => {
     if (!campanha) return;
     const officialConfig = campanha as typeof campanha & {
-      whatsapp_provider?: "evolution" | "twilio";
+      whatsapp_provider?: "evolution" | "twilio" | "chakra";
       official_template_id?: string | null;
       official_sender_id?: string | null;
       official_template_variables?: OfficialTemplateBindings | null;
     };
     setChipIds(campanha.chip_ids || []);
     setRotationStrategy(campanha.rotation_strategy || "round_robin");
-    setLimiteDiario(campanha.limite_diario_campanha || 30);
-    setBatchSize(campanha.batch_size || 5);
-    setWhatsappProvider(officialConfig.whatsapp_provider || "evolution");
+    const provider = officialConfig.whatsapp_provider || "evolution";
+    setLimiteDiario(
+      campanha.limite_diario_campanha ||
+        (provider !== "evolution" ? DEFAULT_OFFICIAL_DAILY_LIMIT : DEFAULT_EVOLUTION_DAILY_LIMIT),
+    );
+    setBatchSize(campanha.batch_size || (provider !== "evolution" ? 10 : 5));
+    setWhatsappProvider(provider);
     setOfficialTemplateId(officialConfig.official_template_id || null);
     setOfficialSenderId(officialConfig.official_sender_id || null);
     setOfficialTemplateVariables(officialConfig.official_template_variables || {});
@@ -133,26 +142,27 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
     queryFn: async () => {
       const { data, error } = await supabase
         .from("whatsapp_official_templates" as never)
-        .select("id, friendly_name, category, language")
+        .select("id, provider, friendly_name, category, language, twilio_account_key")
         .eq("approval_status", "approved")
         .eq("language", "pt_BR")
         .order("friendly_name");
       if (error) throw error;
-      return (data || []) as Array<{ id: string; friendly_name: string; category: string | null; language: string }>;
+      return (data || []) as Array<{ id: string; provider: string | null; friendly_name: string; category: string | null; language: string; twilio_account_key: string | null }>;
     },
   });
 
   const { data: officialSenders = [] } = useQuery({
     queryKey: ["active-whatsapp-official-senders"],
-    enabled: open && whatsappProvider === "twilio",
+    enabled: open && whatsappProvider !== "evolution",
     queryFn: async () => {
       const { data, error } = await supabase
         .from("whatsapp_official_senders" as never)
-        .select("id, display_name, phone_e164, status")
-        .in("status", ["approved", "online", "active", "activated"])
+        .select("id, provider, display_name, phone_e164, status, twilio_account_key, chakra_plugin_id, chakra_phone_number_id")
+        .eq("provider", whatsappProvider)
+        .in("status", ["approved", "online", "active", "activated", "connected"])
         .order("display_name");
       if (error) throw error;
-      return (data || []) as Array<{ id: string; display_name: string | null; phone_e164: string; status: string }>;
+      return (data || []) as Array<{ id: string; provider: string; display_name: string | null; phone_e164: string; status: string; twilio_account_key: string | null; chakra_plugin_id?: string | null; chakra_phone_number_id?: string | null }>;
     },
   });
 
@@ -171,20 +181,46 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
   });
 
   useEffect(() => {
-    if (whatsappProvider === "twilio" && !officialSenderId && officialSenders.length === 1) {
+    if (whatsappProvider !== "evolution" && !officialSenderId && officialSenders.length === 1) {
       setOfficialSenderId(officialSenders[0].id);
     }
   }, [whatsappProvider, officialSenderId, officialSenders]);
 
+  const selectedSender = officialSenders.find((sender) => sender.id === officialSenderId);
+  const compatibleOfficialTemplates = selectedSender
+    ? officialTemplates.filter((template) =>
+        template.provider === selectedSender.provider &&
+        (selectedSender.provider === "chakra" || template.twilio_account_key === selectedSender.twilio_account_key))
+    : officialTemplates;
+
+  useEffect(() => {
+    if (!selectedSender || !officialTemplateId) return;
+    const selectedTemplate = officialTemplates.find((template) => template.id === officialTemplateId);
+    if (selectedTemplate && (
+      selectedTemplate.provider !== selectedSender.provider ||
+      (selectedSender.provider !== "chakra" && selectedTemplate.twilio_account_key !== selectedSender.twilio_account_key)
+    )) {
+      setOfficialTemplateId(null);
+      setOfficialTemplateVariables({});
+    }
+  }, [selectedSender, officialTemplateId, officialTemplates]);
+
   // Uma campanha Twilio não pode carregar chips Evolution, mesmo ao restaurar
   // uma configuração antiga ou trocar de provedor rapidamente.
   useEffect(() => {
-    if (whatsappProvider === "twilio" && chipIds.length > 0) setChipIds([]);
+    if (whatsappProvider !== "evolution" && chipIds.length > 0) setChipIds([]);
   }, [whatsappProvider, chipIds.length]);
 
-  const handleProviderChange = (provider: "evolution" | "twilio") => {
+  const handleProviderChange = (provider: "evolution" | "twilio" | "chakra") => {
     setWhatsappProvider(provider);
-    if (provider === "twilio") setChipIds([]);
+    if (provider !== "evolution") setChipIds([]);
+    // Só troca defaults; um limite personalizado da operação permanece.
+    if (provider !== "evolution" && limiteDiario <= DEFAULT_EVOLUTION_DAILY_LIMIT) {
+      setLimiteDiario(DEFAULT_OFFICIAL_DAILY_LIMIT);
+    }
+    if (provider === "evolution" && limiteDiario >= DEFAULT_OFFICIAL_DAILY_LIMIT) {
+      setLimiteDiario(DEFAULT_EVOLUTION_DAILY_LIMIT);
+    }
     if (provider === "evolution") {
       setOfficialTemplateId(null);
       setOfficialSenderId(null);
@@ -204,18 +240,26 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
     (campanha?.total_convertido || 0);
 
   const handoffTelefoneValido = /^\+\d{12,13}$/.test(handoffTelefone);
+  const officialBindingsOk =
+    Object.keys(officialTemplateVariables).length > 0 &&
+    Object.values(officialTemplateVariables).every((binding) => binding.trim().length > 0);
+  const briefingOperacionalOk =
+    campanha?.tipo_envio === "manual" ||
+    (Boolean(String((campanha?.briefing_ia as Record<string, unknown> | null)?.nome_servico || (campanha?.briefing_ia as Record<string, unknown> | null)?.tipo_servico || "").trim()) &&
+      (Boolean(String((campanha?.briefing_ia as Record<string, unknown> | null)?.cidade || (campanha?.briefing_ia as Record<string, unknown> | null)?.local || "").trim()) ||
+        (Array.isArray((campanha?.briefing_ia as Record<string, unknown> | null)?.locais) && ((campanha?.briefing_ia as Record<string, unknown> | null)?.locais as unknown[]).length > 0)));
   const podeAtivar =
-    (whatsappProvider === "twilio"
+    (whatsappProvider !== "evolution"
       ? !!officialTemplateId &&
         !!officialSenderId &&
-        Object.keys(officialTemplateVariables).length > 0 &&
-        Object.values(officialTemplateVariables).every((binding) => binding.trim().length > 0)
+        officialBindingsOk
       : chipIds.length > 0) &&
     handoffNome.trim().length > 0 &&
     handoffNome !== "[A_CONFIGURAR]" &&
     handoffTelefoneValido &&
     !!responsavelId &&
-    totalLeads > 0;
+    totalLeads > 0 &&
+    briefingOperacionalOk;
 
   // Mutação: salvar configurações
   const salvar = useMutation({
@@ -240,9 +284,9 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
           tarefa_cadencia_passos: tarefaPassos.length > 0 ? tarefaPassos : null,
           tarefa_cadencia_template_id: tarefaTemplateId,
           whatsapp_provider: whatsappProvider,
-          official_template_id: whatsappProvider === "twilio" ? officialTemplateId : null,
-          official_sender_id: whatsappProvider === "twilio" ? officialSenderId : null,
-          official_template_variables: whatsappProvider === "twilio" ? officialTemplateVariables : {},
+          official_template_id: whatsappProvider !== "evolution" ? officialTemplateId : null,
+          official_sender_id: whatsappProvider !== "evolution" ? officialSenderId : null,
+          official_template_variables: whatsappProvider !== "evolution" ? officialTemplateVariables : {},
           responsavel_id: responsavelId,
         } as never)
         .eq("id", campanhaId);
@@ -259,7 +303,15 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
   // Mutação: ativar
   const ativar = useMutation({
     mutationFn: async () => {
-      if (!podeAtivar) throw new Error("Configure chip + responsável + leads antes");
+      if (!podeAtivar) {
+        throw new Error(
+          !briefingOperacionalOk
+            ? "Complete o briefing da IA com serviço e cidade/local antes de ativar"
+            : whatsappProvider !== "evolution"
+            ? "Configure número oficial, template aprovado, responsável e leads antes"
+            : "Configure chip Evolution, responsável e leads antes",
+        );
+      }
       // Salva primeiro
       await salvar.mutateAsync();
       const { error } = await supabase
@@ -351,7 +403,7 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
                   <Label>Canal de WhatsApp</Label>
                   <Select
                     value={whatsappProvider}
-                    onValueChange={(value) => handleProviderChange(value as "evolution" | "twilio")}
+                    onValueChange={(value) => handleProviderChange(value as "evolution" | "twilio" | "chakra")}
                   >
                     <SelectTrigger className="min-h-11">
                       <SelectValue />
@@ -359,21 +411,32 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
                     <SelectContent>
                       <SelectItem value="evolution">API não oficial · Evolution</SelectItem>
                       <SelectItem value="twilio">API oficial · Twilio/WhatsApp</SelectItem>
+                      <SelectItem value="chakra">API oficial · Chakra (coexistência)</SelectItem>
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    {whatsappProvider === "twilio"
-                      ? "API oficial: usa template aprovado e número remetente. Não depende dos chips conectados ao Sigma."
+                    {whatsappProvider !== "evolution"
+                      ? `API oficial (${whatsappProvider === "chakra" ? "Chakra" : "Twilio"}): usa template aprovado e número remetente. Não depende dos chips conectados ao Sigma.`
                       : "Evolution: usa os chips conectados selecionados para o disparo."}
                   </p>
                 </div>
 
-                {whatsappProvider === "twilio" && (
+                {whatsappProvider !== "evolution" && (
                   <div className="space-y-2 rounded-lg border border-blue-200 bg-blue-50/50 p-3">
                     <Label>Número oficial remetente</Label>
                     <Select
                       value={officialSenderId || ""}
-                      onValueChange={setOfficialSenderId}
+                      onValueChange={(value) => {
+                        setOfficialSenderId(value);
+                        const sender = officialSenders.find((item) => item.id === value);
+                        if (sender && officialTemplateId) {
+                          const template = officialTemplates.find((item) => item.id === officialTemplateId);
+                          if (template && (template.provider !== sender.provider || (sender.provider !== "chakra" && template.twilio_account_key !== sender.twilio_account_key))) {
+                            setOfficialTemplateId(null);
+                            setOfficialTemplateVariables({});
+                          }
+                        }
+                      }}
                     >
                       <SelectTrigger className="min-h-11 bg-background">
                         <SelectValue placeholder="Selecione o número oficial" />
@@ -381,7 +444,7 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
                       <SelectContent>
                         {officialSenders.map((sender) => (
                           <SelectItem key={sender.id} value={sender.id}>
-                            {sender.display_name || "WhatsApp oficial"} · {sender.phone_e164}
+                            {sender.display_name || "WhatsApp oficial"} · {sender.phone_e164} · {sender.provider === "chakra" ? "Chakra" : sender.twilio_account_key}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -407,14 +470,14 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
                         <SelectValue placeholder="Selecione um template aprovado" />
                       </SelectTrigger>
                       <SelectContent>
-                        {officialTemplates.map((template) => (
+                        {compatibleOfficialTemplates.map((template) => (
                           <SelectItem key={template.id} value={template.id}>
                             {template.friendly_name} · {template.category || "sem categoria"}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                    {officialTemplates.length === 0 && (
+                    {compatibleOfficialTemplates.length === 0 && (
                       <p className="text-xs text-amber-800">
                         Ainda não há template aprovado. Crie e acompanhe em “Templates WhatsApp”.
                       </p>
@@ -519,14 +582,23 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
 
                 <div className="grid grid-cols-2 gap-3 pt-2 border-t">
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Limite diário</Label>
+                    <Label className="text-xs">
+                      {whatsappProvider !== "evolution"
+                        ? "Limite diário oficial (novos contatos)"
+                        : "Limite diário da campanha"}
+                    </Label>
                     <Input
                       type="number"
                       value={limiteDiario}
                       onChange={(e) => setLimiteDiario(Number(e.target.value))}
                       min={1}
-                      max={500}
+                      max={whatsappProvider !== "evolution" ? DEFAULT_OFFICIAL_DAILY_LIMIT : 500}
                     />
+                    <p className="text-[11px] text-muted-foreground">
+                      {whatsappProvider !== "evolution"
+                        ? "Piloto atual da API oficial: até 250 novos contatos/dia."
+                        : "O ritmo é governado pelos limites e pela saúde dos chips conectados."}
+                    </p>
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-xs">Tamanho do lote</Label>
@@ -663,7 +735,24 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
               <TabsContent value="ativacao" className="m-0 space-y-4">
                 <div className="border rounded p-4 space-y-2">
                   <h4 className="text-sm font-semibold">Checklist antes de ativar</h4>
-                  <CheckItem ok={chipIds.length > 0} label="Pelo menos 1 chip selecionado" />
+                  {whatsappProvider !== "evolution" ? (
+                    <>
+                      <CheckItem
+                        ok={!!officialSenderId}
+                        label="Número oficial remetente configurado"
+                      />
+                      <CheckItem
+                        ok={!!officialTemplateId}
+                        label="Template oficial aprovado selecionado"
+                      />
+                      <CheckItem
+                        ok={officialBindingsOk}
+                        label="Variáveis do template preenchidas"
+                      />
+                    </>
+                  ) : (
+                    <CheckItem ok={chipIds.length > 0} label="Pelo menos 1 chip Evolution selecionado" />
+                  )}
                   <CheckItem
                     ok={handoffNome.trim().length > 0 && handoffNome !== "[A_CONFIGURAR]"}
                     label="Nome do responsável preenchido"
@@ -684,15 +773,22 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
                 </div>
 
                 {campanha?.status === "rascunho" && (
-                  <Button
-                    className="w-full"
-                    size="lg"
-                    onClick={() => ativar.mutate()}
-                    disabled={!podeAtivar || ativar.isPending}
-                  >
-                    <Play className="h-4 w-4 mr-2" />
-                    {ativar.isPending ? "Ativando..." : "Ativar campanha"}
-                  </Button>
+                  <div className="space-y-2">
+                    {!briefingOperacionalOk && campanha.tipo_envio !== "manual" && (
+                      <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                        Complete o briefing da IA com o serviço e a cidade/local antes de ativar.
+                      </p>
+                    )}
+                    <Button
+                      className="w-full"
+                      size="lg"
+                      onClick={() => ativar.mutate()}
+                      disabled={!podeAtivar || ativar.isPending}
+                    >
+                      <Play className="h-4 w-4 mr-2" />
+                      {ativar.isPending ? "Ativando..." : "Ativar campanha"}
+                    </Button>
+                  </div>
                 )}
 
                 {campanha?.status === "ativa" && (
