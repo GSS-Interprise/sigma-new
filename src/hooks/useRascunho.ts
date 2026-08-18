@@ -59,6 +59,10 @@ export function useRascunho<T>(
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // o que havia no storage quando o formulário abriu — é isso que se oferece restaurar
   const inicial = useRef(true);
+  // Estado do formulário no momento em que abriu. Sem esta referência, um formulário
+  // intocado com qualquer default ("urgencia: media") já era gravado como rascunho e a
+  // faixa de restaurar aparecia sem ninguém ter digitado nada.
+  const base = useRef<string | null>(null);
 
   useEffect(() => {
     if (!jaLimpou) { jaLimpou = true; limparVencidos(); }
@@ -68,6 +72,7 @@ export function useRascunho<T>(
   useEffect(() => {
     if (!storageKey || !ativo) return;
     inicial.current = true;
+    base.current = null;
     setIgnorado(false);
     try {
       const bruto = localStorage.getItem(storageKey);
@@ -87,9 +92,12 @@ export function useRascunho<T>(
   // grava enquanto digita, com folga para não escrever a cada tecla
   useEffect(() => {
     if (!storageKey || !ativo) return;
+    const atual = JSON.stringify(valor);
     // o primeiro valor é o estado inicial do formulário, não uma edição
-    if (inicial.current) { inicial.current = false; return; }
-    if (vazio(valor)) return;
+    if (inicial.current) { inicial.current = false; base.current = atual; return; }
+    if (base.current === null) { base.current = atual; return; }
+    // nada mudou em relação a como o formulário abriu: não é rascunho
+    if (atual === base.current || vazio(valor)) return;
 
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => {
@@ -116,10 +124,11 @@ export function useRascunho<T>(
     return v;
   }, [guardado]);
 
-  const temRascunho = useMemo(
-    () => !!guardado && !ignorado && !vazio(guardado.valor),
-    [guardado, ignorado],
-  );
+  const temRascunho = useMemo(() => {
+    if (!guardado || ignorado || vazio(guardado.valor)) return false;
+    // guardado igual ao formulário atual não é novidade nenhuma para oferecer
+    return JSON.stringify(guardado.valor) !== JSON.stringify(valor);
+  }, [guardado, ignorado, valor]);
 
   return {
     /** há um rascunho anterior para oferecer */

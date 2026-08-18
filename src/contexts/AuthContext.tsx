@@ -21,8 +21,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
-  // Timeout de inatividade (30 minutos)
-  const INACTIVITY_TIMEOUT = 30 * 60 * 1000;
+  // Timeout de inatividade (60 minutos) — subiu de 30 em 18/08 a pedido da operação,
+  // que caía no meio do expediente ao sair da tela para atender telefone.
+  const INACTIVITY_TIMEOUT = 60 * 60 * 1000;
+  // Aviso antes de derrubar: a queixa da equipe era cair "sem qualquer aviso prévio".
+  const AVISO_ANTES = 3 * 60 * 1000;
   // Duração máxima da sessão (13 horas) - força login diário
   const MAX_SESSION_DURATION = 13 * 60 * 60 * 1000;
   const SESSION_START_KEY = 'sigma_session_start';
@@ -30,6 +33,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // então o clearTimeout da limpeza podia apontar para outra variável e deixar um timer
   // órfão vivo — que derrubava a sessão fora de hora, parecendo aleatório.
   const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const avisoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sessionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const checkSessionExpiry = () => {
@@ -144,6 +148,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const resetTimer = () => {
       if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
+      if (avisoTimer.current) clearTimeout(avisoTimer.current);
+
+      avisoTimer.current = setTimeout(() => {
+        toast.warning("Sua sessão vai expirar em 3 minutos por inatividade.", {
+          description: "Clique aqui ou use o sistema para continuar conectado.",
+          duration: AVISO_ANTES,
+        });
+      }, INACTIVITY_TIMEOUT - AVISO_ANTES);
+
       inactivityTimer.current = setTimeout(() => {
         toast.info("Sessão expirada por inatividade");
         signOut();
@@ -163,6 +176,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return () => {
       if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
+      if (avisoTimer.current) clearTimeout(avisoTimer.current);
       events.forEach(event => {
         document.removeEventListener(event, resetTimer);
       });
