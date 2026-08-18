@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useRef, ReactNode } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
@@ -26,8 +26,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Duração máxima da sessão (13 horas) - força login diário
   const MAX_SESSION_DURATION = 13 * 60 * 60 * 1000;
   const SESSION_START_KEY = 'sigma_session_start';
-  let inactivityTimer: ReturnType<typeof setTimeout>;
-  let sessionTimer: ReturnType<typeof setTimeout>;
+  // useRef, e não `let` no corpo do componente: variável solta é recriada a cada render,
+  // então o clearTimeout da limpeza podia apontar para outra variável e deixar um timer
+  // órfão vivo — que derrubava a sessão fora de hora, parecendo aleatório.
+  const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sessionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const checkSessionExpiry = () => {
     const sessionStart = localStorage.getItem(SESSION_START_KEY);
@@ -41,8 +44,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       // Agendar logout para o tempo restante
       const remaining = MAX_SESSION_DURATION - elapsed;
-      clearTimeout(sessionTimer);
-      sessionTimer = setTimeout(() => {
+      if (sessionTimer.current) clearTimeout(sessionTimer.current);
+      sessionTimer.current = setTimeout(() => {
         localStorage.removeItem(SESSION_START_KEY);
         toast.info("Sessão expirada após 13 horas. Faça login novamente.");
         signOut();
@@ -75,7 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Ao fazer logout, limpar
         if (event === 'SIGNED_OUT') {
           localStorage.removeItem(SESSION_START_KEY);
-          clearTimeout(sessionTimer);
+          if (sessionTimer.current) clearTimeout(sessionTimer.current);
         }
         
         setSession(session);
@@ -101,7 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return () => {
       subscription.unsubscribe();
-      clearTimeout(sessionTimer);
+      if (sessionTimer.current) clearTimeout(sessionTimer.current);
     };
   // Sem deps de propósito: navigate é estável; listar como dep dispara cascata
   // de re-subscribes do gotrue → lock contention (bug 15/05 sigzap realtime).
@@ -140,23 +143,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!user) return;
 
     const resetTimer = () => {
-      clearTimeout(inactivityTimer);
-      inactivityTimer = setTimeout(() => {
+      if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
+      inactivityTimer.current = setTimeout(() => {
         toast.info("Sessão expirada por inatividade");
         signOut();
       }, INACTIVITY_TIMEOUT);
     };
 
-    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
-    
+    // 'keypress' é uma API descontinuada e não dispara para Backspace, Delete, Tab nem
+    // setas — quem estava revisando um texto longo sem mexer o mouse era considerado
+    // inativo e caía no meio do trabalho. 'keydown' e 'input' cobrem digitação de verdade.
+    const events = ['mousedown', 'mousemove', 'keydown', 'input', 'scroll', 'touchstart', 'click', 'wheel'];
+
     events.forEach(event => {
-      document.addEventListener(event, resetTimer);
+      document.addEventListener(event, resetTimer, { passive: true });
     });
 
     resetTimer();
 
     return () => {
-      clearTimeout(inactivityTimer);
+      if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
       events.forEach(event => {
         document.removeEventListener(event, resetTimer);
       });

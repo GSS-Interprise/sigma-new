@@ -35,6 +35,8 @@ import {
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
+import { useRascunho } from "@/hooks/useRascunho";
+import { RascunhoAviso, RascunhoStatus } from "@/components/ui/rascunho-aviso";
 import {
   CalendarIcon,
   Image as ImageIcon,
@@ -520,8 +522,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
       toast.error("Informe um título");
       return;
     }
-    const ehPessoal = pessoas.length === 0;
-    const mencionadosFinal = ehPessoal
+        const mencionadosFinal = ehPessoal
       ? [user?.id ?? ""].filter(Boolean)
       : pessoas;
     const responsaveisFinal = ehPessoal
@@ -640,11 +641,41 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
           console.error(e);
         }
       }
+      rascunho.descartar();
       onOpenChange(false);
     } catch {
       // toast já no hook
     }
   };
+
+  // Rascunho automático: só na CRIAÇÃO (em edição a fonte de verdade é o banco).
+  // Sem isto, cair a sessão no meio do preenchimento significava refazer tudo.
+  const formRascunho = useMemo(() => ({
+    titulo, descricao, pessoas, responsaveisIds, urgencia, horaLimite, duracaoMin,
+    checklist, tags, links, comentarioInicial,
+    dataLimite: dataLimite ? dataLimite.toISOString() : null,
+  }), [titulo, descricao, pessoas, responsaveisIds, urgencia, horaLimite, duracaoMin,
+       checklist, tags, links, comentarioInicial, dataLimite]);
+
+  const rascunho = useRascunho("nova-demanda", formRascunho, { ativo: open && !isEditing });
+
+  const restaurarRascunho = () => {
+    const r = rascunho.restaurar() as typeof formRascunho | null;
+    if (!r) return;
+    setTitulo(r.titulo ?? "");
+    setDescricao(r.descricao ?? "");
+    setPessoas(r.pessoas ?? []);
+    setResponsaveisIds(r.responsaveisIds ?? []);
+    setUrgencia((r.urgencia as Urgencia) ?? "media");
+    setHoraLimite(r.horaLimite ?? "");
+    setDuracaoMin(r.duracaoMin ?? "");
+    setChecklist(r.checklist ?? []);
+    setTags(r.tags ?? []);
+    setLinks(r.links ?? []);
+    setComentarioInicial(r.comentarioInicial ?? "");
+    setDataLimite(r.dataLimite ? new Date(r.dataLimite) : undefined);
+  };
+
 
   const ehPessoal = pessoas.length === 0;
   // Garante que todo responsável esteja em pessoas; se nenhum chip estiver marcado
@@ -676,6 +707,10 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
       <DialogContent className="w-[92vw] max-w-[1400px] h-[92vh] p-0 gap-0 overflow-hidden flex flex-col">
         <DialogHeader className="space-y-0 shrink-0">
           <div className="px-4 pt-3 pb-2 pr-12 space-y-2 border-b">
+            {!isEditing && rascunho.temRascunho && (
+              <RascunhoAviso em={rascunho.rascunhoEm}
+                onRestaurar={restaurarRascunho} onDescartar={rascunho.descartar} />
+            )}
             <div className="flex items-center gap-2">
               <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground shrink-0">
                 {isEditing ? "Editar" : "Nova"}
@@ -698,6 +733,7 @@ export function NovaDemandaDialog({ open, onOpenChange, defaultDate, tarefaId = 
               {isEditing && loadingTarefa && (
                 <span className="text-[11px] text-muted-foreground shrink-0">carregando…</span>
               )}
+              {!isEditing && <RascunhoStatus em={rascunho.salvoEm} />}
               {isEditing && tarefaExistente?.created_at && (
                 <span
                   className="text-[11px] text-muted-foreground shrink-0 inline-flex items-center gap-1"

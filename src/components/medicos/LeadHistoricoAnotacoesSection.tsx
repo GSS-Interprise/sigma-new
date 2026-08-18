@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { useRascunho } from "@/hooks/useRascunho";
+import { RascunhoAviso } from "@/components/ui/rascunho-aviso";
 
 interface LeadHistoricoAnotacoesSectionProps {
   leadId: string;
@@ -386,7 +388,23 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
     }
   });
 
+  // Anotação é texto longo e era exatamente o que se perdia quando a sessão caía.
+  // A chave inclui o lead para não misturar rascunho de médicos diferentes.
+  const anotacaoRascunho = useMemo(() => ({ titulo, conteudo, mencionados }),
+    [titulo, conteudo, mencionados]);
+  const rascunho = useRascunho(leadId ? `anotacao:${leadId}` : null, anotacaoRascunho,
+    { ativo: showForm });
+
+  const restaurarRascunho = () => {
+    const r = rascunho.restaurar() as { titulo?: string; conteudo?: string; mencionados?: string[] } | null;
+    if (!r) return;
+    setTitulo(r.titulo ?? "");
+    setConteudo(r.conteudo ?? "");
+    setMencionados(r.mencionados ?? []);
+  };
+
   const resetForm = () => {
+    rascunho.descartar();
     setShowForm(false);
     setTitulo("");
     setConteudo("");
@@ -684,6 +702,10 @@ export function LeadHistoricoAnotacoesSection({ leadId, phoneE164, onConversaCli
       {/* New annotation form */}
       {showForm && (
         <div className="rounded-lg border bg-card p-4 space-y-3">
+          {rascunho.temRascunho && (
+            <RascunhoAviso em={rascunho.rascunhoEm}
+              onRestaurar={restaurarRascunho} onDescartar={rascunho.descartar} />
+          )}
           <Input
             placeholder="Título (opcional)"
             value={titulo}
