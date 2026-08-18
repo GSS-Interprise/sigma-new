@@ -30,6 +30,7 @@ import { CadenciaConfig } from "./CadenciaConfig";
 import type { CadenciaPasso } from "@/hooks/useCadencia";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useChipsEmUso } from "@/hooks/useChipsEmUso";
+import { useDisparoListas } from "@/hooks/useDisparoListas";
 import {
   OfficialTemplateVariablesConfig,
   type OfficialTemplateBindings,
@@ -45,8 +46,8 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   /** F2.9 — Lead pré-selecionado vindo do perfil 360. Após criar campanha, INSERT direto em campanha_leads pra incluir esse lead manualmente. */
   preLead?: { id: string; nome: string } | null;
-  /** WS-C — chamado com o id da campanha recém-criada, pra conduzir o usuário a adicionar leads (campanha nasce vazia). */
-  onCreated?: (campanhaId: string) => void;
+  /** Chamado com a campanha recém-criada; leads podem ter sido vinculados no próprio wizard. */
+  onCreated?: (campanhaId: string, options?: { leadsAdded: boolean }) => void;
 }
 
 // Sentinela do picker de especialidades: não é uuid — ao criar, vira
@@ -73,7 +74,8 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
   const [idadeMax, setIdadeMax] = useState("");
   const [filtroOrigem, setFiltroOrigem] = useState("");
   const [chipIds, setChipIds] = useState<string[]>([]);
-  const [whatsappProvider, setWhatsappProvider] = useState<"evolution" | "twilio">("evolution");
+  const [whatsappProvider, setWhatsappProvider] = useState<"evolution" | "twilio" | "chakra">("evolution");
+  const [listaId, setListaId] = useState("");
   const [officialTemplateId, setOfficialTemplateId] = useState<string | null>(null);
   const [officialSenderId, setOfficialSenderId] = useState<string | null>(null);
   const [officialTemplateVariables, setOfficialTemplateVariables] = useState<OfficialTemplateBindings>({});
@@ -134,6 +136,7 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
   const qc = useQueryClient();
   // Pedido Bruna (08/06): bloqueia no seletor os chips já usados por outra campanha ativa.
   const { data: chipsEmUso } = useChipsEmUso();
+  const { data: listas = [] } = useDisparoListas();
 
   const { data: especialidades = [] } = useQuery({
     queryKey: ["especialidades-lista-com-count"],
@@ -208,26 +211,27 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
     queryFn: async () => {
       const { data, error } = await supabase
         .from("whatsapp_official_templates" as never)
-        .select("id, friendly_name, category, language")
+        .select("id, provider, friendly_name, category, language, twilio_account_key")
         .eq("approval_status", "approved")
         .eq("language", "pt_BR")
         .order("friendly_name");
       if (error) throw error;
-      return (data || []) as Array<{ id: string; friendly_name: string; category: string | null; language: string }>;
+      return (data || []) as Array<{ id: string; provider: string | null; friendly_name: string; category: string | null; language: string; twilio_account_key: string | null }>;
     },
   });
 
   const { data: officialSenders = [] } = useQuery({
     queryKey: ["active-whatsapp-official-senders"],
-    enabled: open && whatsappProvider === "twilio",
+    enabled: open && whatsappProvider !== "evolution",
     queryFn: async () => {
       const { data, error } = await supabase
         .from("whatsapp_official_senders" as never)
-        .select("id, display_name, phone_e164, status")
-        .in("status", ["approved", "online", "active", "activated"])
+        .select("id, provider, display_name, phone_e164, status, twilio_account_key, chakra_plugin_id, chakra_phone_number_id")
+        .eq("provider", whatsappProvider)
+        .in("status", ["approved", "online", "active", "activated", "connected"])
         .order("display_name");
       if (error) throw error;
-      return (data || []) as Array<{ id: string; display_name: string | null; phone_e164: string; status: string }>;
+      return (data || []) as Array<{ id: string; provider: string; display_name: string | null; phone_e164: string; status: string; twilio_account_key: string | null; chakra_plugin_id?: string | null; chakra_phone_number_id?: string | null }>;
     },
   });
 
@@ -246,20 +250,39 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
   });
 
   useEffect(() => {
-    if (whatsappProvider === "twilio" && !officialSenderId && officialSenders.length === 1) {
+    if (whatsappProvider !== "evolution" && !officialSenderId && officialSenders.length === 1) {
       setOfficialSenderId(officialSenders[0].id);
     }
   }, [whatsappProvider, officialSenderId, officialSenders]);
 
+  const selectedSender = officialSenders.find((sender) => sender.id === officialSenderId);
+  const compatibleOfficialTemplates = selectedSender
+    ? officialTemplates.filter((template) =>
+        template.provider === selectedSender.provider &&
+        (selectedSender.provider === "chakra" || template.twilio_account_key === selectedSender.twilio_account_key))
+    : officialTemplates;
+
+  useEffect(() => {
+    if (!selectedSender || !officialTemplateId) return;
+    const selectedTemplate = officialTemplates.find((template) => template.id === officialTemplateId);
+    if (selectedTemplate && (
+      selectedTemplate.provider !== selectedSender.provider ||
+      (selectedSender.provider !== "chakra" && selectedTemplate.twilio_account_key !== selectedSender.twilio_account_key)
+    )) {
+      setOfficialTemplateId(null);
+      setOfficialTemplateVariables({});
+    }
+  }, [selectedSender, officialTemplateId, officialTemplates]);
+
   // O provedor oficial nunca usa chips Evolution, inclusive se a seleção vier
   // de um estado restaurado do navegador ou de uma troca rápida no formulário.
   useEffect(() => {
-    if (whatsappProvider === "twilio" && chipIds.length > 0) setChipIds([]);
+    if (whatsappProvider !== "evolution" && chipIds.length > 0) setChipIds([]);
   }, [whatsappProvider, chipIds.length]);
 
-  const handleProviderChange = (provider: "evolution" | "twilio") => {
+  const handleProviderChange = (provider: "evolution" | "twilio" | "chakra") => {
     setWhatsappProvider(provider);
-    if (provider === "twilio") setChipIds([]);
+    if (provider !== "evolution") setChipIds([]);
     if (provider === "evolution") {
       setOfficialTemplateId(null);
       setOfficialSenderId(null);
@@ -473,9 +496,9 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
           chip_id: chipIds[0] || null,
           chip_fallback_id: chipIds[1] || null,
           whatsapp_provider: whatsappProvider,
-          official_template_id: whatsappProvider === "twilio" ? officialTemplateId : null,
-          official_sender_id: whatsappProvider === "twilio" ? officialSenderId : null,
-          official_template_variables: whatsappProvider === "twilio" ? officialTemplateVariables : {},
+          official_template_id: whatsappProvider !== "evolution" ? officialTemplateId : null,
+          official_sender_id: whatsappProvider !== "evolution" ? officialSenderId : null,
+          official_template_variables: whatsappProvider !== "evolution" ? officialTemplateVariables : {},
           responsavel_id: responsavelId,
           rotation_strategy: rotationStrategy,
           // teto diário NÃO é definido na campanha — o sistema controla pelo limite de cada chip (anti-ban)
@@ -528,14 +551,45 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
         }
       }
 
-      return data;
+      let leadsAdded = false;
+      if (listaId && data?.id) {
+        // A campanha já cria a Estratégia principal pelo trigger do banco.
+        // Vincular a lista aqui elimina o passo escondido que fazia a equipe
+        // criar apenas a lista e nunca chegar a uma campanha com leads.
+        const { data: strategy, error: strategyError } = await supabase
+          .from("campaign_strategies" as never)
+          .select("id")
+          .eq("campanha_id", data.id)
+          .order("prioridade", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        if (strategyError) throw strategyError;
+        if (!strategy?.id) throw new Error("A estratégia principal da campanha não foi criada");
+
+        const { error: listError } = await supabase.rpc(
+          "adicionar_lista_estrategia" as never,
+          {
+            p_campanha_id: data.id,
+            p_strategy_id: strategy.id,
+            p_lista_id: listaId,
+          } as never,
+        );
+        if (listError) throw listError;
+        leadsAdded = true;
+      }
+
+      return { campanha: data, leadsAdded };
     },
-    onSuccess: (data) => {
+    onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ["campanhas-prospeccao"] });
-      toast.success("Campanha criada! Agora escolha a lista, importe uma planilha ou selecione os médicos e defina a estratégia.");
+      qc.invalidateQueries({ queryKey: ["disparo-listas"] });
+      qc.invalidateQueries({ queryKey: ["campanha-leads", result.campanha.id] });
+      toast.success(result.leadsAdded
+        ? "Campanha criada com a lista e a estratégia principal vinculadas."
+        : "Campanha criada. Agora selecione uma lista e uma estratégia para liberar os leads.");
       resetForm();
       onOpenChange(false);
-      if (data?.id) onCreated?.(data.id);
+      if (result.campanha?.id) onCreated?.(result.campanha.id, { leadsAdded: result.leadsAdded });
     },
     onError: (error: unknown) => toast.error("Erro: " + errorMessage(error)),
   });
@@ -551,6 +605,7 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
     setIdadeMax("");
     setFiltroOrigem("");
     setChipIds([]);
+    setListaId("");
     setRotationStrategy("round_robin");
     setBatchSize(10);
     setDelayMinMs(8);
@@ -605,29 +660,17 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
   const briefingOk = tipoEnvio === "manual" ? briefingMinimoManual : briefingCompletoIA;
   // WS2: janela inválida (fim<=início ou sem dias) faria a campanha nunca disparar — bloqueia o submit.
   const janelaValida = !janela.ativo || (janela.dias.length > 0 && janela.fim > janela.inicio);
+  // A criação é separada da ativação: número/template oficial podem estar
+  // aguardando aprovação, mas isso não deve impedir a equipe de salvar a
+  // campanha e preparar sua lista. O checklist de ativação continua exigindo
+  // esses itens antes de qualquer envio.
   const canCreate =
     nome.trim().length > 0 &&
     briefingOk &&
     janelaValida &&
-    !!responsavelId &&
-    (whatsappProvider === "evolution" ||
-      (
-        !!officialTemplateId &&
-        !!officialSenderId &&
-        Object.keys(officialTemplateVariables).length > 0 &&
-        Object.values(officialTemplateVariables).every((binding) => binding.trim().length > 0)
-      ));
+    !!responsavelId;
   // Feedback claro: o que ainda falta pra liberar o botão (em vez de só desabilitar sem explicar)
   const faltaPreencher: string[] = [];
-  if (whatsappProvider === "twilio" && !officialTemplateId) faltaPreencher.push("template oficial aprovado");
-  if (whatsappProvider === "twilio" && !officialSenderId) faltaPreencher.push("número oficial remetente");
-  if (
-    whatsappProvider === "twilio" &&
-    (
-      Object.keys(officialTemplateVariables).length === 0 ||
-      Object.values(officialTemplateVariables).some((binding) => !binding.trim())
-    )
-  ) faltaPreencher.push("variáveis do template");
   if (nome.trim().length === 0) faltaPreencher.push("nome da campanha (aba Configuração)");
   if (!responsavelId) faltaPreencher.push("responsável no Sigma");
   if (bNomeServico.trim().length === 0) faltaPreencher.push("nome do serviço");
@@ -719,18 +762,39 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
 
             <div className="space-y-2">
               <Label>Canal de WhatsApp</Label>
-              <Select value={whatsappProvider} onValueChange={(value) => handleProviderChange(value as "evolution" | "twilio")}>
+              <Select value={whatsappProvider} onValueChange={(value) => handleProviderChange(value as "evolution" | "twilio" | "chakra")}>
                 <SelectTrigger className="min-h-11"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="evolution">API não oficial · Evolution</SelectItem>
                   <SelectItem value="twilio">API oficial · Twilio/WhatsApp</SelectItem>
+                  <SelectItem value="chakra">API oficial · Chakra (coexistência)</SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                {whatsappProvider === "twilio"
-                  ? "API oficial: escolha o número remetente e um template aprovado. Chips Evolution não participam desta campanha."
+                {whatsappProvider !== "evolution"
+                  ? `API oficial (${whatsappProvider === "chakra" ? "Chakra" : "Twilio"}): escolha o número remetente e um template aprovado. Chips Evolution não participam desta campanha.`
                   : "Evolution: escolha os chips conectados que farão os disparos."
                 }
+              </p>
+            </div>
+
+            <div className="space-y-2 rounded-lg border border-emerald-200 bg-emerald-50/50 p-3">
+              <Label>Lista de médicos (opcional nesta etapa)</Label>
+              <Select value={listaId || "__sem_lista"} onValueChange={(value) => setListaId(value === "__sem_lista" ? "" : value)}>
+                <SelectTrigger className="min-h-11 bg-background">
+                  <SelectValue placeholder="Criar campanha sem lista por enquanto" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__sem_lista">Criar sem lista por enquanto</SelectItem>
+                  {listas.map((lista) => (
+                    <SelectItem key={lista.id} value={lista.id}>
+                      {lista.nome}{lista.total_estimado != null ? ` · ${lista.total_estimado.toLocaleString("pt-BR")} médicos` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Ao escolher uma lista, ela será vinculada à Estratégia principal e os leads serão adicionados agora. Nenhuma mensagem é enviada nesta etapa.
               </p>
             </div>
 
@@ -743,17 +807,27 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
               />
             </div>
 
-            {whatsappProvider === "twilio" ? (
+            {whatsappProvider !== "evolution" ? (
               <div className="space-y-2 rounded-lg border border-blue-200 bg-blue-50/50 p-3">
                 <Label>Número oficial remetente</Label>
-                <Select value={officialSenderId || ""} onValueChange={setOfficialSenderId}>
+                <Select value={officialSenderId || ""} onValueChange={(value) => {
+                  setOfficialSenderId(value);
+                  const sender = officialSenders.find((item) => item.id === value);
+                  if (sender && officialTemplateId) {
+                    const template = officialTemplates.find((item) => item.id === officialTemplateId);
+                    if (template && (template.provider !== sender.provider || (sender.provider !== "chakra" && template.twilio_account_key !== sender.twilio_account_key))) {
+                      setOfficialTemplateId(null);
+                      setOfficialTemplateVariables({});
+                    }
+                  }
+                }}>
                   <SelectTrigger className="min-h-11 bg-background">
                     <SelectValue placeholder="Selecione o número oficial" />
                   </SelectTrigger>
                   <SelectContent>
                     {officialSenders.map((sender) => (
                       <SelectItem key={sender.id} value={sender.id}>
-                        {sender.display_name || "WhatsApp oficial"} · {sender.phone_e164}
+                        {sender.display_name || "WhatsApp oficial"} · {sender.phone_e164} · {sender.provider === "chakra" ? "Chakra" : sender.twilio_account_key}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -777,14 +851,14 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
                     <SelectValue placeholder="Selecione um template aprovado" />
                   </SelectTrigger>
                   <SelectContent>
-                    {officialTemplates.map((template) => (
+                    {compatibleOfficialTemplates.map((template) => (
                       <SelectItem key={template.id} value={template.id}>
                         {template.friendly_name} · {template.category || "sem categoria"}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                {officialTemplates.length === 0 && (
+                {compatibleOfficialTemplates.length === 0 && (
                   <p className="text-xs text-amber-800">Ainda não há template aprovado pela Meta.</p>
                 )}
                 <OfficialTemplateVariablesConfig
@@ -792,6 +866,11 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
                   value={officialTemplateVariables}
                   onChange={setOfficialTemplateVariables}
                 />
+                {(!officialSenderId || !officialTemplateId) && (
+                  <p className="text-xs text-amber-800">
+                    A campanha pode ser criada agora, mas ficará aguardando número remetente e template aprovado antes de ativar os disparos.
+                  </p>
+                )}
               </div>
             ) : null}
 

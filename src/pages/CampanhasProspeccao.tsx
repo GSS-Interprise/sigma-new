@@ -85,6 +85,9 @@ interface CampanhaRow {
   chip_id: string | null;
   chip_ids: string[] | null;
   briefing_ia: Record<string, unknown> | null;
+  whatsapp_provider?: "evolution" | "twilio" | "chakra" | null;
+  official_template_id?: string | null;
+  official_sender_id?: string | null;
   criado_por: string | null;
   criador_nome?: string | null;
   especialidade?: { nome: string } | null;
@@ -197,7 +200,7 @@ export default function CampanhasProspeccao() {
       let q = supabase
         .from("campanhas")
         .select(
-          "id, nome, status, tipo_campanha, tipo_envio, especialidade_id, especialidade_ids, regiao_estado, limite_diario_campanha, total_frio, total_contatado, total_em_conversa, total_aquecido, total_quente, total_convertido, created_at, chip_id, chip_ids, briefing_ia, criado_por, especialidade:especialidade_id(nome)"
+          "id, nome, status, tipo_campanha, tipo_envio, especialidade_id, especialidade_ids, regiao_estado, limite_diario_campanha, total_frio, total_contatado, total_em_conversa, total_aquecido, total_quente, total_convertido, created_at, chip_id, chip_ids, briefing_ia, whatsapp_provider, official_template_id, official_sender_id, criado_por, especialidade:especialidade_id(nome)"
         )
         .eq("tipo_campanha", "prospeccao")
         .order("created_at", { ascending: false });
@@ -237,7 +240,7 @@ export default function CampanhasProspeccao() {
             .select("campanha_id, total_leads")
             .in("campanha_id", ids),
           supabase
-            .from("vw_campanha_operational_state" as never)
+            .from("vw_campanha_operational_state_v2" as never)
             .select("campanha_id, operational_state, operational_reason")
             .in("campanha_id", ids),
         ]);
@@ -268,13 +271,39 @@ export default function CampanhasProspeccao() {
   const countPausadas = campanhas.filter((c) => c.status === "pausada").length;
   const countTotal = campanhas.length;
 
-  // Campanhas "ativa fantasma" = status ativa mas sem chip e/ou sem briefing
-  const isCampanhaFantasma = (c: CampanhaRow) =>
-    c.status === "ativa" &&
-    (!c.chip_id && (!c.chip_ids || c.chip_ids.length === 0) ||
-      !c.briefing_ia ||
-      Object.keys(c.briefing_ia || {}).length === 0);
-  const countFantasmas = campanhas.filter(isCampanhaFantasma).length;
+  // A validação depende do canal: API oficial não usa chips Evolution e uma
+  // campanha manual não precisa de briefing de IA. Antes tudo era tratado como
+  // se fosse IA/Evolution, gerando alertas falsos (inclusive na campanha do Vinicius).
+  const motivoConfiguracao = (c: CampanhaRow): string | null => {
+    if (c.status !== "ativa") return null;
+
+    const oficial = c.whatsapp_provider !== "evolution" && !!c.whatsapp_provider;
+    const precisaBriefing = c.tipo_envio === "ia" || c.tipo_envio === "ambos";
+    const temBriefing = !!c.briefing_ia && Object.keys(c.briefing_ia).length > 0;
+
+    if (oficial) {
+      if (!c.official_sender_id || !c.official_template_id) {
+        return "Falta configurar (número ou template oficial)";
+      }
+      // O template oficial libera o primeiro contato sem depender do briefing
+      // da IA. O briefing continua sendo usado no atendimento automatizado,
+      // mas não deve bloquear a fila de disparos da API oficial.
+      return null;
+    }
+
+    const temChip = !!c.chip_id || (c.chip_ids?.length ?? 0) > 0;
+    if (!temChip) return "Falta configurar (chip Evolution)";
+    if (precisaBriefing && !temBriefing) return "Falta configurar (briefing da IA)";
+    if (precisaBriefing && temBriefing) {
+      const briefing = c.briefing_ia as Record<string, unknown>;
+      const temServico = Boolean(String(briefing.nome_servico || briefing.tipo_servico || "").trim());
+      const temLocal = Boolean(String(briefing.cidade || briefing.local || "").trim()) ||
+        (Array.isArray(briefing.locais) && briefing.locais.length > 0);
+      if (!temServico || !temLocal) return "Briefing incompleto (serviço ou local)";
+    }
+    return null;
+  };
+  const countFantasmas = campanhas.filter((c) => !!motivoConfiguracao(c)).length;
 
   // WS-C (Gap 1): campanha sem nenhum lead não dispara nada. Sinaliza pra operadora não esquecer o 2º passo (adicionar leads).
   const totalLeadsDe = (c: CampanhaRow) =>
@@ -565,7 +594,7 @@ export default function CampanhasProspeccao() {
                 <Card className="border-amber-300 bg-amber-50">
                   <CardContent className="p-3 flex items-center gap-2 text-sm text-amber-900">
                     <span className="font-medium">
-                      ⚠️ {countFantasmas} campanhas marcadas como ativas mas sem chip ou briefing IA configurado
+                      ⚠️ {countFantasmas} campanhas ativas precisam de configuração
                     </span>
                     <span className="text-amber-700">— elas não disparam. Configure ou mova pra rascunho.</span>
                   </CardContent>
@@ -708,7 +737,8 @@ export default function CampanhasProspeccao() {
                       <CampanhaCard
                         key={c.id}
                         campanha={c}
-                        fantasma={isCampanhaFantasma(c)}
+                        fantasma={!!motivoConfiguracao(c)}
+                        fantasmaMotivo={motivoConfiguracao(c) ?? undefined}
                         semLeads={c.status !== "rascunho" && totalLeadsDe(c) === 0}
                         onClick={() => setSelecionada(c.id)}
                         onConfigurar={() => setConfigurarId(c.id)}
@@ -737,11 +767,12 @@ export default function CampanhasProspeccao() {
         <NovaCampanhaProspeccaoDialog
           open={dialogOpen}
           onOpenChange={setDialogOpen}
-          onCreated={(id) => {
-            // A campanha nasce vazia por segurança: o próximo passo já abre
-            // a origem dos leads e exige a estratégia antes de qualquer inclusão.
+          onCreated={(id, options) => {
             setSelecionada(id);
-            setAddDoctorsOpen(true);
+            // Quando a lista foi escolhida no próprio wizard, não reabre o
+            // segundo modal nem pede a mesma seleção novamente. Sem lista,
+            // mantém o fluxo guiado para a equipe escolher origem + estratégia.
+            setAddDoctorsOpen(!options?.leadsAdded);
           }}
         />
 
@@ -859,12 +890,14 @@ function MetricCard({
 function CampanhaCard({
   campanha,
   fantasma,
+  fantasmaMotivo,
   semLeads,
   onClick,
   onConfigurar,
 }: {
   campanha: CampanhaRow;
   fantasma?: boolean;
+  fantasmaMotivo?: string;
   semLeads?: boolean;
   onClick: () => void;
   onConfigurar: () => void;
@@ -929,7 +962,7 @@ function CampanhaCard({
                 variant="outline"
                 className="mt-1 text-xs border-amber-400 text-amber-800 bg-amber-100"
               >
-                ⚠️ Falta configurar (chip ou briefing IA)
+                ⚠️ {fantasmaMotivo || "Falta configurar"}
               </Badge>
             )}
             {semLeads && !fantasma && (
