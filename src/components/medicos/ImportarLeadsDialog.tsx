@@ -467,7 +467,13 @@ export function ImportarLeadsDialog({
           </DialogTitle>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 min-h-0 -mr-4 pr-4">
+        {/*
+         * O root do ScrollArea precisa de uma altura calculável para o viewport
+         * interno assumir o espaço restante do dialog. Sem `h-0`, o conteúdo
+         * cresce além do max-height do modal e a área de upload fica cortada,
+         * especialmente no navegador móvel.
+         */}
+        <ScrollArea className="flex-1 min-h-0 h-0 w-full -mr-4 pr-4">
         <div className="text-sm text-muted-foreground mb-4">
           Preencha os campos abaixo e depois carregue a planilha.
         </div>
