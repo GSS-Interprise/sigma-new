@@ -228,7 +228,7 @@ async function checkFluxoSaida(supabase: any, isHorComercial: boolean): Promise<
   // Existe campanha ativa com pool > 0 disponível pra disparar?
   const { data: campsAtivas } = await supabase
     .from("campanhas")
-    .select("id, nome, limite_diario_campanha, tipo_envio, whatsapp_provider, chip_id, chip_ids")
+    .select("id, nome, limite_diario_campanha, tipo_envio, whatsapp_provider, chip_id, chip_ids, official_sender_id, official_template_id")
     .eq("status", "ativa")
     .eq("tipo_campanha", "prospeccao")
     // Campanhas manuais dependem da operadora e não geram touches automáticos.
@@ -247,6 +247,33 @@ async function checkFluxoSaida(supabase: any, isHorComercial: boolean): Promise<
     .eq("status", "frio");
 
   if (!friosPendentes || friosPendentes === 0) return { ok: true, detail: "sem leads frios pra disparar" };
+
+  // A API oficial não usa chips Evolution. Exigir chip aqui gerava falso
+  // positivo justamente quando uma campanha Twilio estava configurada para
+  // operar por sender/template oficiais.
+  const oficiais = campsAtivas.filter((camp: any) => camp.whatsapp_provider !== "evolution" && !!camp.whatsapp_provider);
+  const evolution = campsAtivas.filter((camp: any) => camp.whatsapp_provider === "evolution" || !camp.whatsapp_provider);
+  if (oficiais.length > 0 && evolution.length === 0) {
+    const senderIds = [...new Set(oficiais.map((camp: any) => camp.official_sender_id).filter(Boolean))];
+    const templateIds = [...new Set(oficiais.map((camp: any) => camp.official_template_id).filter(Boolean))];
+    const [{ data: senders }, { data: templates }] = await Promise.all([
+      senderIds.length > 0
+        ? supabase.from("whatsapp_official_senders").select("id, status").in("id", senderIds)
+        : Promise.resolve({ data: [] }),
+      templateIds.length > 0
+        ? supabase.from("whatsapp_official_templates").select("id, approval_status").in("id", templateIds)
+        : Promise.resolve({ data: [] }),
+    ]);
+    const senderReady = (senders || []).filter((sender: any) => ["approved", "online", "active", "activated", "connected"].includes(String(sender.status).toLowerCase())).length;
+    const templateReady = (templates || []).filter((template: any) => String(template.approval_status).toLowerCase() === "approved").length;
+    if (senderReady < senderIds.length) {
+      return { ok: false, detail: `${friosPendentes} frios aguardando, API oficial sem sender ativo em todas as campanhas` };
+    }
+    if (templateReady < templateIds.length) {
+      return { ok: false, detail: `${friosPendentes} frios aguardando, existe template oficial ainda não aprovado` };
+    }
+    return { ok: true, detail: `API oficial pronta: ${friosPendentes} leads aguardando o próximo lote (sem exigir chip)` };
+  }
 
   // Primeiro confirma se existe capacidade operacional para executar touches.
   // Diferencia ausência de capacidade operacional de uma fila realmente

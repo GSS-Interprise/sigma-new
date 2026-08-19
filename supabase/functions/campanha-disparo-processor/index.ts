@@ -11,6 +11,13 @@ const corsHeaders = {
 const MAX_EXECUTION_MS = 50_000;
 const SEND_TIMEOUT_MS = 15_000;
 const LOCK_DURATION_S = 90;
+// A API oficial tem throughput próprio. Mantemos espaçamento entre contatos
+// para não criar rajada, mas permitimos atingir o teto diário do piloto.
+// Campanhas oficiais retomam com uma cadência gradual durante o aquecimento.
+// O limite diário continua sendo controlado por campanha; o intervalo evita
+// rajadas sem tornar a retomada lenta demais para a operação.
+const OFFICIAL_INTERVAL_MIN_MS = 5 * 60 * 1000;
+const OFFICIAL_INTERVAL_MAX_MS = 10 * 60 * 1000;
 
 serve(async (req) => {
   if (req.method === "OPTIONS")
@@ -106,8 +113,8 @@ serve(async (req) => {
     if (!locked)
       return json({ ok: true, msg: "Outro processo rodando" });
 
-    if (camp.whatsapp_provider === "twilio") {
-      return await processTwilioBatch(supabase, camp);
+    if (["twilio", "chakra"].includes(String(camp.whatsapp_provider))) {
+      return await processTwilioBatch(supabase, camp, supabaseUrl, supabaseKey);
     }
 
     // ── Buscar cadência da campanha (se ativa) ──
@@ -586,7 +593,7 @@ function json(body: Record<string, unknown>) {
   });
 }
 
-async function processTwilioBatch(supabase: any, camp: any) {
+async function processTwilioBatch(supabase: any, camp: any, supabaseUrl: string, serviceRole: string) {
   if (!camp.official_sender_id || !camp.official_template_id) {
     await supabase.from("campanhas").update({ next_batch_at: null }).eq("id", camp.id);
     return json({ ok: false, error: "twilio_campaign_not_configured" });
@@ -604,7 +611,7 @@ async function processTwilioBatch(supabase: any, camp: any) {
   const [{ data: sender }, { data: template }] = await Promise.all([
     supabase
       .from("whatsapp_official_senders")
-      .select("status")
+      .select("status, provider, chakra_phone_number_id")
       .eq("id", camp.official_sender_id)
       .maybeSingle(),
     supabase
@@ -613,9 +620,35 @@ async function processTwilioBatch(supabase: any, camp: any) {
       .eq("id", camp.official_template_id)
       .maybeSingle(),
   ]);
-  if (!sender || !["approved", "online", "active", "activated"].includes(String(sender.status).toLowerCase())) {
+  if (!sender || !["approved", "online", "active", "activated", "connected"].includes(String(sender.status).toLowerCase())) {
     await supabase.from("campanhas").update({ next_batch_at: null }).eq("id", camp.id);
     return json({ ok: false, error: "twilio_sender_not_active" });
+  }
+  if (camp.whatsapp_provider === "chakra") {
+    const { data: connection, error: connectionError } = await supabase
+      .from("whatsapp_chakra_connections")
+      .select("provider_payload")
+      .eq("phone_number_id", sender.chakra_phone_number_id || "")
+      .maybeSingle();
+    if (connectionError) throw connectionError;
+    const payload = (connection?.provider_payload || {}) as Record<string, any>;
+    const phone = (payload.phone || payload) as Record<string, any>;
+    const entities = Array.isArray(phone.healthStatus?.entities)
+      ? phone.healthStatus.entities as Array<Record<string, any>>
+      : [];
+    const blockedEntity = entities.find((entity) => String(entity.can_send_message || "").toUpperCase() === "BLOCKED");
+    if (blockedEntity) {
+      // O snapshot do Chakra pode permanecer BLOCKED mesmo quando a API de
+      // coexistência aceita o template (validado por envio controlado). Não
+      // abortamos a fila com base em snapshot: o endpoint real decide e grava
+      // o erro efetivo. Isso evita transformar um alerta stale em paralisação.
+      const providerError = Array.isArray(blockedEntity.errors) ? blockedEntity.errors[0] : null;
+      console.warn("[disparo] Chakra health snapshot advisory", {
+        campanha_id: camp.id,
+        entity: blockedEntity.entity_type || null,
+        provider_code: providerError?.error_code || null,
+      });
+    }
   }
   if (template?.approval_status !== "approved") {
     await supabase.from("campanhas").update({ next_batch_at: null }).eq("id", camp.id);
@@ -630,11 +663,14 @@ async function processTwilioBatch(supabase: any, camp: any) {
     3,
   ));
   const limiteDiario = camp.limite_diario_campanha || 250;
-  const { count: enviadosHoje } = await supabase
-    .from("campanha_leads")
-    .select("id", { count: "exact", head: true })
-    .eq("campanha_id", camp.id)
-    .gte("data_primeiro_contato", hoje.toISOString());
+  // O teto da campanha é de novas conversas. Respostas da IA e mensagens
+  // manuais dentro da janela de 24h não devem consumir esse limite. O campo
+  // data_primeiro_contato só é preenchido no primeiro envio do lead.
+  const enviadosHoje = await countFirstContactsForCampaign(
+    supabase,
+    camp.id,
+    hoje,
+  );
   if ((enviadosHoje || 0) >= limiteDiario) {
     await supabase.from("campanhas").update({ next_batch_at: null }).eq("id", camp.id);
     return json({ ok: true, msg: "Limite diario oficial atingido", enviados: enviadosHoje });
@@ -646,6 +682,9 @@ async function processTwilioBatch(supabase: any, camp: any) {
     .select("id")
     .eq("campanha_id", camp.id)
     .eq("status", "frio")
+    // Um número rejeitado pelo provedor não pode travar toda a fila. Ele fica
+    // marcado para revisão e o processador segue para o próximo lead elegível.
+    .is("erro_envio", null)
     .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
@@ -655,22 +694,91 @@ async function processTwilioBatch(supabase: any, camp: any) {
     return json({ ok: true, msg: "Sem leads para disparar" });
   }
 
-  const { data, error } = await supabase.functions.invoke("twilio-whatsapp-send", {
-    body: { campaign_lead_id: campaignLead.id },
-  });
+  // O client Functions pode não propagar o service role quando uma Edge
+  // Function chama outra. Use fetch explícito para manter a fronteira interna
+  // autenticada e evitar o falso erro "unauthorized" no disparo oficial.
+  let data: any = null;
+  let error: unknown = null;
+  try {
+    const response = await fetchWithTimeout(
+      `${supabaseUrl}/functions/v1/twilio-whatsapp-send`,
+      {
+        method: "POST",
+        headers: {
+          apikey: serviceRole,
+          Authorization: `Bearer ${serviceRole}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ campaign_lead_id: campaignLead.id }),
+      },
+      SEND_TIMEOUT_MS,
+    );
+    data = await response.json().catch(() => null);
+    if (!response.ok) error = new Error(`HTTP ${response.status}`);
+  } catch (caught) {
+    error = caught;
+  }
   if (error || !data?.ok) {
-    const reason = data?.error || error?.message || "twilio_send_failed";
+    const providerDetail = [data?.provider_code, data?.provider_message]
+      .filter((value) => value != null && String(value).trim())
+      .join(": ");
+    const reason = [data?.error || await describeFunctionError(error), providerDetail]
+      .filter(Boolean)
+      .join(" — ") || "twilio_send_failed";
+    const retryAt = new Date(Date.now() + 60_000).toISOString();
     await Promise.all([
       supabase.from("campanha_leads").update({ erro_envio: reason }).eq("id", campaignLead.id),
-      supabase.from("campanhas").update({ next_batch_at: null }).eq("id", camp.id),
+      supabase
+        .from("campanhas")
+        .update({ disparos_falhas: (camp.disparos_falhas || 0) + 1 })
+        .eq("id", camp.id),
+      supabase.from("campanhas").update({ next_batch_at: retryAt }).eq("id", camp.id),
     ]);
     return json({ ok: false, error: reason });
   }
 
-  const nextBatchAt = new Date(Date.now() + 60_000).toISOString();
+  await supabase
+    .from("campanhas")
+    .update({ disparos_enviados: (camp.disparos_enviados || 0) + 1 })
+    .eq("id", camp.id);
+
+  const nextBatchAt = new Date(
+    Date.now() + randomDelay(OFFICIAL_INTERVAL_MIN_MS, OFFICIAL_INTERVAL_MAX_MS),
+  ).toISOString();
   await supabase.from("campanhas").update({ next_batch_at: nextBatchAt }).eq("id", camp.id);
   selfInvoke(supabase, camp.id);
   return json({ ok: true, sent: 1, channel: "twilio", next_batch_at: nextBatchAt });
+}
+
+async function describeFunctionError(error: unknown): Promise<string> {
+  if (!error) return "";
+  const candidate = error as { message?: string; context?: unknown };
+  const context = candidate.context;
+  if (context instanceof Response) {
+    try {
+      const body = await context.clone().text();
+      if (body.trim()) return `${candidate.message || "edge_function_error"}: ${body.slice(0, 500)}`;
+    } catch {
+      // Mantém a mensagem genérica quando a resposta não puder ser lida.
+    }
+  }
+  return candidate.message || String(error);
+}
+
+async function countFirstContactsForCampaign(
+  supabase: any,
+  campanhaId: string,
+  inicioDia: Date,
+): Promise<number> {
+  const { count, error } = await supabase
+    .from("campanha_leads")
+    .select("id", { count: "exact", head: true })
+    .eq("campanha_id", campanhaId)
+    .neq("status", "frio")
+    .not("data_primeiro_contato", "is", null)
+    .gte("data_primeiro_contato", inicioDia.toISOString());
+  if (error) throw error;
+  return count || 0;
 }
 
 function selfInvoke(supabase: any, campanha_id: string) {

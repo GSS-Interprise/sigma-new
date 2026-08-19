@@ -1,15 +1,21 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { twilioCredentials } from "../_shared/twilio-auth.ts";
+import { chakraApi, unwrapChakraPayload } from "../_shared/chakra.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-internal-send-key",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-internal-send-key",
 };
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json; charset=utf-8" },
+    headers: {
+      ...corsHeaders,
+      "Content-Type": "application/json; charset=utf-8",
+    },
   });
 }
 
@@ -34,11 +40,21 @@ function e164(value: string) {
   return normalized ? `+${normalized}` : "";
 }
 
-function twilioAuthorization() {
-  const sid = Deno.env.get("TWILIO_ACCOUNT_SID");
-  const token = Deno.env.get("TWILIO_AUTH_TOKEN");
-  if (!sid || !token) throw new Error("twilio_secrets_not_configured");
-  return { sid, header: `Basic ${btoa(`${sid}:${token}`)}` };
+// A chave interna nova do Supabase pode chegar como sb_secret, enquanto o
+// gateway ainda entrega um JWT com o papel service_role. O gateway já valida
+// a assinatura; aqui conferimos apenas o claim para não quebrar chamadas
+// administrativas legítimas por comparação literal de chaves.
+function hasServiceRoleClaim(authHeader: string) {
+  const token = authHeader.replace(/^Bearer\s+/i, "").split(".")[1];
+  if (!token) return false;
+  try {
+    const normalized = token.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
+    const payload = JSON.parse(atob(padded));
+    return payload?.role === "service_role";
+  } catch {
+    return false;
+  }
 }
 
 function resolveBinding(binding: string, context: Record<string, unknown>) {
@@ -52,18 +68,22 @@ function resolveBinding(binding: string, context: Record<string, unknown>) {
 }
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
-  if (req.method !== "POST") return json({ ok: false, error: "method_not_allowed" }, 405);
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+  if (req.method !== "POST") {
+    return json({ ok: false, error: "method_not_allowed" }, 405);
+  }
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const authorization = req.headers.get("Authorization") || "";
     const internalSendKey = Deno.env.get("TWILIO_SEND_INTERNAL_KEY") || "";
-    const isInternalSend =
-      internalSendKey.length >= 32 &&
+    const isInternalSend = internalSendKey.length >= 32 &&
       req.headers.get("x-internal-send-key") === internalSendKey;
-    const isServiceRole = authorization === `Bearer ${serviceRole}` || isInternalSend;
+    const isServiceRole = authorization === `Bearer ${serviceRole}` ||
+      hasServiceRoleClaim(authorization) || isInternalSend;
     const admin = createClient(supabaseUrl, serviceRole);
     const auth = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
       global: { headers: { Authorization: authorization } },
@@ -86,6 +106,16 @@ serve(async (req) => {
       input.template_variables && typeof input.template_variables === "object"
         ? input.template_variables
         : {};
+    // Este escape existe apenas para um teste manual, autenticado com a
+    // service-role, fora de qualquer campanha. Mantemos o bloqueio normal
+    // para evitar que um diagnóstico vire disparo em massa enquanto a Meta
+    // sinaliza a WABA como impedida de iniciar conversas.
+    const diagnosticBypass = input.diagnostic_bypass === true &&
+      isServiceRole &&
+      !campaignLeadId &&
+      Boolean(leadIdInput) &&
+      Boolean(senderIdInput) &&
+      Boolean(templateIdInput);
 
     let campaign: any = null;
     let lead: any = null;
@@ -102,7 +132,9 @@ serve(async (req) => {
       const [campaignResult, leadResult] = await Promise.all([
         admin
           .from("campanhas")
-          .select("id, nome, nome_remetente, briefing_ia, whatsapp_provider, official_template_id, official_sender_id, official_template_variables")
+          .select(
+            "id, nome, nome_remetente, briefing_ia, whatsapp_provider, official_template_id, official_sender_id, official_template_variables",
+          )
           .eq("id", campaignLead.campanha_id)
           .single(),
         admin
@@ -115,8 +147,13 @@ serve(async (req) => {
       if (leadResult.error) throw leadResult.error;
       campaign = campaignResult.data;
       lead = leadResult.data;
-      if (campaign.whatsapp_provider !== "twilio") {
-        return json({ ok: false, error: "campaign_not_twilio" }, 409);
+      if (
+        !(["twilio", "chakra"] as string[]).includes(campaign.whatsapp_provider)
+      ) {
+        return json(
+          { ok: false, error: "campaign_not_official_provider" },
+          409,
+        );
       }
     } else if (conversationIdInput) {
       const { data, error } = await admin
@@ -127,12 +164,15 @@ serve(async (req) => {
       if (error) throw error;
       const { data: instance, error: instanceError } = await admin
         .from("sigzap_instances")
-        .select("external_ref, provider")
+        .select("external_ref, provider, twilio_account_key")
         .eq("id", data.instance_id)
         .single();
       if (instanceError) throw instanceError;
-      if (instance.provider !== "twilio") {
-        return json({ ok: false, error: "conversation_not_twilio" }, 409);
+      if (!(["twilio", "chakra"] as string[]).includes(instance.provider)) {
+        return json(
+          { ok: false, error: "conversation_not_official_provider" },
+          409,
+        );
       }
       conversation = { ...data, instance };
 
@@ -143,7 +183,7 @@ serve(async (req) => {
         .single();
       if (leadError) throw leadError;
       lead = leadData;
-    } else if (leadIdInput && isInternalSend) {
+    } else if (leadIdInput && (isInternalSend || isServiceRole)) {
       const { data: leadData, error: leadError } = await admin
         .from("leads")
         .select("id, nome, phone_e164")
@@ -152,58 +192,157 @@ serve(async (req) => {
       if (leadError) throw leadError;
       lead = leadData;
     } else {
-      return json({ ok: false, error: "campaign_lead_or_conversation_required" }, 400);
+      return json({
+        ok: false,
+        error: "campaign_lead_or_conversation_required",
+      }, 400);
     }
 
     const toPhone = e164(lead?.phone_e164 || "");
-    if (!toPhone) return json({ ok: false, error: "lead_without_valid_phone" }, 400);
+    if (!toPhone) {
+      return json({ ok: false, error: "lead_without_valid_phone" }, 400);
+    }
 
     let senderQuery = admin
       .from("whatsapp_official_senders")
-      .select("id, sender_sid, phone_e164, display_name, status")
-      .in("status", ["approved", "online", "active", "activated"]);
-    if (campaign?.official_sender_id) senderQuery = senderQuery.eq("id", campaign.official_sender_id);
-    if (senderIdInput && isInternalSend) senderQuery = senderQuery.eq("id", senderIdInput);
+      .select(
+        "id, provider, sender_sid, phone_e164, display_name, status, twilio_account_key, chakra_connection_id, chakra_plugin_id, chakra_phone_number_id",
+      )
+      .in("status", ["approved", "online", "active", "activated", "connected"]);
+    if (campaign?.whatsapp_provider) {
+      senderQuery = senderQuery.eq("provider", campaign.whatsapp_provider);
+    }
+    if (campaign?.official_sender_id) {
+      senderQuery = senderQuery.eq("id", campaign.official_sender_id);
+    }
+    if (senderIdInput && (isInternalSend || isServiceRole)) {
+      senderQuery = senderQuery.eq("id", senderIdInput);
+    }
     if (conversation?.instance?.external_ref) {
-      senderQuery = senderQuery.eq("sender_sid", conversation.instance.external_ref);
+      senderQuery = senderQuery.eq(
+        "sender_sid",
+        conversation.instance.external_ref,
+      );
     }
     const { data: senders, error: senderError } = await senderQuery.limit(2);
     if (senderError) throw senderError;
     if (!senders || senders.length !== 1) {
       return json({
         ok: false,
-        error: senders?.length ? "campaign_sender_required" : "no_official_sender_available",
+        error: senders?.length
+          ? "campaign_sender_required"
+          : "no_official_sender_available",
       }, 409);
     }
     const sender = senders[0];
-    if (!["approved", "online", "active", "activated"].includes(String(sender.status).toLowerCase())) {
-      return json({ ok: false, error: "official_sender_not_active", sender_status: sender.status }, 409);
+    if (
+      !["approved", "online", "active", "activated", "connected"].includes(
+        String(sender.status).toLowerCase(),
+      )
+    ) {
+      return json({
+        ok: false,
+        error: "official_sender_not_active",
+        sender_status: sender.status,
+      }, 409);
+    }
+
+    // "connected" no Chakra/Sigma significa somente que o número está
+    // vinculado. A Meta pode continuar bloqueando conversas iniciadas pela
+    // empresa (por exemplo, quando o meio de pagamento da WABA falha). Sem
+    // esta checagem o disparo ficava parecendo pendente no Sigma, embora nunca
+    // pudesse ser aceito pelo provedor.
+    if (sender.provider === "chakra") {
+      const { data: chakraConnection, error: chakraConnectionError } =
+        await admin
+          .from("whatsapp_chakra_connections")
+          .select(
+            "id, status, name_status, provider_payload, webhook_configured",
+          )
+          .eq("phone_number_id", sender.chakra_phone_number_id || "")
+          .maybeSingle();
+      if (chakraConnectionError) throw chakraConnectionError;
+      if (!chakraConnection) {
+        return json({ ok: false, error: "chakra_connection_not_found" }, 409);
+      }
+
+      const payload = (chakraConnection.provider_payload || {}) as Record<
+        string,
+        any
+      >;
+      const phone = (payload.phone || payload) as Record<string, any>;
+      const entities = Array.isArray(phone.healthStatus?.entities)
+        ? phone.healthStatus.entities as Array<Record<string, any>>
+        : [];
+      const blockedEntity = entities.find((entity) =>
+        String(entity.can_send_message || "").toUpperCase() === "BLOCKED"
+      );
+      if (blockedEntity) {
+        // O Chakra já aceitou e entregou um envio controlado mesmo com este
+        // snapshot marcado como BLOCKED. Mantemos o alerta nos logs e deixamos
+        // a resposta real do provedor decidir; bloquear antes escondia a causa
+        // e paralisava campanhas de coexistência válidas.
+        const providerError = Array.isArray(blockedEntity.errors)
+          ? blockedEntity.errors[0]
+          : null;
+        console.warn("[chakra] health snapshot advisory", {
+          entity: blockedEntity.entity_type || null,
+          provider_code: providerError?.error_code || null,
+        });
+      }
     }
 
     let template: any = null;
     // Em uma conversa existente, texto livre deve continuar sendo texto livre.
     // O template só é automático no primeiro contato; depois disso precisa ser
     // escolhido explicitamente pela operadora quando a janela estiver fechada.
-    const templateId = templateIdInput || (!conversationIdInput ? campaign?.official_template_id : "") || "";
+    const templateId = templateIdInput ||
+      (!conversationIdInput ? campaign?.official_template_id : "") || "";
     if (templateId) {
       const { data, error } = await admin
         .from("whatsapp_official_templates")
-        .select("id, content_sid, approval_status, friendly_name, body, variables")
+        .select(
+          "id, provider, content_sid, approval_status, friendly_name, body, variables, twilio_account_key, language, twilio_payload",
+        )
         .eq("id", templateId)
         .single();
       if (error) throw error;
+      if (data.provider && data.provider !== sender.provider) {
+        return json(
+          { ok: false, error: "template_sender_provider_mismatch" },
+          409,
+        );
+      }
       if (data.approval_status !== "approved") {
         return json({ ok: false, error: "template_not_approved" }, 409);
+      }
+      if (
+        sender.provider === "twilio" &&
+        data.twilio_account_key !== sender.twilio_account_key
+      ) {
+        return json({
+          ok: false,
+          error: "twilio_sender_template_account_mismatch",
+        }, 409);
+      }
+      if (
+        sender.provider === "chakra" && /\uFFFD|Ã/.test(String(data.body || ""))
+      ) {
+        return json({
+          ok: false,
+          error: "chakra_template_text_corrupted",
+          action_required:
+            "Sincronize ou reenvie um template com texto UTF-8 correto antes de disparar.",
+        }, 409);
       }
       template = data;
     }
 
     let resolvedTemplateVariables: Record<string, string> = {};
     if (template) {
-      const configuredBindings =
-        Object.keys(templateVariables).length > 0
-          ? templateVariables
-          : campaign?.official_template_variables || {};
+      const configuredBindings = Object.keys(templateVariables).length > 0
+        ? templateVariables
+        : campaign?.official_template_variables || {};
       const positions = Object.keys(template.variables || {});
       const context = {
         lead,
@@ -225,21 +364,41 @@ serve(async (req) => {
     }
 
     if (!conversation) {
-      const { data: existingInstance, error: existingInstanceError } = await admin
-        .from("sigzap_instances")
-        .select("id")
-        .eq("provider", "twilio")
-        .eq("external_ref", sender.sender_sid)
-        .maybeSingle();
-      if (existingInstanceError) throw existingInstanceError;
+      // A conexão Chakra pode ter sido criada pelo sincronizador com
+      // `chakra:<phone_number_id>` como external_ref, enquanto o sender
+      // guarda o handle do plugin. Reutilizar pelo telefone evita tentar
+      // inserir uma segunda instância com o mesmo nome e perder o envio.
+      let existingInstance: { id: string } | null = null;
+      if (sender.provider === "chakra") {
+        const byPhone = await admin
+          .from("sigzap_instances")
+          .select("id")
+          .eq("provider", sender.provider)
+          .eq("phone_number", sender.phone_e164)
+          .maybeSingle();
+        if (byPhone.error) throw byPhone.error;
+        existingInstance = byPhone.data;
+      }
+      if (!existingInstance) {
+        const byExternalRef = await admin
+          .from("sigzap_instances")
+          .select("id")
+          .eq("provider", sender.provider)
+          .eq("external_ref", sender.sender_sid)
+          .maybeSingle();
+        if (byExternalRef.error) throw byExternalRef.error;
+        existingInstance = byExternalRef.data;
+      }
 
       const { data: instance, error: instanceError } = existingInstance
         ? await admin
           .from("sigzap_instances")
           .update({
-            name: sender.display_name || `WhatsApp oficial ${sender.phone_e164}`,
+            // Keep the existing name: a legacy deleted instance can still
+            // reserve the friendly name via the table's unique constraint.
             phone_number: sender.phone_e164,
             status: "connected",
+            twilio_account_key: sender.twilio_account_key,
             updated_at: new Date().toISOString(),
           })
           .eq("id", existingInstance.id)
@@ -248,12 +407,14 @@ serve(async (req) => {
         : await admin
           .from("sigzap_instances")
           .insert({
-          name: sender.display_name || `WhatsApp oficial ${sender.phone_e164}`,
-          phone_number: sender.phone_e164,
-          status: "connected",
-          provider: "twilio",
-          external_ref: sender.sender_sid,
-          updated_at: new Date().toISOString(),
+            name: sender.display_name ||
+              `WhatsApp oficial ${sender.phone_e164}`,
+            phone_number: sender.phone_e164,
+            status: "connected",
+            provider: sender.provider,
+            external_ref: sender.sender_sid,
+            twilio_account_key: sender.twilio_account_key,
+            updated_at: new Date().toISOString(),
           })
           .select("id")
           .single();
@@ -282,11 +443,11 @@ serve(async (req) => {
         : await admin
           .from("sigzap_contacts")
           .insert({
-          contact_jid: contactJid,
-          contact_phone: toPhone,
-          contact_name: lead.nome || toPhone,
-          instance_id: instance.id,
-          updated_at: new Date().toISOString(),
+            contact_jid: contactJid,
+            contact_phone: toPhone,
+            contact_name: lead.nome || toPhone,
+            instance_id: instance.id,
+            updated_at: new Date().toISOString(),
           })
           .select("id")
           .single();
@@ -316,70 +477,165 @@ serve(async (req) => {
       }
     }
 
-    const serviceWindowOpen =
-      conversation.service_window_expires_at &&
+    let serviceWindowOpen = conversation.service_window_expires_at &&
       new Date(conversation.service_window_expires_at).getTime() > Date.now();
+    // Recuperação para mensagens recebidas antes da correção do receiver ou
+    // quando o provedor grava a conversa antes de atualizar seu resumo. A
+    // janela continua estritamente limitada a 24h da última mensagem inbound.
+    if (!serviceWindowOpen && conversation.id) {
+      const { data: latestInbound, error: latestInboundError } = await admin
+        .from("sigzap_messages")
+        .select("sent_at")
+        .eq("conversation_id", conversation.id)
+        .eq("from_me", false)
+        .order("sent_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (latestInboundError) throw latestInboundError;
+      const latestInboundAt = latestInbound?.sent_at
+        ? new Date(latestInbound.sent_at).getTime()
+        : 0;
+      const recoveredExpiry = latestInboundAt
+        ? latestInboundAt + 24 * 60 * 60 * 1000
+        : 0;
+      serviceWindowOpen = recoveredExpiry > Date.now();
+      if (serviceWindowOpen) {
+        await admin
+          .from("sigzap_conversations")
+          .update({
+            service_window_expires_at: new Date(recoveredExpiry).toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", conversation.id);
+      }
+    }
     if (!template && !serviceWindowOpen) {
-      return json({ ok: false, error: "approved_template_required_outside_service_window" }, 409);
-    }
-    if (!template && !body) return json({ ok: false, error: "message_body_required" }, 400);
-
-    const callbackUrl =
-      Deno.env.get("TWILIO_STATUS_CALLBACK_URL") ||
-      `${supabaseUrl}/functions/v1/twilio-whatsapp-webhook`;
-    const form = new URLSearchParams({
-      From: `whatsapp:${sender.phone_e164}`,
-      To: `whatsapp:${toPhone}`,
-      StatusCallback: callbackUrl,
-    });
-    if (template) {
-      form.set("ContentSid", template.content_sid);
-      form.set("ContentVariables", JSON.stringify(resolvedTemplateVariables));
-    } else {
-      form.set("Body", body);
-    }
-
-    const credentials = twilioAuthorization();
-    const twilioResponse = await fetch(
-      `https://api.twilio.com/2010-04-01/Accounts/${credentials.sid}/Messages.json`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: credentials.header,
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: form,
-      },
-    );
-    const twilioMessage = await twilioResponse.json();
-    if (!twilioResponse.ok) {
-      console.error("[twilio-send]", twilioMessage);
       return json({
         ok: false,
-        error: "twilio_send_failed",
-        provider_code: twilioMessage.code || null,
-        provider_message: twilioMessage.message || null,
-      }, 502);
+        error: "approved_template_required_outside_service_window",
+      }, 409);
+    }
+    if (!template && !body) {
+      return json({ ok: false, error: "message_body_required" }, 400);
+    }
+
+    let providerMessage: Record<string, any>;
+    if (sender.provider === "chakra") {
+      const pluginId = String(sender.chakra_plugin_id || "");
+      const phoneNumberId = String(sender.chakra_phone_number_id || "");
+      if (!pluginId || !phoneNumberId) {
+        return json({ ok: false, error: "chakra_sender_not_configured" }, 409);
+      }
+
+      const payload = template
+        ? {
+          messaging_product: "whatsapp",
+          recipient_type: "individual",
+          to: digits(toPhone),
+          type: "template",
+          template: {
+            name: template.friendly_name,
+            language: {
+              policy: "deterministic",
+              code: template.language || "pt_BR",
+            },
+            ...(Object.keys(resolvedTemplateVariables).length > 0
+              ? {
+                components: [{
+                  type: "body",
+                  parameters: Object.keys(resolvedTemplateVariables).sort((
+                    a,
+                    b,
+                  ) => Number(a) - Number(b))
+                    .map((position) => ({
+                      type: "text",
+                      text: resolvedTemplateVariables[position],
+                    })),
+                }],
+              }
+              : {}),
+          },
+        }
+        : {
+          messaging_product: "whatsapp",
+          recipient_type: "individual",
+          to: digits(toPhone),
+          type: "text",
+          text: { body },
+        };
+      const chakraResponse = await chakraApi(
+        `/v1/ext/plugin/whatsapp/${pluginId}/api/v24.0/${phoneNumberId}/messages`,
+        { method: "POST", body: JSON.stringify(payload) },
+      );
+      const result = unwrapChakraPayload(chakraResponse);
+      const messageId = String(
+        result.messages?.[0]?.id || result.messageId || result.message_id ||
+          result.id || crypto.randomUUID(),
+      );
+      providerMessage = {
+        ...result,
+        sid: messageId,
+        id: messageId,
+        status: String(result.status || "queued").toLowerCase(),
+      };
+    } else {
+      const callbackUrl = Deno.env.get("TWILIO_STATUS_CALLBACK_URL") ||
+        `${supabaseUrl}/functions/v1/twilio-whatsapp-webhook`;
+      const form = new URLSearchParams({
+        From: `whatsapp:${sender.phone_e164}`,
+        To: `whatsapp:${toPhone}`,
+        StatusCallback: callbackUrl,
+      });
+      if (template) {
+        form.set("ContentSid", template.content_sid);
+        form.set("ContentVariables", JSON.stringify(resolvedTemplateVariables));
+      } else {
+        form.set("Body", body);
+      }
+
+      const credentials = twilioCredentials(sender.twilio_account_key);
+      const twilioResponse = await fetch(
+        `https://api.twilio.com/2010-04-01/Accounts/${credentials.sid}/Messages.json`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: credentials.header,
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: form,
+        },
+      );
+      const twilioMessage = await twilioResponse.json();
+      if (!twilioResponse.ok) {
+        console.error("[twilio-send]", twilioMessage);
+        return json({
+          ok: false,
+          error: "twilio_send_failed",
+          provider_code: twilioMessage.code || null,
+          provider_message: twilioMessage.message || null,
+        }, 502);
+      }
+      providerMessage = twilioMessage;
     }
 
     const now = new Date().toISOString();
     const visibleBody = template
       ? Object.entries(resolvedTemplateVariables).reduce(
-          (text, [position, value]) => text.replaceAll(`{{${position}}}`, value),
-          template.body || `[Template: ${template.friendly_name}]`,
-        )
+        (text, [position, value]) => text.replaceAll(`{{${position}}}`, value),
+        template.body || `[Template: ${template.friendly_name}]`,
+      )
       : body;
     const { error: messageError } = await admin.from("sigzap_messages").insert({
       conversation_id: conversation.id,
-      wa_message_id: twilioMessage.sid,
-      provider: "twilio",
-      provider_message_id: twilioMessage.sid,
+      wa_message_id: providerMessage.sid || providerMessage.id,
+      provider: sender.provider,
+      provider_message_id: providerMessage.sid || providerMessage.id,
       from_me: true,
       sent_by_user_id: user?.id || null,
       message_text: visibleBody,
       message_type: "text",
-      message_status: twilioMessage.status || "queued",
-      raw_payload: twilioMessage,
+      message_status: providerMessage.status || "queued",
+      raw_payload: providerMessage,
       sent_at: now,
     });
     if (messageError) throw messageError;
@@ -399,6 +655,9 @@ serve(async (req) => {
       await admin
         .from("campanha_leads")
         .update({
+          // Sem este vínculo o disparo existe no WhatsApp, mas fica invisível
+          // para a contagem diária e para a conversa unificada do lead.
+          conversa_id: conversation.id,
           data_ultimo_contato: now,
           updated_at: now,
         })
@@ -417,9 +676,11 @@ serve(async (req) => {
 
     return json({
       ok: true,
-      message_sid: twilioMessage.sid,
-      status: twilioMessage.status,
+      message_sid: providerMessage.sid || providerMessage.id,
+      status: providerMessage.status,
+      provider: sender.provider,
       conversation_id: conversation.id,
+      ...(diagnosticBypass ? { diagnostic_bypass: true } : {}),
     });
   } catch (error) {
     console.error("[twilio-send]", error);

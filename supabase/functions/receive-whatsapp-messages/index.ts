@@ -2,11 +2,14 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
 };
 
 interface EvolutionMessage {
+  provider?: "evolution" | "twilio" | "chakra";
+  provider_message_id?: string;
   // Campos vindos diretamente da Evolution API (formato raw)
   instance?: string;
   instanceName?: string;
@@ -15,7 +18,10 @@ interface EvolutionMessage {
   messageType?: string;
   message?: {
     conversation?: string;
-    extendedTextMessage?: { text?: string; contextInfo?: { quotedMessage?: any; stanzaId?: string } };
+    extendedTextMessage?: {
+      text?: string;
+      contextInfo?: { quotedMessage?: any; stanzaId?: string };
+    };
     imageMessage?: { caption?: string; mimetype?: string; url?: string };
     videoMessage?: { caption?: string; mimetype?: string; url?: string };
     audioMessage?: { mimetype?: string; url?: string; ptt?: boolean };
@@ -23,15 +29,27 @@ interface EvolutionMessage {
     stickerMessage?: { mimetype?: string; url?: string };
     locationMessage?: { degreesLatitude?: number; degreesLongitude?: number };
     contactMessage?: { displayName?: string; vcard?: string };
-    pollCreationMessage?: { name?: string; options?: Array<{ optionName?: string }>; selectableOptionsCount?: number };
-    pollCreationMessageV2?: { name?: string; options?: Array<{ optionName?: string }>; selectableOptionsCount?: number };
-    pollCreationMessageV3?: { name?: string; options?: Array<{ optionName?: string }>; selectableOptionsCount?: number };
+    pollCreationMessage?: {
+      name?: string;
+      options?: Array<{ optionName?: string }>;
+      selectableOptionsCount?: number;
+    };
+    pollCreationMessageV2?: {
+      name?: string;
+      options?: Array<{ optionName?: string }>;
+      selectableOptionsCount?: number;
+    };
+    pollCreationMessageV3?: {
+      name?: string;
+      options?: Array<{ optionName?: string }>;
+      selectableOptionsCount?: number;
+    };
   };
   messageId?: string;
   messageTimestamp?: number;
   fromMe?: boolean;
   status?: string;
-  
+
   // Campos que podem vir do n8n após processamento (formato alternativo)
   contact_jid?: string;
   contact_name?: string;
@@ -49,7 +67,7 @@ interface EvolutionMessage {
   server_url?: string;
   source?: string;
   sender_lid?: string;
-  
+
   // Campos novos do fluxo sigma-evo (n8n) - opcionais, ignorados no fluxo antigo
   is_forwarded?: boolean;
   forward_score?: number;
@@ -58,7 +76,7 @@ interface EvolutionMessage {
   poll_data?: any;
   quoted_message_type?: string;
   quoted_message_participant?: string;
-  
+
   // Campos legados
   texto?: string;
   numero?: string;
@@ -84,98 +102,100 @@ function extractMessageContent(payload: EvolutionMessage): {
   let rawData: any = null;
   if (payload.raw_payload) {
     try {
-      rawData = typeof payload.raw_payload === 'string' 
-        ? JSON.parse(payload.raw_payload) 
+      rawData = typeof payload.raw_payload === "string"
+        ? JSON.parse(payload.raw_payload)
         : payload.raw_payload;
     } catch (e) {
-      console.log('⚠️ Erro ao parsear raw_payload:', e);
+      console.log("⚠️ Erro ao parsear raw_payload:", e);
     }
   }
-  
+
   // A estrutura da Evolution API é: raw_payload.data.message.{imageMessage|videoMessage|etc}
   const evolutionData = rawData?.data || (payload as any).data || {};
   const evolutionMessage = evolutionData.message || {};
-  
+
   // Se veio processado pelo n8n com campo message_text (texto simples)
-  if (payload.message_text && payload.message_type === 'text') {
-    return { text: payload.message_text, type: 'text' };
+  if (payload.message_text && payload.message_type === "text") {
+    return { text: payload.message_text, type: "text" };
   }
-  
+
   // Se veio processado pelo n8n com campo texto
   if (payload.texto) {
-    return { text: payload.texto, type: 'text' };
+    return { text: payload.texto, type: "text" };
   }
-  
+
   // Detectar tipo de mídia pelo message_type do n8n ou pelo campo presente na Evolution message
   const msgType = payload.message_type || evolutionData.messageType;
-  
+
   // Para mensagens de mídia, extrair URL diretamente da estrutura Evolution
   // Estrutura: evolutionMessage.imageMessage.url, evolutionMessage.videoMessage.url, etc.
-  
+
   // Imagem
-  if (msgType === 'image' || evolutionMessage.imageMessage) {
+  if (msgType === "image" || evolutionMessage.imageMessage) {
     const imgMsg = evolutionMessage.imageMessage || {};
     return {
-      text: imgMsg.caption || '[Imagem]',
-      type: 'image',
+      text: imgMsg.caption || "[Imagem]",
+      type: "image",
       mediaUrl: imgMsg.url,
       mediaMimeType: imgMsg.mimetype,
-      mediaCaption: imgMsg.caption
+      mediaCaption: imgMsg.caption,
     };
   }
-  
+
   // Vídeo
-  if (msgType === 'video' || evolutionMessage.videoMessage) {
+  if (msgType === "video" || evolutionMessage.videoMessage) {
     const vidMsg = evolutionMessage.videoMessage || {};
     return {
-      text: vidMsg.caption || '[Vídeo]',
-      type: 'video',
+      text: vidMsg.caption || "[Vídeo]",
+      type: "video",
       mediaUrl: vidMsg.url,
       mediaMimeType: vidMsg.mimetype,
-      mediaCaption: vidMsg.caption
+      mediaCaption: vidMsg.caption,
     };
   }
-  
+
   // Áudio
-  if (msgType === 'audio' || msgType === 'ptt' || evolutionMessage.audioMessage) {
+  if (
+    msgType === "audio" || msgType === "ptt" || evolutionMessage.audioMessage
+  ) {
     const audMsg = evolutionMessage.audioMessage || {};
     return {
-      text: audMsg.ptt ? '[Mensagem de voz]' : '[Áudio]',
-      type: 'audio',
+      text: audMsg.ptt ? "[Mensagem de voz]" : "[Áudio]",
+      type: "audio",
       mediaUrl: audMsg.url,
-      mediaMimeType: audMsg.mimetype
+      mediaMimeType: audMsg.mimetype,
     };
   }
-  
+
   // Documento
-  if (msgType === 'document' || evolutionMessage.documentMessage) {
+  if (msgType === "document" || evolutionMessage.documentMessage) {
     const docMsg = evolutionMessage.documentMessage || {};
     return {
-      text: `[Documento: ${docMsg.fileName || 'arquivo'}]`,
-      type: 'document',
+      text: `[Documento: ${docMsg.fileName || "arquivo"}]`,
+      type: "document",
       mediaUrl: docMsg.url,
       mediaMimeType: docMsg.mimetype,
-      mediaFilename: docMsg.fileName
+      mediaFilename: docMsg.fileName,
     };
   }
-  
+
   // Sticker
-  if (msgType === 'sticker' || evolutionMessage.stickerMessage) {
+  if (msgType === "sticker" || evolutionMessage.stickerMessage) {
     const stkMsg = evolutionMessage.stickerMessage || {};
     return {
-      text: '[Sticker]',
-      type: 'sticker',
+      text: "[Sticker]",
+      type: "sticker",
       mediaUrl: stkMsg.url,
-      mediaMimeType: stkMsg.mimetype
+      mediaMimeType: stkMsg.mimetype,
     };
   }
-  
+
   // Localização
-  if (msgType === 'location' || evolutionMessage.locationMessage) {
+  if (msgType === "location" || evolutionMessage.locationMessage) {
     const locMsg: any = evolutionMessage.locationMessage || {};
     return {
       text: `[Localização]`,
-      type: 'location',
+      type: "location",
       locationData: {
         latitude: locMsg.degreesLatitude ?? null,
         longitude: locMsg.degreesLongitude ?? null,
@@ -186,15 +206,20 @@ function extractMessageContent(payload: EvolutionMessage): {
   }
 
   // Contato
-  if (msgType === 'contact' || msgType === 'vcard' || evolutionMessage.contactMessage) {
+  if (
+    msgType === "contact" || msgType === "vcard" ||
+    evolutionMessage.contactMessage
+  ) {
     const ctcMsg: any = evolutionMessage.contactMessage || {};
-    const vcard: string = ctcMsg.vcard || '';
+    const vcard: string = ctcMsg.vcard || "";
     const phoneMatch = vcard.match(/TEL[^:]*:([+\d\s\-()]+)/);
     const waidMatch = vcard.match(/waid=(\d+)/);
-    const phone = waidMatch ? waidMatch[1] : (phoneMatch ? phoneMatch[1].trim() : null);
+    const phone = waidMatch
+      ? waidMatch[1]
+      : (phoneMatch ? phoneMatch[1].trim() : null);
     return {
-      text: `[Contato: ${ctcMsg.displayName || 'sem nome'}]`,
-      type: 'contact',
+      text: `[Contato: ${ctcMsg.displayName || "sem nome"}]`,
+      type: "contact",
       contactData: {
         displayName: ctcMsg.displayName || null,
         phone,
@@ -204,18 +229,22 @@ function extractMessageContent(payload: EvolutionMessage): {
   }
 
   // Enquete (poll) - aceita V1, V2 e V3
-  const pollMsg: any =
-    evolutionMessage.pollCreationMessageV3 ||
+  const pollMsg: any = evolutionMessage.pollCreationMessageV3 ||
     evolutionMessage.pollCreationMessageV2 ||
     evolutionMessage.pollCreationMessage;
-  if (msgType === 'poll' || (msgType && msgType.startsWith('pollCreation')) || pollMsg) {
+  if (
+    msgType === "poll" || (msgType && msgType.startsWith("pollCreation")) ||
+    pollMsg
+  ) {
     const pm = pollMsg || {};
-    const options = (pm.options || []).map((o: any) => o?.optionName).filter(Boolean);
+    const options = (pm.options || []).map((o: any) => o?.optionName).filter(
+      Boolean,
+    );
     return {
-      text: `[Enquete: ${pm.name || 'sem título'}]`,
-      type: 'poll',
+      text: `[Enquete: ${pm.name || "sem título"}]`,
+      type: "poll",
       pollData: {
-        name: pm.name || '',
+        name: pm.name || "",
         options,
         selectableOptionsCount: pm.selectableOptionsCount ?? 1,
       },
@@ -226,103 +255,109 @@ function extractMessageContent(payload: EvolutionMessage): {
   // recentes do WhatsApp. So o envelope exclusivamente criptografado e tecnico;
   // descartar pelo contexto faria mensagens visiveis sumirem do Sigma.
   if (evolutionMessage.secretEncryptedMessage) {
-    return { text: '[Evento tecnico]', type: 'technical' };
+    return { text: "[Evento tecnico]", type: "technical" };
   }
 
   // No webhook nativo da Evolution a mensagem vive em data.message. O payload
   // achatado e apenas um formato legado; priorizar evolutionMessage preserva texto.
-  const msg = Object.keys(evolutionMessage).length > 0 ? evolutionMessage : payload.message;
+  const msg = Object.keys(evolutionMessage).length > 0
+    ? evolutionMessage
+    : payload.message;
   if (!msg) {
-    return { text: '[Mensagem sem conteúdo]', type: 'unknown' };
+    return { text: "[Mensagem sem conteúdo]", type: "unknown" };
   }
 
   // Texto simples
   if (msg.conversation) {
-    return { text: msg.conversation, type: 'text' };
+    return { text: msg.conversation, type: "text" };
   }
 
   // Texto estendido (com formatação ou citação)
   if (msg.extendedTextMessage) {
     const quoted = msg.extendedTextMessage.contextInfo;
     return {
-      text: msg.extendedTextMessage.text || '',
-      type: 'text',
+      text: msg.extendedTextMessage.text || "",
+      type: "text",
       quotedMessageId: quoted?.stanzaId,
-      quotedMessageText: quoted?.quotedMessage?.conversation || quoted?.quotedMessage?.extendedTextMessage?.text
+      quotedMessageText: quoted?.quotedMessage?.conversation ||
+        quoted?.quotedMessage?.extendedTextMessage?.text,
     };
   }
 
   // Imagem
   if (msg.imageMessage) {
     return {
-      text: msg.imageMessage.caption || '[Imagem]',
-      type: 'image',
+      text: msg.imageMessage.caption || "[Imagem]",
+      type: "image",
       mediaUrl: msg.imageMessage.url,
       mediaMimeType: msg.imageMessage.mimetype,
-      mediaCaption: msg.imageMessage.caption
+      mediaCaption: msg.imageMessage.caption,
     };
   }
 
   // Vídeo
   if (msg.videoMessage) {
     return {
-      text: msg.videoMessage.caption || '[Vídeo]',
-      type: 'video',
+      text: msg.videoMessage.caption || "[Vídeo]",
+      type: "video",
       mediaUrl: msg.videoMessage.url,
       mediaMimeType: msg.videoMessage.mimetype,
-      mediaCaption: msg.videoMessage.caption
+      mediaCaption: msg.videoMessage.caption,
     };
   }
 
   // Áudio
   if (msg.audioMessage) {
     return {
-      text: msg.audioMessage.ptt ? '[Mensagem de voz]' : '[Áudio]',
-      type: 'audio',
+      text: msg.audioMessage.ptt ? "[Mensagem de voz]" : "[Áudio]",
+      type: "audio",
       mediaUrl: msg.audioMessage.url,
-      mediaMimeType: msg.audioMessage.mimetype
+      mediaMimeType: msg.audioMessage.mimetype,
     };
   }
 
   // Documento
   if (msg.documentMessage) {
     return {
-      text: `[Documento: ${msg.documentMessage.fileName || 'arquivo'}]`,
-      type: 'document',
+      text: `[Documento: ${msg.documentMessage.fileName || "arquivo"}]`,
+      type: "document",
       mediaUrl: msg.documentMessage.url,
       mediaMimeType: msg.documentMessage.mimetype,
-      mediaFilename: msg.documentMessage.fileName
+      mediaFilename: msg.documentMessage.fileName,
     };
   }
 
   // Sticker
   if (msg.stickerMessage) {
     return {
-      text: '[Sticker]',
-      type: 'sticker',
+      text: "[Sticker]",
+      type: "sticker",
       mediaUrl: msg.stickerMessage.url,
-      mediaMimeType: msg.stickerMessage.mimetype
+      mediaMimeType: msg.stickerMessage.mimetype,
     };
   }
 
   // Localização
   if (msg.locationMessage) {
     return {
-      text: `[Localização: ${msg.locationMessage.degreesLatitude}, ${msg.locationMessage.degreesLongitude}]`,
-      type: 'location'
+      text:
+        `[Localização: ${msg.locationMessage.degreesLatitude}, ${msg.locationMessage.degreesLongitude}]`,
+      type: "location",
     };
   }
 
   // Contato
   if (msg.contactMessage) {
     const ctcMsg: any = msg.contactMessage;
-    const vcard: string = ctcMsg.vcard || '';
+    const vcard: string = ctcMsg.vcard || "";
     const phoneMatch = vcard.match(/TEL[^:]*:([+\d\s\-()]+)/);
     const waidMatch = vcard.match(/waid=(\d+)/);
-    const phone = waidMatch ? waidMatch[1] : (phoneMatch ? phoneMatch[1].trim() : null);
+    const phone = waidMatch
+      ? waidMatch[1]
+      : (phoneMatch ? phoneMatch[1].trim() : null);
     return {
-      text: `[Contato: ${ctcMsg.displayName || 'sem nome'}]`,
-      type: 'contact',
+      text: `[Contato: ${ctcMsg.displayName || "sem nome"}]`,
+      type: "contact",
       contactData: {
         displayName: ctcMsg.displayName || null,
         phone,
@@ -332,24 +367,24 @@ function extractMessageContent(payload: EvolutionMessage): {
   }
 
   // Enquete (fallback via msg.*)
-  const pollFromMsg: any =
-    (msg as any).pollCreationMessageV3 ||
+  const pollFromMsg: any = (msg as any).pollCreationMessageV3 ||
     (msg as any).pollCreationMessageV2 ||
     (msg as any).pollCreationMessage;
   if (pollFromMsg) {
-    const options = (pollFromMsg.options || []).map((o: any) => o?.optionName).filter(Boolean);
+    const options = (pollFromMsg.options || []).map((o: any) => o?.optionName)
+      .filter(Boolean);
     return {
-      text: `[Enquete: ${pollFromMsg.name || 'sem título'}]`,
-      type: 'poll',
+      text: `[Enquete: ${pollFromMsg.name || "sem título"}]`,
+      type: "poll",
       pollData: {
-        name: pollFromMsg.name || '',
+        name: pollFromMsg.name || "",
         options,
         selectableOptionsCount: pollFromMsg.selectableOptionsCount ?? 1,
       },
     };
   }
 
-  return { text: '[Mídia não suportada]', type: 'unknown' };
+  return { text: "[Mídia não suportada]", type: "unknown" };
 }
 
 // Função para baixar mídia do WhatsApp via Evolution API e salvar no storage
@@ -362,70 +397,81 @@ async function downloadAndStoreMedia(
   mimeType: string,
   instanceName: string,
   serverUrl?: string,
-  payloadApiKey?: string
+  payloadApiKey?: string,
 ): Promise<string | null> {
   if (!mediaUrl) {
-    console.log('⚠️ URL de mídia não fornecida');
+    console.log("⚠️ URL de mídia não fornecida");
     return null;
   }
 
   try {
-    console.log('📥 Tentando baixar mídia:', mediaUrl.substring(0, 100) + '...');
-    
+    console.log(
+      "📥 Tentando baixar mídia:",
+      mediaUrl.substring(0, 100) + "...",
+    );
+
     // Determinar extensão do arquivo baseada no mimeType
     const extension = getExtensionFromMimeType(mimeType);
     const fileName = `${messageId}${extension}`;
     const storagePath = `${instanceId}/${conversationId}/${fileName}`;
-    
+
     let arrayBuffer: ArrayBuffer | null = null;
-    
+
     // Se a URL for do WhatsApp (mmg.whatsapp.net), precisamos usar a Evolution API para baixar
-    if (mediaUrl.includes('mmg.whatsapp.net') || mediaUrl.includes('whatsapp.net')) {
-      console.log('🔄 URL do WhatsApp detectada, usando Evolution API para download...');
-      
-      const evolutionUrl = serverUrl || Deno.env.get('EVOLUTION_API_URL');
-      const evolutionKey = payloadApiKey || Deno.env.get('EVOLUTION_API_KEY');
-      
+    if (
+      mediaUrl.includes("mmg.whatsapp.net") || mediaUrl.includes("whatsapp.net")
+    ) {
+      console.log(
+        "🔄 URL do WhatsApp detectada, usando Evolution API para download...",
+      );
+
+      const evolutionUrl = serverUrl || Deno.env.get("EVOLUTION_API_URL");
+      const evolutionKey = payloadApiKey || Deno.env.get("EVOLUTION_API_KEY");
+
       if (!evolutionUrl || !evolutionKey) {
-        console.error('❌ Evolution API URL ou Key não configuradas');
+        console.error("❌ Evolution API URL ou Key não configuradas");
         return null;
       }
-      
+
       // Usar endpoint de download de mídia da Evolution
       // GET /message/getBase64FromMediaMessage/{instanceName}
-      const downloadEndpoint = `${evolutionUrl}/chat/getBase64FromMediaMessage/${encodeURIComponent(instanceName)}`;
-      
-      console.log('📡 Chamando Evolution API:', downloadEndpoint);
-      
+      const downloadEndpoint =
+        `${evolutionUrl}/chat/getBase64FromMediaMessage/${
+          encodeURIComponent(instanceName)
+        }`;
+
+      console.log("📡 Chamando Evolution API:", downloadEndpoint);
+
       const response = await fetch(downloadEndpoint, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
-          'apikey': evolutionKey
+          "Content-Type": "application/json",
+          "apikey": evolutionKey,
         },
         body: JSON.stringify({
           message: {
             key: {
-              id: messageId
-            }
+              id: messageId,
+            },
           },
-          convertToMp4: false
-        })
+          convertToMp4: false,
+        }),
       });
-      
+
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('❌ Erro na Evolution API:', response.status, errorText);
-        
+        console.error("❌ Erro na Evolution API:", response.status, errorText);
+
         // Fallback: tentar download direto mesmo assim
-        console.log('🔄 Tentando download direto como fallback...');
+        console.log("🔄 Tentando download direto como fallback...");
         const directResponse = await fetch(mediaUrl, {
           headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Accept': '*/*',
+            "User-Agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "*/*",
           },
         });
-        
+
         if (directResponse.ok) {
           arrayBuffer = await directResponse.arrayBuffer();
         } else {
@@ -433,13 +479,13 @@ async function downloadAndStoreMedia(
         }
       } else {
         const data = await response.json();
-        
+
         if (data.base64) {
           // Converter base64 para ArrayBuffer
-          const base64Data = data.base64.includes(',') 
-            ? data.base64.split(',')[1] 
+          const base64Data = data.base64.includes(",")
+            ? data.base64.split(",")[1]
             : data.base64;
-          
+
           // Decodificar base64
           const binaryString = atob(base64Data);
           const bytes = new Uint8Array(binaryString.length);
@@ -447,31 +493,43 @@ async function downloadAndStoreMedia(
             bytes[i] = binaryString.charCodeAt(i);
           }
           arrayBuffer = bytes.buffer;
-          
+
           // Se a Evolution retornou o mimetype, usar ele
           if (data.mimetype) {
             mimeType = data.mimetype;
           }
-          
-          console.log('✅ Mídia obtida via Evolution API, tamanho:', arrayBuffer.byteLength, 'bytes');
+
+          console.log(
+            "✅ Mídia obtida via Evolution API, tamanho:",
+            arrayBuffer.byteLength,
+            "bytes",
+          );
         } else {
-          console.error('❌ Evolution API não retornou base64:', JSON.stringify(data));
+          console.error(
+            "❌ Evolution API não retornou base64:",
+            JSON.stringify(data),
+          );
           return null;
         }
       }
     } else {
       // URL já é pública ou de outro servidor, fazer download direto
-      console.log('🌐 URL pública detectada, fazendo download direto...');
-      
+      console.log("🌐 URL pública detectada, fazendo download direto...");
+
       const response = await fetch(mediaUrl, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          'Accept': 'image/*,video/*,audio/*,*/*',
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          "Accept": "image/*,video/*,audio/*,*/*",
         },
       });
 
       if (!response.ok) {
-        console.error('❌ Erro ao baixar mídia:', response.status, response.statusText);
+        console.error(
+          "❌ Erro ao baixar mídia:",
+          response.status,
+          response.statusText,
+        );
         return null;
       }
 
@@ -479,278 +537,345 @@ async function downloadAndStoreMedia(
     }
 
     if (!arrayBuffer || arrayBuffer.byteLength === 0) {
-      console.error('❌ Arquivo de mídia vazio');
+      console.error("❌ Arquivo de mídia vazio");
       return null;
     }
 
-    console.log('✅ Mídia baixada, tamanho:', arrayBuffer.byteLength, 'bytes');
+    console.log("✅ Mídia baixada, tamanho:", arrayBuffer.byteLength, "bytes");
 
-    console.log('📤 Fazendo upload para storage:', storagePath);
+    console.log("📤 Fazendo upload para storage:", storagePath);
 
     // Upload para o storage
     const { data, error } = await supabase.storage
-      .from('sigzap-media')
+      .from("sigzap-media")
       .upload(storagePath, arrayBuffer, {
         contentType: mimeType,
-        upsert: true
+        upsert: true,
       });
 
     if (error) {
-      console.error('❌ Erro ao fazer upload:', error);
+      console.error("❌ Erro ao fazer upload:", error);
       return null;
     }
 
     // Gerar URL pública
     const { data: urlData } = supabase.storage
-      .from('sigzap-media')
+      .from("sigzap-media")
       .getPublicUrl(storagePath);
 
-    console.log('✅ Mídia salva no storage:', urlData.publicUrl);
+    console.log("✅ Mídia salva no storage:", urlData.publicUrl);
     return urlData.publicUrl;
   } catch (error) {
-    console.error('❌ Erro ao processar mídia:', error);
+    console.error("❌ Erro ao processar mídia:", error);
     return null;
   }
 }
 
 function getExtensionFromMimeType(mimeType: string): string {
   const mimeToExt: Record<string, string> = {
-    'image/jpeg': '.jpg',
-    'image/png': '.png',
-    'image/gif': '.gif',
-    'image/webp': '.webp',
-    'video/mp4': '.mp4',
-    'video/3gpp': '.3gp',
-    'video/quicktime': '.mov',
-    'audio/ogg': '.ogg',
-    'audio/mpeg': '.mp3',
-    'audio/mp4': '.m4a',
-    'audio/aac': '.aac',
-    'application/pdf': '.pdf',
-    'application/msword': '.doc',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
-    'application/vnd.ms-excel': '.xls',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/gif": ".gif",
+    "image/webp": ".webp",
+    "video/mp4": ".mp4",
+    "video/3gpp": ".3gp",
+    "video/quicktime": ".mov",
+    "audio/ogg": ".ogg",
+    "audio/mpeg": ".mp3",
+    "audio/mp4": ".m4a",
+    "audio/aac": ".aac",
+    "application/pdf": ".pdf",
+    "application/msword": ".doc",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+      ".docx",
+    "application/vnd.ms-excel": ".xls",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+      ".xlsx",
   };
-  return mimeToExt[mimeType] || '.bin';
+  return mimeToExt[mimeType] || ".bin";
 }
 
 serve(async (req) => {
   // Handle CORS preflight
-  if (req.method === 'OPTIONS') {
+  if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
     const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     );
 
     const payload: EvolutionMessage = await req.json();
-    console.log('📩 Payload recebido:', JSON.stringify(payload, null, 2));
+    const provider = payload.provider || "evolution";
+    console.log("📩 Payload recebido:", JSON.stringify(payload, null, 2));
 
     // Detecta o tipo de evento
     const eventType = payload.eventType || payload.event;
-    console.log('📌 Tipo de evento:', eventType);
-    
+    console.log("📌 Tipo de evento:", eventType);
+
     // HANDLER: Eventos de CONTACTS (atualização de contatos da Evolution API)
-    const isContactEvent = eventType === 'contacts.upsert' || eventType === 'contacts.update' || 
-                           eventType === 'CONTACTS_UPSERT' || eventType === 'CONTACTS_UPDATE';
-    
+    const isContactEvent = eventType === "contacts.upsert" ||
+      eventType === "contacts.update" ||
+      eventType === "CONTACTS_UPSERT" || eventType === "CONTACTS_UPDATE";
+
     if (isContactEvent) {
-      console.log('👤 Evento de contatos recebido');
-      
+      console.log("👤 Evento de contatos recebido");
+
       const contactsData = (payload as any).data || [];
-      const instanceName = payload.instance || payload.instanceName || payload.instance_name;
-      
+      const instanceName = payload.instance || payload.instanceName ||
+        payload.instance_name;
+
       if (!instanceName) {
-        console.log('⚠️ Nome da instância não encontrado no evento de contatos');
-        return new Response(JSON.stringify({ success: true, message: 'Instância não identificada' }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+        console.log(
+          "⚠️ Nome da instância não encontrado no evento de contatos",
+        );
+        return new Response(
+          JSON.stringify({
+            success: true,
+            message: "Instância não identificada",
+          }),
+          {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          },
+        );
       }
-      
+
       // Buscar instância
       const { data: instance } = await supabase
-        .from('sigzap_instances')
-        .select('id')
-        .eq('name', instanceName)
+        .from("sigzap_instances")
+        .select("id")
+        .eq("name", instanceName)
         .maybeSingle();
-      
+
       if (!instance) {
-        console.log('⚠️ Instância não encontrada:', instanceName);
-        return new Response(JSON.stringify({ success: true, message: 'Instância não encontrada' }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+        console.log("⚠️ Instância não encontrada:", instanceName);
+        return new Response(
+          JSON.stringify({
+            success: true,
+            message: "Instância não encontrada",
+          }),
+          {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          },
+        );
       }
-      
+
       // Processar cada contato
-      const contacts = Array.isArray(contactsData) ? contactsData : [contactsData];
-      
+      const contacts = Array.isArray(contactsData)
+        ? contactsData
+        : [contactsData];
+
       for (const contactInfo of contacts) {
         const contactJid = contactInfo.id || contactInfo.remoteJid;
-        const contactName = contactInfo.pushName || contactInfo.name || contactInfo.notify;
-        const profilePictureUrl = contactInfo.profilePictureUrl || contactInfo.imgUrl || contactInfo.profilePicThumbObj?.eurl;
-        
+        const contactName = contactInfo.pushName || contactInfo.name ||
+          contactInfo.notify;
+        const profilePictureUrl = contactInfo.profilePictureUrl ||
+          contactInfo.imgUrl || contactInfo.profilePicThumbObj?.eurl;
+
         if (!contactJid) continue;
-        
+
         // Preparar dados para atualização
         const updateData: Record<string, any> = {};
         if (contactName) updateData.contact_name = contactName;
-        if (profilePictureUrl) updateData.profile_picture_url = profilePictureUrl;
-        
+        if (profilePictureUrl) {
+          updateData.profile_picture_url = profilePictureUrl;
+        }
+
         if (Object.keys(updateData).length === 0) continue;
-        
+
         // Atualizar nome e foto do contato se existir
         const { error: updateError } = await supabase
-          .from('sigzap_contacts')
+          .from("sigzap_contacts")
           .update(updateData)
-          .eq('contact_jid', contactJid)
-          .eq('instance_id', instance.id);
-        
+          .eq("contact_jid", contactJid)
+          .eq("instance_id", instance.id);
+
         if (!updateError) {
-          console.log('✅ Contato atualizado via evento CONTACTS:', contactJid, updateData);
+          console.log(
+            "✅ Contato atualizado via evento CONTACTS:",
+            contactJid,
+            updateData,
+          );
         }
       }
-      
-      return new Response(JSON.stringify({ success: true, message: 'Contatos atualizados' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+
+      return new Response(
+        JSON.stringify({ success: true, message: "Contatos atualizados" }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
-    
+
     // IMPORTANTE: Ignorar eventos que NÃO são mensagens novas
     // messages.update = atualização de status (lida, entregue, etc) - NÃO é mensagem nova
     // Só processar: messages.upsert (nova mensagem) ou payloads sem event (formato legado)
-    const normalizedEventType = String(eventType || '').toLowerCase();
-    const isMessageUpdate = normalizedEventType === 'messages.update';
-    const isNewMessage = normalizedEventType === 'messages.upsert' || !eventType;
-    
+    const normalizedEventType = String(eventType || "").toLowerCase();
+    const isMessageUpdate = normalizedEventType === "messages.update";
+    const isNewMessage = normalizedEventType === "messages.upsert" ||
+      !eventType;
+
     // HANDLER: Reações recebidas via messages.upsert com reactionMessage
     const rawData = (() => {
       if (payload.raw_payload) {
         try {
-          return typeof payload.raw_payload === 'string' ? JSON.parse(payload.raw_payload) : payload.raw_payload;
-        } catch { return null; }
+          return typeof payload.raw_payload === "string"
+            ? JSON.parse(payload.raw_payload)
+            : payload.raw_payload;
+        } catch {
+          return null;
+        }
       }
       return null;
     })();
     const evolutionDataCheck = rawData?.data || (payload as any).data || {};
-    const evolutionMsgCheck = evolutionDataCheck.message || payload.message || {};
+    const evolutionMsgCheck = evolutionDataCheck.message || payload.message ||
+      {};
     const reactionMessage = evolutionMsgCheck.reactionMessage;
-    
+
     if (reactionMessage) {
-      console.log('😀 Reação recebida:', JSON.stringify(reactionMessage));
-      
+      console.log("😀 Reação recebida:", JSON.stringify(reactionMessage));
+
       // reactionMessage.key = key da mensagem sendo reagida
       // reactionMessage.text = emoji (vazio = remover reação)
       const targetKey = reactionMessage.key;
-      const reactionEmoji = reactionMessage.text || '';
+      const reactionEmoji = reactionMessage.text || "";
       const targetMessageId = targetKey?.id;
-      
+
       if (targetMessageId) {
-        const updateData: Record<string, any> = { 
-          reaction: reactionEmoji || null 
+        const updateData: Record<string, any> = {
+          reaction: reactionEmoji || null,
         };
-        
+
         const { error: reactionError } = await supabase
-          .from('sigzap_messages')
+          .from("sigzap_messages")
           .update(updateData)
-          .eq('wa_message_id', targetMessageId);
-        
+          .eq("wa_message_id", targetMessageId);
+
         if (reactionError) {
-          console.error('❌ Erro ao salvar reação:', reactionError);
+          console.error("❌ Erro ao salvar reação:", reactionError);
         } else {
-          console.log('✅ Reação salva:', targetMessageId, '->', reactionEmoji || '(removida)');
+          console.log(
+            "✅ Reação salva:",
+            targetMessageId,
+            "->",
+            reactionEmoji || "(removida)",
+          );
         }
       }
-      
-      return new Response(JSON.stringify({ success: true, message: 'Reação processada' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+
+      return new Response(
+        JSON.stringify({ success: true, message: "Reação processada" }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
-    
-    const hasMessageContent = payload.message_text || payload.texto || payload.message?.conversation || 
-                               payload.message?.extendedTextMessage || payload.message?.imageMessage ||
-                               payload.message?.videoMessage || payload.message?.audioMessage ||
-                               payload.message?.documentMessage;
-    
+
+    const hasMessageContent = payload.message_text || payload.texto ||
+      payload.message?.conversation ||
+      payload.message?.extendedTextMessage || payload.message?.imageMessage ||
+      payload.message?.videoMessage || payload.message?.audioMessage ||
+      payload.message?.documentMessage;
+
     // Se for update de status, apenas atualizar o status da mensagem existente
     if (isMessageUpdate) {
-      console.log('📝 Evento de atualização de status recebido, atualizando mensagem existente');
-      
+      console.log(
+        "📝 Evento de atualização de status recebido, atualizando mensagem existente",
+      );
+
       const keyId = (payload as any).data?.keyId;
       const newStatus = (payload as any).data?.status;
-      
+
       if (keyId && newStatus) {
         await supabase
-          .from('sigzap_messages')
+          .from("sigzap_messages")
           .update({ message_status: newStatus })
-          .eq('wa_message_id', keyId);
-        console.log('✅ Status da mensagem atualizado:', keyId, '->', newStatus);
+          .eq("wa_message_id", keyId);
+        console.log(
+          "✅ Status da mensagem atualizado:",
+          keyId,
+          "->",
+          newStatus,
+        );
       }
-      
-      return new Response(JSON.stringify({ success: true, message: 'Status atualizado' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+
+      return new Response(
+        JSON.stringify({ success: true, message: "Status atualizado" }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
-    
+
     // Se não tem conteúdo de mensagem, ignorar
     if (!hasMessageContent && !isNewMessage) {
-      console.log('📝 Evento sem conteúdo de mensagem, ignorando:', eventType);
-      return new Response(JSON.stringify({ success: true, message: 'Evento ignorado' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      console.log("📝 Evento sem conteúdo de mensagem, ignorando:", eventType);
+      return new Response(
+        JSON.stringify({ success: true, message: "Evento ignorado" }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
 
     // Extrai dados da mensagem - suporta múltiplos formatos de payload
     // Formato Evolution API direto
-    const instanceName = payload.instance || payload.instanceName || payload.instance_name || 'unknown';
+    const instanceName = payload.instance || payload.instanceName ||
+      payload.instance_name || "unknown";
     const instanceUuid = payload.instance_uuid || instanceName;
-    
+
     const data = (payload as any).data || {};
     const key = data.key || {};
 
     // O webhook nativo da Evolution envia o destinatario em data.key.remoteJid.
     // O bridge n8n preserva esse envelope; ignorar o key fazia a persistencia abortar
     // com "numero nao encontrado" enquanto a automacao seguia normalmente.
-    const remoteJid = key.remoteJid || payload.remoteJid || payload.contact_jid || payload.sender_jid || payload.numero || '';
+    const remoteJid = key.remoteJid || payload.remoteJid ||
+      payload.contact_jid || payload.sender_jid || payload.numero || "";
 
     // IMPORTANTE: Evolution API pode enviar 'lid' (Link ID) em vez do número real
     // Quando isso acontece, o número real está em remoteJidAlt ou no campo sender
-    const isLidJid = remoteJid.includes('@lid');
+    const isLidJid = remoteJid.includes("@lid");
 
     // Buscar número real de campos alternativos quando for lid
-    const remoteJidAlt = key.remoteJidAlt || (payload as any).sender || '';
+    const remoteJidAlt = key.remoteJidAlt || (payload as any).sender || "";
 
     // Se for lid e tiver alternativa, usar o número real
     const realJid = isLidJid && remoteJidAlt ? remoteJidAlt : remoteJid;
 
     // Nome do contato
-    const pushName = data.pushName || payload.pushName || payload.contact_name || payload.nome || 'Desconhecido';
+    const pushName = data.pushName || payload.pushName ||
+      payload.contact_name || payload.nome || "Desconhecido";
 
     // Se a mensagem é enviada ou recebida
     const fromMeValue = key.fromMe ?? payload.fromMe ?? payload.from_me;
-    const fromMe = fromMeValue === true || fromMeValue === 'true';
+    const fromMe = fromMeValue === true || fromMeValue === "true";
 
     // ID da mensagem
-    const messageId = key.id || payload.messageId || payload.wa_message_id || `msg_${Date.now()}`;
+    const messageId = key.id || payload.messageId || payload.wa_message_id ||
+      `msg_${Date.now()}`;
 
     // Timestamp
-    const timestamp = data.messageTimestamp || payload.messageTimestamp || payload.timestamp || Math.floor(Date.now() / 1000);
+    const timestamp = data.messageTimestamp || payload.messageTimestamp ||
+      payload.timestamp || Math.floor(Date.now() / 1000);
 
     // Status da mensagem
-    const messageStatus = data.status || payload.status || payload.message_status || 'received';
+    const messageStatus = data.status || payload.status ||
+      payload.message_status || "received";
 
     // Canonicaliza o JID para evitar duplicar contatos/conversas (@lid vs @s.whatsapp.net)
     // Preferimos sempre o JID "real" quando disponível
     const contactJid = realJid || remoteJid;
 
     // Canonicaliza telefone (somente dígitos)
-    const contactPhoneRaw = payload.contact_phone || (realJid ? realJid.replace(/@.*$/, '') : '');
-    const contactPhone = String(contactPhoneRaw).replace(/\D/g, '');
+    const contactPhoneRaw = payload.contact_phone ||
+      (realJid ? realJid.replace(/@.*$/, "") : "");
+    const contactPhone = String(contactPhoneRaw).replace(/\D/g, "");
 
-    console.log('📊 Dados extraídos:', {
+    console.log("📊 Dados extraídos:", {
       instanceName,
       instanceUuid,
       contactJid,
@@ -759,137 +884,166 @@ serve(async (req) => {
       isLidJid,
       pushName,
       fromMe,
-      messageId
+      messageId,
     });
 
     if (!contactPhone) {
-      console.log('⚠️ Número de contato não encontrado no payload');
-      return new Response(JSON.stringify({ 
-        success: false, 
-        message: 'Número de contato não encontrado',
-        receivedFields: Object.keys(payload)
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      console.log("⚠️ Número de contato não encontrado no payload");
+      return new Response(
+        JSON.stringify({
+          success: false,
+          message: "Número de contato não encontrado",
+          receivedFields: Object.keys(payload),
+        }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
 
     // Extrai conteúdo da mensagem
     const messageContent = extractMessageContent(payload);
-    console.log('📝 Conteúdo extraído:', messageContent);
+    console.log("📝 Conteúdo extraído:", messageContent);
 
     // O healthcheck testa o transporte do bridge, nao representa conversa real.
     // Ignorar aqui evita criar instancia, contato e mensagem sinteticos.
     if (
-      instanceName === '_healthcheck_' ||
-      messageContent.text === '[healthcheck-ping-ignore]' ||
-      messageContent.type === 'technical'
+      instanceName === "_healthcheck_" ||
+      messageContent.text === "[healthcheck-ping-ignore]" ||
+      messageContent.type === "technical"
     ) {
-      return new Response(JSON.stringify({ success: true, message: 'Healthcheck ignorado' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return new Response(
+        JSON.stringify({ success: true, message: "Healthcheck ignorado" }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
 
     // 1. Buscar instância - PRIORIZAR o nome da instância sobre o UUID
     // O n8n pode enviar valores incorretos no instance_uuid (como o sender_jid)
-    let { data: instance, error: instanceError } = await supabase
-      .from('sigzap_instances')
-      .select('id')
-      .eq('name', instanceName)
-      .maybeSingle();
+    let instance: { id: string } | null = null;
+    let instanceError: any = null;
+    if (
+      provider !== "evolution" && instanceUuid && !instanceUuid.includes("@")
+    ) {
+      const providerInstance = await supabase
+        .from("sigzap_instances")
+        .select("id")
+        .eq("provider", provider)
+        .eq("external_ref", instanceUuid)
+        .maybeSingle();
+      instance = providerInstance.data;
+      instanceError = providerInstance.error;
+    }
+    if (!instance) {
+      const namedInstance = await supabase
+        .from("sigzap_instances")
+        .select("id")
+        .eq("name", instanceName)
+        .maybeSingle();
+      instance = namedInstance.data;
+      instanceError = namedInstance.error;
+    }
 
     // Se não achou pelo nome, tentar pelo instance_uuid (mas só se parece um UUID válido, não um JID)
-    if (!instance && instanceUuid && !instanceUuid.includes('@')) {
+    if (!instance && instanceUuid && !instanceUuid.includes("@")) {
       const { data: instanceByUuid } = await supabase
-        .from('sigzap_instances')
-        .select('id')
-        .eq('instance_uuid', instanceUuid)
+        .from("sigzap_instances")
+        .select("id")
+        .eq("instance_uuid", instanceUuid)
         .maybeSingle();
-      
+
       if (instanceByUuid) {
         instance = instanceByUuid;
       }
     }
 
     if (instanceError) {
-      console.error('❌ Erro ao buscar instância:', instanceError);
+      console.error("❌ Erro ao buscar instância:", instanceError);
     }
 
     if (!instance) {
       // Criar ou buscar instância existente usando upsert para evitar duplicatas
       // (race condition em chamadas simultâneas)
-      const safeInstanceUuid = instanceUuid && !instanceUuid.includes('@') 
-        ? instanceUuid 
+      const safeInstanceUuid = instanceUuid && !instanceUuid.includes("@")
+        ? instanceUuid
         : `auto_${Date.now()}`;
-      
+
       const { data: newInstance, error: createInstanceError } = await supabase
-        .from('sigzap_instances')
+        .from("sigzap_instances")
         .upsert({
           name: instanceName,
           instance_uuid: safeInstanceUuid,
-          status: 'connected'
+          status: "connected",
         }, {
-          onConflict: 'name',
-          ignoreDuplicates: false
+          onConflict: "name",
+          ignoreDuplicates: false,
         })
-        .select('id')
+        .select("id")
         .single();
 
       if (createInstanceError) {
         // Se deu erro de constraint, buscar a existente
-        console.log('⚠️ Upsert falhou, buscando instância existente...');
+        console.log("⚠️ Upsert falhou, buscando instância existente...");
         const { data: existingInstance } = await supabase
-          .from('sigzap_instances')
-          .select('id')
-          .eq('name', instanceName)
-          .neq('status', 'deleted')
+          .from("sigzap_instances")
+          .select("id")
+          .eq("name", instanceName)
+          .neq("status", "deleted")
           .maybeSingle();
-        
+
         if (existingInstance) {
           instance = existingInstance;
-          console.log('✅ Instância existente encontrada:', instance.id);
+          console.log("✅ Instância existente encontrada:", instance.id);
         } else {
-          console.error('❌ Erro ao criar/buscar instância:', createInstanceError);
+          console.error(
+            "❌ Erro ao criar/buscar instância:",
+            createInstanceError,
+          );
           throw createInstanceError;
         }
       } else {
         instance = newInstance;
-        console.log('✅ Instância criada/atualizada:', instance.id);
+        console.log("✅ Instância criada/atualizada:", instance.id);
       }
     }
 
     // 2. Buscar ou criar contato
     let { data: contact, error: contactError } = await supabase
-      .from('sigzap_contacts')
+      .from("sigzap_contacts")
       // contact_phone e necessario para o match com leads logo abaixo.
-      .select('id, contact_phone')
-      .eq('contact_jid', contactJid)
-      .eq('instance_id', instance.id)
+      .select("id, contact_phone")
+      .eq("contact_jid", contactJid)
+      .eq("instance_id", instance.id)
       .maybeSingle();
 
     if (contactError) {
-      console.error('❌ Erro ao buscar contato:', contactError);
+      console.error("❌ Erro ao buscar contato:", contactError);
     }
 
     // O WhatsApp ainda pode usar o JID brasileiro legado sem o nono digito,
     // enquanto o CRM guarda o E.164 moderno. Reusar o contato equivalente evita
     // criar duas conversas para o mesmo medico.
-    if (!contact && contactPhone.startsWith('55')) {
+    if (!contact && contactPhone.startsWith("55")) {
       const variants = new Set<string>([contactPhone, `+${contactPhone}`]);
       if (contactPhone.length === 12) {
         const withNine = `${contactPhone.slice(0, 4)}9${contactPhone.slice(4)}`;
         variants.add(withNine);
         variants.add(`+${withNine}`);
-      } else if (contactPhone.length === 13 && contactPhone[4] === '9') {
-        const withoutNine = `${contactPhone.slice(0, 4)}${contactPhone.slice(5)}`;
+      } else if (contactPhone.length === 13 && contactPhone[4] === "9") {
+        const withoutNine = `${contactPhone.slice(0, 4)}${
+          contactPhone.slice(5)
+        }`;
         variants.add(withoutNine);
         variants.add(`+${withoutNine}`);
       }
 
       const { data: equivalentContact } = await supabase
-        .from('sigzap_contacts')
-        .select('id, contact_phone')
-        .eq('instance_id', instance.id)
-        .in('contact_phone', [...variants])
+        .from("sigzap_contacts")
+        .select("id, contact_phone")
+        .eq("instance_id", instance.id)
+        .in("contact_phone", [...variants])
         .limit(1)
         .maybeSingle();
       if (equivalentContact) contact = equivalentContact;
@@ -898,139 +1052,171 @@ serve(async (req) => {
     if (!contact) {
       // IMPORTANTE: Se fromMe = true, não usar o pushName porque é o nome da nossa instância
       // Usar apenas o número do telefone como nome inicial
-      const contactNameToUse = fromMe ? contactPhone : (pushName || contactPhone);
-      
+      const contactNameToUse = fromMe
+        ? contactPhone
+        : (pushName || contactPhone);
+
       const { data: newContact, error: createContactError } = await supabase
-        .from('sigzap_contacts')
+        .from("sigzap_contacts")
         .insert({
           contact_jid: contactJid,
           contact_phone: contactPhone,
           contact_name: contactNameToUse,
-          instance_id: instance.id
+          instance_id: instance.id,
         })
-        .select('id, contact_phone')
+        .select("id, contact_phone")
         .single();
 
       if (createContactError) {
-        console.error('❌ Erro ao criar contato:', createContactError);
+        console.error("❌ Erro ao criar contato:", createContactError);
         throw createContactError;
       }
       contact = newContact;
-      console.log('✅ Contato criado:', contact.id, 'Nome:', contactNameToUse);
+      console.log("✅ Contato criado:", contact.id, "Nome:", contactNameToUse);
     } else {
       // Atualizar nome do contato se mudou - APENAS quando a mensagem NÃO é enviada por nós (fromMe = false)
       // Isso evita sobrescrever o nome do contato com o nome do nosso perfil/instância
-      if (pushName && pushName !== 'Desconhecido' && !fromMe) {
+      if (pushName && pushName !== "Desconhecido" && !fromMe) {
         await supabase
-          .from('sigzap_contacts')
+          .from("sigzap_contacts")
           .update({ contact_name: pushName })
-          .eq('id', contact.id);
-        console.log('✅ Nome do contato atualizado:', contact.id, '->', pushName);
+          .eq("id", contact.id);
+        console.log(
+          "✅ Nome do contato atualizado:",
+          contact.id,
+          "->",
+          pushName,
+        );
       }
     }
 
     if (!contact) {
-      throw new Error('Contato nao foi criado nem encontrado');
+      throw new Error("Contato nao foi criado nem encontrado");
     }
 
     // 3. Buscar ou criar conversa
     let { data: conversation, error: conversationError } = await supabase
-      .from('sigzap_conversations')
-      .select('id, unread_count')
-      .eq('contact_id', contact.id)
-      .eq('instance_id', instance.id)
+      .from("sigzap_conversations")
+      .select("id, unread_count")
+      .eq("contact_id", contact.id)
+      .eq("instance_id", instance.id)
       .maybeSingle();
 
     if (conversationError) {
-      console.error('❌ Erro ao buscar conversa:', conversationError);
+      console.error("❌ Erro ao buscar conversa:", conversationError);
     }
 
     const sentAt = new Date(timestamp * 1000).toISOString();
+    // Uma resposta livre só pode ser enviada durante as 24 horas seguintes
+    // à última mensagem recebida. O fluxo antigo não preenchia esse campo
+    // para eventos do Chakra, então a mensagem chegava ao histórico, mas a
+    // IA era bloqueada como se a conversa estivesse fechada.
+    const serviceWindowExpiresAt = !fromMe
+      ? new Date(new Date(sentAt).getTime() + 24 * 60 * 60 * 1000).toISOString()
+      : null;
 
     if (!conversation) {
-      const { data: newConversation, error: createConversationError } = await supabase
-        .from('sigzap_conversations')
-        .insert({
-          contact_id: contact.id,
-          instance_id: instance.id,
-          last_message_text: messageContent.text,
-          last_message_at: sentAt,
-          unread_count: fromMe ? 0 : 1,
-          status: 'open'
-        })
-        .select('id, unread_count')
-        .single();
+      const { data: newConversation, error: createConversationError } =
+        await supabase
+          .from("sigzap_conversations")
+          .insert({
+            contact_id: contact.id,
+            instance_id: instance.id,
+            last_message_text: messageContent.text,
+            last_message_at: sentAt,
+            service_window_expires_at: serviceWindowExpiresAt,
+            unread_count: fromMe ? 0 : 1,
+            status: "open",
+          })
+          .select("id, unread_count")
+          .single();
 
       if (createConversationError) {
-        console.error('❌ Erro ao criar conversa:', createConversationError);
+        console.error("❌ Erro ao criar conversa:", createConversationError);
         throw createConversationError;
       }
       conversation = newConversation;
-      console.log('✅ Conversa criada:', conversation.id);
+      console.log("✅ Conversa criada:", conversation.id);
     } else {
       // Atualizar conversa existente
       const newUnreadCount = fromMe ? 0 : (conversation.unread_count || 0) + 1;
-      
+
+      const conversationPatch: Record<string, unknown> = {
+        last_message_text: messageContent.text,
+        last_message_at: sentAt,
+        unread_count: newUnreadCount,
+        status: "open",
+      };
+      if (serviceWindowExpiresAt) {
+        conversationPatch.service_window_expires_at = serviceWindowExpiresAt;
+      }
       await supabase
-        .from('sigzap_conversations')
-        .update({
-          last_message_text: messageContent.text,
-          last_message_at: sentAt,
-          unread_count: newUnreadCount,
-          status: 'open'
-        })
-        .eq('id', conversation.id);
-      
-      console.log('✅ Conversa atualizada:', conversation.id);
+        .from("sigzap_conversations")
+        .update(conversationPatch)
+        .eq("id", conversation.id);
+
+      console.log("✅ Conversa atualizada:", conversation.id);
     }
 
     // 3.5 Vincular lead à conversa (se ainda não vinculado)
     try {
-      const contactPhone = contact.contact_phone || '';
-      let normalizedPhone = contactPhone.replace(/\D/g, '');
-      if (normalizedPhone.length >= 10 && !normalizedPhone.startsWith('+')) {
-        normalizedPhone = normalizedPhone.startsWith('55') ? '+' + normalizedPhone : '+55' + normalizedPhone;
-      } else if (normalizedPhone.startsWith('+')) {
+      const contactPhone = contact.contact_phone || "";
+      let normalizedPhone = contactPhone.replace(/\D/g, "");
+      if (normalizedPhone.length >= 10 && !normalizedPhone.startsWith("+")) {
+        normalizedPhone = normalizedPhone.startsWith("55")
+          ? "+" + normalizedPhone
+          : "+55" + normalizedPhone;
+      } else if (normalizedPhone.startsWith("+")) {
         // already has +
       } else {
-        normalizedPhone = '+' + normalizedPhone;
+        normalizedPhone = "+" + normalizedPhone;
       }
 
-      const { data: leadId } = await supabase.rpc('find_lead_by_phone', { p_phone: normalizedPhone });
-      
+      const { data: leadId } = await supabase.rpc("find_lead_by_phone", {
+        p_phone: normalizedPhone,
+      });
+
       if (leadId) {
         // Setar lead_id na conversa
         await supabase
-          .from('sigzap_conversations')
+          .from("sigzap_conversations")
           .update({ lead_id: leadId })
-          .eq('id', conversation.id)
-          .is('lead_id', null);
+          .eq("id", conversation.id)
+          .is("lead_id", null);
 
         // Auto-transicionar lead para "Acompanhamento" se status for "Novo"
         const { data: leadData } = await supabase
-          .from('leads')
-          .select('status')
-          .eq('id', leadId)
+          .from("leads")
+          .select("status")
+          .eq("id", leadId)
           .single();
 
-        if (leadData?.status === 'Novo') {
+        if (leadData?.status === "Novo") {
           await supabase
-            .from('leads')
-            .update({ status: 'Acompanhamento', updated_at: new Date().toISOString() })
-            .eq('id', leadId);
-          console.log('✅ Lead atualizado para Acompanhamento:', leadId);
+            .from("leads")
+            .update({
+              status: "Acompanhamento",
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", leadId);
+          console.log("✅ Lead atualizado para Acompanhamento:", leadId);
         }
 
-        console.log('✅ Lead vinculado à conversa:', leadId);
+        console.log("✅ Lead vinculado à conversa:", leadId);
 
         // 3.6 Auto-routing: se lead está em campanha ativa, chamar IA (non-blocking)
         if (!fromMe && messageContent.text) {
           try {
             const { data: campLeadCheck } = await supabase
-              .from('campanha_leads')
-              .select('id, campanha_id, status')
-              .eq('lead_id', leadId)
-              .in('status', ['contatado', 'sem_resposta', 'em_conversa', 'aquecido'])
+              .from("campanha_leads")
+              .select("id, campanha_id, status")
+              .eq("lead_id", leadId)
+              .in("status", [
+                "contatado",
+                "sem_resposta",
+                "em_conversa",
+                "aquecido",
+              ])
               .limit(1)
               .maybeSingle();
 
@@ -1038,68 +1224,90 @@ serve(async (req) => {
               // Checa o tipo de envio da campanha: 'manual' => a OPERADORA conduz a conversa,
               // a IA NÃO responde. Só campanhas 'ia'/'ambos' acionam o respondedor automático.
               const { data: campInfo } = await supabase
-                .from('campanhas')
-                .select('tipo_envio')
-                .eq('id', campLeadCheck.campanha_id)
+                .from("campanhas")
+                .select("tipo_envio")
+                .eq("id", campLeadCheck.campanha_id)
                 .maybeSingle();
-              const tipoEnvio = (campInfo?.tipo_envio as string) ?? 'ia';
+              const tipoEnvio = (campInfo?.tipo_envio as string) ?? "ia";
 
-              if (tipoEnvio === 'manual') {
+              if (tipoEnvio === "manual") {
                 // Campanha manual: conversa fica registrada e visível pra operadora responder
                 // pelo Sigma. IA não entra (modelo: disparo automático + troca humana).
                 // Auto-movimento do kanban manual (11/06): médico respondeu →
                 // status vai pra 'em_conversa' (Aguardando resposta → Aquecido).
-                if (campLeadCheck.status === 'contatado' || campLeadCheck.status === 'sem_resposta') {
+                if (
+                  campLeadCheck.status === "contatado" ||
+                  campLeadCheck.status === "sem_resposta"
+                ) {
                   await supabase
-                    .from('campanha_leads')
-                    .update({ status: 'em_conversa', data_status: new Date().toISOString() })
-                    .eq('id', campLeadCheck.id);
+                    .from("campanha_leads")
+                    .update({
+                      status: "em_conversa",
+                      data_status: new Date().toISOString(),
+                    })
+                    .eq("id", campLeadCheck.id);
                 }
-                console.log('📋 Lead em campanha MANUAL respondeu — IA NÃO responde, encaminhado pra operadora:', JSON.stringify({
-                  lead_id: leadId,
-                  campanha_id: campLeadCheck.campanha_id,
-                  msg_preview: messageContent.text?.slice(0, 50),
-                }));
+                console.log(
+                  "📋 Lead em campanha MANUAL respondeu — IA NÃO responde, encaminhado pra operadora:",
+                  JSON.stringify({
+                    lead_id: leadId,
+                    campanha_id: campLeadCheck.campanha_id,
+                    msg_preview: messageContent.text?.slice(0, 50),
+                  }),
+                );
               } else {
                 // A resposta automática é orquestrada exclusivamente pelo
                 // Campanha Webhook Bridge. Ele agrega rajadas e elege um único
                 // dono antes de chamar a IA; disparar também daqui criava duas
                 // respostas para a mesma mensagem.
-                console.log('🤖 Lead em campanha IA ativa — resposta delegada ao bridge N8N', JSON.stringify({
-                  lead_id: leadId,
-                  campanha_id: campLeadCheck.campanha_id,
-                  phone: normalizedPhone.replace('+', ''),
-                  instance: instanceName,
-                  msg_preview: messageContent.text?.slice(0, 50),
-                }));
+                console.log(
+                  "🤖 Lead em campanha IA ativa — resposta delegada ao bridge N8N",
+                  JSON.stringify({
+                    lead_id: leadId,
+                    campanha_id: campLeadCheck.campanha_id,
+                    phone: normalizedPhone.replace("+", ""),
+                    instance: instanceName,
+                    msg_preview: messageContent.text?.slice(0, 50),
+                  }),
+                );
               }
             }
           } catch (campCheckErr) {
-            console.warn('⚠️ Erro ao verificar campanha (não-crítico):', campCheckErr);
+            console.warn(
+              "⚠️ Erro ao verificar campanha (não-crítico):",
+              campCheckErr,
+            );
           }
         }
       }
     } catch (leadLinkError) {
-      console.warn('⚠️ Erro ao vincular lead (não-crítico):', leadLinkError);
+      console.warn("⚠️ Erro ao vincular lead (não-crítico):", leadLinkError);
     }
 
     // 4. Verificar se a mensagem já existe (evitar duplicatas)
-    if (messageId && !messageId.startsWith('msg_')) {
+    if (messageId && !messageId.startsWith("msg_")) {
       const { data: existingMessage } = await supabase
-        .from('sigzap_messages')
-        .select('id')
-        .eq('wa_message_id', messageId)
+        .from("sigzap_messages")
+        .select("id")
+        .eq("provider", provider)
+        .eq("wa_message_id", messageId)
         .maybeSingle();
 
       if (existingMessage) {
-        console.log('⚠️ Mensagem já existe, ignorando duplicata:', messageId);
-        return new Response(JSON.stringify({ 
-          success: true, 
-          message: 'Mensagem já processada',
-          data: { conversationId: conversation.id, messageId: existingMessage.id }
-        }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+        console.log("⚠️ Mensagem já existe, ignorando duplicata:", messageId);
+        return new Response(
+          JSON.stringify({
+            success: true,
+            message: "Mensagem já processada",
+            data: {
+              conversationId: conversation.id,
+              messageId: existingMessage.id,
+            },
+          }),
+          {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          },
+        );
       }
     }
 
@@ -1107,29 +1315,36 @@ serve(async (req) => {
     let storedMediaUrl: string | null = null;
     const serverUrl = (payload as any).server_url;
     const payloadApiKey = (payload as any).apikey;
-    
-    if (messageContent.mediaUrl && ['image', 'video', 'audio', 'document', 'sticker'].includes(messageContent.type)) {
+
+    if (
+      messageContent.mediaUrl &&
+      ["image", "video", "audio", "document", "sticker"].includes(
+        messageContent.type,
+      )
+    ) {
       storedMediaUrl = await downloadAndStoreMedia(
         supabase,
         messageContent.mediaUrl,
         instance.id,
         conversation.id,
         messageId,
-        messageContent.mediaMimeType || 'application/octet-stream',
+        messageContent.mediaMimeType || "application/octet-stream",
         instanceName,
         serverUrl,
-        payloadApiKey
+        payloadApiKey,
       );
     }
 
     // 6. Inserir mensagem
     const rawPayload = payload.raw_payload || payload;
-    
+
     const { data: newMessage, error: msgError } = await supabase
-      .from('sigzap_messages')
+      .from("sigzap_messages")
       .insert({
         conversation_id: conversation.id,
         wa_message_id: messageId,
+        provider,
+        provider_message_id: payload.provider_message_id || messageId,
         from_me: fromMe,
         sender_jid: fromMe ? null : contactJid,
         message_text: messageContent.text,
@@ -1146,93 +1361,144 @@ serve(async (req) => {
         // Campos do fluxo novo sigma-evo (NULL quando vierem do fluxo antigo)
         is_forwarded: payload.is_forwarded ?? null,
         forward_score: payload.forward_score ?? null,
-        location_data: payload.location_data ?? messageContent.locationData ?? null,
-        contact_data: payload.contact_data ?? messageContent.contactData ?? null,
+        location_data: payload.location_data ?? messageContent.locationData ??
+          null,
+        contact_data: payload.contact_data ?? messageContent.contactData ??
+          null,
         poll_data: payload.poll_data ?? messageContent.pollData ?? null,
         quoted_message_type: payload.quoted_message_type ?? null,
-        quoted_message_participant: payload.quoted_message_participant ?? null
+        quoted_message_participant: payload.quoted_message_participant ?? null,
       })
-      .select('id')
+      .select("id")
       .single();
 
     if (msgError) {
-      console.error('❌ Erro ao inserir mensagem:', msgError);
+      console.error("❌ Erro ao inserir mensagem:", msgError);
       throw msgError;
     }
 
-    console.log('✅ Mensagem processada com sucesso:', { 
-      conversationId: conversation.id, 
+    console.log("✅ Mensagem processada com sucesso:", {
+      conversationId: conversation.id,
       messageId: newMessage.id,
       fromMe,
-      type: messageContent.type
+      type: messageContent.type,
     });
 
     // ========== IA AUTO-RESPOSTA PARA DISPAROS ==========
     // Se a mensagem NÃO é enviada por nós (é do médico) e é texto, verificar se deve acionar IA
-    if (!fromMe && messageContent.type === 'text' && messageContent.text && contactPhone) {
+    if (
+      !fromMe && messageContent.type === "text" && messageContent.text &&
+      contactPhone
+    ) {
       try {
-        console.log('[IA-CHECK] Verificando se contato pertence a campanha com IA ativa...');
-        
-        // Chamar a edge function de IA de forma assíncrona (fire-and-forget com timeout)
-        const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
-        const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-        
-        const iaPayload = {
-          telefone_medico: contactPhone,
-          mensagem_medico: messageContent.text,
-          nome_medico: pushName !== 'Desconhecido' ? pushName : undefined,
-          instance_name: instanceName,
-        };
+        console.log(
+          "[IA-CHECK] Verificando se contato pertence a campanha com IA ativa...",
+        );
 
-        // Fire-and-forget: não bloqueia o fluxo principal
-        fetch(`${supabaseUrl}/functions/v1/ia-resposta-medico`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${supabaseServiceKey}`,
-          },
-          body: JSON.stringify(iaPayload),
-        }).then(async (res) => {
-          const result = await res.json();
-          if (result.skip) {
-            console.log('[IA-CHECK] IA ignorada:', result.reason);
-          } else if (result.success) {
-            console.log('[IA-CHECK] IA respondeu com sucesso, transferido:', result.transferred);
-          } else if (result.error) {
-            console.error('[IA-CHECK] Erro na IA:', result.error);
-          }
-        }).catch((err) => {
-          console.error('[IA-CHECK] Erro ao chamar IA (não crítico):', err);
-        });
+        // O fluxo moderno (campanhas + campanha_leads) já é orquestrado pelo
+        // bridge/funcao campanha-ia-responder. O fallback legado abaixo só
+        // pode rodar quando o lead não estiver em uma campanha moderna ativa;
+        // antes os dois caminhos respondiam a mesma mensagem.
+        const normalizedPhone = contactPhone.startsWith("+")
+          ? contactPhone
+          : `+${contactPhone}`;
+        const { data: modernLeadId } = await supabase.rpc(
+          "find_lead_by_phone",
+          { p_phone: normalizedPhone },
+        );
+        let modernIaActive = false;
+        if (modernLeadId) {
+          const { data: modernRows } = await supabase
+            .from("campanha_leads")
+            .select("campanha_id, campanhas:campanha_id(status, tipo_envio)")
+            .eq("lead_id", modernLeadId)
+            .in("status", ["contatado", "em_conversa", "aquecido"])
+            .limit(25);
+          modernIaActive = (modernRows || []).some((row: any) =>
+            String(row.campanhas?.status || "").toLowerCase() === "ativa" &&
+            ["ia", "ambos"].includes(
+              String(row.campanhas?.tipo_envio || "").toLowerCase(),
+            )
+          );
+        }
+
+        if (modernIaActive) {
+          console.log(
+            "[IA-CHECK] Fluxo moderno detectado; fallback legado não será acionado.",
+          );
+        } else {
+          // Chamar a edge function de IA legada de forma assíncrona (fallback)
+          const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+          const supabaseServiceKey =
+            Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+
+          const iaPayload = {
+            telefone_medico: contactPhone,
+            mensagem_medico: messageContent.text,
+            nome_medico: pushName !== "Desconhecido" ? pushName : undefined,
+            instance_name: instanceName,
+          };
+
+          // Fire-and-forget: não bloqueia o fluxo principal
+          fetch(`${supabaseUrl}/functions/v1/ia-resposta-medico`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${supabaseServiceKey}`,
+            },
+            body: JSON.stringify(iaPayload),
+          }).then(async (res) => {
+            const result = await res.json();
+            if (result.skip) {
+              console.log("[IA-CHECK] IA ignorada:", result.reason);
+            } else if (result.success) {
+              console.log(
+                "[IA-CHECK] IA respondeu com sucesso, transferido:",
+                result.transferred,
+              );
+            } else if (result.error) {
+              console.error("[IA-CHECK] Erro na IA:", result.error);
+            }
+          }).catch((err) => {
+            console.error("[IA-CHECK] Erro ao chamar IA (não crítico):", err);
+          });
+        }
       } catch (iaError) {
         // Erro na IA não deve impedir o fluxo normal
-        console.error('[IA-CHECK] Erro ao iniciar chamada IA:', iaError);
+        console.error("[IA-CHECK] Erro ao iniciar chamada IA:", iaError);
       }
     }
     // ========== FIM IA AUTO-RESPOSTA ==========
 
-    return new Response(JSON.stringify({ 
-      success: true, 
-      message: 'Mensagem processada',
-      data: { 
-        conversationId: conversation.id, 
-        messageId: newMessage.id,
-        instanceId: instance.id,
-        contactId: contact.id
-      }
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-
+    return new Response(
+      JSON.stringify({
+        success: true,
+        message: "Mensagem processada",
+        data: {
+          conversationId: conversation.id,
+          messageId: newMessage.id,
+          instanceId: instance.id,
+          contactId: contact.id,
+        },
+      }),
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
+    );
   } catch (error: unknown) {
-    console.error('❌ Erro no endpoint de mensagens:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
-    return new Response(JSON.stringify({ 
-      success: false, 
-      error: errorMessage 
-    }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    console.error("❌ Erro no endpoint de mensagens:", error);
+    const errorMessage = error instanceof Error
+      ? error.message
+      : "Erro desconhecido";
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: errorMessage,
+      }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
+    );
   }
 });

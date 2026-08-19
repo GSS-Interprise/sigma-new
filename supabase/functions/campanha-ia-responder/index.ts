@@ -1,14 +1,18 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { twilioCredentials } from "../_shared/twilio-auth.ts";
 import { sendWhatsAppText } from "../_shared/evo-sender.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
 };
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -30,10 +34,33 @@ serve(async (req) => {
     if (!phone) throw new Error("phone obrigatório");
 
     const finalText = aggregated_texts || message_text || "";
-    const hasMedia = (message_type === "audio" || message_type === "image") && msg_id;
-    if (!finalText && !hasMedia) throw new Error("message_text ou mídia obrigatórios");
+    const hasMedia = (message_type === "audio" || message_type === "image") &&
+      msg_id;
+    let twilioAccountKey = "principal";
+    if (conversation_id) {
+      const { data: conversationContext } = await supabase
+        .from("sigzap_conversations")
+        .select("instance_id")
+        .eq("id", conversation_id)
+        .maybeSingle();
+      if (conversationContext?.instance_id) {
+        const { data: instanceContext } = await supabase
+          .from("sigzap_instances")
+          .select("provider, twilio_account_key")
+          .eq("id", conversationContext.instance_id)
+          .maybeSingle();
+        if (instanceContext?.provider === "twilio") {
+          twilioAccountKey = instanceContext.twilio_account_key || "principal";
+        }
+      }
+    }
+    if (!finalText && !hasMedia) {
+      throw new Error("message_text ou mídia obrigatórios");
+    }
 
-    console.log(`[ia] 📩 ${phone}: ${finalText.slice(0, 100)} (type=${message_type})`);
+    console.log(
+      `[ia] 📩 ${phone}: ${finalText.slice(0, 100)} (type=${message_type})`,
+    );
 
     // ── 1. Identificar lead ──
     const phoneDigits = phone.replace(/\D/g, "");
@@ -43,14 +70,18 @@ serve(async (req) => {
       const { data } = await supabase.from("leads")
         .select("id, nome, phone_e164, especialidade, uf, cidade")
         .eq("phone_e164", pv).is("merged_into_id", null).limit(1).maybeSingle();
-      if (data) { lead = data; break; }
+      if (data) {
+        lead = data;
+        break;
+      }
     }
 
     if (!lead) {
       const last8 = phoneDigits.slice(-8);
       const { data } = await supabase.from("leads")
         .select("id, nome, phone_e164, especialidade, uf, cidade")
-        .like("phone_e164", `%${last8}`).is("merged_into_id", null).limit(1).maybeSingle();
+        .like("phone_e164", `%${last8}`).is("merged_into_id", null).limit(1)
+        .maybeSingle();
       if (data) lead = data;
     }
 
@@ -61,8 +92,14 @@ serve(async (req) => {
     // Um mesmo medico pode estar em mais de uma campanha. Escolher apenas a
     // linha mais recente fazia campanha pausada/manual esconder uma IA ativa.
     const { data: campLeadCandidates } = await supabase.from("campanha_leads")
-      .select("id, campanha_id, status, humano_assumiu, aguarda_resposta_humana, historico_conversa, conversa_id, campanha:campanha_id(id, nome, status, briefing_ia, responsaveis, tipo_envio, whatsapp_provider)")
-      .eq("lead_id", lead.id).in("status", ["contatado", "em_conversa", "aquecido"])
+      .select(
+        "id, campanha_id, status, humano_assumiu, aguarda_resposta_humana, historico_conversa, conversa_id, campanha:campanha_id(id, nome, status, briefing_ia, responsaveis, tipo_envio, whatsapp_provider)",
+      )
+      .eq("lead_id", lead.id).in("status", [
+        "contatado",
+        "em_conversa",
+        "aquecido",
+      ])
       .order("data_ultimo_contato", { ascending: false }).limit(25);
 
     const campLead = (campLeadCandidates || []).find((candidate: any) => {
@@ -72,8 +109,12 @@ serve(async (req) => {
       return status === "ativa" && ["ia", "ambos"].includes(type);
     }) as any;
 
-    if (!campLead) return json({ ok: false, reason: "not_in_active_ai_campaign" });
-    if (campLead.humano_assumiu) return json({ ok: true, reason: "humano_assumiu" });
+    if (!campLead) {
+      return json({ ok: false, reason: "not_in_active_ai_campaign" });
+    }
+    if (campLead.humano_assumiu) {
+      return json({ ok: true, reason: "humano_assumiu" });
+    }
 
     const campanha = campLead.campanha as any;
     const tipoEnvio = String(campanha?.tipo_envio || "ia").toLowerCase();
@@ -94,9 +135,23 @@ serve(async (req) => {
         .maybeSingle();
       const receivingChipId = receivingChip?.id;
 
-      if (!receivingChipId) {
-        console.log(`[ia] ⚠️ instance ${instance_name} não corresponde a nenhum chip. Ignorando.`);
+      const isChakraCampaign =
+        String(campLead.campanha?.whatsapp_provider || "").toLowerCase() ===
+          "chakra";
+      if (!receivingChipId && !isChakraCampaign) {
+        console.log(
+          `[ia] ⚠️ instance ${instance_name} não corresponde a nenhum chip. Ignorando.`,
+        );
         return json({ ok: false, reason: "instance_not_a_chip" });
+      }
+
+      // Coexistência Chakra não cria um chip Evolution. Para campanhas Chakra
+      // o remetente oficial e o phone_number_id do webhook são a autoridade;
+      // exigir chip_id aqui descartaria todas as respostas válidas.
+      if (isChakraCampaign) {
+        console.log(
+          `[ia] ✅ conversa Chakra autorizada pelo remetente oficial (${instance_name})`,
+        );
       }
 
       const { data: campChips } = await supabase
@@ -108,12 +163,14 @@ serve(async (req) => {
       const allowed = new Set<string>();
       if (campChips?.chip_id) allowed.add(campChips.chip_id);
       if (Array.isArray(campChips?.chip_ids)) {
-        for (const id of campChips!.chip_ids as string[]) if (id) allowed.add(id);
+        for (const id of campChips!.chip_ids as string[]) {
+          if (id) allowed.add(id);
+        }
       }
 
-      if (!allowed.has(receivingChipId)) {
+      if (!isChakraCampaign && !allowed.has(receivingChipId)) {
         console.log(
-          `[ia] 🚫 chip ${receivingChipId} (${instance_name}) recebeu msg do lead ${lead.nome}, mas não pertence à campanha ${campLead.campanha_id}. IA NÃO responde.`
+          `[ia] 🚫 chip ${receivingChipId} (${instance_name}) recebeu msg do lead ${lead.nome}, mas não pertence à campanha ${campLead.campanha_id}. IA NÃO responde.`,
         );
         // Registra a mensagem no histórico pra rastreabilidade, mas não responde
         const histTmp: any[] = campLead.historico_conversa || [];
@@ -124,10 +181,21 @@ serve(async (req) => {
           chip_fora_da_campanha: instance_name,
         });
         await supabase.from("campanha_leads")
-          .update(mergeConversationId({ historico_conversa: histTmp, data_ultimo_contato: new Date().toISOString() }, conversation_id))
+          .update(
+            mergeConversationId({
+              historico_conversa: histTmp,
+              data_ultimo_contato: new Date().toISOString(),
+            }, conversation_id),
+          )
           .eq("id", campLead.id);
-        await addOperationalTags(supabase, lead.id, [OPERATIONAL_TAGS.incoming]);
-        return json({ ok: false, reason: "chip_not_in_campaign", chip: receivingChipId });
+        await addOperationalTags(supabase, lead.id, [
+          OPERATIONAL_TAGS.incoming,
+        ]);
+        return json({
+          ok: false,
+          reason: "chip_not_in_campaign",
+          chip: receivingChipId,
+        });
       }
     }
 
@@ -142,8 +210,12 @@ serve(async (req) => {
           p_instance_name: instance_name || null,
         },
       );
-      if (claimError) throw new Error(`idempotency_claim: ${claimError.message}`);
-      if (!claimed) return json({ ok: true, reason: "duplicate_msg_id", msg_id });
+      if (claimError) {
+        throw new Error(`idempotency_claim: ${claimError.message}`);
+      }
+      if (!claimed) {
+        return json({ ok: true, reason: "duplicate_msg_id", msg_id });
+      }
       claimedMessageId = msg_id;
     }
 
@@ -158,10 +230,21 @@ serve(async (req) => {
         resposta_automatica: true,
       });
       await supabase.from("campanha_leads")
-        .update(mergeConversationId({ historico_conversa: histTmp, data_ultimo_contato: new Date().toISOString() }, conversation_id))
+        .update(
+          mergeConversationId({
+            historico_conversa: histTmp,
+            data_ultimo_contato: new Date().toISOString(),
+          }, conversation_id),
+        )
         .eq("id", campLead.id);
-      await addOperationalTags(supabase, lead.id, [OPERATIONAL_TAGS.incoming, OPERATIONAL_TAGS.automatic]);
-      const autoReplyResult = { ok: true, reason: "resposta_automatica_ignorada" };
+      await addOperationalTags(supabase, lead.id, [
+        OPERATIONAL_TAGS.incoming,
+        OPERATIONAL_TAGS.automatic,
+      ]);
+      const autoReplyResult = {
+        ok: true,
+        reason: "resposta_automatica_ignorada",
+      };
       if (claimedMessageId) {
         await supabase.from("campanha_ia_processed_messages").update({
           status: "completed",
@@ -176,23 +259,58 @@ serve(async (req) => {
     // Se lead está aguardando resposta do responsável, registra msg no histórico mas não responde ainda
     if (campLead.aguarda_resposta_humana) {
       const histTmp: any[] = campLead.historico_conversa || [];
-      histTmp.push({ role: "medico", text: finalText, ts: new Date().toISOString(), pendente_humano: true });
-      await supabase.from("campanha_leads").update(mergeConversationId({ historico_conversa: histTmp, data_ultimo_contato: new Date().toISOString() }, conversation_id)).eq("id", campLead.id);
-      await addOperationalTags(supabase, lead.id, [OPERATIONAL_TAGS.incoming, OPERATIONAL_TAGS.waitingTeam]);
-      console.log(`[ia] ⏸️ lead aguardando resposta humana — msg registrada mas IA não responde`);
-      return json({ ok: true, reason: "aguardando_resposta_humana", msg: "IA pausada até responsável responder pergunta pendente" });
+      histTmp.push({
+        role: "medico",
+        text: finalText,
+        ts: new Date().toISOString(),
+        pendente_humano: true,
+      });
+      await supabase.from("campanha_leads").update(
+        mergeConversationId({
+          historico_conversa: histTmp,
+          data_ultimo_contato: new Date().toISOString(),
+        }, conversation_id),
+      ).eq("id", campLead.id);
+      await addOperationalTags(supabase, lead.id, [
+        OPERATIONAL_TAGS.incoming,
+        OPERATIONAL_TAGS.waitingTeam,
+      ]);
+      console.log(
+        `[ia] ⏸️ lead aguardando resposta humana — msg registrada mas IA não responde`,
+      );
+      return json({
+        ok: true,
+        reason: "aguardando_resposta_humana",
+        msg: "IA pausada até responsável responder pergunta pendente",
+      });
     }
 
     const briefing = campanha?.briefing_ia || {};
     const briefingIssues = validateCampaignBriefing(briefing);
     if (briefingIssues.errors.length > 0) {
-      await addOperationalTags(supabase, lead.id, [OPERATIONAL_TAGS.briefingReview]);
-      console.warn(`[ia] briefing incompleto na campanha ${campLead.campanha_id}: ${briefingIssues.errors.join("; ")}`);
-      return json({ ok: false, reason: "briefing_incompleto", errors: briefingIssues.errors });
+      await addOperationalTags(supabase, lead.id, [
+        OPERATIONAL_TAGS.briefingReview,
+      ]);
+      console.warn(
+        `[ia] briefing incompleto na campanha ${campLead.campanha_id}: ${
+          briefingIssues.errors.join("; ")
+        }`,
+      );
+      return json({
+        ok: false,
+        reason: "briefing_incompleto",
+        errors: briefingIssues.errors,
+      });
     }
     if (briefingIssues.warnings.length > 0) {
-      await addOperationalTags(supabase, lead.id, [OPERATIONAL_TAGS.briefingReview]);
-      console.warn(`[ia] briefing com pontos para revisar na campanha ${campLead.campanha_id}: ${briefingIssues.warnings.join("; ")}`);
+      await addOperationalTags(supabase, lead.id, [
+        OPERATIONAL_TAGS.briefingReview,
+      ]);
+      console.warn(
+        `[ia] briefing com pontos para revisar na campanha ${campLead.campanha_id}: ${
+          briefingIssues.warnings.join("; ")
+        }`,
+      );
     }
 
     // ── 2b. Buscar perfil unificado (Trilha B) ──
@@ -220,9 +338,16 @@ serve(async (req) => {
 
     // ── 3. Credenciais Evolution (precisa pra decrypt + envio) ──
     const { data: evoConfig } = await supabase.from("config_lista_items")
-      .select("campo_nome, valor").in("campo_nome", ["evolution_api_url", "evolution_api_key"]);
-    const evoUrl = evoConfig?.find((c: any) => c.campo_nome === "evolution_api_url")?.valor?.replace(/\/+$/, "");
-    const evoKey = evoConfig?.find((c: any) => c.campo_nome === "evolution_api_key")?.valor;
+      .select("campo_nome, valor").in("campo_nome", [
+        "evolution_api_url",
+        "evolution_api_key",
+      ]);
+    const evoUrl = evoConfig?.find((c: any) =>
+      c.campo_nome === "evolution_api_url"
+    )?.valor?.replace(/\/+$/, "");
+    const evoKey = evoConfig?.find((c: any) =>
+      c.campo_nome === "evolution_api_key"
+    )?.valor;
 
     // ── 4. Processar multimodal ──
     let processedText = finalText;
@@ -230,25 +355,35 @@ serve(async (req) => {
     if (!apiKey) throw new Error("OPENAI_API_KEY não configurada");
 
     // Áudio: decrypt via Evolution → Whisper
-    if (message_type === "audio" && msg_id && ((instance_name && evoUrl && evoKey) || media_url)) {
+    if (
+      message_type === "audio" && msg_id &&
+      ((instance_name && evoUrl && evoKey) || media_url)
+    ) {
       console.log(`[ia] 🎙️ Decrypt áudio (msg ${msg_id})`);
       try {
         const media = media_url && !instance_name
-          ? await downloadTwilioMedia(media_url)
+          ? await downloadTwilioMedia(media_url, twilioAccountKey)
           : await decryptMedia(evoUrl, evoKey, instance_name, msg_id, phone);
         if (media) {
-          const ext = media.mimetype.includes("ogg") ? "ogg" : media.mimetype.includes("mp3") ? "mp3" : "m4a";
+          const ext = media.mimetype.includes("ogg")
+            ? "ogg"
+            : media.mimetype.includes("mp3")
+            ? "mp3"
+            : "m4a";
           const audioBlob = base64ToBlob(media.base64, media.mimetype);
           const formData = new FormData();
           formData.append("file", audioBlob, `audio.${ext}`);
           formData.append("model", "whisper-1");
           formData.append("language", "pt");
 
-          const whisperResp = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-            method: "POST",
-            headers: { Authorization: `Bearer ${apiKey}` },
-            body: formData,
-          });
+          const whisperResp = await fetch(
+            "https://api.openai.com/v1/audio/transcriptions",
+            {
+              method: "POST",
+              headers: { Authorization: `Bearer ${apiKey}` },
+              body: formData,
+            },
+          );
 
           if (whisperResp.ok) {
             const transcript = ((await whisperResp.json()).text || "").trim();
@@ -259,7 +394,11 @@ serve(async (req) => {
               console.log(`[ia] 🎙️ Transcrição: ${transcript.slice(0, 100)}`);
             }
           } else {
-            console.warn(`[ia] ⚠️ Whisper ${whisperResp.status}: ${(await whisperResp.text()).slice(0, 200)}`);
+            console.warn(
+              `[ia] ⚠️ Whisper ${whisperResp.status}: ${
+                (await whisperResp.text()).slice(0, 200)
+              }`,
+            );
           }
         }
       } catch (audioErr: any) {
@@ -268,29 +407,50 @@ serve(async (req) => {
     }
 
     // Imagem: decrypt via Evolution → Vision (data URL)
-    if (message_type === "image" && msg_id && instance_name && evoUrl && evoKey) {
+    if (
+      message_type === "image" && msg_id && instance_name && evoUrl && evoKey
+    ) {
       console.log(`[ia] 🖼️ Decrypt imagem (msg ${msg_id})`);
       try {
-        const media = await decryptMedia(evoUrl, evoKey, instance_name, msg_id, phone);
+        const media = await decryptMedia(
+          evoUrl,
+          evoKey,
+          instance_name,
+          msg_id,
+          phone,
+        );
         if (media) {
           const dataUrl = `data:${media.mimetype};base64,${media.base64}`;
-          const visionResp = await fetch("https://api.openai.com/v1/chat/completions", {
-            method: "POST",
-            headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-            body: JSON.stringify({
-              model: "gpt-4o", max_tokens: 300,
-              messages: [{
-                role: "user",
-                content: [
-                  { type: "text", text: "Descreva esta imagem de forma objetiva em português, em 1-2 frases. Se for documento médico (CRM, RQE, diploma, comprovante), extraia números e dados visíveis." },
-                  { type: "image_url", image_url: { url: dataUrl } },
-                ],
-              }],
-            }),
-          });
+          const visionResp = await fetch(
+            "https://api.openai.com/v1/chat/completions",
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${apiKey}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                model: "gpt-4o",
+                max_tokens: 300,
+                messages: [{
+                  role: "user",
+                  content: [
+                    {
+                      type: "text",
+                      text:
+                        "Descreva esta imagem de forma objetiva em português, em 1-2 frases. Se for documento médico (CRM, RQE, diploma, comprovante), extraia números e dados visíveis.",
+                    },
+                    { type: "image_url", image_url: { url: dataUrl } },
+                  ],
+                }],
+              }),
+            },
+          );
 
           if (visionResp.ok) {
-            const desc = ((await visionResp.json()).choices?.[0]?.message?.content || "").trim();
+            const desc =
+              ((await visionResp.json()).choices?.[0]?.message?.content || "")
+                .trim();
             if (desc) {
               processedText = finalText && finalText !== "[imagem]"
                 ? `${finalText}\n[Imagem do médico]: ${desc}`
@@ -298,7 +458,11 @@ serve(async (req) => {
               console.log(`[ia] 🖼️ Análise: ${desc.slice(0, 100)}`);
             }
           } else {
-            console.warn(`[ia] ⚠️ Vision ${visionResp.status}: ${(await visionResp.text()).slice(0, 200)}`);
+            console.warn(
+              `[ia] ⚠️ Vision ${visionResp.status}: ${
+                (await visionResp.text()).slice(0, 200)
+              }`,
+            );
           }
         }
       } catch (imgErr: any) {
@@ -307,8 +471,13 @@ serve(async (req) => {
     }
 
     // ── 4. Histórico ──
-    const historico: Array<{ role: string; text: string; ts: string }> = campLead.historico_conversa || [];
-    historico.push({ role: "medico", text: processedText, ts: new Date().toISOString() });
+    const historico: Array<{ role: string; text: string; ts: string }> =
+      campLead.historico_conversa || [];
+    historico.push({
+      role: "medico",
+      text: processedText,
+      ts: new Date().toISOString(),
+    });
     await addOperationalTags(supabase, lead.id, [OPERATIONAL_TAGS.incoming]);
 
     const historicoTexto = historico
@@ -318,35 +487,67 @@ serve(async (req) => {
     // ── 5. Prompt + IA ──
     const prompt = buildPrompt(briefing, lead, perfilInteresse, timelineOutros);
 
-    const aiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "gpt-4o", max_tokens: 800, temperature: 0.7,
-        messages: [
-          { role: "system", content: prompt },
-          { role: "user", content: `[HISTÓRICO COMPLETO DA CONVERSA]\n${historicoTexto}\n\n[RESPONDA APENAS A ÚLTIMA MENSAGEM DO MÉDICO. NÃO REPITA PERGUNTAS JÁ RESPONDIDAS.]` },
-        ],
-      }),
-    });
+    const aiResponse = await fetch(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "gpt-4o",
+          max_tokens: 800,
+          temperature: 0.7,
+          messages: [
+            { role: "system", content: prompt },
+            {
+              role: "user",
+              content:
+                `[HISTÓRICO COMPLETO DA CONVERSA]\n${historicoTexto}\n\n[RESPONDA APENAS A ÚLTIMA MENSAGEM DO MÉDICO. NÃO REPITA PERGUNTAS JÁ RESPONDIDAS.]`,
+            },
+          ],
+        }),
+      },
+    );
 
-    if (!aiResponse.ok) throw new Error(`OpenAI ${aiResponse.status}: ${(await aiResponse.text()).slice(0, 200)}`);
+    if (!aiResponse.ok) {
+      throw new Error(
+        `OpenAI ${aiResponse.status}: ${
+          (await aiResponse.text()).slice(0, 200)
+        }`,
+      );
+    }
 
-    const rawOutput = (await aiResponse.json()).choices?.[0]?.message?.content || "";
+    const rawOutput =
+      (await aiResponse.json()).choices?.[0]?.message?.content || "";
 
     // ── 6. Parsear JSON (robusto — NUNCA mandar JSON cru pro médico) ──
     // Bug 16/06: parse falhava (modelo prefixava "JSON:\njson\n{...}") e o fallback
     // mandava o rawOutput inteiro pro médico, vazando a estrutura interna.
     const extrairJson = (raw: string): any | null => {
-      const limpo = raw.replace(/^\s*json\s*:?/i, "").replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
+      const limpo = raw.replace(/^\s*json\s*:?/i, "").replace(
+        /^```json\s*/i,
+        "",
+      ).replace(/^```\s*/i, "").replace(/```$/i, "").trim();
       for (const cand of [limpo, raw]) {
-        try { return JSON.parse(cand); } catch { /* tenta extrair o objeto */ }
+        try {
+          return JSON.parse(cand);
+        } catch { /* tenta extrair o objeto */ }
         const i = cand.indexOf("{"), j = cand.lastIndexOf("}");
-        if (i >= 0 && j > i) { try { return JSON.parse(cand.slice(i, j + 1)); } catch { /* segue */ } }
+        if (i >= 0 && j > i) {
+          try {
+            return JSON.parse(cand.slice(i, j + 1));
+          } catch { /* segue */ }
+        }
       }
       // último recurso: extrai só o array "messages"
       const m = raw.match(/"messages"\s*:\s*(\[[\s\S]*?\])/);
-      if (m) { try { return { messages: JSON.parse(m[1]) }; } catch { /* nada */ } }
+      if (m) {
+        try {
+          return { messages: JSON.parse(m[1]) };
+        } catch { /* nada */ }
+      }
       return null;
     };
 
@@ -354,19 +555,33 @@ serve(async (req) => {
     const parseFalhou = !parsed || !Array.isArray(parsed.messages);
     if (parseFalhou) {
       // NÃO manda nada cru pro médico — escala pra humano.
-      console.error("[ia] ⚠️ parse FALHOU — NÃO enviando raw. raw:", rawOutput.slice(0, 300));
-      parsed = { messages: [], AGUARDA_RESPOSTA_HUMANA: true, pergunta_para_responsavel: "IA não conseguiu formatar a resposta — responder manualmente." };
+      console.error(
+        "[ia] ⚠️ parse FALHOU — NÃO enviando raw. raw:",
+        rawOutput.slice(0, 300),
+      );
+      parsed = {
+        messages: [],
+        AGUARDA_RESPOSTA_HUMANA: true,
+        pergunta_para_responsavel:
+          "IA não conseguiu formatar a resposta — responder manualmente.",
+      };
     }
 
     // Anti-vazamento: descarta qualquer "mensagem" que pareça JSON/estrutura interna.
-    const pareceJson = (t: string) => /^\s*[{[]/.test(t) || /"(maturidade_lead|ALERTA_LEAD|conversa_encerrada|AGUARDA_RESPOSTA_HUMANA|messages)"\s*:/.test(t) || /^\s*json\b/i.test(t);
-    const messages: string[] = (Array.isArray(parsed.messages) ? parsed.messages : [])
-      .filter((x: any) => typeof x === "string" && x.trim() && !pareceJson(x))
-      .map((message: string) => sanitizeExternalMessage(message))
-      // Uma rodada consolidada gera uma única bolha. Isso evita rajadas mesmo
-      // quando o modelo tenta fragmentar a resposta em várias mensagens.
-      .slice(0, 1);
-    const respostaRepetida = messages.length > 0 && isNearDuplicate(messages[0], historico);
+    const pareceJson = (t: string) =>
+      /^\s*[{[]/.test(t) ||
+      /"(maturidade_lead|ALERTA_LEAD|conversa_encerrada|AGUARDA_RESPOSTA_HUMANA|messages)"\s*:/
+        .test(t) ||
+      /^\s*json\b/i.test(t);
+    const messages: string[] =
+      (Array.isArray(parsed.messages) ? parsed.messages : [])
+        .filter((x: any) => typeof x === "string" && x.trim() && !pareceJson(x))
+        .map((message: string) => sanitizeExternalMessage(message))
+        // Uma rodada consolidada gera uma única bolha. Isso evita rajadas mesmo
+        // quando o modelo tenta fragmentar a resposta em várias mensagens.
+        .slice(0, 1);
+    const respostaRepetida = messages.length > 0 &&
+      isNearDuplicate(messages[0], historico);
     if (respostaRepetida) {
       console.warn(`[ia] resposta repetida bloqueada para ${lead.id}`);
       messages.splice(0, messages.length);
@@ -377,7 +592,8 @@ serve(async (req) => {
     const alertaLead = parsed.ALERTA_LEAD === true && maturidade === "quente";
     const conversaEncerrada = parsed.conversa_encerrada === true;
     const aguardaHumano = parsed.AGUARDA_RESPOSTA_HUMANA === true;
-    const perguntaResumo = String(parsed.pergunta_para_responsavel || "").trim();
+    const perguntaResumo = String(parsed.pergunta_para_responsavel || "")
+      .trim();
     // JA_NO_QUADRO: médico já trabalha no projeto/hospital — não é lead, é colaborador
     const jaNoQuadro = parsed.JA_NO_QUADRO === true;
     // NUMERO_ERRADO: pessoa que respondeu não é o destinatário do disparo
@@ -397,9 +613,14 @@ serve(async (req) => {
         "campanha_ia_claim_response_turn",
         { p_campanha_lead_id: campLead.id },
       );
-      if (claimTurnError) throw new Error(`response_turn_claim: ${claimTurnError.message}`);
+      if (claimTurnError) {
+        throw new Error(`response_turn_claim: ${claimTurnError.message}`);
+      }
       if (!claimedTurn) {
-        const blockedResult = { ok: true, reason: "ia_turn_blocked_by_active_worker" };
+        const blockedResult = {
+          ok: true,
+          reason: "ia_turn_blocked_by_active_worker",
+        };
         if (claimedMessageId) {
           await supabase.from("campanha_ia_processed_messages").update({
             status: "completed",
@@ -417,27 +638,40 @@ serve(async (req) => {
     // Resolve chip_id pelo instance_name (1x). Helper anti-ban faz pre_send_check
     // com origem='resposta_ia' que tem rate-limit mais permissivo (10/min, 30/h)
     // e delay=0 (edge controla typing/sleep como antes pra parecer humano).
-    if (messages.length > 0 && campanha?.whatsapp_provider === "twilio" && conversation_id) {
+    if (
+      messages.length > 0 &&
+      ["twilio", "chakra"].includes(String(campanha?.whatsapp_provider)) &&
+      conversation_id
+    ) {
       const { data: canSend, error: consumeTurnError } = await supabase.rpc(
         "campanha_ia_consume_response_turn",
         { p_campanha_lead_id: campLead.id, p_token: responseTurnToken },
       );
-      if (consumeTurnError) throw new Error(`response_turn_consume: ${consumeTurnError.message}`);
-      if (!canSend) return json({ ok: true, reason: "human_assumed_before_send" });
+      if (consumeTurnError) {
+        throw new Error(`response_turn_consume: ${consumeTurnError.message}`);
+      }
+      if (!canSend) {
+        return json({ ok: true, reason: "human_assumed_before_send" });
+      }
       responseTurnConsumed = true;
       for (const message of messages) {
-        const response = await fetch(`${supabaseUrl}/functions/v1/twilio-whatsapp-send`, {
-          method: "POST",
-          headers: {
-            apikey: supabaseKey,
-            Authorization: `Bearer ${supabaseKey}`,
-            "Content-Type": "application/json",
+        const response = await fetch(
+          `${supabaseUrl}/functions/v1/twilio-whatsapp-send`,
+          {
+            method: "POST",
+            headers: {
+              apikey: supabaseKey,
+              Authorization: `Bearer ${supabaseKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ conversation_id, body: message }),
           },
-          body: JSON.stringify({ conversation_id, body: message }),
-        });
+        );
         const result = await response.json().catch(() => null);
         if (!response.ok || !result?.ok) {
-          throw new Error(result?.error || `twilio_ai_send_failed_${response.status}`);
+          throw new Error(
+            result?.error || `official_ai_send_failed_${response.status}`,
+          );
         }
       }
     }
@@ -451,17 +685,29 @@ serve(async (req) => {
         .maybeSingle();
       chipIaId = chipRow?.id || null;
     }
-    if (messages.length > 0 && evoUrl && evoKey && instance_name && chipIaId && responseTurnToken) {
-      const presenceUrl = `${evoUrl}/chat/sendPresence/${encodeURIComponent(instance_name)}`;
+    if (
+      messages.length > 0 && evoUrl && evoKey && instance_name && chipIaId &&
+      responseTurnToken
+    ) {
+      const presenceUrl = `${evoUrl}/chat/sendPresence/${
+        encodeURIComponent(instance_name)
+      }`;
       for (let i = 0; i < messages.length; i++) {
         if (i > 0) await sleep(1500 + Math.random() * 1500);
         // Typing indicator humanizado: ~50ms/char, mín 1.5s, máx 6s
-        const typingDelay = Math.max(1500, Math.min(6000, messages[i].length * 50));
+        const typingDelay = Math.max(
+          1500,
+          Math.min(6000, messages[i].length * 50),
+        );
         try {
           await fetch(presenceUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json", apikey: evoKey },
-            body: JSON.stringify({ number: phoneDigits, presence: "composing", delay: typingDelay }),
+            body: JSON.stringify({
+              number: phoneDigits,
+              presence: "composing",
+              delay: typingDelay,
+            }),
           });
         } catch (_) { /* presence é best-effort */ }
         await sleep(typingDelay);
@@ -476,7 +722,10 @@ serve(async (req) => {
           throw new Error(`response_turn_consume: ${consumeTurnError.message}`);
         }
         if (!canSend) {
-          const blockedResult = { ok: true, reason: "human_assumed_before_send" };
+          const blockedResult = {
+            ok: true,
+            reason: "human_assumed_before_send",
+          };
           if (claimedMessageId) {
             await supabase.from("campanha_ia_processed_messages").update({
               status: "completed",
@@ -502,7 +751,9 @@ serve(async (req) => {
           console.log(`[ia] ✅ Msg ${i + 1}/${messages.length} enviada`);
         } else {
           console.error(
-            `[ia] ❌ Msg ${i + 1}/${messages.length} bloqueada/erro: ${result.reason}`
+            `[ia] ❌ Msg ${
+              i + 1
+            }/${messages.length} bloqueada/erro: ${result.reason}`,
           );
         }
       }
@@ -515,7 +766,9 @@ serve(async (req) => {
       });
     }
     if (messages.length > 0) {
-      await addOperationalTags(supabase, lead.id, [OPERATIONAL_TAGS.aiAnswered]);
+      await addOperationalTags(supabase, lead.id, [
+        OPERATIONAL_TAGS.aiAnswered,
+      ]);
     }
 
     // ── 8. Status + histórico ──
@@ -541,19 +794,26 @@ serve(async (req) => {
       updatePayload.proximo_touch_em = null;
       updatePayload.motivo_perdido = "numero_errado";
     }
-    await supabase.from("campanha_leads").update(updatePayload).eq("id", campLead.id);
+    await supabase.from("campanha_leads").update(updatePayload).eq(
+      "id",
+      campLead.id,
+    );
 
     const tagsToAdd: string[] = [];
     if (numeroErrado) tagsToAdd.push(OPERATIONAL_TAGS.invalidNumber);
     if (jaNoQuadro) tagsToAdd.push(OPERATIONAL_TAGS.aiPaused);
-    if (alertaLead) tagsToAdd.push(OPERATIONAL_TAGS.hot, OPERATIONAL_TAGS.waitingTeam);
+    if (alertaLead) {
+      tagsToAdd.push(OPERATIONAL_TAGS.hot, OPERATIONAL_TAGS.waitingTeam);
+    }
     if (aguardaHumano) tagsToAdd.push(OPERATIONAL_TAGS.waitingTeam);
     await addOperationalTags(supabase, lead.id, tagsToAdd);
 
     if (novoStatus !== campLead.status) {
       await supabase.rpc("atualizar_status_lead_campanha", {
-        p_campanha_id: campLead.campanha_id, p_lead_id: lead.id,
-        p_novo_status: novoStatus, p_canal: "whatsapp",
+        p_campanha_id: campLead.campanha_id,
+        p_lead_id: lead.id,
+        p_novo_status: novoStatus,
+        p_canal: "whatsapp",
       });
     }
 
@@ -562,13 +822,14 @@ serve(async (req) => {
       const handoffNome = briefing.handoff_nome || "Equipe GSS";
       const handoffTel = briefing.handoff_telefone || "";
       const resumo = parsed.alerta_resumo || "Lead demonstrou interesse real";
-      const conversaResumo = historico.slice(-12).map((m: any) => `${m.role === "medico" ? "Médico" : "GSS"}: ${m.text}`).join("\n");
+      const conversaResumo = historico.slice(-12).map((m: any) =>
+        `${m.role === "medico" ? "Médico" : "GSS"}: ${m.text}`
+      ).join("\n");
 
       console.log(`[ia] 🔥 LEAD QUENTE: ${lead.nome} — ${resumo}`);
 
       if (evoUrl && evoKey && instance_name && handoffTel && chipIaId) {
-        const alertMsg =
-          `🔥 *LEAD QUENTE — AÇÃO NECESSÁRIA* 🔥\n\n` +
+        const alertMsg = `🔥 *LEAD QUENTE — AÇÃO NECESSÁRIA* 🔥\n\n` +
           `*Médico:* ${lead.nome}\n` +
           `*Telefone:* ${lead.phone_e164}\n` +
           `*Especialidade:* ${lead.especialidade || "N/I"}\n` +
@@ -603,31 +864,51 @@ serve(async (req) => {
     // ── 10. Q&A handoff humano (pergunta pra responsável) ──
     if (aguardaHumano && perguntaResumo) {
       try {
-        const contextoConversa = historico.slice(-8).map((m: any) => `${m.role === "medico" ? "Médico" : m.role === "gss" ? "IA" : m.role}: ${m.text}`).join("\n");
-        const qaResp = await fetch("https://zupsbgtoeoixfokzkjro.functions.supabase.co/campanha-qa-handoff-handler", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}` },
-          body: JSON.stringify({
-            campanha_lead_id: campLead.id,
-            lead_id: lead.id,
-            campanha_id: campLead.campanha_id,
-            pergunta_medico: finalText.slice(0, 500),
-            pergunta_resumo: perguntaResumo.slice(0, 500),
-            contexto_conversa: contextoConversa.slice(0, 2000),
-            lead_nome: lead.nome,
-            campanha_nome: campanha.nome,
-          }),
-        });
+        const contextoConversa = historico.slice(-8).map((m: any) =>
+          `${
+            m.role === "medico" ? "Médico" : m.role === "gss" ? "IA" : m.role
+          }: ${m.text}`
+        ).join("\n");
+        const qaResp = await fetch(
+          "https://zupsbgtoeoixfokzkjro.functions.supabase.co/campanha-qa-handoff-handler",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${
+                Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
+              }`,
+            },
+            body: JSON.stringify({
+              campanha_lead_id: campLead.id,
+              lead_id: lead.id,
+              campanha_id: campLead.campanha_id,
+              pergunta_medico: finalText.slice(0, 500),
+              pergunta_resumo: perguntaResumo.slice(0, 500),
+              contexto_conversa: contextoConversa.slice(0, 2000),
+              lead_nome: lead.nome,
+              campanha_nome: campanha.nome,
+            }),
+          },
+        );
         const qaData = await qaResp.json();
-        console.log(`[ia] 🧑‍💼 Q&A handoff: ${qaData.ok ? "alerta enviado" : `falhou: ${qaData.error}`}`);
+        console.log(
+          `[ia] 🧑‍💼 Q&A handoff: ${
+            qaData.ok ? "alerta enviado" : `falhou: ${qaData.error}`
+          }`,
+        );
       } catch (e: any) {
         console.error(`[ia] Q&A handoff erro: ${e.message}`);
       }
     }
 
     const resultPayload = {
-      ok: true, lead_id: lead.id, campanha_id: campLead.campanha_id,
-      status: novoStatus, messages_sent: messages.length, alerta: alertaLead,
+      ok: true,
+      lead_id: lead.id,
+      campanha_id: campLead.campanha_id,
+      status: novoStatus,
+      messages_sent: messages.length,
+      alerta: alertaLead,
       maturidade_lead: maturidade || null,
       aguarda_humano: aguardaHumano,
       historico_length: historico.length,
@@ -651,15 +932,20 @@ serve(async (req) => {
     }
     console.error("[ia] ERRO:", err.message);
     return new Response(JSON.stringify({ ok: false, error: err.message }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
 
 function json(body: Record<string, unknown>) {
-  return new Response(JSON.stringify(body), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  return new Response(JSON.stringify(body), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
 }
-function sleep(ms: number) { return new Promise((r) => setTimeout(r, ms)); }
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
 const OPERATIONAL_TAGS = {
   aiAnswered: "IA respondeu",
@@ -672,7 +958,11 @@ const OPERATIONAL_TAGS = {
   briefingReview: "Briefing para revisar",
 } as const;
 
-async function addOperationalTags(supabase: any, leadId: string, tags: string[]) {
+async function addOperationalTags(
+  supabase: any,
+  leadId: string,
+  tags: string[],
+) {
   if (!leadId || tags.length === 0) return;
   try {
     const { error } = await supabase.rpc("append_lead_operational_tags", {
@@ -682,11 +972,18 @@ async function addOperationalTags(supabase: any, leadId: string, tags: string[])
     if (error) throw error;
   } catch (error: any) {
     // Tags são observabilidade operacional; nunca podem derrubar a resposta.
-    console.warn(`[ia] falha ao registrar tags do lead ${leadId}: ${error?.message || error}`);
+    console.warn(
+      `[ia] falha ao registrar tags do lead ${leadId}: ${
+        error?.message || error
+      }`,
+    );
   }
 }
 
-function mergeConversationId(update: Record<string, unknown>, conversationId: string | null | undefined) {
+function mergeConversationId(
+  update: Record<string, unknown>,
+  conversationId: string | null | undefined,
+) {
   if (conversationId) update.conversa_id = conversationId;
   return update;
 }
@@ -694,18 +991,25 @@ function mergeConversationId(update: Record<string, unknown>, conversationId: st
 function validateCampaignBriefing(briefing: Record<string, any>) {
   const errors: string[] = [];
   const warnings: string[] = [];
-  const service = String(briefing.nome_servico || briefing.tipo_servico || "").trim();
+  const service = String(briefing.nome_servico || briefing.tipo_servico || "")
+    .trim();
   const location = String(briefing.cidade || briefing.local || "").trim();
   const hospital = String(briefing.hospital || briefing.unidade || "").trim();
   if (!service) errors.push("nome do serviço ausente");
-  if (!location && !(Array.isArray(briefing.locais) && briefing.locais.length > 0)) {
+  if (
+    !location && !(Array.isArray(briefing.locais) && briefing.locais.length > 0)
+  ) {
     errors.push("cidade ou local ausente");
   }
-  if (!hospital && !(Array.isArray(briefing.locais) && briefing.locais.length > 0)) {
+  if (
+    !hospital && !(Array.isArray(briefing.locais) && briefing.locais.length > 0)
+  ) {
     warnings.push("hospital/unidade não informado");
   }
   if (!briefing.requisitos) warnings.push("requisitos não informados");
-  if (!briefing.contratacao) warnings.push("forma de contratação não informada");
+  if (!briefing.contratacao) {
+    warnings.push("forma de contratação não informada");
+  }
   return { errors, warnings };
 }
 
@@ -715,11 +1019,14 @@ function isExplicitAutoReply(text: string): boolean {
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
   const hasHumanIntent = /\?/.test(normalized) ||
-    (normalized.length < 160 && /\b(qual seria|pode mandar|manda|tenho interesse|gostaria|quero|me fala|me conta|como funciona|posso|sim)\b/.test(normalized));
+    (normalized.length < 160 &&
+      /\b(qual seria|pode mandar|manda|tenho interesse|gostaria|quero|me fala|me conta|como funciona|posso|sim)\b/
+        .test(normalized));
   if (hasHumanIntent) return false;
 
-  const strongMarker = /\b(mensagem|msg|resposta)\s+automatic[ao]\b/.test(normalized)
-    || /\besta\s+e\s+uma\s+(mensagem|msg)\s+automatic[ao]\b/.test(normalized);
+  const strongMarker =
+    /\b(mensagem|msg|resposta)\s+automatic[ao]\b/.test(normalized) ||
+    /\besta\s+e\s+uma\s+(mensagem|msg)\s+automatic[ao]\b/.test(normalized);
   if (strongMarker) return true;
 
   const operationalMarkers = [
@@ -731,18 +1038,23 @@ function isExplicitAutoReply(text: string): boolean {
     /seu contato foi recebido/,
     /atendimento .* encerrado/,
   ];
-  const markerCount = operationalMarkers.filter((pattern) => pattern.test(normalized)).length;
+  const markerCount =
+    operationalMarkers.filter((pattern) => pattern.test(normalized)).length;
   return markerCount >= 2 || (normalized.length >= 180 && markerCount >= 1);
 }
 
-function isNearDuplicate(candidate: string, history: Array<{ role: string; text: string }>) {
-  const normalize = (value: string) => value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+function isNearDuplicate(
+  candidate: string,
+  history: Array<{ role: string; text: string }>,
+) {
+  const normalize = (value: string) =>
+    value
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
   const current = normalize(candidate);
   const previous = [...history].reverse().find((item) => item.role === "gss");
   if (!previous || !current) return false;
@@ -751,7 +1063,8 @@ function isNearDuplicate(candidate: string, history: Array<{ role: string; text:
   const a = new Set(current.split(" ").filter(Boolean));
   const b = new Set(previousText.split(" ").filter(Boolean));
   if (a.size < 5 || b.size < 5) return false;
-  const overlap = [...a].filter((word) => b.has(word)).length / Math.max(a.size, b.size);
+  const overlap = [...a].filter((word) => b.has(word)).length /
+    Math.max(a.size, b.size);
   return overlap >= 0.88;
 }
 
@@ -762,7 +1075,8 @@ function sanitizeExternalMessage(text: string): string {
     .toLowerCase();
   const exposesInternalProcess =
     /\b(disparo|mensagem|resposta)\s+automatic[ao]\b/.test(normalized) ||
-    /\b(sou|aqui e|esta e)\s+(uma\s+)?(ia|inteligencia artificial|robo|bot)\b/.test(normalized) ||
+    /\b(sou|aqui e|esta e)\s+(uma\s+)?(ia|inteligencia artificial|robo|bot)\b/
+      .test(normalized) ||
     /\bnao\s+(te\s+)?identifiquei\b/.test(normalized) ||
     /\bnao\s+(te\s+)?encontrei\b.*\blista\b/.test(normalized) ||
     /\blista\s+(interna|da equipe|do sistema)\b/.test(normalized);
@@ -782,8 +1096,12 @@ async function decryptMedia(
   phone: string,
 ): Promise<{ base64: string; mimetype: string } | null> {
   const phoneDigits = phone.replace(/\D/g, "");
-  const remoteJid = phone.includes("@") ? phone : `${phoneDigits}@s.whatsapp.net`;
-  const url = `${evoUrl}/chat/getBase64FromMediaMessage/${encodeURIComponent(instance)}`;
+  const remoteJid = phone.includes("@")
+    ? phone
+    : `${phoneDigits}@s.whatsapp.net`;
+  const url = `${evoUrl}/chat/getBase64FromMediaMessage/${
+    encodeURIComponent(instance)
+  }`;
   const resp = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json", apikey: evoKey },
@@ -793,24 +1111,34 @@ async function decryptMedia(
     }),
   });
   if (!resp.ok) {
-    console.warn(`[ia] decrypt ${resp.status}: ${(await resp.text()).slice(0, 300)}`);
+    console.warn(
+      `[ia] decrypt ${resp.status}: ${(await resp.text()).slice(0, 300)}`,
+    );
     return null;
   }
   const data = await resp.json();
   if (!data.base64) return null;
-  return { base64: data.base64, mimetype: data.mimetype || "application/octet-stream" };
+  return {
+    base64: data.base64,
+    mimetype: data.mimetype || "application/octet-stream",
+  };
 }
 
-async function downloadTwilioMedia(mediaUrl: string): Promise<{ base64: string; mimetype: string } | null> {
-  const sid = Deno.env.get("TWILIO_ACCOUNT_SID");
-  const token = Deno.env.get("TWILIO_AUTH_TOKEN");
-  if (!sid || !token) throw new Error("credenciais Twilio ausentes para baixar mídia");
+async function downloadTwilioMedia(
+  mediaUrl: string,
+  accountKey = "principal",
+): Promise<{ base64: string; mimetype: string } | null> {
+  const credentials = twilioCredentials(accountKey);
 
   const response = await fetch(mediaUrl, {
-    headers: { Authorization: `Basic ${btoa(`${sid}:${token}`)}` },
+    headers: { Authorization: credentials.header },
   });
   if (!response.ok) {
-    console.warn(`[ia] download Twilio ${response.status}: ${(await response.text()).slice(0, 200)}`);
+    console.warn(
+      `[ia] download Twilio ${response.status}: ${
+        (await response.text()).slice(0, 200)
+      }`,
+    );
     return null;
   }
 
@@ -830,24 +1158,29 @@ function base64ToBlob(base64: string, mimetype: string): Blob {
   return new Blob([bytes], { type: mimetype });
 }
 
-function buildPrompt(b: any, lead: any, perfil?: any, timelineOutros?: any[]): string {
-  const beneficios =
-    (b.beneficios || []).length > 0 ? `Benefícios: ${b.beneficios.join(", ")}.` : "";
-  const objecoes =
-    (b.objecoes || [])
-      .map((o: any) => `"${o.objecao}" → "${o.resposta}"`)
-      .join("\n  ") || "Nenhuma mapeada.";
+function buildPrompt(
+  b: any,
+  lead: any,
+  perfil?: any,
+  timelineOutros?: any[],
+): string {
+  const beneficios = (b.beneficios || []).length > 0
+    ? `Benefícios: ${b.beneficios.join(", ")}.`
+    : "";
+  const objecoes = (b.objecoes || [])
+    .map((o: any) => `"${o.objecao}" → "${o.resposta}"`)
+    .join("\n  ") || "Nenhuma mapeada.";
 
   // Fluxo personalizado do briefing (array de strings) ou fluxo default
   const fluxoPassos: string[] =
     Array.isArray(b.fluxo_passos) && b.fluxo_passos.length > 0
       ? b.fluxo_passos
       : [
-          "Confirmar perfil (especialidade/RQE conforme requisito)",
-          "Origem e formação",
-          "Experiência na área",
-          "Abertura/interesse",
-        ];
+        "Confirmar perfil (especialidade/RQE conforme requisito)",
+        "Origem e formação",
+        "Experiência na área",
+        "Abertura/interesse",
+      ];
   const fluxoTxt = fluxoPassos
     .map((p, i) => `${i + 1}. ${p} — se já respondeu, AVANCE`)
     .join("\n");
@@ -867,17 +1200,19 @@ function buildPrompt(b: any, lead: any, perfil?: any, timelineOutros?: any[]): s
     "projeto revolucionário",
     "não é só plantão",
   ];
-  const palavrasCustom =
-    typeof b.palavras_proibidas === "string"
-      ? b.palavras_proibidas.split(/[,;\n]/).map((s: string) => s.trim()).filter(Boolean)
-      : Array.isArray(b.palavras_proibidas)
-      ? b.palavras_proibidas
-      : [];
-  const todasProibidas = [...new Set([...palavrasProibidasDefault, ...palavrasCustom])];
+  const palavrasCustom = typeof b.palavras_proibidas === "string"
+    ? b.palavras_proibidas.split(/[,;\n]/).map((s: string) => s.trim()).filter(
+      Boolean,
+    )
+    : Array.isArray(b.palavras_proibidas)
+    ? b.palavras_proibidas
+    : [];
+  const todasProibidas = [
+    ...new Set([...palavrasProibidasDefault, ...palavrasCustom]),
+  ];
 
   // Gatilho de handoff — default restritivo
-  const handoffGatilho =
-    b.handoff_gatilhos ||
+  const handoffGatilho = b.handoff_gatilhos ||
     `APENAS 2 casos disparam handoff:
   (1) médico perguntou valor, remuneração, salário, quanto paga
   (2) médico fez pergunta que você NÃO consegue responder com o briefing
@@ -885,7 +1220,10 @@ Em qualquer outro cenário: continue a conversa. NÃO empurre handoff proativo.`
 
   return `<prompt versao="sigma-v9">
 <contexto>
-${b.persona_contexto || `Você é da equipe GSS Saúde — trabalha direto com os médicos que pegam escala. Fala como colega de profissão: direto, sem formalidade. Já conversou com centenas deles, então não tem pressa, não tem nervosismo.`} Nunca mencione IA, bot, automação ou assistente. Sem promessas exageradas. Sem papo de telemarketing.
+${
+    b.persona_contexto ||
+    `Você é da equipe GSS Saúde — trabalha direto com os médicos que pegam escala. Fala como colega de profissão: direto, sem formalidade. Já conversou com centenas deles, então não tem pressa, não tem nervosismo.`
+  } Nunca mencione IA, bot, automação ou assistente. Sem promessas exageradas. Sem papo de telemarketing.
 </contexto>
 
 <primeira_resposta>
@@ -894,9 +1232,17 @@ Quando o médico responde a primeira msg da IA com algo GENÉRICO/CURTO ("oi", "
 Em vez disso: abra com 1 frase de contexto quente (serviço + cidade + gancho curto) + UMA pergunta aberta, NÃO necessariamente técnica. Deixe o médico respirar.
 
 Exemplos bons (adapte ao briefing):
-- "Fala dr, tranquilo. Então, abriu uma vaga nova de ${b.nome_servico || "UTI"} em ${b.cidade || "cidade"}. Antes de entrar em detalhe — tu tá atuando nessa área hoje ou em outra frente?"
-- "Opa, show. Queria te passar essa de ${b.nome_servico || "serviço"} no ${b.hospital || "hospital"}, em ${b.cidade || "cidade"}. Qual tua área hoje?"
-- "Boa, então bora. Tem uma nova de ${b.nome_servico || "serviço"} que talvez encaixe com teu perfil — tu tá mais em que região hoje?"
+- "Fala dr, tranquilo. Então, abriu uma vaga nova de ${
+    b.nome_servico || "UTI"
+  } em ${
+    b.cidade || "cidade"
+  }. Antes de entrar em detalhe — tu tá atuando nessa área hoje ou em outra frente?"
+- "Opa, show. Queria te passar essa de ${b.nome_servico || "serviço"} no ${
+    b.hospital || "hospital"
+  }, em ${b.cidade || "cidade"}. Qual tua área hoje?"
+- "Boa, então bora. Tem uma nova de ${
+    b.nome_servico || "serviço"
+  } que talvez encaixe com teu perfil — tu tá mais em que região hoje?"
 
 Só pergunte RQE/requisito técnico específico DEPOIS que o médico der sinal de interesse ou confirmar a área.
 </primeira_resposta>
@@ -931,21 +1277,35 @@ REGRAS DE FALA HUMANA — segue à risca, médicos identificam bot na hora:
 </naturalidade>
 
 <oportunidade>
-  Serviço: ${b.nome_servico || "?"} | Hospital: ${b.hospital || "?"} | Cidade: ${b.cidade || "?"}
-  ${Array.isArray(b.locais) && b.locais.length > 1 ? `Locais da campanha (mencione o(s) que fizer sentido pro médico/região): ${b.locais.map((l: any) => `${l.hospital || "?"}${l.cidade ? " — " + l.cidade : ""}`).join("; ")}` : ""}
+  Serviço: ${b.nome_servico || "?"} | Hospital: ${
+    b.hospital || "?"
+  } | Cidade: ${b.cidade || "?"}
+  ${
+    Array.isArray(b.locais) && b.locais.length > 1
+      ? `Locais da campanha (mencione o(s) que fizer sentido pro médico/região): ${
+        b.locais.map((l: any) =>
+          `${l.hospital || "?"}${l.cidade ? " — " + l.cidade : ""}`
+        ).join("; ")
+      }`
+      : ""
+  }
   Tipo: ${b.tipo_servico || "plantão"} | Contratação: ${b.contratacao || "PJ"}
   Requisito: ${b.requisitos || "Formação na área"}
   ${b.estrutura ? `Estrutura: ${b.estrutura}` : ""}
   ${b.inicio_servico ? `Início: ${b.inicio_servico}` : ""}
   ${b.pagamento ? `Pagamento: ${b.pagamento}` : ""}
-  Valor: R$ ${b.valor_min || "?"} a R$ ${b.valor_max || "?"} por ${b.valor_por || "plantão"}
+  Valor: R$ ${b.valor_min || "?"} a R$ ${b.valor_max || "?"} por ${
+    b.valor_por || "plantão"
+  }
   ${beneficios}
   Handoff: ${handoffNome}
 </oportunidade>
 
 ${b.cidade_info ? `<cidade_info>\n${b.cidade_info}\n</cidade_info>` : ""}
 
-${b.link_video ? `<video_cidade>
+${
+    b.link_video
+      ? `<video_cidade>
 Você tem um vídeo curto da cidade: ${b.link_video}
 
 GATILHO — ofereça o vídeo sempre que acontecer UM destes:
@@ -960,7 +1320,9 @@ COMO oferecer (varie as palavras):
 - "Se quiser ver como é a cidade, tem um vídeo — mando?"
 
 SÓ envie o link ${b.link_video} DEPOIS que o médico aceitar ("pode mandar", "manda sim", "ok", "quero ver"). Nunca envie o link proativamente sem perguntar antes.
-</video_cidade>` : ""}
+</video_cidade>`
+      : ""
+  }
 
 <precisao_tecnica>
 CRÍTICO: ao perguntar sobre perfil, use EXATAMENTE os termos do <Requisito> acima.
@@ -982,7 +1344,10 @@ ${fluxoTxt}
 ${handoffGatilho}
 
 COMO fazer handoff (quando disparar):
-- "Posso passar seu contato pra ${handoffNome}? ${b.handoff_frase || "Ela vai te passar todos os detalhes sobre valores e escala."}"
+- "Posso passar seu contato pra ${handoffNome}? ${
+    b.handoff_frase ||
+    "Ela vai te passar todos os detalhes sobre valores e escala."
+  }"
 - Após confirmar: "Ótimo, vou passar pra ${handoffNome}. Te chamam em breve."
 
 REGRAS DE REPETIÇÃO:
@@ -1023,7 +1388,7 @@ ${b.ajuda_custo_regra ? `- Ajuda de custo: ${b.ajuda_custo_regra}` : ""}
 
 <anti_promessa>
 PALAVRAS E EXPRESSÕES PROIBIDAS (nunca usar):
-${todasProibidas.map(p => `  - "${p}"`).join("\n")}
+${todasProibidas.map((p) => `  - "${p}"`).join("\n")}
 
 SUBSTITUA por fatos verificáveis:
 - "moderno" / "de ponta" → "organizado", "estruturado", ou apenas omita adjetivo
@@ -1094,18 +1459,54 @@ NO JSON, marque OBRIGATORIAMENTE: "JA_NO_QUADRO": true e "conversa_encerrada": t
 
 ${b.info_extra ? `<info_adicional>\n${b.info_extra}\n</info_adicional>` : ""}
 
-${perfil ? `<perfil_conhecido>
+${
+    perfil
+      ? `<perfil_conhecido>
 O que já sabemos sobre este médico (extraído de conversas anteriores pela IA):
 ${perfil.observacoes_ia ? `Resumo: ${perfil.observacoes_ia}` : ""}
-${perfil.modalidade_preferida?.length ? `Modalidade preferida: ${perfil.modalidade_preferida.join(", ")}` : ""}
-${perfil.tipo_contratacao_preferida?.length ? `Contratação preferida: ${perfil.tipo_contratacao_preferida.join(", ")}` : ""}
-${perfil.valor_minimo_aceitavel ? `Valor mínimo aceitável: R$ ${perfil.valor_minimo_aceitavel} por ${perfil.valor_minimo_unidade || "plantão"}` : ""}
+${
+        perfil.modalidade_preferida?.length
+          ? `Modalidade preferida: ${perfil.modalidade_preferida.join(", ")}`
+          : ""
+      }
+${
+        perfil.tipo_contratacao_preferida?.length
+          ? `Contratação preferida: ${
+            perfil.tipo_contratacao_preferida.join(", ")
+          }`
+          : ""
+      }
+${
+        perfil.valor_minimo_aceitavel
+          ? `Valor mínimo aceitável: R$ ${perfil.valor_minimo_aceitavel} por ${
+            perfil.valor_minimo_unidade || "plantão"
+          }`
+          : ""
+      }
 ${perfil.ufs?.length ? `UFs de interesse: ${perfil.ufs.join(", ")}` : ""}
-${perfil.cidades?.length ? `Cidades mencionadas: ${perfil.cidades.join(", ")}` : ""}
-${perfil.periodo_preferido ? `Período preferido: ${perfil.periodo_preferido}` : ""}
-${perfil.dias_preferidos?.length ? `Dias preferidos: ${perfil.dias_preferidos.join(", ")}` : ""}
-${perfil.disponibilidade_plantoes_mes ? `Disponibilidade: ~${perfil.disponibilidade_plantoes_mes} plantões/mês` : ""}
-Confiança desse perfil: ${perfil.confianca_score || "?"}% — se baixa, confirme antes de afirmar.
+${
+        perfil.cidades?.length
+          ? `Cidades mencionadas: ${perfil.cidades.join(", ")}`
+          : ""
+      }
+${
+        perfil.periodo_preferido
+          ? `Período preferido: ${perfil.periodo_preferido}`
+          : ""
+      }
+${
+        perfil.dias_preferidos?.length
+          ? `Dias preferidos: ${perfil.dias_preferidos.join(", ")}`
+          : ""
+      }
+${
+        perfil.disponibilidade_plantoes_mes
+          ? `Disponibilidade: ~${perfil.disponibilidade_plantoes_mes} plantões/mês`
+          : ""
+      }
+Confiança desse perfil: ${
+        perfil.confianca_score || "?"
+      }% — se baixa, confirme antes de afirmar.
 
 <regra_escopo_campanha>
 ⚠️ CRÍTICO — o perfil é APENAS pra personalizar TOM e ABORDAGEM desta conversa.
@@ -1123,18 +1524,32 @@ VOCÊ PODE e DEVE:
 
 Se o lead pedir "me manda outra vaga", "tem algo em X", "tem produção?" — responda: "agora só essa que te passei. Se quiser, registro teu interesse pra te avisar quando surgir outra."
 </regra_escopo_campanha>
-</perfil_conhecido>` : ""}
+</perfil_conhecido>`
+      : ""
+  }
 
-${timelineOutros && timelineOutros.length > 0 ? `<interacoes_outros_canais>
+${
+    timelineOutros && timelineOutros.length > 0
+      ? `<interacoes_outros_canais>
 Este lead já teve ${timelineOutros.length} interações em outros contextos (outras campanhas ou conversas manuais com a equipe GSS). As mais recentes:
-${timelineOutros.slice(0, 10).reverse().map((m: any) => {
-  const quem = m.operador === "lead" ? "Médico" : m.operador === "humano" ? "GSS (humano)" : "IA";
-  const ctx = m.origem === "conversa_manual" ? "[outra conversa manual]" : "[outra campanha]";
-  return `  ${ctx} ${quem}: ${(m.conteudo || "").slice(0, 200)}`;
-}).join("\n")}
+${
+        timelineOutros.slice(0, 10).reverse().map((m: any) => {
+          const quem = m.operador === "lead"
+            ? "Médico"
+            : m.operador === "humano"
+            ? "GSS (humano)"
+            : "IA";
+          const ctx = m.origem === "conversa_manual"
+            ? "[outra conversa manual]"
+            : "[outra campanha]";
+          return `  ${ctx} ${quem}: ${(m.conteudo || "").slice(0, 200)}`;
+        }).join("\n")
+      }
 
 REGRA: se o médico já respondeu algo aqui, NÃO pergunte de novo. Use o que ele disse como contexto. Ele percebe quando está sendo tratado como "lead novo" e se afasta.
-</interacoes_outros_canais>` : ""}
+</interacoes_outros_canais>`
+      : ""
+  }
 
 <maturidade>
 Classifique SEMPRE o lead em uma de 3 maturidades e retorne no JSON como "maturidade_lead":

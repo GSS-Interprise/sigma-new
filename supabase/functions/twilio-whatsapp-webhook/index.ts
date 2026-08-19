@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { twilioCredentials } from "../_shared/twilio-auth.ts";
 
 const XML_OK = '<?xml version="1.0" encoding="UTF-8"?><Response></Response>';
 
@@ -55,8 +56,13 @@ function bytesToBase64(bytes: Uint8Array) {
   return btoa(binary);
 }
 
-async function validateTwilioSignature(req: Request, params: URLSearchParams) {
-  const token = Deno.env.get("TWILIO_AUTH_TOKEN");
+async function validateTwilioSignature(req: Request, params: URLSearchParams, accountKey: string) {
+  let token = "";
+  try {
+    token = twilioCredentials(accountKey).token;
+  } catch {
+    return false;
+  }
   const received = req.headers.get("x-twilio-signature") || "";
   if (!token || !received) return false;
 
@@ -85,21 +91,41 @@ serve(async (req) => {
   try {
     const rawBody = await req.text();
     const params = new URLSearchParams(rawBody);
-    if (!(await validateTwilioSignature(req, params))) {
-      console.warn("[twilio-webhook] invalid signature");
-      return xmlResponse(403);
-    }
-
     const admin = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
+    const senderPhoneForAccount = phoneE164(params.get("To") || "");
+    const { data: senderForAccount } = senderPhoneForAccount
+      ? await admin
+        .from("whatsapp_official_senders")
+        .select("twilio_account_key")
+        .eq("phone_e164", senderPhoneForAccount)
+        .maybeSingle()
+      : { data: null };
+    const accountKey = senderForAccount?.twilio_account_key || "principal";
+    if (!(await validateTwilioSignature(req, params, accountKey))) {
+      console.warn("[twilio-webhook] invalid signature");
+      return xmlResponse(403);
+    }
+
     const messageSid = params.get("MessageSid") || params.get("SmsSid") || "";
     const messageStatus = params.get("MessageStatus") || "";
 
     if (messageStatus) {
       const errorCode = params.get("ErrorCode");
       const errorMessage = params.get("ErrorMessage");
+      const { data: existingMessage } = await admin
+        .from("sigzap_messages")
+        .select("id, conversation_id, message_status")
+        .eq("provider", "twilio")
+        .eq("provider_message_id", messageSid)
+        .maybeSingle();
+      const normalizedStatus = messageStatus.toLowerCase();
+      const terminalFailure = ["failed", "undelivered"].includes(normalizedStatus);
+      const alreadyTerminalFailure = ["failed", "undelivered"].includes(
+        String(existingMessage?.message_status || "").toLowerCase(),
+      );
       await admin
         .from("sigzap_messages")
         .update({
@@ -109,6 +135,73 @@ serve(async (req) => {
         })
         .eq("provider", "twilio")
         .eq("provider_message_id", messageSid);
+
+      // 63051 means Meta/Twilio locked the sender or its WABA. Mark it in
+      // Sigma and pause every active campaign using it so a daily retry loop
+      // cannot keep generating undelivered traffic after the ban.
+      if (terminalFailure && !alreadyTerminalFailure && senderPhoneForAccount) {
+        const { data: sender } = await admin
+          .from("whatsapp_official_senders")
+          .select("id, provider_payload")
+          .eq("phone_e164", senderPhoneForAccount)
+          .maybeSingle();
+
+        if (sender?.id) {
+          const deliveryEvent = {
+            status: messageStatus,
+            error_code: errorCode || null,
+            error_message: errorMessage || null,
+            message_sid: messageSid || null,
+            recorded_at: new Date().toISOString(),
+          };
+          await admin
+            .from("whatsapp_official_senders")
+            .update({
+              ...(errorCode === "63051" ? { status: "banned" } : {}),
+              provider_payload: {
+                ...(sender.provider_payload || {}),
+                last_delivery_error: deliveryEvent,
+              },
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", sender.id);
+
+          if (errorCode === "63051") {
+            await admin
+              .from("campanhas")
+              .update({
+                status: "pausada",
+                next_batch_at: null,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("official_sender_id", sender.id)
+              .eq("status", "ativa");
+          }
+
+          if (existingMessage?.conversation_id) {
+            const { data: conversation } = await admin
+              .from("sigzap_conversations")
+              .select("lead_id")
+              .eq("id", existingMessage.conversation_id)
+              .maybeSingle();
+            if (conversation?.lead_id) {
+              const { data: campaignLeads } = await admin
+                .from("campanha_leads")
+                .select("id, campanha_id, erro_envio")
+                .eq("lead_id", conversation.lead_id)
+                .is("erro_envio", null);
+              const reason = `twilio_${errorCode || "delivery_failed"}`;
+              for (const campaignLead of campaignLeads || []) {
+                await admin
+                  .from("campanha_leads")
+                  .update({ erro_envio: reason, updated_at: new Date().toISOString() })
+                  .eq("id", campaignLead.id)
+                  .is("erro_envio", null);
+              }
+            }
+          }
+        }
+      }
       return xmlResponse();
     }
 
@@ -131,7 +224,7 @@ serve(async (req) => {
 
     const { data: sender } = await admin
       .from("whatsapp_official_senders")
-      .select("id, sender_sid, display_name")
+      .select("id, sender_sid, display_name, twilio_account_key")
       .eq("phone_e164", senderPhone)
       .maybeSingle();
     if (!sender) {
@@ -154,6 +247,7 @@ serve(async (req) => {
           name: sender.display_name || `WhatsApp oficial ${senderPhone}`,
           phone_number: senderPhone,
           status: "connected",
+          twilio_account_key: sender.twilio_account_key,
           updated_at: new Date().toISOString(),
         })
         .eq("id", existingInstance.id)
@@ -167,6 +261,7 @@ serve(async (req) => {
         status: "connected",
         provider: "twilio",
         external_ref: sender.sender_sid,
+        twilio_account_key: sender.twilio_account_key,
         updated_at: new Date().toISOString(),
         })
         .select("id")

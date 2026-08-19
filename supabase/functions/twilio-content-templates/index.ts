@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { normalizeTwilioAccountKey, twilioAuthorization } from "../_shared/twilio-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -13,22 +14,15 @@ function response(body: unknown, status = 200) {
   });
 }
 
-function twilioAuthorization() {
-  const sid = Deno.env.get("TWILIO_ACCOUNT_SID");
-  const token = Deno.env.get("TWILIO_AUTH_TOKEN");
-  if (!sid || !token) throw new Error("twilio_secrets_not_configured");
-  return `Basic ${btoa(`${sid}:${token}`)}`;
+async function twilioFetch(path: string, init: RequestInit = {}, accountKey = "principal") {
+  return twilioFetchUrl(`https://content.twilio.com${path}`, init, accountKey);
 }
 
-async function twilioFetch(path: string, init: RequestInit = {}) {
-  return twilioFetchUrl(`https://content.twilio.com${path}`, init);
-}
-
-async function twilioFetchUrl(url: string, init: RequestInit = {}) {
+async function twilioFetchUrl(url: string, init: RequestInit = {}, accountKey = "principal") {
   const res = await fetch(url, {
     ...init,
     headers: {
-      Authorization: twilioAuthorization(),
+      Authorization: twilioAuthorization(accountKey),
       "Content-Type": "application/json",
       ...(init.headers || {}),
     },
@@ -67,9 +61,19 @@ serve(async (req) => {
 
     const input = await req.json().catch(() => ({}));
     const action = input.action || "sync";
+    const accountKey = normalizeTwilioAccountKey(input.account_key);
+    if (accountKey !== "principal" && !isInternalSync && !isServiceRole) {
+      const { data: knownSender } = await admin
+        .from("whatsapp_official_senders")
+        .select("id")
+        .eq("twilio_account_key", accountKey)
+        .limit(1)
+        .maybeSingle();
+      if (!knownSender) return response({ ok: false, error: "twilio_account_key_requires_internal_access" }, 403);
+    }
 
     if (action === "sync_senders") {
-      const payload = await twilioFetchUrl("https://messaging.twilio.com/v2/Channels/Senders?Channel=whatsapp");
+      const payload = await twilioFetchUrl("https://messaging.twilio.com/v2/Channels/Senders?Channel=whatsapp", {}, accountKey);
       const senders = payload.senders || payload.channel_senders || [];
 
       for (const sender of senders) {
@@ -87,6 +91,7 @@ serve(async (req) => {
           status: String(sender.status || sender.configuration_status || "unknown").toLowerCase(),
           quality_rating: sender.quality_rating || sender.quality?.rating || null,
           messaging_service_sid: sender.messaging_service_sid || null,
+          twilio_account_key: accountKey,
           webhook_url: sender.webhook_url || sender.webhook?.url || null,
           provider_payload: sender,
           updated_at: new Date().toISOString(),
@@ -103,6 +108,12 @@ serve(async (req) => {
         return response({ ok: false, error: "invalid_sender_or_webhook_url" }, 400);
       }
 
+      const { data: senderRow } = await admin
+        .from("whatsapp_official_senders")
+        .select("twilio_account_key")
+        .eq("sender_sid", senderSid)
+        .maybeSingle();
+      const senderAccountKey = normalizeTwilioAccountKey(senderRow?.twilio_account_key || accountKey);
       const sender = await twilioFetchUrl(
         `https://messaging.twilio.com/v2/Channels/Senders/${senderSid}`,
         {
@@ -116,12 +127,14 @@ serve(async (req) => {
             },
           }),
         },
+        senderAccountKey,
       );
       await admin
         .from("whatsapp_official_senders")
         .update({
           webhook_url: webhookUrl,
           provider_payload: sender,
+          twilio_account_key: senderAccountKey,
           updated_at: new Date().toISOString(),
         })
         .eq("sender_sid", senderSid);
@@ -143,7 +156,7 @@ serve(async (req) => {
           variables,
           types: { "twilio/text": { body } },
         }),
-      });
+      }, accountKey);
 
       await admin.from("whatsapp_official_templates").upsert({
         content_sid: created.sid,
@@ -152,6 +165,7 @@ serve(async (req) => {
         content_type: "twilio/text",
         body,
         variables,
+        twilio_account_key: accountKey,
         approval_status: "unsubmitted",
         twilio_payload: created,
         created_by: user?.id || null,
@@ -169,24 +183,31 @@ serve(async (req) => {
         return response({ ok: false, error: "invalid_category" }, 400);
       }
 
+      const { data: existingTemplate } = await admin
+        .from("whatsapp_official_templates")
+        .select("twilio_account_key")
+        .eq("content_sid", contentSid)
+        .maybeSingle();
+      const templateAccountKey = normalizeTwilioAccountKey(existingTemplate?.twilio_account_key || accountKey);
       const approval = await twilioFetch(`/v1/Content/${contentSid}/ApprovalRequests/whatsapp`, {
         method: "POST",
         body: JSON.stringify({ name, category }),
-      });
+      }, templateAccountKey);
       await admin.from("whatsapp_official_templates").update({
         category,
         approval_status: approval.status || "received",
         rejection_reason: approval.rejection_reason || null,
+        twilio_account_key: templateAccountKey,
         updated_at: new Date().toISOString(),
       }).eq("content_sid", contentSid);
       return response({ ok: true, approval });
     }
 
-    const remote = await twilioFetch("/v1/ContentAndApprovals?PageSize=500");
+    const remote = await twilioFetch("/v1/ContentAndApprovals?PageSize=500", {}, accountKey);
     for (const item of remote.contents || []) {
       // ContentAndApprovals has changed shape across Twilio API versions. The
       // per-content endpoint is the source of truth for the WhatsApp review.
-      const approval = await twilioFetch(`/v1/Content/${item.sid}/ApprovalRequests`)
+      const approval = await twilioFetch(`/v1/Content/${item.sid}/ApprovalRequests`, {}, accountKey)
         .catch(() => ({}));
       const wa =
         approval.whatsapp ||
@@ -204,6 +225,7 @@ serve(async (req) => {
         variables: item.variables || {},
         approval_status: wa.status || "unsubmitted",
         rejection_reason: wa.rejection_reason || null,
+        twilio_account_key: accountKey,
         twilio_payload: { ...item, approval_request: approval },
         updated_at: new Date().toISOString(),
       }, { onConflict: "content_sid" });
