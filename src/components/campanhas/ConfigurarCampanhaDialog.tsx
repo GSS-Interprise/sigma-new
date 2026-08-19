@@ -53,6 +53,11 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Erro inesperado";
 }
 
+// Impede selecionar rascunhos antigos com mojibake/caractere corrompido.
+function hasEncodingProblem(body: string | null) {
+  return /\uFFFD|Ã/.test(String(body || ""));
+}
+
 export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Props) {
   const qc = useQueryClient();
   const [tab, setTab] = useState("disparo");
@@ -142,12 +147,12 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
     queryFn: async () => {
       const { data, error } = await supabase
         .from("whatsapp_official_templates" as never)
-        .select("id, provider, friendly_name, category, language, twilio_account_key")
+        .select("id, provider, friendly_name, category, language, twilio_account_key, body")
         .eq("approval_status", "approved")
         .eq("language", "pt_BR")
         .order("friendly_name");
       if (error) throw error;
-      return (data || []) as Array<{ id: string; provider: string | null; friendly_name: string; category: string | null; language: string; twilio_account_key: string | null }>;
+      return (data || []).filter((template) => !hasEncodingProblem(template.body)) as Array<{ id: string; provider: string | null; friendly_name: string; category: string | null; language: string; twilio_account_key: string | null; body: string | null }>;
     },
   });
 

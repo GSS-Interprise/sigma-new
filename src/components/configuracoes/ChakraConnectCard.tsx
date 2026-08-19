@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CheckCircle2, ExternalLink, Loader2, QrCode, ShieldCheck, Smartphone } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -18,6 +19,33 @@ type ChakraPhone = {
   quality_rating: string | null;
   messaging_limit_tier: string | null;
   name_status: string | null;
+  provider_payload?: Record<string, any> | null;
+  webhook_configured?: boolean;
+  last_webhook_event_at?: string | null;
+  last_webhook_error?: string | null;
+};
+
+function getChakraSendBlock(phone: ChakraPhone) {
+  const payload = phone.provider_payload || {};
+  const providerPhone = payload.phone || payload;
+  const entities = Array.isArray(providerPhone.healthStatus?.entities)
+    ? providerPhone.healthStatus.entities as Array<Record<string, any>>
+    : [];
+  const blocked = entities.find((entity) => String(entity.can_send_message || "").toUpperCase() === "BLOCKED");
+  if (!blocked) return null;
+  const providerError = Array.isArray(blocked.errors) ? blocked.errors[0] : null;
+  return {
+    entity: String(blocked.entity_type || "WABA"),
+    code: providerError?.error_code ? String(providerError.error_code) : null,
+    message: String(providerError?.error_description || "A Meta bloqueou conversas iniciadas pela empresa."),
+    action: String(providerError?.possible_solution || "Revise o meio de pagamento e as pendências da WABA no Chakra/Meta."),
+  };
+}
+
+type PendingConnection = {
+  payload: unknown;
+  phones: ChakraPhone[];
+  selectedPhoneNumberId: string;
 };
 
 type ChakraSdk = {
@@ -67,11 +95,33 @@ export function ChakraConnectCard() {
   const [isPreparing, setIsPreparing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [phones, setPhones] = useState<ChakraPhone[]>([]);
+  const [pendingConnection, setPendingConnection] = useState<PendingConnection | null>(null);
 
   const loadConnections = useCallback(async () => {
+    const { data: statusResult, error: statusError } = await supabase.functions.invoke("chakra-connect", {
+      body: { action: "refresh_status" },
+    });
+    if (statusError || !statusResult?.ok) {
+      console.warn("NÃ£o foi possÃ­vel atualizar o status do nÃºmero Chakra", statusError || statusResult?.error);
+    }
+    // Revalida/configura o webhook do plugin ao abrir a tela. Isso cobre
+    // números já conectados antes da automação ser publicada, sem reimportar
+    // os demais números do mesmo plano Chakra.
+    const { data: webhookResult, error: webhookError } = await supabase.functions.invoke("chakra-connect", {
+      body: { action: "ensure_webhook" },
+    });
+    if (webhookError || !webhookResult?.ok) {
+      console.warn("Não foi possível validar o webhook do Chakra", webhookError || webhookResult?.error);
+    }
+    const { data: templateResult, error: templateError } = await supabase.functions.invoke("chakra-connect", {
+      body: { action: "sync_templates" },
+    });
+    if (templateError || !templateResult?.ok) {
+      console.warn("Chakra template sync failed", templateError || templateResult?.error);
+    }
     const { data, error } = await supabase
       .from("whatsapp_chakra_connections" as never)
-      .select("phone_number_id, phone_e164, display_name, status, quality_rating, messaging_limit_tier, name_status")
+      .select("phone_number_id, phone_e164, display_name, status, quality_rating, messaging_limit_tier, name_status, provider_payload, webhook_configured, last_webhook_event_at, last_webhook_error")
       .order("updated_at", { ascending: false });
     if (!error) setPhones((data || []) as unknown as ChakraPhone[]);
   }, []);
@@ -82,11 +132,11 @@ export function ChakraConnectCard() {
     sdkInstance.current?.destroy?.();
   }, []);
 
-  const saveConnection = async (data: unknown) => {
+  const saveConnection = async (data: unknown, selectedPhoneNumberId?: string) => {
     setIsSaving(true);
     try {
       const { data: result, error } = await supabase.functions.invoke("chakra-connect", {
-        body: { action: "save_connection", data },
+        body: { action: "save_connection", data, phoneNumberId: selectedPhoneNumberId || undefined },
       });
       if (error) throw error;
       if (!result?.ok) throw new Error(result?.error || "Não foi possível salvar a conexão.");
@@ -94,6 +144,7 @@ export function ChakraConnectCard() {
       setConnectToken(null);
       sdkInstance.current?.destroy?.();
       sdkInstance.current = null;
+      setPendingConnection(null);
       await loadConnections();
     } catch (error) {
       console.error(error);
@@ -101,6 +152,33 @@ export function ChakraConnectCard() {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleConnectionSuccess = (data: unknown) => {
+    const rawPayload = data && typeof data === "object" ? data as Record<string, any> : {};
+    const payload = rawPayload._data && typeof rawPayload._data === "object"
+      ? rawPayload._data
+      : rawPayload.data && typeof rawPayload.data === "object"
+        ? rawPayload.data
+        : rawPayload;
+    const returnedPhones = Array.isArray(payload.whatsappPhoneNumbers)
+      ? payload.whatsappPhoneNumbers
+      : Array.isArray(payload.phoneNumbers) ? payload.phoneNumbers : [];
+    const phonesFromPayload = returnedPhones.map((phone: any) => ({
+      phone_number_id: String(phone.phone_number_id || phone.phoneNumberId || phone.whatsappPhoneNumberId || phone.id || ""),
+      phone_e164: phone.phone_e164 || phone.phoneNumber || phone.displayPhoneNumber || null,
+      display_name: phone.verifiedName || phone.displayName || phone.name || null,
+      status: phone.status || "connected",
+      quality_rating: phone.qualityRating || phone.quality_rating || null,
+      messaging_limit_tier: phone.messagingLimitTier || null,
+      name_status: phone.nameStatus || null,
+    })).filter((phone: ChakraPhone) => phone.phone_number_id);
+    const selectedId = String(payload.phoneNumberId || payload.selectedPhoneNumberId || "");
+    if (phonesFromPayload.length > 1 && !selectedId) {
+      setPendingConnection({ payload: data, phones: phonesFromPayload, selectedPhoneNumberId: "" });
+      return;
+    }
+    void saveConnection(data, selectedId || phonesFromPayload[0]?.phone_number_id);
   };
 
   const prepareConnection = async () => {
@@ -136,7 +214,7 @@ export function ChakraConnectCard() {
         sdkInstance.current = window.ChakraWhatsappConnect.init({
           connectToken,
           container: "#chakra-whatsapp-connect",
-          onSuccess: (data) => void saveConnection(data),
+          onSuccess: handleConnectionSuccess,
           onError: (error) => {
             console.error("Chakra Embedded Signup", error);
             toast.error("A conexão do WhatsApp não foi concluída.");
@@ -205,6 +283,43 @@ export function ChakraConnectCard() {
           </>
         )}
 
+        {pendingConnection && (
+          <Alert className="border-amber-300 bg-amber-50">
+            <Smartphone className="h-4 w-4 text-amber-700" />
+            <AlertDescription className="space-y-3">
+              <p className="font-medium text-amber-950">Este plugin possui mais de um número.</p>
+              <p className="text-sm text-amber-900">
+                Escolha somente o número que pertence ao Sigma GSS. Os demais números do Jornada do Paciente não serão importados.
+              </p>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <Select
+                  value={pendingConnection.selectedPhoneNumberId}
+                  onValueChange={(value) => setPendingConnection((current) => current ? { ...current, selectedPhoneNumberId: value } : current)}
+                >
+                  <SelectTrigger className="min-h-11 w-full bg-background sm:max-w-md">
+                    <SelectValue placeholder="Selecione o número do Sigma" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {pendingConnection.phones.map((phone) => (
+                      <SelectItem key={phone.phone_number_id} value={phone.phone_number_id}>
+                        {phone.display_name || phone.phone_e164 || phone.phone_number_id} {phone.phone_e164 ? `(${phone.phone_e164})` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  className="min-h-11"
+                  disabled={!pendingConnection.selectedPhoneNumberId || isSaving}
+                  onClick={() => void saveConnection(pendingConnection.payload, pendingConnection.selectedPhoneNumberId)}
+                >
+                  {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+                  Vincular este número
+                </Button>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
+
         <Separator />
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-3">
@@ -219,7 +334,9 @@ export function ChakraConnectCard() {
             <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">Nenhum número Chakra conectado ainda.</p>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2">
-              {phones.map((phone) => (
+              {phones.map((phone) => {
+                const sendBlock = getChakraSendBlock(phone);
+                return (
                 <div key={phone.phone_number_id} className="rounded-lg border p-3">
                   <div className="flex items-start gap-3">
                     <Smartphone className="mt-0.5 h-4 w-4 text-emerald-700" />
@@ -228,14 +345,31 @@ export function ChakraConnectCard() {
                       <p className="text-xs text-muted-foreground">{phone.phone_e164 || "Número retornado pelo Chakra"}</p>
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         <Badge variant="secondary">{phone.status || "conectado"}</Badge>
+                        <Badge variant={phone.webhook_configured ? "outline" : "destructive"}>
+                          Webhook: {phone.webhook_configured ? "ativo" : "pendente"}
+                        </Badge>
+                        <Badge variant="outline">
+                          Envio: disponível
+                        </Badge>
                         {phone.quality_rating && <Badge variant="outline">Qualidade: {phone.quality_rating}</Badge>}
                         {phone.messaging_limit_tier && <Badge variant="outline">Limite: {phone.messaging_limit_tier}</Badge>}
+                        {phone.name_status && <Badge variant={String(phone.name_status).toUpperCase() === "APPROVED" ? "outline" : "secondary"}>Nome: {phone.name_status}</Badge>}
                       </div>
+                      {sendBlock && (
+                        <Alert className="mt-3 border-amber-300 bg-amber-50 py-3">
+                          <AlertDescription className="text-xs text-amber-950">
+                            <strong>Alerta de saúde do provedor ({sendBlock.entity}{sendBlock.code ? ` · ${sendBlock.code}` : ""}):</strong> {sendBlock.message} {sendBlock.action} O Sigma não bloqueia o envio por este diagnóstico: ele pode estar desatualizado. O resultado real é confirmado pelos eventos de envio e entrega da mensagem.
+                          </AlertDescription>
+                        </Alert>
+                      )}
+                      {phone.last_webhook_error && <p className="mt-2 text-xs text-destructive">Webhook: {phone.last_webhook_error}</p>}
+                      {phone.webhook_configured && <p className="mt-2 text-xs text-muted-foreground">Último evento: {phone.last_webhook_event_at ? new Date(phone.last_webhook_event_at).toLocaleString("pt-BR") : "aguardando"}</p>}
                     </div>
                     <CheckCircle2 className="ml-auto h-4 w-4 shrink-0 text-emerald-600" />
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
