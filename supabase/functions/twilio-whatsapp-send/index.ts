@@ -40,6 +40,30 @@ function e164(value: string) {
   return normalized ? `+${normalized}` : "";
 }
 
+/**
+ * Corrige texto UTF-8 que foi interpretado como Latin-1 em alguma etapa do
+ * pipeline. Isso é comum em nomes importados, mas não devemos remover acentos
+ * nem substituir caracteres válidos: a mensagem precisa chegar ao médico com
+ * a grafia original.
+ */
+function repairMojibake(value: unknown): string {
+  let current = String(value ?? "");
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (!/[ÃÂâð�\u0080-\u009f]/.test(current)) break;
+    try {
+      const bytes = Uint8Array.from(
+        [...current].map((character) => character.charCodeAt(0) & 0xff),
+      );
+      const decoded = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+      if (decoded === current) break;
+      current = decoded;
+    } catch {
+      break;
+    }
+  }
+  return current;
+}
+
 // A chave interna nova do Supabase pode chegar como sb_secret, enquanto o
 // gateway ainda entrega um JWT com o papel service_role. O gateway já valida
 // a assinatura; aqui conferimos apenas o claim para não quebrar chamadas
@@ -63,7 +87,7 @@ function resolveBinding(binding: string, context: Record<string, unknown>) {
       if (!current || typeof current !== "object") return undefined;
       return (current as Record<string, unknown>)[key];
     }, context);
-    return value == null ? "" : String(value);
+    return value == null ? "" : repairMojibake(value);
   }).trim();
 }
 
@@ -101,7 +125,7 @@ serve(async (req) => {
     const leadIdInput = String(input.lead_id || "");
     const senderIdInput = String(input.sender_id || "");
     const templateIdInput = String(input.template_id || "");
-    const body = String(input.body || "").trim();
+    const body = repairMojibake(input.body || "").trim();
     const templateVariables =
       input.template_variables && typeof input.template_variables === "object"
         ? input.template_variables
@@ -198,6 +222,7 @@ serve(async (req) => {
       }, 400);
     }
 
+    const cleanLeadName = repairMojibake(lead?.nome || "").trim();
     const toPhone = e164(lead?.phone_e164 || "");
     if (!toPhone) {
       return json({ ok: false, error: "lead_without_valid_phone" }, 400);
@@ -434,7 +459,7 @@ serve(async (req) => {
           .from("sigzap_contacts")
           .update({
             contact_phone: toPhone,
-            contact_name: lead.nome || toPhone,
+            contact_name: cleanLeadName || toPhone,
             updated_at: new Date().toISOString(),
           })
           .eq("id", existingContact.id)
@@ -445,7 +470,7 @@ serve(async (req) => {
           .insert({
             contact_jid: contactJid,
             contact_phone: toPhone,
-            contact_name: lead.nome || toPhone,
+            contact_name: cleanLeadName || toPhone,
             instance_id: instance.id,
             updated_at: new Date().toISOString(),
           })
@@ -619,12 +644,12 @@ serve(async (req) => {
     }
 
     const now = new Date().toISOString();
-    const visibleBody = template
+    const visibleBody = repairMojibake(template
       ? Object.entries(resolvedTemplateVariables).reduce(
         (text, [position, value]) => text.replaceAll(`{{${position}}}`, value),
         template.body || `[Template: ${template.friendly_name}]`,
       )
-      : body;
+      : body);
     const { error: messageError } = await admin.from("sigzap_messages").insert({
       conversation_id: conversation.id,
       wa_message_id: providerMessage.sid || providerMessage.id,

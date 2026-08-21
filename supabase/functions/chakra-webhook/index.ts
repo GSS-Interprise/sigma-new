@@ -47,6 +47,36 @@ function asObject(value: unknown): AnyRecord {
     : {};
 }
 
+const DELIVERY_STATUS_RANK: Record<string, number> = {
+  queued: 0,
+  accepted: 1,
+  sent: 1,
+  failed: 1,
+  undelivered: 1,
+  delivered: 2,
+  read: 3,
+};
+
+function shouldApplyDeliveryStatus(current: string, next: string) {
+  if (!current || current === next) return true;
+
+  // Webhooks podem chegar fora de ordem. Nunca deixe um evento antigo de
+  // fila/falha regredir uma mensagem que o provedor já confirmou entregue.
+  if (current === "read") return false;
+  if (current === "delivered" &&
+    ["queued", "accepted", "sent", "failed", "undelivered"].includes(next)) {
+    return false;
+  }
+
+  // Uma confirmação posterior de entrega pode corrigir um `failed` transitório
+  // registrado antes do retorno final do provedor.
+  if (["failed", "undelivered"].includes(current) &&
+    ["delivered", "read"].includes(next)) return true;
+
+  return (DELIVERY_STATUS_RANK[next] ?? 0) >=
+    (DELIVERY_STATUS_RANK[current] ?? 0);
+}
+
 function toHex(bytes: Uint8Array) {
   return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
@@ -492,13 +522,19 @@ async function updateDeliveryStatus(
   const item = asObject(
     eventPayload.item || eventPayload.status || eventPayload,
   );
+  // O Chakra usa dois identificadores para o mesmo envio: `messageId` é o
+  // id interno do evento e `externalId` é o wamid devolvido no envio. O
+  // wamid fica dentro de raw_payload.whatsappMessageId no Sigma, então não
+  // podemos depender apenas das colunas provider_message_id/wa_message_id.
+  const externalId = firstText(
+    item.externalId,
+    eventPayload.externalId,
+  );
   const messageId = firstText(
     item.id,
     item.message_id,
     item.messageId,
-    item.externalId,
     eventPayload.id,
-    eventPayload.externalId,
   );
   const status = firstText(
     item.status,
@@ -508,16 +544,87 @@ async function updateDeliveryStatus(
     eventPayload.message_status,
   ).toLowerCase();
   if (!messageId || !status) return;
-  const { data: message } = await admin.from("sigzap_messages")
-    .select("id")
-    .eq("provider", "chakra")
-    .or(`provider_message_id.eq.${messageId},wa_message_id.eq.${messageId}`)
-    .maybeSingle();
+  let message: AnyRecord | null = null;
+  const candidates = [...new Set([messageId, externalId].filter(Boolean))];
+
+  // Evita montar filtros `.or(...)` com IDs externos que podem conter
+  // caracteres especiais (como os pontos do wamid).
+  for (const candidate of candidates) {
+    const byProviderId = await admin.from("sigzap_messages")
+      .select("id")
+      .eq("provider", "chakra")
+      .eq("provider_message_id", candidate)
+      .limit(1)
+      .maybeSingle();
+    if (byProviderId.data?.id) {
+      message = byProviderId.data;
+      break;
+    }
+
+    const byWhatsAppId = await admin.from("sigzap_messages")
+      .select("id")
+      .eq("provider", "chakra")
+      .eq("wa_message_id", candidate)
+      .limit(1)
+      .maybeSingle();
+    if (byWhatsAppId.data?.id) {
+      message = byWhatsAppId.data;
+      break;
+    }
+  }
+
+  if (!message && externalId) {
+    const byRawPayload = await admin.from("sigzap_messages")
+      .select("id")
+      .eq("provider", "chakra")
+      .contains("raw_payload", { whatsappMessageId: externalId })
+      .limit(1)
+      .maybeSingle();
+    message = byRawPayload.data ?? null;
+  }
   if (message?.id) {
-    await admin.from("sigzap_messages").update({ message_status: status }).eq(
-      "id",
-      message.id,
-    );
+    const { data: currentMessage, error: currentMessageError } = await admin
+      .from("sigzap_messages")
+      .select("id, message_status, raw_payload")
+      .eq("id", message.id)
+      .maybeSingle();
+    if (currentMessageError) throw currentMessageError;
+    const currentStatus = firstText(currentMessage?.message_status).toLowerCase();
+    if (!shouldApplyDeliveryStatus(currentStatus, status)) return;
+
+    const errorItem = Array.isArray(item.errors)
+      ? asObject(item.errors[0])
+      : asObject(item.error);
+    const patch: AnyRecord = {
+      message_status: status,
+      // Mantém a resposta inicial do envio e registra a confirmação recebida
+      // pelo webhook para auditoria/reconciliação sem perder dados.
+      raw_payload: {
+        ...asObject(currentMessage?.raw_payload),
+        chakra_delivery: {
+          status,
+          message_id: messageId,
+          external_id: externalId || null,
+          received_at: new Date().toISOString(),
+        },
+      },
+    };
+    if (["failed", "undelivered"].includes(status)) {
+      const providerCode = firstText(
+        errorItem.code,
+        errorItem.error_code,
+        item.error_code,
+      );
+      const providerMessage = firstText(
+        errorItem.title,
+        errorItem.message,
+        errorItem.error,
+        item.error_message,
+      );
+      if (providerCode) patch.provider_error_code = providerCode;
+      if (providerMessage) patch.provider_error_message = providerMessage;
+    }
+    await admin.from("sigzap_messages").update(patch).eq("id", message.id);
   }
 }
 

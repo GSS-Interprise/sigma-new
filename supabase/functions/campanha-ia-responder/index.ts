@@ -9,6 +9,24 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+function repairMojibake(value: unknown): string {
+  let current = String(value ?? "");
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (!/[ÃÂâð�\u0080-\u009f]/.test(current)) break;
+    try {
+      const bytes = Uint8Array.from(
+        [...current].map((character) => character.charCodeAt(0) & 0xff),
+      );
+      const decoded = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+      if (decoded === current) break;
+      current = decoded;
+    } catch {
+      break;
+    }
+  }
+  return current;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -33,7 +51,7 @@ serve(async (req) => {
 
     if (!phone) throw new Error("phone obrigatório");
 
-    const finalText = aggregated_texts || message_text || "";
+    const finalText = repairMojibake(aggregated_texts || message_text || "");
     const hasMedia = (message_type === "audio" || message_type === "image") &&
       msg_id;
     let twilioAccountKey = "principal";
@@ -86,6 +104,10 @@ serve(async (req) => {
     }
 
     if (!lead) return json({ ok: false, reason: "lead_not_found" });
+    // O nome pode ter sido armazenado com UTF-8 interpretado como Latin-1 em
+    // uma importação antiga. Corrigir na borda evita que a IA repita o erro no
+    // WhatsApp e nas notificações internas, sem alterar a base neste momento.
+    lead = { ...lead, nome: repairMojibake(lead.nome) };
     console.log(`[ia] Lead: ${lead.nome} (${lead.id})`);
 
     // ── 2. Buscar campanha ativa ──

@@ -84,6 +84,11 @@ verify_jwt = false
 [functions.twilio-whatsapp-send]
 verify_jwt = false
 
+# O Chakra assina o payload com x-chakra-signature-256; ele não possui um JWT
+# do Supabase. A autenticação da origem é feita dentro da própria função.
+[functions.chakra-webhook]
+verify_jwt = false
+
 # Gera tokens e persiste conexões do Embedded Signup do Chakra.
 # A função exige JWT de usuário administrador; a chave Chakra fica em secret.
 [functions.chakra-connect]
