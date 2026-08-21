@@ -508,6 +508,21 @@ function LeadCard({
   return (
     <Card className="relative cursor-pointer transition-all hover:border-primary/50 hover:shadow-md" draggable onDragStart={onDragStart}>
       <CardContent className="p-3 space-y-1.5">
+        {campLead.unread_messages > 0 && (
+          <div
+            className="flex min-h-9 items-center justify-between gap-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-semibold text-amber-800"
+            role="status"
+            aria-label={`${campLead.unread_messages} mensagem(ns) nova(s) aguardando atenção`}
+          >
+            <span className="flex min-w-0 items-center gap-1.5">
+              <MessageCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <span className="truncate">Precisa de atenção</span>
+            </span>
+            <span className="shrink-0 rounded-full bg-amber-200 px-1.5 py-0.5 text-[10px] font-bold text-amber-900">
+              {campLead.unread_messages > 9 ? "9+" : campLead.unread_messages}
+            </span>
+          </div>
+        )}
         <div className="flex items-start gap-2" onClick={onClick}>
           <GripVertical className="h-4 w-4 text-muted-foreground/40 mt-0.5 flex-shrink-0" />
           <div className="min-w-0 flex-1">
@@ -520,16 +535,6 @@ function LeadCard({
             {lead.especialidade && <p className="text-xs text-muted-foreground truncate">{lead.especialidade}</p>}
           </div>
           {/* quem está no lead (colaboração) */}
-          {campLead.unread_messages > 0 && (
-            <div
-              className="flex h-6 min-w-6 shrink-0 items-center justify-center gap-1 rounded-full bg-emerald-600 px-1.5 text-[10px] font-bold text-white shadow-sm"
-              aria-label={`${campLead.unread_messages} mensagem(ns) nova(s) do lead`}
-              title={`${campLead.unread_messages} mensagem(ns) nova(s) do lead`}
-            >
-              <MessageCircle className="h-3 w-3" aria-hidden="true" />
-              {campLead.unread_messages > 9 ? "9+" : campLead.unread_messages}
-            </div>
-          )}
           {janela && (
             <Badge
               variant="outline"

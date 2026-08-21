@@ -55,12 +55,17 @@ export function AcompanhamentoCard({
     >
       {lead.unread_messages > 0 && (
         <div
-          className="absolute -right-2 -top-2 flex h-6 min-w-6 items-center justify-center gap-1 rounded-full border-2 border-background bg-emerald-600 px-1.5 text-[10px] font-bold text-white shadow-sm"
-          aria-label={`${lead.unread_messages} mensagem(ns) nova(s) do lead`}
-          title={`${lead.unread_messages} mensagem(ns) nova(s) do lead`}
+          className="mb-2 flex min-h-9 items-center justify-between gap-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-semibold text-amber-800"
+          role="status"
+          aria-label={`${lead.unread_messages} mensagem(ns) nova(s) aguardando atenção`}
         >
-          <MessageCircle className="h-3 w-3" aria-hidden="true" />
-          {lead.unread_messages > 9 ? "9+" : lead.unread_messages}
+          <span className="flex min-w-0 items-center gap-1.5">
+            <MessageCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <span className="truncate">Precisa de atenção</span>
+          </span>
+          <span className="shrink-0 rounded-full bg-amber-200 px-1.5 py-0.5 text-[10px] font-bold text-amber-900">
+            {lead.unread_messages > 9 ? "9+" : lead.unread_messages}
+          </span>
         </div>
       )}
       <div className="flex items-start justify-between gap-2 mb-1.5">
