@@ -19,6 +19,22 @@ const LOCK_DURATION_S = 90;
 const OFFICIAL_INTERVAL_MIN_MS = 5 * 60 * 1000;
 const OFFICIAL_INTERVAL_MAX_MS = 10 * 60 * 1000;
 
+function officialInterval(campaign: any) {
+  // A cadência oficial é configurável por campanha, mas continua limitada a
+  // uma faixa segura para evitar transformar o piloto em uma rajada. Os
+  // valores da tabela são segundos; os limites aqui são milissegundos.
+  const configuredMin = Number(campaign.delay_between_batches_min) * 1000;
+  const configuredMax = Number(campaign.delay_between_batches_max) * 1000;
+  const min = Number.isFinite(configuredMin) && configuredMin > 0
+    ? Math.max(4 * 60 * 1000, Math.min(configuredMin, 15 * 60 * 1000))
+    : OFFICIAL_INTERVAL_MIN_MS;
+  const maxCandidate = Number.isFinite(configuredMax) && configuredMax > 0
+    ? configuredMax
+    : OFFICIAL_INTERVAL_MAX_MS;
+  const max = Math.max(min + 30 * 1000, Math.min(maxCandidate, 20 * 60 * 1000));
+  return { min, max };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS")
     return new Response(null, { headers: corsHeaders });
@@ -742,12 +758,20 @@ async function processTwilioBatch(supabase: any, camp: any, supabaseUrl: string,
     .update({ disparos_enviados: (camp.disparos_enviados || 0) + 1 })
     .eq("id", camp.id);
 
+  const interval = officialInterval(camp);
   const nextBatchAt = new Date(
-    Date.now() + randomDelay(OFFICIAL_INTERVAL_MIN_MS, OFFICIAL_INTERVAL_MAX_MS),
+    Date.now() + randomDelay(interval.min, interval.max),
   ).toISOString();
   await supabase.from("campanhas").update({ next_batch_at: nextBatchAt }).eq("id", camp.id);
   selfInvoke(supabase, camp.id);
-  return json({ ok: true, sent: 1, channel: "twilio", next_batch_at: nextBatchAt });
+  return json({
+    ok: true,
+    sent: 1,
+    channel: "official",
+    next_batch_at: nextBatchAt,
+    interval_min_seconds: Math.round(interval.min / 1000),
+    interval_max_seconds: Math.round(interval.max / 1000),
+  });
 }
 
 async function describeFunctionError(error: unknown): Promise<string> {
