@@ -22,7 +22,20 @@ interface Props {
 type Source = "lista" | "importacao" | "base";
 
 function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Erro inesperado";
+  if (error instanceof Error && error.message) return error.message;
+
+  // O Supabase pode devolver PostgrestError como objeto serializado (por
+  // exemplo, quando a falha atravessa uma mutation). Não esconda a causa
+  // atrás de "Erro inesperado": ela é necessária para corrigir a operação.
+  if (error && typeof error === "object") {
+    const details = error as Record<string, unknown>;
+    const message = [details.message, details.error_description, details.details, details.hint]
+      .find((value): value is string => typeof value === "string" && value.trim().length > 0);
+    if (message) return message;
+    if (typeof details.code === "string" && details.code.trim()) return `Erro ${details.code}`;
+  }
+
+  return typeof error === "string" && error.trim() ? error : "Erro inesperado";
 }
 
 export function AdicionarMedicosCampanhaDialog({
@@ -101,6 +114,11 @@ export function AdicionarMedicosCampanhaDialog({
 
   const addList = useMutation({
     mutationFn: async () => {
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      if (authError || !authData.user) {
+        throw new Error("Sua sessão expirou. Saia e entre novamente no Sigma antes de adicionar a lista.");
+      }
+
       const { data, error } = await supabase.rpc(
         "adicionar_lista_estrategia" as never,
         {

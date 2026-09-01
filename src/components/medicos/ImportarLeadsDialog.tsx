@@ -333,6 +333,11 @@ export function ImportarLeadsDialog({
     setIsUploading(true);
 
     try {
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      if (authError || !authData.user) {
+        throw new Error("Sua sessão expirou. Saia e entre novamente no Sigma antes de importar a planilha.");
+      }
+
       // Criar job de importação primeiro (para feedback imediato)
       const { data: job, error: jobError } = await supabase
         .from("lead_import_jobs")
@@ -403,8 +408,17 @@ export function ImportarLeadsDialog({
       );
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Erro ao processar importação");
+        const responseText = await response.text();
+        let errorData: { error?: string; message?: string } | null = null;
+        try {
+          errorData = responseText ? JSON.parse(responseText) : null;
+        } catch {
+          // Algumas falhas de gateway retornam texto/HTML em vez de JSON.
+        }
+        throw new Error(
+          errorData?.error || errorData?.message || responseText ||
+          `Erro ao processar importação (HTTP ${response.status})`,
+        );
       }
 
       toast.success(
