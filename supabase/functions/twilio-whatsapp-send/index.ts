@@ -652,6 +652,7 @@ serve(async (req) => {
       : body);
     const { error: messageError } = await admin.from("sigzap_messages").insert({
       conversation_id: conversation.id,
+      campanha_lead_id: campaignLeadId || null,
       wa_message_id: providerMessage.sid || providerMessage.id,
       provider: sender.provider,
       provider_message_id: providerMessage.sid || providerMessage.id,
@@ -664,6 +665,14 @@ serve(async (req) => {
       sent_at: now,
     });
     if (messageError) throw messageError;
+
+    if (campaignLeadId) {
+      const { error: accountError } = await admin.rpc(
+        "account_whatsapp_campaign_send",
+        { p_campanha_lead_id: campaignLeadId },
+      );
+      if (accountError) throw accountError;
+    }
 
     await admin
       .from("sigzap_conversations")
@@ -683,6 +692,12 @@ serve(async (req) => {
           // Sem este vínculo o disparo existe no WhatsApp, mas fica invisível
           // para a contagem diária e para a conversa unificada do lead.
           conversa_id: conversation.id,
+          // A API aceitou a tentativa; a confirmação final chega pelo
+          // webhook. O contador da campanha é corrigido se esse webhook
+          // posteriormente informar falha.
+          envio_status: "pending",
+          next_retry_at: null,
+          erro_envio: null,
           data_ultimo_contato: now,
           updated_at: now,
         })

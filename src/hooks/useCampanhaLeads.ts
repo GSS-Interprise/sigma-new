@@ -34,6 +34,12 @@ export interface CampanhaLead {
   created_at: string;
   unread_messages: number;
   last_incoming_at: string | null;
+  envio_status?: "not_sent" | "pending" | "confirmed" | "retry_wait" | "failed_permanent" | string | null;
+  erro_envio?: string | null;
+  retry_count?: number | null;
+  next_retry_at?: string | null;
+  ultimo_erro_codigo?: string | null;
+  ultimo_erro_mensagem?: string | null;
   // colaboração: quem está/assumiu o lead (UX multi-pessoa na mesma campanha)
   assumido_por?: string | null;
   assumido_em?: string | null;
@@ -125,6 +131,10 @@ export function useCampanhaLeads(campanhaId?: string) {
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "sigzap_conversations" }, () => {
         // A conversa não guarda campanha_id; limitamos a invalidação ao cache
         // da campanha aberta para a bolinha aparecer sem atualizar a página.
+        void queryClient.invalidateQueries({ queryKey: ["campanha-leads", campanhaId] });
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "leads" }, () => {
+        // Tags automÃ¡ticas da IA vivem no lead; atualiza o card sem refresh.
         void queryClient.invalidateQueries({ queryKey: ["campanha-leads", campanhaId] });
       })
       .subscribe();

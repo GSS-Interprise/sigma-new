@@ -314,6 +314,18 @@ function messageObject(item: AnyRecord, fromMe: boolean) {
       },
     };
   }
+  // Coexistence pode entregar respostas de botoes como `unsupported` (por
+  // exemplo, quando o payload interativo ainda nao e exposto pelo Chakra).
+  // Antes isso caia no fallback "Mensagem sem conteudo", perdendo o contexto
+  // visual e fazendo a IA tratar a interacao como uma mensagem vazia.
+  if (type === "unsupported" || item.unsupported) {
+    const unsupported = asObject(item.unsupported);
+    return {
+      interactiveMessage: {
+        type: firstText(unsupported.raw_type, unsupported.type, "interativa"),
+      },
+    };
+  }
   if (type === "location" || item.location) {
     return {
       locationMessage: {
@@ -366,6 +378,18 @@ function normalizedMessage(
     item.timestamp || root.timestamp || Math.floor(Date.now() / 1000),
   );
   if (!remoteJid || !messageId) return null;
+  const normalizedType = firstText(
+    item.type,
+    item.message_type,
+    item.messageType,
+    item.image ? "image" : "",
+    item.video ? "video" : "",
+    item.audio ? "audio" : "",
+    item.document ? "document" : "",
+    item.sticker ? "sticker" : "",
+    item.unsupported ? "interactive" : "",
+    "text",
+  );
   const pushName = firstText(
     contact.profile?.name,
     contact.name,
@@ -383,6 +407,7 @@ function normalizedMessage(
       key: { remoteJid, fromMe, id: messageId },
       pushName,
       messageTimestamp: timestamp,
+      messageType: normalizedType === "unsupported" ? "interactive" : normalizedType,
       message: messageObject(item, fromMe),
     },
   };
@@ -479,8 +504,20 @@ async function forwardCampaignAi(
     message.conversation,
     message.extendedTextMessage?.text,
   );
+  const messageType = firstText(
+    data.messageType,
+    message.interactiveMessage ? "interactive" : "",
+    message.audioMessage ? "audio" : "",
+    message.imageMessage ? "image" : "",
+    message.videoMessage ? "video" : "",
+    message.documentMessage ? "document" : "",
+    "text",
+  );
+  const aiText = messageText || (message.interactiveMessage
+    ? `[Mensagem interativa recebida${message.interactiveMessage.type ? ` · ${message.interactiveMessage.type}` : ""}]`
+    : "");
   const msgId = firstText(key.id);
-  if (!phone || !messageText || !msgId) return;
+  if (!phone || !aiText || !msgId) return;
 
   const response = await fetch(
     `${supabaseUrl}/functions/v1/campanha-ia-responder`,
@@ -493,9 +530,9 @@ async function forwardCampaignAi(
       },
       body: JSON.stringify({
         phone,
-        message_text: messageText,
+        message_text: aiText,
         instance_name: instanceName,
-        message_type: "text",
+        message_type: messageType,
         msg_id: msgId,
         conversation_id: conversationId || null,
       }),
@@ -585,16 +622,24 @@ async function updateDeliveryStatus(
   if (message?.id) {
     const { data: currentMessage, error: currentMessageError } = await admin
       .from("sigzap_messages")
-      .select("id, message_status, raw_payload")
+      .select("id, message_status, raw_payload, conversation_id, campanha_lead_id")
       .eq("id", message.id)
       .maybeSingle();
     if (currentMessageError) throw currentMessageError;
     const currentStatus = firstText(currentMessage?.message_status).toLowerCase();
     if (!shouldApplyDeliveryStatus(currentStatus, status)) return;
 
+    // O Chakra normaliza alguns erros no nível de `errors`/`error`, mas os
+    // eventos reais de Coexistence também chegam no formato
+    // `errorContext.providerPayload`. Unificamos as fontes para não perder o
+    // código original da Meta (ex.: 131042, 131049) na reconciliação.
+    const errorContext = asObject(item.errorContext);
+    const providerPayload = asObject(errorContext.providerPayload);
     const errorItem = Array.isArray(item.errors)
       ? asObject(item.errors[0])
-      : asObject(item.error);
+      : Object.keys(asObject(item.error)).length
+      ? asObject(item.error)
+      : providerPayload;
     const patch: AnyRecord = {
       message_status: status,
       // Mantém a resposta inicial do envio e registra a confirmação recebida
@@ -614,17 +659,71 @@ async function updateDeliveryStatus(
         errorItem.code,
         errorItem.error_code,
         item.error_code,
+        providerPayload.code,
       );
       const providerMessage = firstText(
         errorItem.title,
         errorItem.message,
         errorItem.error,
         item.error_message,
+        providerPayload.title,
+        providerPayload.message,
+        errorContext.message,
       );
       if (providerCode) patch.provider_error_code = providerCode;
       if (providerMessage) patch.provider_error_message = providerMessage;
     }
     await admin.from("sigzap_messages").update(patch).eq("id", message.id);
+
+    // Reconcilia a oportunidade e o contador da campanha com o resultado
+    // assíncrono real do provedor. O POST pode retornar 200 e só depois a Meta
+    // informar 131042/131026; sem esta etapa o Sigma contava uma falha como
+    // envio e deixava o lead preso em "contatado".
+    if (["sent", "delivered", "read", "accepted", "failed", "undelivered", "error"].includes(status)) {
+      let campanhaLeadId = currentMessage?.campanha_lead_id || null;
+      if (!campanhaLeadId && currentMessage?.conversation_id) {
+        const { data: campaignLead } = await admin
+          .from("campanha_leads")
+          .select("id")
+          .eq("conversa_id", currentMessage.conversation_id)
+          .limit(1)
+          .maybeSingle();
+        campanhaLeadId = campaignLead?.id || null;
+      }
+      if (campanhaLeadId) {
+        const providerCode = [
+          errorItem.code,
+          errorItem.error_code,
+          item.error_code,
+          providerPayload.code,
+        ].find((value) => value != null && String(value).trim());
+        const providerMessage = [
+          errorItem.title,
+          errorItem.message,
+          errorItem.error,
+          item.error_message,
+          providerPayload.title,
+          providerPayload.message,
+          errorContext.message,
+        ].find((value) => value != null && String(value).trim());
+        const { error: reconcileError } = await admin.rpc(
+          "reconcile_whatsapp_delivery",
+          {
+            p_campanha_lead_id: campanhaLeadId,
+            p_status: status,
+            p_error_code: providerCode ? String(providerCode) : null,
+            p_error_message: providerMessage ? String(providerMessage) : null,
+          },
+        );
+        if (reconcileError) {
+          console.warn("[chakra] falha ao reconciliar entrega da campanha", {
+            campanhaLeadId,
+            status,
+            error: reconcileError.message,
+          });
+        }
+      }
+    }
   }
 }
 

@@ -695,12 +695,14 @@ async function processTwilioBatch(supabase: any, camp: any, supabaseUrl: string,
   // Um contato por ciclo mantém o piloto observável e elimina rajadas acidentais.
   const { data: campaignLead, error: leadError } = await supabase
     .from("campanha_leads")
-    .select("id")
+    .select("id, retry_count, next_retry_at, envio_status")
     .eq("campanha_id", camp.id)
     .eq("status", "frio")
-    // Um número rejeitado pelo provedor não pode travar toda a fila. Ele fica
-    // marcado para revisão e o processador segue para o próximo lead elegível.
-    .is("erro_envio", null)
+    .in("envio_status", ["not_sent", "retry_wait"])
+    // Falhas transitórias voltam à fila no horário definido pelo webhook;
+    // falhas permanentes permanecem fora dela. O filtro permite também leads
+    // novos (sem erro e sem next_retry_at).
+    .or(`erro_envio.is.null,next_retry_at.lte.${new Date().toISOString()}`)
     .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
@@ -708,6 +710,19 @@ async function processTwilioBatch(supabase: any, camp: any, supabaseUrl: string,
   if (!campaignLead) {
     await supabase.from("campanhas").update({ next_batch_at: null }).eq("id", camp.id);
     return json({ ok: true, msg: "Sem leads para disparar" });
+  }
+
+  // Claim atômico antes de chamar o provedor. Scheduler, self-invoke e
+  // reexecuções podem chegar juntos; sem este lock por lead, duas execuções
+  // conseguiam selecionar o mesmo lead ainda frio e mandar a mesma mensagem.
+  const { data: claimed, error: claimError } = await supabase.rpc(
+    "claim_whatsapp_campaign_send",
+    { p_campanha_lead_id: campaignLead.id },
+  );
+  if (claimError) throw claimError;
+  if (claimed !== true) {
+    await supabase.from("campanhas").update({ next_batch_at: null }).eq("id", camp.id);
+    return json({ ok: true, msg: "Lead já reservado por outro processo" });
   }
 
   // O client Functions pode não propagar o service role quando uma Edge
@@ -741,22 +756,42 @@ async function processTwilioBatch(supabase: any, camp: any, supabaseUrl: string,
     const reason = [data?.error || await describeFunctionError(error), providerDetail]
       .filter(Boolean)
       .join(" — ") || "twilio_send_failed";
-    const retryAt = new Date(Date.now() + 60_000).toISOString();
-    await Promise.all([
-      supabase.from("campanha_leads").update({ erro_envio: reason }).eq("id", campaignLead.id),
-      supabase
-        .from("campanhas")
-        .update({ disparos_falhas: (camp.disparos_falhas || 0) + 1 })
-        .eq("id", camp.id),
-      supabase.from("campanhas").update({ next_batch_at: retryAt }).eq("id", camp.id),
-    ]);
+    const { error: reconcileError } = await supabase.rpc(
+      "reconcile_whatsapp_delivery",
+      {
+        p_campanha_lead_id: campaignLead.id,
+        p_status: "failed",
+        p_error_code: extractProviderCode(reason),
+        p_error_message: reason,
+      },
+    );
+    if (reconcileError) {
+      // Fallback somente se o RPC estiver indisponível: devolve o contador e
+      // não deixa a falha ser apresentada como envio confirmado.
+      const retryCount = Number(campaignLead.retry_count || 0) + 1;
+      const retryAt = new Date(Date.now() + 60_000).toISOString();
+      await Promise.all([
+        supabase.from("campanha_leads").update({
+          status: "frio",
+          envio_status: retryCount < 3 ? "retry_wait" : "failed_permanent",
+          retry_count: retryCount,
+          next_retry_at: retryCount < 3 ? retryAt : null,
+          ultimo_erro_mensagem: reason,
+          erro_envio: reason,
+          data_primeiro_contato: null,
+          data_ultimo_contato: null,
+          data_status: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }).eq("id", campaignLead.id),
+        supabase.from("campanhas").update({
+          disparos_enviados: Math.max((camp.disparos_enviados || 0) - 1, 0),
+          disparos_falhas: (camp.disparos_falhas || 0) + 1,
+        }).eq("id", camp.id),
+      ]);
+    }
+    await supabase.from("campanhas").update({ next_batch_at: new Date(Date.now() + 60_000).toISOString() }).eq("id", camp.id);
     return json({ ok: false, error: reason });
   }
-
-  await supabase
-    .from("campanhas")
-    .update({ disparos_enviados: (camp.disparos_enviados || 0) + 1 })
-    .eq("id", camp.id);
 
   const interval = officialInterval(camp);
   const nextBatchAt = new Date(
@@ -817,6 +852,11 @@ function sleep(ms: number): Promise<void> {
 
 function randomDelay(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function extractProviderCode(value: string): string | null {
+  const match = String(value || "").match(/\b(\d{5,6})\b/);
+  return match?.[1] || null;
 }
 
 // Próximo início de janela (hora `ini` BRT num dia da semana permitido), alinhado ao minuto 0.
