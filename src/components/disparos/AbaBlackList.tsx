@@ -44,7 +44,8 @@ export function AbaBlackList() {
   const [reason, setReason] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const queryClient = useQueryClient();
-  const { isAdmin } = usePermissions();
+  const { isAdmin, canDelete } = usePermissions();
+  const canManageBlacklist = isAdmin || canDelete("disparos");
 
   // Buscar médicos disponíveis (não na black list)
   const { data: medicosDisponiveis = [] } = useQuery({
@@ -276,7 +277,7 @@ export function AbaBlackList() {
                     })}
                   </TableCell>
                   <TableCell className="text-right">
-                    {isAdmin && (
+                    {canManageBlacklist && (
                       <Button
                         variant="ghost"
                         size="sm"
