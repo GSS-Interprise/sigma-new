@@ -693,15 +693,14 @@ serve(async (req) => {
           // para a contagem diária e para a conversa unificada do lead.
           conversa_id: conversation.id,
           // A API aceitou a tentativa; a confirmação final chega pelo
-          // webhook. O contador da campanha é corrigido se esse webhook
-          // posteriormente informar falha.
-          envio_status: "pending",
-          next_retry_at: null,
-          erro_envio: null,
+          // webhook. O update só pode tocar um lead ainda pendente: se o
+          // webhook de falha chegou antes, não sobrescrevemos retry_wait com
+          // contatado (causa da fila repetir a mesma mensagem).
           data_ultimo_contato: now,
           updated_at: now,
         })
-        .eq("id", campaignLeadId);
+        .eq("id", campaignLeadId)
+        .eq("envio_status", "pending");
 
       await admin
         .from("campanha_leads")
@@ -711,7 +710,8 @@ serve(async (req) => {
           data_status: now,
         })
         .eq("id", campaignLeadId)
-        .eq("status", "frio");
+        .eq("status", "frio")
+        .eq("envio_status", "pending");
     }
 
     return json({
