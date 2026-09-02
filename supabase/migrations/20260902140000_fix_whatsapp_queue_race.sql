@@ -105,6 +105,8 @@ GRANT EXECUTE ON FUNCTION public.reconcile_whatsapp_delivery(uuid, text, text, t
 -- registrada no histórico. Eles voltam à fila sem gerar novo disparo agora.
 UPDATE public.campanha_leads AS cl
 SET status = 'frio'::status_lead_campanha,
+    data_primeiro_contato = NULL,
+    data_ultimo_contato = NULL,
     updated_at = now()
 WHERE cl.envio_status = 'retry_wait'
   AND cl.ultimo_erro_codigo IS NOT NULL
