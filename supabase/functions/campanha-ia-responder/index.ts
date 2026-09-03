@@ -241,6 +241,92 @@ serve(async (req) => {
       claimedMessageId = msg_id;
     }
 
+    // Se o médico recusou a oportunidade, encerra imediatamente a campanha.
+    // Esse guard roda antes do LLM para que uma resposta negativa nunca vire
+    // uma nova pergunta, e também cancela uma rodada concorrente já gerada.
+    const encerrarPorDesinteresse = async (texto: string) => {
+      const agora = new Date().toISOString();
+      const { data: estadoAtual } = await supabase.from("campanha_leads")
+        .select("historico_conversa")
+        .eq("id", campLead.id)
+        .maybeSingle();
+      const historicoAtual: any[] = estadoAtual?.historico_conversa ||
+        campLead.historico_conversa || [];
+      const jaRegistrado = historicoAtual.some((item: any) =>
+        item?.role === "medico" && item?.text === texto
+      );
+      const historicoEncerramento: any[] = jaRegistrado
+        ? historicoAtual
+        : [...historicoAtual, { role: "medico", text: texto, ts: agora }];
+      const metadados = {
+        motivo: "sem_interesse_oportunidade",
+        origem: "ia",
+        encerrado_em: agora,
+      };
+      const { error: statusError } = await supabase.rpc(
+        "atualizar_status_lead_campanha",
+        {
+          p_campanha_id: campLead.campanha_id,
+          p_lead_id: lead.id,
+          p_novo_status: "descartado",
+          p_canal: "whatsapp",
+          p_metadados: metadados,
+        },
+      );
+      if (statusError) {
+        console.warn(`[ia] falha ao registrar desinteresse: ${statusError.message}`);
+      }
+      await supabase.from("campanha_leads").update(
+        mergeConversationId({
+          historico_conversa: historicoEncerramento,
+          data_ultimo_contato: agora,
+          resultado_final: "perdido",
+          motivo_perdido: "sem_interesse_oportunidade",
+          proximo_touch_em: null,
+          proximo_passo_id: null,
+          aguarda_resposta_humana: false,
+          ai_response_lease_token: null,
+          ai_response_lease_until: null,
+          updated_at: agora,
+        }, conversation_id),
+      ).eq("id", campLead.id);
+      await addOperationalTags(supabase, lead.id, [
+        OPERATIONAL_TAGS.incoming,
+        OPERATIONAL_TAGS.noInterest,
+        OPERATIONAL_TAGS.aiPaused,
+      ]);
+      return {
+        ok: true,
+        reason: "desinteresse_detectado",
+        status: "descartado",
+        messages_sent: 0,
+      };
+    };
+
+    const recentNegative = conversation_id
+      ? (await supabase.from("sigzap_messages")
+        .select("message_text")
+        .eq("conversation_id", conversation_id)
+        .eq("from_me", false)
+        .order("sent_at", { ascending: false })
+        .limit(12)).data?.find((item: any) => isNegativeIntent(item.message_text))
+      : null;
+    const negativeText = isNegativeIntent(finalText)
+      ? finalText
+      : recentNegative?.message_text;
+    if (negativeText) {
+      const negativeResult = await encerrarPorDesinteresse(negativeText);
+      if (claimedMessageId) {
+        await supabase.from("campanha_ia_processed_messages").update({
+          status: "completed",
+          completed_at: new Date().toISOString(),
+          result: negativeResult,
+          updated_at: new Date().toISOString(),
+        }).eq("msg_id", claimedMessageId);
+      }
+      return json(negativeResult);
+    }
+
     // Respostas automáticas explícitas são registradas, mas não qualificam o
     // lead nem iniciam um loop entre robôs.
     if (isExplicitAutoReply(finalText)) {
@@ -602,6 +688,32 @@ serve(async (req) => {
         // Uma rodada consolidada gera uma única bolha. Isso evita rajadas mesmo
         // quando o modelo tenta fragmentar a resposta em várias mensagens.
         .slice(0, 1);
+
+    // A resposta negativa pode ter chegado enquanto o modelo gerava texto.
+    // Revalida antes de qualquer envio para cancelar essa rodada obsoleta.
+    if (conversation_id) {
+      const { data: latestLeadState } = await supabase
+        .from("campanha_leads")
+        .select("status")
+        .eq("id", campLead.id)
+        .maybeSingle();
+      if (latestLeadState?.status === "descartado") {
+        const cancelledResult = {
+          ok: true,
+          reason: "rodada_cancelada_lead_encerrado",
+          messages_sent: 0,
+        };
+        if (claimedMessageId) {
+          await supabase.from("campanha_ia_processed_messages").update({
+            status: "completed",
+            completed_at: new Date().toISOString(),
+            result: cancelledResult,
+            updated_at: new Date().toISOString(),
+          }).eq("msg_id", claimedMessageId);
+        }
+        return json(cancelledResult);
+      }
+    }
     const respostaRepetida = messages.length > 0 &&
       isNearDuplicate(messages[0], historico);
     if (respostaRepetida) {
@@ -629,7 +741,6 @@ serve(async (req) => {
     // Uma só rodada por lead: o lease vale para Evolution e Twilio. Antes
     // ele só era adquirido no caminho Evolution.
     let responseTurnToken: string | null = null;
-    let responseTurnConsumed = false;
     if (messages.length > 0) {
       const { data: claimedTurn, error: claimTurnError } = await supabase.rpc(
         "campanha_ia_claim_response_turn",
@@ -675,7 +786,6 @@ serve(async (req) => {
       if (!canSend) {
         return json({ ok: true, reason: "human_assumed_before_send" });
       }
-      responseTurnConsumed = true;
       for (const message of messages) {
         const response = await fetch(
           `${supabaseUrl}/functions/v1/twilio-whatsapp-send`,
@@ -758,7 +868,6 @@ serve(async (req) => {
           }
           return json(blockedResult);
         }
-        responseTurnConsumed = true;
         const result = await sendWhatsAppText({
           supabase,
           evo: { url: evoUrl, apiKey: evoKey },
@@ -781,8 +890,8 @@ serve(async (req) => {
       }
     }
 
-    if (responseTurnToken && !responseTurnConsumed) {
-      await supabase.rpc("campanha_ia_consume_response_turn", {
+    if (responseTurnToken) {
+      await supabase.rpc("campanha_ia_release_response_turn", {
         p_campanha_lead_id: campLead.id,
         p_token: responseTurnToken,
       });
@@ -977,6 +1086,7 @@ const OPERATIONAL_TAGS = {
   hot: "Lead quente",
   invalidNumber: "Número inválido",
   aiPaused: "IA pausada",
+  noInterest: "Sem interesse",
   briefingReview: "Briefing para revisar",
 } as const;
 
@@ -1063,6 +1173,29 @@ function isExplicitAutoReply(text: string): boolean {
   const markerCount =
     operationalMarkers.filter((pattern) => pattern.test(normalized)).length;
   return markerCount >= 2 || (normalized.length >= 180 && markerCount >= 1);
+}
+
+function isNegativeIntent(text: string): boolean {
+  const normalized = String(text || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized) return false;
+
+  return [
+    /\b(?:nao|n)\s+(?:tenho|temos|possuo)\s+interesse\b/,
+    /\btenho\s+interesse\s+(?:nao|n)\b/,
+    /\bsem\s+interesse\b/,
+    /\bnao\s+(?:estou|to|tô)\s+interessad[oa]\b/,
+    /\bnao\s+me\s+interess[ao]\b/,
+    /\bnao\s+e\s+do\s+meu\s+interesse\b/,
+    /\bnao\s+(?:quero|vou|pretendo)\s+(?:seguir|prosseguir|continuar|receber|participar|aceitar)\b/,
+    /\b(?:pode|podem)\s+desconsiderar\b/,
+    /\b(?:pare|parar|cancele|cancelar|remova|remover)\b.*\b(?:mensag|contato|lista|numero)\b/,
+    /\b(?:pode|por favor)\s+(?:tirar|remover|excluir|parar)\b.*\b(?:contato|numero|mensag|lista)\b/,
+  ].some((pattern) => pattern.test(normalized));
 }
 
 function isNearDuplicate(
