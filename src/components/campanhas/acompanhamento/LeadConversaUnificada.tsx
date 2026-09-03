@@ -419,10 +419,17 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
     // Prefere a versão SigZap (tem status de entrega).
     const out: Array<TimelineMsg & { _k: string }> = [];
     for (const it of items) {
-      const k = `${it.mine ? "1" : "0"}|${(it.text || "").trim().toLowerCase().slice(0, 80)}`;
-      const dup = out.find((o) => o._k === k && o.ts && it.ts && Math.abs(o.ts.getTime() - it.ts.getTime()) < 120000);
+      const failed = ["failed", "undelivered", "error"].includes(String(it.status || "").toLowerCase());
+      const textKey = (it.text || "").trim().toLowerCase().slice(0, 160);
+      // Falhas do mesmo texto podem acontecer em tentativas espaçadas por
+      // minutos. Elas são tentativas da mesma conversa, não novas mensagens
+      // entregues; manter todas polui a timeline e induz a equipe ao erro.
+      const k = `${failed ? "failed" : "message"}|${it.mine ? "1" : "0"}|${textKey}`;
+      const dup = out.find((o) => o._k === k && (
+        failed || (o.ts && it.ts && Math.abs(o.ts.getTime() - it.ts.getTime()) < 120000)
+      ));
       if (dup) {
-        if (it.source === "sigzap" && dup.source === "historico") Object.assign(dup, it);
+        if (it.source === "sigzap" && (dup.source === "historico" || failed)) Object.assign(dup, it);
         continue;
       }
       out.push({ ...it, _k: k });
