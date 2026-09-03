@@ -45,9 +45,11 @@ interface OutboxMsg {
 
 interface OfficialTemplateOption {
   id: string;
+  provider: string | null;
   friendly_name: string;
   category: string | null;
   language: string;
+  twilio_account_key: string | null;
 }
 
 /**
@@ -105,14 +107,27 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("campanhas")
-        .select("whatsapp_provider, official_template_id")
+        .select("whatsapp_provider, official_template_id, official_sender_id")
         .eq("id", campanhaId)
         .single();
       if (error) throw error;
-      return data as { whatsapp_provider: "evolution" | "twilio"; official_template_id: string | null };
+      return data as { whatsapp_provider: "evolution" | "twilio" | "chakra"; official_template_id: string | null; official_sender_id: string | null };
     },
   });
-  const isOfficialCampaign = campanhaCanal?.whatsapp_provider === "twilio";
+  const isOfficialCampaign = campanhaCanal?.whatsapp_provider !== "evolution" && !!campanhaCanal?.whatsapp_provider;
+  const { data: campanhaSender } = useQuery({
+    queryKey: ["acompanhamento-campanha-sender", campanhaCanal?.official_sender_id],
+    enabled: isOfficialCampaign && !!campanhaCanal?.official_sender_id,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("whatsapp_official_senders")
+        .select("provider, twilio_account_key")
+        .eq("id", campanhaCanal?.official_sender_id)
+        .single();
+      if (error) throw error;
+      return data as { provider: string; twilio_account_key: string | null };
+    },
+  });
   const [officialTemplateId, setOfficialTemplateId] = useState("");
   const { data: officialTemplates = [] } = useQuery({
     queryKey: ["approved-official-templates-for-conversation"],
@@ -120,7 +135,7 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
     queryFn: async (): Promise<OfficialTemplateOption[]> => {
       const { data, error } = await supabase
         .from("whatsapp_official_templates" as never)
-        .select("id, friendly_name, category, language")
+        .select("id, provider, friendly_name, category, language, twilio_account_key")
         .eq("approval_status", "approved")
         .order("friendly_name");
       if (error) throw error;
@@ -128,14 +143,19 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
     },
     staleTime: 60_000,
   });
+  const compatibleOfficialTemplates = campanhaSender
+    ? officialTemplates.filter((template) =>
+        template.provider === campanhaSender.provider &&
+        (campanhaSender.provider === "chakra" || template.twilio_account_key === campanhaSender.twilio_account_key))
+    : officialTemplates;
 
   useEffect(() => {
-    if (officialTemplateId && officialTemplates.some((template) => template.id === officialTemplateId)) return;
-    const preferred = officialTemplates.find((template) => template.id === campanhaCanal?.official_template_id);
-    setOfficialTemplateId(preferred?.id || officialTemplates[0]?.id || "");
-  }, [campanhaCanal?.official_template_id, officialTemplateId, officialTemplates]);
+    if (officialTemplateId && compatibleOfficialTemplates.some((template) => template.id === officialTemplateId)) return;
+    const preferred = compatibleOfficialTemplates.find((template) => template.id === campanhaCanal?.official_template_id);
+    setOfficialTemplateId(preferred?.id || compatibleOfficialTemplates[0]?.id || "");
+  }, [campanhaCanal?.official_template_id, officialTemplateId, compatibleOfficialTemplates]);
 
-  const isOfficialConversation = conv?.instance?.provider === "twilio";
+  const isOfficialConversation = ["twilio", "chakra"].includes(String(conv?.instance?.provider));
   const officialServiceWindowOpen = !isOfficialConversation || Boolean(
     conv?.service_window_expires_at && new Date(conv.service_window_expires_at).getTime() > Date.now(),
   );
@@ -182,7 +202,7 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
   const [texto, setTexto] = useState("");
   const enviar = useMutation({
     mutationFn: async ({ msg, clientMessageId = crypto.randomUUID() }: { msg: string; clientMessageId?: string }) => {
-      if (conv?.instance?.provider === "twilio") {
+      if (["twilio", "chakra"].includes(String(conv?.instance?.provider))) {
         const { data, error } = await supabase.functions.invoke("twilio-whatsapp-send", {
           // Mantém o card da campanha sincronizado também nas respostas livres
           // dentro da janela oficial de 24 horas.
@@ -490,7 +510,7 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
       {conv?.id ? (
         <div className="mt-3 border-t pt-3">
           {/* #5: chip que envia a resposta — transparente e trocável */}
-          {conv.instance?.provider !== "twilio" && <div className="flex items-center gap-2 mb-2 text-xs">
+          {!isOfficialConversation && <div className="flex items-center gap-2 mb-2 text-xs">
             <Smartphone className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
             <span className="text-muted-foreground shrink-0">Enviando pelo chip:</span>
             {chipsCampanha.length >= 1 ? (
@@ -521,7 +541,7 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
                 </p>
               </div>
               <OfficialTemplateSelect
-                templates={officialTemplates}
+                templates={compatibleOfficialTemplates}
                 value={officialTemplateId}
                 onChange={setOfficialTemplateId}
               />
@@ -574,7 +594,7 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
                 Escolha o template oficial do primeiro contato. A categoria aprovada aparece ao lado do nome.
               </p>
               <OfficialTemplateSelect
-                templates={officialTemplates}
+                templates={compatibleOfficialTemplates}
                 value={officialTemplateId}
                 onChange={setOfficialTemplateId}
               />
@@ -662,8 +682,16 @@ function BubbleTimeline({ msg, isOfficial, onRetry, retrying }: {
   retrying?: boolean;
 }) {
   const mine = msg.mine;
-  const queued = msg.source === "outbox" && msg.status !== "failed";
-  const failed = msg.source === "outbox" && msg.status === "failed";
+  const normalizedStatus = String(msg.status || "").toLowerCase();
+  // Mensagens oficiais são gravadas antes do retorno assíncrono do Chakra.
+  // Quando a Meta rejeita a tentativa, elas continuam em sigzap_messages; sem
+  // considerar o status aqui, a conversa exibia cada falha como uma bolha verde
+  // entregue e parecia haver duplicidade real.
+  const failed = ["failed", "undelivered", "error"].includes(normalizedStatus);
+  const queued = !failed && (
+    (msg.source === "outbox" && ["queued", "processing"].includes(normalizedStatus)) ||
+    (msg.source === "sigzap" && ["queued", "accepted"].includes(normalizedStatus))
+  );
   let hora = "";
   if (msg.ts) { try { hora = format(msg.ts, "HH:mm", { locale: ptBR }); } catch {} }
   return (
