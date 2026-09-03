@@ -52,6 +52,19 @@ interface OfficialTemplateOption {
   twilio_account_key: string | null;
 }
 
+// Tentativas rejeitadas pela Meta ficam preservadas no banco para auditoria e
+// métricas, mas não são mensagens da conversa: não chegaram ao médico.
+function isUndeliveredStatus(status: string | null | undefined): boolean {
+  const normalized = String(status || "").trim().toLowerCase();
+  return normalized === "failed"
+    || normalized === "undelivered"
+    || normalized === "error"
+    || normalized === "rejected"
+    || normalized.includes("failed")
+    || normalized.includes("undeliver")
+    || normalized.includes("reject");
+}
+
 /**
  * Mostra a conversa REAL do SigZap pelo lead_id (FK adicionada em F1.3).
  * Cross-campanha: se o mesmo médico está em N campanhas, a conversa
@@ -379,6 +392,9 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
   const timeline: TimelineMsg[] = useMemo(() => {
     const items: TimelineMsg[] = [];
     for (const m of mensagens ?? []) {
+      // Não exibir tentativas não entregues como se fossem parte da conversa.
+      // O registro continua disponível no banco e no card de falhas para investigação.
+      if (isUndeliveredStatus(m.message_status)) continue;
       items.push({
         id: `s_${m.id}`,
         mine: m.from_me,
@@ -419,7 +435,7 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
     // Prefere a versão SigZap (tem status de entrega).
     const out: Array<TimelineMsg & { _k: string }> = [];
     for (const it of items) {
-      const failed = ["failed", "undelivered", "error"].includes(String(it.status || "").toLowerCase());
+      const failed = isUndeliveredStatus(it.status);
       const textKey = (it.text || "").trim().toLowerCase().slice(0, 160);
       // Falhas do mesmo texto podem acontecer em tentativas espaçadas por
       // minutos. Elas são tentativas da mesma conversa, não novas mensagens
@@ -694,7 +710,7 @@ function BubbleTimeline({ msg, isOfficial, onRetry, retrying }: {
   // Quando a Meta rejeita a tentativa, elas continuam em sigzap_messages; sem
   // considerar o status aqui, a conversa exibia cada falha como uma bolha verde
   // entregue e parecia haver duplicidade real.
-  const failed = ["failed", "undelivered", "error"].includes(normalizedStatus);
+  const failed = isUndeliveredStatus(normalizedStatus);
   const queued = !failed && (
     (msg.source === "outbox" && ["queued", "processing"].includes(normalizedStatus)) ||
     (msg.source === "sigzap" && ["queued", "accepted"].includes(normalizedStatus))

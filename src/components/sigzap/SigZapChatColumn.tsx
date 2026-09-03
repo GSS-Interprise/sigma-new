@@ -98,6 +98,19 @@ interface SigZapOutboxItem {
   created_at: string;
 }
 
+// Tentativas rejeitadas ficam preservadas para auditoria, mas não devem
+// aparecer como mensagens da conversa porque não foram entregues ao contato.
+function isUndeliveredStatus(status: string | null | undefined): boolean {
+  const normalized = String(status || '').trim().toLowerCase();
+  return normalized === 'failed'
+    || normalized === 'undelivered'
+    || normalized === 'error'
+    || normalized === 'rejected'
+    || normalized.includes('failed')
+    || normalized.includes('undeliver')
+    || normalized.includes('reject');
+}
+
 const MAX_FILE_SIZE = 16 * 1024 * 1024; // 16MB
 
 export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapChatColumnProps) {
@@ -1850,6 +1863,9 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
 
   const contact = conversa?.contact as any;
   const instance = conversa?.instance as any;
+  // Mensagens falhas continuam no banco e nas métricas, mas são ocultadas da
+  // timeline operacional para que a equipe veja apenas o que chegou ao contato.
+  const visibleMessages = (mensagens || []).filter((msg) => !isUndeliveredStatus(msg.message_status));
 
   return (
     <div 
@@ -1978,15 +1994,15 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
             [...Array(5)].map((_, i) => (
               <Skeleton key={i} className={cn("h-12 w-2/3", i % 2 === 0 ? "" : "ml-auto")} />
             ))
-          ) : mensagens?.length === 0 ? (
+          ) : visibleMessages.length === 0 ? (
             <p className="text-center text-sm text-muted-foreground py-8">
-              Nenhuma mensagem ainda.
+              Nenhuma mensagem entregue ainda.
             </p>
           ) : (
-            mensagens?.map((msg, idx) => {
+            visibleMessages.map((msg, idx) => {
               // Day separator
               const msgDate = new Date(msg.sent_at);
-              const prevMsg = idx > 0 ? mensagens[idx - 1] : null;
+              const prevMsg = idx > 0 ? visibleMessages[idx - 1] : null;
               const prevDate = prevMsg ? new Date(prevMsg.sent_at) : null;
               const showDaySeparator = !prevDate || 
                 msgDate.toDateString() !== prevDate.toDateString();
