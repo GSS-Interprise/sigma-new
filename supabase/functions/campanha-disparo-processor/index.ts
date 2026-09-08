@@ -795,11 +795,20 @@ async function processTwilioBatch(supabase: any, camp: any, supabaseUrl: string,
     const wabaPaymentBlocked = extractProviderCode(reason) === "131042" ||
       /business eligibility payment issue/i.test(reason);
     if (wabaPaymentBlocked) {
-      await supabase
+      // O mesmo remetente oficial pode estar associado a várias campanhas.
+      // Pausar todas evita que o scheduler troque de campanha e continue
+      // gerando falhas enquanto a WABA estiver bloqueada.
+      const senderId = String(camp.official_sender_id || "").trim();
+      const pauseQuery = supabase
         .from("campanhas")
         .update({ status: "pausada", next_batch_at: null })
-        .eq("id", camp.id);
-      return json({ ok: false, error: reason, action: "campaign_paused_waba_payment" });
+        .eq("status", "ativa");
+      if (senderId) {
+        await pauseQuery.eq("official_sender_id", senderId);
+      } else {
+        await pauseQuery.eq("id", camp.id);
+      }
+      return json({ ok: false, error: reason, action: "campaigns_paused_waba_payment" });
     }
     await supabase.from("campanhas").update({ next_batch_at: new Date(Date.now() + 60_000).toISOString() }).eq("id", camp.id);
     return json({ ok: false, error: reason });
