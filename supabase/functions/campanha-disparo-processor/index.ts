@@ -787,7 +787,19 @@ async function processTwilioBatch(supabase: any, camp: any, supabaseUrl: string,
           disparos_enviados: Math.max((camp.disparos_enviados || 0) - 1, 0),
           disparos_falhas: (camp.disparos_falhas || 0) + 1,
         }).eq("id", camp.id),
-      ]);
+        ]);
+    }
+    // 131042 é um bloqueio da WABA (elegibilidade/pagamento), não um erro
+    // deste lead. Pausar a campanha evita que o scheduler consuma toda a lista
+    // repetindo falhas enquanto a Meta ainda não liberou a conta.
+    const wabaPaymentBlocked = extractProviderCode(reason) === "131042" ||
+      /business eligibility payment issue/i.test(reason);
+    if (wabaPaymentBlocked) {
+      await supabase
+        .from("campanhas")
+        .update({ status: "pausada", next_batch_at: null })
+        .eq("id", camp.id);
+      return json({ ok: false, error: reason, action: "campaign_paused_waba_payment" });
     }
     await supabase.from("campanhas").update({ next_batch_at: new Date(Date.now() + 60_000).toISOString() }).eq("id", camp.id);
     return json({ ok: false, error: reason });
