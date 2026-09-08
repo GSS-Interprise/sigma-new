@@ -722,6 +722,42 @@ async function updateDeliveryStatus(
             error: reconcileError.message,
           });
         }
+
+        // A API pode aceitar o envio e só depois devolver 131042 no webhook.
+        // Como esse bloqueio pertence à WABA/remetente, interrompemos todas as
+        // campanhas que compartilham o sender antes que a fila avance.
+        const normalizedProviderCode = String(providerCode || "").trim();
+        const wabaPaymentBlocked = normalizedProviderCode === "131042" ||
+          /business eligibility payment issue/i.test(String(providerMessage || ""));
+        if (wabaPaymentBlocked && ["failed", "undelivered", "error"].includes(status)) {
+          const { data: linkedLead } = await admin
+            .from("campanha_leads")
+            .select("campanha_id")
+            .eq("id", campanhaLeadId)
+            .maybeSingle();
+          if (linkedLead?.campanha_id) {
+            const { data: campaign } = await admin
+              .from("campanhas")
+              .select("id, official_sender_id")
+              .eq("id", linkedLead.campanha_id)
+              .maybeSingle();
+            const senderId = String(campaign?.official_sender_id || "").trim();
+            const pauseQuery = admin
+              .from("campanhas")
+              .update({ status: "pausada", next_batch_at: null })
+              .eq("status", "ativa");
+            if (senderId) {
+              await pauseQuery.eq("official_sender_id", senderId);
+            } else {
+              await pauseQuery.eq("id", linkedLead.campanha_id);
+            }
+            console.warn("[chakra] campanhas pausadas por bloqueio de pagamento da WABA", {
+              campanhaLeadId,
+              providerCode: normalizedProviderCode,
+              officialSenderId: senderId || null,
+            });
+          }
+        }
       }
     }
   }
