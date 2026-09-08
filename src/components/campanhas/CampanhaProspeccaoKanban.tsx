@@ -486,7 +486,7 @@ function tagOperacionalClass(tag: string) {
 function resumoErroEnvio(campLead: CampanhaLead) {
   const codigo = campLead.ultimo_erro_codigo || campLead.erro_envio || "";
   if (String(codigo).includes("131042") || String(codigo).toLowerCase().includes("pagamento")) {
-    return "Pagamento Meta em atualização — retentativa automática";
+    return "Bloqueio Meta: revisar pagamento/eligibilidade — sem retentativa";
   }
   if (String(codigo).includes("131026") || String(codigo).toLowerCase().includes("whatsapp_inexistente")) {
     return "Número sem WhatsApp ou indisponível";
