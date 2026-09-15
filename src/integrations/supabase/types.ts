@@ -16708,6 +16708,14 @@ export type Database = {
         }
         Returns: Json
       }
+      merge_lead_cluster_for_captacao: {
+        Args: {
+          p_batch_tag?: string
+          p_canonical_id: string
+          p_duplicate_id: string
+        }
+        Returns: Json
+      }
       mover_lead_entre_propostas: {
         Args: {
           p_canal?: string

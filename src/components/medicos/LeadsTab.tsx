@@ -3,7 +3,7 @@ import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Upload, Search, Plus, Eye, ChevronDown, Check, ArrowUpAZ, ArrowDownAZ, Calendar, X } from "lucide-react";
+import { Upload, Search, Plus, Eye, ChevronDown, Check, ArrowUpAZ, ArrowDownAZ, Calendar, X, Ban, Trash2, GitMerge, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   Table,
@@ -21,6 +21,14 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { formatPhoneForDisplay } from "@/lib/phoneUtils";
 import { ImportarLeadsDialog } from "./ImportarLeadsDialog";
 import { LeadProntuarioDialog } from "./LeadProntuarioDialog";
@@ -29,6 +37,7 @@ import { LeadsTablePagination } from "./LeadsTablePagination";
 import { cn } from "@/lib/utils";
 import { useLeadsPaginated, useLeadsFilterCounts, LEADS_PAGE_SIZE } from "@/hooks/useLeadsPaginated";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useCaptacaoPermissions } from "@/hooks/useCaptacaoPermissions";
 
 // Status color mapping for consistent display
 const getStatusColor = (status: string, isBlacklisted: boolean = false) => {
@@ -64,6 +73,38 @@ const EnrichStatusBadge = ({ status }: { status: string | null }) => {
   }
 };
 
+type LeadMergeCandidate = {
+  id: string;
+  nome: string | null;
+  phone_e164: string | null;
+  cpf: string | null;
+  chave_unica: string | null;
+  uf: string | null;
+  cidade: string | null;
+  status: string | null;
+  especialidade: string | null;
+  created_at: string | null;
+  matchScore: number;
+};
+
+type LeadMergeSource = Pick<LeadMergeCandidate, 'id' | 'nome' | 'phone_e164' | 'cpf' | 'chave_unica'>;
+
+const getSupabaseErrorCode = (error: unknown) => {
+  if (typeof error !== "object" || error === null || !("code" in error)) return "";
+  return String((error as { code?: unknown }).code ?? "");
+};
+
+const normalizeDigits = (value: unknown) => String(value ?? "").replace(/\D/g, "");
+
+const normalizeName = (value: unknown) =>
+  String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]/gi, "")
+    .toUpperCase();
+
+const escapeIlikeLiteral = (value: string) => value.replace(/[\\%_]/g, "\\$&");
+
 export function LeadsTab() {
   const [page, setPage] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
@@ -87,6 +128,18 @@ export function LeadsTab() {
   const [dataFim, setDataFim] = useState<string | null>(null);
   const [anoFormaturaMin, setAnoFormaturaMin] = useState<number | null>(null);
   const [enrichStatus, setEnrichStatus] = useState<string | null>(null);
+  const { hasCaptacaoPermission } = useCaptacaoPermissions();
+  const canManageLeads = hasCaptacaoPermission('leads');
+  const canManageBlacklist = hasCaptacaoPermission('blacklist');
+
+  // Exclusão física falha quando o lead já tem histórico, conversas ou outros
+  // vínculos. Nessa situação abrimos um seletor para preservar o registro
+  // canônico e mesclar o duplicado com rastreabilidade.
+  const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
+  const [mergeSourceLead, setMergeSourceLead] = useState<LeadMergeSource | null>(null);
+  const [mergeCandidates, setMergeCandidates] = useState<LeadMergeCandidate[]>([]);
+  const [selectedCanonicalId, setSelectedCanonicalId] = useState<string | null>(null);
+  const [isFindingMergeCandidates, setIsFindingMergeCandidates] = useState(false);
 
   // Ordenação
   type SortConfig = { field: string; direction: 'asc' | 'desc' } | null;
@@ -132,17 +185,18 @@ export function LeadsTab() {
   const { data: filterData } = useLeadsFilterCounts(true);
 
   // Buscar telefones da blacklist para verificação
-  const { data: blacklistPhones = [] } = useQuery({
+  const { data: blacklistEntries = [] } = useQuery({
     queryKey: ['blacklist-phones'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('blacklist')
-        .select('phone_e164');
+        .select('id, phone_e164');
       
       if (error) throw error;
-      return data?.map(b => b.phone_e164) || [];
+      return data || [];
     },
   });
+  const blacklistPhones = blacklistEntries.map((entry) => entry.phone_e164);
 
   // Função para verificar se lead está na blacklist
   const isLeadBlacklisted = (phone: string | null) => {
@@ -239,6 +293,27 @@ export function LeadsTab() {
     },
   });
 
+  const removeFromBlacklistMutation = useMutation({
+    mutationFn: async ({ id }: { id: string }) => {
+      const { error } = await supabase
+        .from('blacklist')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads-paginated'] });
+      queryClient.invalidateQueries({ queryKey: ['blacklist'] });
+      queryClient.invalidateQueries({ queryKey: ['black-list'] });
+      queryClient.invalidateQueries({ queryKey: ['blacklist-phones'] });
+      toast.success('Lead removido da blacklist');
+    },
+    onError: (error: unknown) => {
+      toast.error(error instanceof Error ? error.message : 'Erro ao remover da blacklist');
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase
@@ -251,12 +326,126 @@ export function LeadsTab() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leads-paginated'] });
       queryClient.invalidateQueries({ queryKey: ['leads-filter-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['leads-filter-counts-v4'] });
       toast.success('Lead excluído com sucesso');
     },
-    onError: () => {
-      toast.error('Erro ao excluir lead');
+  });
+
+  const mergeMutation = useMutation({
+    mutationFn: async ({ canonicalId, duplicateId }: { canonicalId: string; duplicateId: string }) => {
+      // O wrapper valida a permissão no banco e chama a rotina transacional de
+      // merge. Assim a UI não precisa mover histórico tabela por tabela.
+      const { data, error } = await supabase.rpc('merge_lead_cluster_for_captacao', {
+        p_canonical_id: canonicalId,
+        p_duplicate_id: duplicateId,
+        p_batch_tag: 'manual_ui',
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      setMergeDialogOpen(false);
+      setMergeSourceLead(null);
+      setMergeCandidates([]);
+      setSelectedCanonicalId(null);
+      queryClient.invalidateQueries({ queryKey: ['leads-paginated'] });
+      queryClient.invalidateQueries({ queryKey: ['leads-filter-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['leads-filter-counts-v4'] });
+      queryClient.invalidateQueries({ queryKey: ['lead-historico'] });
+      toast.success('Duplicado mesclado e removido da lista. O histórico foi preservado no registro canônico.');
+    },
+    onError: (error: unknown) => {
+      toast.error(error instanceof Error ? error.message : 'Erro ao mesclar lead duplicado');
     },
   });
+
+  const findMergeCandidates = async (source: LeadMergeSource) => {
+    setMergeSourceLead(source);
+    setMergeCandidates([]);
+    setSelectedCanonicalId(null);
+    setMergeDialogOpen(true);
+    setIsFindingMergeCandidates(true);
+
+    try {
+      const select = 'id, nome, phone_e164, cpf, chave_unica, uf, cidade, status, especialidade, created_at';
+      const baseQuery = () => supabase
+        .from('leads')
+        .select(select)
+        .neq('id', source.id)
+        .is('merged_into_id', null)
+        .limit(50);
+      const queries: PromiseLike<{ data: Omit<LeadMergeCandidate, 'matchScore'>[] | null; error: { message: string } | null }>[] = [];
+
+      if (source.phone_e164) {
+        queries.push(baseQuery().eq('phone_e164', source.phone_e164));
+      }
+
+      const cpf = String(source.cpf ?? '').trim();
+      if (cpf) {
+        const cpfDigits = normalizeDigits(cpf);
+        const variants = [...new Set([cpf, cpfDigits].filter(Boolean))];
+        queries.push(baseQuery().in('cpf', variants));
+      }
+
+      const chaveUnica = String(source.chave_unica ?? '').trim();
+      if (chaveUnica) {
+        queries.push(baseQuery().eq('chave_unica', chaveUnica));
+      }
+
+      if (source.nome) {
+        // Sem curingas: ilike continua case-insensitive, mas não amplia para
+        // nomes apenas parecidos. A decisão final sempre fica com a pessoa.
+        queries.push(baseQuery().ilike('nome', escapeIlikeLiteral(String(source.nome).trim())));
+      }
+
+      const responses = await Promise.all(queries);
+      const byId = new Map<string, LeadMergeCandidate>();
+      const sourcePhone = normalizeDigits(source.phone_e164);
+      const sourceCpf = normalizeDigits(source.cpf);
+      const sourceName = normalizeName(source.nome);
+      const sourceKey = String(source.chave_unica ?? '').trim();
+
+      responses.forEach(({ data, error }) => {
+        if (error) throw error;
+        (data ?? []).forEach((candidate: Omit<LeadMergeCandidate, 'matchScore'>) => {
+          const score =
+            (sourcePhone && sourcePhone === normalizeDigits(candidate.phone_e164) ? 100 : 0) +
+            (sourceCpf && sourceCpf === normalizeDigits(candidate.cpf) ? 100 : 0) +
+            (sourceKey && sourceKey === String(candidate.chave_unica ?? '').trim() ? 90 : 0) +
+            (sourceName && sourceName === normalizeName(candidate.nome) ? 20 : 0);
+          const existing = byId.get(candidate.id);
+          if (!existing || score > existing.matchScore) {
+            byId.set(candidate.id, { ...candidate, matchScore: score });
+          }
+        });
+      });
+
+      const candidates = [...byId.values()].sort((a, b) => {
+        if (b.matchScore !== a.matchScore) return b.matchScore - a.matchScore;
+        return String(a.created_at ?? '').localeCompare(String(b.created_at ?? ''));
+      });
+      setMergeCandidates(candidates);
+      setSelectedCanonicalId(candidates[0]?.id ?? null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível localizar os possíveis duplicados');
+    } finally {
+      setIsFindingMergeCandidates(false);
+    }
+  };
+
+  const handleDeleteLead = async (lead: LeadMergeSource) => {
+    if (!window.confirm(`Excluir o lead ${lead.nome}? Se ele possuir histórico, você poderá mesclá-lo a outro registro.`)) return;
+
+    try {
+      await deleteMutation.mutateAsync(lead.id);
+    } catch (error) {
+      if (getSupabaseErrorCode(error) === '23503') {
+        await findMergeCandidates(lead);
+        return;
+      }
+      toast.error(error instanceof Error ? error.message : 'Erro ao excluir lead');
+    }
+  };
 
   const normalizeKey = (value: string) => value.trim().toUpperCase();
 
@@ -584,6 +773,7 @@ export function LeadsTab() {
               ) : (
                 leads.map((lead) => {
                   const isBlacklisted = isLeadBlacklisted(lead.phone_e164);
+                  const blacklistEntry = blacklistEntries.find((entry) => entry.phone_e164 === lead.phone_e164);
                   return (
                   <TableRow 
                     key={lead.id} 
@@ -656,6 +846,41 @@ export function LeadsTab() {
                             >
                               Ver prontuário
                             </DropdownMenuItem>
+                            {canManageBlacklist && !isBlacklisted && lead.phone_e164 && (
+                              <DropdownMenuItem
+                                onClick={() => addToBlacklistMutation.mutate({
+                                  leadId: lead.id,
+                                  phone: lead.phone_e164,
+                                  nome: lead.nome,
+                                })}
+                                className="gap-2"
+                              >
+                                <Ban className="h-4 w-4" />
+                                Adicionar à blacklist
+                              </DropdownMenuItem>
+                            )}
+                            {canManageBlacklist && isBlacklisted && blacklistEntry && (
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  if (window.confirm(`Remover ${lead.nome} da blacklist?`)) {
+                                    removeFromBlacklistMutation.mutate({ id: blacklistEntry.id });
+                                  }
+                                }}
+                                className="gap-2"
+                              >
+                                <Ban className="h-4 w-4" />
+                                Remover da blacklist
+                              </DropdownMenuItem>
+                            )}
+                            {canManageLeads && (
+                              <DropdownMenuItem
+                                onClick={() => { void handleDeleteLead(lead); }}
+                                className="gap-2 text-destructive focus:text-destructive"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                Excluir lead
+                              </DropdownMenuItem>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
@@ -723,6 +948,125 @@ export function LeadsTab() {
         initialCpf={initialCpf}
         initialCnpj={initialCnpj}
       />
+
+      <Dialog
+        open={mergeDialogOpen}
+        onOpenChange={(open) => {
+          if (mergeMutation.isPending) return;
+          setMergeDialogOpen(open);
+          if (!open) {
+            setMergeSourceLead(null);
+            setMergeCandidates([]);
+            setSelectedCanonicalId(null);
+          }
+        }}
+      >
+        <DialogContent className="w-[calc(100vw-2rem)] max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 pr-6">
+              <GitMerge className="h-5 w-5 text-primary" />
+              Lead com vínculos: mesclar duplicado
+            </DialogTitle>
+            <DialogDescription>
+              Este lead tem histórico, conversa ou outro vínculo e não pode ser apagado fisicamente.
+              Escolha qual registro deve permanecer; o duplicado será retirado da lista e o histórico será preservado.
+            </DialogDescription>
+          </DialogHeader>
+
+          {mergeSourceLead && (
+            <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
+              <span className="font-medium">Duplicado selecionado: </span>
+              {mergeSourceLead.nome || 'Lead sem nome'}
+              {mergeSourceLead.phone_e164 && (
+                <span className="text-muted-foreground"> · {formatPhoneForDisplay(mergeSourceLead.phone_e164)}</span>
+              )}
+            </div>
+          )}
+
+          <div className="min-h-0 flex-1 overflow-y-auto space-y-2 pr-1" aria-live="polite">
+            {isFindingMergeCandidates ? (
+              <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Procurando registros correspondentes…
+              </div>
+            ) : mergeCandidates.length === 0 ? (
+              <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                Não encontramos outro registro com os mesmos dados. Para evitar perda de histórico, o Sigma não
+                remove este lead sem um registro canônico. Confira o telefone/CPF ou use a aba Monitor para revisar
+                a duplicidade.
+              </div>
+            ) : (
+              <>
+                <p className="text-sm font-medium">Escolha o registro que deve permanecer:</p>
+                {mergeCandidates.map((candidate, index) => {
+                  const isSelected = selectedCanonicalId === candidate.id;
+                  const isRecommended = index === 0 && candidate.matchScore >= 20;
+                  return (
+                    <button
+                      key={candidate.id}
+                      type="button"
+                      aria-pressed={isSelected}
+                      onClick={() => setSelectedCanonicalId(candidate.id)}
+                      className={cn(
+                        "w-full min-h-16 rounded-md border p-3 text-left transition-colors",
+                        "hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        isSelected && "border-primary bg-primary/5 ring-1 ring-primary",
+                      )}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-medium">{candidate.nome || 'Lead sem nome'}</span>
+                        {isRecommended && (
+                          <Badge variant="secondary" className="text-xs">Melhor correspondência</Badge>
+                        )}
+                      </div>
+                      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                        <span>{candidate.phone_e164 ? formatPhoneForDisplay(candidate.phone_e164) : 'Sem telefone'}</span>
+                        <span>{[candidate.cidade, candidate.uf].filter(Boolean).join('/') || 'Local não informado'}</span>
+                        <span>{candidate.status || 'Novo'}</span>
+                        {candidate.created_at && (
+                          <span>
+                            Criado em {new Intl.DateTimeFormat('pt-BR').format(new Date(candidate.created_at))}
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              className="min-h-10"
+              onClick={() => setMergeDialogOpen(false)}
+              disabled={mergeMutation.isPending}
+            >
+              Cancelar
+            </Button>
+            <Button
+              className="min-h-10"
+              disabled={!selectedCanonicalId || !mergeSourceLead || mergeMutation.isPending}
+              onClick={() => {
+                if (!selectedCanonicalId || !mergeSourceLead) return;
+                const canonical = mergeCandidates.find((candidate) => candidate.id === selectedCanonicalId);
+                if (!canonical) return;
+                if (window.confirm(`Manter ${canonical.nome || 'este registro'} e mesclar ${mergeSourceLead.nome || 'o duplicado'}? O histórico será preservado.`)) {
+                  mergeMutation.mutate({ canonicalId: canonical.id, duplicateId: mergeSourceLead.id });
+                }
+              }}
+            >
+              {mergeMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <GitMerge className="mr-2 h-4 w-4" />
+              )}
+              Mesclar e remover duplicado
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
