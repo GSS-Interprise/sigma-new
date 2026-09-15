@@ -16798,12 +16798,24 @@ export type Database = {
         Args: { p_licitacao_id: string }
         Returns: undefined
       }
+      get_contrato_item_auditoria: {
+        Args: { p_contrato_id: string }
+        Returns: Json
+      }
       reprocessar_acompanhamento: {
         Args: never
         Returns: {
           destino: string
           quantidade: number
         }[]
+      }
+      replace_contrato_itens_atomic: {
+        Args: {
+          p_contrato_id: string
+          p_itens: Json
+          p_confirmar_vazio?: boolean
+        }
+        Returns: Json
       }
       search_leads_for_picker: {
         Args: {

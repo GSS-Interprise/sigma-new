@@ -188,6 +188,10 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
   const [anexoParaExcluir, setAnexoParaExcluir] = useState<any>(null);
   const [activeTab, setActiveTab] = useState("cadastro");
   const [isLoadingData, setIsLoadingData] = useState(false);
+  const [relatedDataError, setRelatedDataError] = useState<string | null>(null);
+  const [itensOriginaisCount, setItensOriginaisCount] = useState(0);
+  const [confirmarRemocaoItensOpen, setConfirmarRemocaoItensOpen] = useState(false);
+  const [pendingSaveValues, setPendingSaveValues] = useState<z.infer<typeof formSchema> | null>(null);
   const [arquivoSelecionado, setArquivoSelecionado] = useState<{ url: string; nome: string } | null>(null);
   
   const form = useForm<z.infer<typeof formSchema>>({
@@ -348,6 +352,10 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
   // Carregar dados ao editar
   useEffect(() => {
     if (contrato && open) {
+      setRelatedDataError(null);
+      setItensContrato([]);
+      setItensOriginaisCount(0);
+
       // 🔒 PROTEÇÃO: Armazena data_inicio original para referência
       // Usa parseLocalDate para evitar problema de timezone (um dia a menos)
       const dataInicioDoContrato = parseLocalDate(contrato.data_inicio) || new Date();
@@ -416,15 +424,19 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
               .order('created_at', { ascending: false }),
           ]);
 
+          const relatedDataError = [itensResult, renovacoesResult, aditivosResult, anexosResult]
+            .find((result) => result.error)?.error;
+          if (relatedDataError) throw relatedDataError;
+
           // Processar itens
-          if (itensResult.data) {
-            setItensContrato((itensResult.data as any[]).map((item: any) => ({
-              id: item.id,
-              item: item.item,
-              valor_item: parseFloat(item.valor_item as any),
-              quantidade: item.quantidade || 1,
-            })));
-          }
+          const itensCarregados = ((itensResult.data || []) as any[]).map((item: any) => ({
+            id: item.id,
+            item: item.item,
+            valor_item: parseFloat(item.valor_item as any),
+            quantidade: item.quantidade || 1,
+          }));
+          setItensContrato(itensCarregados);
+          setItensOriginaisCount(itensCarregados.length);
 
           // Processar renovações
           if (renovacoesResult.data) {
@@ -451,6 +463,10 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
           if (anexosResult.data) {
             setDocumentosExistentes(anexosResult.data);
           }
+        } catch (error) {
+          console.error('❌ Erro ao carregar dados do contrato:', error);
+          setRelatedDataError('Não foi possível carregar todos os dados do contrato. Feche e abra novamente antes de salvar.');
+          toast.error('Não foi possível carregar os itens do contrato. O salvamento foi bloqueado.');
         } finally {
           setIsLoadingData(false);
         }
@@ -492,6 +508,10 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
       setDocumentos([]);
       setDocumentosExistentes([]);
       setUsuariosEmail([]);
+      setRelatedDataError(null);
+      setItensOriginaisCount(0);
+      setPendingSaveValues(null);
+      setConfirmarRemocaoItensOpen(false);
       setClienteExistente(null);
       setActiveTab("cadastro");
     } else if (!open) {
@@ -505,14 +525,23 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
       setDocumentos([]);
       setDocumentosExistentes([]);
       setUsuariosEmail([]);
+      setRelatedDataError(null);
+      setItensOriginaisCount(0);
+      setPendingSaveValues(null);
+      setConfirmarRemocaoItensOpen(false);
       setClienteExistente(null);
       setActiveTab("cadastro");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contrato, open, form, preenchimento]);
 
+  type SaveVariables = {
+    values: z.infer<typeof formSchema>;
+    permitirItensVazios?: boolean;
+  };
+
   const saveMutation = useMutation({
-    mutationFn: async (values: z.infer<typeof formSchema>) => {
+    mutationFn: async ({ values, permitirItensVazios = false }: SaveVariables) => {
       console.log('=== INICIANDO SALVAMENTO DE CONTRATO ===');
       console.log('Telefone digitado:', values.telefone_contato);
       console.log('Telefone financeiro digitado:', values.telefone_financeiro);
@@ -866,21 +895,15 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
       console.log('💾 Processando itens, renovações e aditivos...');
 
       // 4. Salvar itens do contrato
-      // Buscar itens antigos antes de deletar (para auditoria)
+      // Buscar itens antigos antes da troca (para auditoria e proteção contra limpeza acidental)
       let itensAntigos: any[] = [];
       if (contrato?.id) {
-        const { data: itensAntigosData } = await supabase
+        const { data: itensAntigosData, error: itensAntigosError } = await supabase
           .from(tables.contrato_itens as any)
           .select('*')
           .eq('contrato_id', contratoId);
+        if (itensAntigosError) throw itensAntigosError;
         itensAntigos = itensAntigosData || [];
-        
-        const { error: deleteItensError } = await supabase
-          .from(tables.contrato_itens as any)
-          .delete()
-          .eq('contrato_id', contratoId);
-
-        if (deleteItensError) throw deleteItensError;
       }
 
       // Inserir itens apenas se houver algum - com proteção contra duplicatas
@@ -899,21 +922,47 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
         console.warn(`⚠️ Removidos ${itensContrato.length - itensUnicos.length} itens duplicados`);
       }
 
-      if (itensUnicos.length > 0) {
-        const itensData = itensUnicos.map((item) => ({
-          contrato_id: contratoId,
-          item: item.item,
-          valor_item: item.valor_item,
-          quantidade: item.quantidade || 1,
-        }));
+      const itensData = itensUnicos.map((item) => ({
+        item: item.item,
+        valor_item: item.valor_item,
+        quantidade: item.quantidade || 1,
+      }));
 
-        console.log('💾 Salvando', itensData.length, 'itens (após deduplicação)');
+      console.log('💾 Salvando', itensData.length, 'itens (após deduplicação)');
 
-        const { error: itensError } = await supabase
-          .from(tables.contrato_itens as any)
-          .insert(itensData);
+      const usaTrocaAtomica = tables.contrato_itens === 'contrato_itens' && !!contrato?.id;
+      if (usaTrocaAtomica) {
+        const { error: itensError } = await supabase.rpc('replace_contrato_itens_atomic', {
+          p_contrato_id: contratoId,
+          p_itens: itensData,
+          p_confirmar_vazio: permitirItensVazios,
+        });
 
         if (itensError) throw itensError;
+      } else {
+        // Tabelas legadas de contextos específicos ainda não usam a RPC comum.
+        // Mantemos a proteção de limpeza explícita e falhamos antes do DELETE.
+        if (contrato?.id && itensAntigos.length > 0 && itensUnicos.length === 0 && !permitirItensVazios) {
+          throw new Error('A operação removeria todos os itens existentes; confirme explicitamente para continuar.');
+        }
+
+        if (contrato?.id) {
+          const { error: deleteItensError } = await supabase
+            .from(tables.contrato_itens as any)
+            .delete()
+            .eq('contrato_id', contratoId);
+
+          if (deleteItensError) throw deleteItensError;
+        }
+
+        if (itensData.length > 0) {
+          const itensLegados = itensData.map((item) => ({ ...item, contrato_id: contratoId }));
+          const { error: itensError } = await supabase
+            .from(tables.contrato_itens as any)
+            .insert(itensLegados);
+
+          if (itensError) throw itensError;
+        }
       }
       
       // Auditoria de itens - comparar antigos vs novos
@@ -922,7 +971,7 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
       const itensAntigosNomes = itensAntigos.map(i => i.item).sort().join(', ');
       const itensNovosNomes = itensUnicos.map(i => i.item).sort().join(', ');
       
-      if (contrato?.id && (itensAntigos.length !== itensUnicos.length || valorTotalAntigo !== valorTotalNovo || itensAntigosNomes !== itensNovosNomes)) {
+      if (!usaTrocaAtomica && contrato?.id && (itensAntigos.length !== itensUnicos.length || valorTotalAntigo !== valorTotalNovo || itensAntigosNomes !== itensNovosNomes)) {
         await registrarAuditoria({
           modulo: 'contratos',
           tabela: 'contrato_itens',
@@ -1289,19 +1338,34 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
   // 🔒 Ref para proteção contra duplo clique / race condition
   const isSavingRef = useRef(false);
 
-  const onSubmit = (values: z.infer<typeof formSchema>) => {
-    // Proteção contra duplo clique - bloqueia imediatamente sem depender do ciclo de renderização
+  const iniciarSalvamento = (values: z.infer<typeof formSchema>, permitirItensVazios = false) => {
     if (isSavingRef.current) {
       console.warn('⚠️ Save já em andamento, ignorando chamada duplicada');
       return;
     }
-    
+
     isSavingRef.current = true;
-    saveMutation.mutate(values, {
+    saveMutation.mutate({ values, permitirItensVazios }, {
       onSettled: () => {
         isSavingRef.current = false;
       }
     });
+  };
+
+  const onSubmit = (values: z.infer<typeof formSchema>) => {
+    if (relatedDataError) {
+      toast.error('Os dados relacionados não foram carregados. Feche e abra o contrato novamente.');
+      return;
+    }
+
+    // Esvaziar uma lista existente é permitido somente após confirmação explícita.
+    if (contrato?.id && itensOriginaisCount > 0 && itensContrato.length === 0) {
+      setPendingSaveValues(values);
+      setConfirmarRemocaoItensOpen(true);
+      return;
+    }
+
+    iniciarSalvamento(values);
   };
 
   const handleOpenFile = async (doc: any) => {
@@ -1534,7 +1598,7 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={`max-h-[90vh] flex flex-col ${canViewAtividades && contrato ? 'max-w-7xl' : 'max-w-4xl'}`}>
+      <DialogContent className={`w-[calc(100%-1rem)] max-h-[90vh] flex flex-col ${canViewAtividades && contrato ? 'max-w-7xl' : 'max-w-4xl'}`}>
         <DialogHeader>
           <DialogTitle>
             {contrato ? 'Editar Contrato' : 'Novo Contrato'}
@@ -1805,7 +1869,7 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
 
             {/* Botão enviar resumo por email - apenas para contratos existentes */}
 
-            <div className="flex justify-end gap-2 pt-4 border-t sticky bottom-0 bg-background">
+            <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-4 border-t sticky bottom-0 bg-background">
               {contrato && (
                 <Button type="button" variant="secondary" onClick={() => setEmailModalOpen(true)}>
                   <Mail className="h-4 w-4 mr-2" />
@@ -1817,8 +1881,8 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
                 {isViewMode ? 'Fechar' : 'Cancelar'}
               </Button>
               {!isViewMode && (
-                <Button type="submit" disabled={saveMutation.isPending || isLoadingData}>
-                  {isLoadingData ? 'Carregando dados...' : saveMutation.isPending ? 'Salvando...' : 'Salvar'}
+                <Button type="submit" disabled={saveMutation.isPending || isLoadingData || !!relatedDataError}>
+                  {relatedDataError ? 'Dados indisponíveis' : isLoadingData ? 'Carregando dados...' : saveMutation.isPending ? 'Salvando...' : 'Salvar'}
                 </Button>
               )}
             </div>
@@ -1916,6 +1980,38 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
         </Dialog>
       )}
     </Dialog>
+
+      <AlertDialog
+        open={confirmarRemocaoItensOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setConfirmarRemocaoItensOpen(false);
+            setPendingSaveValues(null);
+          }
+        }}
+      >
+        <AlertDialogContent className="w-[calc(100%-2rem)] max-w-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover todos os itens?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Este contrato possui {itensOriginaisCount} item(ns). Salvar sem itens removerá todos eles. Confirme somente se essa remoção for intencional.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col-reverse gap-2 sm:flex-row">
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                const values = pendingSaveValues;
+                setConfirmarRemocaoItensOpen(false);
+                setPendingSaveValues(null);
+                if (values) iniciarSalvamento(values, true);
+              }}
+            >
+              Confirmar remoção
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={!!anexoParaExcluir} onOpenChange={(open) => !open && setAnexoParaExcluir(null)}>
         <AlertDialogContent>

@@ -89,6 +89,7 @@ const ACTION_CONFIG: Record<string, { label: string; icon: typeof Edit; color: s
   criar: { label: "criou", icon: Plus, color: "text-green-600", bgColor: "bg-green-50 dark:bg-green-900/20" },
   editar: { label: "editou", icon: Edit, color: "text-blue-600", bgColor: "bg-blue-50 dark:bg-blue-900/20" },
   excluir: { label: "excluiu", icon: Trash2, color: "text-red-600", bgColor: "bg-red-50 dark:bg-red-900/20" },
+  restaurar_itens: { label: "restaurou itens", icon: History, color: "text-emerald-600", bgColor: "bg-emerald-50 dark:bg-emerald-900/20" },
   anexar: { label: "anexou arquivo", icon: FileText, color: "text-purple-600", bgColor: "bg-purple-50 dark:bg-purple-900/20" },
   remover_anexo: { label: "removeu arquivo", icon: Trash2, color: "text-orange-600", bgColor: "bg-orange-50 dark:bg-orange-900/20" },
   visualizar_contrato: { label: "visualizou o contrato", icon: Eye, color: "text-sky-600", bgColor: "bg-sky-50 dark:bg-sky-900/20" },
@@ -148,6 +149,21 @@ function getInitials(name: string): string {
   return parts[0]?.substring(0, 2).toUpperCase() || "??";
 }
 
+// Os gatilhos do banco usam ações em maiúsculas; a UI usa os mesmos rótulos
+// amigáveis dos logs manuais para que nenhuma atividade fique invisível.
+function normalizeAuditAction(acao: string): string {
+  switch (acao.toLowerCase()) {
+    case "insert":
+      return "criar";
+    case "update":
+      return "editar";
+    case "delete":
+      return "excluir";
+    default:
+      return acao;
+  }
+}
+
 // Função para obter ícone do campo
 function getFieldIcon(field: string) {
   if (field.includes('medico')) return User;
@@ -205,13 +221,19 @@ export function AbaAtividadesContrato({ contratoId }: AbaAtividadesContratoProps
         .or(`registro_id.eq.${contratoId},detalhes.ilike.%${contratoId}%`)
         .order("created_at", { ascending: false });
 
-      // Buscar logs de itens
-      const { data: itensLogs } = await supabase
-        .from("auditoria_logs")
-        .select("*")
-        .eq("tabela", "contrato_itens")
-        .or(`registro_id.eq.${contratoId},detalhes.ilike.%${contratoId}%`)
-        .order("created_at", { ascending: false });
+      // Os gatilhos registram o ID do item (e não o ID do contrato). A RPC
+      // resolve essa relação pelos snapshots JSON e evita que exclusões
+      // apareçam como se não tivessem ocorrido.
+      const { data: itensLogsPayload, error: itensLogsError } = await supabase.rpc(
+        "get_contrato_item_auditoria",
+        { p_contrato_id: contratoId }
+      );
+
+      if (itensLogsError) throw itensLogsError;
+
+      const itensLogs = Array.isArray(itensLogsPayload)
+        ? (itensLogsPayload as unknown as AtividadeLog[])
+        : [];
 
       // Buscar logs de aditivos
       const { data: aditivosLogs } = await supabase
@@ -257,8 +279,6 @@ export function AbaAtividadesContrato({ contratoId }: AbaAtividadesContratoProps
         ...(renovacoesLogs || []),
         ...acessosLogs,
       ]
-        // Filtrar logs duplicados do trigger de banco (acao em maiúsculo como INSERT/UPDATE/DELETE)
-        .filter(log => !['INSERT', 'UPDATE', 'DELETE'].includes(log.acao))
         .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
       return allLogs as AtividadeLog[];
@@ -352,8 +372,9 @@ export function AbaAtividadesContrato({ contratoId }: AbaAtividadesContratoProps
   return (
     <div className="space-y-1">
       {atividades.map((atividade, index) => {
-        const actionConfig = ACTION_CONFIG[atividade.acao] || { 
-          label: atividade.acao, 
+        const acaoNormalizada = normalizeAuditAction(atividade.acao);
+        const actionConfig = ACTION_CONFIG[acaoNormalizada] || {
+          label: acaoNormalizada,
           icon: Edit,
           color: "text-muted-foreground",
           bgColor: "bg-muted"
@@ -423,7 +444,7 @@ export function AbaAtividadesContrato({ contratoId }: AbaAtividadesContratoProps
                       const FieldIcon = getFieldIcon(campo);
                       
                       // Para anexos, mostrar de forma especial
-                      if (campo === "arquivo_nome" && atividade.acao === "anexar") {
+                      if (campo === "arquivo_nome" && acaoNormalizada === "anexar") {
                         return (
                           <div key={campo} className="flex items-center gap-2 text-xs bg-purple-50 dark:bg-purple-900/20 px-2 py-1.5 rounded">
                             <FileText className="h-3.5 w-3.5 text-purple-500" />
@@ -499,8 +520,15 @@ export function AbaAtividadesContrato({ contratoId }: AbaAtividadesContratoProps
                   </p>
                 )}
 
+                {/* Exclusões automáticas carregam a descrição no snapshot anterior. */}
+                {atividade.tabela === "contrato_itens" && acaoNormalizada === "excluir" && dadosAntigos.item && (
+                  <p className="mt-2 text-xs text-muted-foreground bg-red-50 dark:bg-red-900/20 px-2 py-1.5 rounded break-words">
+                    Item removido: <span className="font-medium text-foreground">{dadosAntigos.item}</span>
+                  </p>
+                )}
+
                 {/* Mensagem para criação */}
-                {camposRelevantes.length === 0 && Object.keys(dadosNovos).length > 0 && atividade.acao === "criar" && (
+                {camposRelevantes.length === 0 && Object.keys(dadosNovos).length > 0 && acaoNormalizada === "criar" && (
                   <p className="mt-2 text-xs text-muted-foreground bg-green-50 dark:bg-green-900/20 px-2 py-1.5 rounded">
                     ✓ {tableConfig.label} criado(a) com dados iniciais
                   </p>
