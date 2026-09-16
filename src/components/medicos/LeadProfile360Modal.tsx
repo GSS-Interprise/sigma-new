@@ -196,9 +196,13 @@ export function LeadProfile360Modal({ open, onOpenChange, leadId }: Props) {
       toast.error("Lead sem telefone — não dá pra adicionar na blacklist");
       return;
     }
-    const { error } = await (supabase as any).from("blacklist").insert({
+    const { data: authData } = await supabase.auth.getUser();
+    const { error } = await supabase.from("blacklist").insert({
       phone_e164: perfil.phone_e164,
-      motivo: `Adicionado via perfil 360 do lead ${perfil.nome}`,
+      nome: perfil.nome || null,
+      origem: "perfil_360_lead",
+      reason: `Adicionado via perfil 360 do lead ${perfil.nome}`,
+      created_by: authData.user?.id ?? null,
     });
     if (error) {
       toast.error("Erro: " + error.message);
