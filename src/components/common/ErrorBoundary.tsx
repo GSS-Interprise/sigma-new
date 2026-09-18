@@ -72,7 +72,10 @@ export class ErrorBoundary extends Component<Props, State> {
         this.setState({ copied: true });
         setTimeout(() => this.setState({ copied: false }), 2000);
       } finally {
-        document.body.removeChild(ta);
+        // Extensions/DOM instrumentation can detach the temporary node before
+        // cleanup. `remove()` is idempotent for detached nodes, unlike
+        // `parent.removeChild(node)`, which throws `NotFoundError`.
+        ta.remove();
       }
     }
   };

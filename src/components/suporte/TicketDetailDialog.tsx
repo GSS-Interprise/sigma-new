@@ -518,7 +518,7 @@ export function TicketDetailDialog({ ticketId, open, onOpenChange }: TicketDetai
       a.download = cleanFileName;
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
+      a.remove();
       URL.revokeObjectURL(url);
       toast.success('Download iniciado');
     } catch (error) {

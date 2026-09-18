@@ -128,7 +128,7 @@ export function MigracaoMedicosAdmin() {
     a.download = `migracao-${dryRun ? 'dry-run' : 'real'}-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.json`;
     document.body.appendChild(a);
     a.click();
-    document.body.removeChild(a);
+    a.remove();
     URL.revokeObjectURL(url);
     toast.success('JSON exportado com sucesso');
   };

@@ -495,7 +495,7 @@ export function ImportarPendenciasDialog({ open, onOpenChange, onImportComplete 
     link.download = 'template-pendencias-radiologia.xlsx';
     document.body.appendChild(link);
     link.click();
-    document.body.removeChild(link);
+    link.remove();
   };
 
   return (

@@ -228,7 +228,7 @@ export function AgesLeadAnexosSection({ leadId }: AgesLeadAnexosSectionProps) {
       link.download = fileName;
       document.body.appendChild(link);
       link.click();
-      document.body.removeChild(link);
+      link.remove();
       window.URL.revokeObjectURL(downloadUrl);
     } catch (error) {
       toast.error('Erro ao baixar arquivo');
