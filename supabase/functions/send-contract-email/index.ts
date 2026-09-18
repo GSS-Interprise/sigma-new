@@ -2,7 +2,9 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { Resend } from "https://esm.sh/resend@4.0.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.58.0";
 
-const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
+const resendApiKey = Deno.env.get("RESEND_API_KEY");
+const resend = resendApiKey ? new Resend(resendApiKey) : null;
+const configuredFrom = Deno.env.get("RESEND_FROM_EMAIL") || Deno.env.get("RESEND_FROM") || "bi@gestaoservicosaude.com.br";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -47,13 +49,28 @@ const handler = async (req: Request): Promise<Response> => {
   try {
     const { emails, contratoData, remetente_email, remetente_nome }: ContratoEmailRequest = await req.json();
 
-    const fromEmail = remetente_email 
-      ? `${remetente_nome || 'Sistema SIGMA'} <${remetente_email}>`
-      : "Sistema SIGMA <bi@gestaoservicosaude.com.br>";
+    if (!resend) {
+      throw new Error("Serviço de e-mail não configurado: RESEND_API_KEY ausente");
+    }
 
-    console.log("Enviando resumo de contrato de:", fromEmail, "para:", emails);
+    const remetenteValido = typeof remetente_email === "string"
+      && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(remetente_email.trim())
+      ? remetente_email.trim()
+      : undefined;
+    const fromEmail = configuredFrom.includes("<")
+      ? configuredFrom
+      : `Sistema SIGMA <${configuredFrom.trim()}>`;
 
-    if (!emails || emails.length === 0) {
+    const destinatarios = [...new Set(
+      (Array.isArray(emails) ? emails : [])
+        .filter((email): email is string => typeof email === "string")
+        .map(email => email.trim().toLowerCase())
+        .filter(email => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+    )];
+
+    console.log("Enviando resumo de contrato de:", fromEmail, "para:", destinatarios.length, "destinatário(s)");
+
+    if (destinatarios.length === 0) {
       return new Response(
         JSON.stringify({ success: true, message: "Nenhum email para enviar" }),
         { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
@@ -156,16 +173,23 @@ const handler = async (req: Request): Promise<Response> => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     let sentCount = 0;
+    const failures: { email: string; error: string }[] = [];
     const subjectContrato = `Resumo de Contrato${contratoData.codigo_contrato ? ` ${contratoData.codigo_contrato}` : ''} - ${contratoData.cliente_nome}`;
 
-    for (const email of emails) {
+    for (const email of destinatarios) {
       try {
-        await resend.emails.send({
+        const { data: sentEmail, error: sendError } = await resend.emails.send({
           from: fromEmail,
           to: email,
           subject: subjectContrato,
           html: emailHtml,
+          ...(remetenteValido ? { reply_to: remetenteValido } : {}),
         });
+
+        if (sendError) {
+          throw new Error(sendError.message || "O provedor recusou o envio");
+        }
+
         sentCount++;
 
         await supabase.from('sigma_email_log').insert({
@@ -180,10 +204,13 @@ const handler = async (req: Request): Promise<Response> => {
             cnpj: contratoData.cnpj,
             unidade: contratoData.nome_unidade,
             anexos: contratoData.anexos?.length || 0,
+            provider_message_id: sentEmail?.id || null,
           },
         });
       } catch (emailError: any) {
-        console.error(`Erro ao enviar email para ${email}:`, emailError?.message || emailError);
+        const mensagemErro = emailError?.message || 'Erro desconhecido';
+        failures.push({ email, error: mensagemErro });
+        console.error(`Erro ao enviar email para ${email}:`, mensagemErro);
 
         await supabase.from('sigma_email_log').insert({
           modulo: 'contratos',
@@ -197,8 +224,29 @@ const handler = async (req: Request): Promise<Response> => {
       }
     }
 
+    if (sentCount === 0 && failures.length > 0) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: `Nenhum resumo foi enviado. ${failures[0].error}`,
+          emailsSent: 0,
+          emailsFailed: failures.length,
+          failures,
+        }),
+        { status: 502, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
     return new Response(
-      JSON.stringify({ success: true, message: "Emails enviados com sucesso", emailsSent: sentCount }),
+      JSON.stringify({
+        success: true,
+        message: failures.length > 0
+          ? "Resumo enviado parcialmente"
+          : "Emails enviados com sucesso",
+        emailsSent: sentCount,
+        emailsFailed: failures.length,
+        failures,
+      }),
       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
   } catch (error: any) {

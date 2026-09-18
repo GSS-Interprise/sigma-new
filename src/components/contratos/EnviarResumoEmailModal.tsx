@@ -107,7 +107,7 @@ export function EnviarResumoEmailModal({
         .eq('id', user?.id || '')
         .maybeSingle();
 
-      const { error } = await supabase.functions.invoke('send-contract-email', {
+      const { data, error } = await supabase.functions.invoke('send-contract-email', {
         body: {
           remetente_email: profileData?.email || user?.email,
           remetente_nome: profileData?.nome_completo || 'Sistema SIGMA',
@@ -133,7 +133,30 @@ export function EnviarResumoEmailModal({
         },
       });
 
-      if (error) throw error;
+      if (error) {
+        let detalhe = error.message || 'Falha ao chamar o serviço de e-mail';
+        const contexto = (error as any)?.context;
+        if (contexto && typeof contexto.json === 'function') {
+          try {
+            const corpo = await contexto.json();
+            if (corpo?.error) detalhe = corpo.error;
+          } catch {
+            // Mantém a mensagem original quando a resposta não for JSON.
+          }
+        }
+        throw new Error(detalhe);
+      }
+
+      const resultado = data as {
+        success?: boolean;
+        error?: string;
+        emailsSent?: number;
+        emailsFailed?: number;
+      } | null;
+
+      if (!resultado?.success) {
+        throw new Error(resultado?.error || 'O serviço não confirmou o envio do resumo');
+      }
 
       // Registrar nas atividades do contrato quem enviou e para quem
       try {
@@ -180,13 +203,19 @@ export function EnviarResumoEmailModal({
         console.warn('Falha ao criar notificações no sino:', notifErr);
       }
 
-      toast.success(`Resumo enviado para ${selectedEmails.length} destinatário(s)`);
+      const enviados = resultado.emailsSent ?? selectedEmails.length;
+      const falhas = resultado.emailsFailed ?? 0;
+      if (falhas > 0) {
+        toast.warning(`Resumo enviado para ${enviados} destinatário(s); ${falhas} falha(s) registrada(s).`);
+      } else {
+        toast.success(`Resumo enviado para ${enviados} destinatário(s)`);
+      }
       setSelectedEmails([]);
       setSearch("");
       onOpenChange(false);
     } catch (err: any) {
       console.error('Erro ao enviar email:', err);
-      toast.error('Erro ao enviar resumo por email.');
+      toast.error(`Erro ao enviar resumo por e-mail: ${err?.message || 'causa não identificada'}`);
     } finally {
       setSending(false);
     }
