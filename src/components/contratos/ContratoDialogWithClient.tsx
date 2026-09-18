@@ -1353,6 +1353,14 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
   };
 
   const onSubmit = (values: z.infer<typeof formSchema>) => {
+    // A edição começa com os itens zerados enquanto os dados relacionados
+    // carregam. Bloqueie também o submit via Enter (o botão já fica disabled)
+    // para nunca transformar esse estado transitório em uma remoção real.
+    if (isLoadingData) {
+      toast.info('Aguarde o carregamento dos itens do contrato terminar.');
+      return;
+    }
+
     if (relatedDataError) {
       toast.error('Os dados relacionados não foram carregados. Feche e abra o contrato novamente.');
       return;
