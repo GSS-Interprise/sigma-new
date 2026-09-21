@@ -148,6 +148,7 @@ export function TipoContratacaoSelect({
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
+            type="button"
             variant="outline"
             role="combobox"
             aria-expanded={open}
@@ -194,6 +195,7 @@ export function TipoContratacaoSelect({
                     </div>
                     {allowCustomTypes && 'isCustom' in tipo && tipo.isCustom && (
                       <Button
+                        type="button"
                         variant="ghost"
                         size="sm"
                         className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 hover:bg-destructive/10"
@@ -232,6 +234,7 @@ export function TipoContratacaoSelect({
                         />
                         <div className="flex gap-2">
                           <Button
+                            type="button"
                             size="sm"
                             className="flex-1"
                             onClick={handleAddTipo}
@@ -241,6 +244,7 @@ export function TipoContratacaoSelect({
                             Adicionar
                           </Button>
                           <Button
+                            type="button"
                             size="sm"
                             variant="outline"
                             onClick={() => {

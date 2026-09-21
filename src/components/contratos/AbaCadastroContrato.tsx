@@ -606,6 +606,7 @@ export function AbaCadastroContrato({ form, clienteExistente, isViewMode = false
                         <PopoverTrigger asChild>
                           <FormControl>
                             <Button
+                              type="button"
                               variant="outline"
                               className={cn(
                                 "w-full justify-start text-left font-normal",

@@ -353,6 +353,7 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
   useEffect(() => {
     if (contrato && open) {
       setRelatedDataError(null);
+      setArquivoSelecionado(null);
       setItensContrato([]);
       setItensOriginaisCount(0);
 
@@ -476,6 +477,7 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
       setClienteExistente(contrato.cliente);
     } else if (open && !contrato) {
       // Reset para novo contrato
+      setArquivoSelecionado(null);
       setDataInicioOriginal(null);
       form.reset({
         cnpj: preenchimento?.cnpj ? preenchimento.cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5') : '',
@@ -516,6 +518,7 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
       setActiveTab("cadastro");
     } else if (!open) {
       // Reset ao fechar
+      setArquivoSelecionado(null);
       setDataInicioOriginal(null);
       isSavingRef.current = false; // 🔒 Limpa trava de salvamento
       form.reset();
@@ -1603,9 +1606,25 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
     );
   };
 
+  const handleDialogOpenChange = (nextOpen: boolean) => {
+    // O visualizador tem um portal próprio. Feche-o antes de desmontar o
+    // diálogo do contrato para não deixar dois portais tentando remover o
+    // mesmo nó durante a troca de contrato/aba.
+    if (!nextOpen) {
+      setArquivoSelecionado(null);
+    }
+    onOpenChange(nextOpen);
+  };
+
+  const handleTabChange = (value: string) => {
+    // Uma troca de aba nunca deve reabrir ou preservar um anexo visualizado.
+    setArquivoSelecionado(null);
+    setActiveTab(value);
+  };
+
   return (
     <>
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleDialogOpenChange}>
       <DialogContent className={`w-[calc(100%-1rem)] max-h-[90vh] flex flex-col ${canViewAtividades && contrato ? 'max-w-7xl' : 'max-w-4xl'}`}>
         <DialogHeader>
           <DialogTitle>
@@ -1618,7 +1637,7 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
           <div className={`flex-1 overflow-y-auto pr-2 ${canViewAtividades && contrato ? 'border-r border-border' : ''}`}>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit, onError)} className="space-y-6">
-            <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <Tabs value={activeTab} onValueChange={handleTabChange}>
               <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="cadastro">Cadastro</TabsTrigger>
                 <TabsTrigger value="itens">Itens do Contrato</TabsTrigger>
@@ -1912,80 +1931,67 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
         </div>
       </DialogContent>
 
-      {/* Dialog de Visualização de Arquivo - Isolado do Dialog principal */}
+    </Dialog>
+
+    {/*
+     * O visualizador fica fora do Dialog do contrato de propósito. Dialogs
+     * Radix aninhados com iframe disputam foco e portais ao trocar abas, o que
+     * pode fazer o React tentar remover um nó que o portal já removeu.
+     */}
+    <Dialog
+      open={arquivoSelecionado !== null}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) setArquivoSelecionado(null);
+      }}
+    >
       {arquivoSelecionado && (
-        <Dialog 
-          open={true} 
-          onOpenChange={(open) => {
-            if (!open) {
-              setArquivoSelecionado(null);
-            }
-          }}
-          modal={true}
-        >
-          <DialogContent 
-            className="max-w-6xl max-h-[90vh] overflow-hidden flex flex-col"
-            onPointerDownOutside={(e) => {
-              // Prevenir que o click fora feche o dialog pai
-              e.preventDefault();
-              e.stopPropagation();
-              setArquivoSelecionado(null);
-            }}
-            onInteractOutside={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-            }}
-            onEscapeKeyDown={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setArquivoSelecionado(null);
-            }}
-          >
-            <DialogHeader>
-              <DialogTitle className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <span className="break-words text-sm sm:text-base pr-2">{arquivoSelecionado?.nome || 'Carregando...'}</span>
-                <div className="flex gap-2 flex-shrink-0">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const a = document.createElement('a');
-                      a.href = arquivoSelecionado.url;
-                      a.download = arquivoSelecionado.nome;
-                      a.click();
-                      toast.success('Download iniciado');
-                    }}
-                    className="flex-1 sm:flex-initial"
-                  >
-                    <Download className="h-4 w-4 sm:mr-2" />
-                    <span className="hidden sm:inline">Baixar</span>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      window.open(arquivoSelecionado.url, '_blank');
-                    }}
-                    className="flex-1 sm:flex-initial"
-                  >
-                    <ExternalLink className="h-4 w-4 sm:mr-2" />
-                    <span className="hidden sm:inline">Nova Aba</span>
-                  </Button>
-                </div>
-              </DialogTitle>
-            </DialogHeader>
-            <div className="flex-1 overflow-auto bg-muted/20">
-              <iframe 
-                src={`${arquivoSelecionado.url}#toolbar=1&navpanes=1&scrollbar=1`}
-                className="w-full h-[70vh] border-0 rounded"
-                title={arquivoSelecionado.nome}
-                style={{ minHeight: '70vh' }}
-              />
-            </div>
-          </DialogContent>
-        </Dialog>
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <span className="break-words text-sm sm:text-base pr-2">{arquivoSelecionado.nome}</span>
+              <div className="flex gap-2 flex-shrink-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const a = document.createElement('a');
+                    a.href = arquivoSelecionado.url;
+                    a.download = arquivoSelecionado.nome;
+                    a.click();
+                    toast.success('Download iniciado');
+                  }}
+                  className="flex-1 sm:flex-initial"
+                >
+                  <Download className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Baixar</span>
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    window.open(arquivoSelecionado.url, '_blank');
+                  }}
+                  className="flex-1 sm:flex-initial"
+                >
+                  <ExternalLink className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Nova Aba</span>
+                </Button>
+              </div>
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-auto bg-muted/20">
+            <iframe
+              src={`${arquivoSelecionado.url}#toolbar=1&navpanes=1&scrollbar=1`}
+              className="w-full h-[70vh] border-0 rounded"
+              title={arquivoSelecionado.nome}
+              style={{ minHeight: '70vh' }}
+            />
+          </div>
+        </DialogContent>
       )}
     </Dialog>
 
