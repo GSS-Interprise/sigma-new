@@ -5,7 +5,7 @@ import * as z from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Form } from "@/components/ui/form";
 import { Button } from "@/components/ui/button";
@@ -1628,8 +1628,11 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
       <DialogContent className={`w-[calc(100%-1rem)] max-h-[90vh] flex flex-col ${canViewAtividades && contrato ? 'max-w-7xl' : 'max-w-4xl'}`}>
         <DialogHeader>
           <DialogTitle>
-            {contrato ? 'Editar Contrato' : 'Novo Contrato'}
+            {isViewMode ? 'Contrato' : contrato ? 'Editar Contrato' : 'Novo Contrato'}
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            {isViewMode ? 'Visualização dos dados, itens, anexos e atividades do contrato.' : 'Cadastro e edição dos dados do contrato.'}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="flex-1 flex gap-0 overflow-hidden">
@@ -1638,11 +1641,13 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit, onError)} className="space-y-6">
             <Tabs value={activeTab} onValueChange={handleTabChange}>
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="cadastro">Cadastro</TabsTrigger>
-                <TabsTrigger value="itens">Itens do Contrato</TabsTrigger>
-                <TabsTrigger value="renovacao">Renovação</TabsTrigger>
-              </TabsList>
+              <div className="-mx-1 overflow-x-auto px-1">
+                <TabsList className="grid min-w-[28rem] w-full grid-cols-3 sm:min-w-0">
+                  <TabsTrigger value="cadastro">Cadastro</TabsTrigger>
+                  <TabsTrigger value="itens">Itens do Contrato</TabsTrigger>
+                  <TabsTrigger value="renovacao">Renovação</TabsTrigger>
+                </TabsList>
+              </div>
 
               <TabsContent value="cadastro" className="mt-6">
                 <AbaCadastroContrato 
@@ -1982,6 +1987,9 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
                 </Button>
               </div>
             </DialogTitle>
+            <DialogDescription className="sr-only">
+              Visualização do arquivo anexado ao contrato.
+            </DialogDescription>
           </DialogHeader>
           <div className="flex-1 overflow-auto bg-muted/20">
             <iframe

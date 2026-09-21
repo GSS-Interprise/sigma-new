@@ -183,6 +183,10 @@ export function ContratoRascunhoDialog({
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle className="sr-only">Carregando pré-contrato</DialogTitle>
+            <DialogDescription className="sr-only">Carregando os dados do pré-contrato.</DialogDescription>
+          </DialogHeader>
           <div className="flex items-center justify-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
           </div>

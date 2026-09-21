@@ -37,29 +37,22 @@ export async function registrarAcessoContrato(params: RegistrarAcessoParams): Pr
     if (last && now - last < DEDUP_WINDOW_MS) return;
     recentLogs.set(key, now);
 
-    // Buscar nome do usuário
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("nome_completo")
-      .eq("id", user.id)
-      .single();
-
-    const usuarioNome = profile?.nome_completo || user.email || "Usuário desconhecido";
-
     const userAgent = typeof navigator !== "undefined" ? navigator.userAgent : null;
 
-    const { error } = await supabase.from("contrato_acessos").insert({
-      contrato_id: params.contratoId,
-      usuario_id: user.id,
-      usuario_nome: usuarioNome,
-      tipo_acesso: params.tipoAcesso,
-      anexo_id: params.anexoId || null,
-      anexo_nome: params.anexoNome || null,
-      user_agent: userAgent,
-      detalhes: params.detalhes || null,
+    // A gravação passa por uma função SECURITY DEFINER que usa auth.uid()
+    // no servidor. Isso evita falsos "permission denied" quando o perfil
+    // local e o JWT renovado ainda não estão sincronizados.
+    const { error } = await supabase.rpc("registrar_acesso_contrato", {
+      p_contrato_id: params.contratoId,
+      p_tipo_acesso: params.tipoAcesso,
+      p_anexo_id: params.anexoId || null,
+      p_anexo_nome: params.anexoNome || null,
+      p_user_agent: userAgent,
+      p_detalhes: params.detalhes || null,
     });
 
     if (error) {
+      recentLogs.delete(key);
       console.warn("Não foi possível registrar acesso ao contrato:", error.message);
     }
   } catch (err) {
