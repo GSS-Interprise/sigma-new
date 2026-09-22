@@ -64,23 +64,6 @@ function repairMojibake(value: unknown): string {
   return current;
 }
 
-// A chave interna nova do Supabase pode chegar como sb_secret, enquanto o
-// gateway ainda entrega um JWT com o papel service_role. O gateway já valida
-// a assinatura; aqui conferimos apenas o claim para não quebrar chamadas
-// administrativas legítimas por comparação literal de chaves.
-function hasServiceRoleClaim(authHeader: string) {
-  const token = authHeader.replace(/^Bearer\s+/i, "").split(".")[1];
-  if (!token) return false;
-  try {
-    const normalized = token.replace(/-/g, "+").replace(/_/g, "/");
-    const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
-    const payload = JSON.parse(atob(padded));
-    return payload?.role === "service_role";
-  } catch {
-    return false;
-  }
-}
-
 function resolveBinding(binding: string, context: Record<string, unknown>) {
   return binding.replace(/\{\{([^}]+)\}\}/g, (_match, path: string) => {
     const value = path.split(".").reduce<unknown>((current, key) => {
@@ -106,8 +89,7 @@ serve(async (req) => {
     const internalSendKey = Deno.env.get("TWILIO_SEND_INTERNAL_KEY") || "";
     const isInternalSend = internalSendKey.length >= 32 &&
       req.headers.get("x-internal-send-key") === internalSendKey;
-    const isServiceRole = authorization === `Bearer ${serviceRole}` ||
-      hasServiceRoleClaim(authorization) || isInternalSend;
+    const isServiceRole = authorization === `Bearer ${serviceRole}` || isInternalSend;
     const admin = createClient(supabaseUrl, serviceRole);
     const auth = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
       global: { headers: { Authorization: authorization } },
@@ -130,6 +112,10 @@ serve(async (req) => {
       input.template_variables && typeof input.template_variables === "object"
         ? input.template_variables
         : {};
+    if (campaignLeadId && !conversationIdInput && !isServiceRole && !isInternalSend) {
+      return json({ ok: false, error: "campaign_lead_requires_conversation_or_internal_auth" }, 403);
+    }
+
     // Este escape existe apenas para um teste manual, autenticado com a
     // service-role, fora de qualquer campanha. Mantemos o bloqueio normal
     // para evitar que um diagnóstico vire disparo em massa enquanto a Meta
@@ -145,7 +131,7 @@ serve(async (req) => {
     let lead: any = null;
     let conversation: any = null;
 
-    if (campaignLeadId) {
+    if (campaignLeadId && !conversationIdInput) {
       const { data: campaignLead, error } = await admin
         .from("campanha_leads")
         .select("id, campanha_id, lead_id")

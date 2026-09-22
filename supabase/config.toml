@@ -28,6 +28,11 @@ verify_jwt = false
 [functions.campanha-disparo-scheduler]
 verify_jwt = false
 
+# Execução única controlada de campanha oficial; a função valida a chave
+# interna/service role antes de reservar qualquer lead.
+[functions.campanha-disparo-burst]
+verify_jwt = false
+
 [functions.campanha-cadencia-processor]
 verify_jwt = false
 
