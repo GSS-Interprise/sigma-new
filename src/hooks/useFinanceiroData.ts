@@ -24,6 +24,9 @@ export interface FinanceiroPagamento {
   fonte?: string | null;
   conferido_por?: string | null;
   conferido_em?: string | null;
+  // vínculo com o lote da competência (financeiro_fechamentos) — é ele que diz se o
+  // lançamento já passou pela conferência quando não tem carimbo individual
+  fechamento_id?: string | null;
   nf_status?: string | null;
   nf_solicitada_em?: string | null;
   aprovado_por?: string | null;
