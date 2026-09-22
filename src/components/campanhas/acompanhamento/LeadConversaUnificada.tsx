@@ -272,7 +272,11 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
         if (!campanhaLeadId) throw new Error("Lead da campanha não identificado");
         if (!officialTemplateId) throw new Error("Escolha um template oficial aprovado.");
         const { data, error } = await supabase.functions.invoke("twilio-whatsapp-send", {
-          body: { campaign_lead_id: campanhaLeadId, template_id: officialTemplateId },
+          body: {
+            conversation_id: conv.id,
+            campaign_lead_id: campanhaLeadId,
+            template_id: officialTemplateId,
+          },
         });
         if (error) throw new Error(error.message || "Não foi possível enviar o template oficial");
         if ((data as any)?.error) throw new Error((data as any).error);
