@@ -14,6 +14,7 @@ const MESES = [
 const mesLabel = (m: number) => MESES[m - 1] ?? String(m);
 
 const STATUS_LABEL: Record<string, string> = {
+  em_nf: "Liberado — solicitando notas fiscais",
   aguardando_aprovacao: "Aguardando aprovação da diretoria",
   aprovado: "Aprovado pela diretoria",
   pago: "Pago",
@@ -202,22 +203,22 @@ export function FinanceiroFecharDialog({ mes, ano }: { mes: number; ano: number 
     setFechando(false);
   };
 
-  const jaFechado = !!fechamento && fechamento.status !== "cancelado";
+  const jaFechado = !!fechamento && fechamento.status !== "cancelado" && fechamento.status !== "em_nf";
   const bloqueado = !!fechamento && (fechamento.status === "aprovado" || fechamento.status === "pago");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
         <Button className="gap-2">
-          <Lock className="h-4 w-4" /> Enviar para aprovação
+          <Lock className="h-4 w-4" /> Enviar para aprovação de pagamento
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Fechar {mesLabel(mes)}/{ano}</DialogTitle>
+          <DialogTitle>Aprovação de pagamento — {mesLabel(mes)}/{ano}</DialogTitle>
         </DialogHeader>
         <p className="text-xs text-muted-foreground -mt-2">
-          Consolida os pagamentos da competência e envia para a diretoria aprovar.
+          Com as notas fiscais em mãos, envia o fechamento para a diretoria aprovar o pagamento.
         </p>
 
         <div className="space-y-4">
@@ -281,7 +282,7 @@ export function FinanceiroFecharDialog({ mes, ano }: { mes: number; ano: number 
             className="w-full sm:w-auto gap-2"
           >
             {fechando ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-            {bloqueado ? "Já aprovado — não refecha" : jaFechado ? "Reenviar para aprovação" : "Fechar e enviar para aprovação"}
+            {bloqueado ? "Já aprovado" : jaFechado ? "Reenviar para aprovação" : "Enviar para aprovação de pagamento"}
           </Button>
         </DialogFooter>
       </DialogContent>

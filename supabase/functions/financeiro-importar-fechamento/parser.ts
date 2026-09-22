@@ -379,8 +379,12 @@ export function parseDrEscalaConsolidado(grid: unknown[][], gridFmt?: unknown[][
       ? horasEmMinutos(linhaFmt?.[iHoras] ?? row[iHoras])
       : 0;
     const plantoes = iPlantoes >= 0 ? Math.round(num(row[iPlantoes])) : 0;
-    // "Valor Total" da planilha dela JÁ inclui a coordenação; a produção é o que sobra
-    const producao = valor - coord;
+    // "Valor Total" da planilha dela JÁ inclui a coordenação; a produção é o que sobra.
+    // 22/09 (Braço do Norte/agosto): quando o médico recebeu TUDO à vista, a equipe
+    // preenche só a coluna "À Vista" e deixa "Valor Total" em branco. À vista é forma de
+    // pagamento, não um valor à parte — sem o max() a produção ficava 0 e o a pagar
+    // virava NEGATIVO (−9.600 do Lauro), derrubando o total da competência.
+    const producao = Math.max(valor - coord, aVista);
 
     blocos.push({
       nome, crm: "", uf: "", cpf: "", unidade, checksum: valor,
