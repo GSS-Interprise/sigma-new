@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { FinanceiroPagamento, useConferirEmLote, useExcluirImportacao } from "@/hooks/useFinanceiroData";
+import { pagamentoConferido, situacaoDoRelatorio } from "@/lib/fechamentoStatus";
 import { FinanceiroDetalhe } from "./FinanceiroDetalhe";
 import { FinanceiroImportarFechamentoDialog } from "./FinanceiroImportarFechamentoDialog";
 import { FinanceiroFecharDialog } from "./FinanceiroFecharDialog";
@@ -129,14 +130,17 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
   const aPagar = somaDe(daFonte, "valor_total");
   const aPagarMes = somaDe(todos, "valor_total");
   const aReceber = (data?.receber ?? []).reduce((s, r) => s + Number(r.valor_previsto || 0), 0);
-  const porConferir = todos.filter((p) => !p.conferido_em).length;
+  // conferido = carimbo individual OU competência já liberada (ver lib/fechamentoStatus):
+  // o que foi liberado antes de 22/09 não tem carimbo e não tem mais tela para ganhá-lo.
+  const conferido = (p: FinanceiroPagamento) => pagamentoConferido(p, data?.fechamento);
+  const porConferir = todos.filter((p) => !conferido(p)).length;
 
   const rotuloFonte = (p: FinanceiroPagamento) => nomeFechamento(chaveDoPagamento(p));
 
   // CSV com ; e BOM — é o que o Excel em pt-BR abre sem pedir nada
   const baixarCsv = () => {
     const cab = ["Médico", "CRM", "Origem", "Plantões", "Horas trabalhadas", "Horas à vista",
-                 "Horas a pagar", "Produzido", "Já pago à vista", "Ajustes", "A pagar", "Conferido"];
+                 "Horas a pagar", "Produzido", "Já pago à vista", "Ajustes", "A pagar", "Conferido", "Situação"];
     const dec = (n: number) => Number(n || 0).toFixed(2).replace(".", ",");
     const linhas = pagamentos.map((p) => {
       const tot = Number(p.total_horas_minutos || 0), av = Number(p.horas_a_vista_minutos || 0);
@@ -145,7 +149,8 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
         p.total_plantoes ?? 0, horas(tot), horas(av), horas(Math.max(0, tot - av)),
         dec(Number(p.valor_produzido || 0)), dec(Number(p.valor_a_vista || 0)),
         dec(Number(p.valor_ajustes || 0)), dec(Number(p.valor_total || 0)),
-        p.conferido_em ? "sim" : "não",
+        conferido(p) ? "sim" : "não",
+        situacaoDoRelatorio(p, data?.fechamento),
       ].map((c) => `"${String(c).replace(/"/g, '""')}"`).join(";");
     });
     const nome = fonteSel === TODAS ? `competencia-${String(mes).padStart(2, "0")}-${ano}`
@@ -352,7 +357,7 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
                       <TableRow key={p.id} className="cursor-pointer [&>td]:py-1 odd:bg-muted/20"
                         onClick={() => setSelecionado(p.id)}>
                         <TableCell className="py-1" onClick={(e) => e.stopPropagation()}>
-                          {p.conferido_em ? (
+                          {conferido(p) ? (
                             <button title="Conferido — clique para reabrir" disabled={!podeAjustar}
                               onClick={() => conferirLote.mutate({ ids: [p.id], desfazer: true })}>
                               <CheckCircle2 className="h-4 w-4 text-emerald-600" />
