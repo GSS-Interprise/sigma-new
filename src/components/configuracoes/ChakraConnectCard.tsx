@@ -13,6 +13,8 @@ import { supabase } from "@/integrations/supabase/client";
 
 type ChakraPhone = {
   phone_number_id: string;
+  plugin_id: string | null;
+  waba_id: string | null;
   phone_e164: string | null;
   display_name: string | null;
   status: string;
@@ -90,6 +92,7 @@ function loadChakraSdk() {
 export function ChakraConnectCard() {
   const containerRef = useRef<HTMLDivElement>(null);
   const sdkInstance = useRef<{ destroy?: () => void } | null>(null);
+  const pluginIdTouched = useRef(false);
   const [pluginId, setPluginId] = useState("");
   const [connectToken, setConnectToken] = useState<string | null>(null);
   const [isPreparing, setIsPreparing] = useState(false);
@@ -121,9 +124,16 @@ export function ChakraConnectCard() {
     }
     const { data, error } = await supabase
       .from("whatsapp_chakra_connections" as never)
-      .select("phone_number_id, phone_e164, display_name, status, quality_rating, messaging_limit_tier, name_status, provider_payload, webhook_configured, last_webhook_event_at, last_webhook_error")
+      .select("plugin_id, waba_id, phone_number_id, phone_e164, display_name, status, quality_rating, messaging_limit_tier, name_status, provider_payload, webhook_configured, last_webhook_event_at, last_webhook_error")
       .order("updated_at", { ascending: false });
-    if (!error) setPhones((data || []) as unknown as ChakraPhone[]);
+    if (!error) {
+      const connectedPhones = (data || []) as unknown as ChakraPhone[];
+      setPhones(connectedPhones);
+      const pluginIds = [...new Set(connectedPhones.map((phone) => phone.plugin_id).filter(Boolean))];
+      // Reuse the GSS plugin by default so another WABA/number is not accidentally
+      // onboarded as a second client in Chakra when the operator leaves this blank.
+      if (!pluginIdTouched.current && pluginIds.length === 1) setPluginId(pluginIds[0]!);
+    }
   }, []);
 
   useEffect(() => { void loadConnections(); }, [loadConnections]);
@@ -237,7 +247,7 @@ export function ChakraConnectCard() {
               WhatsApp oficial — Chakra
             </CardTitle>
             <CardDescription className="mt-1">
-              Conecte o WhatsApp Business pelo fluxo oficial de coexistência, com QR Code e histórico no Sigma.
+              Conecte números da GSS à API oficial pelo Chakra e acompanhe aqui o que já está vinculado ao Sigma.
             </CardDescription>
           </div>
           <Badge variant="outline" className="w-fit gap-1 border-emerald-300 text-emerald-700">
@@ -248,27 +258,43 @@ export function ChakraConnectCard() {
       <CardContent className="space-y-5">
         <Alert>
           <AlertDescription>
-            O número continua no WhatsApp Business do celular e também fica disponível no Sigma. O QR será aberto pelo componente seguro do Chakra; nenhuma chave fica exposta no navegador.
+            O fluxo oficial é iniciado aqui e concluído na Meta/Chakra. Só depois da autorização o número aparece nesta lista. O uso do WhatsApp Business no celular depende da modalidade de conexão habilitada para aquele número.
           </AlertDescription>
         </Alert>
 
+        <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-3 text-sm text-muted-foreground">
+          <p className="font-medium text-foreground">O que esta tela mostra</p>
+          <p className="mt-1">
+            A lista abaixo contém números que já foram vinculados ao Sigma pelo Chakra. Ela não consulta automaticamente todos os números existentes nos portfólios da Meta; cada número precisa concluir o fluxo e ser salvo aqui.
+          </p>
+        </div>
+
         <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
           <div className="space-y-2">
-            <Label htmlFor="chakra-plugin-id">Plugin ID existente (opcional)</Label>
+            <Label htmlFor="chakra-plugin-id">Conexão da GSS no Chakra</Label>
             <Input
               id="chakra-plugin-id"
               value={pluginId}
-              onChange={(event) => setPluginId(event.target.value)}
-              placeholder="Deixe vazio para criar a conexão da GSS"
+              onChange={(event) => {
+                pluginIdTouched.current = true;
+                setPluginId(event.target.value);
+              }}
+              placeholder="Plugin ID existente ou vazio para criar outro"
             />
             <p className="text-xs text-muted-foreground">
-              Use somente se este cliente já tiver um plugin Chakra criado.
+              {pluginId
+                ? "O ID existente foi preenchido para reutilizar a conexão da GSS. Confirme que este é o plugin da GSS antes de continuar."
+                : "Para outro número ou portfólio da mesma GSS, use o Plugin ID já existente. Deixe vazio apenas se quiser criar um novo plugin no Chakra."}
             </p>
           </div>
           <Button onClick={prepareConnection} disabled={isPreparing || isSaving} className="min-h-11">
             {isPreparing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <QrCode className="mr-2 h-4 w-4" />}
-            Preparar conexão
+            Iniciar conexão
           </Button>
+        </div>
+        <div className="-mt-3 rounded-lg border border-slate-200 p-3 text-xs text-muted-foreground">
+          <p className="font-medium text-foreground">Etapas da conexão</p>
+          <p className="mt-1">Iniciar aqui → entrar na Meta → escolher o portfólio e a conta WhatsApp (WABA) → autorizar o número. A lista é atualizada após o fluxo ser concluído e o número ser salvo.</p>
         </div>
 
         {connectToken && (
@@ -287,9 +313,9 @@ export function ChakraConnectCard() {
           <Alert className="border-amber-300 bg-amber-50">
             <Smartphone className="h-4 w-4 text-amber-700" />
             <AlertDescription className="space-y-3">
-              <p className="font-medium text-amber-950">Este plugin possui mais de um número.</p>
+              <p className="font-medium text-amber-950">O Chakra retornou mais de um número.</p>
               <p className="text-sm text-amber-900">
-                Escolha somente o número que pertence ao Sigma GSS. Os demais números do Jornada do Paciente não serão importados.
+                Selecione qual número da GSS deseja vincular agora. Os demais não serão importados automaticamente; conclua uma vinculação para cada número que também deve aparecer e ser usado no Sigma.
               </p>
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <Select
@@ -323,7 +349,10 @@ export function ChakraConnectCard() {
         <Separator />
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-3">
-            <h3 className="font-semibold">Números conectados</h3>
+            <div>
+              <h3 className="font-semibold">Números vinculados ao Sigma</h3>
+              <p className="text-xs text-muted-foreground">{phones.length} {phones.length === 1 ? "número conectado" : "números conectados"} via Chakra</p>
+            </div>
             <Button variant="ghost" size="sm" asChild>
               <a href="https://chakrahq.com/help/chat/partner/embed-whatsapp-connect-for-your-customers" target="_blank" rel="noreferrer">
                 Guia do Chakra <ExternalLink className="ml-2 h-3.5 w-3.5" />
@@ -331,7 +360,7 @@ export function ChakraConnectCard() {
             </Button>
           </div>
           {phones.length === 0 ? (
-            <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">Nenhum número Chakra conectado ainda.</p>
+            <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">Nenhum número vinculado ainda. Inicie a conexão acima e conclua o fluxo da Meta/Chakra para registrá-lo aqui.</p>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2">
               {phones.map((phone) => {
@@ -348,12 +377,14 @@ export function ChakraConnectCard() {
                         <Badge variant={phone.webhook_configured ? "outline" : "destructive"}>
                           Webhook: {phone.webhook_configured ? "ativo" : "pendente"}
                         </Badge>
-                        <Badge variant="outline">
-                          Envio: disponível
-                        </Badge>
                         {phone.quality_rating && <Badge variant="outline">Qualidade: {phone.quality_rating}</Badge>}
                         {phone.messaging_limit_tier && <Badge variant="outline">Limite: {phone.messaging_limit_tier}</Badge>}
                         {phone.name_status && <Badge variant={String(phone.name_status).toUpperCase() === "APPROVED" ? "outline" : "secondary"}>Nome: {phone.name_status}</Badge>}
+                      </div>
+                      <div className="mt-2 space-y-1 text-[11px] text-muted-foreground">
+                        {phone.waba_id && <p>Conta WhatsApp (WABA): <span className="font-mono">{phone.waba_id}</span></p>}
+                        {phone.plugin_id && <p>Conexão Chakra: <span className="font-mono">{phone.plugin_id}</span></p>}
+                        <p>O envio depende também do status e dos limites atuais definidos pela Meta.</p>
                       </div>
                       {sendBlock && (
                         <Alert className="mt-3 border-amber-300 bg-amber-50 py-3">
