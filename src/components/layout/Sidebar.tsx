@@ -31,6 +31,7 @@ import {
   Footprints,
   ListTodo,
   ListChecks,
+  FileCheck2,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -108,6 +109,7 @@ const navigationGroups: NavGroup[] = [
       { name: "Marketing", href: "/marketing", icon: Megaphone, modulo: "marketing" },
       { name: "Financeiro", href: "/financeiro", icon: DollarSign, modulo: "financeiro" },
       { name: "Aprovações", href: "/financeiro/aprovacoes", icon: ClipboardCheck, modulo: "financeiro" },
+      { name: "Notas fiscais", href: "/financeiro/notas-fiscais", icon: FileCheck2, modulo: "financeiro" },
       { name: "Comprovantes", href: "/financeiro/comprovantes", icon: Receipt, modulo: "financeiro" },
       { name: "Patrimônio", href: "/patrimonio", icon: Package, modulo: "patrimonio" },
     ],

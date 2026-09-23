@@ -44,6 +44,8 @@ import Escalas from "./pages/Escalas";
 import Financeiro from "./pages/Financeiro";
 import FinanceiroAprovacoes from "./pages/FinanceiroAprovacoes";
 import FinanceiroComprovantes from "./pages/FinanceiroComprovantes";
+import FinanceiroNotasFiscais from "./pages/FinanceiroNotasFiscais";
+import NfUpload from "./pages/NfUpload";
 import Patrimonio from "./pages/Patrimonio";
 import BI from "./pages/BI";
 import Configuracoes from "./pages/Configuracoes";
@@ -88,6 +90,8 @@ const App = () => (
             <Routes>
             <Route path="/auth" element={<Auth />} />
             <Route path="/reset-password" element={<ResetPassword />} />
+            {/* pública: é o link que o médico abre pelo e-mail para mandar a nota */}
+            <Route path="/nf/:token" element={<NfUpload />} />
             <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/comunicacao" element={<ProtectedRoute><PermissionRoute modulo="comunicacao"><Comunicacao /></PermissionRoute></ProtectedRoute>} />
             <Route path="/licitacoes" element={<ProtectedRoute><PermissionRoute modulo="licitacoes"><Licitacoes /></PermissionRoute></ProtectedRoute>} />
@@ -128,6 +132,7 @@ const App = () => (
             <Route path="/financeiro" element={<ProtectedRoute><PermissionRoute modulo="financeiro"><Financeiro /></PermissionRoute></ProtectedRoute>} />
             <Route path="/financeiro/aprovacoes" element={<ProtectedRoute><PermissionRoute modulo="financeiro"><FinanceiroAprovacoes /></PermissionRoute></ProtectedRoute>} />
             <Route path="/financeiro/comprovantes" element={<ProtectedRoute><PermissionRoute modulo="financeiro"><FinanceiroComprovantes /></PermissionRoute></ProtectedRoute>} />
+            <Route path="/financeiro/notas-fiscais" element={<ProtectedRoute><PermissionRoute modulo="financeiro"><FinanceiroNotasFiscais /></PermissionRoute></ProtectedRoute>} />
             <Route path="/patrimonio" element={<ProtectedRoute><PermissionRoute modulo="patrimonio"><Patrimonio /></PermissionRoute></ProtectedRoute>} />
             <Route path="/radiologia" element={<ProtectedRoute><PermissionRoute modulo="radiologia"><Radiologia /></PermissionRoute></ProtectedRoute>} />
             <Route path="/bi" element={<ProtectedRoute><PermissionRoute modulo="bi"><BI /></PermissionRoute></ProtectedRoute>} />

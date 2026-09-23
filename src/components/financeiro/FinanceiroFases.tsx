@@ -235,6 +235,11 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
                 </Button>
               )}
               {podeAjustar && <FinanceiroImportarFechamentoDialog mesDefault={mes} anoDefault={ano} />}
+              {fase === 2 && (
+                <Button asChild size="sm" variant="outline" className="gap-1.5">
+                  <Link to="/financeiro/notas-fiscais">Notas fiscais <ArrowRight className="h-4 w-4" /></Link>
+                </Button>
+              )}
               {fase >= 3 && (
                 <Button asChild size="sm" variant="outline" className="gap-1.5">
                   <Link to="/financeiro/aprovacoes">Ver aprovações <ArrowRight className="h-4 w-4" /></Link>

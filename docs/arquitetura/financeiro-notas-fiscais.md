@@ -111,16 +111,41 @@ estiver aprovado.
 
 ## 8. Entregas
 
-| # | Escopo | Depende de | Esforço |
-|---|---|---|---|
-| N1 | Tela Notas fiscais: lista, filtros, indicadores, status por médico | fechamento liberado (pronto) | 2 dias |
-| N2 | Envio em lote com prévia, modelo editável e log por médico | N1 | 1,5 dia |
-| N3 | Link tokenizado de upload da NF (rota pública) + recebimento | N1 | 1,5 dia |
-| N4 | Cobrança: painel de pendentes, cobrar em lote, parâmetros do lembrete | N2 | 1 dia |
-| N5 | Conferência da nota (valor × a pagar) e pendência com motivo | N3 | 1 dia |
-| N6 | Canal WhatsApp como opção de envio | número aprovado na Meta | 1 dia |
+| # | Escopo | Estado |
+|---|---|---|
+| N1 | Tela Notas fiscais: lista, filtros por status, indicadores, busca | ✅ 23/09 — `/financeiro/notas-fiscais` |
+| N2 | Envio em lote com prévia, envio de teste e log por médico | ✅ 23/09 — edge `financeiro-nf-enviar` + `financeiro_nf_solicitacoes` |
+| N3 | Link tokenizado de upload (rota pública `/nf/<token>`) + recebimento | ✅ 23/09 — edge `financeiro-nf-upload` (`--no-verify-jwt`), testada ponta a ponta |
+| N4 | Cobrar em lote (botão "Cobrar") | ✅ 23/09 — reaproveita `tipo='lembrete'`; parâmetros do cron continuam fixos (48h, teto 3) |
+| N5 | Conferência da nota (valor × a pagar) e pendência com motivo | pendente — 1 dia |
+| N6 | Canal WhatsApp pelo número do financeiro | código pronto, **bloqueado**: ver §10 |
 
-N1 a N3 já fazem a competência inteira rodar sem mensagem manual.
+### Configuração (config_lista_items)
+
+| Chave | Para quê |
+|---|---|
+| `financeiro_nf_link_base` | base do link do médico (fallback: `APP_URL` → `https://sigma-gss.lovable.app`) |
+| `financeiro_whatsapp_sender_id` | id em `whatsapp_official_senders` do número do FINANCEIRO (nunca o de prospecção) |
+| `financeiro_nf_whatsapp_template_id` | id do template aprovado, com 4 variáveis: nome, competência, valor, link |
+| `financeiro_nf_reply_domain` | domínio do reply-to tokenizado (inbound) |
+| `financeiro_canal_id` | canal que recebe o aviso "NF recebida" |
+
+## 10. WhatsApp — o que falta para ligar
+
+O envio por WhatsApp já está implementado na edge (template via Chakra, remetente escolhido por
+configuração no servidor, sem número no front, registro de `provider_message_id` e do erro do
+provedor; só marca como solicitada quando o provedor aceita). Falta o que não depende de código:
+
+1. **Número do financeiro conectado.** Em `whatsapp_official_senders` só existe um remetente Chakra
+   `connected` (+55 47 92647508, o da prospecção) e um `pending` criado em 23/09 (+55 47 64291713).
+   Nenhum bate com o "47 99018860" informado. Confirmar o número em E.164 e conectar.
+2. **Template utility aprovado** para NF (o texto atual da base é de prospecção). Sugestão de corpo:
+   `Dr(a). {{1}}, a GSS precisa da nota fiscal referente a {{2}}, no valor de {{3}}. Envie por aqui: {{4}}`.
+3. Depois de aprovado, gravar os dois ids em `config_lista_items` e testar com um número interno.
+
+Recebimento **pelo** WhatsApp (o médico responde com o PDF) é um passo a mais: tratar o evento de
+documento no `chakra-webhook`/`receive-whatsapp-messages`, casar com o pagamento e gravar no cofre.
+Enquanto isso, o link do e-mail já resolve o recebimento, inclusive quando o pedido vai por WhatsApp.
 
 ## 9. Riscos e pontos abertos
 
