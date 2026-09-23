@@ -1,7 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { twilioCredentials } from "../_shared/twilio-auth.ts";
-import { chakraApi, unwrapChakraPayload } from "../_shared/chakra.ts";
+import {
+  ChakraApiError,
+  chakraApi,
+  unwrapChakraPayload,
+} from "../_shared/chakra.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -91,6 +95,27 @@ function resolveBinding(binding: string, context: Record<string, unknown>) {
   }).trim();
 }
 
+async function releaseOfficialSenderLease(
+  admin: unknown,
+  senderId: string | null,
+  leaseToken: string | null,
+  providerCooldownMs = 0,
+) {
+  if (!admin || !senderId || !leaseToken) return;
+  const client = admin as {
+    rpc: (name: string, args: Record<string, unknown>) => Promise<{ error: { message: string } | null }>;
+  };
+  const { error } = await client.rpc("finish_whatsapp_official_sender_send", {
+    p_sender_id: senderId,
+    p_lease_token: leaseToken,
+    p_provider_cooldown_ms: providerCooldownMs,
+  });
+  if (error) {
+    // Lease expiry is the recovery path if this best-effort unlock misses.
+    console.error("[official-send] could not release sender lease", error.message);
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -99,6 +124,9 @@ serve(async (req) => {
     return json({ ok: false, error: "method_not_allowed" }, 405);
   }
 
+  let adminClient: unknown = null;
+  let officialSenderId: string | null = null;
+  let officialLeaseToken: string | null = null;
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -109,6 +137,7 @@ serve(async (req) => {
     const isServiceRole = authorization === `Bearer ${serviceRole}` ||
       hasServiceRoleClaim(authorization) || isInternalSend;
     const admin = createClient(supabaseUrl, serviceRole);
+    adminClient = admin;
     const auth = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
       global: { headers: { Authorization: authorization } },
     });
@@ -260,6 +289,7 @@ serve(async (req) => {
       }, 409);
     }
     const sender = senders[0];
+    officialSenderId = String(sender.id);
     if (
       !["approved", "online", "active", "activated", "connected"].includes(
         String(sender.status).toLowerCase(),
@@ -544,6 +574,29 @@ serve(async (req) => {
       return json({ ok: false, error: "message_body_required" }, 400);
     }
 
+    const { data: reservation, error: reservationError } = await admin.rpc(
+      "reserve_whatsapp_official_sender_send",
+      {
+        p_sender_id: sender.id,
+        p_min_gap_ms: 3500,
+        p_lease_seconds: 45,
+      },
+    );
+    if (reservationError) throw reservationError;
+    if (!reservation?.allowed) {
+      return json({
+        ok: false,
+        error: "official_sender_rate_limited",
+        provider_code: "SIGMA_RATE_GATE",
+        retry_after_ms: Math.max(1000, Number(reservation?.retry_after_ms) || 3500),
+        reason: reservation?.reason || "sender_cooldown",
+      }, 429);
+    }
+    officialLeaseToken = String(reservation.lease_token || "");
+    if (!officialLeaseToken) {
+      throw new Error("official_sender_rate_gate_missing_lease_token");
+    }
+
     let providerMessage: Record<string, any>;
     if (sender.provider === "chakra") {
       const pluginId = String(sender.chakra_plugin_id || "");
@@ -633,6 +686,19 @@ serve(async (req) => {
       const twilioMessage = await twilioResponse.json();
       if (!twilioResponse.ok) {
         console.error("[twilio-send]", twilioMessage);
+        if (twilioResponse.status === 429) {
+          await releaseOfficialSenderLease(admin, officialSenderId, officialLeaseToken, 60_000);
+          officialLeaseToken = null;
+          return json({
+            ok: false,
+            error: "official_provider_rate_limited",
+            provider_code: twilioMessage.code || null,
+            provider_message: twilioMessage.message || null,
+            retry_after_ms: 60_000,
+          }, 429);
+        }
+        await releaseOfficialSenderLease(admin, officialSenderId, officialLeaseToken);
+        officialLeaseToken = null;
         return json({
           ok: false,
           error: "twilio_send_failed",
@@ -642,6 +708,8 @@ serve(async (req) => {
       }
       providerMessage = twilioMessage;
     }
+    await releaseOfficialSenderLease(admin, officialSenderId, officialLeaseToken);
+    officialLeaseToken = null;
 
     const now = new Date().toISOString();
     const visibleBody = repairMojibake(template
@@ -724,6 +792,27 @@ serve(async (req) => {
     });
   } catch (error) {
     console.error("[twilio-send]", error);
+    if (error instanceof ChakraApiError) {
+      const status = error.status === 429 ? 429 : 502;
+      await releaseOfficialSenderLease(
+        adminClient,
+        officialSenderId,
+        officialLeaseToken,
+        status === 429 ? error.retryAfterMs || 60_000 : 0,
+      );
+      officialLeaseToken = null;
+      return json({
+        ok: false,
+        error: error.status === 429
+          ? "chakra_rate_limited"
+          : "chakra_send_failed",
+        provider_code: error.status,
+        provider_message: error.providerMessage,
+        retry_after_ms: error.retryAfterMs,
+      }, status);
+    }
+    await releaseOfficialSenderLease(adminClient, officialSenderId, officialLeaseToken);
+    officialLeaseToken = null;
     return json({
       ok: false,
       error: errorMessage(error),

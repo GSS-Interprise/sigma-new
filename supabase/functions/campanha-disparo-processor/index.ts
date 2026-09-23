@@ -1,6 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendWhatsAppText } from "../_shared/evo-sender.ts";
+import {
+  classifyOfficialThrottle,
+  resolveOfficialIntervalMs,
+} from "../_shared/official-cadence.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -20,19 +24,7 @@ const OFFICIAL_INTERVAL_MIN_MS = 5 * 60 * 1000;
 const OFFICIAL_INTERVAL_MAX_MS = 10 * 60 * 1000;
 
 function officialInterval(campaign: any) {
-  // A cadência oficial é configurável por campanha, mas continua limitada a
-  // uma faixa segura para evitar transformar o piloto em uma rajada. Os
-  // valores da tabela são segundos; os limites aqui são milissegundos.
-  const configuredMin = Number(campaign.delay_between_batches_min) * 1000;
-  const configuredMax = Number(campaign.delay_between_batches_max) * 1000;
-  const min = Number.isFinite(configuredMin) && configuredMin > 0
-    ? Math.max(4 * 60 * 1000, Math.min(configuredMin, 15 * 60 * 1000))
-    : OFFICIAL_INTERVAL_MIN_MS;
-  const maxCandidate = Number.isFinite(configuredMax) && configuredMax > 0
-    ? configuredMax
-    : OFFICIAL_INTERVAL_MAX_MS;
-  const max = Math.max(min + 30 * 1000, Math.min(maxCandidate, 20 * 60 * 1000));
-  return { min, max };
+  return resolveOfficialIntervalMs(campaign);
 }
 
 serve(async (req) => {
@@ -730,6 +722,7 @@ async function processTwilioBatch(supabase: any, camp: any, supabaseUrl: string,
   // autenticada e evitar o falso erro "unauthorized" no disparo oficial.
   let data: any = null;
   let error: unknown = null;
+  let responseStatus = 200;
   try {
     const response = await fetchWithTimeout(
       `${supabaseUrl}/functions/v1/twilio-whatsapp-send`,
@@ -744,12 +737,38 @@ async function processTwilioBatch(supabase: any, camp: any, supabaseUrl: string,
       },
       SEND_TIMEOUT_MS,
     );
+    responseStatus = response.status;
     data = await response.json().catch(() => null);
     if (!response.ok) error = new Error(`HTTP ${response.status}`);
   } catch (caught) {
     error = caught;
   }
   if (error || !data?.ok) {
+    const throttle = classifyOfficialThrottle(responseStatus, data);
+    if (throttle) {
+      const { error: deferError } = await supabase.rpc(
+        "defer_whatsapp_campaign_send",
+        {
+          p_campanha_lead_id: campaignLead.id,
+          p_retry_after_ms: throttle.retryAfterMs,
+        },
+      );
+      if (deferError) {
+        console.error("[campaign] failed to defer throttled lead", deferError.message);
+      }
+      const nextBatchAt = new Date(Date.now() + throttle.retryAfterMs).toISOString();
+      await supabase.from("campanhas")
+        .update({ next_batch_at: nextBatchAt })
+        .eq("id", camp.id);
+      return json({
+        ok: true,
+        deferred: true,
+        reason: throttle.reason,
+        retry_after_ms: throttle.retryAfterMs,
+        next_batch_at: nextBatchAt,
+      });
+    }
+
     const providerDetail = [data?.provider_code, data?.provider_message]
       .filter((value) => value != null && String(value).trim())
       .join(": ");

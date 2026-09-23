@@ -68,6 +68,8 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
   const [limiteDiario, setLimiteDiario] = useState(DEFAULT_EVOLUTION_DAILY_LIMIT);
   const [batchSize, setBatchSize] = useState(5);
   const [whatsappProvider, setWhatsappProvider] = useState<"evolution" | "twilio" | "chakra">("evolution");
+  const [officialCadenceMin, setOfficialCadenceMin] = useState(2);
+  const [officialCadenceMax, setOfficialCadenceMax] = useState(3);
   const [officialTemplateId, setOfficialTemplateId] = useState<string | null>(null);
   const [officialSenderId, setOfficialSenderId] = useState<string | null>(null);
   const [officialTemplateVariables, setOfficialTemplateVariables] = useState<OfficialTemplateBindings>({});
@@ -112,6 +114,19 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
     );
     setBatchSize(campanha.batch_size || (provider !== "evolution" ? 10 : 5));
     setWhatsappProvider(provider);
+    if (provider !== "evolution") {
+      const cadenceMin = Math.max(
+        2,
+        Math.round(Number(campanha.delay_between_batches_min || 120) / 60),
+      );
+      setOfficialCadenceMin(cadenceMin);
+      setOfficialCadenceMax(
+        Math.max(
+          cadenceMin + 1,
+          Math.round(Number(campanha.delay_between_batches_max || 180) / 60),
+        ),
+      );
+    }
     setOfficialTemplateId(officialConfig.official_template_id || null);
     setOfficialSenderId(officialConfig.official_sender_id || null);
     setOfficialTemplateVariables(officialConfig.official_template_variables || {});
@@ -218,6 +233,10 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
 
   const handleProviderChange = (provider: "evolution" | "twilio" | "chakra") => {
     setWhatsappProvider(provider);
+    if (provider !== "evolution" && whatsappProvider === "evolution") {
+      setOfficialCadenceMin(2);
+      setOfficialCadenceMax(3);
+    }
     if (provider !== "evolution") setChipIds([]);
     // Só troca defaults; um limite personalizado da operação permanece.
     if (provider !== "evolution" && limiteDiario <= DEFAULT_EVOLUTION_DAILY_LIMIT) {
@@ -270,6 +289,13 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
   const salvar = useMutation({
     mutationFn: async () => {
       if (!campanha) throw new Error("Campanha não carregada");
+      if (whatsappProvider !== "evolution" && (
+        officialCadenceMin < 2 ||
+        officialCadenceMax < officialCadenceMin + 1 ||
+        officialCadenceMax > 20
+      )) {
+        throw new Error("A cadência oficial deve ficar entre 2 e 20 minutos, com máximo igual ou maior que o mínimo");
+      }
       const briefingAtualizado = {
         ...(campanha.briefing_ia || {}),
         handoff_nome: handoffNome.trim() || "[A_CONFIGURAR]",
@@ -285,6 +311,12 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
           rotation_strategy: rotationStrategy,
           limite_diario_campanha: limiteDiario,
           batch_size: batchSize,
+          delay_between_batches_min: whatsappProvider !== "evolution"
+            ? officialCadenceMin * 60
+            : campanha.delay_between_batches_min,
+          delay_between_batches_max: whatsappProvider !== "evolution"
+            ? officialCadenceMax * 60
+            : campanha.delay_between_batches_max,
           briefing_ia: briefingAtualizado,
           tarefa_cadencia_passos: tarefaPassos.length > 0 ? tarefaPassos : null,
           tarefa_cadencia_template_id: tarefaTemplateId,

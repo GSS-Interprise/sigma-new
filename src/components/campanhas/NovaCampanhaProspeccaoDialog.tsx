@@ -288,7 +288,16 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
 
   const handleProviderChange = (provider: "evolution" | "twilio" | "chakra") => {
     setWhatsappProvider(provider);
-    if (provider !== "evolution") setChipIds([]);
+    if (provider !== "evolution") {
+      setChipIds([]);
+      if (whatsappProvider === "evolution") {
+        setDelayBatchMin(2);
+        setDelayBatchMax(3);
+      }
+    } else if (whatsappProvider !== "evolution") {
+      setDelayBatchMin(5);
+      setDelayBatchMax(10);
+    }
     if (provider === "evolution") {
       setOfficialTemplateId(null);
       setOfficialSenderId(null);
@@ -666,6 +675,8 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
   const briefingOk = tipoEnvio === "manual" ? briefingMinimoManual : briefingCompletoIA;
   // WS2: janela inválida (fim<=início ou sem dias) faria a campanha nunca disparar — bloqueia o submit.
   const janelaValida = !janela.ativo || (janela.dias.length > 0 && janela.fim > janela.inicio);
+  const cadenciaOficialValida = whatsappProvider === "evolution" ||
+    (delayBatchMin >= 2 && delayBatchMax >= delayBatchMin + 1 && delayBatchMax <= 20);
   // A criação é separada da ativação: número/template oficial podem estar
   // aguardando aprovação, mas isso não deve impedir a equipe de salvar a
   // campanha e preparar sua lista. O checklist de ativação continua exigindo
@@ -674,6 +685,7 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
     nome.trim().length > 0 &&
     briefingOk &&
     janelaValida &&
+    cadenciaOficialValida &&
     !!responsavelId;
   // Feedback claro: o que ainda falta pra liberar o botão (em vez de só desabilitar sem explicar)
   const faltaPreencher: string[] = [];
@@ -688,6 +700,7 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
     if (bHandoffTelefone.trim().length === 0) faltaPreencher.push("telefone do handoff");
   }
   if (!janelaValida) faltaPreencher.push("janela de horário válida");
+  if (!cadenciaOficialValida) faltaPreencher.push("cadência oficial entre 2 e 20 minutos, com intervalo de pelo menos 1 minuto");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -879,6 +892,58 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
                 )}
               </div>
             ) : null}
+
+            {whatsappProvider !== "evolution" && (
+              <div className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50/40 p-3">
+                <div>
+                  <Label>Intervalo entre novos contatos</Label>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Um contato por ciclo. O padrão oficial é 2–3 minutos; a espera do Chakra/Meta pode alongar o intervalo automaticamente.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="official-cadence-min" className="text-xs">Mínimo (minutos)</Label>
+                    <Input
+                      id="official-cadence-min"
+                      type="number"
+                      inputMode="numeric"
+                      min={2}
+                      max={20}
+                      step={1}
+                      className="min-h-11 bg-background"
+                      value={delayBatchMin}
+                      onChange={(event) => setDelayBatchMin(Number(event.target.value))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="official-cadence-max" className="text-xs">Máximo (minutos)</Label>
+                    <Input
+                      id="official-cadence-max"
+                      type="number"
+                      inputMode="numeric"
+                      min={2}
+                      max={20}
+                      step={1}
+                      className="min-h-11 bg-background"
+                      value={delayBatchMax}
+                      onChange={(event) => setDelayBatchMax(Number(event.target.value))}
+                    />
+                  </div>
+                </div>
+                {!cadenciaOficialValida && (
+                  <p className="text-xs text-destructive">
+                    Use no mínimo 2 minutos e deixe o máximo pelo menos 1 minuto acima, até 20 minutos.
+                  </p>
+                )}
+                <p className="text-xs text-emerald-900">
+                  Referência: em 10 horas, 2–3 minutos equivalem a cerca de 200–300 contatos teóricos. O teto diário configurado (padrão Sigma: 250), pausas e campanhas no mesmo número podem reduzir o total.
+                </p>
+                <p className="text-xs text-amber-800">
+                  Envie somente para pessoas que autorizaram receber mensagens da GSS pelo WhatsApp e respeite pedidos de saída.
+                </p>
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label>Responsável pela campanha no Sigma *</Label>
