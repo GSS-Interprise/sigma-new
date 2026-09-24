@@ -804,6 +804,8 @@ async function updateTemplateStatus(
     item.message_template_status,
   ).toLowerCase();
   if (!templateId || !status) return;
+  // content_sid é "chakra:<plugin>:<id da Meta>" — comparar com o id cru nunca casava,
+  // então o status vindo do webhook se perdia. O sufixo é o que identifica o template.
   await admin.from("whatsapp_official_templates")
     .update({
       approval_status: status,
@@ -811,7 +813,7 @@ async function updateTemplateStatus(
       updated_at: new Date().toISOString(),
     })
     .eq("provider", "chakra")
-    .eq("content_sid", templateId);
+    .like("content_sid", `%:${templateId}`);
 }
 
 serve(async (request) => {
