@@ -488,6 +488,28 @@ async function forwardMessage(
   return parsed;
 }
 
+/**
+ * Nota fiscal chegando pelo WhatsApp do financeiro. Fire-and-forget e isolado: a edge
+ * do financeiro ignora sozinha tudo que não for documento no número dela, e qualquer
+ * erro aqui não pode atrapalhar prospecção.
+ */
+async function forwardNfFinanceiro(
+  supabaseUrl: string,
+  serviceRole: string,
+  payload: AnyRecord,
+  phoneNumberId: string | null,
+) {
+  await fetch(`${supabaseUrl}/functions/v1/financeiro-nf-whatsapp-inbound`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${serviceRole}`,
+      apikey: serviceRole,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ payload, phone_number_id: phoneNumberId }),
+  });
+}
+
 async function forwardCampaignAi(
   supabaseUrl: string,
   serviceRole: string,
@@ -937,6 +959,15 @@ serve(async (request) => {
           )
             .catch((error) =>
               console.warn("[chakra] falha ao acionar IA:", error)
+            );
+          void forwardNfFinanceiro(
+            supabaseUrl,
+            serviceRole,
+            event.payload,
+            event.phoneNumberId,
+          )
+            .catch((error) =>
+              console.warn("[chakra] falha no inbound de NF:", error)
             );
         }
       } else if (["status", "statuses"].includes(event.type)) {
