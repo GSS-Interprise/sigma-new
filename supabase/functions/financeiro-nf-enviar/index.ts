@@ -144,17 +144,22 @@ serve(async (req) => {
       .in("campo_nome", [
         "financeiro_nf_reply_domain", "financeiro_nf_link_base",
         "financeiro_whatsapp_sender_id", "financeiro_nf_whatsapp_template_id",
+        "financeiro_nf_whatsapp_template_lembrete_id", "financeiro_nf_whatsapp_botao_url",
       ]);
     const cfg = (nome: string) => cfgRows?.find((c: any) => c.campo_nome === nome)?.valor || "";
     const replyDomain = cfg("financeiro_nf_reply_domain") || "nf.gestaoservicosaude.com.br";
     const linkBase = (cfg("financeiro_nf_link_base") || Deno.env.get("APP_URL") || "https://sigma-gss.lovable.app").replace(/\/+$/, "");
     const fromFin = "GSS Saúde Financeiro <financeiro@gestaoservicosaude.com.br>";
+    const comBotaoUrl = cfg("financeiro_nf_whatsapp_botao_url") === "1";
 
     // WhatsApp: remetente e template vêm de configuração — nada de número no front.
     let sender: any = null, template: any = null;
     if (canal === "whatsapp") {
       const senderId = cfg("financeiro_whatsapp_sender_id");
-      const templateId = cfg("financeiro_nf_whatsapp_template_id");
+      // cobrança fora da janela de 24h também precisa de template próprio
+      const templateId = tipo === "lembrete"
+        ? (cfg("financeiro_nf_whatsapp_template_lembrete_id") || cfg("financeiro_nf_whatsapp_template_id"))
+        : cfg("financeiro_nf_whatsapp_template_id");
       if (!senderId || !templateId) {
         return json({
           ok: false, error: "whatsapp_nao_configurado",
@@ -241,9 +246,11 @@ serve(async (req) => {
         });
       } else {
         // Primeiro contato iniciado pela empresa = template aprovado, sempre.
-        const variaveis: Record<string, string> = {
-          "1": pag.profissional_nome, "2": compExt, "3": valor, "4": link,
-        };
+        // Com botão de URL dinâmica, o link não vai no corpo: o token entra como
+        // sufixo do botão (aprova mais fácil na Meta e o texto fica limpo).
+        const variaveis: Record<string, string> = comBotaoUrl
+          ? { "1": pag.profissional_nome, "2": compExt, "3": valor }
+          : { "1": pag.profissional_nome, "2": compExt, "3": valor, "4": link };
         const posicoes = Object.keys(template.variables || {}).sort((a, b) => Number(a) - Number(b));
         try {
           const resp = await chakraApi(
@@ -258,9 +265,15 @@ serve(async (req) => {
                 template: {
                   name: template.friendly_name,
                   language: { policy: "deterministic", code: template.language || "pt_BR" },
-                  ...(posicoes.length
-                    ? { components: [{ type: "body", parameters: posicoes.map((p) => ({ type: "text", text: variaveis[p] ?? "" })) }] }
-                    : {}),
+                  components: [
+                    ...(posicoes.length
+                      ? [{ type: "body", parameters: posicoes.map((p) => ({ type: "text", text: variaveis[p] ?? "" })) }]
+                      : []),
+                    // sufixo do botão de URL: https://…/nf/ + token
+                    ...(comBotaoUrl
+                      ? [{ type: "button", sub_type: "url", index: "0", parameters: [{ type: "text", text: token }] }]
+                      : []),
+                  ],
                 },
               }),
             },

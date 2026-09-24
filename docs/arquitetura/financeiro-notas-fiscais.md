@@ -130,30 +130,22 @@ estiver aprovado.
 | `financeiro_nf_reply_domain` | domínio do reply-to tokenizado (inbound) |
 | `financeiro_canal_id` | canal que recebe o aviso "NF recebida" |
 
-## 10. WhatsApp — o que falta para ligar
+## 10. WhatsApp — estado (24/09)
 
-O envio por WhatsApp já está implementado na edge (template via Chakra, remetente escolhido por
-configuração no servidor, sem número no front, registro de `provider_message_id` e do erro do
-provedor; só marca como solicitada quando o provedor aceita). Falta o que não depende de código:
+| Peça | Estado |
+|---|---|
+| Remetente do financeiro | ✅ **+55 47 99018860 — "Amni Julia - GSS"**, Chakra, `connected`, WABA 286031407919518. Gravado em `financeiro_whatsapp_sender_id` (nunca o número da prospecção) |
+| Template do pedido | ⏳ `gss_nf_solicitacao_v1` (UTILITY, pt_BR) submetido em 24/09 — **pending** na Meta |
+| Template da cobrança | ⏳ `gss_nf_cobranca_v1` (UTILITY, pt_BR) submetido em 24/09 — **pending** |
+| Envio | ✅ edge `financeiro-nf-enviar` escolhe o template pelo tipo (pedido × cobrança) e manda o token como sufixo do botão |
+| Recebimento pelo WhatsApp | ❌ o médico responde pelo link do botão; tratar documento no webhook fica para depois |
 
-1. **Número do financeiro conectado.** Em `whatsapp_official_senders` só existe um remetente Chakra
-   `connected` (+55 47 92647508, o da prospecção) e um `pending` criado em 23/09 (+55 47 64291713).
-   Nenhum bate com o "47 99018860" informado. Confirmar o número em E.164 e conectar.
-2. **Template utility aprovado** para NF (o texto atual da base é de prospecção). Sugestão de corpo:
-   `Dr(a). {{1}}, a GSS precisa da nota fiscal referente a {{2}}, no valor de {{3}}. Envie por aqui: {{4}}`.
-3. Depois de aprovado, gravar os dois ids em `config_lista_items` e testar com um número interno.
+O link vai no **botão de URL dinâmica** (`https://sigma-gss.lovable.app/nf/{{1}}`), não no corpo:
+aprova mais fácil e a mensagem fica curta. Texto sem acento de propósito — template com acento já
+chegou corrompido nesta WABA.
 
-Recebimento **pelo** WhatsApp (o médico responde com o PDF) é um passo a mais: tratar o evento de
-documento no `chakra-webhook`/`receive-whatsapp-messages`, casar com o pagamento e gravar no cofre.
-Enquanto isso, o link do e-mail já resolve o recebimento, inclusive quando o pedido vai por WhatsApp.
+Submissão de novo template: edge `financeiro-nf-template` (aceita `nome`, `corpo`, `texto_botao`,
+`tipo: solicitacao|lembrete` e `dry_run`), que grava o id na configuração certa.
 
-## 9. Riscos e pontos abertos
-
-- **MX no DNS da GSS** continua pendente; por isso o link tokenizado é o caminho principal.
-- **Médico que ignora e-mail**: mitigado pelo lembrete e pela cobrança em lote; resolvido de vez
-  com o WhatsApp (item 7).
-- **Nota com valor diferente do fechamento**: precisa de decisão — recusa automática ou pendência
-  para a equipe tratar. Sugestão: pendência, nunca recusa automática.
-- **Retenção de imposto e médico pessoa física**: não mapeado; confirmar com a Mavi antes do N5.
-- **Fora de escopo:** emissão de NFS-e pela GSS, integração com o Conta Azul e substituição do
-  WhatsApp como canal de relacionamento.
+⚠️ A URL do botão fica **gravada no template**. Se o Sigma sair do `sigma-gss.lovable.app` para um
+domínio próprio, os dois templates precisam ser submetidos de novo.
