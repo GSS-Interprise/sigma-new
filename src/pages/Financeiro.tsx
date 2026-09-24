@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import FinanceiroNotasFiscais from "./FinanceiroNotasFiscais";
+import { FinanceiroContasGerais } from "@/components/financeiro/FinanceiroContasGerais";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card } from "@/components/ui/card";
-import { BarChart3, FileText, Settings, Wallet, TrendingUp, ClipboardList } from "lucide-react";
+import { BarChart3, FileText, Settings, Wallet, TrendingUp, ClipboardList, FileCheck2 } from "lucide-react";
 import { FinanceiroResumo } from "@/components/financeiro/FinanceiroResumo";
 import { FinanceiroContasPagar } from "@/components/financeiro/FinanceiroContasPagar";
 import { FinanceiroContasReceber } from "@/components/financeiro/FinanceiroContasReceber";
@@ -110,6 +112,9 @@ export default function Financeiro() {
               <TabsTrigger value="contas" className="gap-2">
                 <FileText className="h-4 w-4" /> Contas a Pagar
               </TabsTrigger>
+              <TabsTrigger value="notas" className="gap-2">
+                <FileCheck2 className="h-4 w-4" /> Notas fiscais
+              </TabsTrigger>
               <TabsTrigger value="receber" className="gap-2">
                 <TrendingUp className="h-4 w-4" /> Contas a Receber
               </TabsTrigger>
@@ -130,12 +135,18 @@ export default function Financeiro() {
             <FinanceiroResumo pagamentos={pagamentos} isLoading={isLoading} mes={mes || (now.getMonth() + 1)} ano={ano} />
           </TabsContent>
 
-          <TabsContent value="contas">
+          <TabsContent value="contas" className="space-y-4">
             <FinanceiroContasPagar pagamentos={pagamentos} isLoading={isLoading} />
+            <FinanceiroContasGerais tipo="pagar" mes={mes || (now.getMonth() + 1)} ano={ano} />
           </TabsContent>
 
-          <TabsContent value="receber">
+          <TabsContent value="notas">
+            <FinanceiroNotasFiscais embutido mes={mes || (now.getMonth() + 1)} ano={ano} />
+          </TabsContent>
+
+          <TabsContent value="receber" className="space-y-4">
             <FinanceiroContasReceber mes={mes || (now.getMonth() + 1)} ano={ano} />
+            <FinanceiroContasGerais tipo="receber" mes={mes || (now.getMonth() + 1)} ano={ano} />
           </TabsContent>
 
           <TabsContent value="sigfinc">

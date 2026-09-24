@@ -164,10 +164,10 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
   }
 
   const FASES = [
-    { n: 1, titulo: "Fechamento", quem: "Mavi", icone: FileSpreadsheet },
-    { n: 2, titulo: "Notas fiscais", quem: "assistente", icone: Receipt },
-    { n: 3, titulo: "Aprovação", quem: "diretoria", icone: ClipboardCheck },
-    { n: 4, titulo: "Pagamento", quem: "Thais", icone: Wallet },
+    { n: 1, titulo: "Fechamento", desc: "importar, ajustar e liberar", icone: FileSpreadsheet },
+    { n: 2, titulo: "Notas fiscais", desc: "pedir, receber e cobrar", icone: Receipt },
+    { n: 3, titulo: "Aprovação", desc: "autorizar o pagamento", icone: ClipboardCheck },
+    { n: 4, titulo: "Pagamento", desc: "pagar e comprovar", icone: Wallet },
   ];
 
   const ordenarPor = (campo: Ordem["campo"]) =>
@@ -201,7 +201,7 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
                 <p className={`text-sm leading-tight truncate ${ativa ? "font-semibold" : concluida ? "" : "text-muted-foreground"}`}>
                   {f.titulo}
                 </p>
-                <p className="text-[11px] text-muted-foreground leading-tight truncate">{f.quem}</p>
+                <p className="text-[11px] text-muted-foreground leading-tight truncate">{f.desc}</p>
               </div>
               {ativa && <Badge className="ml-auto text-[10px] shrink-0">agora</Badge>}
             </div>
@@ -228,13 +228,14 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
                   <Download className="h-4 w-4" /> Baixar
                 </Button>
               )}
-              {podeAjustar && fonteSel !== TODAS && (
+              {fase <= 2 && fonteSel !== TODAS && (
                 <Button size="sm" variant="outline" className="gap-1.5 text-red-600 hover:text-red-700"
                   onClick={() => setConfirmandoExclusao(true)}>
                   <Trash2 className="h-4 w-4" /> Excluir importação
                 </Button>
               )}
-              {podeAjustar && <FinanceiroImportarFechamentoDialog mesDefault={mes} anoDefault={ano} />}
+              {/* sempre disponível: o relatório de um setor pode chegar depois do mês liberado */}
+              <FinanceiroImportarFechamentoDialog mesDefault={mes} anoDefault={ano} />
               {fase === 2 && (
                 <Button asChild size="sm" variant="outline" className="gap-1.5">
                   <Link to="/financeiro/notas-fiscais">Notas fiscais <ArrowRight className="h-4 w-4" /></Link>
@@ -409,6 +410,20 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
                   </tfoot>
                 </Table>
               </div>
+
+              {/* importou depois de liberar: confere o que entrou sem voltar a fase */}
+              {fase > 1 && porConferir > 0 && (
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 px-3 py-2">
+                  <p className="text-sm">
+                    {porConferir} lançamento(s) entraram depois da liberação e ainda não foram conferidos.
+                  </p>
+                  <Button size="sm" variant="outline" disabled={conferirLote.isPending}
+                    onClick={() => conferirLote.mutate({ ids: todos.filter((p) => !p.conferido_em).map((p) => p.id) })}>
+                    {conferirLote.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                    <span className="ml-1.5">Conferir os novos</span>
+                  </Button>
+                </div>
+              )}
 
               {/* saída da fase, no fim da mesa de trabalho */}
               {fase <= 2 && (

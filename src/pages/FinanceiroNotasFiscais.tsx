@@ -42,11 +42,19 @@ const STATUS: Record<string, { label: string; cls: string }> = {
   conferida: { label: "Conferida", cls: "bg-emerald-600 text-white" },
 };
 
-export default function FinanceiroNotasFiscais() {
+export default function FinanceiroNotasFiscais(
+  { embutido = false, mes: mesProp, ano: anoProp }:
+  { embutido?: boolean; mes?: number; ano?: number } = {},
+) {
   const qc = useQueryClient();
   const hoje = new Date();
-  const [mes, setMes] = useState(hoje.getMonth() + 1);
-  const [ano, setAno] = useState(hoje.getFullYear());
+  // como aba do Financeiro a competência vem de cima; como página, é escolhida aqui
+  const [mesLocal, setMesLocal] = useState(hoje.getMonth() + 1);
+  const [anoLocal, setAnoLocal] = useState(hoje.getFullYear());
+  const mes = mesProp ?? mesLocal;
+  const ano = anoProp ?? anoLocal;
+  const setMes = setMesLocal;
+  const setAno = setAnoLocal;
   const [busca, setBusca] = useState("");
   const [filtro, setFiltro] = useState<"todos" | "a_pedir" | "pedidas" | "recebidas" | "sem_contato">("todos");
   const [sel, setSel] = useState<Set<string>>(new Set());
@@ -218,22 +226,32 @@ export default function FinanceiroNotasFiscais() {
     { k: "sem_contato", label: "Sem contato", n: indicadores.sem_contato },
   ];
 
+  const Moldura = embutido ? ({ children }: { children: React.ReactNode }) => <>{children}</> : AppLayout;
+
   return (
-    <AppLayout>
+    <Moldura>
       <div className="space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <div className="min-w-0">
-            <h1 className="text-lg sm:text-2xl font-bold truncate">Notas fiscais</h1>
-            <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">
-              Pedir, receber e cobrar a NF de cada médico do fechamento
-            </p>
+            {!embutido && (
+              <>
+                <h1 className="text-lg sm:text-2xl font-bold truncate">Notas fiscais</h1>
+                <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">
+                  Pedir, receber e cobrar a NF de cada médico do fechamento
+                </p>
+              </>
+            )}
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <Select value={String(mes)} onValueChange={(v) => setMes(Number(v))}>
-              <SelectTrigger className="w-[130px] h-9"><SelectValue /></SelectTrigger>
-              <SelectContent>{MESES.map((m, i) => <SelectItem key={m} value={String(i + 1)}>{m}</SelectItem>)}</SelectContent>
-            </Select>
-            <Input type="number" value={ano} onChange={(e) => setAno(Number(e.target.value))} className="w-[92px] h-9" />
+            {!embutido && (
+              <>
+                <Select value={String(mes)} onValueChange={(v) => setMes(Number(v))}>
+                  <SelectTrigger className="w-[130px] h-9"><SelectValue /></SelectTrigger>
+                  <SelectContent>{MESES.map((m, i) => <SelectItem key={m} value={String(i + 1)}>{m}</SelectItem>)}</SelectContent>
+                </Select>
+                <Input type="number" value={ano} onChange={(e) => setAno(Number(e.target.value))} className="w-[92px] h-9" />
+              </>
+            )}
             <Select value={canal} onValueChange={(v) => setCanal(v as any)}>
               <SelectTrigger className="w-[140px] h-9"><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -442,6 +460,6 @@ export default function FinanceiroNotasFiscais() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </AppLayout>
+    </Moldura>
   );
 }
