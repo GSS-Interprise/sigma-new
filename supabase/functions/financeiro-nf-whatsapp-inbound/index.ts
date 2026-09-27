@@ -24,7 +24,7 @@ const sufixo = (fone: string) => digits(fone).slice(-8);
 
 type Midia = { id: string; mime: string; nome: string; url: string };
 
-function extrairMensagem(payload: any): { de: string; midia: Midia | null; nomePerfil: string; mensagemId: string; texto: string } | null {
+function extrairMensagem(payload: any): { de: string; midia: Midia | null; nomePerfil: string; mensagemId: string; quando: string; texto: string } | null {
   const raiz = payload?.value ?? payload?.entry?.[0]?.changes?.[0]?.value ?? payload;
   const msg = raiz?.messages?.[0] ?? raiz?.message ?? (raiz?.item ?? null);
   if (!msg) return null;
@@ -38,7 +38,10 @@ function extrairMensagem(payload: any): { de: string; midia: Midia | null; nomeP
     : null;
   const nomePerfil = String(raiz?.contacts?.[0]?.profile?.name || msg.profile?.name || "");
   const mensagemId = String(msg.id || msg.message_id || "");
-  return { de, midia, nomePerfil, mensagemId, texto: String(msg.text?.body || msg.caption || "") };
+  // hora da mensagem, não a do processamento: reprocessar não pode reescrever o histórico
+  const epoch = Number(msg.timestamp || 0);
+  const quando = epoch > 0 ? new Date(epoch * 1000).toISOString() : "";
+  return { de, midia, nomePerfil, mensagemId, quando, texto: String(msg.text?.body || msg.caption || "") };
 }
 
 /** id da mídia → bytes. A Cloud API devolve uma URL intermediária que exige token. */
@@ -187,7 +190,7 @@ serve(async (req) => {
     await svc.from("financeiro_nf_inbox").upsert({
       origem: "whatsapp", remetente: msg.de, remetente_nome: msg.nomePerfil || null,
       arquivo_nome: msg.midia.nome, arquivo_path: path, mime,
-      mensagem_id: msg.mensagemId || null, recebido_em: agora,
+      mensagem_id: msg.mensagemId || null, recebido_em: msg.quando || agora,
       status: pag && path ? "vinculada" : "pendente",
       pagamento_id: pag?.id ?? null,
       vinculado_em: pag && path ? agora : null,
