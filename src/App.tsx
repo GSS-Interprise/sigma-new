@@ -46,6 +46,7 @@ import FinanceiroAprovacoes from "./pages/FinanceiroAprovacoes";
 import FinanceiroComprovantes from "./pages/FinanceiroComprovantes";
 import FinanceiroNotasFiscais from "./pages/FinanceiroNotasFiscais";
 import NfUpload from "./pages/NfUpload";
+import EmailDescadastro from "./pages/EmailDescadastro";
 import Patrimonio from "./pages/Patrimonio";
 import BI from "./pages/BI";
 import Configuracoes from "./pages/Configuracoes";
@@ -92,6 +93,7 @@ const App = () => (
             <Route path="/reset-password" element={<ResetPassword />} />
             {/* pública: é o link que o médico abre pelo e-mail para mandar a nota */}
             <Route path="/nf/:token" element={<NfUpload />} />
+            <Route path="/descadastro/:token" element={<EmailDescadastro />} />
             <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/comunicacao" element={<ProtectedRoute><PermissionRoute modulo="comunicacao"><Comunicacao /></PermissionRoute></ProtectedRoute>} />
             <Route path="/licitacoes" element={<ProtectedRoute><PermissionRoute modulo="licitacoes"><Licitacoes /></PermissionRoute></ProtectedRoute>} />

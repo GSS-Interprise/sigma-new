@@ -40,6 +40,7 @@ import {
   User,
   Sparkles,
   RotateCcw,
+  Mail,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -59,6 +60,8 @@ import { StatusOperacionalPanel } from "@/components/campanhas/StatusOperacional
 import { AdicionarMedicosCampanhaDialog } from "@/components/campanhas/AdicionarMedicosCampanhaDialog";
 import { ErrorBoundary } from "@/components/common/ErrorBoundary";
 import { useAdicionarLeadsCampanha } from "@/hooks/useCampanhaLeads";
+import { CampanhaEmailPainel } from "@/components/email/CampanhaEmailPainel";
+import { CampanhasEmailView } from "@/components/email/CampanhasEmailView";
 import { toast } from "sonner";
 
 function errorMessage(error: unknown) {
@@ -143,13 +146,15 @@ export default function CampanhasProspeccao() {
   const [selecionada, setSelecionada] = useState<string | null>(null);
   const [strategyToAdd, setStrategyToAdd] = useState("");
   const [addDoctorsOpen, setAddDoctorsOpen] = useState(false);
+  const [emailOpen, setEmailOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const view = (searchParams.get("view") || "campanhas") as
     | "campanhas"
     | "acompanhamento"
     | "dashboard"
-    | "status";
-  const setView = (next: "campanhas" | "acompanhamento" | "dashboard" | "status") => {
+    | "status"
+    | "email";
+  const setView = (next: "campanhas" | "acompanhamento" | "dashboard" | "status" | "email") => {
     const sp = new URLSearchParams(searchParams);
     if (next === "campanhas") sp.delete("view");
     else sp.set("view", next);
@@ -506,6 +511,16 @@ export default function CampanhasProspeccao() {
                 <UserPlus className="mr-1 h-4 w-4" />
                 Adicionar médicos
               </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="min-h-11"
+                onClick={() => setEmailOpen(true)}
+                title="Mandar e-mail para os médicos desta campanha"
+              >
+                <Mail className="mr-1 h-4 w-4" />
+                E-mail
+              </Button>
             </div>
 
             <CampanhaProspeccaoKanban campanhaId={selecionada} />
@@ -515,6 +530,18 @@ export default function CampanhasProspeccao() {
               campanhaId={selecionada}
               campanhaNome={campanhaSelecionada.nome}
             />
+            <Dialog open={emailOpen} onOpenChange={setEmailOpen}>
+              <DialogContent className="max-w-6xl max-h-[92vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <Mail className="h-5 w-5" /> E-mail · {campanhaSelecionada.nome}
+                  </DialogTitle>
+                </DialogHeader>
+                <ErrorBoundary label="CampanhaEmailPainel">
+                  <CampanhaEmailPainel campanhaId={selecionada} />
+                </ErrorBoundary>
+              </DialogContent>
+            </Dialog>
           </div>
         </AppLayout>
       </CaptacaoProtectedRoute>
@@ -558,6 +585,10 @@ export default function CampanhasProspeccao() {
             <ToggleTab active={view === "status"} onClick={() => setView("status")}>
               <Smartphone className="h-3.5 w-3.5" />
               Status
+            </ToggleTab>
+            <ToggleTab active={view === "email"} onClick={() => setView("email")}>
+              <Mail className="h-3.5 w-3.5" />
+              E-mail
             </ToggleTab>
           </div>
 
@@ -755,6 +786,10 @@ export default function CampanhasProspeccao() {
           ) : view === "dashboard" ? (
             <ErrorBoundary label="DashboardCampanhas">
               <DashboardCampanhas />
+            </ErrorBoundary>
+          ) : view === "email" ? (
+            <ErrorBoundary label="CampanhasEmail">
+              <CampanhasEmailView />
             </ErrorBoundary>
           ) : (
             <ErrorBoundary label="StatusOperacional">
