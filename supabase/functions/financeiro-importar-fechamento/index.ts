@@ -308,9 +308,16 @@ serve(async (req) => {
       criado_por: u.user.id,
     });
 
+    // notas que chegaram pelo WhatsApp ANTES do fechamento esperam o pagamento existir;
+    // agora que ele existe, anexa as que batem (fin_vincular_notas_pendentes)
+    let notasAnexadas = 0;
+    const { data: nVinc, error: vincErr } = await svc.rpc("fin_vincular_notas_pendentes", { p_mes: mesRef, p_ano: anoRef });
+    if (vincErr) console.warn("[importar] vínculo de notas pendentes falhou", vincErr.message);
+    else notasAnexadas = Number(nVinc || 0);
+
     return json({
       ok: true, ja_importado: false, parser: cfg.parser,
-      mes: mesRef, ano: anoRef,
+      mes: mesRef, ano: anoRef, notas_anexadas: notasAnexadas,
       inseridos, casados, nao_casados: naoCasados,
       total_produzido: totalGeral, total_a_vista: totalAVista, total: totalGeral - totalAVista,
       plantoes: blocos.reduce((s, b) => s + b.itens.filter((i) => i.data).length, 0),

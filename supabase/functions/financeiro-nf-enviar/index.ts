@@ -227,6 +227,7 @@ serve(async (req) => {
 
       let erro: string | null = null;
       let providerMessageId: string | null = null;
+      let providerResposta: unknown = null;
 
       if (canal === "email") {
         const { data: er, error: ee } = await svc.functions.invoke("send-email-resend", {
@@ -238,6 +239,7 @@ serve(async (req) => {
         });
         erro = ee?.message ?? (er?.error ? String(er.error) : null);
         providerMessageId = er?.id ?? er?.data?.id ?? null;
+        providerResposta = er ?? null;
         await svc.from("sigma_email_log").insert({
           modulo: "financeiro", referencia_id: pag.id,
           destinatario_nome: pag.profissional_nome, destinatario_email: destino,
@@ -278,8 +280,12 @@ serve(async (req) => {
               }),
             },
           );
+          providerResposta = resp;
           const r = unwrapChakraPayload(resp);
-          providerMessageId = String(r.messages?.[0]?.id || r.messageId || r.id || "") || null;
+          // o id vem aninhado de formas diferentes conforme o provedor; o "wamid." é o que
+          // os status de entregue/lido trazem depois, então é ele que importa achar
+          const achado = JSON.stringify(resp).match(/wamid\.[A-Za-z0-9=_-]+/)?.[0];
+          providerMessageId = achado || String(r.messages?.[0]?.id || r.messageId || r.id || "") || null;
         } catch (e: any) {
           erro = String(e?.message || e);
         }
@@ -289,7 +295,7 @@ serve(async (req) => {
       await svc.from("financeiro_nf_solicitacoes").insert({
         pagamento_id: pag.id, tipo, canal, destino, token,
         status: erro ? "erro" : "enviada", erro,
-        provider_message_id: providerMessageId, teste, enviado_por: userId,
+        provider_message_id: providerMessageId, provider_resposta: providerResposta, teste, enviado_por: userId,
       });
 
       if (!erro && !teste) {
