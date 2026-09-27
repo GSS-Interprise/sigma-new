@@ -68,6 +68,26 @@ async function baixarMidia(mediaId: string): Promise<{ bytes: Uint8Array; via: s
   };
 }
 
+/** Há pedido de NF em aberto para este telefone? Pela solicitação enviada (qualquer
+ *  canal, últimos 60 dias) ou pelo médico do cadastro com nota pedida e não recebida. */
+async function temNotaPedidaEmAberto(svc: any, telefone: string): Promise<boolean> {
+  const fim = sufixo(telefone);
+  if (!fim) return false;
+  const desde = new Date(Date.now() - 60 * 24 * 3600 * 1000).toISOString();
+
+  const { data: solic } = await svc.from("financeiro_nf_solicitacoes")
+    .select("destino, pagamento_id").eq("status", "enviada").gte("created_at", desde).limit(500);
+  if ((solic ?? []).some((s: any) => sufixo(s.destino || "") === fim)) return true;
+
+  const { data: medicos } = await svc.from("medicos").select("id, telefone").not("telefone", "is", null);
+  const ids = (medicos ?? []).filter((m: any) => sufixo(m.telefone) === fim).map((m: any) => m.id);
+  if (!ids.length) return false;
+  const { count } = await svc.from("financeiro_pagamentos")
+    .select("id", { count: "exact", head: true })
+    .in("medico_id", ids).eq("nf_status", "solicitada");
+  return (count ?? 0) > 0;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
   const json = (o: unknown, s = 200) =>
@@ -95,6 +115,13 @@ serve(async (req) => {
 
     const msg = extrairMensagem(payload);
     if (!msg?.midia?.id) return json({ ok: true, ignorado: "sem_documento" });
+
+    // TRAVA (27/09): este número é o WhatsApp de trabalho de uma pessoa do financeiro —
+    // ela troca arquivo o dia inteiro. Só vira NF o documento de quem tem nota PEDIDA e
+    // ainda não entregue. Todo o resto nem é baixado: não é guardado nem anunciado.
+    if (!(await temNotaPedidaEmAberto(svc, msg.de))) {
+      return json({ ok: true, ignorado: "sem_solicitacao_aberta" });
+    }
 
     // BAIXA PRIMEIRO. O link do arquivo no WhatsApp expira em poucos dias; procurar o
     // dono antes e falhar no meio era o que fazia a nota sumir.

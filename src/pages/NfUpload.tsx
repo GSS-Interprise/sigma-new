@@ -140,7 +140,7 @@ export default function NfUpload() {
 
         <div className="bg-[#f6f8fa] border-t border-[#e6ebf1] px-6 py-4">
           <p className="text-xs text-slate-500">
-            Dúvida? Responda o e-mail do financeiro que a equipe retorna.
+            Dúvida? Fale com o financeiro da GSS pelo mesmo canal em que recebeu este link.
           </p>
         </div>
       </div>
