@@ -9,7 +9,7 @@
 // em financeiro_nf_solicitacoes.erro quando falha tudo.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { chakraApi, unwrapChakraPayload } from "../_shared/chakra.ts";
+import { chakraApi } from "../_shared/chakra.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -44,48 +44,28 @@ function extrairMensagem(payload: any): { de: string; midia: Midia | null; nomeP
   return { de, midia, nomePerfil, mensagemId, quando, texto: String(msg.text?.body || msg.caption || "") };
 }
 
-/** id da mídia → bytes. A Cloud API devolve uma URL intermediária que exige token. */
-async function baixarMidia(pluginId: string, mediaId: string, urlDoWebhook: string): Promise<{ bytes: Uint8Array; via: string; mime?: string }> {
+/**
+ * id da mídia → bytes, pelo endpoint documentado do Chakra (apidocs.chakrahq.com,
+ * "Fetch Whatsapp Media API"): o GET devolve uma URL já proxiada por eles, que aceita o
+ * mesmo token. A URL que vem no webhook (lookaside.fbsbx.com) exige o token da Meta e
+ * responde 401 — foi por isso que as notas de 24 a 26/09 não entraram.
+ */
+async function baixarMidia(mediaId: string): Promise<{ bytes: Uint8Array; via: string; mime?: string }> {
   const key = Deno.env.get("CHAKRA_API_KEY")?.trim();
-  const base = `/v1/ext/plugin/whatsapp/${pluginId}/api/v24.0/${mediaId}`;
-  const tentativas: string[] = [];
+  const h = { Authorization: `Bearer ${key}` };
 
-  // O webhook do Chakra já entrega a URL assinada do arquivo (lookaside.fbsbx.com com
-  // hash e validade). Ir na Graph atrás dela, como se fazia antes, só dava 404 — e as
-  // notas de 25 e 26/09 se perderam por isso. A URL do evento vem primeiro; sem token e
-  // com token, porque o hash já autentica.
-  let urlMidia = urlDoWebhook || "", mimeMidia = "";
-  if (!urlMidia) {
-    try {
-      const meta = unwrapChakraPayload(await chakraApi(base));
-      urlMidia = String(meta.url || meta.media_url || "");
-      mimeMidia = String(meta.mime_type || meta.mimeType || "");
-      tentativas.push(`meta_ok:${urlMidia ? "com_url" : "sem_url"}`);
-    } catch (e: any) {
-      tentativas.push(`meta_erro:${String(e?.message || e).slice(0, 80)}`);
-    }
-  }
+  const r = await fetch(`https://api.chakrahq.com/v1/whatsapp/v24.0/media/${mediaId}`, { headers: h });
+  if (!r.ok) throw new Error(`midia_meta_${r.status}:${(await r.text()).slice(0, 120)}`);
+  const meta = await r.json();
+  if (!meta?.url) throw new Error("midia_sem_url");
 
-  const candidatos = [
-    ...(urlMidia ? [{ via: "url_do_webhook", url: urlMidia, comToken: false }] : []),
-    ...(urlMidia ? [{ via: "url_do_webhook_token", url: urlMidia, comToken: true }] : []),
-    { via: "chakra_download", url: `https://api.chakrahq.com${base}/download`, comToken: true },
-    { via: "chakra_binario", url: `https://api.chakrahq.com${base}`, comToken: true },
-  ];
-
-  for (const c of candidatos) {
-    try {
-      const r = await fetch(c.url, { headers: c.comToken ? { Authorization: `Bearer ${key}` } : {} });
-      const tipo = r.headers.get("content-type") || "";
-      if (r.ok && !tipo.includes("application/json")) {
-        return { bytes: new Uint8Array(await r.arrayBuffer()), via: c.via, mime: mimeMidia || tipo };
-      }
-      tentativas.push(`${c.via}:${r.status}:${tipo.slice(0, 30)}`);
-    } catch (e: any) {
-      tentativas.push(`${c.via}:erro:${String(e?.message || e).slice(0, 60)}`);
-    }
-  }
-  throw new Error(`midia_nao_baixou [${tentativas.join(" | ")}]`);
+  const arq = await fetch(String(meta.url), { headers: h });
+  if (!arq.ok) throw new Error(`midia_download_${arq.status}`);
+  return {
+    bytes: new Uint8Array(await arq.arrayBuffer()),
+    via: "chakra_v1_media",
+    mime: String(meta.mime_type || arq.headers.get("content-type") || ""),
+  };
 }
 
 serve(async (req) => {
@@ -121,7 +101,7 @@ serve(async (req) => {
     let arquivo: { bytes: Uint8Array; via: string; mime?: string } | null = null;
     let erroDownload: string | null = null;
     try {
-      arquivo = await baixarMidia(String(sender.chakra_plugin_id), msg.midia.id, msg.midia.url);
+      arquivo = await baixarMidia(msg.midia.id);
     } catch (e: any) {
       // provedor não entregou o binário: registra assim mesmo. Perder o RASTRO da nota é
       // pior do que ficar sem o arquivo — a equipe salva do WhatsApp e vincula aqui.
