@@ -27,13 +27,26 @@ export function FinanceiroDetalhe({ pagamento, onVoltar }: Props) {
   const [solicitando, setSolicitando] = useState(false);
   const nfStatus = pagamento.nf_status ?? "nao_solicitada";
 
+  // mesmo caminho da aba Notas fiscais: o pedido fica registrado, entra nos indicadores
+  // de cobrança e abre a janela para a nota ser recebida pelo WhatsApp. Pede pelo
+  // WhatsApp oficial; sem telefone, cai para o e-mail.
   const solicitarNF = async () => {
     setSolicitando(true);
-    const { data, error } = await supabase.functions.invoke("financeiro-solicitar-nf", { body: { pagamento_id: pagamento.id } });
+    const pedir = (canal: "whatsapp" | "email") => supabase.functions.invoke("financeiro-nf-enviar", {
+      body: { pagamento_ids: [pagamento.id], canal, tipo: nfStatus === "solicitada" ? "lembrete" : "solicitacao" },
+    });
+    let { data, error } = await pedir("whatsapp");
+    if (!error && (data as any)?.sem_contato) ({ data, error } = await pedir("email"));
     setSolicitando(false);
-    if (error || (data as any)?.ok === false) { toast.error("Erro ao solicitar NF: " + (error?.message || (data as any)?.error || "")); return; }
-    toast.success("Solicitação de NF enviada ao médico.");
+    const r = data as any;
+    if (error || r?.ok === false || r?.erros) {
+      toast.error("Erro ao pedir a NF: " + (error?.message || r?.detalhe || r?.error || r?.resultados?.[0]?.erro || ""));
+      return;
+    }
+    if (r?.sem_contato) { toast.error("Médico sem telefone e sem e-mail no cadastro."); return; }
+    toast.success(nfStatus === "solicitada" ? "Cobrança enviada ao médico." : "Pedido de NF enviado ao médico.");
     qc.invalidateQueries({ queryKey: ["financeiro-pagamentos"] });
+    qc.invalidateQueries({ queryKey: ["financeiro-nf"] });
   };
 
   const fmt = (v: number) =>
@@ -162,7 +175,7 @@ export function FinanceiroDetalhe({ pagamento, onVoltar }: Props) {
               {nfStatus !== "recebida" && (
                 <Button size="sm" variant="outline" onClick={solicitarNF} disabled={solicitando}>
                   {solicitando ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <FileText className="h-4 w-4 mr-1.5" />}
-                  {nfStatus === "solicitada" ? "Reenviar solicitação" : "Solicitar NF"}
+                  {nfStatus === "solicitada" ? "Cobrar NF" : "Pedir NF"}
                 </Button>
               )}
             </div>

@@ -606,6 +606,16 @@ async function updateDeliveryStatus(
   let message: AnyRecord | null = null;
   const candidates = [...new Set([messageId, externalId].filter(Boolean))];
 
+  // pedido de NF do financeiro: enviada → entregue → lida, para a tela de cobrança.
+  // Isolado: falha aqui não pode travar o status das mensagens de campanha.
+  for (const candidate of candidates) {
+    try {
+      await admin.rpc("fin_nf_status_entrega", { p_wamid: candidate, p_status: status });
+    } catch (error) {
+      console.warn("[chakra] status de entrega do pedido de NF", error);
+    }
+  }
+
   // Evita montar filtros `.or(...)` com IDs externos que podem conter
   // caracteres especiais (como os pontos do wamid).
   for (const candidate of candidates) {

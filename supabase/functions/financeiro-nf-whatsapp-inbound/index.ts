@@ -218,13 +218,24 @@ serve(async (req) => {
       ? await identificarMedico(svc, nota, msg.de, msg.nomePerfil, pedido.pagamentoId)
       : { medicoId: null, confianca: "fraca" as Confianca, via: "arquivo sem texto (foto/escaneado)", pagamentoId: pedido.pagamentoId };
 
+    // SÓ ENTRA NOTA PEDIDA (27/09). O pedido pode ter ido a este número, ou ao médico que
+    // a nota identifica com segurança — é o caso do contador mandando pelo médico. Nota
+    // que ninguém pediu não é guardada: é o que deixa o processo sem tela de vínculo.
+    let pedidoDoMedico = false;
+    if (!pedido.aberto && quem.confianca === "forte" && quem.medicoId) {
+      const { count } = await svc.from("financeiro_pagamentos")
+        .select("id", { count: "exact", head: true }).eq("medico_id", quem.medicoId).eq("nf_status", "solicitada");
+      pedidoDoMedico = (count ?? 0) > 0;
+    }
+    if (!pedido.aberto && !pedidoDoMedico) return json({ ok: true, ignorado: "sem_pedido" });
+
     // qual pagamento: o do pedido, ou um pendente do médico — preferindo o de valor igual
     let pagamentoId: string | null = quem.pagamentoId;
     let valorBate = false;
     if (!pagamentoId && quem.medicoId) {
       const { data: pend } = await svc.from("financeiro_pagamentos")
         .select("id, valor_total, ano_referencia, mes_referencia")
-        .eq("medico_id", quem.medicoId).in("nf_status", ["solicitada", "nao_solicitada"])
+        .eq("medico_id", quem.medicoId).eq("nf_status", "solicitada")
         .order("ano_referencia", { ascending: false }).order("mes_referencia", { ascending: false });
       const igual = (pend ?? []).find((p: any) => nota.valor != null && Math.abs(Number(p.valor_total) - nota.valor) <= 1);
       if (igual) { pagamentoId = igual.id; valorBate = true; }
@@ -238,13 +249,15 @@ serve(async (req) => {
     if (pag && nota.valor != null) valorBate = Math.abs(Number(pag.valor_total) - nota.valor) <= 1;
 
     // vincula sozinho: sinal forte com pagamento, ou sinal médio com valor batendo
-    const vincula = !!pag && nota.legivel && (quem.confianca === "forte" || (quem.confianca === "media" && valorBate));
+    const pedidoPorNumero = !!pedido.pagamentoId && pag?.id === pedido.pagamentoId;
+    const vincula = !!pag && (pedidoPorNumero || (nota.legivel && (quem.confianca === "forte" || (quem.confianca === "media" && valorBate))));
     const medicoId = quem.medicoId ?? pag?.medico_id ?? null;
 
     let motivo = `identificado por ${quem.via}`;
     if (pag && nota.valor != null && !valorBate) motivo += ` · valor da nota ${fmtBRL(nota.valor)} diferente do a pagar ${fmtBRL(Number(pag.valor_total))}`;
     if (!pag && medicoId) motivo += " · médico sem pagamento pendente (fechamento ainda não importado?)";
     if (erroDownload) motivo += ` · arquivo não baixado: ${erroDownload}`;
+    if (!nota.legivel && arquivo) motivo += " · arquivo sem texto (foto ou escaneado): conferir se é a nota";
 
     // guarda o arquivo
     let path: string | null = null;

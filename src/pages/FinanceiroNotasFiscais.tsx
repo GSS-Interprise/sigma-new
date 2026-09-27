@@ -33,6 +33,28 @@ type Linha = {
   valor_total: number | null; nf_status: string | null; nf_solicitada_em: string | null;
   nf_lembretes: number | null; nf_recebida_em: string | null; nf_arquivo_path: string | null;
   arquivo_origem: string | null; email: string | null; telefone: string | null;
+  nf_ultimo_lembrete_em: string | null;
+  canal_pedido: "email" | "whatsapp" | null;   // canal do último pedido real
+  entrega: string | null;                     // sent | delivered | read | failed
+  conferir: string | null;                    // por que a nota recebida pede conferência
+};
+
+// cobrança automática: a cada 48h, até 3 vezes (financeiro-nf-lembrete)
+const HORAS_ENTRE_COBRANCAS = 48;
+const TETO_COBRANCAS = 3;
+const ENTREGA: Record<string, { label: string; cls: string }> = {
+  sent: { label: "Enviada", cls: "text-muted-foreground" },
+  delivered: { label: "Entregue", cls: "text-slate-700" },
+  read: { label: "Lida", cls: "text-blue-700 font-medium" },
+  failed: { label: "Falhou", cls: "text-red-600 font-medium" },
+};
+const refCobranca = (l: Linha) => l.nf_ultimo_lembrete_em || l.nf_solicitada_em;
+const atrasada = (l: Linha) => l.nf_status === "solicitada" && !!refCobranca(l)
+  && Date.now() - new Date(refCobranca(l)!).getTime() > HORAS_ENTRE_COBRANCAS * 3600 * 1000;
+const semResposta = (l: Linha) => l.nf_status === "solicitada" && (l.nf_lembretes ?? 0) >= TETO_COBRANCAS;
+const proximaCobranca = (l: Linha) => {
+  if (l.nf_status !== "solicitada" || semResposta(l) || !refCobranca(l)) return null;
+  return new Date(new Date(refCobranca(l)!).getTime() + HORAS_ENTRE_COBRANCAS * 3600 * 1000);
 };
 
 const STATUS: Record<string, { label: string; cls: string }> = {
@@ -56,9 +78,10 @@ export default function FinanceiroNotasFiscais(
   const setMes = setMesLocal;
   const setAno = setAnoLocal;
   const [busca, setBusca] = useState("");
-  const [filtro, setFiltro] = useState<"todos" | "a_pedir" | "pedidas" | "recebidas" | "sem_contato">("todos");
+  const [filtro, setFiltro] = useState<"todos" | "a_pedir" | "pedidas" | "atrasadas" | "sem_resposta" | "recebidas" | "sem_contato">("todos");
   const [sel, setSel] = useState<Set<string>>(new Set());
-  const [canal, setCanal] = useState<"email" | "whatsapp">("email");
+  // WhatsApp oficial é o padrão desde a aprovação dos templates (25/09): é onde o médico responde
+  const [canal, setCanal] = useState<"email" | "whatsapp">("whatsapp");
   const [enviando, setEnviando] = useState(false);
   const [previa, setPrevia] = useState<any[] | null>(null);
   const [testeOpen, setTesteOpen] = useState(false);
@@ -71,7 +94,7 @@ export default function FinanceiroNotasFiscais(
     queryFn: async () => {
       const [pagRes, fechRes] = await Promise.all([
         (supabase as any).from("financeiro_pagamentos")
-          .select("id, profissional_nome, medico_id, unidade, valor_total, nf_status, nf_solicitada_em, nf_lembretes, nf_recebida_em, nf_arquivo_path, arquivo_origem")
+          .select("id, profissional_nome, medico_id, unidade, valor_total, nf_status, nf_solicitada_em, nf_lembretes, nf_ultimo_lembrete_em, nf_recebida_em, nf_arquivo_path, arquivo_origem")
           .eq("mes_referencia", mes).eq("ano_referencia", ano).order("profissional_nome"),
         (supabase as any).from("financeiro_fechamentos")
           .select("status").eq("mes_referencia", mes).eq("ano_referencia", ano).maybeSingle(),
@@ -81,9 +104,27 @@ export default function FinanceiroNotasFiscais(
       const { data: meds } = ids.length
         ? await (supabase as any).from("medicos").select("id, email, telefone").in("id", ids)
         : { data: [] };
+      const pagIds = pags.map((p) => p.id);
+      const [{ data: solics }, { data: recebidas }] = pagIds.length
+        ? await Promise.all([
+            (supabase as any).from("financeiro_nf_solicitacoes")
+              .select("pagamento_id, canal, entrega_status, created_at")
+              .in("pagamento_id", pagIds).eq("teste", false).order("created_at", { ascending: false }),
+            (supabase as any).from("financeiro_nf_inbox")
+              .select("pagamento_id, motivo").in("pagamento_id", pagIds).eq("status", "vinculada"),
+          ])
+        : [{ data: [] }, { data: [] }];
       const linhas: Linha[] = pags.map((p) => {
         const m = (meds || []).find((x: any) => x.id === p.medico_id);
-        return { ...p, email: m?.email ?? null, telefone: m?.telefone ?? null };
+        const ult = (solics || []).find((x: any) => x.pagamento_id === p.id);
+        const rec = (recebidas || []).find((x: any) => x.pagamento_id === p.id);
+        const conferir = rec?.motivo && /diferente|conferir/i.test(rec.motivo)
+          ? (/diferente/i.test(rec.motivo) ? "valor da nota diferente do a pagar" : "arquivo sem texto: conferir se é a nota")
+          : null;
+        return {
+          ...p, email: m?.email ?? null, telefone: m?.telefone ?? null,
+          canal_pedido: ult?.canal ?? null, entrega: ult?.entrega_status ?? null, conferir,
+        };
       });
       return { linhas, fechamentoStatus: (fechRes.data as any)?.status ?? null };
     },
@@ -96,6 +137,8 @@ export default function FinanceiroNotasFiscais(
   const indicadores = useMemo(() => ({
     a_pedir: linhas.filter((l) => (l.nf_status ?? "nao_solicitada") === "nao_solicitada").length,
     pedidas: linhas.filter((l) => l.nf_status === "solicitada").length,
+    atrasadas: linhas.filter(atrasada).length,
+    sem_resposta: linhas.filter(semResposta).length,
     recebidas: linhas.filter((l) => l.nf_status === "recebida" || l.nf_status === "conferida").length,
     sem_contato: linhas.filter((l) => !temContato(l)).length,
   }), [linhas, canal]);
@@ -106,6 +149,8 @@ export default function FinanceiroNotasFiscais(
       const st = l.nf_status ?? "nao_solicitada";
       if (filtro === "a_pedir" && st !== "nao_solicitada") return false;
       if (filtro === "pedidas" && st !== "solicitada") return false;
+      if (filtro === "atrasadas" && !atrasada(l)) return false;
+      if (filtro === "sem_resposta" && !semResposta(l)) return false;
       if (filtro === "recebidas" && !["recebida", "conferida"].includes(st)) return false;
       if (filtro === "sem_contato" && temContato(l)) return false;
       if (termo && !semAcento(l.profissional_nome || "").includes(termo)) return false;
@@ -218,11 +263,13 @@ export default function FinanceiroNotasFiscais(
     setEnviando(false);
   };
 
-  const CHIPS: { k: typeof filtro; label: string; n: number }[] = [
-    { k: "todos", label: "Todos", n: linhas.length },
+  const CHIPS: { k: typeof filtro; label: string; n: number; cls?: string }[] = [
+    { k: "todos", label: "Médicos", n: linhas.length },
     { k: "a_pedir", label: "A pedir", n: indicadores.a_pedir },
-    { k: "pedidas", label: "Pedidas", n: indicadores.pedidas },
-    { k: "recebidas", label: "Recebidas", n: indicadores.recebidas },
+    { k: "pedidas", label: "Aguardando nota", n: indicadores.pedidas, cls: "text-amber-700" },
+    { k: "atrasadas", label: "Atrasadas (+48h)", n: indicadores.atrasadas, cls: indicadores.atrasadas ? "text-orange-600" : "" },
+    { k: "sem_resposta", label: "Sem resposta (3 cobranças)", n: indicadores.sem_resposta, cls: indicadores.sem_resposta ? "text-red-600" : "" },
+    { k: "recebidas", label: "Recebidas", n: indicadores.recebidas, cls: "text-emerald-700" },
     { k: "sem_contato", label: "Sem contato", n: indicadores.sem_contato },
   ];
 
@@ -281,11 +328,30 @@ export default function FinanceiroNotasFiscais(
                 <Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar médico…" className="pl-8 h-9" />
               </div>
             </div>
-            <div className="flex flex-wrap gap-1.5">
+            {/* indicadores de cobrança: clicar filtra a lista */}
+            {indicadores.pedidas + indicadores.recebidas > 0 && (
+              <div className="space-y-1">
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>
+                    <b className="text-foreground tabular-nums">{indicadores.recebidas}</b> de{" "}
+                    <b className="text-foreground tabular-nums">{indicadores.pedidas + indicadores.recebidas}</b> notas pedidas já chegaram
+                  </span>
+                  <span className="tabular-nums">
+                    {Math.round((indicadores.recebidas / (indicadores.pedidas + indicadores.recebidas)) * 100)}%
+                  </span>
+                </div>
+                <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                  <div className="h-full bg-emerald-600 transition-all"
+                    style={{ width: `${(indicadores.recebidas / (indicadores.pedidas + indicadores.recebidas)) * 100}%` }} />
+                </div>
+              </div>
+            )}
+            <div className="grid grid-cols-3 sm:grid-cols-7 gap-1.5">
               {CHIPS.map((c) => (
                 <button key={c.k} onClick={() => setFiltro(c.k)}
-                  className={`rounded-full border px-3 py-1 text-xs transition-colors ${filtro === c.k ? "bg-primary text-primary-foreground border-primary" : "hover:bg-muted"}`}>
-                  {c.label} <span className="tabular-nums opacity-80">{c.n}</span>
+                  className={`rounded-md border px-2.5 py-1.5 text-left transition-colors ${filtro === c.k ? "border-primary bg-primary/5" : "hover:bg-muted"}`}>
+                  <span className={`block text-lg font-semibold tabular-nums leading-tight ${c.cls ?? ""}`}>{c.n}</span>
+                  <span className="block text-[11px] text-muted-foreground leading-tight">{c.label}</span>
                 </button>
               ))}
             </div>
@@ -315,8 +381,9 @@ export default function FinanceiroNotasFiscais(
                       <TableHead className="hidden md:table-cell">Contato</TableHead>
                       <TableHead className="text-right">Valor</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead className="hidden sm:table-cell">Pedida</TableHead>
-                      <TableHead className="text-center hidden sm:table-cell w-16">Cobr.</TableHead>
+                      <TableHead className="hidden sm:table-cell">Pedido</TableHead>
+                      <TableHead className="hidden md:table-cell">Mensagem</TableHead>
+                      <TableHead className="hidden sm:table-cell">Cobrança</TableHead>
                       <TableHead className="w-24" />
                     </TableRow>
                   </TableHeader>
@@ -348,10 +415,29 @@ export default function FinanceiroNotasFiscais(
                             <span className={`rounded-full px-2 py-0.5 text-[11px] ${st.cls}`}>{st.label}</span>
                           </TableCell>
                           <TableCell className="hidden sm:table-cell text-xs text-muted-foreground tabular-nums">
-                            {dataHora(l.nf_solicitada_em)}
+                            {l.nf_solicitada_em ? (
+                              <span className="flex items-center gap-1">
+                                {l.canal_pedido === "whatsapp" ? <MessageCircle className="h-3 w-3" /> : <Mail className="h-3 w-3" />}
+                                {dataHora(l.nf_solicitada_em)}
+                              </span>
+                            ) : "—"}
                           </TableCell>
-                          <TableCell className="hidden sm:table-cell text-center text-xs tabular-nums text-muted-foreground">
-                            {l.nf_lembretes || "—"}
+                          <TableCell className="hidden md:table-cell text-xs">
+                            {l.entrega ? (
+                              <span className={ENTREGA[l.entrega]?.cls}>{ENTREGA[l.entrega]?.label ?? l.entrega}</span>
+                            ) : <span className="text-muted-foreground">{l.canal_pedido === "email" ? "e-mail" : "—"}</span>}
+                          </TableCell>
+                          <TableCell className="hidden sm:table-cell text-xs tabular-nums">
+                            {l.nf_status === "solicitada" ? (
+                              <span className={semResposta(l) ? "text-red-600" : atrasada(l) ? "text-orange-600" : "text-muted-foreground"}>
+                                {(l.nf_lembretes ?? 0)}/{TETO_COBRANCAS}
+                                {semResposta(l)
+                                  ? " · esgotou"
+                                  : proximaCobranca(l) ? ` · próxima ${proximaCobranca(l)!.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}` : ""}
+                              </span>
+                            ) : l.conferir ? (
+                              <span className="text-amber-700" title={l.conferir}>conferir</span>
+                            ) : <span className="text-muted-foreground">—</span>}
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center justify-end gap-1">
@@ -375,7 +461,7 @@ export default function FinanceiroNotasFiscais(
                     })}
                     {visiveis.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center text-sm text-muted-foreground py-6">
+                        <TableCell colSpan={9} className="text-center text-sm text-muted-foreground py-6">
                           Nada neste filtro.
                         </TableCell>
                       </TableRow>
