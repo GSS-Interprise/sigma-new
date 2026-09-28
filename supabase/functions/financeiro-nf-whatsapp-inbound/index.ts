@@ -14,7 +14,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { chakraApi } from "../_shared/chakra.ts";
-import { lerNfse, type Nfse } from "../_shared/nfse.ts";
+import { CNPJS_GRUPO_GSS, lerNfse, textoPdf, type Nfse } from "../_shared/nfse.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -152,12 +152,19 @@ serve(async (req) => {
 
   try {
     // silencioso = reprocessamento de evento antigo: guarda sem reavisar ninguém
-    const { payload, phone_number_id, silencioso } = await req.json().catch(() => ({}));
+    const { payload, phone_number_id, silencioso, diagnostico } = await req.json().catch(() => ({}));
+    // diagnóstico devolve o texto da nota: só com service role (a função é pública)
+    const ehServiceRole = (() => {
+      const parte = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").split(".")[1];
+      try { return !!parte && JSON.parse(atob(parte.replace(/-/g, "+").replace(/_/g, "/")))?.role === "service_role"; } catch { return false; }
+    })();
 
     const { data: cfgRows } = await svc.from("config_lista_items")
-      .select("campo_nome, valor").in("campo_nome", ["financeiro_whatsapp_sender_id", "financeiro_canal_id"]);
+      .select("campo_nome, valor").in("campo_nome", ["financeiro_whatsapp_sender_id", "financeiro_canal_id", "financeiro_cnpjs_tomador"]);
     const cfg = (n: string) => cfgRows?.find((c: any) => c.campo_nome === n)?.valor || "";
     const senderId = cfg("financeiro_whatsapp_sender_id");
+    const cnpjsTomador = [...new Set([...CNPJS_GRUPO_GSS,
+      ...cfg("financeiro_cnpjs_tomador").split(/[,;\s]+/).map((c: string) => c.replace(/\D/g, "")).filter((c: string) => c.length === 14)])];
     if (!senderId) return json({ ok: true, ignorado: "financeiro_sem_remetente" });
 
     const { data: sender } = await svc.from("whatsapp_official_senders")
@@ -194,8 +201,12 @@ serve(async (req) => {
 
     const mime = arquivo?.mime || msg.midia.mime;
     const ehPdf = /pdf/i.test(mime) || /\.pdf$/i.test(msg.midia.nome);
+    if (diagnostico && ehServiceRole) {
+      const texto = arquivo && ehPdf ? await textoPdf(arquivo.bytes) : "";
+      return json({ ok: true, diagnostico: true, pedido, erroDownload, nota: arquivo && ehPdf ? await lerNfse(arquivo.bytes, cnpjsTomador) : null, texto: texto.slice(0, 6000) });
+    }
     const nota: Nfse = arquivo && ehPdf
-      ? await lerNfse(arquivo.bytes)
+      ? await lerNfse(arquivo.bytes, cnpjsTomador)
       : { legivel: false, ehNfse: false, tomadorGss: false, prestadorCnpj: null, prestadorNome: null, prestadorEmail: null, valor: null, chave: null, descricao: null };
 
     // CRITÉRIO 1 — o que o arquivo é

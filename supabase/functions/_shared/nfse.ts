@@ -9,6 +9,10 @@
 import { extractText, getDocumentProxy } from "npm:unpdf@0.12.1";
 
 export const CNPJ_GSS = "18670594000103";
+// Tomadores aceitos: as empresas do grupo GSS. A Associação de Gestão Especializada em Saúde
+// (mesmo endereço, Itajaí) também contrata — nota para ela foi descartada no teste de 28/09.
+// Mais CNPJs: config_lista_items.financeiro_cnpjs_tomador (separados por vírgula).
+export const CNPJS_GRUPO_GSS = [CNPJ_GSS, "44980349000102"];
 
 export type Nfse = {
   legivel: boolean;          // o PDF tem texto (não é escaneado)
@@ -39,7 +43,15 @@ function entre(texto: string, de: RegExp, ate: RegExp): string | null {
   return limpa(j >= 0 ? resto.slice(0, j) : resto.slice(0, 200));
 }
 
-export async function lerNfse(bytes: Uint8Array): Promise<Nfse> {
+/** Texto corrido do PDF (diagnóstico de layout novo). */
+export async function textoPdf(bytes: Uint8Array): Promise<string> {
+  try {
+    const r = await extractText(await getDocumentProxy(bytes), { mergePages: true });
+    return String(Array.isArray(r.text) ? r.text.join(" ") : r.text || "").replace(/\s+/g, " ");
+  } catch { return ""; }
+}
+
+export async function lerNfse(bytes: Uint8Array, cnpjsTomador: string[] = CNPJS_GRUPO_GSS): Promise<Nfse> {
   const vazio: Nfse = {
     legivel: false, ehNfse: false, tomadorGss: false, prestadorCnpj: null, prestadorNome: null,
     prestadorEmail: null, valor: null, chave: null, descricao: null,
@@ -64,13 +76,20 @@ export async function lerNfse(bytes: Uint8Array): Promise<Nfse> {
   const blocoPrest = iTom > 0 ? t.slice(0, iTom) : t;
   const blocoTom = iTom > 0 ? t.slice(iTom, iTom + 700) : "";
 
-  const tomadorGss = digitos(blocoTom).includes(CNPJ_GSS) || (!blocoTom && soDigitos.includes(CNPJ_GSS));
+  const noTom = digitos(blocoTom);
+  const tomadorGss = cnpjsTomador.some((c) => noTom.includes(c) || (!blocoTom && soDigitos.includes(c)));
 
   const cnpjPrest = blocoPrest.match(/(?:PRESTADOR[\s\S]*?)(\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}|\d{3}\.\d{3}\.\d{3}-\d{2})/i);
   const prestadorCnpj = cnpjPrest ? digitos(cnpjPrest[1]) : null;
 
-  const prestadorNome = entre(blocoPrest, /Nome\s*\/\s*Nome Empresarial|Raz[aã]o Social|Nome\/Raz[aã]o Social/i,
+  let prestadorNome = entre(blocoPrest, /Nome\s*\/\s*Nome Empresarial|Raz[aã]o Social|Nome\/Raz[aã]o Social/i,
     /Munic[ií]pio|Endere[cç]o|CNPJ|Inscri[cç][aã]o/i);
+  // layout de São Paulo: todos os rótulos primeiro, depois os valores ("CNPJ IM NOME RUA ...")
+  if (!prestadorNome || !/[A-Za-zÀ-ú]{3}/.test(prestadorNome)) {
+    const aposCnpj = cnpjPrest ? blocoPrest.slice(blocoPrest.indexOf(cnpjPrest[1]) + cnpjPrest[1].length) : "";
+    const m = aposCnpj.match(/^[\s\d.\/-]*([A-ZÀ-Ú][A-ZÀ-Ú0-9&.,' -]{4,}?)\s+(?:R|RUA|AV|AVENIDA|AL|ALAMEDA|TV|TRAVESSA|ROD|RODOVIA|ESTRADA|PC|PRAÇA)\.?\s/);
+    prestadorNome = m ? limpa(m[1]) : null;
+  }
   const email = blocoPrest.match(/[\w.+-]+@[\w-]+\.[\w.-]+/);
 
   const valor = numero(
