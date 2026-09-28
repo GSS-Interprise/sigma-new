@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,7 @@ export function NovaCampanhaEmailDialog({
   const [cidades, setCidades] = useState("");
   const [listas, setListas] = useState<string[]>([]);
   const [salvando, setSalvando] = useState(false);
+  const qc = useQueryClient();
 
   const { data: opcoesEsp = [] } = useQuery({
     queryKey: ["especialidades-opcoes"],
@@ -63,6 +64,8 @@ export function NovaCampanhaEmailDialog({
         .insert(listas.map((lista_id) => ({ campanha_id: data.id, lista_id })));
       if (e2) toast.error("Campanha criada, mas as listas não foram vinculadas: " + e2.message);
     }
+    // recarrega a lista antes de abrir: o cabeçalho da campanha vem dela
+    await qc.invalidateQueries({ queryKey: ["campanhas-email"] });
     setSalvando(false);
     limpar();
     onOpenChange(false);

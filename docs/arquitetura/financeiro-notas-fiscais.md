@@ -22,6 +22,11 @@ depende_de: fechamento multi-fonte (financeiro-fechamento-fases-multifonte.md)
 [4] PAGAMENTO           paga, comprovante, contabilidade             (Thais)
 ```
 
+**Ordem confirmada pelo Raul em 27/09:** Fechamento → Notas fiscais → Lançamento no Conta Azul →
+Aprovação → Pagamento. O lançamento no Conta Azul acontece entre as fases 2 e 3 e ainda é manual
+(fora do Sigma); a aprovação da diretoria é feita em cima do relatório do Conta Azul. Automatizar
+esse passo é a integração em `financeiro-fluxos-integracao-conta-azul.md`.
+
 Correções que a reunião trouxe e que já estão no código:
 
 - A **conferência da Mavi é a liberação** — ela não clica médico a médico. `FinanceiroLiberarDialog`
