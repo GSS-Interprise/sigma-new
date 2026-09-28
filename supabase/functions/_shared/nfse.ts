@@ -9,10 +9,10 @@
 import { extractText, getDocumentProxy } from "npm:unpdf@0.12.1";
 
 export const CNPJ_GSS = "18670594000103";
-// Tomadores aceitos: as empresas do grupo GSS. A Associação de Gestão Especializada em Saúde
-// (mesmo endereço, Itajaí) também contrata — nota para ela foi descartada no teste de 28/09.
-// Mais CNPJs: config_lista_items.financeiro_cnpjs_tomador (separados por vírgula).
-export const CNPJS_GRUPO_GSS = [CNPJ_GSS, "44980349000102"];
+// Tomador aceito: só a GSS (decisão do Raul, 28/09 — a Associação de Gestão Especializada
+// em Saúde, mesmo endereço, NÃO conta). Outro CNPJ, se um dia precisar:
+// config_lista_items.financeiro_cnpjs_tomador (separados por vírgula).
+export const CNPJS_GRUPO_GSS = [CNPJ_GSS];
 
 export type Nfse = {
   legivel: boolean;          // o PDF tem texto (não é escaneado)
