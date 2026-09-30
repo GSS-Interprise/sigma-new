@@ -59,6 +59,37 @@ serve(async (req) => {
       return json({ ok: true, webhook_id: criado.id });
     }
 
+    // ── domínio de envio do marketing (subdomínio próprio) ─────────────────
+    // { acao: "dominio", nome?, verificar? } com service role: lista os domínios da conta,
+    // cria o subdomínio se não existir, liga rastreamento de abertura/clique e devolve os
+    // registros DNS que a infra da GSS precisa publicar.
+    if (pedido?.acao === "dominio") {
+      if (!ehServiceRole) return json({ ok: false, error: "unauthorized" }, 401);
+      const h = { Authorization: `Bearer ${Deno.env.get("RESEND_API_KEY")}`, "Content-Type": "application/json" };
+      const api = async (metodo: string, caminho: string, body?: unknown) => {
+        const r = await fetch(`https://api.resend.com${caminho}`, { method: metodo, headers: h, body: body ? JSON.stringify(body) : undefined });
+        return { status: r.status, data: await r.json().catch(() => ({})) };
+      };
+      const lista = await api("GET", "/domains");
+      const dominios = (lista.data?.data ?? []) as any[];
+      const nome = String(pedido.nome || "");
+      if (!nome) return json({ ok: true, dominios: dominios.map((d) => ({ id: d.id, nome: d.name, status: d.status, regiao: d.region })) });
+
+      let dom = dominios.find((d) => d.name === nome);
+      if (!dom) {
+        // mesma região do domínio principal, quando houver
+        const regiao = dominios[0]?.region || "us-east-1";
+        const criado = await api("POST", "/domains", { name: nome, region: regiao });
+        if (criado.status >= 300) return json({ ok: false, error: criado.data?.message || `resend_${criado.status}` }, 502);
+        dom = criado.data;
+      }
+      await api("PATCH", `/domains/${dom.id}`, { open_tracking: true, click_tracking: true });
+      if (pedido.verificar) await api("POST", `/domains/${dom.id}/verify`);
+      const det = await api("GET", `/domains/${dom.id}`);
+      return json({ ok: true, dominio: { id: det.data.id, nome: det.data.name, status: det.data.status, regiao: det.data.region },
+        registros: (det.data.records ?? []).map((r: any) => ({ tipo: r.type, nome: r.name, valor: r.value, prioridade: r.priority ?? null, status: r.status })) });
+    }
+
     // ── evento do Resend ───────────────────────────────────────────────────
     const { data: seg } = await svc.from("integracao_segredos").select("valor").eq("nome", SEGREDO).maybeSingle();
     if (!seg?.valor) return json({ ok: false, error: "webhook_nao_configurado" }, 503);
