@@ -68,12 +68,14 @@ serve(async (req) => {
       const h = { Authorization: `Bearer ${Deno.env.get("RESEND_API_KEY")}`, "Content-Type": "application/json" };
       const api = async (metodo: string, caminho: string, body?: unknown) => {
         const r = await fetch(`https://api.resend.com${caminho}`, { method: metodo, headers: h, body: body ? JSON.stringify(body) : undefined });
-        return { status: r.status, data: await r.json().catch(() => ({})) };
+        // cabeçalhos de cota/limite (o Resend não tem endpoint de plano)
+        const limites = Object.fromEntries([...r.headers].filter(([k]) => /quota|limit|usage|ratelimit/i.test(k)));
+        return { status: r.status, data: await r.json().catch(() => ({})), limites };
       };
       const lista = await api("GET", "/domains");
       const dominios = (lista.data?.data ?? []) as any[];
       const nome = String(pedido.nome || "");
-      if (!nome) return json({ ok: true, dominios: dominios.map((d) => ({ id: d.id, nome: d.name, status: d.status, regiao: d.region })) });
+      if (!nome) return json({ ok: true, limites: lista.limites, dominios: dominios.map((d) => ({ id: d.id, nome: d.name, status: d.status, regiao: d.region })) });
 
       let dom = dominios.find((d) => d.name === nome);
       if (!dom) {
