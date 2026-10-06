@@ -20,6 +20,8 @@ const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", curren
  * o `check` no banco recusa vazio, então a validação aqui é só pra não ir e voltar.
  * O valor_total do pagamento é recalculado por trigger; não some nada na tela.
  */
+const NOVA_CATEGORIA = "__nova_categoria__";
+
 export function FinanceiroAjustes({ pagamentoId, bloqueado, base = 0 }: { pagamentoId: string; bloqueado?: boolean; base?: number }) {
   const { data: ajustes = [], isLoading } = useFinanceiroAjustes(pagamentoId);
   const { data: categorias = [] } = useFinanceiroAjusteCategorias();
@@ -152,10 +154,17 @@ export function FinanceiroAjustes({ pagamentoId, bloqueado, base = 0 }: { pagame
                   + nova categoria
                 </Button>
               </div>
-              <Select value={form?.categoria_id} onValueChange={(v) => setForm((f) => (f ? { ...f, categoria_id: v } : f))}>
+              {/* último item da lista abre o cadastro de categoria, sem sair do lançamento */}
+              <Select value={form?.categoria_id}
+                onValueChange={(v) => (v === NOVA_CATEGORIA
+                  ? setNovaCat({ nome: "", sinal: "ambos" })
+                  : setForm((f) => (f ? { ...f, categoria_id: v } : f)))}>
                 <SelectTrigger><SelectValue placeholder="Selecione…" /></SelectTrigger>
                 <SelectContent>
                   {categorias.map((c) => <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}
+                  <SelectItem value={NOVA_CATEGORIA} className="border-t mt-1 pt-2 font-medium text-primary">
+                    + Criar uma categoria nova
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>

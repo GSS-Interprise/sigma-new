@@ -198,7 +198,13 @@ serve(async (req) => {
     const contato = (id: string | null) => (medicos ?? []).find((m: any) => m.id === id) || null;
 
     const resultados: any[] = [];
+    // Um pedido por vez, com um respiro entre eles: não é disparo em massa. Lote grande usa
+    // pausa menor para caber no tempo da função.
+    const pausaMs = () => ((pags ?? []).length <= 40 ? 1200 + Math.random() * 800 : 500);
+    let enviouAlgum = false;
     for (const pag of (pags ?? []) as Pag[]) {
+      if (!preview && canal === "whatsapp" && enviouAlgum) await new Promise((r) => setTimeout(r, pausaMs()));
+      enviouAlgum = true;
       const comp = `${String(pag.mes_referencia).padStart(2, "0")}/${pag.ano_referencia}`;
       const compExt = `${MESES[pag.mes_referencia - 1] ?? comp}/${pag.ano_referencia}`;
       const valor = fmtBRL(Number(pag.valor_total));
