@@ -2,8 +2,12 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   chakraApi,
+  chakraCampaignTemplateDefinition,
+  chakraQuickReplyComponents,
   extractBodyText,
   extractTemplateVariables,
+  resolvePhoneWabaId,
+  selectChakraTargets,
   templateLanguage,
   unwrapChakraPayload,
 } from "../_shared/chakra.ts";
@@ -196,11 +200,16 @@ serve(async (req) => {
         }, 409);
       }
 
-      const wabaId = asText(wabas[0]?.id || wabas[0]?.wabaId || success.wabaId, 120) || null;
       const saved: any[] = [];
       for (const phone of managedPhones) {
         const phoneNumberId = phoneIdFrom(phone);
         if (!phoneNumberId) continue;
+        const wabaId = resolvePhoneWabaId(phone, wabas, success.wabaId);
+        if (!wabaId) {
+          // Sem a conta certa, templates de outro portfólio parecem aprovados
+          // no Sigma, mas o Chakra recusa o envio na hora de usar o número.
+          return json({ ok: false, error: "phone_waba_not_identified", phoneNumberId }, 400);
+        }
         const payload = { pluginId, wabaId, phone, connectedAt: new Date().toISOString() };
         const connection = {
           plugin_id: pluginId,
@@ -258,13 +267,16 @@ serve(async (req) => {
     if (action === "sync_templates") {
       const { data: connections, error: connectionError } = await admin
         .from("whatsapp_chakra_connections")
-        .select("plugin_id, waba_id")
+        .select("phone_number_id, plugin_id, waba_id")
         .not("plugin_id", "is", null)
         .not("waba_id", "is", null);
       if (connectionError) throw connectionError;
 
-      const uniqueTargets = [...new Map((connections || [])
-        .map((connection: any) => [`${connection.plugin_id}:${connection.waba_id}`, connection])).values()];
+      const selectedPhoneId = asText(input.phoneNumberId, 120);
+      const uniqueTargets = selectChakraTargets(connections || [], selectedPhoneId);
+      if (selectedPhoneId && uniqueTargets.length === 0) {
+        return json({ ok: false, error: "selected_phone_not_found" }, 404);
+      }
       const synced: any[] = [];
       for (const target of uniqueTargets) {
         const response = await chakraApi(
@@ -325,14 +337,21 @@ serve(async (req) => {
     }
 
     if (action === "submit_ascii_test_template") {
+      const variant = asText(input.variant, 1).toLowerCase();
+      if (variant === "d" && !asText(input.phoneNumberId, 120)) {
+        return json({ ok: false, error: "phone_selection_required" }, 400);
+      }
       const { data: connections, error: connectionError } = await admin
         .from("whatsapp_chakra_connections")
-        .select("plugin_id, waba_id")
+        .select("phone_number_id, plugin_id, waba_id")
         .not("plugin_id", "is", null)
         .not("waba_id", "is", null);
       if (connectionError) throw connectionError;
-      const targets = [...new Map((connections || [])
-        .map((connection: any) => [`${connection.plugin_id}:${connection.waba_id}`, connection])).values()];
+      const selectedPhoneId = asText(input.phoneNumberId, 120);
+      const targets = selectChakraTargets(connections || [], selectedPhoneId);
+      if (selectedPhoneId && targets.length === 0) {
+        return json({ ok: false, error: "selected_phone_not_found" }, 404);
+      }
       const submitted: any[] = [];
       const testDefinitions: Record<string, { name: string; body: string; variables: Record<string, string> }> = {
         a: {
@@ -351,7 +370,9 @@ serve(async (req) => {
           variables: { "1": "Marina", "2": "Pediatria", "3": "Chapeco SC" },
         },
       };
-      const selected = testDefinitions[asText(input.variant, 1).toLowerCase()] || testDefinitions.a;
+      const selected = variant === "d"
+        ? chakraCampaignTemplateDefinition()
+        : testDefinitions[variant] || testDefinitions.a;
       const { name, body, variables } = selected;
 
       for (const target of targets) {
@@ -497,6 +518,84 @@ serve(async (req) => {
         }
       }
       return json({ ok: true, targets: targets.length, submitted });
+    }
+
+    // Template criado pela tela, com botões de resposta rápida opcionais. No Chakra não há
+    // rascunho: o template vai direto para a análise da Meta, em cada conta (WABA) conectada.
+    if (action === "create_template") {
+      const name = asText(input.name, 120).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+        .replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "");
+      const body = asText(input.body, 1024);
+      const category = asText(input.category, 20).toUpperCase() === "UTILITY" ? "UTILITY" : "MARKETING";
+      const buttons: string[] = (Array.isArray(input.buttons) ? input.buttons : [])
+        .map((button: unknown) => asText(button, 40)).filter(Boolean);
+      if (!name || !body) return json({ ok: false, error: "name_and_body_required" }, 400);
+      if (buttons.length > 3) return json({ ok: false, error: "max_3_buttons" }, 400);
+      if (buttons.some((button) => button.length > 25)) return json({ ok: false, error: "button_text_too_long" }, 400);
+      const positions = [...new Set(Array.from(body.matchAll(/\{\{(\d+)\}\}/g), (match) => Number(match[1])))].sort((a, b) => a - b);
+      if (positions.some((position, index) => position !== index + 1)) {
+        return json({ ok: false, error: "variables_must_be_sequential" }, 400);
+      }
+      const samples = (input.variables && typeof input.variables === "object") ? input.variables as Record<string, unknown> : {};
+      const variables = Object.fromEntries(positions.map((position) => [
+        String(position), asText(samples[String(position)], 120) || `exemplo ${position}`,
+      ]));
+
+      const { data: connections, error: connectionError } = await admin
+        .from("whatsapp_chakra_connections")
+        .select("phone_number_id, plugin_id, waba_id")
+        .not("plugin_id", "is", null)
+        .not("waba_id", "is", null);
+      if (connectionError) throw connectionError;
+      const selectedPhoneId = asText(input.phoneNumberId, 120);
+      const targets = selectChakraTargets(connections || [], selectedPhoneId);
+      if (targets.length === 0) return json({ ok: false, error: "no_chakra_connection" }, 404);
+
+      const components = chakraQuickReplyComponents(body, Object.values(variables), buttons);
+      const submitted: any[] = [];
+      for (const target of targets) {
+        try {
+          const response = await chakraApi(
+            `/v1/ext/plugin/whatsapp/api/v24.0/${target.waba_id}/message_templates`,
+            { method: "POST", body: JSON.stringify({ category, language: "pt_BR", name, components }) },
+          );
+          const remote = unwrapChakraPayload(response);
+          const remoteId = String(remote.id || remote.message_template_id || name);
+          const saveResult = await admin
+            .from("whatsapp_official_templates")
+            .upsert({
+              provider: "chakra",
+              content_sid: `chakra:${target.plugin_id}:${remoteId}`,
+              friendly_name: name,
+              language: "pt_BR",
+              category: String(remote.category || category).toUpperCase(),
+              content_type: "whatsapp",
+              body,
+              variables,
+              approval_status: String(remote.status || "PENDING").toLowerCase(),
+              rejection_reason: remote.rejected_reason || null,
+              // components ficam salvos para a prévia mostrar os botões antes da sincronização
+              twilio_payload: { ...remote, components, plugin_id: target.plugin_id, waba_id: target.waba_id, source: "crm" },
+              twilio_account_key: "chakra",
+              updated_at: new Date().toISOString(),
+              created_by: actorId,
+            }, { onConflict: "content_sid" })
+            .select("id, friendly_name, approval_status, rejection_reason")
+            .single();
+          if (saveResult.error) throw saveResult.error;
+          submitted.push({ plugin_id: target.plugin_id, waba_id: target.waba_id, ...saveResult.data });
+        } catch (error) {
+          submitted.push({
+            plugin_id: target.plugin_id,
+            waba_id: target.waba_id,
+            name,
+            status: "error",
+            error: error instanceof Error ? error.message : "chakra_template_submit_failed",
+          });
+        }
+      }
+      const ok = submitted.some((item) => item.status !== "error");
+      return json({ ok, name, targets: targets.length, submitted, error: ok ? undefined : submitted[0]?.error }, ok ? 200 : 502);
     }
 
     if (action === "ensure_webhook") {

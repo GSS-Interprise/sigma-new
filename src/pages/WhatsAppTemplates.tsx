@@ -22,12 +22,14 @@ import {
   Search,
   Send,
   ShieldCheck,
+  Trash2,
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 
 interface OfficialTemplate {
   id: string;
+  provider: string | null;
   content_sid: string;
   friendly_name: string;
   language: string;
@@ -38,6 +40,23 @@ interface OfficialTemplate {
   approval_status: string;
   rejection_reason: string | null;
   updated_at: string;
+  twilio_account_key: string | null;
+  twilio_payload: { components?: Array<{ type?: string; buttons?: Array<{ type?: string; text?: string }> }> } | null;
+}
+
+// Canal do template novo: o Chakra é a API oficial em uso; as subcontas Twilio continuam disponíveis.
+const CHAKRA_ACCOUNT = "chakra";
+const INTEREST_BUTTONS = ["Tenho interesse", "Sem interesse"];
+
+/** Botões de resposta rápida do template (Chakra/Meta guarda em components → BUTTONS). */
+function templateButtons(template: Pick<OfficialTemplate, "twilio_payload">): string[] {
+  const components = template.twilio_payload?.components;
+  if (!Array.isArray(components)) return [];
+  return components
+    .filter((component) => String(component?.type || "").toUpperCase() === "BUTTONS")
+    .flatMap((component) => component.buttons || [])
+    .map((button) => String(button?.text || "").trim())
+    .filter(Boolean);
 }
 
 type StatusFilter = "all" | "approved" | "review" | "draft" | "rejected";
@@ -82,6 +101,10 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error || "Erro inesperado");
 }
 
+function hasEncodingProblem(body: string | null) {
+  return /\uFFFD|Ã/.test(String(body || ""));
+}
+
 function matchesFilter(template: OfficialTemplate, filter: StatusFilter) {
   if (filter === "all") return true;
   if (filter === "review") return ["pending", "received"].includes(template.approval_status);
@@ -113,6 +136,11 @@ function TemplatePhonePreview({ template }: { template: OfficialTemplate }) {
         <p className="whitespace-pre-wrap break-words">{renderedBody}</p>
         <p className="mt-2 text-right text-[10px] text-slate-500">10:30 ✓✓</p>
       </div>
+      {templateButtons(template).map((button) => (
+        <div key={button} className="mt-1 rounded-lg bg-white py-2 text-center text-sm font-medium text-[#1f7ae0] shadow-sm">
+          {button}
+        </div>
+      ))}
     </div>
   );
 }
@@ -134,6 +162,10 @@ export default function WhatsAppTemplates() {
     "2": "Pediatria",
     "3": "Chapecó/SC",
   });
+  const [templateAccountKey, setTemplateAccountKey] = useState(CHAKRA_ACCOUNT);
+  const [buttons, setButtons] = useState<string[]>(INTEREST_BUTTONS);
+  const [createCategory, setCreateCategory] = useState<"UTILITY" | "MARKETING">("MARKETING");
+  const isChakraCreate = templateAccountKey === CHAKRA_ACCOUNT;
 
   const variableKeys = useMemo(() => {
     const found = Array.from(body.matchAll(/\{\{(\d+)\}\}/g), (match) => match[1]);
@@ -152,6 +184,34 @@ export default function WhatsAppTemplates() {
       return (data || []) as OfficialTemplate[];
     },
   });
+
+  const { data: officialSenders = [] } = useQuery({
+    queryKey: ["active-whatsapp-official-senders", "template-accounts"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("whatsapp_official_senders" as never)
+        .select("provider, twilio_account_key, display_name, phone_e164")
+        .eq("provider", "twilio")
+        .in("status", ["approved", "online", "active", "activated", "connected"])
+        .order("display_name");
+      if (error) throw error;
+      return (data || []) as Array<{ provider: string; twilio_account_key: string; display_name: string | null; phone_e164: string }>;
+    },
+  });
+
+  const templateAccounts = useMemo(() => {
+    const accounts = new Map<string, { label: string; phone: string }>();
+    accounts.set("principal", { label: "Conta principal", phone: "" });
+    for (const sender of officialSenders) {
+      if (!accounts.has(sender.twilio_account_key)) {
+        accounts.set(sender.twilio_account_key, {
+          label: sender.display_name || "Remetente oficial",
+          phone: sender.phone_e164,
+        });
+      }
+    }
+    return [...accounts.entries()];
+  }, [officialSenders]);
 
   const counts = useMemo(
     () => ({
@@ -186,9 +246,55 @@ export default function WhatsAppTemplates() {
     onError: (error) => toast.error(errorMessage(error)),
   });
 
+  const syncChakra = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke("chakra-connect", { body: { action: "sync_templates" } });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error || "Falha ao sincronizar templates do Chakra");
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["whatsapp-official-templates"] });
+      toast.success("Templates do Chakra sincronizados");
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  const submitChakra = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke("chakra-connect", { body: { action: "submit_principal_templates" } });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error || "Falha ao enviar templates para o Chakra");
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["whatsapp-official-templates"] });
+      toast.success(`${data?.submitted?.length || 0} template(s) enviados para análise no Chakra`);
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  const createChakra = useMutation({
+    mutationFn: async (payload: Record<string, unknown>) => {
+      const { data, error } = await supabase.functions.invoke("chakra-connect", { body: payload });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error || "Falha ao enviar o template para o Chakra");
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["whatsapp-official-templates"] });
+      const sent = (data?.submitted || []).filter((item: { status?: string }) => item.status !== "error").length;
+      toast.success(`Template enviado para análise da Meta em ${sent} conta(s)`);
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
   async function syncTemplates() {
-    await invoke.mutateAsync({ action: "sync" });
-    toast.success("Templates sincronizados com a Twilio");
+    const accountKeys = [...new Set(templateAccounts.map(([key]) => key))].filter((key) => key !== CHAKRA_ACCOUNT);
+    for (const accountKey of accountKeys) {
+      await invoke.mutateAsync({ action: "sync", account_key: accountKey });
+    }
+    toast.success(`${accountKeys.length} conta(s) sincronizada(s) com a Twilio`);
   }
 
   async function createTemplate() {
@@ -196,12 +302,28 @@ export default function WhatsAppTemplates() {
     const sequential = variableKeys.every((key, index) => Number(key) === index + 1);
     if (!sequential) return toast.error("As variáveis devem ser sequenciais: {{1}}, {{2}}, {{3}}");
     const variables = Object.fromEntries(variableKeys.map((key) => [key, samples[key] || `exemplo_${key}`]));
+    if (isChakraCreate) {
+      const cleanButtons = buttons.map((button) => button.trim()).filter(Boolean);
+      if (cleanButtons.some((button) => button.length > 25)) return toast.error("Cada botão pode ter até 25 caracteres");
+      await createChakra.mutateAsync({
+        action: "create_template",
+        name: name.trim(),
+        body: body.trim(),
+        variables,
+        category: createCategory,
+        buttons: cleanButtons,
+      });
+      setCreateOpen(false);
+      setName("");
+      return;
+    }
     await invoke.mutateAsync({
       action: "create",
       friendly_name: name.trim(),
       language: "pt_BR",
       body: body.trim(),
       variables,
+      account_key: templateAccountKey,
     });
     setCreateOpen(false);
     setName("");
@@ -237,6 +359,14 @@ export default function WhatsAppTemplates() {
             <Button variant="outline" className="min-h-11" onClick={syncTemplates} disabled={invoke.isPending}>
               <RefreshCw className={`mr-2 h-4 w-4 ${invoke.isPending ? "animate-spin" : ""}`} />
               Sincronizar
+            </Button>
+            <Button variant="outline" className="min-h-11" onClick={() => syncChakra.mutate()} disabled={syncChakra.isPending}>
+              <RefreshCw className={`mr-2 h-4 w-4 ${syncChakra.isPending ? "animate-spin" : ""}`} />
+              Sincronizar Chakra
+            </Button>
+            <Button variant="outline" className="min-h-11" onClick={() => submitChakra.mutate()} disabled={submitChakra.isPending}>
+              <Send className={`mr-2 h-4 w-4 ${submitChakra.isPending ? "animate-pulse" : ""}`} />
+              Enviar templates ao Chakra
             </Button>
             <Button className="min-h-11" onClick={() => setCreateOpen(true)}>
               <Plus className="mr-2 h-4 w-4" />
@@ -324,7 +454,7 @@ export default function WhatsAppTemplates() {
                         <div className="min-w-0">
                           <h2 className="truncate text-base font-semibold">{template.friendly_name}</h2>
                           <p className="mt-1 text-xs text-muted-foreground">
-                            {template.language} · {template.category || "Sem categoria"}
+                            {template.language} · {template.category || "Sem categoria"} · {template.provider === "chakra" ? "Chakra" : `Conta: ${template.twilio_account_key || "principal"}`}
                           </p>
                         </div>
                         <Badge variant="outline" className={`shrink-0 ${meta.className}`}>
@@ -335,6 +465,20 @@ export default function WhatsAppTemplates() {
                       <p className="line-clamp-4 whitespace-pre-wrap rounded-md bg-muted/40 p-3 text-sm">
                         {template.body || "Conteúdo rico. Abra a prévia para visualizar os elementos."}
                       </p>
+                      {templateButtons(template).length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {templateButtons(template).map((button) => (
+                            <span key={button} className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-0.5 text-xs text-sky-800">
+                              {button}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {template.provider === "chakra" && hasEncodingProblem(template.body) && (
+                        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+                          <strong>Texto com problema de codificação.</strong> Este template não será enviado até ser sincronizado ou aprovado novamente com UTF-8 correto.
+                        </div>
+                      )}
 
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         {template.approval_status === "approved" && <CheckCircle2 className="h-4 w-4 text-emerald-600" />}
@@ -418,7 +562,7 @@ export default function WhatsAppTemplates() {
                   </div>
                 </div>
                 <div>
-                  <Label>Identificador Twilio</Label>
+                  <Label>Identificador</Label>
                   <code className="mt-2 block break-all rounded-md bg-muted p-2 text-xs">
                     {selectedTemplate.content_sid}
                   </code>
@@ -440,10 +584,33 @@ export default function WhatsAppTemplates() {
           <DialogHeader>
             <DialogTitle>Novo template oficial</DialogTitle>
             <DialogDescription>
-              O template é criado como rascunho. O envio para a Meta é uma ação separada.
+              {isChakraCreate
+                ? "No Chakra o template vai direto para a análise da Meta (leva de algumas horas a um dia)."
+                : "O template é criado como rascunho. O envio para a Meta é uma ação separada."}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label>Canal</Label>
+              <Select value={templateAccountKey} onValueChange={setTemplateAccountKey}>
+                <SelectTrigger className="min-h-11">
+                  <SelectValue placeholder="Selecione a conta" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={CHAKRA_ACCOUNT}>Chakra · API oficial em uso</SelectItem>
+                  {templateAccounts.map(([key, account]) => (
+                    <SelectItem key={key} value={key}>
+                      {account.label}{account.phone ? ` · ${account.phone}` : ""} · {key}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {isChakraCreate
+                  ? "Enviado para todas as contas do Chakra conectadas."
+                  : "O template só poderá ser usado por remetentes da mesma subconta."}
+              </p>
+            </div>
             <div className="space-y-1.5">
               <Label htmlFor="template-name">Nome interno</Label>
               <Input
@@ -474,13 +641,62 @@ export default function WhatsAppTemplates() {
                 ))}
               </div>
             )}
+            {isChakraCreate && (
+              <>
+                <div className="space-y-1.5">
+                  <Label>Categoria</Label>
+                  <Select value={createCategory} onValueChange={(value) => setCreateCategory(value as "UTILITY" | "MARKETING")}>
+                    <SelectTrigger className="min-h-11">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="MARKETING">Marketing — primeira abordagem/prospecção</SelectItem>
+                      <SelectItem value="UTILITY">Utility — atendimento ou relação existente</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <Label>Botões de resposta (até 3)</Label>
+                    <div className="flex gap-2">
+                      <Button type="button" variant="ghost" size="sm" onClick={() => setButtons(INTEREST_BUTTONS)}>
+                        Usar botões de interesse
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" disabled={buttons.length >= 3} onClick={() => setButtons((current) => [...current, ""])}>
+                        <Plus className="mr-1 h-4 w-4" /> Botão
+                      </Button>
+                    </div>
+                  </div>
+                  {buttons.length === 0 && <p className="text-xs text-muted-foreground">Sem botões: o médico responde por texto.</p>}
+                  {buttons.map((button, index) => (
+                    <div key={index} className="flex gap-2">
+                      <Input
+                        value={button}
+                        maxLength={25}
+                        placeholder="Texto do botão (até 25 caracteres)"
+                        onChange={(event) => setButtons((current) => current.map((item, i) => (i === index ? event.target.value : item)))}
+                      />
+                      <Button type="button" variant="ghost" size="icon" aria-label="Remover botão" onClick={() => setButtons((current) => current.filter((_, i) => i !== index))}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                  <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
+                    <strong className="text-foreground">Como os botões de interesse funcionam:</strong> “Tenho interesse” segue a conversa
+                    normalmente. “Sem interesse” encerra só esta campanha e o sistema pergunta se o médico quer continuar
+                    recebendo outras oportunidades — só quem responder “Não quero mais” vai para a lista de bloqueio.
+                    Os textos aprovados até hoje não usam acento; mantenha assim para evitar rejeição.
+                  </div>
+                </div>
+              </>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" className="min-h-11" onClick={() => setCreateOpen(false)}>
               Cancelar
             </Button>
-            <Button className="min-h-11" onClick={createTemplate} disabled={invoke.isPending}>
-              Criar rascunho
+            <Button className="min-h-11" onClick={createTemplate} disabled={invoke.isPending || createChakra.isPending}>
+              {isChakraCreate ? "Enviar para aprovação" : "Criar rascunho"}
             </Button>
           </DialogFooter>
         </DialogContent>

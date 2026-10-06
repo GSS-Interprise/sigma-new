@@ -1,5 +1,13 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  chakraApi,
+  chakraButtonReply,
+  chakraOutrasOportunidadesMessage,
+  chakraTextMessage,
+  classifyChakraButton,
+  isExplicitChakraOptOut,
+} from "../_shared/chakra.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -270,6 +278,9 @@ function messageObject(item: AnyRecord, fromMe: boolean) {
     item.message_text,
     item.text,
   );
+  // Clique em botão (template ou mensagem interativa): o texto do botão é a resposta.
+  const buttonReply = chakraButtonReply(item);
+  if (buttonReply) return { conversation: buttonReply.text };
   if (type === "image" || item.image) {
     return {
       imageMessage: {
@@ -378,7 +389,8 @@ function normalizedMessage(
     item.timestamp || root.timestamp || Math.floor(Date.now() / 1000),
   );
   if (!remoteJid || !messageId) return null;
-  const normalizedType = firstText(
+  const buttonReply = fromMe ? null : chakraButtonReply(item);
+  const normalizedType = buttonReply ? "text" : firstText(
     item.type,
     item.message_type,
     item.messageType,
@@ -409,6 +421,7 @@ function normalizedMessage(
       messageTimestamp: timestamp,
       messageType: normalizedType === "unsupported" ? "interactive" : normalizedType,
       message: messageObject(item, fromMe),
+      ...(buttonReply ? { buttonReply } : {}),
     },
   };
 }
@@ -959,28 +972,88 @@ serve(async (request) => {
             payload,
           );
           const conversationId = forwarded?.data?.conversationId;
-          // O receiver moderno registra a mensagem, mas deliberadamente não
-          // chama a IA para evitar duplicidade com o bridge Evolution. Chakra
-          // não passa pelo bridge; o webhook precisa acionar a IA diretamente.
-          void forwardCampaignAi(
-            supabaseUrl,
-            serviceRole,
-            payload,
-            instance.name,
-            conversationId,
-          )
-            .catch((error) =>
-              console.warn("[chakra] falha ao acionar IA:", error)
+          const messageData = asObject(payload.data);
+          const messageKey = asObject(messageData.key);
+          const inboundMessage = asObject(messageData.message);
+          const inboundText = firstText(
+            inboundMessage.conversation,
+            inboundMessage.extendedTextMessage?.text,
+          );
+          // Clique em botão: "Sem interesse" encerra só esta vaga e pergunta sobre
+          // outras oportunidades; a resposta a essa pergunta decide o bloqueio geral.
+          const buttonIntent = messageKey.fromMe
+            ? null
+            : classifyChakraButton(messageData.buttonReply ?? null);
+          const contactPhone = digits(String(messageKey.remoteJid || "").split("@")[0]);
+          const replyToContact = async (message: AnyRecord) => {
+            try {
+              await chakraApi(
+                `/v1/ext/plugin/whatsapp/${connection.plugin_id}/api/v24.0/${event.phoneNumberId}/messages`,
+                { method: "POST", body: JSON.stringify(message) },
+              );
+            } catch (error) {
+              console.warn("[chakra] falha ao responder clique de botao:", error);
+            }
+          };
+          if (buttonIntent === "outras_sim") {
+            // Fica no cadastro para futuras vagas; nada a registrar nem a mandar para a IA.
+            await replyToContact(chakraTextMessage(
+              contactPhone,
+              "Combinado! Quando aparecer uma oportunidade com o seu perfil, a gente te avisa por aqui.",
+            ));
+          } else if (!messageKey.fromMe && (buttonIntent === "outras_nao" || isExplicitChakraOptOut(inboundText))) {
+            // O canal oficial não passa pelo bridge Evolution. Processar o
+            // descadastro antes da IA evita resposta e novo contato indevido.
+            const phone = contactPhone;
+            const optOutResponse = await fetch(
+              `${supabaseUrl}/functions/v1/campanha-opt-out-handler`,
+              {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${serviceRole}`,
+                  apikey: serviceRole,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ phone, msg_text: inboundText, instance_name: "" }),
+              },
             );
-          void forwardNfFinanceiro(
-            supabaseUrl,
-            serviceRole,
-            event.payload,
-            event.phoneNumberId,
-          )
-            .catch((error) =>
-              console.warn("[chakra] falha no inbound de NF:", error)
-            );
+            if (!optOutResponse.ok) {
+              throw new Error(`opt_out_handler_${optOutResponse.status}`);
+            }
+            if (buttonIntent === "outras_nao") {
+              await replyToContact(chakraTextMessage(
+                contactPhone,
+                "Entendido. Não vamos mais te enviar mensagens. Se mudar de ideia, é só chamar por aqui.",
+              ));
+            }
+          } else {
+            // O receiver persiste a mensagem; Chakra precisa acionar a IA
+            // diretamente porque não passa pelo bridge Evolution.
+            void forwardCampaignAi(
+              supabaseUrl,
+              serviceRole,
+              payload,
+              instance.name,
+              conversationId,
+            )
+              .catch((error) =>
+                console.warn("[chakra] falha ao acionar IA:", error)
+              );
+            void forwardNfFinanceiro(
+              supabaseUrl,
+              serviceRole,
+              event.payload,
+              event.phoneNumberId,
+            )
+              .catch((error) =>
+                console.warn("[chakra] falha no inbound de NF:", error)
+              );
+            // A IA acima registra o desinteresse NESTA campanha (e não responde);
+            // aqui só perguntamos se a pessoa quer continuar recebendo outras vagas.
+            if (buttonIntent === "sem_interesse") {
+              await replyToContact(chakraOutrasOportunidadesMessage(contactPhone));
+            }
+          }
         }
       } else if (["status", "statuses"].includes(event.type)) {
         await updateDeliveryStatus(admin, event.payload);
