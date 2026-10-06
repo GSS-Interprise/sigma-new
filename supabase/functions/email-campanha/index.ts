@@ -14,7 +14,7 @@
 // Gmail e Yahoo desde 2024.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { renderEmail, aplicarVariaveis, type EmailConteudo } from "../_shared/email-marketing.ts";
+import { renderEmail, aplicarVariaveis, type EmailConteudo, conteudoPronto } from "../_shared/email-marketing.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -91,7 +91,7 @@ function montarEmail(ctx: Ctx, c: any, conteudo: EmailConteudo, assunto: string,
 async function processarCampanha(ctx: Ctx, c: any) {
   const conteudo = (c.email_conteudo ?? {}) as EmailConteudo;
   const assunto = c.assunto_email || "";
-  if (!ctx.from || !assunto || !conteudo.mensagem) return { campanha: c.id, enviados: 0, motivo: "configuracao_incompleta" };
+  if (!ctx.from || !assunto || !conteudoPronto(conteudo)) return { campanha: c.id, enviados: 0, motivo: "configuracao_incompleta" };
 
   const { count: hoje } = await ctx.svc.from("email_envios").select("id", { count: "exact", head: true })
     .eq("campanha_id", c.id).gte("enviado_em", hojeBrtInicio());
@@ -202,7 +202,7 @@ serve(async (req) => {
       if (!para.length) return json({ ok: false, error: "informe ao menos um e-mail de teste" }, 400);
       const conteudo = (input.conteudo ?? c.email_conteudo ?? {}) as EmailConteudo;
       const assunto = String(input.assunto ?? c.assunto_email ?? "");
-      if (!assunto || !conteudo.mensagem) return json({ ok: false, error: "preencha assunto e mensagem" }, 400);
+      if (!assunto || !conteudoPronto(conteudo)) return json({ ok: false, error: "preencha assunto e mensagem" }, 400);
       const { data: publico } = await svc.rpc("email_publico_campanha", { p_campanha_id: campanhaId }).limit(1);
       const amostraId = (publico ?? [])[0]?.lead_id;
       const amostra = amostraId ? (await varsDosLeads(svc, [amostraId])).get(amostraId) : { nome: "Dra. Marina Souza", especialidade: "Pediatria", cidade: "Itajaí", uf: "SC" };
@@ -218,7 +218,7 @@ serve(async (req) => {
           detalhe: "Configure o remetente de marketing (email_marketing_from) com o subdomínio próprio antes do primeiro envio." }, 409);
       }
       const conteudo = (c.email_conteudo ?? {}) as EmailConteudo;
-      if (!c.assunto_email || !conteudo.mensagem) return json({ ok: false, error: "preencha assunto e mensagem antes de enviar" }, 400);
+      if (!c.assunto_email || !conteudoPronto(conteudo)) return json({ ok: false, error: "preencha assunto e mensagem antes de enviar" }, 400);
 
       // enfileira no banco: pela API o público viria cortado em 1000
       const { data: novos, error } = await svc.rpc("email_enfileirar_campanha", { p_campanha_id: campanhaId });

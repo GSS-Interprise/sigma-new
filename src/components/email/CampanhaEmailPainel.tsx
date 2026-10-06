@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Loader2, Mail, Pause, Play, Save, Send, Users } from "lucide-react";
 import { toast } from "sonner";
-import { EmailComposer, type EmailRascunho } from "./EmailComposer";
+import { EmailComposer, conteudoDoRascunho, type EmailRascunho } from "./EmailComposer";
 import { EmailMetricas } from "./EmailMetricas";
 
 /**
@@ -69,7 +69,9 @@ export function CampanhaEmailPainel({ campanhaId }: { campanhaId: string }) {
     const ct = c.email_conteudo ?? {};
     setRascunho({
       assunto: c.assunto_email ?? "", remetente_nome: c.email_remetente_nome ?? "GSS Saúde",
+      modo: ct.modo === "html" ? "html" : "modelo",
       titulo: ct.titulo ?? "", mensagem: ct.mensagem ?? "", botao_texto: ct.botao_texto ?? "", botao_link: ct.botao_link ?? "",
+      imagem_url: ct.imagem_url ?? "", html: ct.html ?? "",
     });
     setLimite(c.email_limite_diario ?? 500);
     setAgendamento(c.data_agendamento && c.canal === "email" ? toLocalInput(c.data_agendamento) : "");
@@ -91,7 +93,7 @@ export function CampanhaEmailPainel({ campanhaId }: { campanhaId: string }) {
     const patch: Record<string, unknown> = {
       assunto_email: rascunho.assunto.trim() || null,
       email_remetente_nome: rascunho.remetente_nome.trim() || null,
-      email_conteudo: { titulo: rascunho.titulo, mensagem: rascunho.mensagem, botao_texto: rascunho.botao_texto, botao_link: rascunho.botao_link },
+      email_conteudo: conteudoDoRascunho(rascunho),
       email_limite_diario: Math.max(10, Math.min(20000, Number(limite) || 500)),
       email_ativo: true,
     };
