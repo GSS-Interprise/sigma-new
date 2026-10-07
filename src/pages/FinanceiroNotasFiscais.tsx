@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
-  Loader2, Search, Send, BellRing, FileCheck2, Link2, Upload, Eye, X, Mail, MessageCircle, AlertTriangle,
+  Loader2, Search, Send, BellRing, FileCheck2, Link2, Upload, Eye, X, Mail, MessageCircle, AlertTriangle, Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -88,6 +88,9 @@ export default function FinanceiroNotasFiscais(
   const [testeEmails, setTesteEmails] = useState("");
   const uploadRef = useRef<HTMLInputElement>(null);
   const [alvoUpload, setAlvoUpload] = useState<Linha | null>(null);
+  const [alvoContato, setAlvoContato] = useState<Linha | null>(null);
+  const [contatoNovo, setContatoNovo] = useState("");
+  const [salvandoContato, setSalvandoContato] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ["financeiro-nf", mes, ano],
@@ -201,6 +204,28 @@ export default function FinanceiroNotasFiscais(
       toast.error(e.message);
     }
     setEnviando(false);
+  };
+
+  // corrige o contato no cadastro do médico: vale para este pedido e para os próximos
+  const salvarContato = async () => {
+    if (!alvoContato?.medico_id) return;
+    setSalvandoContato(true);
+    const { error } = await (supabase as any).rpc("financeiro_atualizar_contato_medico", {
+      p_medico_id: alvoContato.medico_id,
+      ...(canal === "email" ? { p_email: contatoNovo } : { p_telefone: contatoNovo }),
+    });
+    setSalvandoContato(false);
+    if (error) {
+      const m = error.message || "";
+      toast.error(m.includes("telefone_invalido") ? "Número inválido. Use DDD + número, por exemplo 47 99999-0000."
+        : m.includes("email_invalido") ? "E-mail inválido."
+        : m.includes("sem_permissao") ? "Seu usuário não pode alterar o contato do médico."
+        : "Não foi possível salvar: " + m);
+      return;
+    }
+    toast.success("Contato atualizado no cadastro do médico.");
+    setAlvoContato(null);
+    qc.invalidateQueries({ queryKey: ["financeiro-nf"] });
   };
 
   // teste sem tocar no status do médico: mesma mensagem, destinatário nosso
@@ -401,14 +426,20 @@ export default function FinanceiroNotasFiscais(
                             <span className="block text-[10px] text-muted-foreground truncate max-w-[14rem]">{l.unidade || "—"}</span>
                           </TableCell>
                           <TableCell className="hidden md:table-cell text-xs">
-                            {contato ? (
-                              <span className="flex items-center gap-1 text-muted-foreground">
-                                {canal === "email" ? <Mail className="h-3 w-3" /> : <MessageCircle className="h-3 w-3" />}
-                                <span className="truncate max-w-[14rem]">{contato}</span>
-                              </span>
-                            ) : (
-                              <span className="text-amber-700 border border-amber-400 rounded px-1 text-[10px]">sem contato</span>
-                            )}
+                            <button type="button" disabled={!l.medico_id}
+                              title={l.medico_id ? "Clique para corrigir o contato" : "Fechamento sem médico vinculado ao cadastro"}
+                              onClick={() => { setAlvoContato(l); setContatoNovo(contato || ""); }}
+                              className="group flex items-center gap-1 rounded text-left enabled:hover:underline decoration-dotted">
+                              {contato ? (
+                                <span className="flex items-center gap-1 text-muted-foreground">
+                                  {canal === "email" ? <Mail className="h-3 w-3" /> : <MessageCircle className="h-3 w-3" />}
+                                  <span className="truncate max-w-[13rem]">{contato}</span>
+                                </span>
+                              ) : (
+                                <span className="text-amber-700 border border-amber-400 rounded px-1 text-[10px]">sem contato</span>
+                              )}
+                              {l.medico_id && <Pencil className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100" />}
+                            </button>
                           </TableCell>
                           <TableCell className="text-right tabular-nums">{brl(Number(l.valor_total))}</TableCell>
                           <TableCell>
@@ -524,6 +555,24 @@ export default function FinanceiroNotasFiscais(
             <Button variant="outline" onClick={() => setPrevia(null)}>Fechar</Button>
             <Button disabled={enviando} onClick={() => enviar("solicitacao")} className="gap-1.5">
               <Send className="h-4 w-4" /> Enviar para {selecionados.length}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!alvoContato} onOpenChange={(o) => !o && setAlvoContato(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>{canal === "email" ? "E-mail do médico" : "WhatsApp do médico"}</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground -mt-2">
+            <b>{alvoContato?.profissional_nome}</b>. A alteração fica salva no cadastro e vale para os próximos pedidos.
+          </p>
+          <Input value={contatoNovo} autoFocus onChange={(e) => setContatoNovo(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && contatoNovo.trim() && salvarContato()}
+            placeholder={canal === "email" ? "medico@exemplo.com" : "47 99999-0000"} />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAlvoContato(null)}>Cancelar</Button>
+            <Button disabled={salvandoContato || !contatoNovo.trim()} onClick={salvarContato}>
+              {salvandoContato && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />} Salvar
             </Button>
           </DialogFooter>
         </DialogContent>

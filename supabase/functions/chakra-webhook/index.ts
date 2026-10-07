@@ -170,6 +170,14 @@ function pluginIdFrom(value: AnyRecord) {
   );
 }
 
+// Reação, edição e apagar mensagem também chegam como echo, mas não são mensagem nova:
+// gravá-los criava balão vazio na conversa e contava como contato com o lead.
+function isEchoMessage(item: unknown) {
+  return !["reaction", "edit", "revoke"].includes(
+    String(asObject(item).type || "").toLowerCase(),
+  );
+}
+
 function extractMetaEvents(body: AnyRecord) {
   const events: WebhookEvent[] = [];
   for (const entry of Array.isArray(body.entry) ? body.entry : []) {
@@ -193,6 +201,25 @@ function extractMetaEvents(body: AnyRecord) {
             pluginId,
           });
         }
+      }
+
+      // Coexistence: o que a equipe envia pelo aplicativo chega como
+      // `smb_message_echoes`, com as mensagens na lista `message_echoes`. Sem abrir a
+      // lista o evento era marcado como processado e a mensagem nunca era gravada.
+      if (["smb_message_echoes", "smb_message_echo"].includes(type)) {
+        const echoes = Array.isArray(value.message_echoes)
+          ? value.message_echoes
+          : [];
+        for (const item of echoes.filter(isEchoMessage)) {
+          events.push({
+            type: "smb_message_echo",
+            payload: { ...value, item },
+            phoneNumberId,
+            wabaId,
+            pluginId,
+          });
+        }
+        if (echoes.length) continue;
       }
 
       const listKey = type === "messages"
@@ -242,7 +269,7 @@ function extractEvents(body: AnyRecord) {
       : Array.isArray(payload.messageEchoes)
       ? payload.messageEchoes
       : [payload.item || payload];
-    return echoes.map((item) => ({
+    return echoes.filter(isEchoMessage).map((item) => ({
       type: "smb_message_echo",
       payload: { ...payload, item },
       phoneNumberId,
@@ -587,6 +614,57 @@ async function forwardCampaignAi(
   }
 }
 
+/**
+ * Mensagem enviada pelo aplicativo do WhatsApp (coexistence) para um lead de campanha:
+ * é uma pessoa da equipe conduzindo a conversa. Registra o primeiro contato e tira a IA
+ * dessa conversa. Disparo feito pelo Sigma não passa aqui: a API não gera echo.
+ */
+async function markManualContact(
+  admin: AdminClient,
+  leadId: string,
+  conversationId: string | undefined,
+  sentAt: string,
+) {
+  const { data: rows } = await admin.from("campanha_leads")
+    .select(
+      "id, status, humano_assumiu, data_primeiro_contato, campanha:campanha_id(status, tipo_envio)",
+    )
+    .eq("lead_id", leadId)
+    .in("status", ["frio", "contatado", "sem_resposta", "em_conversa", "aquecido", "quente"])
+    .order("created_at", { ascending: false })
+    .limit(20);
+  const open = (rows || []).filter((row: AnyRecord) =>
+    ["ativa", "pausada"].includes(String(asObject(row.campanha).status || ""))
+  );
+  // Lead ainda não contatado: vale a campanha manual mais recente. Só uma, para um
+  // envio não contar como primeiro contato em várias campanhas ao mesmo tempo.
+  const first = open.find((row: AnyRecord) =>
+    row.status === "frio" &&
+    String(asObject(row.campanha).tipo_envio || "ia") === "manual"
+  );
+  if (first) {
+    await admin.from("campanha_leads").update({
+      status: "contatado",
+      data_status: sentAt,
+      data_primeiro_contato: first.data_primeiro_contato || sentAt,
+      data_ultimo_contato: sentAt,
+      humano_assumiu: true,
+      canal_atual: "whatsapp",
+      ...(conversationId ? { conversa_id: conversationId } : {}),
+    }).eq("id", first.id).eq("status", "frio");
+  }
+  const ongoing = open.filter((row: AnyRecord) => row.status !== "frio").map((
+    row: AnyRecord,
+  ) => row.id);
+  if (ongoing.length) {
+    await admin.from("campanha_leads").update({
+      data_ultimo_contato: sentAt,
+      humano_assumiu: true,
+    }).in("id", ongoing);
+  }
+  return { contatado: first?.id || null, em_andamento: ongoing.length };
+}
+
 async function updateDeliveryStatus(
   admin: AdminClient,
   eventPayload: AnyRecord,
@@ -903,7 +981,7 @@ serve(async (request) => {
 
     const connectionQuery = admin.from("whatsapp_chakra_connections")
       .select(
-        "id, plugin_id, waba_id, phone_number_id, phone_e164, display_name",
+        "id, plugin_id, waba_id, phone_number_id, phone_e164, display_name, somente_leads",
       );
     const { data: connection } = event.phoneNumberId
       ? await connectionQuery.eq("phone_number_id", event.phoneNumberId)
@@ -965,6 +1043,27 @@ serve(async (request) => {
           event.phoneNumberId,
           instance.name,
         );
+        const contactDigits = payload
+          ? digits(String(asObject(asObject(payload.data).key).remoteJid || "").split("@")[0])
+          : "";
+        const fromApp = event.type === "smb_message_echo";
+        // Número de uso pessoal da equipe: só entra no Sigma a conversa com quem está
+        // na base de leads. O resto do WhatsApp da pessoa não é gravado.
+        let leadId: string | null = null;
+        if (payload && contactDigits && (fromApp || connection.somente_leads)) {
+          const { data } = await admin.rpc("find_lead_by_phone", {
+            p_phone: `+${contactDigits}`,
+          });
+          leadId = (data as string | null) || null;
+        }
+        if (payload && connection.somente_leads && !leadId) {
+          await admin.from("whatsapp_chakra_webhook_events").update({
+            processing_status: "ignored",
+            payload: { descartado: "contato_fora_da_base" },
+          }).eq("event_hash", eventHash);
+          results.push({ type: event.type, status: "ignored_not_a_lead" });
+          continue;
+        }
         if (payload) {
           const forwarded = await forwardMessage(
             supabaseUrl,
@@ -972,6 +1071,15 @@ serve(async (request) => {
             payload,
           );
           const conversationId = forwarded?.data?.conversationId;
+          if (fromApp && leadId) {
+            const sentAt = new Date(
+              Number(asObject(payload.data).messageTimestamp || Date.now() / 1000) * 1000,
+            ).toISOString();
+            await markManualContact(admin, leadId, conversationId, sentAt)
+              .catch((error) =>
+                console.warn("[chakra] falha ao registrar contato manual:", error)
+              );
+          }
           const messageData = asObject(payload.data);
           const messageKey = asObject(messageData.key);
           const inboundMessage = asObject(messageData.message);
