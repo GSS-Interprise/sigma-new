@@ -131,9 +131,10 @@ serve(async (req) => {
 
     if (acao === "sincronizar") {
       const recursos: Array<[string, string]> = [
-        ["categoria", "/v1/financeiro/categorias"],
-        ["centro_custo", "/v1/financeiro/centros-custo"],
-        ["conta_financeira", "/v1/financeiro/contas-financeiras"],
+        // caminhos conferidos na documentação e na conta real em 08/10 (os de /financeiro/ dão 404)
+        ["categoria", "/v1/categorias"],
+        ["centro_custo", "/v1/centro-de-custo"],
+        ["conta_financeira", "/v1/conta-financeira"],
         ["pessoa", "/v1/pessoas"],
       ];
       const resumo: Record<string, unknown> = {};
@@ -146,7 +147,9 @@ serve(async (req) => {
               nome: String(i.nome ?? i.descricao ?? i.razao_social ?? i.name ?? "").slice(0, 300),
               dados: i, atualizado_em: new Date().toISOString(),
             }))
-            .filter((l) => l.ca_id);
+            .filter((l) => l.ca_id)
+            // o mesmo id repetido num lote derruba o upsert inteiro ("cannot affect row a second time")
+            .filter((l, idx, arr) => arr.findIndex((x) => x.ca_id === l.ca_id) === idx);
           for (let i = 0; i < linhas.length; i += 500) {
             const { error } = await svc.from("contaazul_cache").upsert(linhas.slice(i, i + 500), { onConflict: "tipo,ca_id" });
             if (error) throw error;
