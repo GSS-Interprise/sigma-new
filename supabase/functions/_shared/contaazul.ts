@@ -100,11 +100,11 @@ export function itensDe(resposta: any): any[] {
 }
 
 /** Lê todas as páginas de um recurso de consulta (pagina / tamanho_pagina). */
-export async function listarTudo(svc: any, caminho: string, filtros: Record<string, string> = {}, maxPaginas = 40) {
+export async function listarTudo(svc: any, caminho: string, filtros: Record<string, string> = {}, maxPaginas = 40, tamanho = 100) {
   const tudo: any[] = [];
   const vistos = new Set<string>();
   for (let pagina = 1; pagina <= maxPaginas; pagina++) {
-    const qs = new URLSearchParams({ pagina: String(pagina), tamanho_pagina: "100", ...filtros }).toString();
+    const qs = new URLSearchParams({ pagina: String(pagina), tamanho_pagina: String(tamanho), ...filtros }).toString();
     const itens = itensDe(await ca(svc, `${caminho}?${qs}`));
     // recurso que ignora a paginação devolve sempre a mesma página: para quando nada é novo
     const novos = itens.filter((i: any) => {
@@ -115,7 +115,7 @@ export async function listarTudo(svc: any, caminho: string, filtros: Record<stri
       return true;
     });
     tudo.push(...novos);
-    if (itens.length < 100 || novos.length === 0) break;
+    if (itens.length < tamanho || novos.length === 0) break;
   }
   return tudo;
 }

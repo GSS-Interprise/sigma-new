@@ -105,6 +105,9 @@ serve(async (req) => {
       try { return JSON.parse(atob((chave.split(".")[1] || "").replace(/-/g, "+").replace(/_/g, "/")))?.role === "service_role"; } catch { return false; }
     })();
     let ehServiceRole = !!chave && chave === (Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "").trim();
+    // pg_cron chama com x-internal-sync-key (mesma chave dos outros crons do financeiro)
+    const chaveInterna = (Deno.env.get("TWILIO_INTERNAL_SYNC_KEY") || "").trim();
+    if (!ehServiceRole && chaveInterna && req.headers.get("x-internal-sync-key") === chaveInterna) ehServiceRole = true;
     if (!ehServiceRole && pareceServiceRole) {
       const prova = createClient(supabaseUrl, chave, { auth: { persistSession: false } });
       const { error } = await prova.from("integracao_segredos").select("nome").limit(1);
@@ -146,6 +149,51 @@ serve(async (req) => {
       if (!caminho.startsWith("/v1/")) return json({ ok: false, error: "caminho_invalido" }, 400);
       const { ca } = await import("../_shared/contaazul.ts");
       return json({ ok: true, dados: await ca(svc, caminho) });
+    }
+
+    // Espelha contas a pagar e a receber de um intervalo de vencimento. Sem intervalo, pega a
+    // janela móvel que o cron diário usa: do mês anterior até dois meses à frente.
+    if (acao === "sincronizar_lancamentos") {
+      const hoje = new Date();
+      const iso = (d: Date) => d.toISOString().slice(0, 10);
+      const de = String(input.de || iso(new Date(Date.UTC(hoje.getUTCFullYear(), hoje.getUTCMonth() - 1, 1))));
+      const ate = String(input.ate || iso(new Date(Date.UTC(hoje.getUTCFullYear(), hoje.getUTCMonth() + 3, 0))));
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate)) return json({ ok: false, error: "data_invalida" }, 400);
+      const inicio = new Date().toISOString();
+      const fontes: Array<["DESPESA" | "RECEITA", string, string]> = [
+        ["DESPESA", "/v1/financeiro/eventos-financeiros/contas-a-pagar/buscar", "fornecedor"],
+        ["RECEITA", "/v1/financeiro/eventos-financeiros/contas-a-receber/buscar", "cliente"],
+      ];
+      const resumo: Record<string, unknown> = {};
+      for (const [tipo, caminho, campoPessoa] of fontes) {
+        try {
+          const itens = await listarTudo(svc, caminho, { data_vencimento_de: de, data_vencimento_ate: ate }, 60, 500);
+          const linhas = itens.filter((i: any) => i?.id).map((i: any) => ({
+            ca_id: String(i.id), tipo,
+            descricao: i.descricao ?? null, status: i.status ?? null, status_traduzido: i.status_traduzido ?? null,
+            total: Number(i.total ?? 0), pago: Number(i.pago ?? 0), nao_pago: Number(i.nao_pago ?? 0),
+            data_vencimento: i.data_vencimento ?? null, data_competencia: i.data_competencia ?? null,
+            data_criacao: i.data_criacao ?? null, data_alteracao: i.data_alteracao ?? null,
+            categoria_id: i.categorias?.[0]?.id ?? null, categoria_nome: i.categorias?.[0]?.nome?.trim() ?? null,
+            centro_custo_id: i.centros_de_custo?.[0]?.id ?? null, centro_custo_nome: i.centros_de_custo?.[0]?.nome?.trim() ?? null,
+            pessoa_id: i[campoPessoa]?.id ?? null, pessoa_nome: i[campoPessoa]?.nome?.trim() ?? null,
+            dados: i, sincronizado_em: inicio,
+          }));
+          for (let i = 0; i < linhas.length; i += 500) {
+            const { error } = await svc.from("contaazul_lancamentos").upsert(linhas.slice(i, i + 500), { onConflict: "ca_id" });
+            if (error) throw error;
+          }
+          // o que estava nesta janela e não veio mais foi excluído (ou saiu da janela) no Conta Azul
+          const { count: removidos, error: eDel } = await svc.from("contaazul_lancamentos")
+            .delete({ count: "exact" }).eq("tipo", tipo)
+            .gte("data_vencimento", de).lte("data_vencimento", ate).lt("sincronizado_em", inicio);
+          if (eDel) throw eDel;
+          resumo[tipo] = { lidos: itens.length, gravados: linhas.length, removidos: removidos ?? 0 };
+        } catch (e: any) {
+          resumo[tipo] = { erro: String(e?.message || e).slice(0, 200) };
+        }
+      }
+      return json({ ok: true, de, ate, resumo });
     }
 
     if (acao === "sincronizar") {
