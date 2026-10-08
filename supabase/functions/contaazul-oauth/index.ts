@@ -97,10 +97,19 @@ serve(async (req) => {
 
     // ── ações autenticadas ─────────────────────────────────────────────────
     const auth = req.headers.get("Authorization") || "";
-    const ehServiceRole = (() => {
-      const parte = auth.replace(/^Bearer\s+/i, "").split(".")[1];
-      try { return !!parte && JSON.parse(atob(parte.replace(/-/g, "+").replace(/_/g, "/")))?.role === "service_role"; } catch { return false; }
+    // A função é pública (verify_jwt desligado), então o JWT não chega validado: ler só o
+    // campo "role" aceitaria um token forjado. Quem valida a assinatura é o próprio banco:
+    // a chave só é service role se conseguir ler uma tabela que só o service role lê.
+    const chave = auth.replace(/^Bearer\s+/i, "").trim();
+    const pareceServiceRole = (() => {
+      try { return JSON.parse(atob((chave.split(".")[1] || "").replace(/-/g, "+").replace(/_/g, "/")))?.role === "service_role"; } catch { return false; }
     })();
+    let ehServiceRole = !!chave && chave === (Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "").trim();
+    if (!ehServiceRole && pareceServiceRole) {
+      const prova = createClient(supabaseUrl, chave, { auth: { persistSession: false } });
+      const { error } = await prova.from("integracao_segredos").select("nome").limit(1);
+      ehServiceRole = !error;
+    }
     let usuario: string | null = null;
     if (!ehServiceRole) {
       const u = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: auth } } });
@@ -127,6 +136,16 @@ serve(async (req) => {
         token_expira_em: t?.tokens.expira_em ?? null, ultima_leitura: ultimo?.atualizado_em ?? null,
         redirect_uri: redirectUri, retorno_direto: retornoDireto,
       });
+    }
+
+    // Consulta livre, só leitura (GET), para explorar a conta real sem escrever nada.
+    // Restrita ao service role: devolve dado financeiro cru.
+    if (acao === "consultar") {
+      if (!ehServiceRole) return json({ ok: false, error: "sem_permissao" }, 403);
+      const caminho = String(input.caminho || "");
+      if (!caminho.startsWith("/v1/")) return json({ ok: false, error: "caminho_invalido" }, 400);
+      const { ca } = await import("../_shared/contaazul.ts");
+      return json({ ok: true, dados: await ca(svc, caminho) });
     }
 
     if (acao === "sincronizar") {
