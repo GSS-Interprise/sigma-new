@@ -168,13 +168,16 @@ serve(async (req) => {
       for (const [tipo, caminho, campoPessoa] of fontes) {
         try {
           const itens = await listarTudo(svc, caminho, { data_vencimento_de: de, data_vencimento_ate: ate }, 60, 500);
+          // receita de venda traz duas categorias sem valor: a principal é a que não é imposto retido
+          const principal = (cats: any[]) =>
+            (cats ?? []).find((c: any) => !/imposto|reten/i.test(String(c?.nome || ""))) ?? cats?.[0];
           const linhas = itens.filter((i: any) => i?.id).map((i: any) => ({
             ca_id: String(i.id), tipo,
             descricao: i.descricao ?? null, status: i.status ?? null, status_traduzido: i.status_traduzido ?? null,
             total: Number(i.total ?? 0), pago: Number(i.pago ?? 0), nao_pago: Number(i.nao_pago ?? 0),
             data_vencimento: i.data_vencimento ?? null, data_competencia: i.data_competencia ?? null,
             data_criacao: i.data_criacao ?? null, data_alteracao: i.data_alteracao ?? null,
-            categoria_id: i.categorias?.[0]?.id ?? null, categoria_nome: i.categorias?.[0]?.nome?.trim() ?? null,
+            categoria_id: principal(i.categorias)?.id ?? null, categoria_nome: principal(i.categorias)?.nome?.trim() ?? null,
             centro_custo_id: i.centros_de_custo?.[0]?.id ?? null, centro_custo_nome: i.centros_de_custo?.[0]?.nome?.trim() ?? null,
             pessoa_id: i[campoPessoa]?.id ?? null, pessoa_nome: i[campoPessoa]?.nome?.trim() ?? null,
             dados: i, sincronizado_em: inicio,
@@ -194,6 +197,50 @@ serve(async (req) => {
         }
       }
       return json({ ok: true, de, ate, resumo });
+    }
+
+    // Busca o detalhe (divisão por categoria, com valor bruto e imposto retido) dos lançamentos
+    // que ainda não têm, ou que mudaram no Conta Azul depois do último detalhe. Uma chamada por
+    // lançamento, por isso vai em lotes.
+    if (acao === "detalhar_lancamentos") {
+      const limite = Math.min(Math.max(Number(input.limite) || 80, 1), 150);
+      const { ca } = await import("../_shared/contaazul.ts");
+      const { data: semDetalhe } = await svc.from("contaazul_lancamentos")
+        .select("ca_id, total").is("valor_bruto", null).order("data_vencimento", { ascending: false }).limit(limite);
+      let alvo: any[] = semDetalhe ?? [];
+      if (alvo.length < limite) {
+        const { data: mudados } = await svc.rpc("contaazul_lancamentos_a_redetalhar", { p_limite: limite - alvo.length });
+        alvo = alvo.concat(mudados ?? []);
+      }
+      let feitos = 0; const erros: string[] = [];
+      for (const l of alvo) {
+        try {
+          const d = await ca(svc, `/v1/financeiro/eventos-financeiros/parcelas/${l.ca_id}`);
+          const rateio: any[] = d?.evento?.rateio ?? [];
+          const total = Number(l.total ?? 0);
+          // a divisão é do lançamento inteiro; com mais de uma parcela, cada uma leva a sua fração
+          const somaLiquido = rateio.reduce((s, r) => s + Number(r?.valor ?? 0), 0);
+          const f = somaLiquido > 0 ? total / somaLiquido : 1;
+          const ehImposto = (r: any) => /imposto|reten/i.test(String(r?.nome_categoria || "")) && Number(r?.valor ?? 0) === 0;
+          const impostos = rateio.filter(ehImposto).reduce((s, r) => s + Number(r?.valor_bruto ?? 0), 0) * f;
+          const maior = rateio.filter((r) => !ehImposto(r)).sort((a, b) => Number(b?.valor ?? 0) - Number(a?.valor ?? 0))[0];
+          const centro = [...(maior?.rateio_centro_custo ?? [])].sort((a: any, b: any) => Number(b?.valor ?? 0) - Number(a?.valor ?? 0))[0];
+          const { error } = await svc.from("contaazul_lancamentos").update({
+            valor_bruto: Math.round((total + impostos) * 100) / 100,
+            impostos_retidos: Math.round(impostos * 100) / 100,
+            rateio, origem: d?.evento?.referencia?.origem ?? null,
+            ...(maior ? { categoria_id: maior.id_categoria ?? null, categoria_nome: String(maior.nome_categoria ?? "").trim() || null } : {}),
+            ...(centro ? { centro_custo_id: centro.id_centro_custo ?? null, centro_custo_nome: String(centro.nome_centro_custo ?? "").trim() || null } : {}),
+            detalhado_em: new Date().toISOString(),
+          }).eq("ca_id", l.ca_id);
+          if (error) throw error;
+          feitos++;
+        } catch (e: any) {
+          if (erros.length < 5) erros.push(`${l.ca_id}: ${String(e?.message || e).slice(0, 120)}`);
+        }
+      }
+      const { count: restam } = await svc.from("contaazul_lancamentos").select("ca_id", { count: "exact", head: true }).is("valor_bruto", null);
+      return json({ ok: true, feitos, restam: restam ?? 0, erros });
     }
 
     if (acao === "sincronizar") {
