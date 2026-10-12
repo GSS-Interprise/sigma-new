@@ -47,6 +47,7 @@ import FinanceiroComprovantes from "./pages/FinanceiroComprovantes";
 import FinanceiroNotasFiscais from "./pages/FinanceiroNotasFiscais";
 import NfUpload from "./pages/NfUpload";
 import EmailDescadastro from "./pages/EmailDescadastro";
+import FinanceiroAprovacaoRelatorio from "./pages/FinanceiroAprovacaoRelatorio";
 import ContaAzulConectar, { ContaAzulRetorno } from "./pages/ContaAzulConectar";
 import Patrimonio from "./pages/Patrimonio";
 import BI from "./pages/BI";
@@ -95,6 +96,7 @@ const App = () => (
             {/* pública: é o link que o médico abre pelo e-mail para mandar a nota */}
             <Route path="/nf/:token" element={<NfUpload />} />
             <Route path="/descadastro/:token" element={<EmailDescadastro />} />
+            <Route path="/aprovacao/:token" element={<FinanceiroAprovacaoRelatorio />} />
             <Route path="/conta-azul/conectar/:convite" element={<ContaAzulConectar />} />
             <Route path="/conta-azul/retorno" element={<ContaAzulRetorno />} />
             <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />

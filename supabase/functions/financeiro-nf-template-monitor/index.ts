@@ -45,7 +45,9 @@ serve(async (req) => {
     const remotos: any[] = Array.isArray(resposta.data) ? resposta.data : Array.isArray(resposta) ? resposta : [];
 
     const { data: nossos } = await svc.from("whatsapp_official_templates")
-      .select("id, friendly_name, approval_status").like("friendly_name", `${PREFIXO}%`);
+      .select("id, friendly_name, approval_status")
+      // também o modelo de aprovação de pagamento (financeiro-aprovacao-whatsapp)
+      .or(`friendly_name.like.${PREFIXO}%,friendly_name.like.gss_aprovacao_%`);
 
     const mudancas: any[] = [];
     for (const linha of nossos ?? []) {

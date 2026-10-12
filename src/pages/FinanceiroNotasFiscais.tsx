@@ -14,6 +14,7 @@ import {
   Loader2, Search, Send, BellRing, FileCheck2, Link2, Upload, Eye, X, Mail, MessageCircle, AlertTriangle, Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
+import { LancarContaAzulDialog } from "@/components/financeiro/LancarContaAzulDialog";
 
 /**
  * Notas fiscais — o posto de trabalho da etapa mais maçante do financeiro (reunião com
@@ -37,6 +38,17 @@ type Linha = {
   canal_pedido: "email" | "whatsapp" | null;   // canal do último pedido real
   entrega: string | null;                     // sent | delivered | read | failed
   conferir: string | null;                    // por que a nota recebida pede conferência
+  // conferência fiscal e lançamento no Conta Azul (financeiro-conta-azul)
+  nf_conferencia_status: "ok" | "divergente" | "manual" | "aceita" | null;
+  nf_conferencia: { itens?: { chave: string; rotulo: string; ok: boolean | null; detalhe: string }[] } | null;
+  nf_valor_liquido: number | null; nf_numero: string | null; ca_evento_id: string | null;
+};
+
+const CONF: Record<string, { label: string; cls: string }> = {
+  ok: { label: "Nota conferida", cls: "bg-emerald-100 text-emerald-800" },
+  aceita: { label: "Nota aceita", cls: "bg-emerald-100 text-emerald-800" },
+  divergente: { label: "Divergência", cls: "bg-red-100 text-red-700" },
+  manual: { label: "Conferir à mão", cls: "bg-amber-100 text-amber-800" },
 };
 
 // cobrança automática: a cada 48h, até 3 vezes (financeiro-nf-lembrete)
@@ -89,6 +101,9 @@ export default function FinanceiroNotasFiscais(
   const uploadRef = useRef<HTMLInputElement>(null);
   const [alvoUpload, setAlvoUpload] = useState<Linha | null>(null);
   const [alvoContato, setAlvoContato] = useState<Linha | null>(null);
+  const [lancarOpen, setLancarOpen] = useState(false);
+  const [alvoConf, setAlvoConf] = useState<Linha | null>(null);
+  const [liquidoManual, setLiquidoManual] = useState("");
   const [contatoNovo, setContatoNovo] = useState("");
   const [salvandoContato, setSalvandoContato] = useState(false);
 
@@ -97,7 +112,7 @@ export default function FinanceiroNotasFiscais(
     queryFn: async () => {
       const [pagRes, fechRes] = await Promise.all([
         (supabase as any).from("financeiro_pagamentos")
-          .select("id, profissional_nome, medico_id, unidade, valor_total, nf_status, nf_solicitada_em, nf_lembretes, nf_ultimo_lembrete_em, nf_recebida_em, nf_arquivo_path, arquivo_origem")
+          .select("id, profissional_nome, medico_id, unidade, valor_total, nf_status, nf_solicitada_em, nf_lembretes, nf_ultimo_lembrete_em, nf_recebida_em, nf_arquivo_path, arquivo_origem, nf_conferencia_status, nf_conferencia, nf_valor_liquido, nf_numero, ca_evento_id")
           .eq("mes_referencia", mes).eq("ano_referencia", ano).order("profissional_nome"),
         (supabase as any).from("financeiro_fechamentos")
           .select("status").eq("mes_referencia", mes).eq("ano_referencia", ano).maybeSingle(),
@@ -228,6 +243,31 @@ export default function FinanceiroNotasFiscais(
     qc.invalidateQueries({ queryKey: ["financeiro-nf"] });
   };
 
+  const conferirDeNovo = async (l: Linha) => {
+    setEnviando(true);
+    const { error } = await supabase.functions.invoke("financeiro-conta-azul", { body: { acao: "conferir", pagamento_ids: [l.id] } });
+    setEnviando(false);
+    if (error) { toast.error("Não foi possível conferir: " + error.message); return; }
+    toast.success("Nota conferida de novo.");
+    setAlvoConf(null);
+    qc.invalidateQueries({ queryKey: ["financeiro-nf"] });
+  };
+
+  // alguém do financeiro assume a divergência (ou informa o líquido que a leitura não achou)
+  const aceitarNota = async (l: Linha) => {
+    const liq = liquidoManual.trim() ? Number(liquidoManual.replace(/\./g, "").replace(",", ".")) : null;
+    if (liquidoManual.trim() && !(Number.isFinite(liq) && (liq as number) > 0)) { toast.error("Valor líquido inválido."); return; }
+    setEnviando(true);
+    const { error } = await supabase.functions.invoke("financeiro-conta-azul", {
+      body: { acao: "aceitar_nota", pagamento_id: l.id, ...(liq ? { valor_liquido: liq } : {}) },
+    });
+    setEnviando(false);
+    if (error) { toast.error("Não foi possível registrar: " + error.message); return; }
+    toast.success("Nota aceita. Ficou registrado quem aceitou.");
+    setAlvoConf(null);
+    qc.invalidateQueries({ queryKey: ["financeiro-nf"] });
+  };
+
   // teste sem tocar no status do médico: mesma mensagem, destinatário nosso
   const enviarTeste = async () => {
     const destinos = testeEmails.split(/[,;\s]+/).map((s) => s.trim()).filter(Boolean);
@@ -279,6 +319,8 @@ export default function FinanceiroNotasFiscais(
       await (supabase as any).from("financeiro_pagamentos")
         .update({ nf_status: "recebida", nf_recebida_em: agora, nf_arquivo_path: path })
         .eq("id", alvoUpload.id);
+      // mesma conferência das notas que chegam pelo WhatsApp (tomador, valor, impostos)
+      await supabase.functions.invoke("financeiro-conta-azul", { body: { acao: "conferir", pagamento_ids: [alvoUpload.id] } }).catch(() => {});
       toast.success(`Nota de ${alvoUpload.profissional_nome} anexada.`);
       qc.invalidateQueries({ queryKey: ["financeiro-nf"] });
     } catch (e: any) {
@@ -444,6 +486,15 @@ export default function FinanceiroNotasFiscais(
                           <TableCell className="text-right tabular-nums">{brl(Number(l.valor_total))}</TableCell>
                           <TableCell>
                             <span className={`rounded-full px-2 py-0.5 text-[11px] ${st.cls}`}>{st.label}</span>
+                            {l.ca_evento_id ? (
+                              <span className="ml-1 rounded-full bg-sky-100 px-2 py-0.5 text-[11px] text-sky-800">No Conta Azul</span>
+                            ) : l.nf_conferencia_status ? (
+                              <button type="button" title="Ver a conferência da nota"
+                                onClick={() => { setAlvoConf(l); setLiquidoManual(""); }}
+                                className={`ml-1 rounded-full px-2 py-0.5 text-[11px] hover:underline ${CONF[l.nf_conferencia_status].cls}`}>
+                                {CONF[l.nf_conferencia_status].label}
+                              </button>
+                            ) : null}
                           </TableCell>
                           <TableCell className="hidden sm:table-cell text-xs text-muted-foreground tabular-nums">
                             {l.nf_solicitada_em ? (
@@ -509,6 +560,7 @@ export default function FinanceiroNotasFiscais(
                   <X className="h-4 w-4" />
                 </Button>
                 <div className="flex-1" />
+                <Button size="sm" variant="outline" disabled={enviando} onClick={() => setLancarOpen(true)}>Lançar no Conta Azul</Button>
                 <Button size="sm" variant="outline" disabled={enviando} onClick={verPrevia}>Ver prévia</Button>
                 <Button size="sm" variant="outline" disabled={enviando}
                   onClick={() => { setTesteEmails(""); setTesteOpen(true); }}>
@@ -530,6 +582,44 @@ export default function FinanceiroNotasFiscais(
 
       <input ref={uploadRef} type="file" accept=".pdf,.xml,image/*" className="hidden"
         onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) anexarManual(f); }} />
+
+      <LancarContaAzulDialog open={lancarOpen} onOpenChange={setLancarOpen} pagamentoIds={selecionados.map((l) => l.id)}
+        onLancado={() => qc.invalidateQueries({ queryKey: ["financeiro-nf"] })} />
+
+      <Dialog open={!!alvoConf} onOpenChange={(o) => !o && setAlvoConf(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle>Conferência da nota</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground -mt-2">
+            <b>{alvoConf?.profissional_nome}</b>{alvoConf?.nf_numero ? ` · NF ${alvoConf.nf_numero}` : ""} · a pagar {brl(Number(alvoConf?.valor_total))}
+          </p>
+          <div className="space-y-2">
+            {(alvoConf?.nf_conferencia?.itens ?? []).map((i) => (
+              <div key={i.chave} className="flex items-start gap-2 text-sm">
+                <span className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${i.ok === true ? "bg-emerald-500" : i.ok === false ? "bg-red-500" : "bg-amber-400"}`} />
+                <div><p className="font-medium leading-tight">{i.rotulo}</p><p className="text-xs text-muted-foreground">{i.detalhe}</p></div>
+              </div>
+            ))}
+          </div>
+          {alvoConf && ["divergente", "manual"].includes(alvoConf.nf_conferencia_status ?? "") && (
+            <div className="rounded-md border bg-muted/30 p-3 space-y-2">
+              <p className="text-xs text-muted-foreground">
+                Para seguir com esta nota mesmo assim, aceite a exceção. {alvoConf.nf_valor_liquido == null && "Informe o valor líquido a pagar, que a leitura não encontrou."}
+              </p>
+              {alvoConf.nf_valor_liquido == null && (
+                <Input value={liquidoManual} onChange={(e) => setLiquidoManual(e.target.value)} placeholder="Valor líquido, ex.: 12.345,67" inputMode="decimal" />
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" disabled={enviando} onClick={() => alvoConf && conferirDeNovo(alvoConf)}>Conferir de novo</Button>
+            {alvoConf && ["divergente", "manual"].includes(alvoConf.nf_conferencia_status ?? "") && (
+              <Button disabled={enviando} onClick={() => aceitarNota(alvoConf)}>
+                {enviando && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />} Aceitar esta nota
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!previa} onOpenChange={(o) => !o && setPrevia(null)}>
         <DialogContent className="max-w-lg">

@@ -1103,7 +1103,18 @@ serve(async (request) => {
               console.warn("[chakra] falha ao responder clique de botao:", error);
             }
           };
-          if (buttonIntent === "outras_sim") {
+          // Clique nos botões do pedido de aprovação de pagamento (financeiro): o payload
+          // identifica o pedido. Não é conversa de prospecção: nem IA, nem descadastro.
+          const financeApproval = !messageKey.fromMe &&
+            /^fin_(aprovar|nao_aprovar):/.test(String(messageData.buttonReply?.id || ""));
+          if (financeApproval) {
+            const approvalResponse = await fetch(`${supabaseUrl}/functions/v1/financeiro-aprovacao-whatsapp`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${serviceRole}`, apikey: serviceRole, "Content-Type": "application/json" },
+              body: JSON.stringify({ acao: "responder", telefone: contactPhone, payload: messageData.buttonReply.id }),
+            });
+            if (!approvalResponse.ok) throw new Error(`aprovacao_financeiro_${approvalResponse.status}`);
+          } else if (buttonIntent === "outras_sim") {
             // Fica no cadastro para futuras vagas; nada a registrar nem a mandar para a IA.
             await replyToContact(chakraTextMessage(
               contactPhone,

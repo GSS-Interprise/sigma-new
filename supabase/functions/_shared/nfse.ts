@@ -24,6 +24,20 @@ export type Nfse = {
   valor: number | null;      // valor do serviço (bruto)
   chave: string | null;      // chave de acesso nacional (50 dígitos)
   descricao: string | null;
+  // ── conferência fiscal (12/10). null = o layout não deixou ler; NÃO quer dizer zero ──
+  numero: string | null;         // número da nota
+  competencia: string | null;    // AAAA-MM-DD
+  emissao: string | null;        // AAAA-MM-DD
+  tomadorCnpj: string | null;
+  tomadorNome: string | null;
+  irrf: number | null;
+  contribSociais: number | null; // PIS/COFINS/CSLL retidos
+  inssRetido: number | null;     // contribuição previdenciária retida
+  issRetido: number | null;
+  totalRetencoes: number | null;
+  valorLiquido: number | null;
+  simplesNacional: boolean | null;
+  impostosLidos: boolean;        // a nota trouxe o quadro de retenções de forma legível
 };
 
 const digitos = (s: string) => s.replace(/\D/g, "");
@@ -55,6 +69,9 @@ export async function lerNfse(bytes: Uint8Array, cnpjsTomador: string[] = CNPJS_
   const vazio: Nfse = {
     legivel: false, ehNfse: false, tomadorGss: false, prestadorCnpj: null, prestadorNome: null,
     prestadorEmail: null, valor: null, chave: null, descricao: null,
+    numero: null, competencia: null, emissao: null, tomadorCnpj: null, tomadorNome: null,
+    irrf: null, contribSociais: null, inssRetido: null, issRetido: null, totalRetencoes: null,
+    valorLiquido: null, simplesNacional: null, impostosLidos: false,
   };
 
   let texto = "";
@@ -101,9 +118,45 @@ export async function lerNfse(bytes: Uint8Array, cnpjsTomador: string[] = CNPJS_
   const chave = t.match(/\b(\d{50})\b/)?.[1] ?? null;
   const descricao = entre(t, /Descri[cç][aã]o do Servi[cç]o/i, /TRIBUTA[CÇ][AÃ]O|VALOR TOTAL|C[aá]lculo do ISS/i);
 
+  // ── conferência fiscal ──────────────────────────────────────────────────
+  // No DANFSe nacional cada rótulo é seguido do valor; campo sem valor vem como "-".
+  // Um rótulo sem número depois dele é "não retido" (0), desde que o quadro exista.
+  const dataBr = (x: string | undefined) => { const m = x?.match(/(\d{2})\/(\d{2})\/(\d{4})/); return m ? `${m[3]}-${m[2]}-${m[1]}` : null; };
+  const aposRotulo = (rotulo: RegExp): number | null | undefined => {
+    const m = t.match(new RegExp(rotulo.source + String.raw`\s*(?:\(R\$\))?\s*(?:R\$\s*)?(-(?!\d)|[\d.]+,\d{2})`, "i"));
+    if (!m) return undefined;              // rótulo ausente ou seguido de outro rótulo
+    return m[1].startsWith("-") ? 0 : numero(m[1]);
+  };
+  const numeroNota = (t.match(/N[°º]\s*NFS-?e\s*\/\s*CHAVE NFS-?e\s+(\d{1,15})\s*\//i) ||
+    t.match(/N[UÚ]MERO DA NFS-?e\s+(\d{1,15})/i) ||
+    t.match(/N[uú]mero da Nota Data e Hora de Emiss[aã]o C[oó]digo de Verifica[cç][aã]o\s+\S+\s+(\d{1,15})/i))?.[1] ?? null;
+  const competencia = dataBr(t.match(/COMPET[EÊ]NCIA DA NFS-?e\s+(\d{2}\/\d{2}\/\d{4})/i)?.[1]);
+  const emissao = dataBr(t.match(/DATA E HORA DA EMISS[AÃ]O DA NFS-?e\s+(\d{2}\/\d{2}\/\d{4})/i)?.[1]) ??
+    dataBr(t.match(/Data e Hora de Emiss[aã]o[^\d]{0,40}\S+\s+\d+\s+(\d{2}\/\d{2}\/\d{4})/i)?.[1]);
+  const cnpjTom = blocoTom.match(/(\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2})/);
+  const tomadorNome = entre(blocoTom, /Nome\s*\/\s*Nome Empresarial|Raz[aã]o Social|Nome\/Raz[aã]o Social/i, /Munic[ií]pio|Endere[cç]o|CNPJ|Inscri[cç][aã]o|E-mail/i);
+
+  const irrf = aposRotulo(/IRRF/);
+  const contribSociais = aposRotulo(/Contribui[cç][oõ]es Sociais - Retidas/);
+  const inssRetido = aposRotulo(/Contribui[cç][aã]o Previdenci[aá]ria - Retida/);
+  const totalRetencoes = aposRotulo(/Total das Reten[cç][oõ]es \(ISSQN \/ Federais\)/);
+  const valorLiquido = aposRotulo(/VALOR L[IÍ]QUIDO DA NFS-?e/);
+  const issRetidoTxt = t.match(/Reten[cç][aã]o do ISSQN\s+(N[aã]o Retido|Retido[^R$]{0,40}?)\s+ISSQN Apurado\s+(?:R\$\s*)?(-(?!\d)|[\d.]+,\d{2})/i);
+  const issRetido = issRetidoTxt ? (/^n[aã]o/i.test(issRetidoTxt[1]) ? 0 : (issRetidoTxt[2].startsWith("-") ? 0 : numero(issRetidoTxt[2]))) : undefined;
+  const sn = t.match(/Simples Nacional na Data d[ea] Compet[eê]ncia\s+(N[aã]o optante|Optante)/i)?.[1];
+  // só confia nos impostos quando o líquido foi lido e a conta fecha com o valor do serviço
+  const liq = valorLiquido ?? null, ret = totalRetencoes ?? null;
+  const impostosLidos = valor != null && liq != null && ret != null && Math.abs(valor - ret - liq) <= 0.05;
+
   return {
     legivel: true, ehNfse, tomadorGss,
     prestadorCnpj, prestadorNome, prestadorEmail: email ? email[0].toLowerCase() : null,
     valor, chave, descricao: descricao ? descricao.slice(0, 500) : null,
+    numero: numeroNota ? String(Number(numeroNota)) : null, competencia, emissao,
+    tomadorCnpj: cnpjTom ? digitos(cnpjTom[1]) : null, tomadorNome,
+    irrf: irrf ?? null, contribSociais: contribSociais ?? null, inssRetido: inssRetido ?? null, issRetido: issRetido ?? null,
+    totalRetencoes: ret, valorLiquido: liq,
+    simplesNacional: sn ? !/^n[aã]o/i.test(sn) : (/optante pelo Simples Nacional/i.test(t) ? true : null),
+    impostosLidos,
   };
 }

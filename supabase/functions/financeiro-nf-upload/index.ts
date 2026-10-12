@@ -82,6 +82,12 @@ serve(async (req) => {
     }).eq("id", pag.id);
     await svc.from("financeiro_nf_solicitacoes").update({ status: "recebida", recebida_em: agora })
       .eq("pagamento_id", pag.id).eq("status", "enviada");
+    // conferência fiscal na hora em que a nota entra (tomador, valor, impostos, CNPJ)
+    await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/financeiro-conta-azul`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ acao: "conferir", pagamento_ids: [pag.id] }),
+    }).catch((e) => console.warn("[nf] conferencia nao rodou:", e));
 
     // avisa o financeiro no canal — é o "chegou nota" que hoje é uma mensagem no WhatsApp
     const { data: cfg } = await svc.from("config_lista_items")

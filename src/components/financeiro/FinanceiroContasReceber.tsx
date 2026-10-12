@@ -14,6 +14,7 @@ import {
   type FinanceiroReceber, type ReceberPatch,
 } from "@/hooks/useFinanceiroData";
 import { NFClienteAnexos } from "@/components/financeiro/NFClienteAnexos";
+import { NfEmitidasPanel } from "@/components/financeiro/NfEmitidasPanel";
 
 const fmt = (v: number | null | undefined) => (Number(v) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -33,6 +34,7 @@ export function FinanceiroContasReceber({ mes, ano }: { mes: number; ano: number
 
   return (
     <div className="space-y-4">
+      <NfEmitidasPanel mes={mes} ano={ano} />
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <Card><CardContent className="pt-4"><p className="text-xs text-muted-foreground">Previsto no mês</p><p className="text-xl font-bold">{fmt(totalPrevisto)}</p><p className="text-xs text-muted-foreground">{itens.length} contrato(s)</p></CardContent></Card>
         <Card><CardContent className="pt-4"><p className="text-xs text-muted-foreground">Faturado</p><p className="text-xl font-bold text-blue-600">{fmt(totalFaturado)}</p></CardContent></Card>

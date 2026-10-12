@@ -207,7 +207,9 @@ serve(async (req) => {
     }
     const nota: Nfse = arquivo && ehPdf
       ? await lerNfse(arquivo.bytes, cnpjsTomador)
-      : { legivel: false, ehNfse: false, tomadorGss: false, prestadorCnpj: null, prestadorNome: null, prestadorEmail: null, valor: null, chave: null, descricao: null };
+      : { legivel: false, ehNfse: false, tomadorGss: false, prestadorCnpj: null, prestadorNome: null, prestadorEmail: null, valor: null, chave: null, descricao: null,
+        numero: null, competencia: null, emissao: null, tomadorCnpj: null, tomadorNome: null, irrf: null, contribSociais: null, inssRetido: null,
+        issRetido: null, totalRetencoes: null, valorLiquido: null, simplesNacional: null, impostosLidos: false };
 
     // CRITÉRIO 1 — o que o arquivo é
     if (nota.legivel && !(nota.ehNfse && nota.tomadorGss)) {
@@ -298,6 +300,10 @@ serve(async (req) => {
       eh_nfse: nota.legivel ? nota.ehNfse : null, tomador_gss: nota.legivel ? nota.tomadorGss : null,
       prestador_cnpj: nota.prestadorCnpj, prestador_nome: nota.prestadorNome, prestador_email: nota.prestadorEmail,
       valor_nota: nota.valor, chave_acesso: nota.chave, descricao: nota.descricao,
+      numero_nota: nota.numero, competencia: nota.competencia, emissao: nota.emissao,
+      valor_liquido: nota.valorLiquido, irrf: nota.irrf, contrib_sociais: nota.contribSociais,
+      inss_retido: nota.inssRetido, iss_retido: nota.issRetido, total_retencoes: nota.totalRetencoes,
+      simples_nacional: nota.simplesNacional, impostos_lidos: nota.legivel ? nota.impostosLidos : null,
       medico_id: medicoId, confianca: quem.confianca, motivo,
     }, { onConflict: "mensagem_id" });
 
@@ -317,6 +323,12 @@ serve(async (req) => {
       }).eq("id", pag.id);
       await svc.from("financeiro_nf_solicitacoes").update({ status: "recebida", recebida_em: agora })
         .eq("pagamento_id", pag.id).eq("status", "enviada");
+      // conferência fiscal na hora em que a nota entra (tomador, valor, impostos, CNPJ)
+      await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/financeiro-conta-azul`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ acao: "conferir", pagamento_ids: [pag.id] }),
+      }).catch((e) => console.warn("[nf] conferência não rodou:", e));
     }
 
     if (!silencioso) {

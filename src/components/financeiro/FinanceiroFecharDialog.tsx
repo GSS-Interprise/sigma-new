@@ -188,6 +188,14 @@ export function FinanceiroFecharDialog({ mes, ano }: { mes: number; ano: number 
           .eq("id", fech.id);
       }
 
+      // O mesmo pedido vai pelo WhatsApp aos aprovadores cadastrados. O canal do Sigma continua
+      // sendo o registro; se o WhatsApp não sair (modelo ainda em análise, sem aprovador
+      // cadastrado), o fechamento segue normalmente e só avisa.
+      const { data: wa, error: waErr } = await supabase.functions.invoke("financeiro-aprovacao-whatsapp", {
+        body: { acao: "enviar", fechamento_id: fech.id },
+      });
+      if (!waErr && (wa as any)?.enviados) toast.info(`Pedido de aprovação enviado pelo WhatsApp para ${(wa as any).enviados} aprovador(es).`);
+
       qc.invalidateQueries({ queryKey: ["financeiro-pagamentos"] });
       qc.invalidateQueries({ queryKey: ["financeiro-fechamentos"] });
       qc.invalidateQueries({ queryKey: ["financeiro-fases"] });
