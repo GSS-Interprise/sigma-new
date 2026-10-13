@@ -19,7 +19,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { ca } from "../_shared/contaazul.ts";
-import { CNPJ_GSS, CNPJS_GRUPO_GSS, lerNfse } from "../_shared/nfse.ts";
+import { CNPJ_GSS, CNPJS_GRUPO_GSS, leituraAssistida, lerNfse, textoPdf } from "../_shared/nfse.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -56,6 +56,13 @@ async function conferirPagamento(svc: Svc, pag: any) {
   const bytes = await baixar(svc, pag.nf_arquivo_path);
   const ehPdf = !!bytes && bytes[0] === 0x25 && bytes[1] === 0x50; // %P
   const nota = bytes && ehPdf ? await lerNfse(bytes, CNPJS_GRUPO_GSS) : null;
+  // layout que a leitura por regra não entende: um modelo lê o mesmo texto e SUGERE os valores.
+  // A sugestão preenche o líquido, mas a nota fica para confirmação de uma pessoa.
+  const sugestao = nota?.legivel && !nota.impostosLidos && bytes ? await leituraAssistida(await textoPdf(bytes)) : null;
+  if (nota && sugestao) {
+    if (nota.valor == null) nota.valor = sugestao.valor;
+    if (nota.numero == null) nota.numero = sugestao.numero;
+  }
 
   const itens: Array<{ chave: string; rotulo: string; ok: boolean | null; detalhe: string }> = [];
   let status: "ok" | "divergente" | "manual" = "ok";
@@ -76,7 +83,9 @@ async function conferirPagamento(svc: Svc, pag: any) {
         ? (Number(nota.totalRetencoes) > 0
           ? `Retido ${brl(nota.totalRetencoes)} (IRRF ${brl(nota.irrf)}, PIS/COFINS/CSLL ${brl(nota.contribSociais)}${Number(nota.inssRetido) > 0 ? `, INSS ${brl(nota.inssRetido)}` : ""}${Number(nota.issRetido) > 0 ? `, ISS ${brl(nota.issRetido)}` : ""}) · líquido ${brl(nota.valorLiquido)}.`
           : `Sem retenção${nota.simplesNacional ? " (Simples Nacional)" : ""} · líquido ${brl(nota.valorLiquido)}.`)
-        : "Não consegui ler o quadro de impostos deste layout: informar o líquido à mão.",
+        : sugestao && nota.valor != null && Math.abs(sugestao.valor - nota.valor) <= 0.01
+          ? `Leitura assistida deste layout: ${Number(sugestao.totalRetencoes) > 0 ? `retido ${brl(sugestao.totalRetencoes)}` : "sem retenção"} · líquido ${brl(sugestao.valorLiquido)}. Confira na nota e aceite.`
+          : "Não consegui ler o quadro de impostos deste layout: informar o líquido à mão.",
     });
     // CNPJ do prestador: bate com o que o financeiro já conhece deste médico?
     let prestOk: boolean | null = null, prestDet = "Nota sem CNPJ do prestador legível.";
@@ -95,11 +104,13 @@ async function conferirPagamento(svc: Svc, pag: any) {
     else if (itens.some((i) => i.ok === null && i.chave !== "prestador")) status = "manual";
   }
 
+  const sugestaoValida = !!sugestao && nota?.valor != null && Math.abs(sugestao.valor - nota.valor) <= 0.01;
   const patch: Record<string, unknown> = {
     nf_numero: nota?.numero ?? null, nf_prestador_cnpj: nota?.prestadorCnpj ?? null,
-    nf_valor_bruto: nota?.valor ?? null, nf_retencoes: nota?.impostosLidos ? nota.totalRetencoes : null,
-    nf_valor_liquido: nota?.impostosLidos ? nota.valorLiquido : null,
-    nf_conferencia: { itens, simples_nacional: nota?.simplesNacional ?? null, competencia: nota?.competencia ?? null, emissao: nota?.emissao ?? null },
+    nf_valor_bruto: nota?.valor ?? null,
+    nf_retencoes: nota?.impostosLidos ? nota.totalRetencoes : (sugestaoValida ? sugestao!.totalRetencoes : null),
+    nf_valor_liquido: nota?.impostosLidos ? nota.valorLiquido : (sugestaoValida ? sugestao!.valorLiquido : null),
+    nf_conferencia: { itens, leitura_assistida: sugestaoValida, simples_nacional: nota?.simplesNacional ?? null, competencia: nota?.competencia ?? null, emissao: nota?.emissao ?? null },
     nf_conferida_em: agora,
   };
   // exceção já assumida por alguém continua valendo enquanto a nota for a mesma
@@ -246,6 +257,14 @@ async function registrarNfEmitida(svc: Svc, path: string, nome: string, usuario:
   if (!bytes) return { ok: false, error: "arquivo_nao_encontrado" };
   const n = await lerNfse(bytes, []);
   if (!n.legivel) return { ok: false, error: "arquivo_sem_texto", detalhe: "PDF sem texto (escaneado). Use o arquivo original da nota." };
+  // mesmo recurso da nota do médico: sugestão para layout que a regra não lê, sempre para conferir
+  const sug = !n.impostosLidos ? await leituraAssistida(await textoPdf(bytes)) : null;
+  const assistida = !!sug && (n.valor == null || Math.abs(sug.valor - n.valor) <= 0.01);
+  if (assistida && sug) {
+    n.valor = n.valor ?? sug.valor; n.numero = n.numero ?? sug.numero;
+    n.totalRetencoes = sug.totalRetencoes; n.valorLiquido = sug.valorLiquido;
+    n.irrf = sug.irrf; n.contribSociais = sug.contribSociais; n.inssRetido = sug.inssRetido; n.issRetido = sug.issRetido;
+  }
 
   let status = "vinculada"; const motivos: string[] = [];
   if (n.prestadorCnpj !== CNPJ_GSS) { status = "conferir"; motivos.push("A GSS não é a prestadora desta nota."); }
@@ -266,7 +285,7 @@ async function registrarNfEmitida(svc: Svc, path: string, nome: string, usuario:
     if (cands.length === 1) contratoId = cands[0].id;
     else { status = "conferir"; motivos.push(cands.length ? `Cliente com ${cands.length} contratos: escolher o contrato.` : "Cliente sem contrato no Sigma."); }
   }
-  if (!n.impostosLidos) { status = "conferir"; motivos.push("Impostos retidos não lidos: informar o valor líquido."); }
+  if (!n.impostosLidos) { status = "conferir"; motivos.push(assistida ? "Impostos lidos por leitura assistida: confira o valor líquido." : "Impostos retidos não lidos: informar o valor líquido."); }
 
   // contas a receber já previsto para o contrato naquele mês (gerado a partir do contrato)
   let receberId: string | null = null, vencimento: string | null = null;
@@ -279,7 +298,7 @@ async function registrarNfEmitida(svc: Svc, path: string, nome: string, usuario:
   const { data: nova, error } = await svc.from("financeiro_nf_emitidas").insert({
     arquivo_path: path, arquivo_nome: nome, chave_acesso: n.chave, numero_nota: n.numero, emissao: n.emissao, competencia: n.competencia,
     tomador_cnpj: n.tomadorCnpj, tomador_nome: n.tomadorNome, cliente_id: clienteId, contrato_id: contratoId, receber_id: receberId,
-    valor_bruto: n.valor, total_retencoes: n.impostosLidos ? n.totalRetencoes : null, valor_liquido: n.impostosLidos ? n.valorLiquido : null,
+    valor_bruto: n.valor, total_retencoes: (n.impostosLidos || assistida) ? n.totalRetencoes : null, valor_liquido: (n.impostosLidos || assistida) ? n.valorLiquido : null,
     irrf: n.irrf, contrib_sociais: n.contribSociais, inss_retido: n.inssRetido, iss_retido: n.issRetido, impostos_lidos: n.impostosLidos,
     descricao: n.descricao, vencimento, status, motivo: motivos.join(" ") || null, created_by: usuario,
   }).select("id").single();

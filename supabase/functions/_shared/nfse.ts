@@ -110,9 +110,9 @@ export async function lerNfse(bytes: Uint8Array, cnpjsTomador: string[] = CNPJS_
   const email = blocoPrest.match(/[\w.+-]+@[\w-]+\.[\w.-]+/);
 
   const valor = numero(
-    (t.match(/VALOR DA OPERA[CÇ][AÃ]O\s*\/\s*SERVI[CÇ]O\s*R\$\s*([\d.]+,\d{2})/i) ||
-      t.match(/VALOR TOTAL D[OA] (?:NOTA|SERVI[CÇ]O)S?\s*[=:]?\s*R\$\s*([\d.]+,\d{2})/i) ||
-      t.match(/Valor (?:dos|do) Servi[cç]os?\s*[:=]?\s*R\$\s*([\d.]+,\d{2})/i))?.[1],
+    (t.match(/VALOR DA OPERA[CÇ][AÃ]O\s*\/\s*SERVI[CÇ]O\s*(?:R\$\s*)?([\d.]+,\d{2})/i) ||
+      t.match(/VALOR TOTAL D[OA] (?:NOTA|SERVI[CÇ]O)S?\s*[=:]?\s*(?:R\$\s*)?([\d.]+,\d{2})/i) ||
+      t.match(/Valor (?:dos|do) Servi[cç]os?\s*[:=]?\s*(?:R\$\s*)?([\d.]+,\d{2})/i))?.[1],
   );
 
   const chave = t.match(/\b(\d{50})\b/)?.[1] ?? null;
@@ -159,4 +159,65 @@ export async function lerNfse(bytes: Uint8Array, cnpjsTomador: string[] = CNPJS_
     simplesNacional: sn ? !/^n[aã]o/i.test(sn) : (/optante pelo Simples Nacional/i.test(t) ? true : null),
     impostosLidos,
   };
+}
+
+// ── leitura assistida (quando o layout não deixa ler os impostos por regra) ──
+// Alguns municípios emitem a nota com os rótulos todos primeiro e os valores depois, ou em
+// colunas (São Paulo). A leitura por regra não acha o quadro de retenções nesses casos.
+// Aqui um modelo de linguagem lê o MESMO texto e devolve os números; o resultado só é
+// aproveitado se passar em duas provas que não dependem do modelo:
+//   1. a conta fecha: bruto - retenções = líquido;
+//   2. bruto e líquido aparecem escritos no texto da nota, do jeito que o modelo devolveu.
+// Mesmo assim é SUGESTÃO: quem chama deve pedir a confirmação de uma pessoa, porque um
+// modelo pode deixar de ver uma retenção e a conta fecharia do mesmo jeito (líquido = bruto).
+export type LeituraAssistida = {
+  valor: number; totalRetencoes: number; valorLiquido: number;
+  irrf: number; contribSociais: number; inssRetido: number; issRetido: number; numero: string | null;
+};
+
+export async function leituraAssistida(texto: string): Promise<LeituraAssistida | null> {
+  const chave = Deno.env.get("LOVABLE_API_KEY");
+  const t = texto.replace(/\s+/g, " ").trim();
+  if (!chave || t.length < 80) return null;
+  const pedido = `Texto extraído de uma nota fiscal de serviço brasileira (NFS-e). Os rótulos e os valores podem estar fora de ordem.
+Devolva SOMENTE um JSON com estes campos numéricos (ponto como separador decimal, 0 quando o campo vier vazio ou com traço):
+{"numero_nota": string ou null, "valor_servico": número, "irrf": número, "pis_cofins_csll_retidos": número, "inss_retido": número, "iss_retido": número, "total_retencoes": número, "valor_liquido": número}
+Regras: use apenas números que estão escritos no texto; não calcule impostos por alíquota; "valor_servico" é o valor bruto da operação; se não conseguir identificar o valor líquido, devolva null no campo.
+
+TEXTO:
+${t.slice(0, 7000)}`;
+  try {
+    const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${chave}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          { role: "system", content: "Você extrai dados de notas fiscais e responde apenas com JSON válido, sem comentários." },
+          { role: "user", content: pedido },
+        ],
+      }),
+    });
+    if (!r.ok) return null;
+    const corpo = await r.json();
+    const bruto = String(corpo?.choices?.[0]?.message?.content ?? "");
+    const j = JSON.parse(bruto.slice(bruto.indexOf("{"), bruto.lastIndexOf("}") + 1));
+    const n = (x: unknown) => (typeof x === "number" && Number.isFinite(x) ? x : Number(x));
+    const valor = n(j.valor_servico), liq = n(j.valor_liquido);
+    const partes = [n(j.irrf) || 0, n(j.pis_cofins_csll_retidos) || 0, n(j.inss_retido) || 0, n(j.iss_retido) || 0];
+    const ret = Number.isFinite(n(j.total_retencoes)) ? n(j.total_retencoes) : partes.reduce((a, b) => a + b, 0);
+    if (!(valor > 0) || !(liq > 0) || !(ret >= 0)) return null;
+    // prova 1: a conta fecha
+    if (Math.abs(valor - ret - liq) > 0.05) return null;
+    // prova 2: os dois valores estão escritos na nota
+    const escrito = (v: number) => t.includes(v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+    if (!escrito(valor) || !escrito(liq)) return null;
+    return {
+      valor, totalRetencoes: Math.round(ret * 100) / 100, valorLiquido: liq,
+      irrf: partes[0], contribSociais: partes[1], inssRetido: partes[2], issRetido: partes[3],
+      numero: j.numero_nota ? String(j.numero_nota).replace(/^0+(?=\d)/, "") : null,
+    };
+  } catch {
+    return null;
+  }
 }
