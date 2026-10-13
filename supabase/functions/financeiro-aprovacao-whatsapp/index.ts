@@ -14,7 +14,7 @@
 // Quem aprova: config_lista_items.financeiro_aprovadores_whatsapp = "Nome:5547999990000; Outro:55..."
 // Só clique vindo de um desses números, com pedido em aberto, é aceito.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { chakraApi, chakraTextMessage, unwrapChakraPayload } from "../_shared/chakra.ts";
 
 const cors = {
@@ -136,7 +136,7 @@ serve(async (req) => {
     let usuario: string | null = null, usuarioNome = "Financeiro";
     if (!ehServiceRole) {
       const u = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: auth } } });
-      const { data: { user } } = await u.auth.getUser();
+      const { data: { user } } = await u.auth.getUser(auth.replace(/^Bearer\s+/i, ""));
       if (!user) return json({ ok: false, error: "unauthorized" }, 401);
       const { data: papeis } = await svc.from("user_roles").select("role").eq("user_id", user.id);
       if (!(papeis ?? []).some((p: any) => PAPEIS.includes(p.role))) return json({ ok: false, error: "sem_permissao" }, 403);

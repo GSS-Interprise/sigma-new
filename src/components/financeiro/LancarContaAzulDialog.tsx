@@ -124,7 +124,8 @@ export function LancarContaAzulDialog({ pagamentoIds, open, onOpenChange, onLanc
                     <div><p className="text-[11px] text-muted-foreground">Descrição</p><p>{i.descricao}</p></div>
                     <div>
                       <p className="text-[11px] text-muted-foreground">Valor a lançar (líquido)</p>
-                      <Input className="h-8" inputMode="decimal" defaultValue={i.valor ?? ""} placeholder="0,00"
+                      <Input className="h-8" inputMode="decimal" placeholder="0,00" key={`${i.id}-${i.valor}`}
+                        defaultValue={i.valor != null ? i.valor.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}
                         onBlur={(e) => {
                           const n = Number(e.target.value.replace(/\./g, "").replace(",", "."));
                           if (Number.isFinite(n) && n > 0 && n !== i.valor) ajustar(i.id, { valor: n });

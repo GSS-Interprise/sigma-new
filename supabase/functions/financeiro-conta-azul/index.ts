@@ -17,7 +17,7 @@
 // `lancar` e `receber_lancar` só enviam quando config_lista_items.financeiro_contaazul_escrita
 // = "1". Sem isso devolvem "escrita_desligada" e a prévia continua funcionando.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ca } from "../_shared/contaazul.ts";
 import { CNPJ_GSS, CNPJS_GRUPO_GSS, leituraAssistida, lerNfse, textoPdf } from "../_shared/nfse.ts";
 
@@ -377,7 +377,7 @@ serve(async (req) => {
     let usuario: string | null = null;
     if (papelToken !== "service_role") {
       const u = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: auth } } });
-      const { data: { user } } = await u.auth.getUser();
+      const { data: { user } } = await u.auth.getUser(auth.replace(/^Bearer\s+/i, ""));
       if (!user) return json({ ok: false, error: "unauthorized" }, 401);
       const { data: papeis } = await svc.from("user_roles").select("role").eq("user_id", user.id);
       if (!(papeis ?? []).some((p: any) => PAPEIS.includes(p.role))) return json({ ok: false, error: "sem_permissao" }, 403);
