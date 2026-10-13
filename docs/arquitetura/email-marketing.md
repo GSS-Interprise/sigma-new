@@ -23,9 +23,15 @@ Duas formas de usar, mesmo motor:
 - `iniciar` recusa sem `config_lista_items.email_marketing_from` — o marketing sai de **subdomínio próprio** para não queimar a reputação do domínio principal (NF, contratos).
 - Painel avisa rejeição > 4% ou spam > 0,3% (limite do Gmail).
 
-## Pendências para ligar (dependem do Raul)
+## Remetente (configurado em 13/10/2026)
 
-- Subdomínio de marketing verificado no Resend (SPF/DKIM + DMARC) e `email_marketing_from` configurado.
-- Open/click tracking ligado no domínio do Resend.
+- Subdomínio `oportunidades.gestaoservicosaude.com.br` verificado no Resend, com open/click tracking ligado. Só envia: não tem MX, então resposta para o próprio remetente volta.
+- `email_marketing_from` = `vagas@oportunidades.gestaoservicosaude.com.br`; `email_marketing_reply_to` = `contato@gestaoservicosaude.com.br` (mesma caixa de resposta dos e-mails de prospecção). Trocar é só mudar o valor em `config_lista_items`.
+- DMARC: o subdomínio herda o `p=none` do domínio principal.
+- O teste (`acao:"teste"`) continua saindo pelo remetente do financeiro; o remetente de marketing só entra no disparo real.
+
+## Pendências
+
+- Primeiro disparo real ainda não aconteceu: começar com público pequeno e olhar rejeição/spam no painel.
 - Plano do Resend compatível com o volume (~303 mil leads com e-mail).
 - O módulo antigo `DisparosEmail` nunca foi usado — pode ser aposentado.
