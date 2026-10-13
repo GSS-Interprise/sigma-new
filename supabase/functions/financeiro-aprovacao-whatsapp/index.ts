@@ -24,7 +24,12 @@ const cors = {
 const json = (o: unknown, s = 200) =>
   new Response(JSON.stringify(o), { status: s, headers: { ...cors, "Content-Type": "application/json" } });
 
+// v1: resumo + botão "Ver relatorio" (link). v2: o PDF do relatório vai anexado na própria
+// mensagem (cabeçalho de documento) + os dois botões de resposta. O envio usa o v2 quando ele
+// está aprovado e o fechamento tem PDF; senão cai no v1.
 const TEMPLATE = "gss_aprovacao_pagamento_v1";
+const TEMPLATE_PDF = "gss_aprovacao_pagamento_v2";
+const CORPO_PDF = "Ola {{1}}, segue o relatorio do fechamento de {{2}} para aprovacao do pagamento: {{3}} medicos, total de {{4}}. Responda pelos botoes abaixo.";
 const PAPEIS = ["admin", "gestor_financeiro"];
 export const PAYLOAD_APROVAR = "fin_aprovar:";
 export const PAYLOAD_NAO = "fin_nao_aprovar:";
@@ -151,6 +156,30 @@ serve(async (req) => {
     }
 
     // ── modelo oficial ─────────────────────────────────────────────────────
+    if (acao === "criar_template" && input.versao === "pdf") {
+      // o Chakra aceita o endereço de um arquivo de exemplo no cabeçalho e cuida do envio à Meta
+      const exemplo = String(input.exemplo_url || "");
+      if (!/^https:\/\//.test(exemplo)) return json({ ok: false, error: "exemplo_url obrigatorio (PDF publico de exemplo)" }, 400);
+      const componentes = [
+        { type: "HEADER", format: "DOCUMENT", example: { header_handle: [exemplo] } },
+        { type: "BODY", text: CORPO_PDF, example: { body_text: [["Dr. Joao", "setembro/2026", "42", "R$ 310.450,00"]] } },
+        { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: "Aprovar pagamento" }, { type: "QUICK_REPLY", text: "Nao aprovar" }] },
+      ];
+      if (input.dry_run) return json({ ok: true, dry_run: true, nome: TEMPLATE_PDF, remetente: sender.phone_e164, componentes });
+      const resposta = await chakraApi(`/v1/ext/plugin/whatsapp/api/v24.0/${sender.chakra_waba_id}/message_templates`,
+        { method: "POST", body: JSON.stringify({ name: TEMPLATE_PDF, category: "UTILITY", language: "pt_BR", components: componentes }) });
+      const remoto = unwrapChakraPayload(resposta);
+      const remotoId = String(remoto.id || remoto.message_template_id || TEMPLATE_PDF);
+      const st = String(remoto.status || "PENDING").toLowerCase();
+      const { data: gravado, error } = await svc.from("whatsapp_official_templates").upsert({
+        provider: "chakra", content_sid: `chakra:${sender.chakra_plugin_id}:${remotoId}`, friendly_name: TEMPLATE_PDF, language: "pt_BR",
+        category: "UTILITY", body: CORPO_PDF, variables: { "1": "Nome do aprovador", "2": "Competencia", "3": "Quantidade de medicos", "4": "Total" },
+        approval_status: st === "approved" ? "approved" : st === "rejected" ? "rejected" : "pending", twilio_payload: remoto, updated_at: new Date().toISOString(),
+      }, { onConflict: "content_sid" }).select("id, approval_status").single();
+      if (error) throw error;
+      return json({ ok: true, template: TEMPLATE_PDF, id: gravado.id, status: gravado.approval_status });
+    }
+
     if (acao === "criar_template") {
       const componentes = [
         { type: "BODY", text: CORPO, example: { body_text: [["Dr. Joao", "setembro/2026", "42", "R$ 310.450,00"]] } },
@@ -185,9 +214,20 @@ serve(async (req) => {
       if (!f) return json({ ok: false, error: "fechamento_nao_encontrado" }, 404);
       if (f.status !== "aguardando_aprovacao") return json({ ok: false, error: "fechamento_fora_de_aprovacao", detalhe: `Situação atual: ${f.status}.` }, 409);
       if (!cfg.aprovadores.length) return json({ ok: false, error: "sem_aprovadores", detalhe: "Cadastre financeiro_aprovadores_whatsapp (Nome:55DDDnúmero; ...)." }, 409);
-      const { data: tpl } = await svc.from("whatsapp_official_templates").select("id, approval_status").eq("friendly_name", TEMPLATE).eq("provider", "chakra")
-        .order("updated_at", { ascending: false }).limit(1).maybeSingle();
-      if (tpl?.approval_status !== "approved") return json({ ok: false, error: "template_nao_aprovado", detalhe: `Modelo ${TEMPLATE}: ${tpl?.approval_status ?? "não criado"}.` }, 409);
+      const { data: tpls } = await svc.from("whatsapp_official_templates").select("friendly_name, approval_status, updated_at")
+        .in("friendly_name", [TEMPLATE, TEMPLATE_PDF]).eq("provider", "chakra").order("updated_at", { ascending: false });
+      const aprovado = (nome: string) => (tpls ?? []).find((t: any) => t.friendly_name === nome)?.approval_status === "approved";
+      // relatório anexado na mensagem: precisa do modelo com PDF aprovado e de um link que a Meta consiga baixar
+      let pdfUrl: string | null = null;
+      if (aprovado(TEMPLATE_PDF) && f.pdf_path) {
+        const { data: assinado } = await svc.storage.from("financeiro-anexos").createSignedUrl(f.pdf_path, 3 * 86400);
+        pdfUrl = assinado?.signedUrl ?? null;
+      }
+      const usarPdf = !!pdfUrl;
+      if (!usarPdf && !aprovado(TEMPLATE)) {
+        const situ = (nome: string) => (tpls ?? []).find((t: any) => t.friendly_name === nome)?.approval_status ?? "não criado";
+        return json({ ok: false, error: "template_nao_aprovado", detalhe: `Modelos: ${TEMPLATE_PDF} ${situ(TEMPLATE_PDF)}, ${TEMPLATE} ${situ(TEMPLATE)}.` }, 409);
+      }
 
       const meses = ["janeiro", "fevereiro", "marco", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
       const competencia = `${meses[(f.mes_referencia ?? 1) - 1]}/${f.ano_referencia}`;
@@ -203,13 +243,14 @@ serve(async (req) => {
             body: JSON.stringify({
               messaging_product: "whatsapp", recipient_type: "individual", to: ap.fone, type: "template",
               template: {
-                name: TEMPLATE, language: { policy: "deterministic", code: "pt_BR" },
+                name: usarPdf ? TEMPLATE_PDF : TEMPLATE, language: { policy: "deterministic", code: "pt_BR" },
                 components: [
+                  ...(usarPdf ? [{ type: "header", parameters: [{ type: "document", document: { link: pdfUrl, filename: `Fechamento-${String(f.mes_referencia).padStart(2, "0")}-${f.ano_referencia}.pdf` } }] }] : []),
                   { type: "body", parameters: [ap.nome || "Diretoria", competencia, String(f.qtd_medicos ?? 0), brl(f.total)].map((t) => ({ type: "text", text: t })) },
                   // o payload identifica o pedido no clique (o texto do botão é igual para todos)
                   { type: "button", sub_type: "quick_reply", index: "0", parameters: [{ type: "payload", payload: PAYLOAD_APROVAR + token }] },
                   { type: "button", sub_type: "quick_reply", index: "1", parameters: [{ type: "payload", payload: PAYLOAD_NAO + token }] },
-                  { type: "button", sub_type: "url", index: "2", parameters: [{ type: "text", text: token }] },
+                  ...(usarPdf ? [] : [{ type: "button", sub_type: "url", index: "2", parameters: [{ type: "text", text: token }] }]),
                 ],
               },
             }),
@@ -224,7 +265,7 @@ serve(async (req) => {
         });
         resultados.push({ aprovador: ap.nome, ok: !erro, erro });
       }
-      return json({ ok: true, enviados: resultados.filter((r) => r.ok).length, resultados });
+      return json({ ok: true, enviados: resultados.filter((r) => r.ok).length, com_pdf: usarPdf, resultados });
     }
 
     // ── clique do aprovador (chamado pelo chakra-webhook) ──────────────────

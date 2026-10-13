@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2, CheckCircle2, AlertTriangle, Send } from "lucide-react";
 import { toast } from "sonner";
 
@@ -40,12 +41,55 @@ async function avisarCanalFinanceiro(mensagem: string) {
   return true;
 }
 
+/**
+ * Pedido de nota junto com a liberação (13/10): liberar o fechamento já dispara o pedido para
+ * todos os médicos com valor a pagar, pelo WhatsApp oficial; quem não tem telefone recebe por
+ * e-mail. Vai em lotes pequenos porque a função envia um por vez, com pausa, e um lote grande
+ * estouraria o tempo da chamada. Quem ficar sem contato aparece no filtro "Sem contato" da
+ * aba Notas fiscais. Devolve a contagem para o aviso final.
+ */
+const LOTE = 15;
+async function pedirNotasDoMes(mes: number, ano: number, progresso: (feitos: number, total: number) => void) {
+  const { data: pags } = await (supabase as any).from("financeiro_pagamentos")
+    .select("id, valor_total, nf_status")
+    .eq("mes_referencia", mes).eq("ano_referencia", ano);
+  // só quem tem o que receber e ainda não foi pedido (pago à vista fica com zero)
+  const ids = ((pags ?? []) as any[])
+    .filter((p) => Number(p.valor_total) > 0 && (!p.nf_status || p.nf_status === "nao_solicitada"))
+    .map((p) => p.id as string);
+  const r = { total: ids.length, enviados: 0, semContato: 0, erros: 0 };
+  for (let i = 0; i < ids.length; i += LOTE) {
+    const lote = ids.slice(i, i + LOTE);
+    progresso(i, ids.length);
+    const { data, error } = await supabase.functions.invoke("financeiro-nf-enviar", {
+      body: { pagamento_ids: lote, canal: "whatsapp", tipo: "solicitacao" },
+    });
+    const d = data as any;
+    if (error || d?.ok === false) { r.erros += lote.length; continue; }
+    r.enviados += d.enviados || 0; r.erros += d.erros || 0;
+    // sem telefone: tenta o e-mail antes de dar como sem contato
+    const semFone = ((d.resultados || []) as any[]).filter((x) => x.status === "sem_contato").map((x) => x.pagamento_id);
+    if (semFone.length) {
+      const { data: e2 } = await supabase.functions.invoke("financeiro-nf-enviar", {
+        body: { pagamento_ids: semFone, canal: "email", tipo: "solicitacao" },
+      });
+      const d2 = e2 as any;
+      r.enviados += d2?.enviados || 0; r.erros += d2?.erros || 0;
+      r.semContato += d2?.ok === false || !d2 ? semFone.length : (d2.sem_contato || 0);
+    }
+  }
+  progresso(ids.length, ids.length);
+  return r;
+}
+
 export function FinanceiroLiberarDialog({
   mes, ano, total, qtdMedicos, porConferir,
 }: { mes: number; ano: number; total: number; qtdMedicos: number; porConferir: number }) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [salvando, setSalvando] = useState(false);
+  const [pedirNotas, setPedirNotas] = useState(true);
+  const [andamento, setAndamento] = useState<string | null>(null);
 
   const liberar = async () => {
     if (qtdMedicos === 0) return;
@@ -90,6 +134,19 @@ export function FinanceiroLiberarDialog({
       toast.success(avisou
         ? "Fechamento conferido e liberado para as notas fiscais."
         : "Fechamento conferido e liberado. (Canal Financeiro não configurado — config_lista_items.financeiro_canal_id)");
+
+      if (pedirNotas) {
+        const r = await pedirNotasDoMes(mes, ano, (feitos, tot) => setAndamento(tot ? `Pedindo as notas: ${feitos} de ${tot}…` : null));
+        setAndamento(null);
+        qc.invalidateQueries({ queryKey: ["financeiro-nf"] });
+        qc.invalidateQueries({ queryKey: ["financeiro-pagamentos"] });
+        const partes = [`${r.enviados} pedido(s) de nota enviado(s)`];
+        if (r.semContato) partes.push(`${r.semContato} sem contato`);
+        if (r.erros) partes.push(`${r.erros} com erro`);
+        if (r.total === 0) toast.info("Nenhum pedido de nota a enviar neste fechamento.");
+        else if (r.semContato || r.erros) toast.warning(partes.join(" · ") + ". Veja na aba Notas fiscais.");
+        else toast.success(partes.join(" · ") + ".");
+      }
       setOpen(false);
     } catch (e: any) {
       toast.error("Erro ao liberar o fechamento: " + (e?.message || ""));
@@ -131,10 +188,20 @@ export function FinanceiroLiberarDialog({
           </p>
         )}
 
+        <label className="flex items-start gap-2 rounded-md border p-3 text-sm cursor-pointer">
+          <Checkbox checked={pedirNotas} onCheckedChange={(v) => setPedirNotas(v === true)} className="mt-0.5" disabled={salvando} />
+          <span>
+            <b>Pedir as notas fiscais agora</b>
+            <span className="block text-xs text-muted-foreground">
+              Cada médico com valor a pagar recebe o pedido pelo WhatsApp (ou por e-mail, se não tiver telefone). Quem ficar sem contato aparece na aba Notas fiscais.
+            </span>
+          </span>
+        </label>
+
         <DialogFooter>
           <Button onClick={liberar} disabled={salvando || qtdMedicos === 0} className="w-full sm:w-auto gap-2">
             {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            Liberar para as notas fiscais
+            {andamento ?? (pedirNotas ? "Liberar e pedir as notas" : "Liberar sem pedir as notas")}
           </Button>
         </DialogFooter>
       </DialogContent>
