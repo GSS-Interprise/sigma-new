@@ -457,6 +457,64 @@ serve(async (req) => {
       return json({ ok: true, lancados: resultados.filter((r) => r.ok).length, erros: resultados.filter((r) => !r.ok).length, resultados });
     }
 
+    // ── baixa: pagamento já comprovado no Sigma vira baixa da parcela no Conta Azul ──
+    // Só vale para o que o próprio Sigma lançou (é ele que guarda o id da parcela). Diferente da
+    // conta a pagar, a baixa pode ser excluída depois pela integração; mesmo assim passa pela
+    // prévia e respeita o envio desligado.
+    if (acao === "baixa_previa" || acao === "baixa_lancar") {
+      const ref = await referencias(svc);
+      const METODOS = ["PIX_PAGAMENTO_INSTANTANEO", "TRANSFERENCIA_BANCARIA", "BOLETO_BANCARIO", "DEPOSITO_BANCARIO", "OUTRO"];
+      const { data: pags } = await svc.from("financeiro_pagamentos")
+        .select("id, profissional_nome, unidade, status, data_pagamento, valor_total, ca_parcela_id, ca_valor, ca_baixa_id, ca_baixa_erro")
+        .in("id", ids);
+      const itens = (pags ?? []).map((p: any) => {
+        const aj = (input.ajustes ?? {})[p.id] ?? {};
+        const data = /^\d{4}-\d{2}-\d{2}$/.test(String(aj.data || "")) ? String(aj.data) : (p.data_pagamento ?? null);
+        const metodo = METODOS.includes(aj.metodo) ? aj.metodo : METODOS[0];
+        const valor = p.ca_valor != null ? Number(p.ca_valor) : null;
+        const problemas: string[] = [];
+        if (!p.ca_parcela_id) problemas.push("Este pagamento não foi lançado no Conta Azul pelo Sigma.");
+        if (p.status !== "pago") problemas.push("Ainda não consta como pago no Sigma: falta o comprovante.");
+        if (!data) problemas.push("Sem data de pagamento.");
+        if (!ref.conta) problemas.push("Conta financeira não encontrada no Conta Azul.");
+        const jaBaixado = !!p.ca_baixa_id;
+        const payload = !problemas.length && !jaBaixado ? {
+          data_pagamento: data, composicao_valor: { valor_bruto: valor }, conta_financeira: ref.conta!.ca_id,
+          metodo_pagamento: metodo, observacao: `Baixa pelo Sigma (sigma-pag-${p.id})`,
+        } : null;
+        return {
+          id: p.id, medico: p.profissional_nome, unidade: p.unidade, valor, data, metodo, conta: ref.conta?.nome ?? null,
+          ja_baixado: jaBaixado, baixa_lida_do_conta_azul: p.ca_baixa_id === "no-conta-azul",
+          erro_anterior: p.ca_baixa_erro && p.ca_baixa_erro !== "enviando" ? p.ca_baixa_erro : null,
+          problemas: jaBaixado ? [] : problemas, pronto: !!payload, parcela: p.ca_parcela_id, payload,
+        };
+      });
+      const semPayload = itens.map(({ payload: _p, parcela: _q, ...r }: any) => r);
+      if (acao === "baixa_previa") return json({ ok: true, escrita_ligada: ref.escrita, metodos: METODOS, itens: semPayload });
+
+      if (input.confirmar !== true) return json({ ok: false, error: "confirmacao_ausente" }, 400);
+      if (!ref.escrita) return json({ ok: false, error: "escrita_desligada", detalhe: "O envio ao Conta Azul está desligado. A prévia mostra a baixa que seria dada." }, 409);
+      const resultados = [];
+      for (const it of itens) {
+        if (!it.payload) { resultados.push({ id: it.id, ok: false, erro: it.ja_baixado ? "baixa já dada" : it.problemas.join(" ") }); continue; }
+        const { data: trava } = await svc.from("financeiro_pagamentos").update({ ca_baixa_erro: "enviando" })
+          .eq("id", it.id).is("ca_baixa_id", null).or("ca_baixa_erro.is.null,ca_baixa_erro.neq.enviando").select("id");
+        if (!trava?.length) { resultados.push({ id: it.id, ok: false, erro: "baixa já dada ou em envio" }); continue; }
+        try {
+          const criada = await ca(svc, `/v1/financeiro/eventos-financeiros/parcelas/${it.parcela}/baixa`, { method: "POST", body: JSON.stringify(it.payload) });
+          await svc.from("financeiro_pagamentos").update({
+            ca_baixa_id: String(criada?.id ?? "criada"), ca_baixa_em: new Date().toISOString(), ca_baixa_por: usuario, ca_baixa_erro: null,
+          }).eq("id", it.id);
+          resultados.push({ id: it.id, ok: true });
+        } catch (e: any) {
+          const msg = String(e?.message || e).slice(0, 300);
+          await svc.from("financeiro_pagamentos").update({ ca_baixa_erro: msg }).eq("id", it.id);
+          resultados.push({ id: it.id, ok: false, erro: msg });
+        }
+      }
+      return json({ ok: true, baixados: resultados.filter((r) => r.ok).length, erros: resultados.filter((r) => !r.ok).length, resultados });
+    }
+
     if (acao === "nf_emitida_registrar") {
       const path = String(input.arquivo_path || "");
       if (!path.startsWith("nf-emitidas/")) return json({ ok: false, error: "caminho_invalido" }, 400);

@@ -196,6 +196,28 @@ serve(async (req) => {
           resumo[tipo] = { erro: String(e?.message || e).slice(0, 200) };
         }
       }
+      // Baixa dada direto no Conta Azul: o pagamento que o Sigma lançou e que lá já consta
+      // quitado passa a pago aqui também (o gatilho do banco encerra o mês quando é o último).
+      try {
+        const { data: abertos } = await svc.from("financeiro_pagamentos").select("id, ca_parcela_id")
+          .not("ca_parcela_id", "is", null).neq("status", "pago").limit(1000);
+        let lidas = 0;
+        if (abertos?.length) {
+          const { data: quitados } = await svc.from("contaazul_lancamentos").select("ca_id")
+            .eq("tipo", "DESPESA").eq("status", "ACQUITTED").in("ca_id", abertos.map((p: any) => p.ca_parcela_id));
+          const quitado = new Set((quitados ?? []).map((q: any) => q.ca_id));
+          const hojeBr = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
+          for (const p of abertos.filter((p: any) => quitado.has(p.ca_parcela_id))) {
+            const { error } = await svc.from("financeiro_pagamentos")
+              .update({ status: "pago", data_pagamento: hojeBr, ca_baixa_id: "no-conta-azul", ca_baixa_em: new Date().toISOString() })
+              .eq("id", p.id).neq("status", "pago");
+            if (!error) lidas++;
+          }
+        }
+        resumo.baixas_lidas = lidas;
+      } catch (e: any) {
+        resumo.baixas_lidas = { erro: String(e?.message || e).slice(0, 200) };
+      }
       return json({ ok: true, de, ate, resumo });
     }
 
