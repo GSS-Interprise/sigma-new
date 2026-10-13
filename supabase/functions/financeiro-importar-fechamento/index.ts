@@ -202,9 +202,29 @@ serve(async (req) => {
     // de reprocessamento é (fonte + arquivo + mês) — apagar por fonte apagaria os outros setores.
     const origem = `${tag} ${arquivo_nome || ""}`.trim();
     const { data: antigos } = await svc.from("financeiro_pagamentos")
-      .select("id, profissional_nome, medico_id")
+      .select("id, profissional_nome, medico_id, status, nf_status, ca_evento_id")
       .eq("fonte", "import").eq("mes_referencia", mesRef).eq("ano_referencia", anoRef)
       .eq("arquivo_origem", origem);
+    const { data: fechMes } = await svc.from("financeiro_fechamentos").select("status")
+      .eq("mes_referencia", mesRef).eq("ano_referencia", anoRef).maybeSingle();
+    const faseAdiantada = ["aguardando_aprovacao", "aprovado", "pago"].includes(fechMes?.status ?? "");
+    // Reimportar apaga e recria os lançamentos do arquivo. Se algum já teve nota pedida ou
+    // recebida, foi lançado no Conta Azul ou pago, isso se perderia sem aviso: recusa.
+    if (antigos?.length) {
+      const pagos = antigos.filter((p: any) => p.status === "pago").length;
+      const noCa = antigos.filter((p: any) => p.ca_evento_id).length;
+      const comNota = antigos.filter((p: any) => p.nf_status && p.nf_status !== "nao_solicitada").length;
+      if (pagos || noCa || comNota || faseAdiantada) {
+        const motivos = [
+          faseAdiantada ? "o mês já foi enviado para a aprovação da diretoria" : "",
+          comNota ? `${comNota} com nota fiscal pedida ou recebida` : "",
+          noCa ? `${noCa} lançado(s) no Conta Azul` : "",
+          pagos ? `${pagos} já pago(s)` : "",
+        ].filter(Boolean).join("; ");
+        return json({ ok: false, error: "reimport_bloqueado",
+          detalhe: `Este arquivo já foi importado e não pode ser substituído: ${motivos}. Corrija os valores pelos ajustes do lançamento.` }, 409);
+      }
+    }
     const ajustesSalvos: any[] = [];
     if (antigos?.length) {
       // só o que a equipe lançou na mão volta; o que veio da planilha é regerado do arquivo
@@ -317,6 +337,8 @@ serve(async (req) => {
 
     return json({
       ok: true, ja_importado: false, parser: cfg.parser,
+      // o mês já foi à diretoria: o que entrou agora está fora do total enviado/aprovado
+      fora_da_aprovacao: faseAdiantada,
       mes: mesRef, ano: anoRef, notas_anexadas: notasAnexadas,
       inseridos, casados, nao_casados: naoCasados,
       total_produzido: totalGeral, total_a_vista: totalAVista, total: totalGeral - totalAVista,

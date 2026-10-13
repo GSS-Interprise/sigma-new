@@ -63,7 +63,7 @@ const fmtData = (iso: string | null | undefined) => {
 
 // Posta uma mensagem no canal de Comprovantes (config financeiro_canal_comprovantes_id)
 // e notifica os participantes — esse insert de notificação dispara o Web Push.
-async function postarNoCanalComprovantes(mensagem: string) {
+async function postarNoCanalComprovantes(mensagem: string, acao?: Record<string, unknown>) {
   const { data: cfg } = await (supabase as any)
     .from("config_lista_items")
     .select("valor")
@@ -81,7 +81,7 @@ async function postarNoCanalComprovantes(mensagem: string) {
 
   const { data: m, error } = await (supabase as any)
     .from("comunicacao_mensagens")
-    .insert({ canal_id: canalId, user_id: uid, user_nome: nome, mensagem })
+    .insert({ canal_id: canalId, user_id: uid, user_nome: nome, mensagem, ...(acao ? { acao } : {}) })
     .select("id")
     .single();
   if (error || !m) return { posted: false, motivo: "falha" };
@@ -139,7 +139,11 @@ export default function FinanceiroAprovacoes() {
         (uRes?.user?.user_metadata as any)?.nome_completo ||
         (uRes?.user?.user_metadata as any)?.nome ||
         "Diretoria";
-      const { error } = await (supabase as any)
+      // quem aprova é a diretoria (ou admin): quem monta o fechamento não aprova o próprio
+      const { data: papeis } = await (supabase as any).from("user_roles").select("role").eq("user_id", uid);
+      const pode = (papeis ?? []).some((p: any) => p.role === "admin" || p.role === "diretoria");
+      if (!pode) throw new Error("A aprovação do pagamento é da diretoria.");
+      const { data: upd, error } = await (supabase as any)
         .from("financeiro_fechamentos")
         .update({
           status: "aprovado",
@@ -147,14 +151,15 @@ export default function FinanceiroAprovacoes() {
           aprovado_em: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
-        .eq("id", f.id);
+        .eq("id", f.id).eq("status", "aguardando_aprovacao").select("id");
       if (error) throw error;
+      if (!upd?.length) throw new Error("Este fechamento já foi processado.");
 
       const msg =
         `✅ *Fechamento ${comp(f)} aprovado* por ${nome} — ` +
         `${fmtBRL(f.total)}, ${f.qtd_medicos || 0} médico(s).\n` +
-        `Thais, suba os comprovantes em /financeiro/comprovantes`;
-      const r = await postarNoCanalComprovantes(msg);
+        `Thais, envie os comprovantes aqui neste canal. 👇`;
+      const r = await postarNoCanalComprovantes(msg, { tipo: "enviar_comprovantes", referencia_id: f.id, status: "pendente" });
       return r;
     },
     onSuccess: (r) => {

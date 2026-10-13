@@ -67,7 +67,12 @@ async function postarFechamentoNoCanal(mensagem: string, fechamentoId: string): 
   return m.id as string;
 }
 
-export function FinanceiroFecharDialog({ mes, ano }: { mes: number; ano: number }) {
+/**
+ * `reenvio`: usado quando entrou lançamento depois que o mês já foi à diretoria. O total
+ * aprovado não cobre o que chegou depois, então o mês inteiro volta para aprovação com o
+ * total novo. O que já estava pago continua pago.
+ */
+export function FinanceiroFecharDialog({ mes, ano, reenvio = false }: { mes: number; ano: number; reenvio?: boolean }) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [carregando, setCarregando] = useState(false);
@@ -119,7 +124,7 @@ export function FinanceiroFecharDialog({ mes, ano }: { mes: number; ano: number 
       toast.error("Nenhum pagamento nessa competência. Importe a produção antes de fechar.");
       return;
     }
-    if (fechamento && (fechamento.status === "aprovado" || fechamento.status === "pago")) {
+    if (!reenvio && fechamento && (fechamento.status === "aprovado" || fechamento.status === "pago")) {
       toast.error(`Este mês já foi ${fechamento.status === "pago" ? "pago" : "aprovado"} — não pode ser refechado.`);
       return;
     }
@@ -158,6 +163,8 @@ export function FinanceiroFecharDialog({ mes, ano }: { mes: number; ano: number 
             total: resumo.total,
             qtd_medicos: resumo.qtd,
             criado_por: uid,
+            // reenvio: a aprovação anterior valia para o total antigo
+            ...(reenvio ? { aprovado_por: null, aprovado_em: null, encerrado_em: null } : {}),
             ...(pdfPath ? { pdf_path: pdfPath } : {}),
             updated_at: new Date().toISOString(),
           },
@@ -212,13 +219,13 @@ export function FinanceiroFecharDialog({ mes, ano }: { mes: number; ano: number 
   };
 
   const jaFechado = !!fechamento && fechamento.status !== "cancelado" && fechamento.status !== "em_nf";
-  const bloqueado = !!fechamento && (fechamento.status === "aprovado" || fechamento.status === "pago");
+  const bloqueado = !reenvio && !!fechamento && (fechamento.status === "aprovado" || fechamento.status === "pago");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
-        <Button className="gap-2">
-          <Lock className="h-4 w-4" /> Enviar para aprovação de pagamento
+        <Button className="gap-2" variant={reenvio ? "outline" : "default"} size={reenvio ? "sm" : "default"}>
+          <Lock className="h-4 w-4" /> {reenvio ? "Reenviar para aprovação" : "Enviar para aprovação de pagamento"}
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-md">

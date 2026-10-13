@@ -73,7 +73,7 @@ export function FinanceiroImportarFechamentoDialog({ mesDefault, anoDefault }: {
       if (error) {
         const corpo = await (error as any)?.context?.json?.().catch(() => null);
         if (corpo?.erro_periodo || corpo?.erro_checksum) { setAviso(corpo); return; }
-        throw new Error(corpo?.error || error.message);
+        throw new Error(corpo?.detalhe || corpo?.error || error.message);
       }
       if (data?.ja_importado) { setResultado(data); return; }
       if (!data?.ok) throw new Error(data?.error || "falha no import");
@@ -83,6 +83,9 @@ export function FinanceiroImportarFechamentoDialog({ mesDefault, anoDefault }: {
       qc.invalidateQueries({ queryKey: ["financeiro-fases"] });
       qc.invalidateQueries({ queryKey: ["financeiro-receber"] });
       toast.success(`Importado: ${data.inseridos} médicos (${data.casados} casados).`);
+      if (data.fora_da_aprovacao) {
+        toast.warning("Este mês já foi enviado para a diretoria. Os lançamentos que entraram agora estão fora do total aprovado: reenvie para aprovação na aba Fechamento.", { duration: 12000 });
+      }
     } catch (e: any) {
       toast.error("Falha no import: " + (e?.message || ""));
     } finally {

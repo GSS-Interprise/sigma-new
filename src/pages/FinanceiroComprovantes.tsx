@@ -110,14 +110,14 @@ export default function FinanceiroComprovantes() {
     try {
       const { data: u } = await supabase.auth.getUser();
       // vincula o comprovante ao pagamento (mesmo registro que o caminho automático cria).
-      const { error: anexoErr } = await (supabase as any).from("financeiro_anexos").insert({
+      const { data: anexo, error: anexoErr } = await (supabase as any).from("financeiro_anexos").insert({
         pagamento_id: pagamentoId, tipo: "comprovante", arquivo_path: pendente.arquivo_path,
         arquivo_nome: pendente.arquivo_nome, mime: pendente.mime, status: "recebido", criado_por: u?.user?.id ?? null,
-      });
+      }).select("id").single();
       if (anexoErr) throw anexoErr;
       const { error: pagErr } = await (supabase as any)
         .from("financeiro_pagamentos")
-        .update({ status: "pago", data_pagamento: new Date().toISOString().slice(0, 10), conferido_por: u?.user?.id ?? null })
+        .update({ status: "pago", data_pagamento: new Date().toISOString().slice(0, 10) })
         .eq("id", pagamentoId);
       if (pagErr) throw pagErr;
       const { error: pendErr } = await (supabase as any)
@@ -125,7 +125,15 @@ export default function FinanceiroComprovantes() {
         .update({ resolvido: true, pagamento_id: pagamentoId })
         .eq("id", pendente.id);
       if (pendErr) throw pendErr;
-      toast.success("Comprovante casado e pagamento marcado como pago.");
+      // mesmo encaminhamento do casamento automático; aqui o resultado aparece para quem casou
+      const { data: env, error: envErr } = await supabase.functions.invoke("financeiro-enviar-comprovante", {
+        body: { pagamento_id: pagamentoId, anexo_id: anexo?.id, para: ["medico", "contabilidade"] },
+      });
+      if (envErr || (env as any)?.ok === false) {
+        toast.warning("Pagamento marcado como pago, mas o comprovante não foi enviado ao médico (sem e-mail cadastrado?). Envie pelo detalhe do pagamento.");
+      } else {
+        toast.success("Comprovante casado, pagamento marcado como pago e comprovante enviado.");
+      }
       qc.invalidateQueries({ queryKey: ["comprovantes-pendentes"] });
       qc.invalidateQueries({ queryKey: ["pagamentos-nao-pagos-aprovados"] });
       qc.invalidateQueries({ queryKey: ["financeiro-pagamentos"] });
@@ -189,7 +197,7 @@ export default function FinanceiroComprovantes() {
             <CardContent className="space-y-3">
               <div className="flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
                 <CheckCircle2 className="h-5 w-5 shrink-0" />
-                <span><strong>{resultado.casados?.length ?? 0}</strong> casado(s) — marcados como pagos e enviados à contabilidade.</span>
+                <span><strong>{resultado.casados?.length ?? 0}</strong> casado(s) e marcados como pagos. O comprovante segue por e-mail para o médico e a contabilidade.</span>
               </div>
               {(resultado.casados?.length ?? 0) > 0 && (
                 <div className="space-y-1">

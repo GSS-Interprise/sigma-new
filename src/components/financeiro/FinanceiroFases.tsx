@@ -94,6 +94,7 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
     : status === "em_nf" ? 2
     : 1;
   const podeAjustar = fase === 1;
+  const foraDaAprovacao = todos.filter((p) => !p.fechamento_id && Number(p.valor_total || 0) > 0);
 
   // busca por médico: é como ela acha alguém num fechamento de 60 linhas
   const pagamentos = useMemo(() => {
@@ -410,6 +411,18 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
                   </tfoot>
                 </Table>
               </div>
+
+              {/* entrou depois do envio à diretoria: não está no total aprovado nem recebe comprovante */}
+              {fase >= 3 && foraDaAprovacao.length > 0 && (
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-md border border-red-300 bg-red-50 dark:bg-red-950/30 px-3 py-2">
+                  <p className="text-sm">
+                    <b>{foraDaAprovacao.length} lançamento(s)</b> entraram depois do envio para a diretoria
+                    ({foraDaAprovacao.reduce((s, p) => s + Number(p.valor_total || 0), 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}).
+                    Eles não estão no total aprovado e não podem ser pagos até o mês voltar para aprovação.
+                  </p>
+                  <FinanceiroFecharDialog mes={mes} ano={ano} reenvio />
+                </div>
+              )}
 
               {/* importou depois de liberar: confere o que entrou sem voltar a fase */}
               {fase > 1 && porConferir > 0 && (
