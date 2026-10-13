@@ -4,6 +4,7 @@ import { toast } from "sonner";
 
 export interface FinanceiroPagamento {
   id: string;
+  fechamento_id?: string | null;
   profissional_nome: string;
   profissional_id_externo: string | null;
   profissional_crm: string | null;

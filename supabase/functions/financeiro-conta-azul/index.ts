@@ -533,6 +533,44 @@ serve(async (req) => {
       }
       const { error } = await svc.from("financeiro_nf_emitidas").update(patch).eq("id", String(input.id || ""));
       if (error) throw error;
+      // a nota que ficou inteira agora (contrato escolhido, líquido informado) entra no "a receber"
+      // do contrato naquele mês, igual à que já chega resolvida
+      const { data: nota } = await svc.from("financeiro_nf_emitidas")
+        .select("id, status, contrato_id, receber_id, competencia, emissao, valor_bruto, vencimento").eq("id", String(input.id || "")).maybeSingle();
+      const comp = nota?.competencia ?? nota?.emissao;
+      if (nota && nota.status === "vinculada" && nota.contrato_id && !nota.receber_id && comp && nota.valor_bruto != null) {
+        const { data: rec } = await svc.from("financeiro_receber").select("id, data_prevista")
+          .eq("contrato_id", nota.contrato_id).eq("ano_referencia", Number(String(comp).slice(0, 4))).eq("mes_referencia", Number(String(comp).slice(5, 7))).limit(1).maybeSingle();
+        if (rec) {
+          await svc.from("financeiro_nf_emitidas").update({ receber_id: rec.id, ...(nota.vencimento ? {} : { vencimento: rec.data_prevista ?? null }) }).eq("id", nota.id);
+          await svc.from("financeiro_receber").update({ valor_faturado: nota.valor_bruto, status: "faturado", nf_saida_status: "emitida", updated_at: new Date().toISOString() }).eq("id", rec.id);
+        }
+      }
+      return json({ ok: true });
+    }
+
+    // recebimento da nota: data e valor que entraram de fato. Reflete no "a receber" do contrato.
+    if (acao === "nf_emitida_receber" || acao === "nf_emitida_desfazer_recebimento") {
+      const { data: nota } = await svc.from("financeiro_nf_emitidas")
+        .select("id, status, receber_id, valor_liquido, valor_bruto, ca_evento_id, contrato_id").eq("id", String(input.id || "")).maybeSingle();
+      if (!nota) return json({ ok: false, error: "nota_nao_encontrada" }, 404);
+      const agora = new Date().toISOString();
+      if (acao === "nf_emitida_desfazer_recebimento") {
+        if (nota.status !== "recebida") return json({ ok: false, error: "nota_nao_recebida" }, 409);
+        await svc.from("financeiro_nf_emitidas").update({
+          status: nota.ca_evento_id ? "lancada" : nota.contrato_id ? "vinculada" : "conferir",
+          recebido_em: null, valor_recebido: null, recebido_por: null, updated_at: agora,
+        }).eq("id", nota.id);
+        if (nota.receber_id) await svc.from("financeiro_receber").update({ status: "faturado", data_recebimento: null, valor_recebido: null, updated_at: agora }).eq("id", nota.receber_id);
+        return json({ ok: true });
+      }
+      const data = String(input.recebido_em || "");
+      const valor = Number(input.valor_recebido);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) return json({ ok: false, error: "data_invalida", detalhe: "Informe a data do recebimento." }, 400);
+      if (!Number.isFinite(valor) || valor <= 0) return json({ ok: false, error: "valor_invalido", detalhe: "Informe o valor recebido." }, 400);
+      if (nota.status === "descartada") return json({ ok: false, error: "nota_descartada" }, 409);
+      await svc.from("financeiro_nf_emitidas").update({ status: "recebida", recebido_em: data, valor_recebido: valor, recebido_por: usuario, updated_at: agora }).eq("id", nota.id);
+      if (nota.receber_id) await svc.from("financeiro_receber").update({ status: "recebido", data_recebimento: data, valor_recebido: valor, updated_at: agora }).eq("id", nota.receber_id);
       return json({ ok: true });
     }
 

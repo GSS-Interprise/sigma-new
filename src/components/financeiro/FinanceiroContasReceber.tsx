@@ -15,6 +15,7 @@ import {
 } from "@/hooks/useFinanceiroData";
 import { NFClienteAnexos } from "@/components/financeiro/NFClienteAnexos";
 import { NfEmitidasPanel } from "@/components/financeiro/NfEmitidasPanel";
+import { ReceberEmAberto } from "@/components/financeiro/ReceberEmAberto";
 
 const fmt = (v: number | null | undefined) => (Number(v) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -25,8 +26,9 @@ export function FinanceiroContasReceber({ mes, ano }: { mes: number; ano: number
   const sync = useSyncFinanceiroReceber();
 
   const totalPrevisto = itens.reduce((s, i) => s + Number(i.valor_previsto || 0), 0);
-  const totalFaturado = itens.filter((i) => i.status !== "a_faturar").reduce((s, i) => s + Number(i.valor_faturado ?? (i.valor_previsto || 0)), 0);
-  const totalRecebido = itens.filter((i) => i.status === "recebido").reduce((s, i) => s + Number(i.valor_faturado ?? (i.valor_previsto || 0)), 0);
+  // só conta como faturado o que foi faturado de fato (a importação grava 'previsto', que é a faturar)
+  const totalFaturado = itens.filter((i) => i.status === "faturado" || i.status === "recebido").reduce((s, i) => s + Number(i.valor_faturado ?? (i.valor_previsto || 0)), 0);
+  const totalRecebido = itens.filter((i) => i.status === "recebido").reduce((s, i) => s + Number((i as any).valor_recebido ?? i.valor_faturado ?? (i.valor_previsto || 0)), 0);
   const temTotalCru = itens.some((i) => i.regra_rateio === "total");
 
   const badge = (s: string) => (s === "recebido" ? "default" : s === "faturado" ? "secondary" : "outline");
@@ -34,6 +36,7 @@ export function FinanceiroContasReceber({ mes, ano }: { mes: number; ano: number
 
   return (
     <div className="space-y-4">
+      <ReceberEmAberto />
       <NfEmitidasPanel mes={mes} ano={ano} />
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <Card><CardContent className="pt-4"><p className="text-xs text-muted-foreground">Previsto no mês</p><p className="text-xl font-bold">{fmt(totalPrevisto)}</p><p className="text-xs text-muted-foreground">{itens.length} contrato(s)</p></CardContent></Card>

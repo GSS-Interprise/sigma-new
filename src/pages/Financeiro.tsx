@@ -15,6 +15,7 @@ import { FinanceiroGerarDialog } from "@/components/financeiro/FinanceiroGerarDi
 import { FinanceiroConfigValores } from "@/components/financeiro/FinanceiroConfigValores";
 import { FinanceiroSigFinc } from "@/components/financeiro/FinanceiroSigFinc";
 import { FinanceiroFases } from "@/components/financeiro/FinanceiroFases";
+import { FinanceiroPaineis } from "@/components/financeiro/FinanceiroPaineis";
 import { useFinanceiroPagamentos } from "@/hooks/useFinanceiroData";
 
 const MESES = [
@@ -118,6 +119,9 @@ export default function Financeiro() {
               <TabsTrigger value="receber" className="gap-2">
                 <TrendingUp className="h-4 w-4" /> Contas a Receber
               </TabsTrigger>
+              <TabsTrigger value="paineis" className="gap-2">
+                <BarChart3 className="h-4 w-4" /> Painéis
+              </TabsTrigger>
               <TabsTrigger value="sigfinc" className="gap-2">
                 <Wallet className="h-4 w-4" /> SigFinc
               </TabsTrigger>
@@ -147,6 +151,10 @@ export default function Financeiro() {
           <TabsContent value="receber" className="space-y-4">
             <FinanceiroContasReceber mes={mes || (now.getMonth() + 1)} ano={ano} />
             <FinanceiroContasGerais tipo="receber" mes={mes || (now.getMonth() + 1)} ano={ano} />
+          </TabsContent>
+
+          <TabsContent value="paineis">
+            <FinanceiroPaineis />
           </TabsContent>
 
           <TabsContent value="sigfinc">

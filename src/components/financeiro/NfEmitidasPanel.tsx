@@ -49,6 +49,26 @@ export function NfEmitidasPanel({ mes, ano }: { mes: number; ano: number }) {
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [previa, setPrevia] = useState<{ itens: any[]; escrita: boolean } | null>(null);
   const [enviando, setEnviando] = useState(false);
+  // recebimento: data e valor que entraram de fato (o líquido é só a sugestão)
+  const [receb, setReceb] = useState<{ nota: any; data: string; valor: string } | null>(null);
+  const [salvandoReceb, setSalvandoReceb] = useState(false);
+  const hoje = () => new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
+  const numero = (t: string) => Number(t.replace(/\./g, "").replace(",", "."));
+  const confirmarRecebimento = async () => {
+    if (!receb) return;
+    setSalvandoReceb(true);
+    try {
+      await chamar({ acao: "nf_emitida_receber", id: receb.nota.id, recebido_em: receb.data, valor_recebido: numero(receb.valor) });
+      toast.success("Recebimento registrado.");
+      setReceb(null); recarregar(); qc.invalidateQueries({ queryKey: ["financeiro-receber-em-aberto"] });
+    } catch (e: any) { toast.error(e.message); }
+    setSalvandoReceb(false);
+  };
+  const desfazerRecebimento = async (n: any) => {
+    if (!window.confirm(`Desfazer o recebimento da NF ${n.numero_nota || ""}?`)) return;
+    try { await chamar({ acao: "nf_emitida_desfazer_recebimento", id: n.id }); recarregar(); qc.invalidateQueries({ queryKey: ["financeiro-receber-em-aberto"] }); }
+    catch (e: any) { toast.error(e.message); }
+  };
 
   const ini = `${ano}-${String(mes).padStart(2, "0")}-01`;
   const fim = new Date(Date.UTC(ano, mes, 0)).toISOString().slice(0, 10);
@@ -170,6 +190,7 @@ export function NfEmitidasPanel({ mes, ano }: { mes: number; ano: number }) {
                     <TableHead className="text-right">Líquido</TableHead>
                     <TableHead>Vencimento</TableHead>
                     <TableHead>Situação</TableHead>
+                    <TableHead>Recebimento</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -219,6 +240,19 @@ export function NfEmitidasPanel({ mes, ano }: { mes: number; ano: number }) {
                             onBlur={(e) => e.target.value && e.target.value !== n.vencimento && atualizar(n.id, { vencimento: e.target.value })} />
                         </TableCell>
                         <TableCell><span className={`rounded-full px-2 py-0.5 text-[11px] whitespace-nowrap ${st.cls}`}>{st.label}</span></TableCell>
+                        <TableCell className="whitespace-nowrap text-xs">
+                          {n.status === "recebida" ? (
+                            <span>
+                              {dataBr(n.recebido_em)} · {brl(n.valor_recebido)}
+                              <button className="ml-2 text-muted-foreground hover:underline" onClick={() => desfazerRecebimento(n)}>desfazer</button>
+                            </span>
+                          ) : (
+                            <Button size="sm" variant="outline" className="h-7 text-xs"
+                              onClick={() => setReceb({ nota: n, data: hoje(), valor: (n.valor_liquido ?? n.valor_bruto ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) })}>
+                              Receber
+                            </Button>
+                          )}
+                        </TableCell>
                       </TableRow>
                     );
                   })}
@@ -227,6 +261,34 @@ export function NfEmitidasPanel({ mes, ano }: { mes: number; ano: number }) {
             </div>
           )}
       </CardContent>
+
+      <Dialog open={!!receb} onOpenChange={(o) => !o && setReceb(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Registrar recebimento</DialogTitle></DialogHeader>
+          {receb && (
+            <div className="space-y-3 text-sm">
+              <p className="text-muted-foreground">NF {receb.nota.numero_nota || "s/ nº"} · {receb.nota.tomador_nome || "—"}</p>
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Data em que o valor entrou</p>
+                <Input type="date" value={receb.data} onChange={(e) => setReceb({ ...receb, data: e.target.value })} />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Valor recebido</p>
+                <Input inputMode="decimal" value={receb.valor} onChange={(e) => setReceb({ ...receb, valor: e.target.value })} />
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Nota: bruto {brl(receb.nota.valor_bruto)} · líquido {brl(receb.nota.valor_liquido)}
+                </p>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReceb(null)}>Cancelar</Button>
+            <Button disabled={salvandoReceb || !receb?.data || !(receb && numero(receb.valor) > 0)} onClick={confirmarRecebimento}>
+              {salvandoReceb ? <Loader2 className="h-4 w-4 animate-spin" /> : "Registrar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!previa} onOpenChange={(o) => !o && setPrevia(null)}>
         <DialogContent className="max-w-2xl max-h-[90dvh] overflow-y-auto">
