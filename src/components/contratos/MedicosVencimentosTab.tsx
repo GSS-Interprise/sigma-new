@@ -41,6 +41,8 @@ export function MedicosVencimentosTab() {
         q = q.not("data_validade", "is", null).lte("data_validade", lim).order("data_validade");
       } else if (visao === "sem") {
         q = q.is("data_validade", null).order("created_at", { ascending: false });
+        // contrato/aditivo assinado não vence como documento: só aparece se filtrar pelo tipo
+        if (tipo === "todos") q = q.neq("tipo_documento", "contrato_aditivo");
       } else {
         q = q.order("data_validade", { ascending: true, nullsFirst: false });
       }
