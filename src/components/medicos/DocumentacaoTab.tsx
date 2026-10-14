@@ -914,6 +914,9 @@ export function DocumentacaoTab({ medicoId, leadId }: DocumentacaoTabProps) {
                             </span>
                           );
                         })()}
+                        {doc.source === 'medico' && doc.tipo_documento !== 'link_externo' && (
+                          <ValidadeInline docId={doc.id} medicoId={medicoId} valor={'data_validade' in doc ? (doc as any).data_validade : null} />
+                        )}
                       </div>
                       {doc.tipo_documento === 'link_externo' && doc.url_externa && (
                         <p className="text-xs text-muted-foreground mt-1">
@@ -1034,4 +1037,28 @@ export function DocumentacaoTab({ medicoId, leadId }: DocumentacaoTabProps) {
       </Dialog>
     </div>
   );
+}
+
+// validade de documento já enviado (T13): até 14/10 nenhum documento tinha validade, e não havia
+// como preencher depois do envio. O robô vencimentos-alertas avisa antes de vencer.
+function ValidadeInline({ docId, medicoId, valor }: { docId: string; medicoId: string; valor: string | null }) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const [editando, setEditando] = useState(false);
+  const salvar = async (v: string) => {
+    setEditando(false);
+    if ((v || null) === (valor || null)) return;
+    const { error } = await supabase.from('medico_documentos').update({ data_validade: v || null }).eq('id', docId);
+    if (error) return toast({ title: 'Não salvou a validade', description: error.message, variant: 'destructive' });
+    toast({ title: 'Validade salva' });
+    qc.invalidateQueries({ queryKey: ['medico-documentos', medicoId] });
+  };
+  if (!editando) {
+    return (
+      <button type="button" className="text-xs text-primary underline-offset-2 hover:underline" onClick={() => setEditando(true)}>
+        {valor ? 'alterar validade' : '+ validade'}
+      </button>
+    );
+  }
+  return <Input type="date" autoFocus defaultValue={valor ?? ''} className="h-7 w-[150px] text-xs" onBlur={(e) => salvar(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') salvar((e.target as HTMLInputElement).value); if (e.key === 'Escape') setEditando(false); }} />;
 }

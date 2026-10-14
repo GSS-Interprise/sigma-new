@@ -20,6 +20,8 @@ import { UnidadesTab } from "@/components/clientes/UnidadesTab";
 import { ContratosRascunhoTab } from "@/components/contratos/ContratosRascunhoTab";
 import { ContratosDrEscalaTab } from "@/components/contratos/ContratosDrEscalaTab";
 import { ContratosDrOportunidadeTab } from "@/components/contratos/ContratosDrOportunidadeTab";
+import { EmpresaDocumentosTab } from "@/components/contratos/EmpresaDocumentosTab";
+import { MedicosVencimentosTab } from "@/components/contratos/MedicosVencimentosTab";
 import { usePermissions } from "@/hooks/usePermissions";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -37,7 +39,8 @@ export default function Contratos() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [clienteDialogOpen, setClienteDialogOpen] = useState(false);
   const [editingCliente, setEditingCliente] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState(isLicitacaoOnly ? "rascunhos" : "contratos");
+  // ?aba= abre direto uma aba (link dos avisos de vencimento)
+  const [activeTab, setActiveTab] = useState(searchParams.get("aba") || (isLicitacaoOnly ? "rascunhos" : "contratos"));
   const [searchNome, setSearchNome] = useState("");
   const [selectedStatus, setSelectedStatus] = useState<string[]>([]);
   const [selectedUf, setSelectedUf] = useState<string[]>([]);
@@ -447,6 +450,8 @@ export default function Contratos() {
             {!isLicitacaoOnly && <TabsTrigger value="dr-oportunidade">Dr. Oportunidade</TabsTrigger>}
             <TabsTrigger value="rascunhos">Rascunhos (Licitações)</TabsTrigger>
             {!isLicitacaoOnly && <TabsTrigger value="clientes">Clientes</TabsTrigger>}
+            <TabsTrigger value="documentos-empresa">Documentos da empresa</TabsTrigger>
+            {!isLicitacaoOnly && <TabsTrigger value="vencimentos-medicos">Vencimentos dos médicos</TabsTrigger>}
           </TabsList>
 
           <TabsContent value="contratos" className="mt-6">
@@ -543,6 +548,13 @@ export default function Contratos() {
               onDelete={handleDeleteCliente}
               onManageUnidades={handleManageUnidades}
             />
+          </TabsContent>
+          <TabsContent value="documentos-empresa" className="mt-6">
+            <EmpresaDocumentosTab />
+          </TabsContent>
+
+          <TabsContent value="vencimentos-medicos" className="mt-6">
+            <MedicosVencimentosTab />
           </TabsContent>
         </Tabs>
 

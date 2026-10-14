@@ -146,12 +146,14 @@ O Sigma volta a fazer pela equipe de licitações o que hoje é feito à mão e 
 **Bloco 2 · Contratos (5 dias úteis)**
 - [ ] T8 — Licitações arrematadas no lugar do rascunho; número só ao virar contrato; arquivos e análise seguem e abrem; correção do aviso falso "Contrato atualizado com sucesso".
 - [ ] T9 — Avisos de contrato assinado (financeiro e operacional) e de início de serviço pela primeira escala.
-- [ ] T10 — Certidões e documentos da empresa com vencimento e alerta.
+- [x] T10 — Certidões e documentos da empresa com vencimento e alerta.
+  - 14/10: aba **Documentos da empresa** em Clientes e Contratos (`empresa_documentos`, arquivos em `contratos-documentos/empresa/`): cadastro por tipo, emissor, emissão, validade e arquivo; **Renovar** anexa a versão nova e manda a antiga para o histórico; visualizador com setas. Robô `vencimentos-alertas` (diário 8h) avisa no sino e por e-mail, um resumo por pessoa, a 30/15/7/1 dia e vencido; destinatários e dias editáveis em **Avisos** (padrão: Denise, Letícia, Bianca, Maine e Maria Vitória). Falta a lista inicial de certidões (Bianca) — a equipe cadastra direto.
 
 **Bloco 3 · Contratos do médico (5 dias úteis)**
 - [ ] T11 — Assinatura do Ideia chega ao Sigma (API ou e-mail dedicado) e avisa quem converteu; PDF assinado anexado ao médico.
 - [ ] T12 — Indicador por pessoa (convertidos × assinados × não assinados com motivo), resumo das condições do médico e aviso ao financeiro quando o médico é vinculado a um contrato.
-- [ ] T13 — Documentos do médico com data de validade e alerta.
+- [x] T13 — Documentos do médico com data de validade e alerta.
+  - 14/10: nenhum dos 766 documentos tinha validade. Aba **Vencimentos dos médicos** (vencidos/vencendo em 60 dias, sem validade, por tipo) com a validade editável na linha; na ficha do médico, "+ validade" em cada documento já enviado. Mesmo robô e configuração (padrão: Bianca e Maine, 30/15/7 dias).
 
 ## 7. Critério de pronto (verificável)
 
