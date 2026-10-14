@@ -155,6 +155,8 @@ O Sigma volta a fazer pela equipe de licitações o que hoje é feito à mão e 
 
 **Bloco 3 · Contratos do médico (5 dias úteis)**
 - [ ] T11 — Assinatura do Ideia chega ao Sigma (API ou e-mail dedicado) e avisa quem converteu; PDF assinado anexado ao médico.
+  - [x] 14/10: endpoint pronto — edge `ideia-webhook` (URL `https://zupsbgtoeoixfokzkjro.supabase.co/functions/v1/ideia-webhook`, autenticação X-Api-Key com chave gerada e guardada em `integracao_segredos.ideia_webhook_key`, nunca no código). Guarda todo aviso em `ideia_eventos`, lê o signatário em formatos diferentes (testado com dois), casa médico/lead por CPF ou e-mail e avisa quem converteu (`leads.convertido_por`; sem conversor, gestão de contratos).
+  - [ ] Cadastrar o webhook na organização GSS do Ideia e mandar um documento de teste (esperando o ok da Bianca e da Maine); ajustar a leitura ao formato real; baixar o PDF assinado para `medico_documentos`.
 - [ ] T12 — Indicador por pessoa (convertidos × assinados × não assinados com motivo), resumo das condições do médico e aviso ao financeiro quando o médico é vinculado a um contrato.
 - [x] T13 — Documentos do médico com data de validade e alerta.
   - 14/10: nenhum dos 766 documentos tinha validade. Aba **Vencimentos dos médicos** (vencidos/vencendo em 60 dias, sem validade, por tipo) com a validade editável na linha; na ficha do médico, "+ validade" em cada documento já enviado. Mesmo robô e configuração (padrão: Bianca e Maine, 30/15/7 dias).
