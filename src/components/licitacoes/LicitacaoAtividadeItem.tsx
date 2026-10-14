@@ -13,7 +13,8 @@ import {
   Edit,
   Paperclip,
   Check,
-  Pencil
+  Pencil,
+  CalendarClock
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
@@ -60,6 +61,8 @@ function getAtividadeIcon(tipo: string) {
   switch (tipo) {
     case 'comentario':
       return <MessageSquare className="h-3.5 w-3.5" />;
+    case 'tarefa':
+      return <CalendarClock className="h-3.5 w-3.5" />;
     case 'status_alterado':
       return <FileText className="h-3.5 w-3.5" />;
     case 'campo_atualizado':

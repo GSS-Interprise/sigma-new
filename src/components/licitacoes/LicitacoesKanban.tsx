@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { Calendar, DollarSign, User, MapPin, AlertTriangle, Paperclip, CheckCircle2, Clock, Copy, ArchiveRestore } from "lucide-react";
+import { Calendar, CalendarClock, DollarSign, User, MapPin, AlertTriangle, Paperclip, CheckCircle2, Clock, Copy, ArchiveRestore } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { useUserSetor } from "@/hooks/useUserSetor";
@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { CardActionsMenu } from "@/components/demandas/CardActionsMenu";
 import { copiarAnexosLicitacaoParaRascunho, copiarAnexosLicitacaoParaContrato } from "@/hooks/useContratoRascunho";
 import { ColunaKanbanCabecalho, NovaColunaInline, colunaArrastada, ehArrastoDeColuna, useEditarColunasLicitacoes } from "./ColunaKanbanEditavel";
+import { rotuloTarefa, urgenciaTarefa } from "@/lib/licitacaoTarefas";
 
 // Status que requerem resultado obrigatório (Inteligência Competitiva)
 const STATUS_REQUER_RESULTADO = ['arrematados', 'nao_ganhamos'];
@@ -102,7 +103,7 @@ const TAG_COLOR_MAP: { [key: string]: string } = {
 // NOTA: 'objeto' e 'observacoes' permanecem fora do select inicial por performance.
 // 'objeto_contrato' precisa ficar no select base porque é usado na validação de conversão para contrato.
 const LICITACOES_KANBAN_SELECT =
-  'id,created_at,updated_at,numero_edital,orgao,cnpj_orgao,valor_estimado,data_abertura,data_limite,data_disputa,status,responsavel_id,municipio_uf,tipo_modalidade,subtipo_modalidade,etiquetas,titulo,prioridade,tipo_licitacao,servicos_contrato,objeto_contrato,check_conversao_1,check_conversao_2,check_conversao_3,dados_customizados,card_gemeo_id,arquivado_em' as const;
+  'id,created_at,updated_at,numero_edital,orgao,cnpj_orgao,valor_estimado,data_abertura,data_limite,data_disputa,status,responsavel_id,municipio_uf,tipo_modalidade,subtipo_modalidade,etiquetas,titulo,prioridade,tipo_licitacao,servicos_contrato,objeto_contrato,check_conversao_1,check_conversao_2,check_conversao_3,dados_customizados,card_gemeo_id,arquivado_em,fase_invertida' as const;
 
 // Colunas pesadas carregadas sob demanda ao clicar no card
 const LICITACOES_HEAVY_COLUMNS = 'objeto,decorrencia_analise,objeto_contrato,observacoes' as const;
@@ -139,10 +140,56 @@ const isLicitacaoValidaParaMover = (licitacao: LicitacaoWithResponsavel): { vali
   return { valido: true };
 };
 
+/**
+ * Filtro de prazo do quadro (T5): período (hoje, 7, 15, 30 dias) e tipo (disputa ou tipo de tarefa).
+ * Mostra o card com disputa no período ou com tarefa aberta que vence até o fim do período — tarefa
+ * atrasada continua aparecendo até alguém concluir.
+ */
+async function filtroPrazo(filters: any): Promise<((q: any) => any) | null> {
+  const dias = Number(filters?.prazoDias) || 0;
+  const tipo = filters?.prazoTipo as string | undefined;
+  if (!dias && !tipo) return null;
+  const ini = new Date(); ini.setHours(0, 0, 0, 0);
+  const fim = dias ? new Date(ini.getTime() + dias * 864e5) : null;
+  let ids: string[] = [];
+  if (tipo !== 'disputa') {
+    let q = (supabase as any).from('licitacao_tarefas').select('licitacao_id').is('concluida_em', null).limit(2000);
+    if (fim) q = q.lt('data_hora', fim.toISOString());
+    if (tipo) q = q.eq('tipo', tipo);
+    const { data } = await q;
+    ids = [...new Set<string>((data ?? []).map((t: any) => t.licitacao_id))];
+  }
+  return (query: any) => {
+    const partes: string[] = [];
+    if (!tipo || tipo === 'disputa') {
+      partes.push(fim ? `and(data_disputa.gte.${ini.toISOString()},data_disputa.lt.${fim.toISOString()})` : 'data_disputa.not.is.null');
+    }
+    if (tipo !== 'disputa' && ids.length) partes.push(`id.in.(${ids.join(',')})`);
+    if (!partes.length) return query.eq('id', '00000000-0000-0000-0000-000000000000');
+    return query.or(partes.join(','));
+  };
+}
+
 export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filters, onHasMoreChange, board = 'effecti', colunasEditaveis = false }: LicitacoesKanbanProps) {
   const [colunaArrastandoId, setColunaArrastandoId] = useState<string | null>(null);
   const [novaColunaDepoisDe, setNovaColunaDepoisDe] = useState<string | null>(null);
   const { mover: moverColuna } = useEditarColunasLicitacoes();
+  const { data: tarefasAbertas = [] } = useQuery({
+    queryKey: ['licitacao-tarefas-abertas'],
+    staleTime: 60 * 1000,
+    queryFn: async () => {
+      const { data } = await (supabase as any).from('licitacao_tarefas')
+        .select('licitacao_id,tipo,titulo,data_hora').is('concluida_em', null).order('data_hora').limit(2000);
+      return (data ?? []) as { licitacao_id: string; tipo: string; titulo: string | null; data_hora: string }[];
+    },
+  });
+  // próxima tarefa de cada card (a lista já vem por data) e quem tem envio de documentos lançado
+  const proximaTarefa = useMemo(() => {
+    const m = new Map<string, (typeof tarefasAbertas)[number]>();
+    for (const t of tarefasAbertas) if (!m.has(t.licitacao_id)) m.set(t.licitacao_id, t);
+    return m;
+  }, [tarefasAbertas]);
+  const temEnvioDocs = useMemo(() => new Set(tarefasAbertas.filter((t) => t.tipo === 'envio_documentos').map((t) => t.licitacao_id)), [tarefasAbertas]);
   const queryClient = useQueryClient();
   const [fileDropTarget, setFileDropTarget] = useState<string | null>(null);
   const [uploadingFiles, setUploadingFiles] = useState<string | null>(null);
@@ -285,6 +332,8 @@ export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filt
       // arquivado (30 dias após a última data, descarte, não ganhamos) fica fora do quadro;
       // a busca acha também os arquivados — o mesmo edital pode voltar meses depois
       if (!filters?.search) query = query.is('arquivado_em', null);
+      const prazo = await filtroPrazo(filters);
+      if (prazo) query = prazo(query);
 
       // Apply filters
       if (filters?.search) {
@@ -395,6 +444,8 @@ export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filt
       // arquivado (30 dias após a última data, descarte, não ganhamos) fica fora do quadro;
       // a busca acha também os arquivados — o mesmo edital pode voltar meses depois
       if (!filters?.search) query = query.is('arquivado_em', null);
+      const prazo = await filtroPrazo(filters);
+      if (prazo) query = prazo(query);
 
       if (filters?.search) {
         query = query.or(`titulo.ilike.%${filters.search}%,numero_edital.ilike.%${filters.search}%,orgao.ilike.%${filters.search}%`);
@@ -445,6 +496,8 @@ export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filt
       // arquivado (30 dias após a última data, descarte, não ganhamos) fica fora do quadro;
       // a busca acha também os arquivados — o mesmo edital pode voltar meses depois
       if (!filters?.search) query = query.is('arquivado_em', null);
+      const prazo = await filtroPrazo(filters);
+      if (prazo) query = prazo(query);
 
       if (filters?.search) {
         query = query.or(`titulo.ilike.%${filters.search}%,numero_edital.ilike.%${filters.search}%,orgao.ilike.%${filters.search}%`);
@@ -1204,6 +1257,25 @@ export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filt
                               <span className="truncate">
                                 {format(new Date(licitacao.data_disputa), 'dd/MM/yyyy HH:mm')}
                               </span>
+                            </div>
+                          )}
+
+                          {/* próxima tarefa com prazo (T5) */}
+                          {(() => {
+                            const t = proximaTarefa.get(licitacao.id);
+                            if (!t) return null;
+                            const u = urgenciaTarefa(t.data_hora, false);
+                            return (
+                              <div className={`flex items-center gap-1 ${u === 'vencida' ? 'text-red-600 font-medium' : u === 'hoje' ? 'text-amber-700 dark:text-amber-400 font-medium' : 'text-muted-foreground'}`}>
+                                <CalendarClock className="h-3 w-3 flex-shrink-0" />
+                                <span className="truncate">{rotuloTarefa(t)} · {format(new Date(t.data_hora), 'dd/MM HH:mm')}</span>
+                              </div>
+                            );
+                          })()}
+                          {(licitacao as any).fase_invertida && !temEnvioDocs.has(licitacao.id) && (
+                            <div className="flex items-center gap-1 text-red-600">
+                              <AlertTriangle className="h-3 w-3 flex-shrink-0" />
+                              <span className="truncate">Fase invertida sem data de envio dos documentos</span>
                             </div>
                           )}
 

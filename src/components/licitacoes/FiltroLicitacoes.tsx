@@ -1,4 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { useMinhasPreferenciasLicitacoes } from "./LicitacaoTarefasPanel";
+import { TIPOS_TAREFA } from "@/lib/licitacaoTarefas";
+import { toast } from "sonner";
 import { useLicitacoesProfiles } from "@/hooks/useLicitacoesProfiles";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -7,7 +13,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Calendar as CalendarIcon, Search, X, ChevronDown, ChevronUp, Filter } from "lucide-react";
+import { Calendar as CalendarIcon, CalendarClock, Search, X, ChevronDown, ChevronUp, Filter } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -37,6 +43,24 @@ export function FiltroLicitacoes({ onFilterChange, compact = false }: FiltroLici
   const [dataInicio, setDataInicio] = useState<Date | undefined>();
   const [dataFim, setDataFim] = useState<Date | undefined>();
   const [isOpen, setIsOpen] = useState(false);
+  // prazo (T5): período e tipo; o período com que o quadro abre é escolha de cada pessoa
+  const [prazoDias, setPrazoDias] = useState(0);
+  const [prazoTipo, setPrazoTipo] = useState("");
+  const { user } = useAuth();
+  const qc = useQueryClient();
+  const { data: pref } = useMinhasPreferenciasLicitacoes();
+  const prefAplicada = useRef(false);
+  useEffect(() => {
+    if (pref && !prefAplicada.current) { prefAplicada.current = true; setPrazoDias(pref.filtro_dias ?? 0); }
+  }, [pref]);
+  const fixarPeriodo = async () => {
+    if (!user) return;
+    const { error } = await (supabase as any).from("licitacoes_preferencias")
+      .upsert({ user_id: user.id, filtro_dias: prazoDias || null, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
+    if (error) return toast.error("Não foi possível salvar: " + error.message);
+    toast.success(prazoDias ? `O quadro vai abrir mostrando ${prazoDias === 1 ? "hoje" : `${prazoDias} dias`}` : "O quadro vai abrir mostrando tudo");
+    qc.invalidateQueries({ queryKey: ["licitacoes-preferencias"] });
+  };
 
   const { data: profiles } = useLicitacoesProfiles();
 
@@ -48,8 +72,10 @@ export function FiltroLicitacoes({ onFilterChange, compact = false }: FiltroLici
       tipoLicitacao: tipoLicitacao || "GSS",
       dataInicio,
       dataFim,
+      prazoDias: prazoDias || undefined,
+      prazoTipo: prazoTipo || undefined,
     });
-  }, [search, selectedEtiquetas, responsavel, tipoLicitacao, dataInicio, dataFim]);
+  }, [search, selectedEtiquetas, responsavel, tipoLicitacao, dataInicio, dataFim, prazoDias, prazoTipo]);
 
   const toggleEtiqueta = (etiqueta: string) => {
     setSelectedEtiquetas(prev =>
@@ -66,13 +92,14 @@ export function FiltroLicitacoes({ onFilterChange, compact = false }: FiltroLici
     setTipoLicitacao("GSS");
     setDataInicio(undefined);
     setDataFim(undefined);
+    setPrazoTipo("");
   };
 
   const outraEmpresa = tipoLicitacao !== "GSS";
-  const hasActiveFilters = search || selectedEtiquetas.length > 0 || responsavel || outraEmpresa || dataInicio || dataFim;
+  const hasActiveFilters = search || selectedEtiquetas.length > 0 || responsavel || outraEmpresa || dataInicio || dataFim || prazoTipo;
   const hasAdvancedFilters = selectedEtiquetas.length > 0 || responsavel || outraEmpresa || dataInicio || dataFim;
 
-  const activeCount = selectedEtiquetas.length + (responsavel ? 1 : 0) + (dataInicio ? 1 : 0) + (dataFim ? 1 : 0);
+  const activeCount = selectedEtiquetas.length + (responsavel ? 1 : 0) + (dataInicio ? 1 : 0) + (dataFim ? 1 : 0) + (prazoTipo ? 1 : 0);
 
   if (compact) {
     return (
@@ -87,6 +114,25 @@ export function FiltroLicitacoes({ onFilterChange, compact = false }: FiltroLici
               className="h-9 pl-9 rounded-md bg-muted/40 border-border/60 focus-visible:bg-background text-sm"
             />
           </div>
+          <Select
+            value={String(prazoDias)}
+            onValueChange={(v) => { if (v === "fixar") { fixarPeriodo(); return; } setPrazoDias(Number(v)); }}
+          >
+            <SelectTrigger className="h-9 w-[132px] gap-1 border-border/60 bg-muted/40 text-sm" title="Prazos: disputas e tarefas no período (tarefa atrasada sempre aparece)">
+              <CalendarClock className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="bg-background z-50">
+              <SelectItem value="0">Tudo</SelectItem>
+              <SelectItem value="1">Hoje</SelectItem>
+              <SelectItem value="7">7 dias</SelectItem>
+              <SelectItem value="15">15 dias</SelectItem>
+              <SelectItem value="30">30 dias</SelectItem>
+              {(pref?.filtro_dias ?? 0) !== prazoDias && (
+                <SelectItem value="fixar" className="border-t text-xs text-primary">Abrir sempre assim</SelectItem>
+              )}
+            </SelectContent>
+          </Select>
           <PopoverTrigger asChild>
             <Button
               variant="ghost"
@@ -147,6 +193,17 @@ export function FiltroLicitacoes({ onFilterChange, compact = false }: FiltroLici
                     <SelectItem value="GSS">GSS</SelectItem>
                     <SelectItem value="AGES">AGES</SelectItem>
                     <SelectItem value="TODAS">GSS e AGES</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="col-span-2 space-y-1.5">
+                <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Tipo de prazo</Label>
+                <Select value={prazoTipo || "__qualquer"} onValueChange={(v) => setPrazoTipo(v === "__qualquer" ? "" : v)}>
+                  <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent className="bg-background z-50">
+                    <SelectItem value="__qualquer">Qualquer (disputa ou tarefa)</SelectItem>
+                    <SelectItem value="disputa">Disputa</SelectItem>
+                    {TIPOS_TAREFA.map((t) => <SelectItem key={t.value} value={t.value}>{t.value === "personalizada" ? "Outras tarefas" : t.label}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>

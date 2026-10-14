@@ -2,8 +2,9 @@ import { useState, useEffect } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { LicitacoesKanban } from "@/components/licitacoes/LicitacoesKanban";
 import { Button } from "@/components/ui/button";
-import { Plus, RefreshCw, Search, Settings2, ChevronDown, Archive } from "lucide-react";
+import { Plus, RefreshCw, Search, Settings2, ChevronDown, Archive, CalendarClock } from "lucide-react";
 import { LicitacoesArquivadasDialog } from "@/components/licitacoes/LicitacoesArquivadasDialog";
+import { LicitacoesAgendaDialog } from "@/components/licitacoes/LicitacoesAgendaDialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { fetchWebhookByIdUrl } from "@/components/licitacoes/LicitacaoWebhookDialog";
 import { LicitacaoDetailDialog } from "@/components/licitacoes/LicitacaoDetailDialog";
@@ -52,6 +53,7 @@ export default function Licitacoes({ board = 'effecti' }: LicitacoesProps = {}) 
   const [addByIdValue, setAddByIdValue] = useState("");
   const [addByIdLoading, setAddByIdLoading] = useState(false);
   const [arquivadosOpen, setArquivadosOpen] = useState(false);
+  const [agendaOpen, setAgendaOpen] = useState(false);
 
   const { isAdmin, userRoles, canView, isLoadingRoles, isLeader, isLiderLicitacao } = usePermissions();
   const { user } = useAuth();
@@ -130,7 +132,22 @@ export default function Licitacoes({ board = 'effecti' }: LicitacoesProps = {}) 
   useEffect(() => {
     const openLicitacaoId = searchParams.get("open");
     if (openLicitacaoId && licitacoes) {
-      const licitacaoToOpen = licitacoes.find((l) => l.id === openLicitacaoId);
+      const naLista = licitacoes.find((l) => l.id === openLicitacaoId);
+      if (!naLista) {
+        // aviso de tarefa e agenda abrem qualquer card, inclusive arquivado ou fora da página carregada
+        (async () => {
+          const { data } = await supabase.from("licitacoes").select("*").eq("id", openLicitacaoId).maybeSingle();
+          if (data) {
+            setSelectedLicitacao(data as any);
+            setIsNewEdital(false);
+            setDetailDialogOpen(true);
+          }
+          searchParams.delete("open");
+          setSearchParams(searchParams, { replace: true });
+        })();
+        return;
+      }
+      const licitacaoToOpen = naLista;
       if (licitacaoToOpen) {
         // Buscar colunas pesadas (decorrencia_analise, objeto, etc.) antes de abrir
         (async () => {
@@ -271,6 +288,16 @@ export default function Licitacoes({ board = 'effecti' }: LicitacoesProps = {}) 
           {!ehRobo && (
             <Tooltip>
               <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground hover:text-foreground" onClick={() => setAgendaOpen(true)}>
+                  <CalendarClock className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Agenda: disputas e tarefas</TooltipContent>
+            </Tooltip>
+          )}
+          {!ehRobo && (
+            <Tooltip>
+              <TooltipTrigger asChild>
                 <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground hover:text-foreground" onClick={() => setArquivadosOpen(true)}>
                   <Archive className="h-4 w-4" />
                 </Button>
@@ -364,6 +391,11 @@ export default function Licitacoes({ board = 'effecti' }: LicitacoesProps = {}) 
       </div>
 
       <LicitacoesArquivadasDialog open={arquivadosOpen} onOpenChange={setArquivadosOpen} onAbrir={handleViewLicitacao} />
+      <LicitacoesAgendaDialog
+        open={agendaOpen}
+        onOpenChange={setAgendaOpen}
+        onAbrir={(id) => { searchParams.set("open", id); setSearchParams(searchParams, { replace: true }); }}
+      />
 
       <LicitacaoDetailDialog
         open={detailDialogOpen}

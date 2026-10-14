@@ -44,6 +44,7 @@ import { LicitacaoAnexosBar } from "./LicitacaoAnexosBar";
 import { LicitacaoComentarioAvancadoInput } from "./LicitacaoComentarioAvancadoInput";
 import { LicitacaoAtividadeItem } from "./LicitacaoAtividadeItem";
 import { useOpcoesStatusLicitacao } from "./ColunaKanbanEditavel";
+import { LicitacaoTarefasPanel } from "./LicitacaoTarefasPanel";
 import { LicitacaoRiscoIndicator } from "./LicitacaoRiscoIndicator";
 import { LicitacaoResultadoItensDialog } from "./LicitacaoResultadoItensDialog";
 import { LicitacaoCompetitividadeViewDialog } from "./LicitacaoCompetitividadeViewDialog";
@@ -1816,6 +1817,16 @@ export function LicitacaoDetailDialog({
                       </div>
                     </DropZone>
 
+                    {/* Prazos e tarefas com aviso (T5): só depois do card existir */}
+                    {licitacao?.id && !isNew && (
+                      <div className="mt-2">
+                        <LicitacaoTarefasPanel
+                          licitacaoId={licitacao.id}
+                          dataDisputa={licitacao.data_disputa}
+                          responsavelCard={licitacao.responsavel_id}
+                        />
+                      </div>
+                    )}
 
                     <Separator className="my-2" />
 
