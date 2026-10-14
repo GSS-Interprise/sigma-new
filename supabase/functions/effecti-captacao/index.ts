@@ -47,6 +47,7 @@ function sigla(modalidade: string | null | undefined) {
     [/^pregao eletr/, "PE"], [/^pregao presencial/, "PP"], [/^pregao/, "PE"], [/^concorrencia eletr/, "CE"],
     [/^concorrencia/, "CC"], [/^dispensa eletr/, "DE"], [/^dispensa/, "DL"], [/^credenciamento/, "CRE"],
     [/^chamamento/, "CHP"], [/^inexigibilidade/, "INEX"], [/^tomada de preco/, "TP"], [/^convite/, "CV"], [/^leilao/, "LE"],
+    [/^outr/, "OUT"], // mesma sigla que os cards antigos usavam ("OUT 00003/2026 - Itabaiana/Paraíba")
   ];
   for (const [re, s] of tabela) if (re.test(m)) return s;
   return m.split(" ").filter(Boolean).slice(0, 3).map((w) => w[0].toUpperCase()).join("") || "ED";
@@ -160,7 +161,8 @@ async function capturar(svc: any, supabaseUrl: string, input: any) {
     const id = String(a.idLicitacao);
     const cnpj = digitos(a.cnpj);
     const uf = String(a.uf || cidadePorCnpj.get(cnpj)?.uf || "").toUpperCase().slice(0, 2);
-    const cidadeBruta = cidadePorCnpj.get(cnpj)?.municipio || cidadeDoOrgao(a.orgao) || null;
+    // órgão do Distrito Federal não tem município no cadastro: a cidade é Brasília
+    const cidadeBruta = cidadePorCnpj.get(cnpj)?.municipio || cidadeDoOrgao(a.orgao) || (String(a.uf).toUpperCase() === "DF" ? "Brasília" : null);
     const cidade = cidadeBruta ? nomeProprio(cidadeBruta) : null;
     const processo = String(a.processo || "").trim();
     const titulo = `${sigla(a.modalidade)} ${processo || id} - ${cidade ? `${cidade}/${uf}` : uf}`.trim();
