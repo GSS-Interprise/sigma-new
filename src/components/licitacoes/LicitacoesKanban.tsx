@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { Calendar, DollarSign, User, MapPin, AlertTriangle, Paperclip, CheckCircle2, Clock, Copy } from "lucide-react";
+import { Calendar, DollarSign, User, MapPin, AlertTriangle, Paperclip, CheckCircle2, Clock, Copy, ArchiveRestore } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { useUserSetor } from "@/hooks/useUserSetor";
@@ -99,7 +99,7 @@ const TAG_COLOR_MAP: { [key: string]: string } = {
 // NOTA: 'objeto' e 'observacoes' permanecem fora do select inicial por performance.
 // 'objeto_contrato' precisa ficar no select base porque é usado na validação de conversão para contrato.
 const LICITACOES_KANBAN_SELECT =
-  'id,created_at,updated_at,numero_edital,orgao,cnpj_orgao,valor_estimado,data_abertura,data_limite,data_disputa,status,responsavel_id,municipio_uf,tipo_modalidade,subtipo_modalidade,etiquetas,titulo,prioridade,tipo_licitacao,servicos_contrato,objeto_contrato,check_conversao_1,check_conversao_2,check_conversao_3,dados_customizados,card_gemeo_id' as const;
+  'id,created_at,updated_at,numero_edital,orgao,cnpj_orgao,valor_estimado,data_abertura,data_limite,data_disputa,status,responsavel_id,municipio_uf,tipo_modalidade,subtipo_modalidade,etiquetas,titulo,prioridade,tipo_licitacao,servicos_contrato,objeto_contrato,check_conversao_1,check_conversao_2,check_conversao_3,dados_customizados,card_gemeo_id,arquivado_em' as const;
 
 // Colunas pesadas carregadas sob demanda ao clicar no card
 const LICITACOES_HEAVY_COLUMNS = 'objeto,decorrencia_analise,objeto_contrato,observacoes' as const;
@@ -276,6 +276,9 @@ export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filt
         // quadro da GSS por padrão: o card da AGES só aparece escolhendo AGES ou Todas (coluna empresa)
         query = query.eq('empresa', filters?.tipoLicitacao || 'GSS');
       }
+      // arquivado (30 dias após a última data, descarte, não ganhamos) fica fora do quadro;
+      // a busca acha também os arquivados — o mesmo edital pode voltar meses depois
+      if (!filters?.search) query = query.is('arquivado_em', null);
 
       // Apply filters
       if (filters?.search) {
@@ -383,6 +386,9 @@ export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filt
         // quadro da GSS por padrão: o card da AGES só aparece escolhendo AGES ou Todas (coluna empresa)
         query = query.eq('empresa', filters?.tipoLicitacao || 'GSS');
       }
+      // arquivado (30 dias após a última data, descarte, não ganhamos) fica fora do quadro;
+      // a busca acha também os arquivados — o mesmo edital pode voltar meses depois
+      if (!filters?.search) query = query.is('arquivado_em', null);
 
       if (filters?.search) {
         query = query.or(`titulo.ilike.%${filters.search}%,numero_edital.ilike.%${filters.search}%,orgao.ilike.%${filters.search}%`);
@@ -430,6 +436,9 @@ export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filt
         // quadro da GSS por padrão: o card da AGES só aparece escolhendo AGES ou Todas (coluna empresa)
         query = query.eq('empresa', filters?.tipoLicitacao || 'GSS');
       }
+      // arquivado (30 dias após a última data, descarte, não ganhamos) fica fora do quadro;
+      // a busca acha também os arquivados — o mesmo edital pode voltar meses depois
+      if (!filters?.search) query = query.is('arquivado_em', null);
 
       if (filters?.search) {
         query = query.or(`titulo.ilike.%${filters.search}%,numero_edital.ilike.%${filters.search}%,orgao.ilike.%${filters.search}%`);
@@ -1074,7 +1083,21 @@ export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filt
                             recursoId={licitacao.id}
                             label={licitacao.titulo || licitacao.numero_edital || licitacao.orgao || "Licitação"}
                             extraItems={
-                              !licitacao.card_gemeo_id ? (
+                              <>
+                              {(licitacao as any).arquivado_em && (
+                                <DropdownMenuItem
+                                  onSelect={async (e) => {
+                                    e.preventDefault();
+                                    const { error } = await (supabase as any).from('licitacoes').update({ arquivado_em: null, arquivado_motivo: null }).eq('id', licitacao.id);
+                                    if (error) toast.error('Não reabriu: ' + error.message);
+                                    else { toast.success('Edital de volta ao quadro.'); queryClient.invalidateQueries({ queryKey: ['licitacoes-kanban'] }); }
+                                  }}
+                                  className="gap-2 cursor-pointer"
+                                >
+                                  <ArchiveRestore className="h-4 w-4" /> Reabrir (tirar do arquivo)
+                                </DropdownMenuItem>
+                              )}
+                              {!licitacao.card_gemeo_id ? (
                                 <DropdownMenuItem
                                   onSelect={(e) => {
                                     e.preventDefault();
@@ -1086,10 +1109,15 @@ export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filt
                                   <Copy className="h-4 w-4" />
                                   {duplicatingId === licitacao.id ? "Duplicando..." : `Duplicar ${(licitacao.tipo_licitacao || "GSS").toUpperCase() === "AGES" ? "→ GSS" : "→ AGES"}`}
                                 </DropdownMenuItem>
-                              ) : null
+                              ) : null}
+                              </>
                             }
                           />
                         </div>
+
+                        {(licitacao as any).arquivado_em && (
+                          <span className="inline-block rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">Arquivado</span>
+                        )}
 
                         {/* Badge de Validação */}
 

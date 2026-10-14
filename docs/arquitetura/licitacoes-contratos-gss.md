@@ -54,7 +54,7 @@ O Sigma volta a fazer pela equipe de licitações o que hoje é feito à mão e 
 - Catálogo da GSS: 21 produtos (especialidades com "que tipo" e "o que não vendo"). Há repetições ("anestesiologia" duas vezes, "plantões" e "plantão") e um nome com erro ("NEUROCIRURGIAO").
 - Perfil GSS: todos os estados, os 12 tipos de disputa, só serviços, sem filtro de ME/EPP.
 - **API:** em Integrações → API existe um token do usuário logado e o link da documentação. O token é por usuário; o botão de gerar outro invalida o atual.
-- Acessos aos portais: 12 cadastrados no nome da GSS; o do **Licitanet está inativo** (é o alerta que aparece na tela inicial).
+- Acessos aos portais: 12 cadastrados no nome da GSS; o do **Licitanet está inativo** (é o alerta que aparece na tela inicial). Não faz parte do plano: serve para enviar lances naquele portal.
 
 **Ideia Signer** (`app.ideiasigner.com.br`, usuário `cadastro@`)
 - 5 organizações. A da GSS ("18670594000103 - GSS GESTÃO SERVICOS A SAUDE LTDA") tem 2.067 documentos, 16 pastas (ex.: "Contratos Médicos - PJ", "Aditivos Contratuais") e três usuários: Bianca (admin), GSS/`cadastro@` (admin) e RH GSS.
@@ -131,8 +131,8 @@ O Sigma volta a fazer pela equipe de licitações o que hoje é feito à mão e 
 ## 6. Plano de Execução — as tarefas (cada item ≈ 1 entrega)
 
 **Bloco 1 · Licitações (5 dias úteis)**
-- [~] T1 — Captação Effecti → Sigma pela API oficial, separada por perfil, com dedupe (número + cidade + órgão), título padrão e alarme de frescor. **Feito em 14/10** (commit fd9fd50): edge `effecti-captacao` (cron 58, a cada 30 min, 06:00–20:30), só perfil GSS, liga ao card manual pelo número + UF + cidade/CNPJ, anexos em `effecti_anexos_fila`, `api-licitacoes` com um card por empresa (AGES conferida intocada). **Falta:** o alarme de frescor (a última rodada já fica em `config_lista_items.effecti_captacao_ultima_rodada`).
-- [ ] T2 — Quadro leve: `ultima_data`, arquivamento automático (30 dias; descarte e não ganhamos na hora), aba Arquivados com busca e Desarquivar, paginação, abas Robô e Triagem PNCP fora da visão da equipe.
+- [x] T1 — Captação Effecti → Sigma pela API oficial, separada por perfil, com dedupe (número + cidade + órgão), título padrão e alarme de frescor. **Feito em 14/10** (commit fd9fd50): edge `effecti-captacao` (cron 58, a cada 30 min, 06:00–20:30), só perfil GSS, liga ao card manual pelo número + UF + cidade/CNPJ, anexos em `effecti_anexos_fila`, `api-licitacoes` com um card por empresa (AGES conferida intocada). Alarme de frescor feito junto com a T2 (`licitacoes_alarme_captacao`).
+- [x] T2 — Quadro leve: arquivamento automático (30 dias após a última data; descarte, não ganhamos e fracassado na hora), aba Arquivados com busca e Reabrir, busca do quadro acha arquivados, abas Robô e Triagem PNCP só para admin. **Feito em 14/10:** coluna `empresa`, `arquivado_em`/`arquivado_motivo`/`desarquivado_em`, gatilho `trg_licitacao_arquivamento`, cron diário `licitacoes-arquivar-prazo` (04:00) e `licitacoes-alarme-captacao` (11:00 e 17:00, dias úteis — fecha o alarme da T1). Primeira rodada: 1.281 cards da GSS arquivados, 105 no quadro, AGES fora da regra.
 - [ ] T3 — Aviso de duplicado na criação manual (inclui arquivados) e colunas editáveis (renomear, reordenar, unir).
 - [ ] T4 — Visualizador de anexos com setas, anexar e colar print na criação, correção dos travamentos ao reabrir e ao excluir imagem, comentários editáveis pelo autor.
 - [ ] T5 — Tarefas com data e hora, sugestão de 3 dias úteis antes da disputa, fase invertida, filtro por tipo e período, alertas por e-mail e no Sigma.
@@ -190,7 +190,6 @@ O Sigma volta a fazer pela equipe de licitações o que hoje é feito à mão e 
 | Ramone/Bianca | Operacional pode vincular médico a uma licitação arrematada antes do contrato estar formalizado? (Ramone, 01:20:10: hoje é preciso "burlar o sistema") | 2 (T8) |
 | Bianca | Lista inicial de certidões e documentos da empresa, com vencimentos | 2 (T10) |
 | Bianca e Maine | Ok para cadastrar o webhook na organização GSS do Ideia e um documento de teste (o acesso já foi visto em 14/10) | 3 (T11) |
-| Bianca | Reativar o acesso do Licitanet no Effecti | 1 |
 
 ---
 
