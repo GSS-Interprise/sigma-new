@@ -131,7 +131,7 @@ O Sigma volta a fazer pela equipe de licitações o que hoje é feito à mão e 
 ## 6. Plano de Execução — as tarefas (cada item ≈ 1 entrega)
 
 **Bloco 1 · Licitações (5 dias úteis)**
-- [ ] T1 — Captação Effecti → Sigma pela API oficial, separada por perfil, com dedupe (número + cidade + órgão), título padrão e alarme de frescor. Confirmar antes no n8n a causa da parada de agosto.
+- [~] T1 — Captação Effecti → Sigma pela API oficial, separada por perfil, com dedupe (número + cidade + órgão), título padrão e alarme de frescor. **Feito em 14/10** (commit fd9fd50): edge `effecti-captacao` (cron 58, a cada 30 min, 06:00–20:30), só perfil GSS, liga ao card manual pelo número + UF + cidade/CNPJ, anexos em `effecti_anexos_fila`, `api-licitacoes` com um card por empresa (AGES conferida intocada). **Falta:** o alarme de frescor (a última rodada já fica em `config_lista_items.effecti_captacao_ultima_rodada`).
 - [ ] T2 — Quadro leve: `ultima_data`, arquivamento automático (30 dias; descarte e não ganhamos na hora), aba Arquivados com busca e Desarquivar, paginação, abas Robô e Triagem PNCP fora da visão da equipe.
 - [ ] T3 — Aviso de duplicado na criação manual (inclui arquivados) e colunas editáveis (renomear, reordenar, unir).
 - [ ] T4 — Visualizador de anexos com setas, anexar e colar print na criação, correção dos travamentos ao reabrir e ao excluir imagem, comentários editáveis pelo autor.
