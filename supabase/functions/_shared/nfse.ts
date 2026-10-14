@@ -144,6 +144,38 @@ function lerGrade(itens: ItemPos[], texto: string): Partial<Nfse> | null {
   };
 }
 
+// ── DANFSe nacional (layout 2026): quadro de impostos em grade ──────────────────
+// O valor fica logo abaixo do rótulo (~8pt) e alinhado à esquerda com ele; "-" é zero. No texto
+// corrido a linha de rótulos vem inteira antes da linha de valores, por isso a leitura por
+// rótulo não achava os impostos e caía na leitura assistida.
+function lerGradeNacional(itens: ItemPos[]): Partial<Nfse> | null {
+  const rot = (re: RegExp) => itens.find((i) => re.test(i.s));
+  if (!rot(/^Valor L[ií]quido da NFS-?e$/) || !rot(/^Total das Reten[cç][oõ]es Federais$/i)) return null;
+  const abaixo = (re: RegExp): string | null => {
+    const r = rot(re);
+    if (!r) return null;
+    return itens.filter((i) => i !== r && Math.abs(i.x0 - r.x0) <= 3 && i.top > r.top + 3 && i.top - r.top <= 14)
+      .sort((a, b) => a.top - b.top)[0]?.s ?? null;
+  };
+  const valorDe = (s: string | null): number | null => {
+    if (s == null) return null;
+    if (/^-$/.test(s.trim())) return 0;
+    const m = s.match(/([\d.]+,\d{2})/);
+    return m ? numero(m[1]) : null;
+  };
+  const bruto = valorDe(abaixo(/^Valor do Servi[cç]o$/i));
+  const irrf = valorDe(abaixo(/^IRRF$/)) ?? 0;
+  const inss = valorDe(abaixo(/^Contribui[cç][aã]o Previdenci[aá]ria - Retida$/i)) ?? 0;
+  const contrib = valorDe(abaixo(/^Contribui[cç][oõ]es Sociais - Retidas$/i)) ?? 0;
+  const iss = valorDe(abaixo(/^ISSQN Retido$/i)) ?? 0;
+  const federais = valorDe(abaixo(/^Total das Reten[cç][oõ]es Federais$/i));
+  const liquido = valorDe(abaixo(/^Valor L[ií]quido da NFS-?e$/));
+  const total = Math.round(((federais ?? irrf + inss + contrib) + iss) * 100) / 100;
+  const ok = bruto != null && liquido != null && Math.abs(bruto - total - liquido) <= 0.05;
+  if (!ok) return null;
+  return { valor: bruto, irrf, inssRetido: inss, contribSociais: contrib, issRetido: iss, totalRetencoes: total, valorLiquido: liquido, impostosLidos: true };
+}
+
 export async function lerNfse(bytes: Uint8Array, cnpjsTomador: string[] = CNPJS_GRUPO_GSS): Promise<Nfse> {
   const vazio: Nfse = {
     legivel: false, ehNfse: false, tomadorGss: false, prestadorCnpj: null, prestadorNome: null,
@@ -241,13 +273,18 @@ export async function lerNfse(bytes: Uint8Array, cnpjsTomador: string[] = CNPJS_
     impostosLidos,
   };
   // layout em grade (Itajaí): o que a posição leu vale mais que o texto corrido
-  const grade = lerGrade(pdf ? await itensPosicionados(pdf).catch(() => []) : [], t);
+  const posicoes = pdf ? await itensPosicionados(pdf).catch(() => [] as ItemPos[]) : [];
+  const grade = lerGrade(posicoes, t);
   if (grade) {
     for (const [k, v] of Object.entries(grade)) if (v !== null && v !== undefined) (lido as Record<string, unknown>)[k] = v;
     lido.impostosLidos = !!grade.impostosLidos;
     if (!grade.impostosLidos) { lido.totalRetencoes = null; lido.valorLiquido = null; }
     lido.tomadorGss = !!grade.tomadorCnpj && cnpjsTomador.includes(grade.tomadorCnpj);
     lido.ehNfse = true;
+  } else if (!lido.impostosLidos) {
+    // DANFSe nacional em grade: só os impostos (o resto o texto corrido já leu)
+    const nac = lerGradeNacional(posicoes);
+    if (nac) Object.assign(lido, nac);
   }
   return lido;
 }
