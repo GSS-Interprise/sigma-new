@@ -1,6 +1,9 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Pencil, Trash2, FileText, Download, Eye, ArrowUpDown, Check, Filter } from "lucide-react";
+import { Pencil, Trash2, FileText, Download, Eye, ArrowUpDown, Check, Filter, PlayCircle } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { usePermissions } from "@/hooks/usePermissions";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
@@ -34,6 +37,8 @@ type SortField = 'cliente' | 'data_inicio' | 'data_fim' | 'assinado' | 'codigo_i
 type SortDirection = 'asc' | 'desc';
 
 export function ContratoList({ contratos, isLoading, onEdit, onView, onDelete }: ContratoListProps) {
+  // início do serviço (T9): avisa o financeiro que é hora de faturar
+  const [inicioServico, setInicioServico] = useState<any | null>(null);
   const { toast } = useToast();
   const { isAdmin, canEdit, canDelete } = usePermissions();
   const [sortField, setSortField] = useState<SortField | null>('codigo_interno');
@@ -619,6 +624,17 @@ export function ContratoList({ contratos, isLoading, onEdit, onView, onDelete }:
                         <Pencil className="h-4 w-4" />
                       </Button>
                     )}
+                    {(isAdmin || canEdit('contratos')) && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className={contrato.servico_iniciado_em ? "text-green-600" : undefined}
+                        onClick={(e) => { e.stopPropagation(); setInicioServico(contrato); }}
+                        title={contrato.servico_iniciado_em ? `Serviço iniciado em ${String(contrato.servico_iniciado_em).split('-').reverse().join('/')}` : "Marcar início do serviço (avisa o financeiro)"}
+                      >
+                        <PlayCircle className="h-4 w-4" />
+                      </Button>
+                    )}
                     {(isAdmin || canDelete('contratos')) && (
                       <Button
                         variant="ghost"
@@ -665,6 +681,41 @@ export function ContratoList({ contratos, isLoading, onEdit, onView, onDelete }:
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+      {inicioServico && <InicioServicoDialog contrato={inicioServico} onFechar={() => setInicioServico(null)} />}
     </>
+  );
+}
+
+function InicioServicoDialog({ contrato, onFechar }: { contrato: any; onFechar: () => void }) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const [data, setData] = useState<string>(contrato.servico_iniciado_em ?? new Date().toISOString().slice(0, 10));
+  const [salvando, setSalvando] = useState(false);
+  const salvar = async (valor: string | null) => {
+    setSalvando(true);
+    const { data: gravado, error } = await supabase.from('contratos').update({ servico_iniciado_em: valor } as any).eq('id', contrato.id).select('id');
+    setSalvando(false);
+    if (error || !gravado?.length) return toast({ title: 'Não salvou', description: error?.message || 'Sem permissão para alterar este contrato', variant: 'destructive' });
+    toast({ title: valor ? 'Início do serviço registrado' : 'Início do serviço removido', description: valor && !contrato.servico_iniciado_em ? 'O financeiro será avisado em até 10 minutos.' : undefined });
+    qc.invalidateQueries({ queryKey: ['contratos'] });
+    onFechar();
+  };
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onFechar(); }}>
+      <DialogContent className="max-w-sm" onClick={(e) => e.stopPropagation()}>
+        <DialogHeader>
+          <DialogTitle>Início do serviço</DialogTitle>
+          <DialogDescription>
+            Contrato {contrato.codigo_interno ? `#${contrato.codigo_interno}` : ''} {contrato.codigo_contrato}. Ao marcar, o financeiro recebe o aviso de que é hora de faturar.
+          </DialogDescription>
+        </DialogHeader>
+        <Input type="date" value={data} onChange={(e) => setData(e.target.value)} />
+        <DialogFooter className="gap-2">
+          {contrato.servico_iniciado_em && <Button variant="ghost" className="mr-auto text-destructive" disabled={salvando} onClick={() => salvar(null)}>Remover</Button>}
+          <Button variant="outline" onClick={onFechar}>Cancelar</Button>
+          <Button disabled={salvando || !data} onClick={() => salvar(data)}>Salvar</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

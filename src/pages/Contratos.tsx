@@ -22,6 +22,7 @@ import { ContratosDrEscalaTab } from "@/components/contratos/ContratosDrEscalaTa
 import { ContratosDrOportunidadeTab } from "@/components/contratos/ContratosDrOportunidadeTab";
 import { EmpresaDocumentosTab } from "@/components/contratos/EmpresaDocumentosTab";
 import { MedicosVencimentosTab } from "@/components/contratos/MedicosVencimentosTab";
+import { VencimentosConfigDialog } from "@/components/contratos/VencimentosConfigDialog";
 import { usePermissions } from "@/hooks/usePermissions";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -41,6 +42,7 @@ export default function Contratos() {
   const [editingCliente, setEditingCliente] = useState<any>(null);
   // ?aba= abre direto uma aba (link dos avisos de vencimento)
   const [activeTab, setActiveTab] = useState(searchParams.get("aba") || (isLicitacaoOnly ? "rascunhos" : "contratos"));
+  const [avisosContrato, setAvisosContrato] = useState<null | "contrato_assinado" | "contrato_inicio_servico">(null);
   const [searchNome, setSearchNome] = useState("");
   const [selectedStatus, setSelectedStatus] = useState<string[]>([]);
   const [selectedUf, setSelectedUf] = useState<string[]>([]);
@@ -427,14 +429,19 @@ export default function Contratos() {
         <h1 className="text-2xl font-bold">Clientes e Contratos</h1>
         <p className="text-sm text-muted-foreground">Gerencie clientes, unidades e contratos de forma integrada</p>
       </div>
-      {activeTab === "contratos" && (
-        !isLicitacaoOnly && <Button onClick={() => {
-          setEditingContrato(null);
-          setDialogOpen(true);
-        }}>
-          <Plus className="mr-2 h-4 w-4" />
-          Novo Contrato
-        </Button>
+      {activeTab === "contratos" && !isLicitacaoOnly && (
+        <div className="flex items-center gap-2">
+          {/* T9: quem recebe o aviso de contrato assinado e de início do serviço */}
+          <Button variant="outline" onClick={() => setAvisosContrato("contrato_assinado")}>Avisos: assinado</Button>
+          <Button variant="outline" onClick={() => setAvisosContrato("contrato_inicio_servico")}>Avisos: início do serviço</Button>
+          <Button onClick={() => {
+            setEditingContrato(null);
+            setDialogOpen(true);
+          }}>
+            <Plus className="mr-2 h-4 w-4" />
+            Novo Contrato
+          </Button>
+        </div>
       )}
     </div>
   );
@@ -585,6 +592,11 @@ export default function Contratos() {
           </Dialog>
         )}
       </div>
+    {avisosContrato && (
+        <VencimentosConfigDialog chave={avisosContrato} semDias onFechar={() => setAvisosContrato(null)}
+          titulo={avisosContrato === "contrato_assinado" ? "contrato assinado" : "início do serviço"}
+          descricao={avisosContrato === "contrato_assinado" ? "Quando um contrato passa para assinado, o Sigma avisa estas pessoas no sino e por e-mail." : "Quando o início do serviço é marcado na lista de contratos, o Sigma avisa estas pessoas (hora de faturar)."} />
+      )}
     </AppLayout>
   );
 }

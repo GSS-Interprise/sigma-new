@@ -15,7 +15,10 @@ import { toast } from "sonner";
  */
 const DIAS = [60, 30, 15, 7, 3, 1];
 
-export function VencimentosConfigDialog({ chave, titulo, onFechar }: { chave: "empresa_documentos" | "medico_documentos"; titulo: string; onFechar: () => void }) {
+export function VencimentosConfigDialog({ chave, titulo, onFechar, semDias = false, descricao }: {
+  chave: "empresa_documentos" | "medico_documentos" | "contrato_assinado" | "contrato_inicio_servico"; titulo: string; onFechar: () => void;
+  semDias?: boolean; descricao?: string;
+}) {
   const qc = useQueryClient();
   const [dias, setDias] = useState<number[]>([]);
   const [pessoas, setPessoas] = useState<string[]>([]);
@@ -60,10 +63,10 @@ export function VencimentosConfigDialog({ chave, titulo, onFechar }: { chave: "e
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Avisos: {titulo}</DialogTitle>
-          <DialogDescription>O Sigma confere todo dia às 8h e manda um resumo por pessoa, no sino e por e-mail.</DialogDescription>
+          <DialogDescription>{descricao ?? "O Sigma confere todo dia às 8h e manda um resumo por pessoa, no sino e por e-mail."}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
-          <div className="space-y-1.5">
+          {!semDias && <div className="space-y-1.5">
             <span className="text-sm font-medium">Avisar quantos dias antes</span>
             <div className="flex flex-wrap gap-1.5">
               {DIAS.map((d) => {
@@ -72,7 +75,7 @@ export function VencimentosConfigDialog({ chave, titulo, onFechar }: { chave: "e
               })}
             </div>
             <p className="text-xs text-muted-foreground">Documento vencido também gera um aviso.</p>
-          </div>
+          </div>}
           <div className="space-y-1.5">
             <span className="text-sm font-medium">Quem recebe ({pessoas.length})</span>
             <Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar pessoa" className="h-8" />
@@ -89,7 +92,7 @@ export function VencimentosConfigDialog({ chave, titulo, onFechar }: { chave: "e
         </div>
         <DialogFooter>
           <Button variant="ghost" onClick={onFechar}>Cancelar</Button>
-          <Button onClick={() => salvar.mutate()} disabled={salvar.isPending || !dias.length}>Salvar</Button>
+          <Button onClick={() => salvar.mutate()} disabled={salvar.isPending || (!semDias && !dias.length)}>Salvar</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
