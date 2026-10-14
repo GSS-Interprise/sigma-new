@@ -243,14 +243,23 @@ export function MensagemArea({ canalId, onOpenDM, targetMensagemId, onTargetMens
 
   const enviarMensagemMutation = useMutation({
     mutationFn: async ({ mensagem, anexos, replyToId }: { mensagem: string; anexos: string[]; replyToId?: string }) => {
-      if (!user || !profile) throw new Error("Usuário não autenticado");
+      // Danilo e Brenda (13/10) viam "Usuário não autenticado" estando logados: o perfil ainda não
+      // tinha carregado (ou a consulta falhou) na hora do envio. Busca na hora antes de desistir.
+      let autor = user;
+      if (!autor) autor = (await supabase.auth.getUser()).data.user ?? null;
+      if (!autor) throw new Error("Sua sessão expirou. Saia e entre de novo no Sigma.");
+      let nomeAutor = profile?.nome_completo as string | undefined;
+      if (!nomeAutor) {
+        const { data: p } = await supabase.from("profiles").select("nome_completo").eq("id", autor.id).maybeSingle();
+        nomeAutor = p?.nome_completo || autor.email || "Usuário";
+      }
 
       const { data, error } = await supabase
         .from("comunicacao_mensagens")
         .insert({
           canal_id: canalId,
-          user_id: user.id,
-          user_nome: profile.nome_completo,
+          user_id: autor.id,
+          user_nome: nomeAutor,
           mensagem,
           anexos: anexos.length > 0 ? anexos : null,
           reply_to_id: replyToId || null,
@@ -265,7 +274,7 @@ export function MensagemArea({ canalId, onOpenDM, targetMensagemId, onTargetMens
         .from("comunicacao_participantes")
         .select("user_id")
         .eq("canal_id", canalId)
-        .neq("user_id", user.id);
+        .neq("user_id", autor.id);
 
       if (participantesNotif) {
         const notificacoes = participantesNotif.map(p => ({
