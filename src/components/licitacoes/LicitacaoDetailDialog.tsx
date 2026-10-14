@@ -43,6 +43,7 @@ import {
 import { LicitacaoAnexosBar } from "./LicitacaoAnexosBar";
 import { LicitacaoComentarioAvancadoInput } from "./LicitacaoComentarioAvancadoInput";
 import { LicitacaoAtividadeItem } from "./LicitacaoAtividadeItem";
+import { useOpcoesStatusLicitacao } from "./ColunaKanbanEditavel";
 import { LicitacaoRiscoIndicator } from "./LicitacaoRiscoIndicator";
 import { LicitacaoResultadoItensDialog } from "./LicitacaoResultadoItensDialog";
 import { LicitacaoCompetitividadeViewDialog } from "./LicitacaoCompetitividadeViewDialog";
@@ -162,6 +163,7 @@ export function LicitacaoDetailDialog({
   isNew = false,
   onCriado,
 }: LicitacaoDetailDialogProps) {
+  const opcoesStatus = useOpcoesStatusLicitacao(licitacao, STATUS_OPTIONS);
   const [editando, setEditando] = useState(false);
   const [formData, setFormData] = useState<any>({});
   const [novaEtiqueta, setNovaEtiqueta] = useState("");
@@ -1359,7 +1361,7 @@ export function LicitacaoDetailDialog({
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {STATUS_OPTIONS.map((option) => (
+                        {opcoesStatus.map((option) => (
                           <SelectItem key={option.value} value={option.value} className="text-xs">
                             {option.label}
                           </SelectItem>

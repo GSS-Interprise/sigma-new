@@ -17,6 +17,7 @@ import { LicitacaoDescarteDialog } from "./LicitacaoDescarteDialog";
 import { Button } from "@/components/ui/button";
 import { CardActionsMenu } from "@/components/demandas/CardActionsMenu";
 import { copiarAnexosLicitacaoParaRascunho, copiarAnexosLicitacaoParaContrato } from "@/hooks/useContratoRascunho";
+import { ColunaKanbanCabecalho, NovaColunaInline, colunaArrastada, ehArrastoDeColuna, useEditarColunasLicitacoes } from "./ColunaKanbanEditavel";
 
 // Status que requerem resultado obrigatório (Inteligência Competitiva)
 const STATUS_REQUER_RESULTADO = ['arrematados', 'nao_ganhamos'];
@@ -24,6 +25,8 @@ const STATUS_REQUER_RESULTADO = ['arrematados', 'nao_ganhamos'];
 const STATUS_DESCARTE = 'descarte_edital';
 interface LicitacoesKanbanProps {
   columns: { id: string; label: string; cor?: string }[];
+  /** Equipe pode renomear, reordenar, criar e excluir colunas no próprio quadro (só quadro da GSS) */
+  colunasEditaveis?: boolean;
   onCardClick?: (licitacao: any) => void;
   onCardDoubleClick?: (licitacao: any) => void;
   filters?: {
@@ -136,7 +139,10 @@ const isLicitacaoValidaParaMover = (licitacao: LicitacaoWithResponsavel): { vali
   return { valido: true };
 };
 
-export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filters, onHasMoreChange, board = 'effecti' }: LicitacoesKanbanProps) {
+export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filters, onHasMoreChange, board = 'effecti', colunasEditaveis = false }: LicitacoesKanbanProps) {
+  const [colunaArrastandoId, setColunaArrastandoId] = useState<string | null>(null);
+  const [novaColunaDepoisDe, setNovaColunaDepoisDe] = useState<string | null>(null);
+  const { mover: moverColuna } = useEditarColunasLicitacoes();
   const queryClient = useQueryClient();
   const [fileDropTarget, setFileDropTarget] = useState<string | null>(null);
   const [uploadingFiles, setUploadingFiles] = useState<string | null>(null);
@@ -979,24 +985,32 @@ export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filt
           onDragOver={handleDragOver}
         >
         {columns.map((column) => (
-        <Card 
-          key={column.id} 
-          className="w-[240px] sm:w-[256px] md:w-[272px] lg:w-[288px] flex-shrink-0 flex flex-col h-full"
+        <div key={column.id} className="contents">
+        <Card
+          className={`w-[240px] sm:w-[256px] md:w-[272px] lg:w-[288px] flex-shrink-0 flex flex-col h-full transition-opacity ${colunaArrastandoId === column.id ? 'opacity-40' : ''}`}
           onDragOver={handleDragOver}
-          onDrop={(e) => handleDrop(e, column.id)}
+          onDrop={(e) => {
+            // coluna arrastada pelo cabeçalho: reordena; senão é card (ou arquivo) caindo na coluna
+            if (ehArrastoDeColuna(e)) {
+              e.preventDefault();
+              moverColuna(columns, colunaArrastada(e), column.id);
+              setColunaArrastandoId(null);
+              return;
+            }
+            handleDrop(e, column.id);
+          }}
         >
           <CardHeader className="px-3 py-2">
-            <CardTitle className="text-sm flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <div 
-                  className="h-2 w-2 rounded-full" 
-                  style={{ backgroundColor: column.cor || 'hsl(var(--primary))' }}
-                />
-                <span>{column.label}</span>
-              </div>
-              <Badge variant="outline" className="text-xs">
-                {column.id === 'descarte_edital' ? descartadasCount : getLicitacoesByStatus(column.id).length}
-              </Badge>
+            <CardTitle className="text-sm">
+              <ColunaKanbanCabecalho
+                coluna={column}
+                colunas={columns}
+                total={column.id === 'descarte_edital' ? descartadasCount : getLicitacoesByStatus(column.id).length}
+                editavel={colunasEditaveis}
+                onAdicionarDepois={setNovaColunaDepoisDe}
+                onArrastoInicio={setColunaArrastandoId}
+                onArrastoFim={() => setColunaArrastandoId(null)}
+              />
             </CardTitle>
           </CardHeader>
           <CardContent className="flex-1 overflow-hidden px-2 pt-0 pb-2">
@@ -1244,7 +1258,18 @@ export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filt
             </ScrollArea>
           </CardContent>
         </Card>
+        {colunasEditaveis && novaColunaDepoisDe === column.id && (
+          <NovaColunaInline depoisDe={column.id} aberta onAbrir={() => {}} onFechar={() => setNovaColunaDepoisDe(null)} />
+        )}
+        </div>
       ))}
+        {colunasEditaveis && (novaColunaDepoisDe === null || novaColunaDepoisDe === '__fim__') && (
+          <NovaColunaInline
+            aberta={novaColunaDepoisDe === '__fim__'}
+            onAbrir={() => setNovaColunaDepoisDe('__fim__')}
+            onFechar={() => setNovaColunaDepoisDe(null)}
+          />
+        )}
         </div>
       </div>
       

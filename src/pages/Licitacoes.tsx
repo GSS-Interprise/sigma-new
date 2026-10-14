@@ -56,7 +56,6 @@ export default function Licitacoes({ board = 'effecti' }: LicitacoesProps = {}) 
   const { isAdmin, userRoles, canView, isLoadingRoles, isLeader, isLiderLicitacao } = usePermissions();
   const { user } = useAuth();
   const { isSetorAges } = useUserSetor();
-  const { data: columns = [], isLoading: columnsLoading } = useKanbanColumns("licitacoes");
 
   // Verificar se é gestor_ages exclusivo (sem acesso GSS)
   const isGestorAgesOnly =
@@ -69,6 +68,14 @@ export default function Licitacoes({ board = 'effecti' }: LicitacoesProps = {}) 
         r.role === "gestor_captacao" ||
         r.role === "gestor_contratos",
     );
+
+  // O quadro da AGES tem o próprio conjunto de colunas (cópia de 14/10): o que a equipe da GSS
+  // renomeia, cria ou exclui no quadro dela não muda nada para a AGES.
+  const quadroAges = isSetorAges || !!isGestorAgesOnly || filters?.tipoLicitacao === "AGES";
+  const { data: columns = [], isLoading: columnsLoading } = useKanbanColumns(quadroAges ? "licitacoes_ages" : "licitacoes");
+  // colunas editáveis no quadro, como no Trello (T3): a mesma regra da função pode_editar_quadro_licitacoes
+  const podeEditarColunas = !ehRobo && !quadroAges &&
+    !!userRoles?.some((r) => ["admin", "lider_licitacao", "licitador", "gestor_contratos", "lideres"].includes(r.role as string));
 
   // Ordenação padrão diferenciada para usuários do setor AGES
   const shouldUseAgesDefaultOrdering = isSetorAges || isGestorAgesOnly;
@@ -343,6 +350,7 @@ export default function Licitacoes({ board = 'effecti' }: LicitacoesProps = {}) 
             <LicitacoesKanban
               board={board}
               columns={columns}
+              colunasEditaveis={podeEditarColunas}
               onCardClick={handleViewLicitacao}
               onCardDoubleClick={handleQuickEdit}
               filters={filters}

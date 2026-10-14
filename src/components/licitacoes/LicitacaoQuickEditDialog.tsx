@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useOpcoesStatusLicitacao } from "./ColunaKanbanEditavel";
 import { useLicitacoesProfiles } from "@/hooks/useLicitacoesProfiles";
 import { useLicitacaoRealtimeSync } from "@/hooks/useLicitacaoRealtimeSync";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -68,6 +69,7 @@ const STATUS_OPTIONS = [
 
 export function LicitacaoQuickEditDialog({ open, onOpenChange, licitacao }: LicitacaoQuickEditDialogProps) {
   const queryClient = useQueryClient();
+  const opcoesStatus = useOpcoesStatusLicitacao(licitacao, STATUS_OPTIONS);
   const [formData, setFormData] = useState<any>({});
   const [novaEtiqueta, setNovaEtiqueta] = useState("");
   const updatedAtRef = useRef<string | null>(null);
@@ -376,7 +378,7 @@ export function LicitacaoQuickEditDialog({ open, onOpenChange, licitacao }: Lici
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {STATUS_OPTIONS.map((option) => (
+                  {opcoesStatus.map((option) => (
                     <SelectItem key={option.value} value={option.value}>
                       {option.label}
                     </SelectItem>
