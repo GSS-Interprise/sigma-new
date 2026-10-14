@@ -84,6 +84,8 @@ interface LicitacaoDetailDialogProps {
   onEdit?: () => void;
   onSuccess?: () => void;
   isNew?: boolean;
+  /** Chamado com o card recém-criado: a tela continua aberta nele para anexar edital e prints. */
+  onCriado?: (licitacao: any) => void;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -157,7 +159,8 @@ export function LicitacaoDetailDialog({
   licitacao,
   onEdit,
   onSuccess,
-  isNew = false
+  isNew = false,
+  onCriado,
 }: LicitacaoDetailDialogProps) {
   const [editando, setEditando] = useState(false);
   const [formData, setFormData] = useState<any>({});
@@ -651,11 +654,18 @@ export function LicitacaoDetailDialog({
 
       return newLicitacao;
     },
-    onSuccess: () => {
+    onSuccess: (nova: any) => {
       queryClient.invalidateQueries({ queryKey: ['licitacoes-kanban'] });
       queryClient.invalidateQueries({ queryKey: ['licitacoes'] });
-      toast.success('Licitação criada com sucesso!');
-      onOpenChange(false);
+      // Antes a tela fechava ao criar e a equipe tinha que achar e reabrir o card para anexar
+      // o edital (reclamação da Denise na reunião de 07/10). Agora ela continua no card criado.
+      if (onCriado && nova?.id) {
+        toast.success('Edital criado. Já pode anexar o edital e os prints.');
+        onCriado(nova);
+      } else {
+        toast.success('Licitação criada com sucesso!');
+        onOpenChange(false);
+      }
       onSuccess?.();
     },
     onError: (error: any) => {

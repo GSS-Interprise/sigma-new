@@ -363,6 +363,7 @@ export default function Licitacoes({ board = 'effecti' }: LicitacoesProps = {}) 
         licitacao={selectedLicitacao}
         onSuccess={refetch}
         isNew={isNewEdital}
+        onCriado={(nova) => { setSelectedLicitacao(nova); setIsNewEdital(false); }}
       />
 
       <LicitacaoQuickEditDialog

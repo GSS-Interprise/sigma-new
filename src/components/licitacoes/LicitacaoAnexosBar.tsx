@@ -6,8 +6,10 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Paperclip, Upload, Download, Trash2, Loader2, FileText, Image, FileArchive, File, Eye, Link2, Send } from "lucide-react";
 import { toast } from "sonner";
 import { LicitacaoFileViewerDialog } from "./LicitacaoFileViewerDialog";
+import { AnexoViewerNavegavel } from "./AnexoViewerNavegavel";
 
 import * as pdfjsLib from "pdfjs-dist";
+import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
 import pdfIcon from "@/assets/file-icons/pdf.png";
 import docIcon from "@/assets/file-icons/doc.png";
@@ -20,7 +22,11 @@ import gifIcon from "@/assets/file-icons/gif.png";
 import bmpIcon from "@/assets/file-icons/bmp.png";
 
 // Configurar worker do PDF.js
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+// Worker empacotado junto com o Sigma. O endereço antigo (cdnjs .../pdf.worker.min.js) não existe
+// na versão 4 do pdf.js (só há .mjs): o worker falhava e o pdf.js processava cada PDF na mesma
+// thread da tela. Com edital de centenas de páginas, era isso que travava o card ao abrir e ao
+// apagar um anexo (o apagar recarrega a lista e refazia as miniaturas).
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 interface LicitacaoAnexosBarProps {
   licitacaoId: string;
@@ -109,17 +115,21 @@ const nomeLegivel = (nome: string): string => {
 
 // Gera thumbnail da primeira página do PDF com melhor qualidade
 const generatePdfThumbnail = async (pdfUrl: string): Promise<string | null> => {
+  let pdf: any = null;
   try {
     const loadingTask = pdfjsLib.getDocument({
       url: pdfUrl,
-      cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/',
+      cMapUrl: `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/cmaps/`,
       cMapPacked: true,
+      // só a primeira página interessa: não baixa o edital inteiro para fazer a miniatura
+      disableAutoFetch: true,
     });
-    const pdf = await loadingTask.promise;
+    pdf = await loadingTask.promise;
     const page = await pdf.getPage(1);
-    
-    // Scale maior para melhor qualidade de thumbnail
-    const scale = 1.0;
+
+    // miniatura com ~320px de largura (o card mostra bem menos que isso)
+    const base = page.getViewport({ scale: 1 });
+    const scale = Math.min(1, 320 / base.width);
     const viewport = page.getViewport({ scale });
     
     const canvas = document.createElement('canvas');
@@ -134,12 +144,17 @@ const generatePdfThumbnail = async (pdfUrl: string): Promise<string | null> => {
       viewport: viewport,
     }).promise;
     
-    return canvas.toDataURL('image/jpeg', 0.85);
+    return canvas.toDataURL('image/jpeg', 0.8);
   } catch (error) {
     console.error('Erro ao gerar thumbnail do PDF:', error);
     return null;
+  } finally {
+    pdf?.destroy?.();
   }
 };
+
+// Miniaturas guardadas enquanto o Sigma está aberto: fechar e reabrir o card não refaz tudo
+const cacheMiniaturas = new Map<string, string>();
 
 export function LicitacaoAnexosBar({ licitacaoId }: LicitacaoAnexosBarProps) {
   const [uploading, setUploading] = useState(false);
@@ -149,6 +164,8 @@ export function LicitacaoAnexosBar({ licitacaoId }: LicitacaoAnexosBarProps) {
   const [sendingWebhook, setSendingWebhook] = useState(false);
   const [analysisSucceeded, setAnalysisSucceeded] = useState(false);
   const [selectedFile, setSelectedFile] = useState<{ url: string; name: string; bucket?: string } | null>(null);
+  // visualizador com setas (T4): abre qualquer anexo dentro do Sigma
+  const [navIndice, setNavIndice] = useState<number | null>(null);
   const [thumbnailUrls, setThumbnailUrls] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -256,14 +273,21 @@ export function LicitacaoAnexosBar({ licitacaoId }: LicitacaoAnexosBarProps) {
   }, [anexosTabela, anexosBucket]);
 
   // Carregar thumbnails para imagens e PDFs
+  const gerandoMiniatura = useRef(new Set<string>());
   useEffect(() => {
+    let cancelado = false;
     const loadThumbnails = async () => {
       const newUrls: Record<string, string> = {};
-      
+
       for (const anexo of anexos) {
-        // Skip se já temos o thumbnail
-        if (thumbnailUrls[anexo.id]) continue;
-        
+        if (cancelado) return;
+        // Skip se já temos o thumbnail, se está no cache ou se outra rodada já está gerando
+        if (thumbnailUrls[anexo.id] || gerandoMiniatura.current.has(anexo.id)) continue;
+        const chaveCache = `${anexo.id}:${anexo.arquivo_url}`;
+        const emCache = cacheMiniaturas.get(chaveCache);
+        if (emCache) { newUrls[anexo.id] = emCache; continue; }
+        gerandoMiniatura.current.add(anexo.id);
+                
         const bucketName = bucketDe(anexo);
         
         if (isImageFile(anexo.arquivo_nome)) {
@@ -286,6 +310,9 @@ export function LicitacaoAnexosBar({ licitacaoId }: LicitacaoAnexosBarProps) {
               const thumbnail = await generatePdfThumbnail(data.signedUrl);
               // Se gerou thumbnail usa, senão marca como 'icon' para não ficar em loading infinito
               newUrls[anexo.id] = thumbnail || 'icon';
+              if (thumbnail) cacheMiniaturas.set(chaveCache, thumbnail);
+              // mostra cada miniatura assim que fica pronta, sem esperar as outras
+              setThumbnailUrls(prev => ({ ...prev, [anexo.id]: newUrls[anexo.id] }));
             } else {
               newUrls[anexo.id] = 'icon';
             }
@@ -293,8 +320,10 @@ export function LicitacaoAnexosBar({ licitacaoId }: LicitacaoAnexosBarProps) {
             newUrls[anexo.id] = 'icon';
           }
         }
+        gerandoMiniatura.current.delete(anexo.id);
       }
-      
+      if (cancelado) return;
+            
       if (Object.keys(newUrls).length > 0) {
         setThumbnailUrls(prev => ({ ...prev, ...newUrls }));
       }
@@ -303,7 +332,8 @@ export function LicitacaoAnexosBar({ licitacaoId }: LicitacaoAnexosBarProps) {
     if (anexos.length > 0) {
       loadThumbnails();
     }
-  }, [anexos]);
+    return () => { cancelado = true; };
+  }, [anexos]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
@@ -572,6 +602,10 @@ export function LicitacaoAnexosBar({ licitacaoId }: LicitacaoAnexosBarProps) {
   };
 
   const handlePreview = async (anexo: AnexoUnificado) => {
+    // 14/10: tudo abre no visualizador interno com setas. O caminho antigo (aba nova) segue
+    // abaixo, alcançável pelo botão "abrir em outra aba" do próprio visualizador.
+    const i = anexos.findIndex((a) => a.id === anexo.id);
+    if (i >= 0) { setNavIndice(i); return; }
     const bucketName = bucketDe(anexo);
 
     // NAO confie na extensao do nome pra decidir o que abre em aba nova. O PNCP
@@ -871,7 +905,8 @@ export function LicitacaoAnexosBar({ licitacaoId }: LicitacaoAnexosBarProps) {
                       size="icon"
                       variant="outline"
                       className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
-                      onClick={() => deleteMutation.mutate(anexo)}
+                      onClick={() => { if (window.confirm(`Remover "${nomeLegivel(anexo.arquivo_nome)}"? O arquivo é apagado de vez.`)) deleteMutation.mutate(anexo); }}
+                      disabled={deleteMutation.isPending}
                       title="Remover"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -889,6 +924,14 @@ export function LicitacaoAnexosBar({ licitacaoId }: LicitacaoAnexosBarProps) {
       )}
 
       
+
+      <AnexoViewerNavegavel
+        anexos={anexos.map((a) => ({ id: a.id, arquivo_nome: nomeLegivel(a.arquivo_nome), arquivo_url: a.arquivo_url, bucket: bucketDe(a) }))}
+        indice={navIndice ?? 0}
+        onIndiceChange={setNavIndice}
+        open={navIndice !== null}
+        onOpenChange={(o) => { if (!o) setNavIndice(null); }}
+      />
 
       <LicitacaoFileViewerDialog
         open={viewerOpen}

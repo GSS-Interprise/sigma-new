@@ -12,8 +12,12 @@ import {
   FileText,
   Edit,
   Paperclip,
-  Check
+  Check,
+  Pencil
 } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { useAuth } from "@/contexts/AuthContext";
+import { usePermissions } from "@/hooks/usePermissions";
 import { format, formatDistanceToNow, isPast, differenceInHours } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
@@ -30,6 +34,8 @@ interface Atividade {
   tipo: string;
   descricao: string;
   created_at: string;
+  user_id?: string | null;
+  editado_em?: string | null;
   campo_alterado?: string | null;
   valor_antigo?: string | null;
   valor_novo?: string | null;
@@ -117,6 +123,36 @@ function getStatusResposta(respostaEsperadaAte: string | null, respondidoEm: str
 
 export function LicitacaoAtividadeItem({ atividade, isLast, licitacaoId }: LicitacaoAtividadeItemProps) {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const { isAdmin } = usePermissions();
+  // comentário editável pelo autor, sem prazo (reunião de 07/10); o banco confere de novo
+  const podeEditar = atividade.tipo === "comentario" && !!user && (atividade.user_id === user.id || isAdmin);
+  const [editando, setEditando] = useState(false);
+  const [texto, setTexto] = useState(atividade.descricao);
+
+  const editarMutation = useMutation({
+    mutationFn: async (novo: string) => {
+      const { error } = await supabase
+        .from("licitacoes_atividades")
+        .update({ descricao: novo } as any)
+        .eq("id", atividade.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      setEditando(false);
+      queryClient.invalidateQueries({ queryKey: ["licitacoes-atividades", licitacaoId] });
+      toast.success("Comentário atualizado");
+    },
+    onError: (error: any) => toast.error(error.message || "Não foi possível salvar o comentário"),
+  });
+
+  const salvarEdicao = () => {
+    const novo = texto.trim();
+    if (!novo) return toast.error("O comentário não pode ficar vazio");
+    if (novo === atividade.descricao) return setEditando(false);
+    editarMutation.mutate(novo);
+  };
+
   const statusResposta = getStatusResposta(
     atividade.resposta_esperada_ate || null, 
     atividade.respondido_em || null
@@ -187,17 +223,51 @@ export function LicitacaoAtividadeItem({ atividade, isLast, licitacaoId }: Licit
                 </TooltipProvider>
               )}
             </div>
-            <span className="text-xs text-muted-foreground flex-shrink-0">
+            <span className="flex flex-shrink-0 items-center gap-1 text-xs text-muted-foreground">
               {format(new Date(atividade.created_at), "dd MMM 'às' HH:mm", { locale: ptBR })}
+              {atividade.editado_em && (
+                <span title={`Editado em ${format(new Date(atividade.editado_em), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}`}>· editado</span>
+              )}
+              {podeEditar && !editando && (
+                <button
+                  type="button"
+                  className="ml-1 rounded p-0.5 hover:bg-muted hover:text-foreground"
+                  title="Editar comentário"
+                  onClick={() => { setTexto(atividade.descricao); setEditando(true); }}
+                >
+                  <Pencil className="h-3 w-3" />
+                </button>
+              )}
             </span>
           </div>
           
+          {editando ? (
+            <div className="mt-1 space-y-1.5">
+              <Textarea
+                value={texto}
+                onChange={(e) => setTexto(e.target.value)}
+                className="min-h-[70px] text-xs"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") { e.stopPropagation(); setEditando(false); }
+                  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) salvarEdicao();
+                }}
+              />
+              <div className="flex justify-end gap-1.5">
+                <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => setEditando(false)}>Cancelar</Button>
+                <Button size="sm" className="h-6 text-xs" onClick={salvarEdicao} disabled={editarMutation.isPending}>
+                  {editarMutation.isPending ? "Salvando..." : "Salvar"}
+                </Button>
+              </div>
+            </div>
+          ) : (
           <div className="mt-1 flex items-start gap-1.5 text-xs text-muted-foreground">
             <span className="flex-shrink-0 mt-0.5">{getAtividadeIcon(atividade.tipo)}</span>
             <span className="break-words overflow-hidden [&_a]:relative [&_a]:z-10">
               {atividade.tipo === 'campo_atualizado' ? 'editou' : linkifyText(atividade.descricao)}
             </span>
           </div>
+          )}
           
           {/* Mostrar campos alterados */}
           {atividade.campo_alterado && atividade.valor_antigo && atividade.valor_novo && (
