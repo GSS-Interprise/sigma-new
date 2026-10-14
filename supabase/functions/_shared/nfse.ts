@@ -84,7 +84,8 @@ async function itensPosicionados(pdf: any): Promise<ItemPos[]> {
 
 function lerGrade(itens: ItemPos[], texto: string): Partial<Nfse> | null {
   const rot = (re: RegExp, depois = -1, antes = 1e9) => itens.find((i) => re.test(i.s) && i.top > depois && i.top < antes);
-  if (!rot(/^Valor l[ií]quido da NFS-?e$/i) || !rot(/^Contribui[cç][oõ]es Sociais Retidas$/i)) return null;
+  // versão nova: "Contribuições Sociais Retidas"; versão antiga (fev/2026): PIS, COFINS e CSLL separados
+  if (!rot(/^Valor l[ií]quido da NFS-?e$/i) || !(rot(/^Contribui[cç][oõ]es Sociais Retidas$/i) || rot(/^Valor CSLL$/i))) return null;
   const num = (s: string) => /^-?[\d.]+,\d{2}$/.test(s) ? numero(s) : null;
   // valor da célula: logo abaixo do rótulo e encostado na borda direita da célula
   const celula = (re: RegExp): number | null => {
@@ -108,8 +109,10 @@ function lerGrade(itens: ItemPos[], texto: string): Partial<Nfse> | null {
   const tomCnpj = naLinha(/^CPF\/CNPJ:$/i, tIni, tFim > 0 ? tFim : 1e9);
 
   const bruto = celula(/^Valor Servi[cç]os$/i);
-  const irrf = celula(/^Valor IRRF$/i) ?? 0;
-  const contrib = celula(/^Contribui[cç][oõ]es Sociais Retidas$/i) ?? 0;
+  const irrf = celula(/^Valor IRR?F?$/i) ?? 0;
+  const contrib = rot(/^Contribui[cç][oõ]es Sociais Retidas$/i)
+    ? (celula(/^Contribui[cç][oõ]es Sociais Retidas$/i) ?? 0)
+    : Math.round(((celula(/^Valor PIS$/i) ?? 0) + (celula(/^Valor COFINS$/i) ?? 0) + (celula(/^Valor CSLL$/i) ?? 0)) * 100) / 100;
   const inss = celula(/^Valor INSS$/i) ?? 0;
   const iss = celula(/^Valor ISS retido$/i) ?? 0;
   const outras = celula(/^Outras reten[cç][oõ]es$/i) ?? 0;
