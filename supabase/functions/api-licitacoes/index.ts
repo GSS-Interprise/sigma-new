@@ -473,6 +473,15 @@ Deno.serve(async (req) => {
       // Idempotência para n8n: se já existe, atualiza ao invés de rejeitar
       let existingLicitacao: any = null;
 
+      // Uma empresa por card (decisão do Raul, 14/10): GSS e AGES recebem o MESMO aviso do
+      // Effecti (o idLicitacao é o mesmo nos dois perfis) e cada uma acompanha o edital no seu
+      // card. Sem este filtro, o aviso da GSS casava com o card da AGES (e vice-versa) e virava
+      // um card com as duas etiquetas (34 assim em 14/10). Card da AGES = etiqueta "AGES".
+      const deAges = Array.isArray(body.etiquetas) && body.etiquetas.some((e: any) => String(e).toUpperCase() === 'AGES');
+      const mesmaEmpresa = (q: any) => deAges
+        ? q.contains('etiquetas', ['AGES'])
+        : q.or('etiquetas.is.null,etiquetas.not.cs.{AGES}');
+
       // .limit(1) ANTES do maybeSingle é vital: com linhas DUPLICADAS (corrida
       // entre os captadores GSS/AGES semeou 2 cards do mesmo effect_id em
       // 20/07), maybeSingle sem limit LANÇA erro, o erro virava "não existe"
@@ -480,10 +489,10 @@ Deno.serve(async (req) => {
       // em 2 dias ("eu descarto e volta"). Com limit(1), duplicata degrada
       // pra update do card mais antigo, que é o comportamento certo.
       if (body.effect_id) {
-        const { data: existing, error: existingError } = await supabase
+        const { data: existing, error: existingError } = await mesmaEmpresa(supabase
           .from('licitacoes')
           .select('id, titulo, licitacao_codigo, effect_id')
-          .eq('effect_id', body.effect_id)
+          .eq('effect_id', body.effect_id))
           .order('created_at', { ascending: true })
           .limit(1)
           .maybeSingle();
@@ -506,10 +515,10 @@ Deno.serve(async (req) => {
       }
 
       if (!existingLicitacao && body.licitacao_codigo) {
-        const { data: existing, error: existingError } = await supabase
+        const { data: existing, error: existingError } = await mesmaEmpresa(supabase
           .from('licitacoes')
           .select('id, titulo, effect_id, licitacao_codigo')
-          .eq('licitacao_codigo', body.licitacao_codigo)
+          .eq('licitacao_codigo', body.licitacao_codigo))
           .order('created_at', { ascending: true })
           .limit(1)
           .maybeSingle();
@@ -544,10 +553,10 @@ Deno.serve(async (req) => {
       // editais diferentes, então é ignorado.
       if (!existingLicitacao && isN8n && typeof body.titulo === 'string'
           && body.titulo.trim().length > 8 && !/ - \//.test(body.titulo)) {
-        const { data: existing, error: existingError } = await supabase
+        const { data: existing, error: existingError } = await mesmaEmpresa(supabase
           .from('licitacoes')
           .select('id, titulo, effect_id, licitacao_codigo, status')
-          .eq('titulo', body.titulo.trim())
+          .eq('titulo', body.titulo.trim()))
           .order('created_at', { ascending: true })
           .limit(1)
           .maybeSingle();
@@ -626,6 +635,7 @@ Deno.serve(async (req) => {
         subtipo_modalidade: body.subtipo_modalidade || body.modalidade,
         tipo_modalidade: body.tipo_modalidade || inferTipoFromModalidade(body.subtipo_modalidade || body.modalidade),
         orgao: body.orgao || 'Não informado',
+        cnpj_orgao: cleanText(body.cnpj_orgao) ?? null,
         valor_estimado: body.valor_estimado,
         data_disputa: parseDate(body.data_disputa),
         objeto: body.objeto || body.titulo,
@@ -648,6 +658,8 @@ Deno.serve(async (req) => {
         delete updateData.responsavel_id;
         delete updateData.prioridade;
         delete updateData.tipo_licitacao;
+        // captador que não manda CNPJ não apaga o que já está no card
+        if (updateData.cnpj_orgao == null) delete updateData.cnpj_orgao;
         // NUNCA sobrescrever a identidade do card. Num match por TÍTULO, o
         // aviso que chega tem effect_id/numero DIFERENTE (é republicação); se
         // gravasse, trocaria a identidade do card existente pela do aviso novo
