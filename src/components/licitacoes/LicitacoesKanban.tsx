@@ -271,13 +271,11 @@ export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filt
         }
         query = query.in('id', agesLicitacaoIds);
       } else if (isSetorAges) {
-        // Filtro automático por setor AGES (tipo_licitacao)
-        query = query.eq('tipo_licitacao', 'AGES');
-      } else if (filters?.tipoLicitacao) {
-        // Filtro manual por tipo selecionado pelo usuário
-        query = query.eq('tipo_licitacao', filters.tipoLicitacao);
+        query = query.eq('empresa', 'AGES');
+      } else if (filters?.tipoLicitacao !== 'TODAS') {
+        // quadro da GSS por padrão: o card da AGES só aparece escolhendo AGES ou Todas (coluna empresa)
+        query = query.eq('empresa', filters?.tipoLicitacao || 'GSS');
       }
-      // Se não houver filtro de tipo, mostra TODAS as licitações (GSS + AGES)
 
       // Apply filters
       if (filters?.search) {
@@ -380,9 +378,10 @@ export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filt
         if (agesLicitacaoIds.length === 0) return 0;
         query = query.in('id', agesLicitacaoIds);
       } else if (isSetorAges) {
-        query = query.eq('tipo_licitacao', 'AGES');
-      } else if (filters?.tipoLicitacao) {
-        query = query.eq('tipo_licitacao', filters.tipoLicitacao);
+        query = query.eq('empresa', 'AGES');
+      } else if (filters?.tipoLicitacao !== 'TODAS') {
+        // quadro da GSS por padrão: o card da AGES só aparece escolhendo AGES ou Todas (coluna empresa)
+        query = query.eq('empresa', filters?.tipoLicitacao || 'GSS');
       }
 
       if (filters?.search) {
@@ -426,9 +425,10 @@ export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filt
         }
         query = query.in('id', agesLicitacaoIds);
       } else if (isSetorAges) {
-        query = query.eq('tipo_licitacao', 'AGES');
-      } else if (filters?.tipoLicitacao) {
-        query = query.eq('tipo_licitacao', filters.tipoLicitacao);
+        query = query.eq('empresa', 'AGES');
+      } else if (filters?.tipoLicitacao !== 'TODAS') {
+        // quadro da GSS por padrão: o card da AGES só aparece escolhendo AGES ou Todas (coluna empresa)
+        query = query.eq('empresa', filters?.tipoLicitacao || 'GSS');
       }
 
       if (filters?.search) {

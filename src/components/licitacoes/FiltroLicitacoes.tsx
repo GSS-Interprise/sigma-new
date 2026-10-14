@@ -32,7 +32,8 @@ export function FiltroLicitacoes({ onFilterChange, compact = false }: FiltroLici
   const [search, setSearch] = useState("");
   const [selectedEtiquetas, setSelectedEtiquetas] = useState<string[]>([]);
   const [responsavel, setResponsavel] = useState<string>("");
-  const [tipoLicitacao, setTipoLicitacao] = useState<string>("");
+  // empresa do quadro: GSS por padrão; AGES e Todas por escolha (a AGES também é cliente)
+  const [tipoLicitacao, setTipoLicitacao] = useState<string>("GSS");
   const [dataInicio, setDataInicio] = useState<Date | undefined>();
   const [dataFim, setDataFim] = useState<Date | undefined>();
   const [isOpen, setIsOpen] = useState(false);
@@ -44,7 +45,7 @@ export function FiltroLicitacoes({ onFilterChange, compact = false }: FiltroLici
       search,
       etiquetas: selectedEtiquetas.length > 0 ? selectedEtiquetas : undefined,
       responsavel: responsavel || undefined,
-      tipoLicitacao: tipoLicitacao && tipoLicitacao !== '__all__' ? tipoLicitacao : undefined,
+      tipoLicitacao: tipoLicitacao || "GSS",
       dataInicio,
       dataFim,
     });
@@ -62,13 +63,14 @@ export function FiltroLicitacoes({ onFilterChange, compact = false }: FiltroLici
     setSearch("");
     setSelectedEtiquetas([]);
     setResponsavel("");
-    setTipoLicitacao("");
+    setTipoLicitacao("GSS");
     setDataInicio(undefined);
     setDataFim(undefined);
   };
 
-  const hasActiveFilters = search || selectedEtiquetas.length > 0 || responsavel || tipoLicitacao || dataInicio || dataFim;
-  const hasAdvancedFilters = selectedEtiquetas.length > 0 || responsavel || tipoLicitacao || dataInicio || dataFim;
+  const outraEmpresa = tipoLicitacao !== "GSS";
+  const hasActiveFilters = search || selectedEtiquetas.length > 0 || responsavel || outraEmpresa || dataInicio || dataFim;
+  const hasAdvancedFilters = selectedEtiquetas.length > 0 || responsavel || outraEmpresa || dataInicio || dataFim;
 
   const activeCount = selectedEtiquetas.length + (responsavel ? 1 : 0) + (dataInicio ? 1 : 0) + (dataFim ? 1 : 0);
 
@@ -136,15 +138,15 @@ export function FiltroLicitacoes({ onFilterChange, compact = false }: FiltroLici
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Setor</Label>
+                <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Empresa</Label>
                 <Select value={tipoLicitacao} onValueChange={setTipoLicitacao}>
                   <SelectTrigger className="h-9 text-sm">
                     <SelectValue placeholder="Todos" />
                   </SelectTrigger>
                   <SelectContent className="bg-background z-50">
-                    <SelectItem value="__all__">Todos</SelectItem>
                     <SelectItem value="GSS">GSS</SelectItem>
                     <SelectItem value="AGES">AGES</SelectItem>
+                    <SelectItem value="TODAS">GSS e AGES</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -262,15 +264,15 @@ export function FiltroLicitacoes({ onFilterChange, compact = false }: FiltroLici
               </div>
 
               <div className="space-y-3">
-                <Label className="text-sm font-medium text-foreground">Setor</Label>
+                <Label className="text-sm font-medium text-foreground">Empresa</Label>
                 <Select value={tipoLicitacao} onValueChange={setTipoLicitacao}>
                   <SelectTrigger className="h-11">
                     <SelectValue placeholder="Todos os setores" />
                   </SelectTrigger>
                   <SelectContent className="bg-background z-50">
-                    <SelectItem value="__all__">Todos</SelectItem>
                     <SelectItem value="GSS">GSS</SelectItem>
                     <SelectItem value="AGES">AGES</SelectItem>
+                    <SelectItem value="TODAS">GSS e AGES</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
