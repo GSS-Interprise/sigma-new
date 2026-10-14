@@ -37,7 +37,7 @@ export function LicitacoesArquivadasDialog({ open, onOpenChange, onAbrir }: {
     enabled: open,
     queryFn: async () => {
       let q = (supabase as any).from("licitacoes")
-        .select("id,titulo,numero_edital,orgao,status,valor_estimado,data_disputa,municipio_uf,tipo_modalidade,responsavel_id,etiquetas,prioridade,arquivado_em,arquivado_motivo", { count: "exact" })
+        .select("id,titulo,numero_edital,orgao,status,valor_estimado,data_disputa,municipio_uf,tipo_modalidade,responsavel_id,etiquetas,prioridade,arquivado_em,arquivado_motivo,licitacao_resultados(colocacao_gss,situacao_gss,motivo_texto,classificacao_gss)", { count: "exact" })
         .eq("board", "effecti").eq("empresa", "GSS").not("arquivado_em", "is", null)
         .order("arquivado_em", { ascending: false })
         .range(pagina * POR_PAGINA, pagina * POR_PAGINA + POR_PAGINA - 1);
@@ -90,6 +90,13 @@ export function LicitacoesArquivadasDialog({ open, onOpenChange, onAbrir }: {
                   <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
                     <Badge variant="outline" className="h-5 px-1.5 text-[10px]">{MOTIVO[l.arquivado_motivo] ?? "arquivado"}</Badge>
                     <span>disputa {dataBr(l.data_disputa)} · arquivado {dataBr(l.arquivado_em)}</span>
+                    {(() => {
+                      // colocação e motivo do resultado (T7), quando registrados
+                      const r = Array.isArray(l.licitacao_resultados) ? l.licitacao_resultados[0] : l.licitacao_resultados;
+                      if (!r) return null;
+                      const col = r.classificacao_gss === "primeiro_lugar" ? "1º lugar" : r.colocacao_gss ? `${r.colocacao_gss}º lugar` : r.situacao_gss === "inabilitada" ? "inabilitada" : null;
+                      return <>{col && <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">GSS {col}</Badge>}{r.motivo_texto && <span className="w-full truncate" title={r.motivo_texto}>Motivo: {r.motivo_texto}</span>}</>;
+                    })()}
                   </div>
                 </button>
                 <Button size="sm" variant="outline" className="shrink-0 gap-1.5" disabled={reabrindo === l.id} onClick={() => reabrir(l)}>

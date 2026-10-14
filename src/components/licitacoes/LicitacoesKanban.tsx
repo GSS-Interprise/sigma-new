@@ -12,7 +12,8 @@ import { format } from "date-fns";
 import { useUserSetor } from "@/hooks/useUserSetor";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useLicitacoesProfiles } from "@/hooks/useLicitacoesProfiles";
-import { LicitacaoResultadoItensDialog } from "./LicitacaoResultadoItensDialog";
+// resultado com motivo, colocação e leitura da ata (T7); a tela antiga item a item saiu do fluxo
+import { LicitacaoResultadoDialog } from "./LicitacaoResultadoDialog";
 import { LicitacaoDescarteDialog } from "./LicitacaoDescarteDialog";
 import { Button } from "@/components/ui/button";
 import { CardActionsMenu } from "@/components/demandas/CardActionsMenu";
@@ -1346,7 +1347,7 @@ export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filt
       </div>
       
       {/* Dialog de Resultado para Inteligência Competitiva */}
-      <LicitacaoResultadoItensDialog
+      <LicitacaoResultadoDialog
         open={resultadoDialogOpen}
         onOpenChange={setResultadoDialogOpen}
         licitacaoId={pendingDrop?.licitacaoId || ''}

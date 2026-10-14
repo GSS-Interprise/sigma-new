@@ -45,6 +45,7 @@ import { LicitacaoComentarioAvancadoInput } from "./LicitacaoComentarioAvancadoI
 import { LicitacaoAtividadeItem } from "./LicitacaoAtividadeItem";
 import { useOpcoesStatusLicitacao } from "./ColunaKanbanEditavel";
 import { LicitacaoTarefasPanel } from "./LicitacaoTarefasPanel";
+import { LicitacaoResultadoResumo } from "./LicitacaoResultadoDialog";
 import { LicitacaoRiscoIndicator } from "./LicitacaoRiscoIndicator";
 import { LicitacaoResultadoItensDialog } from "./LicitacaoResultadoItensDialog";
 import { LicitacaoCompetitividadeViewDialog } from "./LicitacaoCompetitividadeViewDialog";
@@ -1825,6 +1826,9 @@ export function LicitacaoDetailDialog({
                           dataDisputa={licitacao.data_disputa}
                           responsavelCard={licitacao.responsavel_id}
                         />
+                        <div className="mt-2">
+                          <LicitacaoResultadoResumo licitacaoId={licitacao.id} status={licitacao.status} titulo={licitacao.titulo || licitacao.numero_edital} />
+                        </div>
                       </div>
                     )}
 
