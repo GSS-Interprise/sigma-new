@@ -46,11 +46,12 @@ serve(async (req) => {
 
   const campos = coletar(payload);
   const evento = primeiro(campos, /(^|\.)(event|evento|type|tipo|action|acao)$/, /(^|\.)(status|situacao)$/);
-  const documento = primeiro(campos, /(document|documento|envelope)[^.]*\.(name|nome|title|titulo|filename)$/, /(^|\.)(document_?name|nome_?documento|title|titulo|filename)$/);
-  const email = primeiro(campos, /(signer|signatario|assinante|signatory)[^.]*\.e?-?mail$/, /(^|\.|_)e?-?mail$/) ?? (bruto.match(RE_EMAIL)?.[0] ?? null);
-  const cpfBruto = primeiro(campos, /(signer|signatario|assinante|signatory)[^.]*\.(cpf|document_?number|documento|taxid)$/, /(cpf|document_?number|taxid)$/);
+  const documento = primeiro(campos, /(document|documento|envelope)[^.]*\.(name|nome|title|titulo|filename)$/, /(^|\.)(document_?name|nome_?documento|title|titulo|filename)$/, /^data\.name$/);
+  // formato real (teste de 14/10, evento DocumentSigned): data.signature.{name, identifier = CPF, emailAddress}
+  const email = primeiro(campos, /(signer|signatario|assinante|signatory|signature)[^.]*\.(e?-?mail|emailaddress)$/, /(^|\.|_)e?-?mail$/) ?? (bruto.match(RE_EMAIL)?.[0] ?? null);
+  const cpfBruto = primeiro(campos, /(signer|signatario|assinante|signatory|signature)[^.]*\.(cpf|document_?number|documento|taxid|identifier)$/, /(cpf|document_?number|taxid)$/);
   const cpf = cpfBruto && soDigitos(cpfBruto).length === 11 ? soDigitos(cpfBruto) : null;
-  const nome = primeiro(campos, /(signer|signatario|assinante|signatory)[^.]*\.(name|nome|full_?name)$/, /(^|\.)(signer_?name|nome_?signatario|signatario)$/);
+  const nome = primeiro(campos, /(signer|signatario|assinante|signatory|signature)[^.]*\.(name|nome|full_?name)$/, /(^|\.)(signer_?name|nome_?signatario|signatario)$/);
   const texto = `${evento ?? ""} ${bruto.slice(0, 4000)}`.toLowerCase();
   // assinatura de signatário: fala em assinar e não em recusar/cancelar
   const assinou = /(sign|assin)/.test(evento?.toLowerCase() ?? texto) && !/(recus|refus|reject|cancel|expir)/.test(evento?.toLowerCase() ?? "");
