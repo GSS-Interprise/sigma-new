@@ -180,12 +180,17 @@ export function EmailComposer({
             <div>
               <Label className="text-xs">Título</Label>
               <Input value={valor.titulo ?? ""} disabled={desabilitado} onChange={(e) => set("titulo", e.target.value)}
-                placeholder="Plantões de {{especialidade}} abertos" />
+                placeholder="Oportunidade para **{{especialidade}}**" />
+              <p className="mt-1 text-[11px] text-muted-foreground">Entre ** ** fica em destaque, como nas artes da GSS.</p>
             </div>
             <div>
               <Label className="text-xs">Mensagem</Label>
               <Textarea rows={8} value={valor.mensagem ?? ""} disabled={desabilitado} onChange={(e) => set("mensagem", e.target.value)}
-                placeholder={"Olá, {{primeiro_nome}}!\n\nEstamos com plantões de **{{especialidade}}** em {{cidade}}.\n\nLinha em branco separa parágrafos; **texto** fica em negrito."} />
+                placeholder={"{{primeiro_nome}}, **aumente seu faturamento** sem sair de casa.\n---\n# Requisitos\n- CRM e RQE ativos\n- Trabalho 100% remoto\n---\n**Pagamento por produção via PJ.**\nFale com a nossa equipe para alinhar a sua escala."} />
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Formatação: <b>**negrito**</b> · <b># subtítulo</b> · <b>- item</b> vira lista com ✓ · uma linha só com <b>---</b> troca de cartão
+                (um --- : verde-escuro e branco; dois --- : chamada junto do título, verde-escuro e branco).
+              </p>
               <div className="flex flex-wrap gap-1 mt-1.5">
                 {VARIAVEIS.map((x) => (
                   <button key={x.v} type="button" disabled={desabilitado} title={`Insere ${x.d}`}
