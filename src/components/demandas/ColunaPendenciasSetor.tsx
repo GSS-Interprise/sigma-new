@@ -45,7 +45,7 @@ export function ColunaPendenciasSetor() {
       Array.from(
         new Set(
           pendencias
-            .filter((p) => p.origem === "contrato" && p.recurso_id)
+            .filter((p) => p.recurso_id)
             .map((p) => p.recurso_id),
         ),
       ),
@@ -159,7 +159,7 @@ export function ColunaPendenciasSetor() {
                           {URGENCIA_LABEL[p.urgencia] ?? p.urgencia}
                         </Badge>
                       </div>
-                      {p.origem === "contrato" && p.recurso_id && (
+                      {p.recurso_id && (
                         <p className="text-[10px] font-mono text-muted-foreground/80 mt-0.5">
                           ID: {codigosMap[p.recurso_id] ?? "—"}
                         </p>

@@ -332,7 +332,7 @@ export function usePendenciasSetor(setorId: string | null | undefined, isAdmin =
     queryFn: async () => {
       let q: any = supabase
         .from("worklist_tarefas")
-        .select("id, setor_destino_id, modulo, recurso_id, titulo, descricao, urgencia, data_limite, created_at")
+        .select("id, setor_destino_id, modulo, contrato_id, titulo, descricao, urgencia, data_limite, created_at")
         .is("deleted_at", null)
         .neq("status", "concluida");
       if (setorId) q = q.eq("setor_destino_id", setorId);
@@ -344,7 +344,8 @@ export function usePendenciasSetor(setorId: string | null | undefined, isAdmin =
         id: r.id,
         setor_id: r.setor_destino_id,
         origem: r.modulo,
-        recurso_id: r.recurso_id,
+        // worklist_tarefas não tem recurso_id (o select pedia e dava 400); o recurso ligado é o contrato
+        recurso_id: r.contrato_id,
         titulo: r.titulo,
         descricao: r.descricao,
         urgencia: r.urgencia,
