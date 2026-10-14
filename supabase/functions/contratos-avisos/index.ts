@@ -38,12 +38,17 @@ serve(async (req) => {
   const dryRun = !!(await req.json().catch(() => ({}))).dry_run;
 
   try {
-    const { data: pend } = await svc.from("contrato_avisos").select("id, contrato_id, evento").is("enviado_em", null).order("criado_em").limit(50);
-    if (!pend?.length) return json({ ok: true, avisos: 0 });
-    const { data: cfgs } = await svc.from("vencimentos_config").select("*").in("chave", ["contrato_assinado", "contrato_inicio_servico"]);
+    const { data: pendBruto } = await svc.from("contrato_avisos").select("id, contrato_id, evento").is("enviado_em", null).order("criado_em").limit(50);
+    const pend = pendBruto ?? [];
+    // T12: médico vinculado a cliente/unidade/contrato avisa o financeiro (faturamento do médico)
+    const { data: vincPend } = await svc.from("medico_vinculo_avisos")
+      .select("id, vinculo_id, medico_vinculo_unidade(id, data_inicio, medico_id, medicos(nome_completo), clientes(nome_fantasia, razao_social), unidades(nome), contratos(codigo_interno, codigo_contrato))")
+      .is("enviado_em", null).order("criado_em").limit(50);
+    if (!pend.length && !vincPend?.length) return json({ ok: true, avisos: 0 });
+    const { data: cfgs } = await svc.from("vencimentos_config").select("*").in("chave", ["contrato_assinado", "contrato_inicio_servico", "medico_vinculado"]);
     const { data: contratos } = await svc.from("contratos")
       .select("id, codigo_interno, codigo_contrato, objeto_contrato, valor_estimado, data_inicio, servico_iniciado_em, cliente_id, clientes(nome_fantasia, razao_social)")
-      .in("id", pend.map((p) => p.contrato_id));
+      .in("id", pend.length ? pend.map((p) => p.contrato_id) : ["00000000-0000-0000-0000-000000000000"]);
     const ids = [...new Set((cfgs ?? []).flatMap((c: any) => c.destinatarios ?? []))];
     const { data: perfis } = ids.length ? await svc.from("profiles").select("id, nome_completo, email").in("id", ids) : { data: [] as any[] };
     const resendKey = Deno.env.get("RESEND_API_KEY");
@@ -82,6 +87,36 @@ serve(async (req) => {
         }
       }
       await svc.from("contrato_avisos").update({ enviado_em: new Date().toISOString() }).eq("id", p.id);
+    }
+    const cfgVinc: any = (cfgs ?? []).find((x: any) => x.chave === "medico_vinculado");
+    for (const v of (vincPend ?? []) as any[]) {
+      const vin = v.medico_vinculo_unidade;
+      if (!vin) { if (!dryRun) await svc.from("medico_vinculo_avisos").update({ enviado_em: new Date().toISOString() }).eq("id", v.id); continue; }
+      const medico = vin.medicos?.nome_completo ?? "Médico";
+      const cliente = vin.clientes?.nome_fantasia || vin.clientes?.razao_social || "cliente";
+      const contrato = vin.contratos ? `contrato ${vin.contratos.codigo_interno ? "#" + vin.contratos.codigo_interno : ""} ${vin.contratos.codigo_contrato ?? ""}`.trim() : null;
+      const titulo = `🩺 ${medico} vinculado a ${cliente}${vin.unidades?.nome ? ` (${vin.unidades.nome})` : ""}`;
+      const linhas = [["Médico", medico], ["Cliente", cliente], ["Unidade", vin.unidades?.nome ?? "—"], ["Contrato", contrato ?? "não informado no vínculo"],
+        ["Início", vin.data_inicio ? String(vin.data_inicio).split("-").reverse().join("/") : "—"]];
+      const destinatarios: string[] = cfgVinc?.destinatarios ?? [];
+      relatorio.push({ aviso: v.id, evento: "medico_vinculado", medico, destinatarios: destinatarios.length });
+      if (dryRun) continue;
+      for (const uid of destinatarios) {
+        await svc.from("system_notifications").insert({ user_id: uid, tipo: "medico_vinculado", titulo, mensagem: contrato ?? cliente, link: "/medicos", referencia_id: vin.medico_id });
+        const perfil = (perfis ?? []).find((x: any) => x.id === uid);
+        if (cfgVinc?.aviso_email !== false && perfil?.email && resendKey) {
+          const html = `<div style="font-family:Arial,sans-serif;font-size:14px;color:#1f2937;max-width:600px">
+<p>Olá, ${esc((perfil.nome_completo || "").split(" ")[0])}.</p><p><b>${esc(titulo.replace(/^\S+\s/, ""))}</b> — confira o faturamento do médico.</p>
+<table style="border-collapse:collapse;font-size:13px">${linhas.map(([k, val]) => `<tr><td style="padding:4px 12px 4px 0;color:#6b7280">${esc(k)}</td><td style="padding:4px 0">${esc(String(val))}</td></tr>`).join("")}</table>
+<p style="margin-top:16px"><a href="${SITE}/medicos" style="background:#166534;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none">Abrir no Sigma</a></p></div>`;
+          const r = await fetch("https://api.resend.com/emails", {
+            method: "POST", headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ from: DE, to: [perfil.email], subject: titulo.replace(/^\S+\s/, ""), html, tags: [{ name: "origem", value: "medico_vinculado" }] }),
+          });
+          if (!r.ok) relatorio[relatorio.length - 1].erro_email = `${r.status} ${(await r.text()).slice(0, 160)}`;
+        }
+      }
+      await svc.from("medico_vinculo_avisos").update({ enviado_em: new Date().toISOString() }).eq("id", v.id);
     }
     return json({ ok: true, dry_run: dryRun, avisos: relatorio.length, relatorio });
   } catch (e: any) {

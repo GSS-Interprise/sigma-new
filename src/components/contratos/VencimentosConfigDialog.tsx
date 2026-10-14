@@ -16,7 +16,7 @@ import { toast } from "sonner";
 const DIAS = [60, 30, 15, 7, 3, 1];
 
 export function VencimentosConfigDialog({ chave, titulo, onFechar, semDias = false, descricao }: {
-  chave: "empresa_documentos" | "medico_documentos" | "contrato_assinado" | "contrato_inicio_servico"; titulo: string; onFechar: () => void;
+  chave: "empresa_documentos" | "medico_documentos" | "contrato_assinado" | "contrato_inicio_servico" | "medico_vinculado"; titulo: string; onFechar: () => void;
   semDias?: boolean; descricao?: string;
 }) {
   const qc = useQueryClient();

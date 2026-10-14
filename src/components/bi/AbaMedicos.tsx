@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { IndicadorConversaoAssinatura } from "./IndicadorConversaoAssinatura";
 
 const formatPercent = (value: number) => `${value.toFixed(1)}%`;
 
@@ -284,6 +285,9 @@ export function AbaMedicos() {
 
   return (
     <div className="space-y-5">
+      {/* T12: quem converteu × quem assinou (alta gestão) */}
+      <IndicadorConversaoAssinatura />
+
       {/* Smart Filters */}
       <Card className="shadow-md">
         <CardContent className="p-4">

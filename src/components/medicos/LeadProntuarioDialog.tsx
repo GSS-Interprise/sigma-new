@@ -45,6 +45,7 @@ import { BloqueioTemporarioSection } from "./BloqueioTemporarioSection";
 import { LeadEtiquetasDropdown } from "./LeadEtiquetasDropdown";
 import { PhoneEmailArrayFields } from "@/components/leads/PhoneEmailArrayFields";
 import { useLeadHistoricoUnreadCount } from "@/hooks/useLeadHistoricoVisualizacoes";
+import { MedicoCondicoesCard, MedicoNaoAssinou } from "./MedicoCondicoesCard";
 
 export interface LeadProntuarioDialogProps {
   open: boolean;
@@ -2467,6 +2468,10 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                                   </label>
                                 </div>
                               </div>
+
+                              {/* T12: não assinou com motivo (indicador da gestão) e condições combinadas */}
+                              {medicoVinculado?.id && <MedicoNaoAssinou medicoId={medicoVinculado.id} assinado={!!aprovacaoContrato} />}
+                              {medicoVinculado?.id && <MedicoCondicoesCard medicoId={medicoVinculado.id} />}
 
                               {/* Campo de motivo - aparece quando todas aprovações estão marcadas */}
                               {aprovacaoContrato && aprovacaoDocumentacao && aprovacaoCadastro && (

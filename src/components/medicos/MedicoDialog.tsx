@@ -24,6 +24,7 @@ import { EspecialidadeMultiSelect } from "./EspecialidadeMultiSelect";
 import { UnidadeMultiSelect } from "./UnidadeMultiSelect";
 import { ProntuarioTab } from "./ProntuarioTab";
 import { DocumentacaoTab } from "./DocumentacaoTab";
+import { MedicoCondicoesCard } from "./MedicoCondicoesCard";
 
 const ESTADOS_BRASIL = [
   'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 
@@ -327,6 +328,8 @@ export function MedicoDialog({ open, onOpenChange, medico, onOpenProntuario }: M
           </TabsList>
 
           <TabsContent value="dados" className="space-y-4">
+            {/* T12: condições combinadas com o médico */}
+            {medico?.id && <MedicoCondicoesCard medicoId={medico.id} />}
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <fieldset disabled={isMigrated} className="space-y-4">
