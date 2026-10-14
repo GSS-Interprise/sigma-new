@@ -46,6 +46,7 @@ import { LicitacaoAtividadeItem } from "./LicitacaoAtividadeItem";
 import { useOpcoesStatusLicitacao } from "./ColunaKanbanEditavel";
 import { LicitacaoTarefasPanel } from "./LicitacaoTarefasPanel";
 import { LicitacaoResultadoResumo } from "./LicitacaoResultadoDialog";
+import { BLOQUEAR_DUPLICADO, DuplicadoAviso, DuplicadoConfirmar, useDuplicadosLicitacao } from "./LicitacaoDuplicadoAviso";
 import { LicitacaoRiscoIndicator } from "./LicitacaoRiscoIndicator";
 import { LicitacaoResultadoItensDialog } from "./LicitacaoResultadoItensDialog";
 import { LicitacaoCompetitividadeViewDialog } from "./LicitacaoCompetitividadeViewDialog";
@@ -166,8 +167,11 @@ export function LicitacaoDetailDialog({
   onCriado,
 }: LicitacaoDetailDialogProps) {
   const opcoesStatus = useOpcoesStatusLicitacao(licitacao, STATUS_OPTIONS);
+  // edital repetido na criação manual (T3)
+  const [confirmarDuplicado, setConfirmarDuplicado] = useState(false);
   const [editando, setEditando] = useState(false);
   const [formData, setFormData] = useState<any>({});
+  const { data: duplicados } = useDuplicadosLicitacao(!!isNew && !!open, formData);
   const [novaEtiqueta, setNovaEtiqueta] = useState("");
   const [fieldsOrder, setFieldsOrder] = useState<FieldConfig[]>(getFieldsOrder());
 
@@ -1181,7 +1185,18 @@ export function LicitacaoDetailDialog({
     }
   };
 
+  const abrirExistente = async (id: string) => {
+    const { data } = await supabase.from("licitacoes").select("*").eq("id", id).maybeSingle();
+    if (!data) return toast.error("Não consegui abrir o edital existente");
+    setConfirmarDuplicado(false);
+    if (onCriado) onCriado(data); else window.location.assign(`/licitacoes?open=${id}`);
+  };
+
   const handleSave = () => {
+    if (isNew && (duplicados?.length ?? 0) > 0 && !confirmarDuplicado) {
+      setConfirmarDuplicado(true);
+      return;
+    }
     // Verificar se mudança de status requer modal de descarte
     if (!isNew && formData.status === STATUS_DESCARTE && licitacao?.status !== STATUS_DESCARTE) {
       setPendingStatusChange(formData.status);
@@ -1593,6 +1608,12 @@ export function LicitacaoDetailDialog({
                 </div>
               </div>
             </div>
+
+            {isNew && <DuplicadoAviso itens={duplicados ?? []} onAbrir={abrirExistente} />}
+            {confirmarDuplicado && (
+              <DuplicadoConfirmar itens={duplicados ?? []} onAbrir={abrirExistente} onFechar={() => setConfirmarDuplicado(false)}
+                onCriar={() => { if (BLOQUEAR_DUPLICADO) return; handleSaveInternal(); setConfirmarDuplicado(false); }} />
+            )}
 
             {/* Tabs para navegar entre Detalhes, Competitividade e Converter em Contrato */}
             <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0 overflow-hidden">
