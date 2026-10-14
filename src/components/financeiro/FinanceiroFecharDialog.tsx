@@ -139,10 +139,17 @@ export function FinanceiroFecharDialog({ mes, ano, reenvio = false }: { mes: num
       try {
         const { data: pags } = await (supabase as any)
           .from("financeiro_pagamentos")
-          .select("profissional_nome, profissional_crm, unidade, total_plantoes, valor_total, medico_id")
+          .select("profissional_nome, profissional_crm, unidade, total_plantoes, valor_total, medico_id, nf_numero, nf_valor_liquido, nf_prestador_cnpj, data_vencimento, ca_vencimento, data_pagamento, ca_baixa_em, status")
           .eq("mes_referencia", mes).eq("ano_referencia", ano);
+        // fornecedor como no Conta Azul: razão social da PJ do médico, quando já conhecida
+        const cnpjs = [...new Set((pags ?? []).map((p: any) => p.nf_prestador_cnpj).filter(Boolean))];
+        const { data: razoes } = cnpjs.length
+          ? await (supabase as any).from("financeiro_medico_cnpj").select("cnpj, razao").in("cnpj", cnpjs)
+          : { data: [] as any[] };
+        const razaoDe = new Map((razoes ?? []).filter((r: any) => r.razao).map((r: any) => [r.cnpj, r.razao]));
+        const lancs = (pags ?? []).map((p: any) => ({ ...p, fornecedor: razaoDe.get(p.nf_prestador_cnpj) ?? null }));
         const arquivo: File = pdfFile
-          ?? new File([gerarFechamentoPdf(mes, ano, (pags ?? []) as any[], resumo.total)], `fechamento_${ano}-${String(mes).padStart(2, "0")}.pdf`, { type: "application/pdf" });
+          ?? new File([gerarFechamentoPdf(mes, ano, lancs as any[], resumo.total)], `fechamento_${ano}-${String(mes).padStart(2, "0")}.pdf`, { type: "application/pdf" });
         const p = `fechamentos/${ano}-${String(mes).padStart(2, "0")}/${Date.now()}_${sanitize(arquivo.name)}`;
         const { error: upErr } = await supabase.storage.from("financeiro-anexos").upload(p, arquivo, { contentType: "application/pdf" });
         if (upErr) throw upErr;
