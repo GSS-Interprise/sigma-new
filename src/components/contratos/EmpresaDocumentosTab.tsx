@@ -21,10 +21,12 @@ import { VencimentosConfigDialog, seloValidade } from "./VencimentosConfigDialog
  * Renovar = anexar a versão nova; a antiga fica no histórico e sai dos avisos. O robô
  * vencimentos-alertas avisa conforme a configuração do botão "Avisos".
  */
+// Lista da Bianca (WhatsApp 14/10). O campo aceita tipo novo digitado (ex.: CRM da PJ em outra cidade),
+// porque a equipe precisa cadastrar documentos que não estão aqui; os tipos já usados viram sugestão.
 const TIPOS = [
-  "CND Federal (Receita/PGFN)", "CRF FGTS", "CNDT Trabalhista", "Certidão Estadual", "Certidão Municipal",
-  "Certidão de Falência e Recuperação Judicial", "Alvará de funcionamento", "Alvará sanitário", "Inscrição no CRM (PJ)",
-  "Balanço patrimonial", "Atestado de capacidade técnica", "Contrato social", "Cartão CNPJ", "Outro",
+  "CND Municipal", "CND Estadual", "CND Federal", "CND FGTS", "CND Falência e concordata", "CND Trabalhista",
+  "CND Simplificada", "Alvará do Corpo de Bombeiros", "Alvará de funcionamento", "Alvará sanitário", "Contrato social",
+  "Balanço patrimonial (2 últimos anos)", "CRM PJ", "Atestado de capacidade técnica", "Cartão CNPJ",
 ];
 const BUCKET = "contratos-documentos";
 
@@ -131,7 +133,7 @@ export function EmpresaDocumentosTab() {
         </CardContent></Card>
       )}
 
-      {form && <DocForm base={form.base} renovar={!!form.renovar} onFechar={() => setForm(null)} />}
+      {form && <DocForm base={form.base} renovar={!!form.renovar} tiposUsados={docs.map((d) => d.tipo)} onFechar={() => setForm(null)} />}
       {avisos && <VencimentosConfigDialog chave="empresa_documentos" titulo="documentos da empresa" onFechar={() => setAvisos(false)} />}
       <AnexoViewerNavegavel anexos={anexos} indice={ver ?? 0} onIndiceChange={setVer} open={ver !== null} onOpenChange={(o) => { if (!o) setVer(null); }} />
     </div>
@@ -162,7 +164,7 @@ function LinhaDoc({ d, antigo, onVer, onEditar, onRenovar, onExcluir }: {
   );
 }
 
-function DocForm({ base, renovar, onFechar }: { base?: Doc; renovar: boolean; onFechar: () => void }) {
+function DocForm({ base, renovar, tiposUsados, onFechar }: { base?: Doc; renovar: boolean; tiposUsados: string[]; onFechar: () => void }) {
   const qc = useQueryClient();
   const { user } = useAuth();
   const editar = !!base && !renovar;
@@ -177,7 +179,7 @@ function DocForm({ base, renovar, onFechar }: { base?: Doc; renovar: boolean; on
   const inputRef = useRef<HTMLInputElement>(null);
 
   const salvar = async () => {
-    if (!tipo) return toast.error("Escolha o tipo");
+    if (!tipo.trim()) return toast.error("Escolha ou escreva o tipo");
     if (renovar && !arquivo && !validade) return toast.error("Na renovação, anexe o arquivo novo ou informe a nova validade");
     setSalvando(true);
     try {
@@ -190,7 +192,7 @@ function DocForm({ base, renovar, onFechar }: { base?: Doc; renovar: boolean; on
         const { error } = await supabase.storage.from(BUCKET).upload(arquivo_path, arquivo);
         if (error) throw error;
       }
-      const linha = { tipo, nome: nome.trim() || null, emissor: emissor.trim() || null, emissao: emissao || null, validade: validade || null, observacao: observacao.trim() || null, arquivo_path, arquivo_nome };
+      const linha = { tipo: tipo.trim(), nome: nome.trim() || null, emissor: emissor.trim() || null, emissao: emissao || null, validade: validade || null, observacao: observacao.trim() || null, arquivo_path, arquivo_nome };
       if (editar) {
         const { error } = await (supabase as any).from("empresa_documentos").update(linha).eq("id", base!.id);
         if (error) throw error;
@@ -222,10 +224,11 @@ function DocForm({ base, renovar, onFechar }: { base?: Doc; renovar: boolean; on
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2 space-y-1">
             <span className="text-xs text-muted-foreground">Tipo</span>
-            <Select value={tipo} onValueChange={setTipo} disabled={renovar}>
-              <SelectTrigger className="h-9"><SelectValue placeholder="Escolha" /></SelectTrigger>
-              <SelectContent>{TIPOS.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
-            </Select>
+            <Input list="tipos-documento-empresa" value={tipo} onChange={(e) => setTipo(e.target.value)} disabled={renovar}
+              placeholder="Escolha da lista ou escreva um tipo novo" className="h-9" />
+            <datalist id="tipos-documento-empresa">
+              {Array.from(new Set([...TIPOS, ...tiposUsados])).map((t) => <option key={t} value={t} />)}
+            </datalist>
           </div>
           <div className="col-span-2 space-y-1">
             <span className="text-xs text-muted-foreground">Complemento (opcional)</span>
