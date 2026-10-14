@@ -50,14 +50,37 @@ async function contexto(svc: any, supabaseUrl: string): Promise<Ctx> {
 const remetente = (nome: string | null | undefined, email: string) =>
   `${(nome || "GSS Saúde").replace(/[<>"]/g, "")} <${email.replace(/^.*<|>.*$/g, "")}>`;
 
-async function resendLote(emails: unknown[]): Promise<{ ids: (string | null)[]; erro: string | null }> {
+// Mesmo critério de email_publico_campanha: um endereço fora do padrão faz o Resend recusar o
+// LOTE INTEIRO ("Invalid `to` field"). Em 14/10 um "...@gmail.com20240827135433" derrubou 100.
+const EMAIL_VALIDO = /^[a-z0-9._%+'-]+@[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/i;
+
+async function resendUm(email: unknown): Promise<{ id: string | null; erro: string | null }> {
+  const r = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${Deno.env.get("RESEND_API_KEY")}`, "Content-Type": "application/json" },
+    body: JSON.stringify(email),
+  });
+  const corpo = await r.json().catch(() => ({}));
+  if (!r.ok) return { id: null, erro: String(corpo?.message || corpo?.error || `resend_${r.status}`).slice(0, 300) };
+  return { id: corpo?.id ?? null, erro: null };
+}
+
+async function resendLote(emails: unknown[]): Promise<{ ids: (string | null)[]; erro: string | null; erros?: (string | null)[] }> {
   const r = await fetch("https://api.resend.com/emails/batch", {
     method: "POST",
     headers: { Authorization: `Bearer ${Deno.env.get("RESEND_API_KEY")}`, "Content-Type": "application/json" },
     body: JSON.stringify(emails),
   });
   const corpo = await r.json().catch(() => ({}));
-  if (!r.ok) return { ids: emails.map(() => null), erro: String(corpo?.message || corpo?.error || `resend_${r.status}`).slice(0, 300) };
+  if (!r.ok) {
+    const erro = String(corpo?.message || corpo?.error || `resend_${r.status}`).slice(0, 300);
+    // erro de validação (422): o lote tinha algo que o provedor recusou. Manda um a um para
+    // que só o problemático fique de fora. Erro de limite/servidor segue parando a rodada.
+    if (r.status !== 422) return { ids: emails.map(() => null), erro };
+    const ids: (string | null)[] = [], erros: (string | null)[] = [];
+    for (const e of emails) { const u = await resendUm(e); ids.push(u.id); erros.push(u.erro); }
+    return { ids, erro: null, erros };
+  }
   const lista = Array.isArray(corpo?.data) ? corpo.data : [];
   return { ids: emails.map((_, i) => lista[i]?.id ?? null), erro: null };
 }
@@ -114,19 +137,25 @@ async function processarCampanha(ctx: Ctx, c: any) {
     await ctx.svc.from("email_envios").update({ status: "bloqueado", erro: "descadastrado antes do envio" })
       .eq("campanha_id", c.id).in("email", [...bloqueados]);
   }
-  const envios = fila.filter((f: any) => !bloqueados.has(f.email));
+  const invalidos = fila.filter((f: any) => !bloqueados.has(f.email) && !EMAIL_VALIDO.test(String(f.email || "").trim()));
+  if (invalidos.length) {
+    await ctx.svc.from("email_envios").update({ status: "bloqueado", erro: "endereço de e-mail inválido" })
+      .in("id", invalidos.map((f: any) => f.id));
+  }
+  const invalido = new Set(invalidos.map((f: any) => f.id));
+  const envios = fila.filter((f: any) => !bloqueados.has(f.email) && !invalido.has(f.id));
   const vars = await varsDosLeads(ctx.svc, envios.map((f: any) => f.lead_id).filter(Boolean));
 
   let enviados = 0;
   for (let i = 0; i < envios.length; i += LOTE_RESEND) {
     const lote = envios.slice(i, i + LOTE_RESEND);
-    const { ids, erro } = await resendLote(lote.map((f: any) => montarEmail(ctx, c, conteudo, assunto, f, vars.get(f.lead_id) ?? { nome: f.nome })));
+    const { ids, erro, erros } = await resendLote(lote.map((f: any) => montarEmail(ctx, c, conteudo, assunto, f, vars.get(f.lead_id) ?? { nome: f.nome })));
     const agora = new Date().toISOString();
     for (let k = 0; k < lote.length; k++) {
       const ok = !!ids[k];
       await ctx.svc.from("email_envios").update(ok
         ? { status: "enviado", resend_id: ids[k], enviado_em: agora, erro: null }
-        : { status: "erro", erro: erro ?? "sem_id_do_provedor" }).eq("id", lote[k].id);
+        : { status: "erro", erro: erros?.[k] ?? erro ?? "sem_id_do_provedor" }).eq("id", lote[k].id);
       if (ok) enviados++;
     }
     // histórico do lead: "recebeu o e-mail da campanha X" — era o que faltava ver no CRM

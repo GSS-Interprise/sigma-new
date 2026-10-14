@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -16,10 +16,17 @@ const UFS = ["AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "
  * Campanha só de e-mail. O público sai dos filtros (especialidade, estado, cidade e/ou
  * lista de disparo); filtro vazio = sem restrição. Nasce em rascunho: o texto e o disparo
  * ficam na tela da campanha, onde aparece quantos médicos vão receber.
+ *
+ * Com `campanhaId` o mesmo formulário edita o público de uma campanha que já existe
+ * (a equipe pediu para trocar as listas sem recriar a campanha).
  */
 export function NovaCampanhaEmailDialog({
-  open, onOpenChange, onCreated,
-}: { open: boolean; onOpenChange: (o: boolean) => void; onCreated: (id: string) => void }) {
+  open, onOpenChange, onCreated, campanhaId, onSaved,
+}: {
+  open: boolean; onOpenChange: (o: boolean) => void; onCreated?: (id: string) => void;
+  campanhaId?: string; onSaved?: () => void;
+}) {
+  const editando = !!campanhaId;
   const [nome, setNome] = useState("");
   const [especialidades, setEspecialidades] = useState<string[]>([]);
   const [ufs, setUfs] = useState<string[]>([]);
@@ -47,6 +54,47 @@ export function NovaCampanhaEmailDialog({
 
   const limpar = () => { setNome(""); setEspecialidades([]); setUfs([]); setCidades(""); setListas([]); };
 
+  // edição: abre com o público atual da campanha
+  useEffect(() => {
+    if (!open || !campanhaId) return;
+    (async () => {
+      const { data: c } = await (supabase as any).from("campanhas")
+        .select("nome, especialidade_ids, regiao_estados, regiao_cidades").eq("id", campanhaId).single();
+      const { data: ls } = await (supabase as any).from("campanha_listas").select("lista_id").eq("campanha_id", campanhaId);
+      setNome(c?.nome ?? ""); setEspecialidades(c?.especialidade_ids ?? []); setUfs(c?.regiao_estados ?? []);
+      setCidades((c?.regiao_cidades ?? []).join(", ")); setListas((ls ?? []).map((l: any) => l.lista_id));
+    })();
+  }, [open, campanhaId]);
+
+  const salvarPublico = async () => {
+    if (!campanhaId) return;
+    if (!nome.trim()) return toast.error("Dê um nome para a campanha.");
+    setSalvando(true);
+    const cidadesArr = cidades.split(/[,;\n]+/).map((c) => c.trim()).filter(Boolean);
+    const { error } = await (supabase as any).from("campanhas").update({
+      nome: nome.trim(),
+      especialidade_ids: especialidades.length ? especialidades : null,
+      regiao_estados: ufs.length ? ufs : null,
+      regiao_cidades: cidadesArr.length ? cidadesArr : null,
+    }).eq("id", campanhaId);
+    if (error) { setSalvando(false); return toast.error("Não salvou: " + error.message); }
+    // listas: troca o conjunto inteiro pelo escolhido agora
+    const { data: atuais } = await (supabase as any).from("campanha_listas").select("lista_id").eq("campanha_id", campanhaId);
+    const tinha = new Set((atuais ?? []).map((l: any) => l.lista_id as string));
+    const sair = [...tinha].filter((id) => !listas.includes(id));
+    const entrar = listas.filter((id) => !tinha.has(id));
+    if (sair.length) await (supabase as any).from("campanha_listas").delete().eq("campanha_id", campanhaId).in("lista_id", sair);
+    if (entrar.length) {
+      const { error: e2 } = await (supabase as any).from("campanha_listas").insert(entrar.map((lista_id) => ({ campanha_id: campanhaId, lista_id })));
+      if (e2) toast.error("Público salvo, mas as listas não foram atualizadas: " + e2.message);
+    }
+    await qc.invalidateQueries({ queryKey: ["campanhas-email"] });
+    setSalvando(false);
+    toast.success("Público atualizado.");
+    onOpenChange(false);
+    onSaved?.();
+  };
+
   const criar = async () => {
     if (!nome.trim()) return toast.error("Dê um nome para a campanha.");
     setSalvando(true);
@@ -69,14 +117,14 @@ export function NovaCampanhaEmailDialog({
     setSalvando(false);
     limpar();
     onOpenChange(false);
-    onCreated(data.id);
+    onCreated?.(data.id);
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Nova campanha de e-mail</DialogTitle>
+          <DialogTitle>{editando ? "Quem recebe esta campanha" : "Nova campanha de e-mail"}</DialogTitle>
           <DialogDescription>
             Escolha quem recebe. Filtro vazio não restringe; combinar filtros restringe mais.
           </DialogDescription>
@@ -112,8 +160,8 @@ export function NovaCampanhaEmailDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button onClick={criar} disabled={salvando}>
-            {salvando && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />} Criar e escrever o e-mail
+          <Button onClick={editando ? salvarPublico : criar} disabled={salvando}>
+            {salvando && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />} {editando ? "Salvar público" : "Criar e escrever o e-mail"}
           </Button>
         </DialogFooter>
       </DialogContent>

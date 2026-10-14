@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Code2, Copy, FileUp, ImagePlus, LayoutTemplate, Loader2, Send, Trash2, Wand2 } from "lucide-react";
+import { Bold, Code2, Copy, FileUp, Heading2, ImagePlus, Italic, LayoutTemplate, List, ListOrdered, Loader2, Send, SeparatorHorizontal, Trash2, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   renderEmail, aplicarVariaveis, modeloBaseHtml, temDescadastro, type EmailConteudo,
@@ -52,6 +52,44 @@ export function EmailComposer({
   const inputHtml = useRef<HTMLInputElement>(null);
   const inputArte = useRef<HTMLInputElement>(null);
   const inputTopo = useRef<HTMLInputElement>(null);
+  const campoMensagem = useRef<HTMLTextAreaElement>(null);
+
+  /**
+   * Barra de formatação da mensagem (pedido do Roberto, 14/10). O e-mail continua sendo
+   * montado pelas marcas do modelo (**, _, #, -, 1., ---): a barra só escreve a marca certa
+   * no lugar do cursor, para ninguém precisar decorar. A prévia ao lado mostra o resultado.
+   */
+  const formatar = (tipo: "negrito" | "italico" | "subtitulo" | "lista" | "numerada" | "cartao") => {
+    const el = campoMensagem.current;
+    const texto = valor.mensagem ?? "";
+    const ini = el?.selectionStart ?? texto.length, fim = el?.selectionEnd ?? texto.length;
+    const sel = texto.slice(ini, fim);
+    let novo = texto, cursorIni = ini, cursorFim = fim;
+    if (tipo === "negrito" || tipo === "italico") {
+      const m = tipo === "negrito" ? "**" : "_";
+      const meio = sel || (tipo === "negrito" ? "texto em negrito" : "texto em itálico");
+      novo = texto.slice(0, ini) + m + meio + m + texto.slice(fim);
+      cursorIni = ini + m.length; cursorFim = cursorIni + meio.length;
+    } else if (tipo === "cartao") {
+      const antes = texto.slice(0, ini), depois = texto.slice(fim);
+      const bloco = `${antes && !antes.endsWith("\n") ? "\n" : ""}---\n`;
+      novo = antes + bloco + sel + depois;
+      cursorIni = cursorFim = antes.length + bloco.length + sel.length;
+    } else {
+      // marca no começo de cada linha selecionada (ou da linha do cursor)
+      const iniLinha = texto.lastIndexOf("\n", ini - 1) + 1;
+      const fimLinha = (() => { const i = texto.indexOf("\n", fim); return i < 0 ? texto.length : i; })();
+      const linhas = texto.slice(iniLinha, fimLinha).split("\n");
+      const marcadas = linhas.map((l, n) => {
+        const limpa = l.replace(/^(#+\s+|[-•✓]\s+|\d{1,2}[.)]\s+)/, "");
+        return tipo === "subtitulo" ? `# ${limpa}` : tipo === "lista" ? `- ${limpa}` : `${n + 1}. ${limpa}`;
+      }).join("\n");
+      novo = texto.slice(0, iniLinha) + marcadas + texto.slice(fimLinha);
+      cursorIni = iniLinha; cursorFim = iniLinha + marcadas.length;
+    }
+    onChange({ ...valor, mensagem: novo });
+    requestAnimationFrame(() => { el?.focus(); el?.setSelectionRange(cursorIni, cursorFim); });
+  };
 
   const modo = valor.modo === "html" ? "html" : "modelo";
   const set = (campo: keyof EmailRascunho, v: string) => onChange({ ...valor, [campo]: v });
@@ -185,10 +223,22 @@ export function EmailComposer({
             </div>
             <div>
               <Label className="text-xs">Mensagem</Label>
-              <Textarea rows={8} value={valor.mensagem ?? ""} disabled={desabilitado} onChange={(e) => set("mensagem", e.target.value)}
+              <div className="mt-1 flex flex-wrap items-center gap-0.5 rounded-t-md border border-b-0 bg-muted/40 p-1">
+                {([
+                  ["negrito", Bold, "Negrito"], ["italico", Italic, "Itálico"], ["subtitulo", Heading2, "Subtítulo"],
+                  ["lista", List, "Lista com ✓"], ["numerada", ListOrdered, "Lista numerada"], ["cartao", SeparatorHorizontal, "Novo cartão"],
+                ] as const).map(([tipo, Icone, rotulo]) => (
+                  <Button key={tipo} type="button" variant="ghost" size="sm" disabled={desabilitado} title={rotulo}
+                    className="h-7 gap-1 px-2 text-xs" onMouseDown={(e) => e.preventDefault()} onClick={() => formatar(tipo)}>
+                    <Icone className="h-3.5 w-3.5" />
+                    {tipo === "cartao" && <span>Novo cartão</span>}
+                  </Button>
+                ))}
+              </div>
+              <Textarea ref={campoMensagem} rows={8} className="rounded-t-none" value={valor.mensagem ?? ""} disabled={desabilitado} onChange={(e) => set("mensagem", e.target.value)}
                 placeholder={"{{primeiro_nome}}, **aumente seu faturamento** sem sair de casa.\n---\n# Requisitos\n- CRM e RQE ativos\n- Trabalho 100% remoto\n---\n**Pagamento por produção via PJ.**\nFale com a nossa equipe para alinhar a sua escala."} />
               <p className="mt-1 text-[11px] text-muted-foreground">
-                Formatação: <b>**negrito**</b> · <b># subtítulo</b> · <b>- item</b> vira lista com ✓ · uma linha só com <b>---</b> troca de cartão
+                Use a barra acima ou as marcas: <b>**negrito**</b> · <b>_itálico_</b> · <b># subtítulo</b> · <b>- item</b> vira lista com ✓ · <b>1. item</b> numerada · uma linha só com <b>---</b> troca de cartão
                 (um --- : verde-escuro e branco; dois --- : chamada junto do título, verde-escuro e branco).
               </p>
               <div className="flex flex-wrap gap-1 mt-1.5">

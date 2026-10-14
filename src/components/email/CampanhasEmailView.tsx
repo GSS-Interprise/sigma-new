@@ -1,11 +1,16 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Loader2, Mail, MapPin, MessageCircle, Plus, Search, Stethoscope } from "lucide-react";
+import { ArrowLeft, Loader2, Mail, MapPin, MessageCircle, Plus, Search, Stethoscope, Trash2 } from "lucide-react";
 import { CampanhaEmailPainel, EMAIL_STATUS } from "./CampanhaEmailPainel";
 import { NovaCampanhaEmailDialog } from "./NovaCampanhaEmailDialog";
 import type { EmailMetricasRow } from "./EmailMetricas";
@@ -30,6 +35,31 @@ export function CampanhasEmailView() {
   const [pagina, setPagina] = useState(0);
   const [novaOpen, setNovaOpen] = useState(false);
   const [aberta, setAberta] = useState<string | null>(null);
+  const [apagar, setApagar] = useState<Linha | null>(null);
+  const [apagando, setApagando] = useState(false);
+  const qc = useQueryClient();
+
+  /**
+   * Lixeira do card. Campanha só de e-mail que nunca enviou nada (rascunho, teste) é apagada de
+   * vez; a que já enviou é arquivada, para não perder o histórico de entregas e descadastros.
+   * No e-mail dentro de campanha de WhatsApp só o e-mail sai: a campanha continua.
+   */
+  const confirmarApagar = async () => {
+    if (!apagar) return;
+    setApagando(true);
+    const jaEnviou = (apagar.metricas?.total ?? 0) > 0;
+    const q = (supabase as any).from("campanhas");
+    const { error } = apagar.canal !== "email"
+      ? await q.update({ email_ativo: false }).eq("id", apagar.id)
+      : jaEnviou
+        ? await q.update({ status: "arquivada" }).eq("id", apagar.id)
+        : await q.delete().eq("id", apagar.id);
+    setApagando(false);
+    if (error) return toast.error("Não apagou: " + error.message);
+    toast.success(apagar.canal !== "email" ? "E-mail tirado da campanha." : jaEnviou ? "Campanha arquivada." : "Campanha apagada.");
+    setApagar(null);
+    qc.invalidateQueries({ queryKey: ["campanhas-email"] });
+  };
 
   const { data: linhas = [], isLoading } = useQuery({
     queryKey: ["campanhas-email"],
@@ -144,7 +174,16 @@ export function CampanhasEmailView() {
                       <p className="font-medium truncate">{l.nome}</p>
                       <p className="text-xs text-muted-foreground truncate">{l.assunto_email || "sem assunto ainda"}</p>
                     </div>
-                    <Badge variant="outline" className={`border-0 shrink-0 ${st.cls}`}>{st.label}</Badge>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <Badge variant="outline" className={`border-0 ${st.cls}`}>{st.label}</Badge>
+                      {l.email_status !== "enviando" && (
+                        <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-red-600"
+                          title={l.canal !== "email" ? "Tirar o e-mail desta campanha" : "Apagar campanha"}
+                          onClick={(e) => { e.stopPropagation(); setApagar(l); }}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
                   </div>
                   <Resumo l={l} nomesEsp={nomesEsp} />
                   <div className="grid grid-cols-4 gap-1 text-center">
@@ -176,6 +215,30 @@ export function CampanhasEmailView() {
       )}
 
       <NovaCampanhaEmailDialog open={novaOpen} onOpenChange={setNovaOpen} onCreated={(id) => setAberta(id)} />
+
+      <AlertDialog open={!!apagar} onOpenChange={(o) => !o && setApagar(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {apagar?.canal !== "email" ? "Tirar o e-mail desta campanha?" : `Apagar "${apagar?.nome}"?`}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {apagar?.canal !== "email"
+                ? "A campanha de WhatsApp continua igual; só o e-mail deixa de aparecer aqui. Dá para ligar de novo dentro da campanha."
+                : (apagar?.metricas?.total ?? 0) > 0
+                  ? "Esta campanha já enviou e-mails. Ela sai da lista, mas o histórico de entregas e descadastros fica guardado."
+                  : "Ela ainda não enviou nenhum e-mail e será apagada de vez."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={apagando}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={(e) => { e.preventDefault(); confirmarApagar(); }} disabled={apagando}
+              className="bg-red-600 hover:bg-red-700">
+              {apagando ? <Loader2 className="h-4 w-4 animate-spin" /> : apagar?.canal !== "email" ? "Tirar o e-mail" : "Apagar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

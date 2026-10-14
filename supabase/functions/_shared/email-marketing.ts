@@ -54,7 +54,7 @@ export function conteudoPronto(c: EmailConteudo | null | undefined): boolean {
 // ── Modelo GSS (14/10): identidade das artes da GSS — fundo verde-limão e três cartões
 // empilhados (verde-claro com o título, verde-escuro com o destaque, branco com o fechamento e
 // o botão). A equipe escreve texto puro; a formatação vem de quatro marcas simples:
-//   **negrito**   # subtítulo   - item (vira ✓)   --- (linha sozinha: troca de cartão)
+//   **negrito**   _itálico_   # subtítulo   - item (vira ✓)   1. item (numerado)   --- (troca de cartão)
 // Sem "---" o texto vai inteiro no cartão branco. Com um "---": escuro + branco. Com dois:
 // chamada no cartão do título + escuro + branco.
 const MARCA = {
@@ -69,28 +69,36 @@ const TEMAS: Record<"claro" | "escuro" | "branco", Tema> = {
   branco: { texto: MARCA.texto, forte: MARCA.escuro, subtitulo: MARCA.escuro, check: MARCA.claro },
 };
 
-const negrito = (s: string, cor: string) => esc(s).replace(/\*\*(.+?)\*\*/g, `<b style="color:${cor}">$1</b>`);
+// _itálico_ só com espaço ou pontuação em volta: {{primeiro_nome}} e endereços com "_" ficam intactos
+const negrito = (s: string, cor: string) => esc(s).replace(/\*\*(.+?)\*\*/g, `<b style="color:${cor}">$1</b>`)
+  .replace(/(^|[\s(])_([^_\n]+?)_(?=[\s.,;:!?)]|$)/g, "$1<i>$2</i>");
 
 /** Texto puro → blocos do e-mail: parágrafo, "# subtítulo" e "- item" (lista com ✓). */
 function blocos(texto: string, t: Tema): string {
   const saida: string[] = [];
-  let par: string[] = [], lista: string[] = [];
+  let par: string[] = [], lista: string[] = [], numerada = false;
   const fechaPar = () => {
     if (par.length) saida.push(`<p style="margin:0 0 12px;font-size:15px;line-height:1.6;color:${t.texto}">${par.map((l) => negrito(l, t.forte)).join("<br>")}</p>`);
     par = [];
   };
   const fechaLista = () => {
-    if (lista.length) saida.push(`<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 12px">${lista.map((i) =>
-      `<tr><td style="vertical-align:top;padding:1px 9px 7px 0;font-size:15px;line-height:1.5;font-weight:800;color:${t.check}">&#10003;</td><td style="vertical-align:top;padding:0 0 7px;font-size:15px;line-height:1.5;color:${t.texto}">${negrito(i, t.forte)}</td></tr>`).join("")}</table>`);
+    if (lista.length) saida.push(`<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 12px">${lista.map((i, n) =>
+      `<tr><td style="vertical-align:top;padding:1px 9px 7px 0;font-size:15px;line-height:1.5;font-weight:800;color:${t.check}">${numerada ? `${n + 1}.` : "&#10003;"}</td><td style="vertical-align:top;padding:0 0 7px;font-size:15px;line-height:1.5;color:${t.texto}">${negrito(i, t.forte)}</td></tr>`).join("")}</table>`);
     lista = [];
   };
   for (const bruta of texto.trim().split("\n")) {
     const l = bruta.trim();
     const item = l.match(/^[-•✓]\s+(.+)$/);
+    const num = l.match(/^\d{1,2}[.)]\s+(.+)$/);
     const sub = l.match(/^#+\s+(.+)$/);
     if (!l) { fechaPar(); fechaLista(); }
     else if (sub) { fechaPar(); fechaLista(); saida.push(`<p style="margin:6px 0 10px;font-size:20px;line-height:1.25;font-weight:800;color:${t.subtitulo}">${negrito(sub[1], t.subtitulo)}</p>`); }
-    else if (item) { fechaPar(); lista.push(item[1]); }
+    else if (item || num) {
+      fechaPar();
+      // trocou de lista com ✓ para numerada (ou o contrário): fecha a anterior
+      if (lista.length && numerada !== !!num) fechaLista();
+      numerada = !!num; lista.push((item ?? num)![1]);
+    }
     else { fechaLista(); par.push(l); }
   }
   fechaPar(); fechaLista();
@@ -98,7 +106,8 @@ function blocos(texto: string, t: Tema): string {
 }
 
 /** Tira as marcas de formatação (para a versão em texto e para a linha de prévia do e-mail). */
-const semMarcas = (s: string) => s.replace(/^\s*-{3,}\s*$/gm, "").replace(/^\s*#+\s+/gm, "").replace(/\*\*/g, "").replace(/\n{3,}/g, "\n\n").trim();
+const semMarcas = (s: string) => s.replace(/^\s*-{3,}\s*$/gm, "").replace(/^\s*#+\s+/gm, "").replace(/\*\*/g, "")
+  .replace(/(^|[\s(])_([^_\n]+?)_(?=[\s.,;:!?)]|$)/g, "$1$2").replace(/\n{3,}/g, "\n\n").trim();
 
 const rodapeLegal = (link: string) =>
   `GSS - Gestão Serviços a Saúde Ltda · CNPJ 18.670.594/0001-03 · Av. Osvaldo Reis, 2470, sala 10 — Itajaí/SC<br>

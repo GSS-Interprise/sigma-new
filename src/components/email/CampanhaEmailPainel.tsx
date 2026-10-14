@@ -12,6 +12,7 @@ import {
 import { Loader2, Mail, Pause, Play, Save, Send, Users } from "lucide-react";
 import { toast } from "sonner";
 import { EmailComposer, conteudoDoRascunho, type EmailRascunho } from "./EmailComposer";
+import { NovaCampanhaEmailDialog } from "./NovaCampanhaEmailDialog";
 import { EmailMetricas } from "./EmailMetricas";
 
 /**
@@ -63,6 +64,7 @@ export function CampanhaEmailPainel({ campanhaId }: { campanhaId: string }) {
   const [estimativa, setEstimativa] = useState<number | null>(null);
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [confirmar, setConfirmar] = useState(false);
+  const [editarPublico, setEditarPublico] = useState(false);
 
   useEffect(() => {
     if (!c) return;
@@ -173,6 +175,20 @@ export function CampanhaEmailPainel({ campanhaId }: { campanhaId: string }) {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
+        {ehEmail && (
+          <div>
+            <Label className="text-xs">Quem recebe</Label>
+            <Button type="button" variant="outline" className="mt-1 w-full justify-start gap-1.5"
+              disabled={!(status === "rascunho" || status === "concluido")} onClick={() => setEditarPublico(true)}>
+              <Users className="h-4 w-4" /> Editar especialidades, lugares e listas
+            </Button>
+            <p className="text-[11px] text-muted-foreground mt-1">
+              {status === "pausado" || status === "enviando" || status === "agendado"
+                ? "A fila deste envio já foi montada. Mudanças no público valem para o próximo envio."
+                : "Ao salvar, o total de médicos é recalculado."}
+            </p>
+          </div>
+        )}
         {!ehEmail && (
           <div>
             <Label className="text-xs">Quem recebe</Label>
@@ -211,6 +227,11 @@ export function CampanhaEmailPainel({ campanhaId }: { campanhaId: string }) {
         <h3 className="text-sm font-semibold flex items-center gap-1.5"><Mail className="h-4 w-4" /> Resultado</h3>
         <EmailMetricas campanhaId={campanhaId} />
       </div>
+
+      {ehEmail && (
+        <NovaCampanhaEmailDialog open={editarPublico} onOpenChange={setEditarPublico} campanhaId={campanhaId}
+          onSaved={async () => { setEstimativa(null); await refetch(); estimar(); }} />
+      )}
 
       <AlertDialog open={confirmar} onOpenChange={setConfirmar}>
         <AlertDialogContent>
