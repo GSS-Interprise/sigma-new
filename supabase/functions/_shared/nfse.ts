@@ -73,13 +73,20 @@ export async function textoPdf(bytes: Uint8Array): Promise<string> {
 type ItemPos = { s: string; x0: number; x1: number; top: number };
 // deno-lint-ignore no-explicit-any
 async function itensPosicionados(pdf: any): Promise<ItemPos[]> {
-  const page = await pdf.getPage(1);
-  const vp = page.getViewport({ scale: 1 });
-  const tc = await page.getTextContent();
-  // deno-lint-ignore no-explicit-any
-  return (tc.items as any[]).filter((i) => i.str && i.str.trim()).map((i) => ({
-    s: String(i.str).trim(), x0: i.transform[4], x1: i.transform[4] + (i.width ?? 0), top: vp.height - i.transform[5],
-  }));
+  // todas as páginas: em nota longa o quadro de valores vai para a 2ª. Cada página ganha um
+  // deslocamento grande no "top", então rótulo e valor só se casam dentro da mesma página.
+  const itens: ItemPos[] = [];
+  for (let n = 1; n <= Math.min(pdf.numPages ?? 1, 4); n++) {
+    const page = await pdf.getPage(n);
+    const vp = page.getViewport({ scale: 1 });
+    const tc = await page.getTextContent();
+    // deno-lint-ignore no-explicit-any
+    for (const i of tc.items as any[]) {
+      if (!i.str || !i.str.trim()) continue;
+      itens.push({ s: String(i.str).trim(), x0: i.transform[4], x1: i.transform[4] + (i.width ?? 0), top: (n - 1) * 10000 + vp.height - i.transform[5] });
+    }
+  }
+  return itens;
 }
 
 function lerGrade(itens: ItemPos[], texto: string): Partial<Nfse> | null {
