@@ -65,6 +65,75 @@ export async function textoPdf(bytes: Uint8Array): Promise<string> {
   } catch { return ""; }
 }
 
+// ── layout em grade (NFS-e municipal de Itajaí, sistema "Pública") ─────────────
+// As notas que a GSS emite (ZIP da Mavi, fev–ago/2026) vêm nesse layout. No texto corrido os
+// números do quadro de valores saem embaralhados, então a leitura é por posição: em cada célula o
+// valor fica ~11pt abaixo do rótulo, alinhado à direita da célula (borda direita ≈ rótulo + 106pt);
+// no bloco do prestador/tomador o valor fica na mesma linha, à direita do rótulo.
+type ItemPos = { s: string; x0: number; x1: number; top: number };
+// deno-lint-ignore no-explicit-any
+async function itensPosicionados(pdf: any): Promise<ItemPos[]> {
+  const page = await pdf.getPage(1);
+  const vp = page.getViewport({ scale: 1 });
+  const tc = await page.getTextContent();
+  // deno-lint-ignore no-explicit-any
+  return (tc.items as any[]).filter((i) => i.str && i.str.trim()).map((i) => ({
+    s: String(i.str).trim(), x0: i.transform[4], x1: i.transform[4] + (i.width ?? 0), top: vp.height - i.transform[5],
+  }));
+}
+
+function lerGrade(itens: ItemPos[], texto: string): Partial<Nfse> | null {
+  const rot = (re: RegExp, depois = -1, antes = 1e9) => itens.find((i) => re.test(i.s) && i.top > depois && i.top < antes);
+  if (!rot(/^Valor l[ií]quido da NFS-?e$/i) || !rot(/^Contribui[cç][oõ]es Sociais Retidas$/i)) return null;
+  const num = (s: string) => /^-?[\d.]+,\d{2}$/.test(s) ? numero(s) : null;
+  // valor da célula: logo abaixo do rótulo e encostado na borda direita da célula
+  const celula = (re: RegExp): number | null => {
+    const r = rot(re);
+    if (!r) return null;
+    const c = itens.filter((i) => num(i.s) != null && Math.abs(i.top - (r.top + 11)) <= 5 && Math.abs(i.x1 - (r.x0 + 106)) <= 8)
+      .sort((a, b) => Math.abs(a.x1 - (r.x0 + 106)) - Math.abs(b.x1 - (r.x0 + 106)))[0];
+    return c ? num(c.s) : null;
+  };
+  // valor na mesma linha, à direita do rótulo, dentro do bloco (prestador ou tomador)
+  const naLinha = (re: RegExp, de: number, ate: number) => {
+    const r = rot(re, de, ate);
+    if (!r) return null;
+    return itens.filter((i) => i !== r && Math.abs(i.top - r.top) <= 2 && i.x0 > r.x1 && i.x0 - r.x1 < 120)
+      .sort((a, b) => a.x0 - b.x0)[0]?.s ?? null;
+  };
+  const topo = (re: RegExp) => rot(re)?.top ?? -1;
+  const pIni = topo(/^PRESTADOR DE SERVI[CÇ]OS$/i), tIni = topo(/^TOMADOR DE SERVI[CÇ]OS$/i);
+  const tFim = topo(/^DISCRIMINA[CÇ][AÃ]O DOS SERVI[CÇ]OS$/i);
+  const prestCnpj = naLinha(/^CPF\/CNPJ:$/i, pIni, tIni);
+  const tomCnpj = naLinha(/^CPF\/CNPJ:$/i, tIni, tFim > 0 ? tFim : 1e9);
+
+  const bruto = celula(/^Valor Servi[cç]os$/i);
+  const irrf = celula(/^Valor IRRF$/i) ?? 0;
+  const contrib = celula(/^Contribui[cç][oõ]es Sociais Retidas$/i) ?? 0;
+  const inss = celula(/^Valor INSS$/i) ?? 0;
+  const iss = celula(/^Valor ISS retido$/i) ?? 0;
+  const outras = celula(/^Outras reten[cç][oõ]es$/i) ?? 0;
+  const liquido = celula(/^Valor l[ií]quido da NFS-?e$/i);
+  const total = Math.round((irrf + contrib + inss + iss + outras) * 100) / 100;
+
+  const nr = itens.find((i) => /^0*\d{3,}\s*\/\s*[A-Z0-9]{1,3}$/.test(i.s))?.s.match(/^0*(\d+)/)?.[1] ?? null;
+  const abaixo = (re: RegExp, valor: RegExp) => { const r = rot(re); return r ? itens.find((i) => valor.test(i.s) && i.top > r.top && i.top - r.top < 16)?.s ?? null : null; };
+  const emis = abaixo(/^Data e Hora da Emiss[aã]o$/i, /^\d{2}\/\d{2}\/\d{4}/)?.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  const comp = abaixo(/^Compet[eê]ncia$/i, /^\d{1,2}\/\d{4}$/)?.match(/^(\d{1,2})\/(\d{4})$/);
+  const impostosLidos = bruto != null && liquido != null && Math.abs(bruto - total - liquido) <= 0.05;
+  return {
+    prestadorCnpj: prestCnpj ? digitos(prestCnpj) : null,
+    prestadorNome: naLinha(/^Nome empresarial:$/i, pIni, tIni),
+    tomadorCnpj: tomCnpj ? digitos(tomCnpj) : null,
+    tomadorNome: naLinha(/^Nome:$/i, tIni, tFim > 0 ? tFim : 1e9),
+    numero: nr, emissao: emis ? `${emis[3]}-${emis[2]}-${emis[1]}` : null,
+    competencia: comp ? `${comp[2]}-${comp[1].padStart(2, "0")}-01` : null,
+    valor: bruto, irrf, contribSociais: contrib, inssRetido: inss, issRetido: iss,
+    totalRetencoes: impostosLidos ? total : null, valorLiquido: impostosLidos ? liquido : null, impostosLidos,
+    simplesNacional: /N[ÃA]O optante pelo Simples Nacional/i.test(texto) ? false : /optante pelo Simples Nacional/i.test(texto) ? true : null,
+  };
+}
+
 export async function lerNfse(bytes: Uint8Array, cnpjsTomador: string[] = CNPJS_GRUPO_GSS): Promise<Nfse> {
   const vazio: Nfse = {
     legivel: false, ehNfse: false, tomadorGss: false, prestadorCnpj: null, prestadorNome: null,
@@ -75,8 +144,10 @@ export async function lerNfse(bytes: Uint8Array, cnpjsTomador: string[] = CNPJS_
   };
 
   let texto = "";
+  // deno-lint-ignore no-explicit-any
+  let pdf: any = null;
   try {
-    const pdf = await getDocumentProxy(bytes);
+    pdf = await getDocumentProxy(bytes);
     const r = await extractText(pdf, { mergePages: true });
     texto = String(Array.isArray(r.text) ? r.text.join(" ") : r.text || "");
   } catch {
@@ -148,7 +219,7 @@ export async function lerNfse(bytes: Uint8Array, cnpjsTomador: string[] = CNPJS_
   const liq = valorLiquido ?? null, ret = totalRetencoes ?? null;
   const impostosLidos = valor != null && liq != null && ret != null && Math.abs(valor - ret - liq) <= 0.05;
 
-  return {
+  const lido: Nfse = {
     legivel: true, ehNfse, tomadorGss,
     prestadorCnpj, prestadorNome, prestadorEmail: email ? email[0].toLowerCase() : null,
     valor, chave, descricao: descricao ? descricao.slice(0, 500) : null,
@@ -159,6 +230,16 @@ export async function lerNfse(bytes: Uint8Array, cnpjsTomador: string[] = CNPJS_
     simplesNacional: sn ? !/^n[aã]o/i.test(sn) : (/optante pelo Simples Nacional/i.test(t) ? true : null),
     impostosLidos,
   };
+  // layout em grade (Itajaí): o que a posição leu vale mais que o texto corrido
+  const grade = lerGrade(pdf ? await itensPosicionados(pdf).catch(() => []) : [], t);
+  if (grade) {
+    for (const [k, v] of Object.entries(grade)) if (v !== null && v !== undefined) (lido as Record<string, unknown>)[k] = v;
+    lido.impostosLidos = !!grade.impostosLidos;
+    if (!grade.impostosLidos) { lido.totalRetencoes = null; lido.valorLiquido = null; }
+    lido.tomadorGss = !!grade.tomadorCnpj && cnpjsTomador.includes(grade.tomadorCnpj);
+    lido.ehNfse = true;
+  }
+  return lido;
 }
 
 // ── leitura assistida (quando o layout não deixa ler os impostos por regra) ──
