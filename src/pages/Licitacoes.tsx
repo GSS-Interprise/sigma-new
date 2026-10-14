@@ -2,9 +2,10 @@ import { useState, useEffect } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { LicitacoesKanban } from "@/components/licitacoes/LicitacoesKanban";
 import { Button } from "@/components/ui/button";
-import { Plus, RefreshCw, Search, Settings2, ChevronDown, Archive, CalendarClock } from "lucide-react";
+import { Plus, RefreshCw, Search, Settings2, ChevronDown, Archive, CalendarClock, BarChart3 } from "lucide-react";
 import { LicitacoesArquivadasDialog } from "@/components/licitacoes/LicitacoesArquivadasDialog";
 import { LicitacoesAgendaDialog } from "@/components/licitacoes/LicitacoesAgendaDialog";
+import { LicitacoesRelatorioDialog } from "@/components/licitacoes/LicitacoesRelatorioDialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { fetchWebhookByIdUrl } from "@/components/licitacoes/LicitacaoWebhookDialog";
 import { LicitacaoDetailDialog } from "@/components/licitacoes/LicitacaoDetailDialog";
@@ -54,6 +55,7 @@ export default function Licitacoes({ board = 'effecti' }: LicitacoesProps = {}) 
   const [addByIdLoading, setAddByIdLoading] = useState(false);
   const [arquivadosOpen, setArquivadosOpen] = useState(false);
   const [agendaOpen, setAgendaOpen] = useState(false);
+  const [relatorioOpen, setRelatorioOpen] = useState(false);
 
   const { isAdmin, userRoles, canView, isLoadingRoles, isLeader, isLiderLicitacao } = usePermissions();
   const { user } = useAuth();
@@ -298,6 +300,16 @@ export default function Licitacoes({ board = 'effecti' }: LicitacoesProps = {}) 
           {!ehRobo && (
             <Tooltip>
               <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground hover:text-foreground" onClick={() => setRelatorioOpen(true)}>
+                  <BarChart3 className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Relatório e concorrentes</TooltipContent>
+            </Tooltip>
+          )}
+          {!ehRobo && (
+            <Tooltip>
+              <TooltipTrigger asChild>
                 <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground hover:text-foreground" onClick={() => setArquivadosOpen(true)}>
                   <Archive className="h-4 w-4" />
                 </Button>
@@ -391,6 +403,11 @@ export default function Licitacoes({ board = 'effecti' }: LicitacoesProps = {}) 
       </div>
 
       <LicitacoesArquivadasDialog open={arquivadosOpen} onOpenChange={setArquivadosOpen} onAbrir={handleViewLicitacao} />
+      <LicitacoesRelatorioDialog
+        open={relatorioOpen}
+        onOpenChange={setRelatorioOpen}
+        onAbrir={(id) => { setRelatorioOpen(false); searchParams.set("open", id); setSearchParams(searchParams, { replace: true }); }}
+      />
       <LicitacoesAgendaDialog
         open={agendaOpen}
         onOpenChange={setAgendaOpen}
