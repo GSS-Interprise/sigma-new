@@ -67,9 +67,11 @@ export function EmailComposer({
     let novo = texto, cursorIni = ini, cursorFim = fim;
     if (tipo === "negrito" || tipo === "italico") {
       const m = tipo === "negrito" ? "**" : "_";
-      const meio = sel || (tipo === "negrito" ? "texto em negrito" : "texto em itálico");
-      novo = texto.slice(0, ini) + m + meio + m + texto.slice(fim);
-      cursorIni = ini + m.length; cursorFim = cursorIni + meio.length;
+      // seleção com espaço na ponta (duplo clique pega o espaço): a marca fica colada na palavra
+      const antesEsp = sel.match(/^\s*/)![0], depoisEsp = sel.match(/\s*$/)![0];
+      const meio = sel.trim() || (tipo === "negrito" ? "texto em negrito" : "texto em itálico");
+      novo = texto.slice(0, ini) + antesEsp + m + meio + m + (sel.trim() ? depoisEsp : "") + texto.slice(fim);
+      cursorIni = ini + antesEsp.length + m.length; cursorFim = cursorIni + meio.length;
     } else if (tipo === "cartao") {
       const antes = texto.slice(0, ini), depois = texto.slice(fim);
       const bloco = `${antes && !antes.endsWith("\n") ? "\n" : ""}---\n`;
