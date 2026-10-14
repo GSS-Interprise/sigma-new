@@ -87,6 +87,32 @@ async function conferirPagamento(svc: Svc, pag: any) {
           ? `Leitura assistida deste layout: ${Number(sugestao.totalRetencoes) > 0 ? `retido ${brl(sugestao.totalRetencoes)}` : "sem retenção"} · líquido ${brl(sugestao.valorLiquido)}. Confira na nota e aceite.`
           : "Não consegui ler o quadro de impostos deste layout: informar o líquido à mão.",
     });
+    // Alíquotas retidas (regra da Mavi, 14/10/2026): líquido = bruto → optante do Simples, ok.
+    // Senão confere PIS 0,65% + COFINS 3% + CSLL 1% (4,65%) e IR 1,5% sobre o bruto.
+    // Retenção abaixo de R$ 10 é dispensada por lei, então zero também vale nesse caso.
+    const fonte = nota.impostosLidos ? nota : (sugestao && nota.valor != null && Math.abs(sugestao.valor - nota.valor) <= 0.01 ? sugestao : null);
+    if (fonte && nota.valor != null) {
+      const bruto = Number(nota.valor);
+      const ret = Number(fonte.totalRetencoes ?? 0);
+      if (ret <= 0.01) {
+        itens.push({ chave: "aliquotas", rotulo: "Alíquotas retidas", ok: true, detalhe: "Líquido igual ao bruto: prestador optante do Simples Nacional." });
+      } else {
+        const confere = (lido: number, esperado: number) => Math.abs(lido - esperado) <= 0.02 || (esperado < 10 && lido <= 0.01);
+        const irEsp = r2(bruto * 0.015), csrfEsp = r2(bruto * 0.0465);
+        const ir = Number(fonte.irrf ?? 0), csrf = Number(fonte.contribSociais ?? 0);
+        const outros = Number(fonte.inssRetido ?? 0) + Number(fonte.issRetido ?? 0);
+        const irOk = confere(ir, irEsp), csrfOk = confere(csrf, csrfEsp);
+        const falhas = [
+          !irOk && `IR ${brl(ir)} (esperado ${brl(irEsp)}, 1,5%)`,
+          !csrfOk && `PIS/COFINS/CSLL ${brl(csrf)} (esperado ${brl(csrfEsp)}, 4,65%)`,
+          outros > 0.01 && `retenção de INSS/ISS ${brl(outros)} fora da regra`,
+        ].filter(Boolean);
+        itens.push({
+          chave: "aliquotas", rotulo: "Alíquotas retidas", ok: falhas.length === 0,
+          detalhe: falhas.length ? `Diferente do esperado: ${falhas.join("; ")}.` : `IR 1,5% e PIS/COFINS/CSLL 4,65% conferem · líquido esperado ${brl(r2(bruto - irEsp - csrfEsp))}.`,
+        });
+      }
+    }
     // CNPJ do prestador: bate com o que o financeiro já conhece deste médico?
     let prestOk: boolean | null = null, prestDet = "Nota sem CNPJ do prestador legível.";
     if (nota.prestadorCnpj) {
