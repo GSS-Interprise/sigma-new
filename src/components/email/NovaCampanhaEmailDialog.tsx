@@ -80,7 +80,7 @@ export function NovaCampanhaEmailDialog({
     if (error) { setSalvando(false); return toast.error("Não salvou: " + error.message); }
     // listas: troca o conjunto inteiro pelo escolhido agora
     const { data: atuais } = await (supabase as any).from("campanha_listas").select("lista_id").eq("campanha_id", campanhaId);
-    const tinha = new Set((atuais ?? []).map((l: any) => l.lista_id as string));
+    const tinha = new Set<string>((atuais ?? []).map((l: any) => l.lista_id as string));
     const sair = [...tinha].filter((id) => !listas.includes(id));
     const entrar = listas.filter((id) => !tinha.has(id));
     if (sair.length) await (supabase as any).from("campanha_listas").delete().eq("campanha_id", campanhaId).in("lista_id", sair);
