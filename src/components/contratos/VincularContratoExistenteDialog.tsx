@@ -126,11 +126,9 @@ export function VincularContratoExistenteDialog({
 
       if (rascunhoError) throw rascunhoError;
 
-      // 4. Transferir codigo_interno do pré-contrato para o contrato real e vincular licitação
+      // 4. Vincular a licitação. O número do contrato existente NÃO muda (T8, 14/10): antes o número do
+      //    pré-contrato era copiado por cima e o número antigo do contrato sumia da sequência.
       const updates: Record<string, any> = {};
-      if (codigoInternoPreContrato !== null) {
-        updates.codigo_interno = codigoInternoPreContrato;
-      }
       if (licitacaoId) {
         const { data: contratoAtual } = await supabase
           .from("contratos")
@@ -166,9 +164,7 @@ export function VincularContratoExistenteDialog({
             acao: "excluir",
             registroId: preContratoId!,
             registroDescricao: `Pré-contrato órfão #${preCheck.codigo_interno ?? ''} removido após vinculação ao contrato #${contratoSelecionado.codigo_interno}`,
-            detalhes: codigoInternoPreContrato === null
-              ? "Codigo_interno NÃO foi transferido (contrato destino já tinha o seu)."
-              : "Codigo_interno transferido para o contrato destino.",
+            detalhes: "O número do contrato destino foi mantido.",
           });
         }
       }
@@ -181,7 +177,7 @@ export function VincularContratoExistenteDialog({
         registroId: rascunhoId,
         registroDescricao: `Rascunho vinculado ao contrato existente ${contratoSelecionado.codigo_contrato || contratoSelecionado.id}`,
         detalhes: ehPreContratoAutomatico
-          ? `Pré-contrato #${codigoInternoPreContrato} vinculado ao contrato #${contratoSelecionado.codigo_interno} → codigo_interno transferido, pré-contrato removido`
+          ? `Pré-contrato #${codigoInternoPreContrato} vinculado ao contrato #${contratoSelecionado.codigo_interno} → número do contrato mantido, pré-contrato removido`
           : `Rascunho vinculado ao contrato #${contratoSelecionado.codigo_interno} (sem pré-contrato automático)`,
       });
 

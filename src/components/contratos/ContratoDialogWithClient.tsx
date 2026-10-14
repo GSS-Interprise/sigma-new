@@ -36,6 +36,7 @@ import { FormLabel } from "@/components/ui/form";
 import { Checkbox } from "@/components/ui/checkbox";
 import { EnviarResumoEmailModal } from "./EnviarResumoEmailModal";
 import { Mail } from "lucide-react";
+import { AnexoViewerNavegavel } from "@/components/licitacoes/AnexoViewerNavegavel";
 
 const formatCNPJ = (value: string) => {
   const numbers = value.replace(/\D/g, '');
@@ -171,6 +172,29 @@ interface AditivoTempo {
   observacoes?: string;
 }
 
+/**
+ * Bucket e caminho de um anexo do contrato (T8 de docs/arquitetura/licitacoes-contratos-gss.md:
+ * "o arquivo não abre no contrato"). Os anexos herdados da licitação chegam como
+ * "licitacoes-anexos/<id>/arq", "editais-pdfs/<id>/arq", "<id>/arq" ou URL pública; antes só o último
+ * formato era reconhecido e o edital vindo da captação (editais-pdfs) nunca abria.
+ */
+const BUCKETS_ANEXO = ['contratos-documentos', 'licitacoes-anexos', 'editais-pdfs', 'contrato-rascunho-anexos', 'ages-documentos'];
+export function localDoAnexoContrato(url: string, padrao: string): { bucket: string; key: string } {
+  if (!url) return { bucket: padrao, key: '' };
+  if (url.startsWith('http')) {
+    for (const bucket of [padrao, ...BUCKETS_ANEXO]) {
+      const marker = `/${bucket}/`;
+      const idx = url.indexOf(marker);
+      if (idx !== -1) return { bucket, key: decodeURIComponent(url.substring(idx + marker.length).split('?')[0]) };
+    }
+    return { bucket: padrao, key: '' };
+  }
+  for (const bucket of [padrao, ...BUCKETS_ANEXO]) {
+    if (url.startsWith(`${bucket}/`)) return { bucket, key: url.substring(bucket.length + 1) };
+  }
+  return { bucket: /^[0-9a-f-]{36}\//i.test(url) ? 'licitacoes-anexos' : padrao, key: url };
+}
+
 export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 'edit', tableConfig: tableConfigProp, dialogTitle, allowCustomTipoContratacao = false, tipoContratacaoCampoNome = "tipo_contratacao", rascunhoId, preenchimento, onConsolidado }: ContratoDialogProps) {
   const tables = { ...DEFAULT_TABLE_CONFIG, ...tableConfigProp };
   const isViewMode = mode === 'view';
@@ -193,6 +217,7 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
   const [confirmarRemocaoItensOpen, setConfirmarRemocaoItensOpen] = useState(false);
   const [pendingSaveValues, setPendingSaveValues] = useState<z.infer<typeof formSchema> | null>(null);
   const [arquivoSelecionado, setArquivoSelecionado] = useState<{ url: string; nome: string } | null>(null);
+  const [anexoNav, setAnexoNav] = useState<number | null>(null);
   
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -835,14 +860,19 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
           dadosUpdate.status_contrato = 'Ativo';
         }
 
-        const { error: contratoError } = await supabase
+        const { data: gravados, error: contratoError } = await supabase
           .from(tables.contratos as any)
           .update(dadosUpdate)
-          .eq('id', contrato.id);
+          .eq('id', contrato.id)
+          .select('id');
 
         if (contratoError) {
           console.error('❌ Erro ao atualizar contrato:', contratoError);
           throw contratoError;
+        }
+        // RLS barra sem erro (zero linhas): antes o Sigma dizia "atualizado com sucesso" mesmo assim
+        if (!gravados || (gravados as any[]).length === 0) {
+          throw new Error('O contrato não foi alterado: seu usuário não tem permissão para editar este contrato.');
         }
         contratoId = contrato.id;
         console.log('✅ Contrato atualizado com sucesso');
@@ -1005,11 +1035,12 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
           .select('*')
           .eq('contrato_id', contratoId);
         renovacoesAntigas = renovacoesAntigasData || [];
-        
-        await supabase
+
+        const { error: eDelRen } = await supabase
           .from(tables.contrato_renovacoes as any)
           .delete()
           .eq('contrato_id', contratoId);
+        if (eDelRen) throw eDelRen;
       }
 
       if (renovacoes.length > 0) {
@@ -1062,11 +1093,12 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
           .select('*')
           .eq('contrato_id', contratoId);
         aditivosAntigos = aditivosAntigosData || [];
-        
-        await supabase
+
+        const { error: eDelAdt } = await supabase
           .from(tables.contrato_aditivos_tempo as any)
           .delete()
           .eq('contrato_id', contratoId);
+        if (eDelAdt) throw eDelAdt;
       }
 
       // Inserir novos aditivos apenas se houver algum
@@ -1135,10 +1167,11 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
           usuario_nome: profileData?.nome_completo || 'Usuário',
         }));
 
-        await supabase
+        const { error: eAnexos } = await supabase
           .from(tables.contrato_anexos as any)
           .insert(anexosData);
-        
+        if (eAnexos) throw new Error('Contrato salvo, mas os anexos não foram gravados: ' + eAnexos.message);
+                
         // Registrar auditoria para cada arquivo anexado
         for (const doc of documentos) {
           await registrarAuditoria({
@@ -1161,7 +1194,8 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
     onSuccess: async (result) => {
       console.log('🎉 SUCESSO - Contrato salvo no banco!');
       
-      toast.success(contrato ? 'Contrato atualizado com sucesso!' : 'Contrato criado com sucesso!');
+      // o aviso de sucesso sai depois da consolidação (antes saía primeiro, mesmo quando ela falhava)
+      let falhaConsolidacao: string | null = null;
 
       // Se vier de consolidação de rascunho, marcar como consolidado
       // Nota: rascunhoId é o indicador principal — não depende de !contrato,
@@ -1178,7 +1212,7 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
             .maybeSingle();
 
           // Marcar rascunho como consolidado
-          await supabase
+          const { error: eRasc } = await supabase
             .from('contrato_rascunho')
             .update({
               status: 'consolidado',
@@ -1187,6 +1221,7 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
               consolidado_por: user?.id || null,
             })
             .eq('id', rascunhoId);
+          if (eRasc) throw eRasc;
 
           // Copiar anexos do rascunho para o contrato real
           const { data: anexosRascunho } = await supabase
@@ -1197,15 +1232,17 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
           if (anexosRascunho && anexosRascunho.length > 0) {
             const anexosParaContrato = anexosRascunho.map((anexo: any) => ({
               contrato_id: result.contratoId,
-              arquivo_url: anexo.arquivo_url,
+              // "<licitacaoId>/arq" é do bucket licitacoes-anexos: grava com o bucket para abrir no contrato
+              arquivo_url: /^[0-9a-f-]{36}\//i.test(anexo.arquivo_url) ? `licitacoes-anexos/${anexo.arquivo_url}` : anexo.arquivo_url,
               arquivo_nome: anexo.arquivo_nome,
               usuario_id: user?.id || null,
               usuario_nome: 'Sistema (consolidação)',
             }));
 
-            await supabase
+            const { error: eAnx } = await supabase
               .from('contrato_anexos')
               .insert(anexosParaContrato);
+            if (eAnx) throw eAnx;
           }
 
           // Se havia um pré-contrato automático diferente do contrato novo,
@@ -1238,18 +1275,25 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
             }
 
             // Remover o pré-contrato automático (substituído pelo real)
-            await supabase
+            const { error: eDelPre } = await supabase
               .from('contratos')
               .delete()
               .eq('id', preContratoId);
+            if (eDelPre) throw eDelPre;
           }
 
           queryClient.invalidateQueries({ queryKey: ['contratos-rascunho'] });
           queryClient.invalidateQueries({ queryKey: ['contratos-temporarios'] });
           onConsolidado?.(result.contratoId);
-        } catch (e) {
+        } catch (e: any) {
           console.error('Erro ao consolidar rascunho:', e);
+          falhaConsolidacao = e?.message || String(e);
         }
+      }
+      if (falhaConsolidacao) {
+        toast.error(`Contrato criado, mas a licitação arrematada não foi fechada: ${falhaConsolidacao}`, { duration: 10000 });
+      } else {
+        toast.success(contrato ? 'Contrato atualizado com sucesso!' : 'Contrato criado com sucesso!');
       }
       
       try {
@@ -1385,20 +1429,7 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
       
       // Extrair a chave do arquivo da URL e detectar o bucket real.
       // Anexos herdados de licitação ficam como "licitacaoId/arquivo" no bucket licitacoes-anexos.
-      const getStorageInfo = (url: string) => {
-        if (!url) return { bucket: tables.storageBucket, key: '' };
-        if (url.startsWith('http')) {
-          const buckets = [tables.storageBucket, 'licitacoes-anexos', 'contrato-rascunho-anexos'];
-          for (const bucket of buckets) {
-            const marker = `/${bucket}/`;
-            const idx = url.indexOf(marker);
-            if (idx !== -1) return { bucket, key: url.substring(idx + marker.length) };
-          }
-          return { bucket: tables.storageBucket, key: '' };
-        }
-        const bucket = /^[0-9a-f-]{36}\//i.test(url) ? 'licitacoes-anexos' : tables.storageBucket;
-        return { bucket, key: url };
-      };
+      const getStorageInfo = (url: string) => localDoAnexoContrato(url, tables.storageBucket);
 
       const { bucket, key } = getStorageInfo(doc.arquivo_url);
       if (!key) throw new Error('Caminho do arquivo inválido');
@@ -1447,20 +1478,7 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
 
   const handleDownloadFile = async (doc: any) => {
     try {
-      const getStorageInfo = (url: string) => {
-        if (!url) return { bucket: tables.storageBucket, key: '' };
-        if (url.startsWith('http')) {
-          const buckets = [tables.storageBucket, 'licitacoes-anexos', 'contrato-rascunho-anexos'];
-          for (const bucket of buckets) {
-            const marker = `/${bucket}/`;
-            const idx = url.indexOf(marker);
-            if (idx !== -1) return { bucket, key: decodeURIComponent(url.substring(idx + marker.length)) };
-          }
-          return { bucket: tables.storageBucket, key: '' };
-        }
-        const bucket = /^[0-9a-f-]{36}\//i.test(url) ? 'licitacoes-anexos' : tables.storageBucket;
-        return { bucket, key: url };
-      };
+      const getStorageInfo = (url: string) => localDoAnexoContrato(url, tables.storageBucket);
 
       const { bucket, key: filePath } = getStorageInfo(doc.arquivo_url);
       if (!filePath) {
@@ -1866,7 +1884,7 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
 
                           {/* Ícone do arquivo - Clicável para visualizar */}
                           <button
-                            onClick={() => handleOpenFile(doc)}
+                            onClick={() => { const i = documentosExistentes.findIndex((d: any) => d.id === doc.id); if (i >= 0) setAnexoNav(i); else handleOpenFile(doc); }}
                             className="flex items-center justify-center p-6 hover:bg-muted/50 transition-colors border-b-2 border-black"
                             title="Clique no ícone para visualizar"
                           >
@@ -2083,6 +2101,15 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
           valorEstimado={form.getValues('valor_estimado')}
         />
       )}
+
+      {/* anexos do contrato com setas, inclusive os herdados da licitação (T8) */}
+      <AnexoViewerNavegavel
+        anexos={documentosExistentes.map((d: any) => { const l = localDoAnexoContrato(d.arquivo_url, tables.storageBucket); return { id: d.id, arquivo_nome: d.arquivo_nome, arquivo_url: l.key, bucket: l.bucket }; })}
+        indice={anexoNav ?? 0}
+        onIndiceChange={setAnexoNav}
+        open={anexoNav !== null}
+        onOpenChange={(o) => { if (!o) setAnexoNav(null); }}
+      />
     </>
   );
 }

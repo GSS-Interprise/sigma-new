@@ -448,7 +448,7 @@ export default function Contratos() {
             {!isLicitacaoOnly && <TabsTrigger value="contratos">Contratos</TabsTrigger>}
             {!isLicitacaoOnly && <TabsTrigger value="dr-escala">Dr. Escala</TabsTrigger>}
             {!isLicitacaoOnly && <TabsTrigger value="dr-oportunidade">Dr. Oportunidade</TabsTrigger>}
-            <TabsTrigger value="rascunhos">Rascunhos (Licitações)</TabsTrigger>
+            <TabsTrigger value="rascunhos">Licitações arrematadas</TabsTrigger>
             {!isLicitacaoOnly && <TabsTrigger value="clientes">Clientes</TabsTrigger>}
             <TabsTrigger value="documentos-empresa">Documentos da empresa</TabsTrigger>
             {!isLicitacaoOnly && <TabsTrigger value="vencimentos-medicos">Vencimentos dos médicos</TabsTrigger>}

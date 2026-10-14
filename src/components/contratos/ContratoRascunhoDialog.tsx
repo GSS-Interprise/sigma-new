@@ -26,7 +26,8 @@ import { useContratoRascunho } from "@/hooks/useContratoRascunho";
 import { copiarAnexosLicitacaoParaRascunho, copiarAnexosLicitacaoParaContrato } from "@/hooks/useContratoRascunho";
 import { ConsolidarContratoDialog } from "./ConsolidarContratoDialog";
 import { VincularContratoExistenteDialog } from "./VincularContratoExistenteDialog";
-import { ContratoDialogWithClient } from "./ContratoDialogWithClient";
+import { ContratoDialogWithClient, localDoAnexoContrato } from "./ContratoDialogWithClient";
+import { AnexoViewerNavegavel } from "@/components/licitacoes/AnexoViewerNavegavel";
 import { supabase } from "@/integrations/supabase/client";
 
 interface ContratoRascunhoDialogProps {
@@ -54,6 +55,8 @@ export function ContratoRascunhoDialog({
     }
   }, [preenchimentoLicitacao]);
   const { rascunho, anexos, licitacao, isLoading } = useContratoRascunho(rascunhoId);
+  // anexos da licitação abrem aqui mesmo, com setas (T8)
+  const [anexoNav, setAnexoNav] = useState<number | null>(null);
   const queryClient = useQueryClient();
 
   const sincronizarMutation = useMutation({
@@ -399,7 +402,7 @@ export function ContratoRascunhoDialog({
                         <div
                           key={anexo.id}
                           className="flex items-center justify-between p-2 rounded-md border hover:bg-muted/50 cursor-pointer"
-                          onClick={() => handleOpenAnexo(anexo)}
+                          onClick={() => { const i = anexos.findIndex((a: any) => a.id === anexo.id); if (i >= 0) setAnexoNav(i); else handleOpenAnexo(anexo); }}
                         >
                           <div className="flex items-center gap-2">
                             <FileText className="h-4 w-4 text-muted-foreground" />
@@ -526,6 +529,10 @@ export function ContratoRascunhoDialog({
           onOpenChange(false);
           onConsolidado?.(contratoId);
         }}
+      />
+      <AnexoViewerNavegavel
+        anexos={anexos.map((a: any) => { const l = localDoAnexoContrato(a.arquivo_path || a.arquivo_url || '', 'licitacoes-anexos'); return { id: a.id, arquivo_nome: a.arquivo_nome, arquivo_url: l.key, bucket: l.bucket }; })}
+        indice={anexoNav ?? 0} onIndiceChange={setAnexoNav} open={anexoNav !== null} onOpenChange={(o) => { if (!o) setAnexoNav(null); }}
       />
     </>
   );
