@@ -5,6 +5,9 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 // Roda a cada 10 min pelo pg_cron. Para cada tarefa aberta que vence nos próximos 7 dias, avisa o
 // responsável e quem criou, na antecedência escolhida por cada pessoa (padrão 1 dia e 1 hora,
 // como o Trello fazia): notificação no sino do Sigma e e-mail.
+// A própria data da disputa também avisa (Bianca, reunião de 07/10, 37:17: o Trello avisava 1 dia e
+// 1 hora antes da disputa): o responsável do card, ou a liderança de licitações se o card não tem
+// responsável, na mesma antecedência. Controle do que já foi em licitacao_disputa_avisos.
 // Quem chama: cron (x-internal-sync-key), service role, ou admin logado (teste manual com dry_run).
 
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-internal-sync-key" };
@@ -72,16 +75,30 @@ serve(async (req) => {
       .gt("data_hora", agora.toISOString())
       .lte("data_hora", new Date(agora.getTime() + JANELA_DIAS * 864e5).toISOString());
     if (error) throw error;
-    if (!tarefas?.length) return json({ ok: true, tarefas: 0, avisos: 0 });
 
-    const pessoas = new Set<string>();
-    for (const t of tarefas) { if (t.responsavel_id) pessoas.add(t.responsavel_id); if (t.created_by) pessoas.add(t.created_by); }
+    // disputas dos próximos 2 dias nos cards ativos da GSS
+    const { data: disputas, error: eD } = await svc.from("licitacoes")
+      .select("id, titulo, numero_edital, orgao, data_disputa, responsavel_id")
+      .eq("board", "effecti").eq("empresa", "GSS").is("arquivado_em", null)
+      .gt("data_disputa", agora.toISOString())
+      .lte("data_disputa", new Date(agora.getTime() + 2 * 864e5).toISOString());
+    if (eD) throw eD;
+    if (!tarefas?.length && !disputas?.length) return json({ ok: true, tarefas: 0, disputas: 0, avisos: 0 });
+    const lideres: string[] = (disputas ?? []).some((d: any) => !d.responsavel_id)
+      ? ((await svc.from("user_roles").select("user_id").eq("role", "lider_licitacao")).data ?? []).map((r: any) => r.user_id)
+      : [];
+
+    const pessoas = new Set<string>(lideres);
+    for (const t of tarefas ?? []) { if (t.responsavel_id) pessoas.add(t.responsavel_id); if (t.created_by) pessoas.add(t.created_by); }
+    for (const d of disputas ?? []) if (d.responsavel_id) pessoas.add(d.responsavel_id);
     const ids = [...pessoas];
     const [{ data: prefs }, { data: perfis }, { data: enviados }] = await Promise.all([
       svc.from("licitacoes_preferencias").select("user_id, avisos_min, aviso_email").in("user_id", ids),
       svc.from("profiles").select("id, nome_completo, email").in("id", ids),
-      svc.from("licitacao_tarefa_avisos").select("tarefa_id, user_id, antecedencia_min").in("tarefa_id", tarefas.map((t) => t.id)),
+      svc.from("licitacao_tarefa_avisos").select("tarefa_id, user_id, antecedencia_min").in("tarefa_id", (tarefas ?? []).map((t) => t.id)),
     ]);
+    const { data: disputasEnviadas } = await svc.from("licitacao_disputa_avisos").select("licitacao_id, data_disputa, user_id, antecedencia_min")
+      .in("licitacao_id", (disputas ?? []).map((d: any) => d.id));
     const prefDe = new Map((prefs ?? []).map((p: any) => [p.user_id, p]));
     const perfilDe = new Map((perfis ?? []).map((p: any) => [p.id, p]));
     const jaFoi = new Set((enviados ?? []).map((e: any) => `${e.tarefa_id}|${e.user_id}|${e.antecedencia_min}`));
@@ -93,7 +110,7 @@ serve(async (req) => {
     const site = "https://sigma-gss.lovable.app";
     const relatorio: any[] = [];
 
-    for (const t of tarefas as any[]) {
+    for (const t of (tarefas ?? []) as any[]) {
       const vence = new Date(t.data_hora);
       const criada = new Date(t.created_at);
       const destinatarios = new Set<string>([t.responsavel_id, t.created_by].filter(Boolean));
@@ -146,7 +163,51 @@ serve(async (req) => {
         if (e2) console.error("avisos", e2.message);
       }
     }
-    return json({ ok: true, dry_run: dryRun, tarefas: tarefas.length, avisos: relatorio.length, relatorio: relatorio.slice(0, 50) });
+    // ── disputas ──
+    const disputaFoi = new Set((disputasEnviadas ?? []).map((e: any) => `${e.licitacao_id}|${new Date(e.data_disputa).getTime()}|${e.user_id}|${e.antecedencia_min}`));
+    for (const d of (disputas ?? []) as any[]) {
+      const vence = new Date(d.data_disputa);
+      const destinatarios: string[] = d.responsavel_id ? [d.responsavel_id] : lideres;
+      for (const uid of destinatarios) {
+        const pref = prefDe.get(uid);
+        const leads: number[] = (pref?.avisos_min?.length ? pref.avisos_min : PADRAO_MIN).map(Number).filter((n: number) => n > 0);
+        const vencidas = leads.filter((l) => agora.getTime() >= vence.getTime() - l * 60000 && !disputaFoi.has(`${d.id}|${vence.getTime()}|${uid}|${l}`));
+        if (!vencidas.length) continue;
+        const card = d.titulo || d.numero_edital || "Edital";
+        const q = quando(vence, agora);
+        const perfil = perfilDe.get(uid);
+        const querEmail = (pref?.aviso_email ?? true) && !!perfil?.email && !!resendKey;
+        const linha: any = { disputa: d.id, uid, antecedencias: vencidas, email: querEmail };
+        relatorio.push(linha);
+        if (dryRun) continue;
+        await svc.from("system_notifications").insert({
+          user_id: uid, tipo: "licitacao_tarefa", titulo: `⏰ Disputa ${q}`, mensagem: card,
+          link: `/licitacoes?open=${d.id}`, referencia_id: d.id,
+        });
+        let emailOk = false;
+        if (querEmail) {
+          const html = `<div style="font-family:Arial,sans-serif;font-size:14px;color:#1f2937;max-width:560px">
+<p>Olá, ${esc((perfil.nome_completo || "").split(" ")[0])}.</p>
+<p>A <b>disputa</b> deste edital é <b>${esc(q)}</b>.</p>
+<p style="margin:0 0 4px;color:#6b7280">Edital</p><p style="margin:0 0 16px">${esc(card)}${d.orgao ? `<br><span style="color:#6b7280">${esc(d.orgao)}</span>` : ""}</p>
+<p><a href="${site}/licitacoes?open=${d.id}" style="background:#166534;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none">Abrir no Sigma</a></p>
+<p style="color:#9ca3af;font-size:12px">Você recebe este aviso porque é responsável pelo card${d.responsavel_id ? "" : " (o card está sem responsável, então vai para a liderança de licitações)"}. A antecedência se ajusta no Sigma, em Licitações › tarefas do card › Meus avisos.</p></div>`;
+          const r = await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ from: de, to: [perfil.email], subject: `Disputa ${q} · ${card}`.slice(0, 180), html, tags: [{ name: "origem", value: "licitacao_disputa" }] }),
+          });
+          emailOk = r.ok;
+          if (!r.ok) { linha.erro_email = `${r.status} ${(await r.text()).slice(0, 300)}`; console.error("resend", linha.erro_email); }
+        }
+        const { error: e3 } = await svc.from("licitacao_disputa_avisos").upsert(
+          vencidas.map((l) => ({ licitacao_id: d.id, data_disputa: d.data_disputa, user_id: uid, antecedencia_min: l, email_enviado: emailOk })),
+          { onConflict: "licitacao_id,data_disputa,user_id,antecedencia_min", ignoreDuplicates: true },
+        );
+        if (e3) console.error("disputa avisos", e3.message);
+      }
+    }
+    return json({ ok: true, dry_run: dryRun, tarefas: (tarefas ?? []).length, disputas: (disputas ?? []).length, avisos: relatorio.length, relatorio: relatorio.slice(0, 50) });
   } catch (e: any) {
     console.error(e);
     return json({ ok: false, error: e?.message || String(e) }, 500);

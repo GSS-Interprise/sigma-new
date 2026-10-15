@@ -233,7 +233,7 @@ Situação: **P** = na proposta aprovada · **+** = estava na reunião e não es
 | 13 | 19:35 | Bianca | Busca por nome/número acha o edital esteja onde estiver | T2 | P |
 | 14 | 19:35 | Bianca | Título padrão do card = número do edital + cidade | T1 | + |
 | 15 | 20:16 | Denise | Antes de inserir, verificar se já existe (hoje usa Ctrl+F) | T3 | P |
-| 16 | 20:27 | Bianca | "Deveria ter bloqueio" do duplicado | T3 | D |
+| 16 | 20:27 | Bianca | "Deveria ter bloqueio" do duplicado | T3 | P (decisão 14/10: avisa e deixa seguir; 15/10 o aviso passou a achar os cards do robô pelo número do título) |
 | 17 | 21:26 | Bianca | Robô pega o mesmo edital duas vezes (SMS × FMS, portais diferentes) | T1 | P |
 | 18 | 24:16–25:55 | Bianca | Mesmo número e cidade podem ser órgãos diferentes (Estado × Município, Saúde × Esportes) | T1 | P (chave com órgão; caso ambíguo vira aviso) |
 | 19 | 26:51 | Raul | Tela consulta tudo sem filtro nem paginação; editais com +30 dias não devem carregar; aba de arquivados | T2 | P |
@@ -246,7 +246,7 @@ Situação: **P** = na proposta aprovada · **+** = estava na reunião e não es
 | 26 | 33:26 | Bianca | Data da disputa muda à mão; o que aconteceu fica escrito nas mensagens do card | T4 | P (comentários mantidos e editáveis) |
 | 27 | 36:13 | Ramone | 3 dias antes da disputa para esclarecimento/impugnação | T5 | P |
 | 28 | 36:59 | Ramone | Gerar alerta para a pessoa | T5 | P |
-| 29 | 37:17 | Bianca | Trello avisava por e-mail 1 hora e 1 dia antes; antecedência escolhida pela pessoa | T5 | P |
+| 29 | 37:17 | Bianca | Trello avisava por e-mail 1 hora e 1 dia antes; antecedência escolhida pela pessoa | T5 | P (15/10: a própria disputa também avisa) |
 | 30 | 37:17–38:15 | Bianca | Envio de documentos antes (presencial: ao representante na véspera); fase invertida obriga data | T5 | P |
 | 31 | 38:55–41:10 | Raul/Denise | Tarefa com tipo, data e **hora** atrelada ao edital; tipos específicos + personalizado | T5 | P |
 | 32 | 38:55, 40:22 | Raul | Tipo "mandado de segurança" | T5 | + |
@@ -273,7 +273,7 @@ Situação: **P** = na proposta aprovada · **+** = estava na reunião e não es
 | 53 | 01:04:12–01:05:19 | Ramone/Bianca | Suspensos também arquivam com 30 dias; quando reabre, o Effecti avisa com data nova | T1, T2 | + (captação atualiza e desarquiva o card) |
 | 54 | 01:03:48 | Bianca | Volume: 4 a 5 mil editais em 6 meses; Trello exigia arquivar a cada 6 meses | T2 | P |
 | 55 | 01:06:31–01:07:24 | Bianca | "Enviar para contrato" vira rascunho, que nunca funcionou | T8 | P |
-| 56 | 01:07:24–01:08:29 | Bianca | Sequência de contratos quebrada (92 sumiu, pula para 94, 99...); Everton corrigia e voltava | T8 | P · D (renumerar ou não) |
+| 56 | 01:07:24–01:08:29 | Bianca | Sequência de contratos quebrada (92 sumiu, pula para 94, 99...); Everton corrigia e voltava | T8 | P (renumerado 1..105 em 14/10) |
 | 57 | 01:08:29–01:11:03 | Bianca | Termo de referência, esclarecimentos e respostas da licitação precisam estar no contrato | T8 | P |
 | 58 | 01:10:09 | Bianca | Arquivo não abre no contrato e aparece "Contrato atualizado com sucesso" sem ter atualizado nada | T8 | + |
 | 59 | 01:11:42–01:12:00 | Ramone/Bianca | O card sai da licitação e vem para o contrato com tudo | T8 | P |
@@ -289,7 +289,7 @@ Situação: **P** = na proposta aprovada · **+** = estava na reunião e não es
 | 69 | 01:22:00–01:22:58 | Ramone | Indicador: quem converteu × médico que não assinou (ex.: por causa da multa), para a alta gestão | T12 | P |
 | 70 | 01:23:11–01:25:28 | Bianca | Assinatura no Ideia: aviso chega no e-mail da Maine; disparar para quem converteu, inclusive plantão e fim de semana | T11 | P |
 | 71 | 01:25:37 | Bianca | Cadastro de hospitais da Maine "não entra" | — | F |
-| 72 | 01:26:13 | Raul | Precisa de login do Ideia e do Effecti | T1, T11 | Effecti analisado em 08/10 · Ideia pendente (seção 10) |
+| 72 | 01:26:13 | Raul | Precisa de login do Ideia e do Effecti | T1, T11 | P (webhook do Ideia ligado em 14/10) |
 | 73 | 01:28:38–01:29:35 | Bianca | E-mail dedicado para os avisos do Ideia; baixar o contrato assinado e anexar no Sigma | T11 | P |
 | 74 | 01:29:35–01:30:29 | Bianca | Contrato vai sem a assinatura da GSS; o principal é avisar que o médico assinou | T11 | P (gatilho = médico assinou) |
 | 75 | 01:30:36–01:34:02 | Ramone | Cronograma de execução | proposta 08/10 | P (aprovada) |
