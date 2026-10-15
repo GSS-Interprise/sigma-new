@@ -174,9 +174,18 @@ async function capturar(svc: any, supabaseUrl: string, input: any) {
       a.srpDescricao ? `Registro de preços: ${a.srpDescricao}` : "",
     ].filter(Boolean).join("\n");
 
-    // 1) card GSS já ligado a este aviso
-    const { data: porAviso } = await svc.from("licitacoes").select("id, fonte, data_disputa")
+    // 1) card GSS já ligado a este aviso. Sem card pelo aviso, procura pelo título padrão: o Effecti às vezes
+    // tem dois avisos para o mesmo edital (ex.: 8147622 e 8148056), o card guarda só um, e o outro chegava
+    // como "novo" a cada rodada; o servidor achava o card pelo título e gravava um comentário a cada 30 min
+    // (90 comentários em 5 cards em 24h, 15/10). Achando pelo título, cai na regra de "sem mudança".
+    let { data: porAviso } = await svc.from("licitacoes").select("id, fonte, data_disputa")
       .eq("effect_id", id).or("etiquetas.is.null,etiquetas.not.cs.{AGES}").order("created_at").limit(1).maybeSingle();
+    if (!porAviso && processo) {
+      const { data: porTitulo } = await svc.from("licitacoes").select("id, fonte, data_disputa")
+        .eq("titulo", titulo).eq("empresa", "GSS").eq("board", "effecti").eq("fonte", "n8n")
+        .order("created_at").limit(1).maybeSingle();
+      porAviso = porTitulo;
+    }
     let destino: "criar" | "atualizar" | "manter_manual" | "ligar_manual" = porAviso ? (porAviso.fonte === "n8n" ? "atualizar" : "manter_manual") : "criar";
     let cardManual: string | null = porAviso && porAviso.fonte !== "n8n" ? porAviso.id : null;
 
