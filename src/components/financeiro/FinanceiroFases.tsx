@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { FinanceiroPagamento, useConferirEmLote, useExcluirImportacao } from "@/hooks/useFinanceiroData";
+import { toast } from "sonner";
 import { FinanceiroDetalhe } from "./FinanceiroDetalhe";
 import { FinanceiroImportarFechamentoDialog } from "./FinanceiroImportarFechamentoDialog";
 import { FinanceiroFecharDialog } from "./FinanceiroFecharDialog";
@@ -229,9 +230,13 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
                   <Download className="h-4 w-4" /> Baixar
                 </Button>
               )}
-              {fase <= 2 && fonteSel !== TODAS && (
+              {/* antes da aprovação o botão fica sempre à vista: com "Todos" selecionado ele explica que é preciso
+                  escolher o fechamento (a Mavi não achou a opção em 15/10, porque ela só aparecia com um setor escolhido) */}
+              {fase <= 2 && todos.length > 0 && (
                 <Button size="sm" variant="outline" className="gap-1.5 text-red-600 hover:text-red-700"
-                  onClick={() => setConfirmandoExclusao(true)}>
+                  onClick={() => fonteSel === TODAS
+                    ? toast.info("Escolha na lista \"Todos os fechamentos\", logo abaixo, qual fechamento quer excluir.")
+                    : setConfirmandoExclusao(true)}>
                   <Trash2 className="h-4 w-4" /> Excluir importação
                 </Button>
               )}
