@@ -74,7 +74,7 @@ export function LicitacaoQuickEditDialog({ open, onOpenChange, licitacao }: Lici
   const [novaEtiqueta, setNovaEtiqueta] = useState("");
   const updatedAtRef = useRef<string | null>(null);
 
-  const { data: profiles } = useLicitacoesProfiles();
+  const { data: profiles } = useLicitacoesProfiles((licitacao as any)?.empresa === "AGES" ? "AGES" : "GSS");
 
   // Realtime sync - sincroniza updated_at automaticamente
   const { markAsSavedByMe } = useLicitacaoRealtimeSync(

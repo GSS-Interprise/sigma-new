@@ -580,7 +580,7 @@ export function LicitacaoDetailDialog({
     if (open) setEditando(true);
   }, [open]);
 
-  const { data: profiles } = useLicitacoesProfiles();
+  const { data: profiles } = useLicitacoesProfiles((licitacao as any)?.empresa === "AGES" ? "AGES" : "GSS");
 
   const { data: atividades, isLoading: loadingAtividades } = useQuery({
     queryKey: ["licitacoes-atividades", licitacao?.id],
