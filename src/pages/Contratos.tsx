@@ -42,7 +42,7 @@ export default function Contratos() {
   const [editingCliente, setEditingCliente] = useState<any>(null);
   // ?aba= abre direto uma aba (link dos avisos de vencimento)
   const [activeTab, setActiveTab] = useState(searchParams.get("aba") || (isLicitacaoOnly ? "rascunhos" : "contratos"));
-  const [avisosContrato, setAvisosContrato] = useState<null | "contrato_assinado" | "contrato_inicio_servico" | "medico_vinculado">(null);
+  const [avisosContrato, setAvisosContrato] = useState<null | "contrato_assinado" | "contrato_inicio_servico" | "medico_vinculado" | "licitacao_arrematada">(null);
   const [searchNome, setSearchNome] = useState("");
   const [selectedStatus, setSelectedStatus] = useState<string[]>([]);
   const [selectedUf, setSelectedUf] = useState<string[]>([]);
@@ -432,6 +432,7 @@ export default function Contratos() {
       {activeTab === "contratos" && !isLicitacaoOnly && (
         <div className="flex items-center gap-2">
           {/* T9: quem recebe o aviso de contrato assinado e de início do serviço */}
+          <Button variant="outline" onClick={() => setAvisosContrato("licitacao_arrematada")}>Avisos: arrematada</Button>
           <Button variant="outline" onClick={() => setAvisosContrato("contrato_assinado")}>Avisos: assinado</Button>
           <Button variant="outline" onClick={() => setAvisosContrato("contrato_inicio_servico")}>Avisos: início do serviço</Button>
           <Button variant="outline" onClick={() => setAvisosContrato("medico_vinculado")}>Avisos: médico vinculado</Button>
@@ -595,8 +596,8 @@ export default function Contratos() {
       </div>
     {avisosContrato && (
         <VencimentosConfigDialog chave={avisosContrato} semDias onFechar={() => setAvisosContrato(null)}
-          titulo={avisosContrato === "contrato_assinado" ? "contrato assinado" : avisosContrato === "medico_vinculado" ? "médico vinculado" : "início do serviço"}
-          descricao={avisosContrato === "contrato_assinado" ? "Quando um contrato passa para assinado, o Sigma avisa estas pessoas no sino e por e-mail." : avisosContrato === "medico_vinculado" ? "Quando um médico é vinculado a um cliente/unidade/contrato, o Sigma avisa estas pessoas (faturamento do médico)." : "Quando o início do serviço é marcado na lista de contratos, o Sigma avisa estas pessoas (hora de faturar)."} />
+          titulo={avisosContrato === "contrato_assinado" ? "contrato assinado" : avisosContrato === "medico_vinculado" ? "médico vinculado" : avisosContrato === "licitacao_arrematada" ? "licitação arrematada" : "início do serviço"}
+          descricao={avisosContrato === "licitacao_arrematada" ? "Quando uma licitação entra em Arrematados, o Sigma avisa estas pessoas no sino e por e-mail (prospecção e contratos se preparam antes do contrato)." : avisosContrato === "contrato_assinado" ? "Quando um contrato passa para assinado, o Sigma avisa estas pessoas no sino e por e-mail." : avisosContrato === "medico_vinculado" ? "Quando um médico é vinculado a um cliente/unidade/contrato, o Sigma avisa estas pessoas (faturamento do médico)." : "Quando o início do serviço é marcado na lista de contratos, o Sigma avisa estas pessoas (hora de faturar)."} />
       )}
     </AppLayout>
   );

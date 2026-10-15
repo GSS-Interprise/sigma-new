@@ -44,8 +44,12 @@ serve(async (req) => {
     const { data: vincPend } = await svc.from("medico_vinculo_avisos")
       .select("id, vinculo_id, medico_vinculo_unidade(id, data_inicio, medico_id, medicos(nome_completo), clientes(nome_fantasia, razao_social), unidades(nome), contratos(codigo_interno, codigo_contrato))")
       .is("enviado_em", null).order("criado_em").limit(50);
-    if (!pend.length && !vincPend?.length) return json({ ok: true, avisos: 0 });
-    const { data: cfgs } = await svc.from("vencimentos_config").select("*").in("chave", ["contrato_assinado", "contrato_inicio_servico", "medico_vinculado"]);
+    // licitação que entrou em Arrematados (pedido da Bianca, 15/10): avisa Ramone/prospecção e contratos
+    const { data: arrPend } = await svc.from("licitacao_arrematada_avisos")
+      .select("id, licitacao_id, licitacoes(titulo, numero_edital, orgao, municipio_uf, valor_estimado, objeto_resumo, objeto)")
+      .is("enviado_em", null).order("criado_em").limit(50);
+    if (!pend.length && !vincPend?.length && !arrPend?.length) return json({ ok: true, avisos: 0 });
+    const { data: cfgs } = await svc.from("vencimentos_config").select("*").in("chave", ["contrato_assinado", "contrato_inicio_servico", "medico_vinculado", "licitacao_arrematada"]);
     const { data: contratos } = await svc.from("contratos")
       .select("id, codigo_interno, codigo_contrato, objeto_contrato, valor_estimado, data_inicio, servico_iniciado_em, cliente_id, clientes(nome_fantasia, razao_social)")
       .in("id", pend.length ? pend.map((p) => p.contrato_id) : ["00000000-0000-0000-0000-000000000000"]);
@@ -117,6 +121,36 @@ serve(async (req) => {
         }
       }
       await svc.from("medico_vinculo_avisos").update({ enviado_em: new Date().toISOString() }).eq("id", v.id);
+    }
+    const cfgArr: any = (cfgs ?? []).find((x: any) => x.chave === "licitacao_arrematada");
+    const reais = (v: any) => v == null ? "—" : Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+    for (const a of (arrPend ?? []) as any[]) {
+      const l = a.licitacoes;
+      if (!l) { if (!dryRun) await svc.from("licitacao_arrematada_avisos").update({ enviado_em: new Date().toISOString() }).eq("id", a.id); continue; }
+      const nome = l.titulo || l.numero_edital || "Licitação";
+      const titulo = `🏆 Licitação arrematada: ${nome}`;
+      const linhas = [["Edital", nome], ["Órgão", l.orgao ?? "—"], ["Cidade", l.municipio_uf ?? "—"], ["Valor estimado", reais(l.valor_estimado)],
+        ["Objeto", String(l.objeto_resumo || l.objeto || "—").slice(0, 300)]];
+      const destinatarios: string[] = cfgArr?.destinatarios ?? [];
+      relatorio.push({ aviso: a.id, evento: "licitacao_arrematada", edital: nome, destinatarios: destinatarios.length });
+      if (dryRun) continue;
+      const link = `/licitacoes?open=${a.licitacao_id}`;
+      for (const uid of destinatarios) {
+        await svc.from("system_notifications").insert({ user_id: uid, tipo: "licitacao_arrematada", titulo, mensagem: l.orgao ?? nome, link, referencia_id: a.licitacao_id });
+        const perfil = (perfis ?? []).find((x: any) => x.id === uid);
+        if (cfgArr?.aviso_email !== false && perfil?.email && resendKey) {
+          const html = `<div style="font-family:Arial,sans-serif;font-size:14px;color:#1f2937;max-width:600px">
+<p>Olá, ${esc((perfil.nome_completo || "").split(" ")[0])}.</p><p><b>${esc(titulo.replace(/^\S+\s/, ""))}</b> — hora de preparar a equipe e o contrato.</p>
+<table style="border-collapse:collapse;font-size:13px">${linhas.map(([k, val]) => `<tr><td style="padding:4px 12px 4px 0;color:#6b7280;vertical-align:top">${esc(k)}</td><td style="padding:4px 0">${esc(String(val))}</td></tr>`).join("")}</table>
+<p style="margin-top:16px"><a href="${SITE}${link}" style="background:#166534;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none">Abrir no Sigma</a></p></div>`;
+          const r = await fetch("https://api.resend.com/emails", {
+            method: "POST", headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ from: DE, to: [perfil.email], subject: titulo.replace(/^\S+\s/, ""), html, tags: [{ name: "origem", value: "licitacao_arrematada" }] }),
+          });
+          if (!r.ok) relatorio[relatorio.length - 1].erro_email = `${r.status} ${(await r.text()).slice(0, 160)}`;
+        }
+      }
+      await svc.from("licitacao_arrematada_avisos").update({ enviado_em: new Date().toISOString() }).eq("id", a.id);
     }
     return json({ ok: true, dry_run: dryRun, avisos: relatorio.length, relatorio });
   } catch (e: any) {
