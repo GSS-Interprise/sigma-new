@@ -45,6 +45,7 @@ import { LicitacaoComentarioAvancadoInput } from "./LicitacaoComentarioAvancadoI
 import { LicitacaoAtividadeItem } from "./LicitacaoAtividadeItem";
 import { useOpcoesStatusLicitacao } from "./ColunaKanbanEditavel";
 import { LicitacaoTarefasPanel } from "./LicitacaoTarefasPanel";
+import { LicitacaoAnaliseEdital } from "./LicitacaoAnaliseEdital";
 import { LicitacaoResultadoResumo } from "./LicitacaoResultadoDialog";
 import { BLOQUEAR_DUPLICADO, DuplicadoAviso, DuplicadoConfirmar, useDuplicadosLicitacao } from "./LicitacaoDuplicadoAviso";
 import { LicitacaoRiscoIndicator } from "./LicitacaoRiscoIndicator";
@@ -249,6 +250,20 @@ export function LicitacaoDetailDialog({
       return next;
     });
   }, []);
+
+  // T6: a análise da IA entra no topo da Decorrência de Análise. Editando, vai para o formulário (o
+  // salvar normal grava); fora da edição, grava direto para não depender de abrir o editor.
+  const inserirAnaliseNaDecorrencia = async (html: string) => {
+    const anterior = (editando ? formDataRef.current?.decorrencia_analise : (licitacao as any)?.decorrencia_analise) || "";
+    const novo = anterior ? `${html}<hr/>${anterior}` : html;
+    setFormDataSafe((prev: any) => ({ ...prev, decorrencia_analise: novo }));
+    if (!editando && licitacao?.id) {
+      const { error } = await supabase.from("licitacoes").update({ decorrencia_analise: novo } as any).eq("id", licitacao.id);
+      if (error) { toast.error("Não gravou na Decorrência: " + error.message); throw error; }
+      queryClient.invalidateQueries({ queryKey: ["licitacoes-kanban"] });
+      queryClient.invalidateQueries({ queryKey: ["licitacoes"] });
+    }
+  };
 
   // Manter um ID estável mesmo se o parent limpar `licitacao` ao fechar o dialog
   const [stableLicitacaoId, setStableLicitacaoId] = useState<string | null>(null);
@@ -1865,6 +1880,9 @@ export function LicitacaoDetailDialog({
                       onSectionConfigChange={(changes) => handleSectionConfigChange("main", changes)}
                     >
                       <div className="space-y-2">
+                        {licitacao?.id && (
+                          <LicitacaoAnaliseEdital licitacaoId={licitacao.id} onInserir={inserirAnaliseNaDecorrencia} />
+                        )}
                         {/* Decorrência de Análise - editor rico para registros da equipe */}
                         <DraggableItem
                           id="decorrencia_analise"
