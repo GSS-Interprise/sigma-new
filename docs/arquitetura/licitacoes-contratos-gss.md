@@ -282,7 +282,7 @@ Situação: **P** = na proposta aprovada · **+** = estava na reunião e não es
 | 62 | 01:15:57 | Bianca | Número só quando vira contrato de fato | T8 | P |
 | 63 | 01:15:57–01:18:38 | Bianca | Contrato assinado avisa Maria Vitória (financeiro) e operacional; segundo aviso quando o serviço inicia (faturamento) | T9 | P |
 | 64 | 01:17:43 | Ramone | Ligar o início do serviço à escala | T9 | P |
-| 65 | 01:19:33–01:20:46 | Bianca/Ramone | Operacional só manda médico se o contrato existe no Sigma; com contrato em rascunho é preciso "burlar o sistema" | T8 || P (15/10: mantém médico só com contrato; aviso ao entrar em Arrematados) |
+| 65 | 01:19:33–01:20:46 | Bianca/Ramone | Operacional só manda médico se o contrato existe no Sigma; com contrato em rascunho é preciso "burlar o sistema" | T8 | P (15/10: mantém médico só com contrato; aviso ao entrar em Arrematados) |
 | 66 | 01:20:50 | Bianca | Médico vinculado a contrato novo avisa a Maria Vitória (faturamento do médico) | T12 | P |
 | 67 | 01:21:12 | Raul | Avisos por e-mail | T5, T9, T10, T13 | P |
 | 68 | 01:21:46–01:22:00 | Ramone/Bianca | Nem todos os contratos dos médicos estão no Sigma; resumo das condições de cada médico (fixo, regras) como o da Bianca | T12 | P |
