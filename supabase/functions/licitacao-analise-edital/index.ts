@@ -1,9 +1,9 @@
 // Análise de edital pelo modelo da Bianca (T6 do plano licitacoes-contratos-gss.md, 14/10).
 //
-// O modelo foi reconstruído das análises que a equipe já colava nos cards a partir do Gem do Gemini da
-// Bianca (229 cards da GSS; a estrutura se repete: objeto, base de execução, regras da jornada, RQE,
-// tabela por item/lote com o valor deliberado em branco, valor por hora, prazo de início, órgão
-// pagador/vínculo e a análise de atração regional). A diferença pedida na reunião de 07/10 (50:49):
+// Modelo do Gem da Bianca (15/10: ela indicou o card do PE 55/2026 de Quedas do Iguaçu como referência; as
+// análises dos cards arquivados eram de outra ferramenta). Cinco partes: dados do edital (com precificação e
+// qualificação técnica), tabela de precificação com as colunas "proposto GSS" a deliberar, análise geográfica,
+// análise crítica com alertas e apontamentos para esclarecimento ou impugnação. A diferença pedida na reunião de 07/10 (50:49):
 // cada informação diz de onde saiu no edital (item e página), e o que o edital não informa fica dito,
 // nunca inventado. A análise regional vem do conhecimento geral da IA e sai marcada como estimativa.
 //
@@ -12,75 +12,95 @@
 // licitacao_analises em segundo plano: um edital grande passa de um minuto na IA.
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { encodeBase64 } from "https://deno.land/std@0.224.0/encoding/base64.ts";
 
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
 const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { ...cors, "Content-Type": "application/json" } });
 const BUCKETS = new Set(["licitacoes-anexos", "editais-pdfs"]);
 const LIMITE_TOTAL = 30 * 1024 * 1024; // soma dos PDFs mandados para a IA
 const MAX_ARQUIVOS = 3;
-const TEMPO_IA_MS = 125_000; // aborta antes do limite do servidor para gravar o erro
+const TEMPO_IA_MS = 340_000; // aborta antes do limite do servidor (400 s em segundo plano) para gravar o erro
 
-const INSTRUCOES = `Você é analista de licitações da GSS (Gestão de Serviços de Saúde), empresa que fornece médicos para
-hospitais, UBS e prefeituras. Leia o edital e os anexos (termo de referência, planilhas) e escreva a análise no
-MODELO DA GSS abaixo, em português, direto e objetivo, como a equipe de licitações escreve.
+const INSTRUCOES = `Você é especialista em licitações da GSS (Gestão de Serviços de Saúde), empresa que fornece médicos
+(contratados como PJ) para hospitais, UBS e prefeituras. Leia o edital e os anexos (termo de referência, minuta, planilhas)
+e escreva a análise no MODELO DA GSS abaixo (o mesmo do Gem da Bianca), em português, técnico e objetivo.
 
 REGRA MAIS IMPORTANTE: toda informação tirada do edital termina com a fonte entre parênteses, no formato
-<span class="fonte">(item 5.2.1 do TR, p. 12)</span>. "p." é a página do arquivo PDF (a primeira página do arquivo
-é a p. 1). Se houver mais de um arquivo, diga qual: (Termo de Referência, item 4.1, p. 3). Se o documento não numera
-os itens, use só a página. Nunca use informação de outro edital, da internet ou de memória para preencher dados do
-edital. Se o edital não informa algo do modelo, escreva "Não consta no edital" naquele ponto e inclua em "faltou".
+<span class="fonte">(item 5.2.1 do TR, p. 12)</span>. "p." é a página do arquivo PDF (a primeira página do arquivo é a p. 1).
+Se houver mais de um arquivo, diga qual (Edital, Termo de Referência, Minuta). Se o documento não numera os itens, use só a
+página. Nunca use informação de outro edital, da internet ou de memória para preencher dados do edital. O que o edital não
+informa fica "Não consta no edital" e entra em "faltou". Cálculos (prazos, valor por hora, volumetria) são permitidos e
+devem dizer que são cálculo.
 
-MODELO DA GSS (nesta ordem; use <h3> para os títulos em negrito):
-1. Resumo do objeto (sem título): uma frase com especialidade, carga (horas/plantões/consultas), regime
-   (presencial, remoto, sobreaviso) e local. Na linha seguinte, a modalidade (Pregão eletrônico, Pregão presencial,
-   Credenciamento, Dispensa...).
-2. <h3>BASE DE EXECUÇÃO</h3>: unidade, endereço, cidade/UF e forma de execução.
-3. Regras da jornada em lista (<ul>): dias e horários, escala, visita diária, acionamento, metas de atendimento,
-   o que for regra de trabalho do médico.
-4. <h3>RQE</h3>: "OBRIGATÓRIO" ou "NÃO OBRIGATÓRIO / MÉDICO GENERALISTA", com a especialidade e a fonte. Se o edital
-   não diz, "Não consta no edital".
-5. Tabela (<table> com <thead>/<tbody>) com as colunas: Item / Lote | Descrição / Objeto | Qtd. semanal | Qtd. mensal
-   ou anual | Un. | Valor de Referência (Máximo) | Valor Total Estimado | Valor Deliberado. Ajuste o nome das colunas de
-   quantidade à unidade do edital (horas, plantões, consultas). Uma linha por item ou lote. A coluna "Valor
-   Deliberado" fica SEMPRE vazia: é a equipe que preenche. Valores em R$ no formato brasileiro.
-6. Linhas soltas, cada uma em <p>, quando o edital trouxer: "Valor por hora do profissional: R$ ..." (calcule a
-   partir do valor de referência e da carga, e diga que é cálculo GSS). Regra da GSS para o mês: 4,5 semanas, ou seja,
-   horas mensais = horas semanais × 4,5 (20 h semanais = 90 h no mês; 40 h = 180 h). Plantão de 12 h ou 24 h: valor do
-   plantão dividido pelas horas do plantão. Consulta: informe o valor por consulta em vez do valor por hora; "Prazo para Início dos Serviços: ...";
-   "ÓRGÃO PAGADOR: ..."; "Divisão com outros credenciados (regras do rodízio): ..."; "Forma de vínculo/contratação dos
-   profissionais: ..." (CLT, sócio, PJ; o que é proibido); exigências de habilitação técnica que pesam para a GSS
-   (atestados, registro no CRM do estado, visita técnica); prazo de vigência e reajuste.
-7. <h3>Análise de Atração Regional (Mapeamento de Médicos)</h3>: a cidade base (porte, população aproximada, se tem
-   faculdade de medicina) e 2 a 4 polos próximos de onde a GSS pode trazer médicos, cada um com distância e tempo de
-   carro aproximados, população e faculdades de medicina, terminando na capital do estado. Esta parte NÃO vem do
-   edital: comece com <p><i>Estimativa a partir de conhecimento geral, sem fonte no edital. Conferir antes de usar.</i></p>
-   e não ponha fonte de edital nela.
+MODELO (nesta ordem; títulos em <h3>):
 
-Formato do HTML: só <h3>, <p>, <b>, <i>, <ul>, <li>, <table>, <thead>, <tbody>, <tr>, <th>, <td>, <span class="fonte">,
+<h3>1. Dados do edital</h3> — uma <table> de duas colunas (Campo | Informação), com estas linhas, nesta ordem:
+Modalidade; Órgão e Cidade Licitante; Objeto; Data limite para envio da proposta; Data prevista para a disputa; Tipo de
+julgamento; Modo de disputa [diga se é aberto, fechado ou aberto-fechado, a duração e a prorrogação dos lances e o intervalo mínimo]; Haverá
+tempo randômico?; Onde será executado o serviço; Valor Estimado [total e média mensal]; Portal ou local da sessão;
+Distância até local com mais de 150 mil habitantes [população da cidade e polos próximos com distância e tempo; isto vem de
+conhecimento geral, então termine com "(estimativa, conferir)"]; Data limite para esclarecimentos e impugnações [calcule:
+3 dias úteis antes da abertura, salvo outro prazo no edital, e diga o dia da semana]; Vigência contratual; Exigência de
+visita técnica; Data prevista para início dos serviços; Exigência de garantia; Legislação específica.
+Depois uma linha de seção (<tr><td colspan="2"><b>REQUISITOS DE PRECIFICAÇÃO</b></td></tr>) e: Unidade de medida utilizada;
+Volumetria total prevista; Volumetria mensal (aproximada) [diga quantos médicos por dia isso representa]; Volumetria anual;
+Necessidade de retorno (consultas); Necessidade de equipamentos/materiais.
+Depois a seção <b>QUALIFICAÇÃO TÉCNICA</b> e: Exige atestado de capacidade técnica; Médicos precisam de RQE; Médico
+responsável técnico com RQE; Contratação exige vínculo CLT [a GSS trabalha com médicos PJ: diga se PJ é aceito];
+CNDs exigidas; Exige CNES; Outros documentos para qualificação técnica [na habilitação e para o início da execução].
+Por fim a seção <b>OBSERVAÇÕES</b>, com o que for relevante e não coube acima.
+
+<h3>2. Precificação</h3> — uma <table> com as colunas: Item | Descrição do Serviço / Especialidade | Carga Horária Unitária |
+Qtd. Mensal (Média) | Qtd. Anual | Valor Unitário Máximo Edital (R$) | Valor Máximo por Hora Edital (R$) | Valor Mensal
+Estimado Edital (R$) | Valor Anual Total Estimado Edital (R$) | Valor Hora Mínimo Proposto GSS (R$) | Valor Unitário Proposto
+GSS (R$) | Valor Total Anual Proposto GSS (R$). Uma linha por item ou lote; as três colunas "Proposto GSS" ficam "(A deliberar)";
+última linha TOTAL. Valores no formato brasileiro. Valor por hora = valor unitário ÷ horas do serviço; jornada semanal vira
+mensal com 4,5 semanas (20 h semanais = 90 h no mês). Abaixo da tabela, "Nota de cálculo da carga horária" em lista
+simples (sem fórmulas LaTeX), com as horas por item e o total de horas presenciais e de sobreaviso.
+
+<h3>3. Análise geográfica e demográfica (cidade licitante e logística)</h3> — comece com
+<p><i>Estimativa a partir de conhecimento geral, sem fonte no edital. Conferir antes de usar.</i></p> e traga, em lista:
+população local; distância aos polos médicos com mais de 100 mil e 150 mil habitantes (distância, tempo de viagem, se tem
+faculdade de medicina e aeroporto); centros regionais secundários; e o impacto logístico para a GSS (de onde recrutar os
+médicos, quantos médicos por dia a escala exige, necessidade de alojamento ou ajuda de deslocamento).
+
+<h3>4. Análise crítica e alertas de risco</h3> — em lista, com fonte quando vier do edital:
+escopo exclusivo de serviços médicos (se o objeto mistura enfermagem ou outras áreas, apontar a necessidade de impugnar para
+desmembrar); modelo de contratação dos médicos (PJ x CLT); atratividade dos valores (compare o valor por hora do edital com
+a faixa de mercado da região e marque essa faixa como "referência de mercado aproximada"); e os alertas críticos numerados
+("Alerta Crítico 1 – título (item X do TR)"), cada um com o risco e o que a GSS precisa fazer.
+
+<h3>5. Apontamentos para pedidos de esclarecimento ou impugnação</h3> — para cada ponto: <b>Fato:</b> (com fonte) e
+<b>Ação recomendada:</b> (o que perguntar ou impugnar, com o fundamento da Lei 14.133/2021 quando couber). Se não houver
+nada, diga que o edital não apresenta pontos que justifiquem pedido.
+
+O que está entre colchetes [ ] é orientação para você: na primeira coluna da tabela vai só o nome do campo, sem os colchetes.
+
+Formato do HTML: só <h3>, <p>, <b>, <i>, <ul>, <li>, <table>, <thead>, <tbody>, <tr>, <th>, <td colspan>, <span class="fonte">,
 <br>. Sem estilos, sem imagens, sem markdown.
 
-Responda SÓ com JSON: {"html": "<a análise em HTML>", "faltou": ["o que o edital não informa", ...]}.`;
+Responda com a análise em HTML puro (sem cercas de código). Depois da análise, uma linha exatamente "### FALTOU" e, abaixo
+dela, uma linha começando com "- " para cada informação que o edital não traz.`;
 
-// duas análises reais da equipe (Gem da Bianca), só como referência de estilo e de profundidade
-const EXEMPLOS = `EXEMPLO 1 (cardiologia, sobreaviso, Dourados/MS):
-Sobreaviso 24h Cardiologia para atendimento em regime de plantão de sobreaviso de 24 horas no Hospital da Vida - FUNSAUD, em Dourados/MS.
-BASE DE EXECUÇÃO: Hospital da Vida de Dourados - FUNSAUD, Rua Toshinobu Katayama, nº 949, Jardim Caramuru, Dourados/MS. Atendimento presencial para intercorrências, visitas diárias e avaliações a partir do acionamento do sobreaviso de 24 horas.
-RQE: OBRIGATÓRIO. Conforme o item 5.2.1 do Termo de Referência, a contratada deverá manter profissionais com RQE em Cardiologia.
-Tabela: 01 | Serviços médicos especializados em Cardiologia, sobreaviso de 24h, Hospital da Vida | 7 plantões | 365 plantões | Plantão 24h | R$ 1.310,79 | R$ 478.438,35 | (vazio)
-A Visita Diária Fixa (Obrigatória): o médico da escala vai presencialmente ao hospital todos os dias pela manhã para a visita aos internados da Cardiologia, evoluções e prescrições, até as 11h00.
-O Acionamento de Emergência (Sob Demanda): após a rotina da manhã fica em regime remoto e só volta se houver urgência, intercorrência ou parecer de risco cirúrgico.
-Forma de Vínculo/Contratação dos Profissionais: CLT, sócios no contrato social ou PJ com contrato civil individualizado (itens 5.2.4.3 e 8.12 do TR); proibido SCP ou contratação oculta (item 5.2.4.2 do TR).
-Análise de Atração Regional: Dourados (MS) - Cidade Base: cerca de 243 mil habitantes, polo de saúde do sul do estado, faculdades de Medicina (UFGD e UEMS). Ponta Porã (MS): ~120 km (~1h40), cerca de 90 mil habitantes, polo universitário de fronteira. Campo Grande (MS) - Capital: ~230 km (~3h00), mais de 900 mil habitantes, UFMS, Uniderp, UEMS.
-
-EXEMPLO 2 (clínico geral 20h, UBS, David Canabarro/RS):
-Clínico geral (20 horas semanais), com capacitação para inserção e retirada de implanon, presencial na UBS de David Canabarro/RS.
-BASE DE EXECUÇÃO: UBS de David Canabarro - RS, Rua Ernesto Rissato, nº 265; ambulatorial em sala de pequenos procedimentos do município.
-Jornada: 20 horas semanais dedicadas ao planejamento reprodutivo; dias e horários definidos pela Secretaria de Saúde; consulta de elegibilidade, procedimento e acompanhamento pós-procedimento.
-RQE: NÃO OBRIGATÓRIO / MÉDICO GENERALISTA.
-Tabela: 1 | Médico clínico geral 20h com capacitação para implanon | 20 horas | 12 meses (90 horas mensais) | Mês | R$ 11.122,43 | R$ 133.469,16 | (vazio)
-Valor por hora do profissional: R$ 123,58
-Prazo para Início dos Serviços: 5 dias corridos após a finalização do processo para apresentar o profissional habilitado.
-Análise de Atração Regional: David Canabarro (RS) - Cidade Base: cerca de 4.000 habitantes, sem faculdade de medicina. Passo Fundo (RS): ~50 km (~45 min), cerca de 206 mil habitantes, UPF e UFFS, núcleo ideal de captação. Porto Alegre (RS) - Capital: ~280 km (~3h45), UFRGS, UFCSPA, PUC-RS.`;
+// trecho real do Gem da Bianca (PE 55/2026 de Quedas do Iguaçu/PR, 15/10), como referência de estilo e profundidade
+const EXEMPLOS = `EXEMPLO (trechos, Gem da Bianca):
+1. Dados do edital: Modalidade: Pregão Eletrônico nº 055/2026. Data limite para envio da proposta: 28/10/2026 até 08h59.
+Data prevista para a disputa: 28/10/2026 às 09h00. Tipo de julgamento: Menor Preço por Item (Edital, item 10.10). Modo de
+disputa: Aberto (Lei 14.133/2021, art. 56, I); lances de 10 minutos com prorrogações de 2 minutos; intervalo mínimo 1,00%.
+Haverá tempo randômico? Não, o modo é aberto. Portal: Bolsa Nacional de Compras (BNC). Distância até local com mais de 150 mil
+habitantes: Quedas do Iguaçu tem cerca de 30.735 habitantes; Cascavel/PR (348 mil) a 135 km, cerca de 2h. Data limite para
+esclarecimentos e impugnações: 3 dias úteis antes da abertura (art. 164 da Lei 14.133/2021), ou seja 23/10/2026 (sexta-feira).
+Exigência de garantia: isenta (Minuta, Cláusula Décima). REQUISITOS DE PRECIFICAÇÃO: Unidade de medida: plantão de 12h (item
+01), plantão de 6h (item 02), 1 hora de consulta (item 03), plantão de 12h em sobreaviso (item 04). Volumetria mensal: 155
+plantões de 12h/mês (4 a 5 médicos por dia). QUALIFICAÇÃO TÉCNICA: Médicos precisam de RQE: Não, mas para a urgência do
+hospital é preciso 3 meses de experiência em emergência ou ACLS (item 6.9.2 do TR). Contratação exige vínculo CLT: Não, aceita
+contrato social, CLT ou PJ (item 8.1.3 do Edital), atendendo à prática da GSS.
+2. Precificação: 01 | Clínica Geral, plantão presencial de 12h | 12h | 155,00 | 1.860 | 1.813,37 | 151,11 | 281.072,35 |
+3.372.868,20 | (A deliberar) | (A deliberar) | (A deliberar).
+4. Alerta Crítico 1 – Tempo de resposta do sobreaviso (item 6.12 do TR): o médico tem 15 minutos para chegar após o
+acionamento, o que obriga a GSS a manter o médico dentro da cidade (alojamento local).
+5. Fato: o edital fala em menor preço por item (item 10.10), mas o TR agrupa os itens como "LOTE 01" (p. 3). Ação
+recomendada: pedir esclarecimento no BNC para confirmar a disputa item a item (art. 47, II da Lei 14.133/2021).`;
 
 // só o HTML combinado: tira script/estilo/eventos caso a IA devolva algo fora do formato
 function limparHtml(h: string): string {
@@ -91,11 +111,15 @@ function limparHtml(h: string): string {
     .replace(/javascript:/gi, "");
 }
 
+// O tipo do arquivo nunca sai do nome: os anexos que vêm do Effecti/PNCP chegam sem extensão ("TR", "ETP",
+// "AVISO"). Só descarta pelo nome o que com certeza não é documento; o tipo real vem do Storage (mimetype).
+const NAO_DOC = /\.(png|jpe?g|gif|webp|zip|rar|7z|docx?|xlsx?|csv|txt|html?)$/i;
+
 // edital e termo de referência primeiro; ata, proposta e recibo por último
 function prioridade(nome: string): number {
   const n = nome.toLowerCase();
   if (/(^|[^a-z])(tr|termo)([^a-z]|$)|termo.?de.?refer/.test(n)) return 0;
-  if (/edital/.test(n)) return 1;
+  if (/edital|aviso|servi/.test(n)) return 1;
   if (/anexo|planilha/.test(n)) return 2;
   if (/(ata|proposta|recibo|impugna|esclarec|resposta)/.test(n)) return 4;
   return 3;
@@ -126,16 +150,16 @@ serve(async (req) => {
     let escolhidos: { bucket: string; path: string; nome: string }[] = [];
     if (Array.isArray(body.anexos) && body.anexos.length) {
       escolhidos = body.anexos
-        .filter((a: any) => BUCKETS.has(a?.bucket) && typeof a?.path === "string" && a.path.startsWith(`${licitacaoId}/`) && /\.pdf$/i.test(a.nome || a.path))
+        .filter((a: any) => BUCKETS.has(a?.bucket) && typeof a?.path === "string" && a.path.startsWith(`${licitacaoId}/`) && !NAO_DOC.test(a.nome || a.path))
         .map((a: any) => ({ bucket: a.bucket, path: a.path, nome: a.nome || a.path.split("/").pop() }));
     } else {
       const { data: anexos } = await svc.from("licitacoes_anexos").select("arquivo_nome, arquivo_url, bucket").eq("licitacao_id", licitacaoId);
       escolhidos = (anexos ?? [])
-        .filter((a: any) => /\.pdf$/i.test(a.arquivo_nome || a.arquivo_url || "") && BUCKETS.has(a.bucket || "licitacoes-anexos"))
+        .filter((a: any) => !NAO_DOC.test(a.arquivo_nome || a.arquivo_url || "") && BUCKETS.has(a.bucket || "licitacoes-anexos"))
         .map((a: any) => ({ bucket: a.bucket || "licitacoes-anexos", path: a.arquivo_url, nome: a.arquivo_nome || a.arquivo_url.split("/").pop() }))
         .sort((a, b) => prioridade(a.nome) - prioridade(b.nome));
     }
-    if (!escolhidos.length) return json({ ok: false, error: "Anexe o edital em PDF no card antes de pedir a análise." }, 400);
+    if (!escolhidos.length) return json({ ok: false, error: "Anexe o edital (PDF) no card antes de pedir a análise." }, 400);
 
     const { data: linha, error: eIns } = await svc.from("licitacao_analises")
       .insert({ licitacao_id: licitacaoId, status: "processando", criado_por: user?.id ?? null, anexos: [] })
@@ -148,21 +172,34 @@ serve(async (req) => {
         // A função não lê nem converte o PDF: manda um link temporário e a IA baixa o arquivo. Converter um
         // edital grande (12,5 MB da PM-SP, 14/10) estourava o limite de processamento da função e a tarefa
         // morria sem gravar erro. O tamanho vem dos metadados do Storage, sem baixar o arquivo.
-        const docs: any[] = []; const usados: any[] = []; const avisos: string[] = []; let total = 0;
+        // O link é só para o que não cabe embutido: o Gemini falhou ao buscar links em 15/10 (URL_REJECTED, com e
+        // sem ".pdf" no nome). Até 8 MB somados os arquivos vão embutidos, que a função converte sem estourar.
+        const docs: any[] = []; const usados: any[] = []; const avisos: string[] = []; let total = 0; let embutido = 0;
         for (const a of escolhidos) {
           if (usados.length >= MAX_ARQUIVOS) break;
           const pasta = a.path.split("/").slice(0, -1).join("/");
           const nomeArq = a.path.split("/").pop()!;
           const { data: lista } = await svc.storage.from(a.bucket).list(pasta, { search: nomeArq, limit: 5 });
-          const tam = Number((lista ?? []).find((o: any) => o.name === nomeArq)?.metadata?.size ?? 0);
-          if (!tam) continue;
+          const meta = (lista ?? []).find((o: any) => o.name === nomeArq)?.metadata ?? {};
+          const tam = Number(meta.size ?? 0);
+          // o Storage guarda o tipo real; sem tipo gravado, aceita (a IA recusa o que não for documento)
+          if (!tam || (meta.mimetype && !/pdf|octet-stream/i.test(String(meta.mimetype)))) continue;
           if (total + tam > LIMITE_TOTAL) { avisos.push(`${a.nome}: ficou de fora para não passar de 30 MB no total.`); continue; }
-          const { data: link } = await svc.storage.from(a.bucket).createSignedUrl(a.path, 60 * 30);
-          if (!link?.signedUrl) continue;
+          let url: string | null = null;
+          if (embutido + tam <= 8 * 1024 * 1024) {
+            const { data: arq } = await svc.storage.from(a.bucket).download(a.path);
+            if (!arq) continue;
+            embutido += tam;
+            url = `data:application/pdf;base64,${encodeBase64(new Uint8Array(await arq.arrayBuffer()))}`;
+          } else {
+            const { data: link } = await svc.storage.from(a.bucket).createSignedUrl(a.path, 60 * 30);
+            url = link?.signedUrl ?? null;
+          }
+          if (!url) continue;
           total += tam;
           const n = usados.length + 1;
           docs.push({ type: "text", text: `ARQUIVO ${n}: ${a.nome}` });
-          docs.push({ type: "image_url", image_url: { url: link.signedUrl } });
+          docs.push({ type: "image_url", image_url: { url } });
           usados.push({ bucket: a.bucket, path: a.path, nome: a.nome });
         }
         if (!usados.length) throw new Error(avisos[0] || "Nenhum PDF do card pôde ser aberto.");
@@ -181,7 +218,6 @@ serve(async (req) => {
           headers: { Authorization: `Bearer ${Deno.env.get("LOVABLE_API_KEY")}`, "Content-Type": "application/json" },
           body: JSON.stringify({
             model: modelo,
-            response_format: { type: "json_object" },
             messages: [
               { role: "system", content: `${INSTRUCOES}${extra}\n\n${EXEMPLOS}` },
               { role: "user", content: [{ type: "text", text: `${contexto}\nFaça a análise deste edital no modelo da GSS.` }, ...docs] },
@@ -191,9 +227,15 @@ serve(async (req) => {
         clearTimeout(relogio);
         if (!r.ok) throw new Error(`IA ${r.status}: ${(await r.text()).slice(0, 300)}`);
         const resp = await r.json();
-        const txt = String(resp.choices?.[0]?.message?.content || "{}").replace(/^```(?:json)?\s*|\s*```$/g, "");
-        const lido = JSON.parse(txt);
-        if (!lido?.html) throw new Error("A IA não devolveu a análise.");
+        // HTML puro + "### FALTOU": a análise longa tem aspas demais nas tabelas para vir dentro de JSON
+        // (o JSON quebrava na posição 6.561 no teste de 15/10)
+        const bruto = String(resp.choices?.[0]?.message?.content || "").replace(/^\s*```(?:html)?\s*|\s*```\s*$/g, "");
+        const [parteHtml, parteFaltou = ""] = bruto.split(/^\s*#{2,3}\s*FALTOU\s*$/m);
+        const lido = {
+          html: parteHtml.replace(/```(?:html)?/g, "").trim(),
+          faltou: parteFaltou.split("\n").map((l) => l.replace(/^\s*[-*]\s*/, "").trim()).filter(Boolean),
+        };
+        if (lido.html.length < 200) throw new Error("A IA não devolveu a análise.");
         await svc.from("licitacao_analises").update({
           status: "pronta", html: limparHtml(lido.html), faltou: [...avisos, ...(Array.isArray(lido.faltou) ? lido.faltou : [])],
           anexos: usados, modelo: modelo.replace("google/", ""), concluido_em: new Date().toISOString(),

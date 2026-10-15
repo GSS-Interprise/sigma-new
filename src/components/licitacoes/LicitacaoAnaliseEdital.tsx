@@ -8,9 +8,9 @@ import { Button } from "@/components/ui/button";
 import { sanitizeHtml } from "@/lib/sanitizeHtml";
 
 /**
- * Análise de edital pelo modelo da Bianca (T6, 14/10). A IA lê os PDFs do card (termo de referência e
- * edital primeiro) e escreve no formato que a equipe já usava no Gem do Gemini, com item e página do
- * edital em cada informação. A análise fica guardada com histórico (licitacao_analises); a equipe
+ * Análise de edital pelo modelo do Gem da Bianca (T6; modelo dela aplicado em 15/10). A IA lê os PDFs do
+ * card (termo de referência e edital primeiro) e escreve nas 5 partes do Gem: dados do edital, precificação,
+ * análise geográfica, alertas de risco e apontamentos para esclarecimento, com item e página em cada informação. A análise fica guardada com histórico (licitacao_analises); a equipe
  * decide se leva para a "Decorrência de Análise". A IA apoia, a decisão é da equipe (Ramone, 50:27).
  */
 type Analise = {
@@ -46,7 +46,7 @@ export function LicitacaoAnaliseEdital({ licitacaoId, onInserir }: { licitacaoId
     try {
       const { data, error } = await supabase.functions.invoke("licitacao-analise-edital", { body: { licitacao_id: licitacaoId } });
       if (error || !data?.ok) throw new Error(data?.error || error?.message || "Não foi possível pedir a análise");
-      toast.success("Análise pedida. A IA leva cerca de 1 minuto para ler o edital.");
+      toast.success("Análise pedida. A IA leva de 1 a 3 minutos para ler o edital.");
       qc.invalidateQueries({ queryKey: chave });
     } catch (e: any) {
       toast.error(e.message);
@@ -67,7 +67,7 @@ export function LicitacaoAnaliseEdital({ licitacaoId, onInserir }: { licitacaoId
       <div className="flex flex-wrap items-center gap-2">
         <Sparkles className="h-3.5 w-3.5 text-primary" />
         <span className="text-xs font-semibold text-primary uppercase tracking-wide">Análise do edital</span>
-        <span className="text-[10px] text-muted-foreground">— IA no modelo da GSS, com item e página do edital em cada ponto</span>
+        <span className="text-[10px] text-muted-foreground">— IA no modelo do Gem da Bianca, com item e página do edital em cada ponto</span>
         <div className="ml-auto flex items-center gap-1.5">
           {atual?.status === "pronta" && (
             <Button size="sm" variant="outline" className="h-7 text-xs" onClick={inserir}>
