@@ -297,22 +297,22 @@ serve(async (req) => {
           .eq("id", ped.fechamento_id).eq("status", "aguardando_aprovacao").select("id");
         if (!upd?.length) {
           await svc.from("financeiro_aprovacao_whatsapp").update({ status: "substituido", respondido_em: agora }).eq("id", ped.id);
-          await texto(sender, fone, `O fechamento ${comp} ja tinha sido processado no Sigma. Nada foi alterado.`);
+          await texto(sender, fone, `O pagamento de ${comp} ja tinha sido processado no Sigma. Nada foi alterado.`);
           return json({ ok: true, tratado: true, ja_processado: true });
         }
         await svc.from("financeiro_aprovacao_whatsapp").update({ status: "aprovado", respondido_em: agora }).eq("id", ped.id);
         await svc.from("financeiro_aprovacao_whatsapp").update({ status: "substituido" }).eq("fechamento_id", ped.fechamento_id).eq("status", "enviado");
-        await postarNoCanal(svc, cfg.canalAprovacao, autor, nome, `✅ *Fechamento ${comp} aprovado pelo WhatsApp* por ${nome} — ${brl(f?.total)}, ${f?.qtd_medicos || 0} médico(s).`);
+        await postarNoCanal(svc, cfg.canalAprovacao, autor, nome, `✅ *Pagamento de ${comp} aprovado pelo WhatsApp* por ${nome} — ${brl(f?.total)}, ${f?.qtd_medicos || 0} médico(s).`);
         await postarNoCanal(svc, cfg.canalComprovantes, autor, nome,
-          `✅ *Fechamento ${comp} aprovado* por ${nome} — ${brl(f?.total)}, ${f?.qtd_medicos || 0} médico(s).\nThais, envie os comprovantes aqui neste canal. 👇`,
+          `✅ *Pagamento de ${comp} aprovado* por ${nome} — ${brl(f?.total)}, ${f?.qtd_medicos || 0} médico(s).\nThais, envie os comprovantes aqui neste canal. 👇`,
           { tipo: "enviar_comprovantes", referencia_id: ped.fechamento_id, status: "pendente" });
-        await texto(sender, fone, `Aprovado. O pagamento do fechamento ${comp} (${brl(f?.total)}) foi liberado e o financeiro ja foi avisado. Ficou registrado no Sigma.`);
+        await texto(sender, fone, `Aprovado. O pagamento de ${comp} (${brl(f?.total)}) foi liberado e o financeiro ja foi avisado. Ficou registrado no Sigma.`);
         return json({ ok: true, tratado: true, aprovado: true });
       }
 
       await svc.from("financeiro_aprovacao_whatsapp").update({ status: "nao_aprovado", respondido_em: agora }).eq("id", ped.id);
-      await postarNoCanal(svc, cfg.canalAprovacao, autor, nome, `⚠️ *Fechamento ${comp} NÃO aprovado pelo WhatsApp* por ${nome}. O fechamento continua aguardando: falar com a diretoria antes de reenviar.`);
-      await texto(sender, fone, `Registrado: o fechamento ${comp} nao foi aprovado e nenhum pagamento foi liberado. O financeiro foi avisado e vai falar com voce.`);
+      await postarNoCanal(svc, cfg.canalAprovacao, autor, nome, `⚠️ *Pagamento de ${comp} NÃO aprovado pelo WhatsApp* por ${nome}. O pagamento continua aguardando: falar com a diretoria antes de reenviar.`);
+      await texto(sender, fone, `Registrado: o pagamento de ${comp} nao foi aprovado e nada foi liberado. O financeiro foi avisado e vai falar com voce.`);
       return json({ ok: true, tratado: true, aprovado: false });
     }
 

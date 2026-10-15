@@ -88,14 +88,16 @@ export function MensagemAcao({ mensagem, currentUserId, currentUserNome }: { men
 
   if (!acao?.tipo) return null;
 
-  // ---- Aprovar fechamento (João / diretoria) ----
+  // ---- Aprovar pagamento do mês (João / diretoria) ----
+  // A diretoria aprova o PAGAMENTO, não o "fechamento" (correção da Mavi, 10/07); o tipo da ação
+  // continua aprovar_fechamento porque é o valor gravado nas mensagens antigas.
   if (acao.tipo === "aprovar_fechamento") {
     const verPdf = fech?.pdf_path ? (
       <Button variant="outline" size="sm" className="mt-2 h-9 gap-1.5" onClick={async () => {
         const { data } = await supabase.storage.from("financeiro-anexos").createSignedUrl(fech.pdf_path, 3600);
         if (data?.signedUrl) window.open(data.signedUrl, "_blank");
-        else toast.error("Não foi possível abrir o relatório do fechamento.");
-      }}><FileText className="h-4 w-4" /> Ver fechamento</Button>
+        else toast.error("Não foi possível abrir o relatório.");
+      }}><FileText className="h-4 w-4" /> Ver relatório</Button>
     ) : null;
 
     if (status === "aprovado" || status === "pago") return <div className="flex flex-wrap gap-2 items-center">{verPdf}<EstadoBadge tone="ok">Aprovado</EstadoBadge></div>;
@@ -109,12 +111,12 @@ export function MensagemAcao({ mensagem, currentUserId, currentUserNome }: { men
           .update({ status: "aprovado", aprovado_por: currentUserId, aprovado_em: new Date().toISOString() })
           .eq("id", fechId).eq("status", "aguardando_aprovacao").select("id");
         if (error) throw error;
-        if (!upd || upd.length === 0) { toast.error("Este fechamento já foi processado."); qc.invalidateQueries({ queryKey: ["fechamento-acao", fechId] }); setLoading(false); return; }
+        if (!upd || upd.length === 0) { toast.error("Este pagamento já foi processado."); qc.invalidateQueries({ queryKey: ["fechamento-acao", fechId] }); setLoading(false); return; }
         const comp = fech ? `${String(fech.mes_referencia).padStart(2, "0")}/${fech.ano_referencia}` : "";
-        const msg = `✅ *Fechamento ${comp} aprovado* por ${currentUserNome || "Diretoria"} — ${brl(fech?.total)}, ${fech?.qtd_medicos || 0} médico(s).\nThais, envie os comprovantes aqui neste canal. 👇`;
+        const msg = `✅ *Pagamento de ${comp} aprovado* por ${currentUserNome || "Diretoria"} — ${brl(fech?.total)}, ${fech?.qtd_medicos || 0} médico(s).\nThais, envie os comprovantes aqui neste canal. 👇`;
         await postarNoCanalPorConfig("financeiro_canal_comprovantes_id", msg, currentUserId, currentUserNome, { tipo: "enviar_comprovantes", referencia_id: fechId, status: "pendente" });
         qc.invalidateQueries({ queryKey: ["fechamento-acao", fechId] });
-        toast.success("Fechamento aprovado! A Thais foi avisada no canal de Comprovantes.");
+        toast.success("Pagamento aprovado! A Thais foi avisada no canal de Comprovantes.");
       } catch (e: any) {
         toast.error("Erro ao aprovar: " + (e?.message || ""));
       }
