@@ -280,6 +280,44 @@ export function useExcluirImportacao() {
   });
 }
 
+// Exclui o fechamento do mês inteiro: lançamentos (ajustes, itens, anexos e pedidos de NF vão em cascata),
+// registros de importação e o próprio fechamento (o pedido de aprovação no WhatsApp vai em cascata).
+// A Mavi pediu em 15/10 para ela mesma conseguir apagar fechamentos de teste: o "Excluir importação" só
+// aparece até a fase de notas e com lançamentos, e o de agosto já estava aprovado.
+export function useExcluirFechamento() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ fechamentoId, mes, ano }: { fechamentoId: string; mes: number; ano: number }) => {
+      const { data: pags, error: e1 } = await (supabase as any)
+        .from("financeiro_pagamentos").select("id, arquivo_origem")
+        .eq("mes_referencia", mes).eq("ano_referencia", ano);
+      if (e1) throw e1;
+      if (pags?.length) {
+        const { error } = await (supabase as any).from("financeiro_pagamentos")
+          .delete().in("id", pags.map((p: any) => p.id));
+        if (error) throw error;
+      }
+      // libera os arquivos para serem importados de novo sem o aviso de duplicado
+      const nomes = [...new Set((pags || [])
+        .map((p: any) => String(p.arquivo_origem || "").replace(/^\[cfg:[^\]]+\]\s*/, "").trim())
+        .filter(Boolean))];
+      await (supabase as any).from("financeiro_import_log").delete().eq("fechamento_id", fechamentoId);
+      if (nomes.length) await (supabase as any).from("financeiro_import_log").delete().in("arquivo_nome", nomes);
+      const { data: apagado, error: e2 } = await (supabase as any)
+        .from("financeiro_fechamentos").delete().eq("id", fechamentoId).select("id");
+      if (e2) throw e2;
+      if (!apagado?.length) throw new Error("sem permissão para excluir este fechamento");
+      return pags?.length ?? 0;
+    },
+    onSuccess: (n) => {
+      qc.invalidateQueries({ queryKey: ["financeiro-pagamentos"] });
+      qc.invalidateQueries({ queryKey: ["financeiro-fases"] });
+      toast.success(`Fechamento excluído (${n} lançamento(s)).`);
+    },
+    onError: (e: any) => toast.error("Erro ao excluir fechamento: " + e.message),
+  });
+}
+
 export function useFinanceiroConfigValores() {
   return useQuery({
     queryKey: ["financeiro-config-valores"],

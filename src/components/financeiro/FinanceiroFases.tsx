@@ -13,7 +13,7 @@ import {
   Circle, Loader2, Trash2, Download, Search, ArrowUp, ArrowDown, X,
 } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { FinanceiroPagamento, useConferirEmLote, useExcluirImportacao } from "@/hooks/useFinanceiroData";
+import { FinanceiroPagamento, useConferirEmLote, useExcluirFechamento, useExcluirImportacao } from "@/hooks/useFinanceiroData";
 import { toast } from "sonner";
 import { FinanceiroDetalhe } from "./FinanceiroDetalhe";
 import { FinanceiroImportarFechamentoDialog } from "./FinanceiroImportarFechamentoDialog";
@@ -44,6 +44,9 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
   const conferirLote = useConferirEmLote();
   const excluirImport = useExcluirImportacao();
   const [confirmandoExclusao, setConfirmandoExclusao] = useState(false);
+  const excluirFech = useExcluirFechamento();
+  const [excluindoFech, setExcluindoFech] = useState(false);
+  const [confirmaTexto, setConfirmaTexto] = useState("");
 
   const { data, isLoading } = useQuery({
     queryKey: ["financeiro-fases", mes, ano],
@@ -95,6 +98,7 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
     : status === "em_nf" ? 2
     : 1;
   const podeAjustar = fase === 1;
+  const competencia = `${String(mes).padStart(2, "0")}/${ano}`;
   const foraDaAprovacao = todos.filter((p) => !p.fechamento_id && Number(p.valor_total || 0) > 0);
 
   // busca por médico: é como ela acha alguém num fechamento de 60 linhas
@@ -250,6 +254,13 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
               {fase >= 3 && (
                 <Button asChild size="sm" variant="outline" className="gap-1.5">
                   <Link to="/financeiro/aprovacoes">Ver aprovações <ArrowRight className="h-4 w-4" /></Link>
+                </Button>
+              )}
+              {/* fechamento já pago fica: tem comprovante e saída de caixa ligados a ele */}
+              {data?.fechamento?.id && status !== "pago" && (
+                <Button size="sm" variant="ghost" className="gap-1.5 text-red-600 hover:text-red-700"
+                  onClick={() => { setConfirmaTexto(""); setExcluindoFech(true); }}>
+                  <Trash2 className="h-4 w-4" /> Excluir fechamento
                 </Button>
               )}
             </div>
@@ -498,6 +509,37 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
                 setConfirmandoExclusao(false);
               }}>
               Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={excluindoFech} onOpenChange={setExcluindoFech}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir o fechamento de {competencia}?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p>
+                  Sai o fechamento inteiro do mês: <b>{todos.length} lançamento(s)</b>, os ajustes, os pedidos de nota
+                  e o pedido de aprovação. Serve para apagar um fechamento de teste ou feito errado.
+                </p>
+                <p className="text-amber-700">Não dá para desfazer. Os arquivos podem ser importados de novo depois.</p>
+                <p className="text-xs">Para confirmar, digite <b>{competencia}</b> abaixo.</p>
+                <Input value={confirmaTexto} onChange={(e) => setConfirmaTexto(e.target.value)} placeholder={competencia} />
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction className="bg-red-600 hover:bg-red-700"
+              disabled={confirmaTexto.trim() !== competencia || excluirFech.isPending}
+              onClick={() => {
+                excluirFech.mutate({ fechamentoId: data!.fechamento.id, mes, ano });
+                setFonteSel(TODAS);
+                setExcluindoFech(false);
+              }}>
+              Excluir fechamento
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
