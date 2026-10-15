@@ -101,7 +101,7 @@ export default function Licitacoes({ board = 'effecti' }: LicitacoesProps = {}) 
     queryFn: async () => {
       let query = supabase
         .from("licitacoes")
-        .select("id,titulo,numero_edital,orgao,status,valor_estimado,data_disputa,municipio_uf,tipo_modalidade,responsavel_id,etiquetas,prioridade")
+        .select("id,titulo,numero_edital,orgao,status,valor_estimado,data_disputa,municipio_uf,tipo_modalidade,responsavel_id,etiquetas,prioridade,empresa")
         .order(shouldUseAgesDefaultOrdering ? "data_limite" : "created_at", {
           ascending: shouldUseAgesDefaultOrdering ? true : false,
           nullsFirst: false,
