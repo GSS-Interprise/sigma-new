@@ -60,7 +60,20 @@ serve(async (req) => {
         rejection_reason: remoto.rejected_reason || remoto.reason || null,
         updated_at: new Date().toISOString(),
       }).eq("id", linha.id);
-      mudancas.push({ template: linha.friendly_name, de: linha.approval_status, para: status, motivo: remoto.rejected_reason || null });
+      // template novo esperando a Meta: aprovado, passa a ser o usado no envio
+      let ativado = false;
+      if (status === "approved") {
+        const { data: pend } = await svc.from("config_lista_items").select("campo_nome")
+          .like("campo_nome", "financeiro_nf_whatsapp_template%_pendente").eq("valor", linha.id);
+        for (const c of pend ?? []) {
+          const chave = String(c.campo_nome).replace(/_pendente$/, "");
+          await svc.from("config_lista_items").delete().eq("campo_nome", chave);
+          await svc.from("config_lista_items").insert({ campo_nome: chave, valor: linha.id });
+          await svc.from("config_lista_items").delete().eq("campo_nome", c.campo_nome);
+          ativado = true;
+        }
+      }
+      mudancas.push({ template: linha.friendly_name, de: linha.approval_status, para: status, motivo: remoto.rejected_reason || null, ativado });
     }
 
     // avisa a equipe só na virada — quem acompanha não precisa abrir o painel do provedor
@@ -71,7 +84,7 @@ serve(async (req) => {
       if (autor) {
         const linhas = mudancas.map((m) =>
           m.para === "approved"
-            ? `✅ *${m.template}* aprovado — o envio de NF por WhatsApp já pode ser usado.`
+            ? `✅ *${m.template}* aprovado — ${m.ativado ? "os pedidos de nota já saem com ele." : "o envio de NF por WhatsApp já pode ser usado."}`
             : m.para === "rejected"
             ? `⛔ *${m.template}* recusado${m.motivo ? ` (${m.motivo})` : ""} — precisa ajustar o texto e submeter de novo.`
             : `ℹ️ *${m.template}*: ${m.de} → ${m.para}.`

@@ -5,7 +5,10 @@
 // mais fácil e a mensagem fica limpa. Texto sem acento de propósito — template com
 // acento já chegou corrompido do provedor nesta WABA (ver twilio-whatsapp-send).
 //
-// Input opcional: { nome?, corpo?, texto_botao?, link_base?, dry_run?: boolean }
+// Input opcional: { nome?, corpo?, texto_botao?, link_base?, tipo?, variaveis?, exemplo?, dry_run?: boolean }
+// "variaveis" dá o papel de cada {{n}} (nome, competencia, producao, valor): é por ele que o
+// financeiro-nf-enviar preenche o template. Enquanto a Meta não aprova, o template fica em
+// "<chave>_pendente" e o envio continua no anterior; o financeiro-nf-template-monitor troca na aprovação.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { chakraApi, unwrapChakraPayload } from "../_shared/chakra.ts";
@@ -33,6 +36,10 @@ serve(async (req) => {
     const nome = String(input.nome || NOME_PADRAO).toLowerCase().replace(/[^a-z0-9_]/g, "_");
     const corpo = String(input.corpo || CORPO_PADRAO);
     const textoBotao = String(input.texto_botao || TEXTO_BOTAO);
+    const variaveis: Record<string, string> = input.variaveis && typeof input.variaveis === "object"
+      ? input.variaveis : { "1": "Nome do medico", "2": "Competencia", "3": "Valor" };
+    const exemplo: string[] = Array.isArray(input.exemplo) ? input.exemplo.map(String)
+      : ["Marina Souza", "agosto/2026", "R$ 12.480,00"];
 
     const { data: cfgRows } = await svc.from("config_lista_items")
       .select("campo_nome, valor")
@@ -54,7 +61,7 @@ serve(async (req) => {
       {
         type: "BODY",
         text: corpo,
-        example: { body_text: [["Marina Souza", "agosto/2026", "R$ 12.480,00"]] },
+        example: { body_text: [exemplo] },
       },
       {
         type: "BUTTONS",
@@ -90,7 +97,7 @@ serve(async (req) => {
         language: "pt_BR",
         category: "UTILITY",
         body: corpo,
-        variables: { "1": "Nome do medico", "2": "Competencia", "3": "Valor" },
+        variables: variaveis,
         approval_status: statusMeta === "approved" ? "approved" : statusMeta === "rejected" ? "rejected" : "pending",
         twilio_payload: remoto,
         updated_at: new Date().toISOString(),
@@ -98,11 +105,12 @@ serve(async (req) => {
       .select("id, approval_status").single();
     if (gravaErro) throw gravaErro;
 
-    // deixa a configuração pronta: quando a Meta aprovar, o envio já funciona.
-    // tipo=lembrete grava na chave da cobrança para não sobrescrever a do pedido.
-    const chaveTemplate = String(input.tipo || "solicitacao") === "lembrete"
+    // tipo=lembrete grava na chave da cobrança para não sobrescrever a do pedido. Só passa a valer
+    // quando aprovado: apontar para um template pendente faria o envio de NF parar (15/10, v2).
+    const chaveBase = String(input.tipo || "solicitacao") === "lembrete"
       ? "financeiro_nf_whatsapp_template_lembrete_id"
       : "financeiro_nf_whatsapp_template_id";
+    const chaveTemplate = gravado.approval_status === "approved" ? chaveBase : `${chaveBase}_pendente`;
     for (const [campo, valor] of [
       [chaveTemplate, gravado.id],
       ["financeiro_nf_whatsapp_botao_url", "1"],
@@ -112,7 +120,7 @@ serve(async (req) => {
     }
 
     return json({
-      ok: true, template_id: gravado.id, nome, status: gravado.approval_status,
+      ok: true, template_id: gravado.id, nome, status: gravado.approval_status, config: chaveTemplate,
       remetente: sender.phone_e164, waba_id: sender.chakra_waba_id, resposta_provedor: remoto,
     });
   } catch (e: any) {

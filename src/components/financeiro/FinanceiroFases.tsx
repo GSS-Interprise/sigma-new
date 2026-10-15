@@ -18,7 +18,7 @@ import { toast } from "sonner";
 import { FinanceiroDetalhe } from "./FinanceiroDetalhe";
 import { FinanceiroImportarFechamentoDialog } from "./FinanceiroImportarFechamentoDialog";
 import { FinanceiroFecharDialog } from "./FinanceiroFecharDialog";
-import { FinanceiroLiberarDialog } from "./FinanceiroLiberarDialog";
+import { FinanceiroLiberarDialog, avisarLiberacao } from "./FinanceiroLiberarDialog";
 
 const brl = (v: number) => Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const BOM = String.fromCharCode(0xFEFF);      // Excel pt-BR precisa do BOM para ler UTF-8
@@ -446,10 +446,15 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
                   <p className="text-sm">
                     {porConferir} lançamento(s) entraram depois da liberação e ainda não foram conferidos.
                   </p>
+                  {/* liberar os novos avisa o grupo de liberação com o nome do fechamento, como a liberação do mês
+                      (a Mavi libera um setor por vez; 15/10). O pedido de nota segue pela aba Notas fiscais. */}
                   <Button size="sm" variant="outline" disabled={conferirLote.isPending}
-                    onClick={() => conferirLote.mutate({ ids: todos.filter((p) => !p.conferido_em).map((p) => p.id) })}>
+                    onClick={() => {
+                      const ids = todos.filter((p) => !p.conferido_em).map((p) => p.id);
+                      conferirLote.mutate({ ids }, { onSuccess: () => { avisarLiberacao(mes, ano, ids); } });
+                    }}>
                     {conferirLote.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                    <span className="ml-1.5">Conferir os novos</span>
+                    <span className="ml-1.5">Conferir e liberar os novos</span>
                   </Button>
                 </div>
               )}

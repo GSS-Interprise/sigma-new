@@ -25,9 +25,45 @@ const SENDERS_ATIVOS = ["approved", "online", "active", "activated", "connected"
 type Pag = {
   id: string; profissional_nome: string; medico_id: string | null;
   mes_referencia: number; ano_referencia: number; unidade: string | null; setor: string | null;
-  total_plantoes: number | null; valor_total: number | null;
+  total_plantoes: number | null; total_horas_minutos: number | null; valor_total: number | null;
+  arquivo_origem: string | null;
   nf_lembretes: number | null;
 };
+
+// Resumo do que o médico fez no mês, para o pedido de nota (a Mavi pediu em 15/10 que a mensagem traga
+// as horas ou a quantidade de consultas, no texto dela: "referente a xx horas ou xx consultas realizadas
+// no local xx"). Plantão vem com horas; consulta e exame vêm como item com quantidade e sem data.
+// Texto sem acento, como o resto do template.
+type Item = { pagamento_id: string; data_plantao: string | null; descricao: string | null; quantidade: number | null; carga_horaria_minutos: number | null };
+function resumoProducao(pag: Pag, itens: Item[]): string {
+  const partes: string[] = [];
+  const min = Number(pag.total_horas_minutos || 0);
+  if (min > 0) {
+    const h = Math.floor(min / 60), m = min % 60;
+    partes.push(m ? `${h}h${String(m).padStart(2, "0")}` : `${h} hora${h === 1 ? "" : "s"}`);
+  }
+  // o relatório consolidado resume os plantões numa linha com quantidade ("18 plantão(ões)"): isso já está nas horas
+  const qtd = itens.filter((i) => !i.data_plantao && i.descricao && Number(i.quantidade) > 0
+    && !Number(i.carga_horaria_minutos) && !/plant/i.test(i.descricao));
+  if (qtd.length) {
+    const total = qtd.reduce((s, i) => s + Number(i.quantidade), 0);
+    const consultas = qtd.every((i) => /consult/i.test(i.descricao || ""));
+    // "realizadas" vem do texto da Mavi: exame de radiologia entra como "consultas/exames" para concordar
+    partes.push(`${total} ${consultas ? (total === 1 ? "consulta" : "consultas") : "consultas/exames"}`);
+  }
+  return semAcento(partes.join(" e ") || "atividades");
+}
+// O local é o nome que a Mavi dá ao arquivo do Dr. Escala antes de importar ("Ibirama", "Nova Prata"):
+// é a cidade, que o médico reconhece. Sem arquivo, usa a unidade da escala.
+function localDoServico(pag: Pag): string {
+  const arquivo = String(pag.arquivo_origem || "").replace(/^\[cfg:[^\]]+\]\s*/, "").replace(/\.(xlsx|xls|csv)$/i, "").trim();
+  // o nome do arquivo costuma levar o mês ("Ibirama - agosto"): o local é só a cidade
+  const cidade = arquivo
+    .replace(/[\s_\-–(]*(janeiro|fevereiro|mar[cç]o|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro|\d{1,2}[\/.\-]\d{2,4}|20\d{2})[)\s_\-–\/.]*/gi, " ")
+    .replace(/[\s_\-–]+$/, "").trim();
+  return semAcento(cidade || arquivo || pag.unidade || pag.setor || "indicado na escala");
+}
+const semAcento = (t: string) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim().slice(0, 200);
 
 function corpoEmail(pag: Pag, compExt: string, valor: string, link: string) {
   const localTxt = [pag.unidade, pag.setor].filter(Boolean).join(" · ");
@@ -187,9 +223,12 @@ serve(async (req) => {
     }
 
     const { data: pags, error: pErr } = await svc.from("financeiro_pagamentos")
-      .select("id, profissional_nome, medico_id, mes_referencia, ano_referencia, unidade, setor, total_plantoes, valor_total, nf_lembretes")
+      .select("id, profissional_nome, medico_id, mes_referencia, ano_referencia, unidade, setor, total_plantoes, total_horas_minutos, valor_total, nf_lembretes, arquivo_origem")
       .in("id", ids);
     if (pErr) throw pErr;
+    const { data: itensRows } = await svc.from("financeiro_pagamento_itens")
+      .select("pagamento_id, data_plantao, descricao, quantidade, carga_horaria_minutos").in("pagamento_id", ids);
+    const itensDe = (id: string) => ((itensRows ?? []) as Item[]).filter((i) => i.pagamento_id === id);
 
     const medicoIds = [...new Set((pags ?? []).map((p: any) => p.medico_id).filter(Boolean))];
     const { data: medicos } = medicoIds.length
@@ -226,7 +265,7 @@ serve(async (req) => {
         resultados.push({
           pagamento_id: pag.id, medico: pag.profissional_nome, destino, status: "previa",
           assunto, link,
-          texto_whatsapp: `Dr(a). ${pag.profissional_nome}, a GSS precisa da nota fiscal de ${compExt} no valor de ${valor}. Envie por aqui: ${link}`,
+          texto_whatsapp: `Dr(a). ${pag.profissional_nome}, a GSS precisa da nota fiscal de ${compExt} no valor de ${valor}, referente a ${resumoProducao(pag, itensDe(pag.id))} realizadas em ${localDoServico(pag)}. Envie por aqui: ${link}`,
         });
         continue;
       }
@@ -256,7 +295,15 @@ serve(async (req) => {
         // Primeiro contato iniciado pela empresa = template aprovado, sempre.
         // Com botão de URL dinâmica, o link não vai no corpo: o token entra como
         // sufixo do botão (aprova mais fácil na Meta e o texto fica limpo).
-        const variaveis: Record<string, string> = comBotaoUrl
+        // template novo (v2) diz o papel de cada variável pelo rótulo; os antigos seguem pela posição
+        const porRotulo: Record<string, string> = {
+          nome: pag.profissional_nome, competencia: compExt, producao: resumoProducao(pag, itensDe(pag.id)),
+          local: localDoServico(pag), valor, link,
+        };
+        const rotulos = Object.entries(template.variables || {}).map(([k, v]) => [k, String(v).toLowerCase()]);
+        const variaveis: Record<string, string> = rotulos.length && rotulos.every(([, v]) => Object.keys(porRotulo).some((r) => v.includes(r)))
+          ? Object.fromEntries(rotulos.map(([k, v]) => [k, porRotulo[Object.keys(porRotulo).find((r) => v.includes(r))!]]))
+          : comBotaoUrl
           ? { "1": pag.profissional_nome, "2": compExt, "3": valor }
           : { "1": pag.profissional_nome, "2": compExt, "3": valor, "4": link };
         const posicoes = Object.keys(template.variables || {}).sort((a, b) => Number(a) - Number(b));
