@@ -491,7 +491,8 @@ export function LeadDialog({ open, onOpenChange, lead }: LeadDialogProps) {
                       <FormItem>
                         <FormLabel>Data de Nascimento</FormLabel>
                         <FormControl>
-                          <Input type="date" {...field} />
+                          {/* sem limite o navegador aceita ano de 5 dígitos ("20000"), que quebra o quadro de Médicos */}
+                          <Input type="date" min="1900-01-01" max="2099-12-31" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>

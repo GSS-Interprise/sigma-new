@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { User, Phone, Mail, FileText, Calendar, CreditCard } from "lucide-react";
 import { toast } from "sonner";
-import { format, differenceInDays } from "date-fns";
+import { format, differenceInDays, isValid } from "date-fns";
 import { useKanbanColumns } from "@/hooks/useKanbanColumns";
 import { cn } from "@/lib/utils";
 import { MedicoKanbanCardDialog } from "./MedicoKanbanCardDialog";
@@ -443,7 +443,8 @@ export function MedicosKanban({ searchTerm = "" }: { searchTerm?: string }) {
                                 </div>
                               )}
 
-                              {card.data_nascimento && (
+                              {/* data inválida (16/10: ano "20000" digitado no lead) não pode derrubar o quadro inteiro */}
+                              {card.data_nascimento && isValid(new Date(card.data_nascimento + 'T00:00:00')) && (
                                 <div className="flex items-center gap-1 text-muted-foreground">
                                   <Calendar className="h-3 w-3 flex-shrink-0" />
                                   <span className="truncate">

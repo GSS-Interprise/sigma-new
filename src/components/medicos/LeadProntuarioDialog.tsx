@@ -1725,6 +1725,8 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                                 </label>
                                 <Input
                                   type="date"
+                                  min="1900-01-01"
+                                  max="2099-12-31"
                                   value={editedData.data_nascimento || ''}
                                   onChange={(e) => handleFieldChange('data_nascimento', e.target.value)}
                                   className={invisibleInputClass}
