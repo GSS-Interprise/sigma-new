@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Paperclip, Upload, Download, Trash2, Loader2, FileText, Image, FileArchive, File, Eye } from "lucide-react";
 import { toast } from "sonner";
-import { LicitacaoFileViewerDialog } from "@/components/licitacoes/LicitacaoFileViewerDialog";
+import { AnexoViewerNavegavel } from "@/components/licitacoes/AnexoViewerNavegavel";
 import { cn } from "@/lib/utils";
 import { registrarAuditoria } from "@/lib/auditLogger";
 
@@ -236,6 +236,11 @@ export function MedicoKanbanAnexos({ cardId }: MedicoKanbanAnexosProps) {
     setSelectedFile({ url: anexo.arquivo_url, name: anexo.arquivo_nome });
     setViewerOpen(true);
   };
+  // visualizador com setas entre os anexos do card (pedido da Bianca, 16/10)
+  const navegaveis = (anexos ?? []).map((a: any) => ({
+    id: a.id, arquivo_nome: a.arquivo_nome, arquivo_url: a.arquivo_url, bucket: "medico-kanban-anexos",
+  }));
+  const indiceAberto = Math.max(0, navegaveis.findIndex((n) => n.arquivo_url === selectedFile?.url));
 
   const truncateFileName = (name: string, maxLength: number = 18) => {
     if (name.length <= maxLength) return name;
@@ -368,13 +373,8 @@ export function MedicoKanbanAnexos({ cardId }: MedicoKanbanAnexosProps) {
         </div>
       )}
 
-      <LicitacaoFileViewerDialog
-        open={viewerOpen}
-        onOpenChange={setViewerOpen}
-        fileUrl={selectedFile?.url || null}
-        fileName={selectedFile?.name || null}
-        bucket="medico-kanban-anexos"
-      />
+      <AnexoViewerNavegavel anexos={navegaveis} indice={indiceAberto} open={viewerOpen} onOpenChange={setViewerOpen}
+        onIndiceChange={(i) => { const n = navegaveis[i]; if (n) setSelectedFile({ url: n.arquivo_url, name: n.arquivo_nome }); }} />
     </div>
   );
 }

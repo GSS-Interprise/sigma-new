@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { Upload, Paperclip, Trash2, Download, Eye, File, FileText, Image, CalendarClock, Edit2, Check, X } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { LicitacaoFileViewerDialog } from "@/components/licitacoes/LicitacaoFileViewerDialog";
+import { AnexoViewerNavegavel, type AnexoNavegavel } from "@/components/licitacoes/AnexoViewerNavegavel";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
@@ -57,7 +57,8 @@ export function LeadAnexosSection({ leadId }: LeadAnexosSectionProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [previewFile, setPreviewFile] = useState<{ url: string; name: string } | null>(null);
+  // índice do anexo aberto no visualizador com setas (pedido da Bianca, 16/10: o mesmo de licitações e contratos)
+  const [verIndice, setVerIndice] = useState<number | null>(null);
   const [editingNameId, setEditingNameId] = useState<string | null>(null);
   const [editNameValue, setEditNameValue] = useState("");
   const [validadeDateOpen, setValidadeDateOpen] = useState<string | null>(null);
@@ -239,6 +240,14 @@ export function LeadAnexosSection({ leadId }: LeadAnexosSectionProps) {
     setIsDragging(false);
   };
 
+  // arquivos que abrem no visualizador (link externo continua abrindo no navegador)
+  const navegaveis: AnexoNavegavel[] = (anexos ?? [])
+    .filter((a: any) => a.arquivo_tipo !== 'link_externo')
+    .map((a: any) => ({
+      id: a.id, arquivo_nome: a.arquivo_nome, bucket: getBucketFromUrl(a.arquivo_url),
+      arquivo_url: a.arquivo_url.startsWith('http') ? a.arquivo_url : getPathFromUrl(a.arquivo_url),
+    }));
+
   const getPublicUrl = (url: string): string => {
     // Se já é uma URL pública completa
     if (url.startsWith('http')) return url;
@@ -370,7 +379,7 @@ export function LeadAnexosSection({ leadId }: LeadAnexosSectionProps) {
                       if ((anexo as any).arquivo_tipo === 'link_externo') {
                         window.open(anexo.arquivo_url, '_blank', 'noopener,noreferrer');
                       } else {
-                        setPreviewFile({ url: getPublicUrl(anexo.arquivo_url), name: anexo.arquivo_nome });
+                        setVerIndice(Math.max(0, navegaveis.findIndex((n) => n.id === anexo.id)));
                       }
                     }}
                     className="flex items-center justify-center p-4 hover:bg-muted/50 transition-colors border-b"
@@ -503,14 +512,8 @@ export function LeadAnexosSection({ leadId }: LeadAnexosSectionProps) {
         </div>
       )}
 
-      {/* File Viewer Dialog */}
-      <LicitacaoFileViewerDialog
-        open={!!previewFile}
-        onOpenChange={(open) => !open && setPreviewFile(null)}
-        fileUrl={previewFile?.url || ''}
-        fileName={previewFile?.name || ''}
-        bucket="lead-anexos"
-      />
+      <AnexoViewerNavegavel anexos={navegaveis} indice={verIndice ?? 0} onIndiceChange={setVerIndice}
+        open={verIndice !== null} onOpenChange={(o) => { if (!o) setVerIndice(null); }} />
     </div>
   );
 }
