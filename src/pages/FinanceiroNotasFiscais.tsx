@@ -299,6 +299,22 @@ export default function FinanceiroNotasFiscais(
     toast.success("Link de envio copiado.");
   };
 
+  // arquivo que não é a nota (ex.: foto qualquer mandada no WhatsApp): volta para "aguardando nota" (19/10)
+  const desconsiderarNota = async (l: Linha) => {
+    if (!window.confirm(`Desconsiderar o arquivo recebido de ${l.profissional_nome}? O médico volta para "aguardando nota".`)) return;
+    setEnviando(true);
+    const { error } = await (supabase as any).rpc("financeiro_desconsiderar_nf", { p_pagamento_id: l.id });
+    setEnviando(false);
+    if (error) {
+      const m = error.message || "";
+      toast.error(m.includes("ja_no_conta_azul") ? "Esta nota já foi lançada no Conta Azul."
+        : m.includes("sem_permissao") ? "Seu usuário não pode desconsiderar notas." : "Não foi possível desconsiderar: " + m);
+      return;
+    }
+    toast.success("Arquivo desconsiderado. O médico voltou para aguardando nota.");
+    qc.invalidateQueries({ queryKey: ["financeiro-nf"] });
+  };
+
   const verNota = async (l: Linha) => {
     if (!l.nf_arquivo_path) return;
     const { data: s, error } = await supabase.storage.from(BUCKET).createSignedUrl(l.nf_arquivo_path, 300);
@@ -528,6 +544,12 @@ export default function FinanceiroNotasFiscais(
                               {l.nf_arquivo_path && (
                                 <button title="Ver a nota" onClick={() => verNota(l)} className="text-muted-foreground hover:text-foreground">
                                   <Eye className="h-4 w-4" />
+                                </button>
+                              )}
+                              {l.nf_status === "recebida" && !l.ca_evento_id && (
+                                <button title="Desconsiderar este arquivo (não é a nota)" disabled={enviando} onClick={() => desconsiderarNota(l)}
+                                  className="text-muted-foreground hover:text-red-600">
+                                  <X className="h-4 w-4" />
                                 </button>
                               )}
                               <button title="Copiar link de envio" onClick={() => copiarLink(l)} className="text-muted-foreground hover:text-foreground">
