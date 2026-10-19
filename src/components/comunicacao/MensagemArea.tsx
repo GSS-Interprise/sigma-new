@@ -327,11 +327,10 @@ export function MensagemArea({ canalId, onOpenDM, targetMensagemId, onTargetMens
 
   const apagarMensagemMutation = useMutation({
     mutationFn: async (mensagemId: string) => {
-      const { error } = await supabase
-        .from("comunicacao_mensagens")
-        .update({ deleted_at: new Date().toISOString() })
-        .eq("id", mensagemId);
-      if (error) throw error;
+      // pela função do banco: a regra de leitura esconde mensagem apagada de quem não é admin, e o
+      // UPDATE direto era recusado para o autor e para o criador do canal (19/10)
+      const { error } = await (supabase as any).rpc("comunicacao_apagar_mensagem", { p_mensagem_id: mensagemId });
+      if (error) throw new Error(error.message?.includes("sem_permissao") ? "Você não pode apagar esta mensagem." : error.message);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["mensagens", canalId] });
