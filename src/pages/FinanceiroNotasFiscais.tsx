@@ -75,6 +75,8 @@ const STATUS: Record<string, { label: string; cls: string }> = {
   solicitada: { label: "Pedida", cls: "bg-amber-100 text-amber-800" },
   recebida: { label: "Recebida", cls: "bg-emerald-100 text-emerald-800" },
   conferida: { label: "Conferida", cls: "bg-emerald-600 text-white" },
+  // a pagar zerado (ex.: recebeu tudo à vista): não há nota a pedir; o banco marca sozinho (20/10)
+  dispensada: { label: "Sem nota · nada a pagar", cls: "bg-slate-100 text-slate-600" },
 };
 
 export default function FinanceiroNotasFiscais(
@@ -160,7 +162,7 @@ export default function FinanceiroNotasFiscais(
     atrasadas: linhas.filter(atrasada).length,
     sem_resposta: linhas.filter(semResposta).length,
     recebidas: linhas.filter((l) => l.nf_status === "recebida" || l.nf_status === "conferida").length,
-    sem_contato: linhas.filter((l) => !temContato(l)).length,
+    sem_contato: linhas.filter((l) => l.nf_status !== "dispensada" && !temContato(l)).length,
   }), [linhas, canal]);
 
   const visiveis = useMemo(() => {
@@ -172,13 +174,13 @@ export default function FinanceiroNotasFiscais(
       if (filtro === "atrasadas" && !atrasada(l)) return false;
       if (filtro === "sem_resposta" && !semResposta(l)) return false;
       if (filtro === "recebidas" && !["recebida", "conferida"].includes(st)) return false;
-      if (filtro === "sem_contato" && temContato(l)) return false;
+      if (filtro === "sem_contato" && (temContato(l) || l.nf_status === "dispensada")) return false;
       if (termo && !semAcento(l.profissional_nome || "").includes(termo)) return false;
       return true;
     });
   }, [linhas, busca, filtro, canal]);
 
-  const selecionados = visiveis.filter((l) => sel.has(l.id));
+  const selecionados = visiveis.filter((l) => sel.has(l.id) && l.nf_status !== "dispensada");
   const alternar = (id: string) => setSel((s) => {
     const n = new Set(s);
     n.has(id) ? n.delete(id) : n.add(id);

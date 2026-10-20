@@ -242,6 +242,11 @@ serve(async (req) => {
     const pausaMs = () => ((pags ?? []).length <= 40 ? 1200 + Math.random() * 800 : 500);
     let enviouAlgum = false;
     for (const pag of (pags ?? []) as Pag[]) {
+      // nada a pagar (ex.: recebeu tudo à vista): não existe nota a pedir (Mavi, 20/10)
+      if (Number(pag.valor_total) <= 0) {
+        resultados.push({ pagamento_id: pag.id, medico: pag.profissional_nome, status: "sem_valor" });
+        continue;
+      }
       if (!preview && canal === "whatsapp" && enviouAlgum) await new Promise((r) => setTimeout(r, pausaMs()));
       enviouAlgum = true;
       const comp = `${String(pag.mes_referencia).padStart(2, "0")}/${pag.ano_referencia}`;
