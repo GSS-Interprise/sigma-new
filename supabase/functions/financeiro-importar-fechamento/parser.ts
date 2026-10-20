@@ -12,8 +12,12 @@ export const nomeLimpo = (s: string) => (s || "").replace(/\([^)]*\)/g, " ").rep
 /** Padrão ilike tolerante a acento: 'Patrícia' → 'Patr_cia'. O ilike do Postgres é
  *  sensível a acento nos DOIS sentidos, então sem isso o candidato nunca entra no pool
  *  e a normalização em JS não chega a ser aplicada. */
+// Padrão de busca no banco (ilike), largo de propósito: o casamento fino é por norm() depois.
+// O ilike não ignora acento, e o acento pode estar só de um lado: "Goncalves" na planilha não achava
+// "GONÇALVES" no cadastro (Ana Luisa, 20/10). Por isso letra que pode ter acento vira "_" (um caractere
+// qualquer), e o "%" nas pontas cobre espaço sobrando no cadastro ("Priscila Souza Sales ").
 export const padraoSemAcento = (s: string) =>
-  nomeLimpo(s).replace(/[^A-Za-z0-9 .,'-]/g, "_");
+  "%" + nomeLimpo(s).replace(/[^A-Za-z0-9 .,'-]/g, "_").replace(/[aeioucnAEIOUCN]/g, "_") + "%";
 export const cell = (v: unknown) => (v === null || v === undefined ? "" : String(v).trim());
 const filled = (row: unknown[]) => row.filter((v) => cell(v) !== "").length;
 
