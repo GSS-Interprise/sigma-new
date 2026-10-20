@@ -400,8 +400,11 @@ serve(async (req) => {
     const papelToken = (() => {
       try { return JSON.parse(atob((auth.replace(/^Bearer\s+/i, "").split(".")[1] || "").replace(/-/g, "+").replace(/_/g, "/")))?.role; } catch { return null; }
     })();
+    // a chave de serviço dentro das funções agora é sb_secret (não é JWT): a conferência automática chamada
+    // pelo recebimento da nota caía em 401 e nunca rodava (20/10). Aceita a chave exata, como a nf-enviar.
+    const chaveExata = auth.replace(/^Bearer\s+/i, "").trim() === (Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "").trim();
     let usuario: string | null = null;
-    if (papelToken !== "service_role") {
+    if (papelToken !== "service_role" && !chaveExata) {
       const u = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: auth } } });
       const { data: { user } } = await u.auth.getUser(auth.replace(/^Bearer\s+/i, ""));
       if (!user) return json({ ok: false, error: "unauthorized" }, 401);
