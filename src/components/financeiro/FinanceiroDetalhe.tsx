@@ -23,6 +23,7 @@ export function FinanceiroDetalhe({ pagamento, onVoltar }: Props) {
   const conferir = useConferirPagamento();
   const salvarHoras = useAtualizarHorasAVista();
   const [editandoHoras, setEditandoHoras] = useState<string | null>(null);
+  const [editandoAVista, setEditandoAVista] = useState<string | null>(null);
   const qc = useQueryClient();
   const [solicitando, setSolicitando] = useState(false);
   const nfStatus = pagamento.nf_status ?? "nao_solicitada";
@@ -47,6 +48,26 @@ export function FinanceiroDetalhe({ pagamento, onVoltar }: Props) {
     toast.success(nfStatus === "solicitada" ? "Cobrança enviada ao médico." : "Pedido de NF enviado ao médico.");
     qc.invalidateQueries({ queryKey: ["financeiro-pagamentos"] });
     qc.invalidateQueries({ queryKey: ["financeiro-nf"] });
+  };
+
+  // "Já pago à vista" digitado na tela (Mavi, 20/10): o relatório que ela importa não traz a coluna À Vista,
+  // e lançar como ajuste deixava o valor na coluna errada. A função recalcula o a pagar e as horas à vista.
+  const salvarAVista = async () => {
+    if (editandoAVista === null) return;
+    const valor = Number(editandoAVista.replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", "."));
+    if (!isFinite(valor) || valor < 0) { toast.error("Valor inválido. Ex.: 9.600,00"); return; }
+    const { error } = await (supabase as any).rpc("financeiro_atualizar_a_vista", { p_pagamento_id: pagamento.id, p_valor: valor });
+    if (error) {
+      const m = error.message || "";
+      toast.error(m.includes("maior_que_produzido") ? "O valor à vista não pode passar do produzido."
+        : m.includes("pagamento_bloqueado") ? "Pagamento já aprovado: não dá mais para mudar."
+        : m.includes("sem_permissao") ? "Seu usuário não pode alterar este valor." : "Não foi possível salvar: " + m);
+      return;
+    }
+    setEditandoAVista(null);
+    toast.success("Valor à vista atualizado.");
+    qc.invalidateQueries({ queryKey: ["financeiro-pagamentos"] });
+    qc.invalidateQueries({ queryKey: ["financeiro-fases"] });
   };
 
   const fmt = (v: number) =>
@@ -99,11 +120,24 @@ export function FinanceiroDetalhe({ pagamento, onVoltar }: Props) {
             {(produzido > 0 || aVista > 0 || ajustes !== 0) && (
               <div className="mt-3 space-y-1 text-xs border-t pt-2">
                 <div className="flex justify-between"><span className="text-muted-foreground">Produzido</span><span>{fmt(produzido)}</span></div>
-                {aVista > 0 && (
-                  <div className="flex justify-between text-amber-700">
-                    <span>Já pago à vista</span><span>− {fmt(aVista)}</span>
-                  </div>
-                )}
+                <div className="flex justify-between items-center text-amber-700">
+                  <span>Já pago à vista</span>
+                  {editandoAVista !== null ? (
+                    <span className="flex items-center gap-1">
+                      <Input className="h-6 w-24 text-xs" value={editandoAVista} autoFocus placeholder="0,00"
+                        inputMode="decimal" onChange={(e) => setEditandoAVista(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") salvarAVista(); }} />
+                      <Button size="sm" variant="ghost" className="h-6 px-1.5 text-xs" onClick={salvarAVista}>ok</Button>
+                      <Button size="sm" variant="ghost" className="h-6 px-1.5 text-xs" onClick={() => setEditandoAVista(null)}>x</Button>
+                    </span>
+                  ) : (
+                    <button className="underline decoration-dotted disabled:no-underline" title="Clique para informar o valor pago à vista"
+                      disabled={bloqueado}
+                      onClick={() => setEditandoAVista(aVista ? aVista.toLocaleString("pt-BR", { minimumFractionDigits: 2 }) : "")}>
+                      {aVista > 0 ? `− ${fmt(aVista)}` : "informar"}
+                    </button>
+                  )}
+                </div>
                 {ajustes !== 0 && (
                   <div className={`flex justify-between ${ajustes < 0 ? "text-red-600" : "text-emerald-700"}`}>
                     <span>Ajustes</span><span>{ajustes > 0 ? "+ " : "− "}{fmt(Math.abs(ajustes))}</span>
