@@ -382,12 +382,16 @@ export function parseDrEscalaConsolidado(grid: unknown[][], gridFmt?: unknown[][
   const iNome = 0;
   const iPlantoes = acha("Qtde de Plantões", "Plantões", "Qtde Plantões");
   const iHoras = acha("Qtde de Horas", "Horas");
-  // Locais de consulta (PSF, ambulatório) vêm com "Qtde de Itens" no lugar de plantões e horas
-  // (Cruzália/setembro: 64 itens × R$ 75). Sem ler essa coluna o pedido de nota saía "atividades".
-  const iItens = acha("Qtde de Itens", "Itens");
   const iAVista = acha("À Vista", "A Vista");
   const iCoord = acha("Coordenação", "Coordenacao");
   const iTotal = acha("Valor Total", "Total");
+  // Locais de consulta não têm plantão nem hora: a quantidade vem em outras colunas, "Qtde de Itens"
+  // (Cruzália, Pomerode, Antônio Dias) ou uma por tipo, "Consultas | Cirurgias Uni | ..." (Taió).
+  // Sem ler essas colunas o pedido de nota saía "referente a atividades" (Mavi, 21/10).
+  const usadas = new Set([iNome, iPlantoes, iHoras, iAVista, iCoord, iTotal]);
+  const colsQtd = headers
+    .map((h, i) => ({ h: h.trim(), i }))
+    .filter(({ h, i }) => h && !/^valor/i.test(h) && !usadas.has(i) && (iTotal < 0 || i < iTotal));
 
   const unidade = cell((grid[Math.max(0, hRow - 1)] || [])[0]);
 
@@ -408,7 +412,14 @@ export function parseDrEscalaConsolidado(grid: unknown[][], gridFmt?: unknown[][
       ? horasEmMinutos(linhaFmt?.[iHoras] ?? row[iHoras])
       : 0;
     const plantoes = iPlantoes >= 0 ? Math.round(num(row[iPlantoes])) : 0;
-    const qtdItens = iItens >= 0 ? Math.round(num(row[iItens])) : 0;
+    const qtds = colsQtd
+      .map(({ h, i }) => ({ h, n: Math.round(num(row[i])) }))
+      .filter((q) => q.n > 0);
+    const qtdItens = qtds.reduce((t, q) => t + q.n, 0);
+    // um tipo só ("17 Consultas") vai com o nome da coluna; misturado vira "N item(ns)", porque o
+    // pedido de nota chamaria tudo de consulta se a descrição mencionasse "Consultas"
+    const descQtd = qtds.length === 1 && !/^qtde? de itens$|^itens$/i.test(qtds[0].h)
+      ? `${qtds[0].n} ${qtds[0].h}` : `${qtdItens} item(ns)`;
     // "Valor Total" da planilha dela JÁ inclui a coordenação; a produção é o que sobra.
     // 22/09 (Braço do Norte/agosto): quando o médico recebeu TUDO à vista, a equipe
     // preenche só a coluna "À Vista" e deixa "Valor Total" em branco. À vista é forma de
@@ -422,7 +433,7 @@ export function parseDrEscalaConsolidado(grid: unknown[][], gridFmt?: unknown[][
       // um item sintético carrega a produção do mês; o consolidado não tem grão de plantão
       itens: [{
         ...itemVazio(), local: unidade, minutos, valor: producao,
-        descricao: plantoes ? `${plantoes} plantão(ões)` : qtdItens ? `${qtdItens} item(ns)` : "Produção do mês",
+        descricao: plantoes ? `${plantoes} plantão(ões)` : qtdItens ? descQtd : "Produção do mês",
         quantidade: plantoes || qtdItens || undefined,
       }],
       aVistaValor: aVista,
