@@ -180,6 +180,69 @@ async function referencias(svc: Svc) {
   };
 }
 
+/**
+ * Garante o médico do pagamento como fornecedor no Conta Azul, pelo CNPJ da nota.
+ *
+ * Médico novo não existe lá e o lançamento dele parava em "Fornecedor não cadastrado"; a Mavi cadastrava
+ * à mão (21/10). Fica fora do interruptor de escrita (financeiro_contaazul_escrita): criar fornecedor não
+ * mexe em dinheiro. Só cria quando o CNPJ não existe em NENHUM cadastro: empresa médica com vários
+ * médicos já cadastrada segue a escolha por nome da prévia, sem cadastro automático.
+ *
+ * `consultarApi`: a ação manual sempre pergunta à API; na conferência automática, CNPJ que já está na
+ * cópia local nem chega à API (a cópia é sincronizada uma vez por dia, então só pergunta quando falta).
+ */
+async function garantirFornecedor(svc: Svc, pagamentoId: string, criar: boolean, consultarApi: boolean) {
+  const { data: p } = await svc.from("financeiro_pagamentos")
+    .select("id, profissional_nome, medico_id, nf_prestador_cnpj").eq("id", pagamentoId).maybeSingle();
+  if (!p) return { erro: "pagamento_nao_encontrado" };
+  const cnpj = dig(p.nf_prestador_cnpj);
+  if (cnpj.length !== 14) return { erro: "sem_cnpj", detalhe: "A nota ainda não trouxe o CNPJ do prestador." };
+  // leitura errada da nota pode trazer o CNPJ da própria GSS no lugar do prestador
+  if (CNPJS_GRUPO_GSS.includes(cnpj)) return { erro: "cnpj_da_gss", detalhe: "O CNPJ lido como prestador é da GSS." };
+
+  if (!consultarApi) {
+    const { data: local } = await svc.from("contaazul_cache").select("ca_id, nome")
+      .eq("tipo", "pessoa").eq("dados->>documento", cnpj).limit(5);
+    if (local?.length) return { ja_existia: true, fornecedores: local.map((l: any) => ({ id: l.ca_id, nome: l.nome })) };
+  }
+  const existentes = itensDe(await ca(svc, `/v1/pessoas?documentos=${cnpj}&tamanho_pagina=10`));
+  if (existentes.length) {
+    await guardarPessoas(svc, existentes);
+    return { ja_existia: true, fornecedores: existentes.map((e: any) => ({ id: e.id, nome: e.nome })) };
+  }
+
+  const { data: med } = p.medico_id
+    ? await svc.from("medicos").select("email, telefone").eq("id", p.medico_id).maybeSingle()
+    : { data: null };
+  // razão social e endereço pela Receita (BrasilAPI); se a consulta falhar, cadastra só com o nome
+  const rf: any = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`).then((r) => r.ok ? r.json() : null).catch(() => null);
+  const maiusc = (t: unknown) => String(t ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/\s+/g, " ").trim();
+  const medico = maiusc(p.profissional_nome);
+  const razao = maiusc(rf?.razao_social);
+  // padrão do cadastro da GSS: "NOME DO MÉDICO/RAZÃO SOCIAL"; o MEI já leva o nome na razão
+  // ("63.902.383 BRENDA PORCIUNCULA REZENDE"), e aí fica só a razão
+  const nome = !razao ? medico : razao.includes(medico) ? razao : `${medico}/${razao}`;
+  const payload: Record<string, unknown> = {
+    nome, tipo_pessoa: "Jurídica", cnpj, ativo: true, perfis: [{ tipo_perfil: "Fornecedor" }],
+    ...(rf?.nome_fantasia ? { nome_fantasia: maiusc(rf.nome_fantasia) } : {}),
+    ...(typeof rf?.opcao_pelo_simples === "boolean" ? { optante_simples: rf.opcao_pelo_simples } : {}),
+    ...(med?.email ? { email: String(med.email) } : {}),
+    ...(med?.telefone ? { telefone_celular: dig(med.telefone).replace(/^55/, "") } : {}),
+    ...(rf?.cep ? { enderecos: [{
+      cep: dig(rf.cep), logradouro: rf.logradouro || "", numero: String(rf.numero || ""), complemento: rf.complemento || "",
+      bairro: rf.bairro || "", cidade: rf.municipio || "", estado: rf.uf || "", pais: "Brasil",
+    }] } : {}),
+    observacao: "Cadastrado pelo Sigma a partir da nota fiscal do médico.",
+  };
+  if (!criar) return { previa: true, payload };
+
+  const criado = await ca(svc, "/v1/pessoas", { method: "POST", body: JSON.stringify(payload) });
+  const id = String(criado?.id ?? criado?.uuid ?? "");
+  // entra já na cópia local para a prévia do lançamento achar o fornecedor sem esperar a sincronização
+  if (id) await guardarPessoas(svc, [{ ...criado, id, nome, documento: cnpj, perfis: ["Fornecedor"], tipo_pessoa: "Jurídica" }]);
+  return { criado: { id, nome } };
+}
+
 /** Guarda pessoas do Conta Azul na cópia local, no mesmo formato da sincronização (contaazul-oauth). */
 async function guardarPessoas(svc: any, pessoas: any[]) {
   const linhas = pessoas.filter((e) => e?.id).map((e) => ({
@@ -432,7 +495,14 @@ serve(async (req) => {
         .select("id, medico_id, valor_total, nf_arquivo_path, nf_conferencia_status").in("id", ids);
       const resultados = [];
       for (const p of pags ?? []) resultados.push(await conferirPagamento(svc, p));
-      return json({ ok: true, resultados });
+      // Médico novo vira fornecedor no Conta Azul assim que a nota chega (Raul, 21/10): toda chegada de nota
+      // (link, WhatsApp, tela) passa por aqui. Falha no cadastro nunca derruba a conferência.
+      const fornecedores = [];
+      for (const p of pags ?? []) {
+        try { fornecedores.push({ pagamento_id: p.id, ...(await garantirFornecedor(svc, p.id, true, false)) }); }
+        catch (e: any) { fornecedores.push({ pagamento_id: p.id, erro: String(e?.message || e).slice(0, 200) }); }
+      }
+      return json({ ok: true, resultados, fornecedores });
     }
 
     if (acao === "aceitar_nota") {
@@ -458,53 +528,11 @@ serve(async (req) => {
       return json({ ok: true });
     }
 
-    // Médico novo não existe como fornecedor no Conta Azul e o lançamento dele parava em "Fornecedor não
-    // cadastrado". A Mavi cadastrava à mão (21/10). Fora do interruptor de escrita: criar fornecedor não
-    // mexe em dinheiro, e quem chama já confirmou na tela. Antes de criar, pergunta à API pelo CNPJ,
-    // porque a cópia local só é atualizada uma vez por dia e um cadastro de hoje não estaria nela.
+    // Cadastro do médico como fornecedor (ver garantirFornecedor). Sem confirmar: só mostra o que seria criado.
     if (acao === "cadastrar_fornecedor") {
-      const { data: p } = await svc.from("financeiro_pagamentos")
-        .select("id, profissional_nome, medico_id, nf_prestador_cnpj").eq("id", String(input.pagamento_id || "")).maybeSingle();
-      if (!p) return json({ ok: false, error: "pagamento_nao_encontrado" }, 404);
-      const cnpj = dig(p.nf_prestador_cnpj);
-      if (cnpj.length !== 14) return json({ ok: false, error: "sem_cnpj", detalhe: "A nota ainda não trouxe o CNPJ do prestador." }, 400);
-
-      const existentes = itensDe(await ca(svc, `/v1/pessoas?documentos=${cnpj}&tamanho_pagina=10`));
-      if (existentes.length) {
-        await guardarPessoas(svc, existentes);
-        return json({ ok: true, ja_existia: true, fornecedores: existentes.map((e: any) => ({ id: e.id, nome: e.nome })) });
-      }
-
-      const { data: med } = p.medico_id
-        ? await svc.from("medicos").select("email, telefone").eq("id", p.medico_id).maybeSingle()
-        : { data: null };
-      // razão social e endereço pela Receita (BrasilAPI); se a consulta falhar, cadastra só com o nome
-      const rf: any = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`).then((r) => r.ok ? r.json() : null).catch(() => null);
-      const maiusc = (t: unknown) => String(t ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/\s+/g, " ").trim();
-      const medico = maiusc(p.profissional_nome);
-      const razao = maiusc(rf?.razao_social);
-      // padrão do cadastro da GSS: "NOME DO MÉDICO/RAZÃO SOCIAL"; o MEI já leva o nome na razão
-      // ("63.902.383 BRENDA PORCIUNCULA REZENDE"), e aí fica só a razão
-      const nome = !razao ? medico : razao.includes(medico) ? razao : `${medico}/${razao}`;
-      const payload: Record<string, unknown> = {
-        nome, tipo_pessoa: "Jurídica", cnpj, ativo: true, perfis: [{ tipo_perfil: "Fornecedor" }],
-        ...(rf?.nome_fantasia ? { nome_fantasia: maiusc(rf.nome_fantasia) } : {}),
-        ...(typeof rf?.opcao_pelo_simples === "boolean" ? { optante_simples: rf.opcao_pelo_simples } : {}),
-        ...(med?.email ? { email: String(med.email) } : {}),
-        ...(med?.telefone ? { telefone_celular: dig(med.telefone).replace(/^55/, "") } : {}),
-        ...(rf?.cep ? { enderecos: [{
-          cep: dig(rf.cep), logradouro: rf.logradouro || "", numero: String(rf.numero || ""), complemento: rf.complemento || "",
-          bairro: rf.bairro || "", cidade: rf.municipio || "", estado: rf.uf || "", pais: "Brasil",
-        }] } : {}),
-        observacao: "Cadastrado pelo Sigma a partir da nota fiscal do médico.",
-      };
-      if (input.confirmar !== true) return json({ ok: true, previa: true, payload });
-
-      const criado = await ca(svc, "/v1/pessoas", { method: "POST", body: JSON.stringify(payload) });
-      const id = String(criado?.id ?? criado?.uuid ?? "");
-      // entra já na cópia local para a prévia do lançamento achar o fornecedor sem esperar a sincronização
-      if (id) await guardarPessoas(svc, [{ ...criado, id, nome, documento: cnpj, perfis: ["Fornecedor"], tipo_pessoa: "Jurídica" }]);
-      return json({ ok: true, criado: { id, nome } });
+      const r = await garantirFornecedor(svc, String(input.pagamento_id || ""), input.confirmar === true, true);
+      if (r.erro) return json({ ok: false, error: r.erro, detalhe: r.detalhe }, r.erro === "pagamento_nao_encontrado" ? 404 : 400);
+      return json({ ok: true, ...r });
     }
 
     if (acao === "previa" || acao === "lancar") {
