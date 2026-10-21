@@ -91,7 +91,9 @@ export function FinanceiroFecharDialog({ mes, ano, reenvio = false }: { mes: num
         .from("financeiro_pagamentos")
         .select("valor_total, medico_id, profissional_crm, profissional_nome")
         .eq("mes_referencia", mes)
-        .eq("ano_referencia", ano);
+        .eq("ano_referencia", ano)
+        // só o que foi liberado: fechamento importado e ainda não liberado não vai para a diretoria (21/10)
+        .not("conferido_em", "is", null);
       if (errPags) throw errPags;
       const lista = (pags ?? []) as { valor_total: number | null; medico_id: string | null; profissional_crm: string | null; profissional_nome: string | null }[];
       const total = lista.reduce((s, p) => s + Number(p.valor_total || 0), 0);
@@ -140,7 +142,7 @@ export function FinanceiroFecharDialog({ mes, ano, reenvio = false }: { mes: num
         const { data: pags } = await (supabase as any)
           .from("financeiro_pagamentos")
           .select("profissional_nome, profissional_crm, unidade, total_plantoes, valor_total, medico_id, nf_numero, nf_valor_liquido, nf_prestador_cnpj, data_vencimento, ca_vencimento, data_pagamento, ca_baixa_em, status")
-          .eq("mes_referencia", mes).eq("ano_referencia", ano);
+          .eq("mes_referencia", mes).eq("ano_referencia", ano).not("conferido_em", "is", null);
         // fornecedor como no Conta Azul: razão social da PJ do médico, quando já conhecida
         const cnpjs = [...new Set((pags ?? []).map((p: any) => p.nf_prestador_cnpj).filter(Boolean))];
         const { data: razoes } = cnpjs.length
@@ -186,7 +188,8 @@ export function FinanceiroFecharDialog({ mes, ano, reenvio = false }: { mes: num
         .from("financeiro_pagamentos")
         .update({ fechamento_id: fech.id })
         .eq("mes_referencia", mes)
-        .eq("ano_referencia", ano);
+        .eq("ano_referencia", ano)
+        .not("conferido_em", "is", null);
       if (errLink) throw errLink;
 
       // Posta no canal de aprovação (dispara push do João).

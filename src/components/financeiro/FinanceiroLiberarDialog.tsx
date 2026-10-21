@@ -123,9 +123,11 @@ export async function pedirNotasDoMes(mes: number, ano: number, progresso: (feit
   return r;
 }
 
+// ids: libera só esses lançamentos (o fechamento escolhido no filtro). Sem ids, a competência inteira.
+// Mavi, 21/10: ela importa um setor só para deixar pronto (Paranaguá) e libera outro (Santa Bárbara).
 export function FinanceiroLiberarDialog({
-  mes, ano, total, qtdMedicos, porConferir,
-}: { mes: number; ano: number; total: number; qtdMedicos: number; porConferir: number }) {
+  mes, ano, total, qtdMedicos, porConferir, ids, rotulo,
+}: { mes: number; ano: number; total: number; qtdMedicos: number; porConferir: number; ids?: string[]; rotulo?: string }) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [salvando, setSalvando] = useState(false);
@@ -140,12 +142,14 @@ export function FinanceiroLiberarDialog({
       const uid = uRes?.user?.id ?? null;
       const agora = new Date().toISOString();
 
-      // conferir é o ato de liberar: marca a competência inteira de uma vez
-      const { error: errConf } = await (supabase as any)
+      // conferir é o ato de liberar: marca de uma vez o fechamento escolhido (ou a competência inteira)
+      let qConf = (supabase as any)
         .from("financeiro_pagamentos")
         .update({ conferido_por: uid, conferido_em: agora })
         .eq("mes_referencia", mes).eq("ano_referencia", ano)
         .is("conferido_em", null);
+      if (ids?.length) qConf = qConf.in("id", ids);
+      const { error: errConf } = await qConf;
       if (errConf) throw errConf;
 
       const { data: fech, error: errFech } = await (supabase as any)
@@ -158,13 +162,15 @@ export function FinanceiroLiberarDialog({
         .select("id").single();
       if (errFech || !fech) throw errFech || new Error("Falha ao gravar o fechamento.");
 
-      const { error: errLink } = await (supabase as any)
+      let qLink = (supabase as any)
         .from("financeiro_pagamentos")
         .update({ fechamento_id: fech.id })
         .eq("mes_referencia", mes).eq("ano_referencia", ano);
+      if (ids?.length) qLink = qLink.in("id", ids);
+      const { error: errLink } = await qLink;
       if (errLink) throw errLink;
 
-      const avisou = await avisarLiberacao(mes, ano);
+      const avisou = await avisarLiberacao(mes, ano, ids);
 
       qc.invalidateQueries({ queryKey: ["financeiro-pagamentos"] });
       qc.invalidateQueries({ queryKey: ["financeiro-fechamentos"] });
@@ -174,7 +180,7 @@ export function FinanceiroLiberarDialog({
         : "Fechamento conferido e liberado. (Canal Financeiro não configurado — config_lista_items.financeiro_canal_id)");
 
       if (pedirNotas) {
-        const r = await pedirNotasDoMes(mes, ano, (feitos, tot) => setAndamento(tot ? `Pedindo as notas: ${feitos} de ${tot}…` : null));
+        const r = await pedirNotasDoMes(mes, ano, (feitos, tot) => setAndamento(tot ? `Pedindo as notas: ${feitos} de ${tot}…` : null), ids);
         setAndamento(null);
         qc.invalidateQueries({ queryKey: ["financeiro-nf"] });
         qc.invalidateQueries({ queryKey: ["financeiro-pagamentos"] });
@@ -201,10 +207,12 @@ export function FinanceiroLiberarDialog({
       </DialogTrigger>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Conferir e liberar {String(mes).padStart(2, "0")}/{ano}</DialogTitle>
+          <DialogTitle>Conferir e liberar {rotulo ? rotulo : `${String(mes).padStart(2, "0")}/${ano}`}</DialogTitle>
         </DialogHeader>
         <p className="text-sm text-muted-foreground -mt-2">
-          Marca a competência inteira como conferida e libera para a solicitação das notas fiscais.
+          {rotulo
+            ? "Marca só este fechamento como conferido e libera para a solicitação das notas fiscais. Os outros fechamentos do mês continuam como estão."
+            : "Marca a competência inteira como conferida e libera para a solicitação das notas fiscais."}
           A diretoria só recebe depois, para aprovar o pagamento.
         </p>
 
@@ -222,7 +230,7 @@ export function FinanceiroLiberarDialog({
         {porConferir > 0 && (
           <p className="text-xs text-muted-foreground flex items-start gap-1.5">
             <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-amber-600" />
-            {porConferir} lançamento(s) ainda sem conferência individual — liberar marca todos.
+            {porConferir} lançamento(s) ainda sem conferência individual — liberar marca {rotulo ? "todos deste fechamento" : "todos"}.
           </p>
         )}
 

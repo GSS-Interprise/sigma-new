@@ -99,7 +99,8 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
     : 1;
   const podeAjustar = fase === 1;
   const competencia = `${String(mes).padStart(2, "0")}/${ano}`;
-  const foraDaAprovacao = todos.filter((p) => !p.fechamento_id && Number(p.valor_total || 0) > 0);
+  // liberado que não entrou na aprovação; o que nem foi liberado fica na faixa de não liberados
+  const foraDaAprovacao = todos.filter((p) => !!p.conferido_em && !p.fechamento_id && Number(p.valor_total || 0) > 0);
 
   // busca por médico: é como ela acha alguém num fechamento de 60 linhas
   const pagamentos = useMemo(() => {
@@ -136,6 +137,9 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
   const aPagarMes = somaDe(todos, "valor_total");
   const aReceber = (data?.receber ?? []).reduce((s, r) => s + Number(r.valor_previsto || 0), 0);
   const porConferir = todos.filter((p) => !p.conferido_em).length;
+  // liberação por fechamento (Mavi, 21/10): com um fechamento escolhido no filtro, libera só ele
+  const naoLiberadosFonte = daFonte.filter((p) => !p.conferido_em);
+  const nomesNaoLiberados = [...new Set(todos.filter((p) => !p.conferido_em).map((p) => nomeFechamento(chaveDoPagamento(p))))];
 
   const rotuloFonte = (p: FinanceiroPagamento) => nomeFechamento(chaveDoPagamento(p));
 
@@ -444,18 +448,22 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
               {fase > 1 && porConferir > 0 && (
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 px-3 py-2">
                   <p className="text-sm">
-                    {porConferir} lançamento(s) entraram depois da liberação e ainda não foram conferidos.
+                    {porConferir} lançamento(s) ainda não liberados: {nomesNaoLiberados.join(", ")}.
+                    <span className="block text-xs text-muted-foreground">
+                      Escolha o fechamento no filtro acima para liberar só ele. O pedido de nota segue pela aba Notas fiscais.
+                    </span>
                   </p>
-                  {/* liberar os novos avisa o grupo de liberação com o nome do fechamento, como a liberação do mês
-                      (a Mavi libera um setor por vez; 15/10). O pedido de nota segue pela aba Notas fiscais. */}
-                  <Button size="sm" variant="outline" disabled={conferirLote.isPending}
-                    onClick={() => {
-                      const ids = todos.filter((p) => !p.conferido_em).map((p) => p.id);
-                      conferirLote.mutate({ ids }, { onSuccess: () => { avisarLiberacao(mes, ano, ids); } });
-                    }}>
-                    {conferirLote.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                    <span className="ml-1.5">Conferir e liberar os novos</span>
-                  </Button>
+                  {/* liberar avisa o grupo de liberação com o nome do fechamento (a Mavi libera um setor por vez) */}
+                  {(fonteSel === TODAS || naoLiberadosFonte.length > 0) && (
+                    <Button size="sm" variant="outline" disabled={conferirLote.isPending}
+                      onClick={() => {
+                        const ids = (fonteSel === TODAS ? todos.filter((p) => !p.conferido_em) : naoLiberadosFonte).map((p) => p.id);
+                        conferirLote.mutate({ ids }, { onSuccess: () => { avisarLiberacao(mes, ano, ids); } });
+                      }}>
+                      {conferirLote.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                      <span className="ml-1.5">{fonteSel === TODAS ? "Conferir e liberar todos" : `Liberar ${nomeFechamento(fonteSel)}`}</span>
+                    </Button>
+                  )}
                 </div>
               )}
 
@@ -468,12 +476,15 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
                       : "Notas em andamento. Quando voltarem, envie para a diretoria aprovar o pagamento."}
                     {fonteSel !== TODAS && fase === 1 && (
                       <span className="block text-xs text-amber-700 mt-0.5">
-                        A liberação é da competência inteira ({todos.length} lançamentos), não só do fechamento filtrado.
+                        Libera só {nomeFechamento(fonteSel)} ({daFonte.length} lançamentos). Os outros fechamentos do mês ficam para depois.
                       </span>
                     )}
                   </p>
                   {fase === 1
-                    ? <FinanceiroLiberarDialog mes={mes} ano={ano} total={aPagarMes} qtdMedicos={todos.length} porConferir={porConferir} />
+                    ? (fonteSel === TODAS
+                      ? <FinanceiroLiberarDialog mes={mes} ano={ano} total={aPagarMes} qtdMedicos={todos.length} porConferir={porConferir} />
+                      : <FinanceiroLiberarDialog mes={mes} ano={ano} total={somaDe(daFonte, "valor_total")} qtdMedicos={daFonte.length}
+                          porConferir={naoLiberadosFonte.length} ids={daFonte.map((p) => p.id)} rotulo={nomeFechamento(fonteSel)} />)
                     : <FinanceiroFecharDialog mes={mes} ano={ano} />}
                 </div>
               )}

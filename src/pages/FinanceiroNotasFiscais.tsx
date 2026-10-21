@@ -35,6 +35,7 @@ type Linha = {
   valor_total: number | null; nf_status: string | null; nf_solicitada_em: string | null;
   nf_lembretes: number | null; nf_recebida_em: string | null; nf_arquivo_path: string | null;
   arquivo_origem: string | null; email: string | null; telefone: string | null;
+  conferido_em: string | null;                // liberado no fechamento (só liberado aparece aqui)
   nf_ultimo_lembrete_em: string | null;
   canal_pedido: "email" | "whatsapp" | null;   // canal do último pedido real
   entrega: string | null;                     // sent | delivered | read | failed
@@ -116,7 +117,7 @@ export default function FinanceiroNotasFiscais(
     queryFn: async () => {
       const [pagRes, fechRes] = await Promise.all([
         (supabase as any).from("financeiro_pagamentos")
-          .select("id, profissional_nome, medico_id, unidade, valor_total, nf_status, nf_solicitada_em, nf_lembretes, nf_ultimo_lembrete_em, nf_recebida_em, nf_arquivo_path, arquivo_origem, nf_conferencia_status, nf_conferencia, nf_valor_liquido, nf_numero, ca_evento_id")
+          .select("id, profissional_nome, medico_id, unidade, valor_total, conferido_em, nf_status, nf_solicitada_em, nf_lembretes, nf_ultimo_lembrete_em, nf_recebida_em, nf_arquivo_path, arquivo_origem, nf_conferencia_status, nf_conferencia, nf_valor_liquido, nf_numero, ca_evento_id")
           .eq("mes_referencia", mes).eq("ano_referencia", ano).order("profissional_nome"),
         (supabase as any).from("financeiro_fechamentos")
           .select("status").eq("mes_referencia", mes).eq("ano_referencia", ano).maybeSingle(),
@@ -152,7 +153,16 @@ export default function FinanceiroNotasFiscais(
     },
   });
 
-  const linhas = data?.linhas ?? [];
+  // Só entra aqui o que foi liberado no fechamento, e dá para filtrar por fechamento (Mavi, 21/10: Paranaguá
+  // foi importado só para deixar pronto e já aparecia para a Amni pedir nota).
+  const nomeFech = (o: string | null) =>
+    String(o || "").replace(/^\[cfg:[^\]]+\]\s*/, "").replace(/\.(xlsx|xls|csv)$/i, "").trim() || "Lançamentos manuais";
+  const todasLinhas = data?.linhas ?? [];
+  const naoLiberados = todasLinhas.filter((l) => !l.conferido_em).length;
+  const linhasLib = todasLinhas.filter((l) => !!l.conferido_em);
+  const fechamentosLib = [...new Set(linhasLib.map((l) => nomeFech(l.arquivo_origem)))].sort();
+  const [fechSel, setFechSel] = useState("todos");
+  const linhas = fechSel === "todos" ? linhasLib : linhasLib.filter((l) => nomeFech(l.arquivo_origem) === fechSel);
   const liberado = ["em_nf", "aguardando_aprovacao", "aprovado", "pago"].includes(String(data?.fechamentoStatus));
 
   const temContato = (l: Linha) => (canal === "email" ? !!l.email : !!l.telefone);
@@ -386,6 +396,15 @@ export default function FinanceiroNotasFiscais(
                 <Input type="number" value={ano} onChange={(e) => setAno(Number(e.target.value))} className="w-[92px] h-9" />
               </>
             )}
+            {fechamentosLib.length > 1 && (
+              <Select value={fechSel} onValueChange={setFechSel}>
+                <SelectTrigger className="w-[200px] h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos os fechamentos</SelectItem>
+                  {fechamentosLib.map((f) => <SelectItem key={f} value={f}>{f}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )}
             <Select value={canal} onValueChange={(v) => setCanal(v as any)}>
               <SelectTrigger className="w-[140px] h-9"><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -396,10 +415,10 @@ export default function FinanceiroNotasFiscais(
           </div>
         </div>
 
-        {!liberado && linhas.length > 0 && (
+        {naoLiberados > 0 && (
           <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-sm">
             <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
-            <span>Esta competência ainda não foi liberada no fechamento. Dá para testar o envio, mas o normal é liberar antes.</span>
+            <span>{naoLiberados} médico(s) de fechamentos ainda não liberados não aparecem aqui. Para pedir a nota deles, libere o fechamento na aba Fechamento.</span>
           </div>
         )}
 
