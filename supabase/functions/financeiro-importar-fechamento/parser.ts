@@ -382,6 +382,9 @@ export function parseDrEscalaConsolidado(grid: unknown[][], gridFmt?: unknown[][
   const iNome = 0;
   const iPlantoes = acha("Qtde de Plantões", "Plantões", "Qtde Plantões");
   const iHoras = acha("Qtde de Horas", "Horas");
+  // Locais de consulta (PSF, ambulatório) vêm com "Qtde de Itens" no lugar de plantões e horas
+  // (Cruzália/setembro: 64 itens × R$ 75). Sem ler essa coluna o pedido de nota saía "atividades".
+  const iItens = acha("Qtde de Itens", "Itens");
   const iAVista = acha("À Vista", "A Vista");
   const iCoord = acha("Coordenação", "Coordenacao");
   const iTotal = acha("Valor Total", "Total");
@@ -405,6 +408,7 @@ export function parseDrEscalaConsolidado(grid: unknown[][], gridFmt?: unknown[][
       ? horasEmMinutos(linhaFmt?.[iHoras] ?? row[iHoras])
       : 0;
     const plantoes = iPlantoes >= 0 ? Math.round(num(row[iPlantoes])) : 0;
+    const qtdItens = iItens >= 0 ? Math.round(num(row[iItens])) : 0;
     // "Valor Total" da planilha dela JÁ inclui a coordenação; a produção é o que sobra.
     // 22/09 (Braço do Norte/agosto): quando o médico recebeu TUDO à vista, a equipe
     // preenche só a coluna "À Vista" e deixa "Valor Total" em branco. À vista é forma de
@@ -418,8 +422,8 @@ export function parseDrEscalaConsolidado(grid: unknown[][], gridFmt?: unknown[][
       // um item sintético carrega a produção do mês; o consolidado não tem grão de plantão
       itens: [{
         ...itemVazio(), local: unidade, minutos, valor: producao,
-        descricao: plantoes ? `${plantoes} plantão(ões)` : "Produção do mês",
-        quantidade: plantoes || undefined,
+        descricao: plantoes ? `${plantoes} plantão(ões)` : qtdItens ? `${qtdItens} item(ns)` : "Produção do mês",
+        quantidade: plantoes || qtdItens || undefined,
       }],
       aVistaValor: aVista,
       // sem detalhe de plantão não dá para saber QUAIS horas foram à vista; estima na
