@@ -89,6 +89,43 @@ serve(async (req) => {
     linha.erro = e?.message || String(e);
     console.error("ideia", linha.erro);
   }
+  // Documento concluído: baixa o PDF assinado pela API do Ideia e anexa nos documentos de cada médico que assinou
+  // (a assinatura do médico chegou antes, em DocumentSigned). Precisa da chave da API (integracao_segredos
+  // "ideia_api_key", formato "app|chave"); sem ela não faz nada. Uma vez por médico e documento.
+  try {
+    const docId = payload?.data?.id;
+    if (evento === "DocumentConcluded" && docId) {
+      const { data: k } = await svc.from("integracao_segredos").select("valor").eq("nome", "ideia_api_key").maybeSingle();
+      const { data: assinaturas } = await svc.from("ideia_eventos").select("medico_id")
+        .eq("evento", "DocumentSigned").not("medico_id", "is", null).filter("payload->data->>id", "eq", docId);
+      const medicos = [...new Set((assinaturas ?? []).map((a: any) => a.medico_id as string))];
+      if (k?.valor && medicos.length) {
+        const r = await fetch(`https://app.ideiasigner.com.br/api/documents/${docId}/content?type=PrinterFriendlyVersion`,
+          { headers: { "X-Api-Key": k.valor } });
+        if (!r.ok) throw new Error(`download_${r.status}`);
+        const pdf = new Uint8Array(await r.arrayBuffer());
+        const nomeArq = `${(documento || "contrato").replace(/[^\w\-. ]+/g, "_").slice(0, 80)}.pdf`;
+        for (const medicoId of medicos) {
+          const marca = `ideia:${docId}`;
+          const { data: ja } = await svc.from("medico_documentos").select("id").eq("medico_id", medicoId).eq("observacoes", marca).maybeSingle();
+          if (ja) continue;
+          const path = `${medicoId}/${Date.now()}_${nomeArq}`;
+          const { error: upErr } = await svc.storage.from("medicos-documentos").upload(path, pdf, { contentType: "application/pdf" });
+          if (upErr) throw upErr;
+          await svc.from("medico_documentos").insert({
+            medico_id: medicoId, arquivo_path: path, arquivo_nome: `Contrato assinado - ${nomeArq}`,
+            tipo_documento: "contrato_aditivo", emissor: "Ideia Signer", data_emissao: new Date().toISOString().slice(0, 10),
+            observacoes: marca,
+          });
+        }
+        linha.medico_id = medicos[0];
+      }
+    }
+  } catch (e: any) {
+    linha.erro = `pdf: ${e?.message || String(e)}`;
+    console.error("ideia pdf", linha.erro);
+  }
+
   const { error } = await svc.from("ideia_eventos").insert(linha);
   if (error) console.error("ideia_eventos", error.message);
   return json({ ok: true });
