@@ -12,13 +12,14 @@
 //   nf_emitida_atualizar{ id, contrato_id?, vencimento?, status? }
 //   receber_previa      { ids[] }                            monta o lançamento a receber SEM enviar
 //   receber_lancar      { ids[], confirmar:true }
+//   cadastrar_fornecedor{ pagamento_id, confirmar? }         cria o médico como fornecedor (sem confirmar: só prévia)
 //
 // ⚠ ESCRITA NO CONTA AZUL: a API cria e altera, mas NÃO apaga conta a pagar. Por isso
 // `lancar` e `receber_lancar` só enviam quando config_lista_items.financeiro_contaazul_escrita
 // = "1". Sem isso devolvem "escrita_desligada" e a prévia continua funcionando.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { ca } from "../_shared/contaazul.ts";
+import { ca, itensDe } from "../_shared/contaazul.ts";
 import { CNPJ_GSS, CNPJS_GRUPO_GSS, leituraAssistida, lerNfse, textoPdf } from "../_shared/nfse.ts";
 
 const cors = {
@@ -36,7 +37,7 @@ const r2 = (n: number) => Math.round(n * 100) / 100;
 const brl = (n: number | null | undefined) => n == null ? "—" : Number(n).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 const ultimoDia = (ano: number, mes1a12: number) => iso(new Date(Date.UTC(ano, mes1a12, 0)));
-const semAcento = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+const semAcento = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 const PARADAS = new Set("de da do das dos e municipio municipal fundo saude prefeitura hospital associacao instituto fundacao estado governo ubs unidade secretaria sc rs mg pr sp ce ma go med fms".split(" "));
 const palavras = (s: string) => new Set(semAcento(s).replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter((w) => w.length > 2 && !PARADAS.has(w) && !/^\d+$/.test(w)));
 
@@ -177,6 +178,16 @@ async function referencias(svc: Svc) {
     escrita: cfg("financeiro_contaazul_escrita") === "1",
     linkBase: (cfg("financeiro_nf_link_base") || "https://sigma-gss.lovable.app").replace(/\/+$/, ""),
   };
+}
+
+/** Guarda pessoas do Conta Azul na cópia local, no mesmo formato da sincronização (contaazul-oauth). */
+async function guardarPessoas(svc: any, pessoas: any[]) {
+  const linhas = pessoas.filter((e) => e?.id).map((e) => ({
+    tipo: "pessoa", ca_id: String(e.id), nome: String(e.nome ?? "").slice(0, 300), dados: e, atualizado_em: new Date().toISOString(),
+  }));
+  if (!linhas.length) return;
+  const { error } = await svc.from("contaazul_cache").upsert(linhas, { onConflict: "tipo,ca_id" });
+  if (error) throw error;
 }
 
 /** Entre os cadastros com o mesmo CNPJ, o do médico: o nome antes da barra é o da pessoa. */
@@ -445,6 +456,55 @@ serve(async (req) => {
       const { error } = await svc.from("contaazul_unidade_categoria").upsert({ unidade, categoria_id: cat.ca_id, categoria_nome: cat.nome, origem: "manual", definido_por: usuario, atualizado_em: new Date().toISOString() });
       if (error) throw error;
       return json({ ok: true });
+    }
+
+    // Médico novo não existe como fornecedor no Conta Azul e o lançamento dele parava em "Fornecedor não
+    // cadastrado". A Mavi cadastrava à mão (21/10). Fora do interruptor de escrita: criar fornecedor não
+    // mexe em dinheiro, e quem chama já confirmou na tela. Antes de criar, pergunta à API pelo CNPJ,
+    // porque a cópia local só é atualizada uma vez por dia e um cadastro de hoje não estaria nela.
+    if (acao === "cadastrar_fornecedor") {
+      const { data: p } = await svc.from("financeiro_pagamentos")
+        .select("id, profissional_nome, medico_id, nf_prestador_cnpj").eq("id", String(input.pagamento_id || "")).maybeSingle();
+      if (!p) return json({ ok: false, error: "pagamento_nao_encontrado" }, 404);
+      const cnpj = dig(p.nf_prestador_cnpj);
+      if (cnpj.length !== 14) return json({ ok: false, error: "sem_cnpj", detalhe: "A nota ainda não trouxe o CNPJ do prestador." }, 400);
+
+      const existentes = itensDe(await ca(svc, `/v1/pessoas?documentos=${cnpj}&tamanho_pagina=10`));
+      if (existentes.length) {
+        await guardarPessoas(svc, existentes);
+        return json({ ok: true, ja_existia: true, fornecedores: existentes.map((e: any) => ({ id: e.id, nome: e.nome })) });
+      }
+
+      const { data: med } = p.medico_id
+        ? await svc.from("medicos").select("email, telefone").eq("id", p.medico_id).maybeSingle()
+        : { data: null };
+      // razão social e endereço pela Receita (BrasilAPI); se a consulta falhar, cadastra só com o nome
+      const rf: any = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`).then((r) => r.ok ? r.json() : null).catch(() => null);
+      const maiusc = (t: unknown) => String(t ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/\s+/g, " ").trim();
+      const medico = maiusc(p.profissional_nome);
+      const razao = maiusc(rf?.razao_social);
+      // padrão do cadastro da GSS: "NOME DO MÉDICO/RAZÃO SOCIAL"; o MEI já leva o nome na razão
+      // ("63.902.383 BRENDA PORCIUNCULA REZENDE"), e aí fica só a razão
+      const nome = !razao ? medico : razao.includes(medico) ? razao : `${medico}/${razao}`;
+      const payload: Record<string, unknown> = {
+        nome, tipo_pessoa: "Jurídica", cnpj, ativo: true, perfis: [{ tipo_perfil: "Fornecedor" }],
+        ...(rf?.nome_fantasia ? { nome_fantasia: maiusc(rf.nome_fantasia) } : {}),
+        ...(typeof rf?.opcao_pelo_simples === "boolean" ? { optante_simples: rf.opcao_pelo_simples } : {}),
+        ...(med?.email ? { email: String(med.email) } : {}),
+        ...(med?.telefone ? { telefone_celular: dig(med.telefone).replace(/^55/, "") } : {}),
+        ...(rf?.cep ? { enderecos: [{
+          cep: dig(rf.cep), logradouro: rf.logradouro || "", numero: String(rf.numero || ""), complemento: rf.complemento || "",
+          bairro: rf.bairro || "", cidade: rf.municipio || "", estado: rf.uf || "", pais: "Brasil",
+        }] } : {}),
+        observacao: "Cadastrado pelo Sigma a partir da nota fiscal do médico.",
+      };
+      if (input.confirmar !== true) return json({ ok: true, previa: true, payload });
+
+      const criado = await ca(svc, "/v1/pessoas", { method: "POST", body: JSON.stringify(payload) });
+      const id = String(criado?.id ?? criado?.uuid ?? "");
+      // entra já na cópia local para a prévia do lançamento achar o fornecedor sem esperar a sincronização
+      if (id) await guardarPessoas(svc, [{ ...criado, id, nome, documento: cnpj, perfis: ["Fornecedor"], tipo_pessoa: "Jurídica" }]);
+      return json({ ok: true, criado: { id, nome } });
     }
 
     if (acao === "previa" || acao === "lancar") {
