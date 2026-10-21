@@ -190,29 +190,44 @@ export function parseDrEscalaCompleto(grid: unknown[][]) {
  * 2N colunas, a i-ésima quantidade casa com a (i+N)-ésima de valor. Isso sobrevive aos
  * erros de digitação reais dos cabeçalhos ('URETRO' sem "Valor", 'Valor DRE. BILIAR'
  * para a coluna 'DREN. BILIAR'), que quebrariam um pareamento por nome.
+ *
+ * Variante só com quantidade (Vila Velha, 21/10): "Nome | RX | Acréscimo | Total À Pagar", cabeçalho na
+ * linha 1 e a coluna no singular. Sem coluna de valor por exame, o valor do exame sai do total:
+ * Total À Pagar − acréscimos + descontos (com um tipo de exame só, ele leva o valor inteiro).
  */
 export function parseMatrizExames(grid: unknown[][], cfg: any) {
-  const hRow = Math.max(1, Number(cfg.header_row) || 2);
+  const ehTotal = (h: unknown) => norm(cell(h)) === norm("Total À Pagar");
+  // a linha do cabeçalho é a da configuração; se ela não tiver "Total À Pagar", procura nas 10 primeiras
+  let hRow = Math.max(1, Number(cfg.header_row) || 2);
+  if (!(grid[hRow - 1] || []).some(ehTotal)) {
+    const achada = grid.slice(0, 10).findIndex((r) => (r || []).some(ehTotal));
+    if (achada >= 0) hRow = achada + 1;
+  }
   const headers: string[] = (grid[hRow - 1] || []).map((h) => cell(h));
-  const acha = (nome: string) => headers.findIndex((h) => norm(h) === norm(nome));
+  const acha = (...nomes: string[]) => headers.findIndex((h) => nomes.some((nome) => norm(h) === norm(nome)));
 
   const iNome = acha("Nome") >= 0 ? acha("Nome") : 0;
-  const iAcre = acha("Acréscimos");
-  const iDesc = acha("Descontos");
+  const iAcre = acha("Acréscimos", "Acréscimo");
+  const iDesc = acha("Descontos", "Desconto");
   const iTotal = acha("Total À Pagar");
   if (iAcre < 0 || iTotal < 0) {
     return { erro: "cabeçalho não tem 'Acréscimos'/'Total À Pagar' — confira a aba e a linha do cabeçalho", headers, blocos: [] };
   }
 
   const largura = iAcre - (iNome + 1);
-  if (largura <= 0 || largura % 2 !== 0) {
+  if (largura <= 0) {
+    return { erro: `nenhuma coluna de exame entre 'Nome' e 'Acréscimos'`, headers, blocos: [] };
+  }
+  // com "Valor ..." no cabeçalho é a matriz completa (N quantidades + N valores); sem, são só quantidades
+  const temValores = headers.slice(iNome + 1, iAcre).some((h) => norm(h).startsWith("valor "));
+  if (temValores && largura % 2 !== 0) {
     return { erro: `esperava um nº par de colunas entre 'Nome' e 'Acréscimos' (achei ${largura})`, headers, blocos: [] };
   }
-  const n = largura / 2;
+  const n = temValores ? largura / 2 : largura;
   const tipos = Array.from({ length: n }, (_, i) => ({
     nome: headers[iNome + 1 + i] || `Tipo ${i + 1}`,
     iQtd: iNome + 1 + i,
-    iVal: iNome + 1 + n + i,
+    iVal: temValores ? iNome + 1 + n + i : -1,
   }));
 
   const blocos: Bloco[] = [];
@@ -222,10 +237,16 @@ export function parseMatrizExames(grid: unknown[][], cfg: any) {
     // quantidade sem nenhum valor — sem esse filtro viram um médico fantasma.
     if (!nome || /^total/i.test(nome) || /quantidade de exames|^soma\b|^geral\b/i.test(norm(nome))) continue;
 
+    const acrescimos = iAcre >= 0 ? num(row[iAcre]) : 0;
+    const descontos = iDesc >= 0 ? num(row[iDesc]) : 0;
+    const total = num(row[iTotal]);
+    // só quantidades: a produção é o total sem acréscimos e descontos
+    const producaoSemValor = Number((total - acrescimos + Math.abs(descontos)).toFixed(2));
+
     const itens: Item[] = [];
     for (const t of tipos) {
       const qtd = num(row[t.iQtd]);
-      const valor = num(row[t.iVal]);
+      const valor = t.iVal >= 0 ? num(row[t.iVal]) : (tipos.length === 1 ? producaoSemValor : 0);
       if (!qtd && !valor) continue;
       itens.push({
         ...itemVazio(), local: cfg.nome, tipo: t.nome,
@@ -234,9 +255,10 @@ export function parseMatrizExames(grid: unknown[][], cfg: any) {
         valor,
       });
     }
-    const acrescimos = iAcre >= 0 ? num(row[iAcre]) : 0;
-    const descontos = iDesc >= 0 ? num(row[iDesc]) : 0;
-    const total = num(row[iTotal]);
+    // vários exames sem valor por exame: o valor entra numa linha só de produção
+    if (!temValores && tipos.length > 1 && producaoSemValor) {
+      itens.push({ ...itemVazio(), local: cfg.nome, descricao: "Produção do mês", valor: producaoSemValor });
+    }
     // só vira lançamento quem tem dinheiro na linha. Quantidade sozinha (sem nenhum
     // valor) é linha de conferência, não pagamento.
     const temValor = itens.some((i) => i.valor !== 0);
