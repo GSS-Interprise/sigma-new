@@ -99,6 +99,12 @@ serve(async (req) => {
       const { data: assinaturas } = await svc.from("ideia_eventos").select("medico_id")
         .eq("evento", "DocumentSigned").not("medico_id", "is", null).filter("payload->data->>id", "eq", docId);
       const medicos = [...new Set((assinaturas ?? []).map((a: any) => a.medico_id as string))];
+      // Documento concluído = contrato assinado por todos. Marca o médico, que é o que o indicador de
+      // conversão × assinatura conta (T12); antes dependia de alguém marcar à mão na ficha.
+      if (medicos.length) {
+        await svc.from("medicos").update({ aprovacao_contrato_assinado: true })
+          .in("id", medicos).not("aprovacao_contrato_assinado", "is", true);
+      }
       if (k?.valor && medicos.length) {
         const r = await fetch(`https://app.ideiasigner.com.br/api/documents/${docId}/content?type=PrinterFriendlyVersion`,
           { headers: { "X-Api-Key": k.valor } });
