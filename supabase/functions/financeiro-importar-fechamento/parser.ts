@@ -446,6 +446,68 @@ export function parseDrEscalaConsolidado(grid: unknown[][], gridFmt?: unknown[][
   return { mes, ano, blocos, divergencias: [] };
 }
 
+/**
+ * Lista de exames por profissional (radiologia de Santo Antônio do Pinhal, 22/10):
+ *
+ *   PROFISSIONAL: YURI FRANCO GUIMARÃES        ← ou o nome sozinho na linha
+ *   EXAME         | VALOR | QTDE. | TOTAL
+ *   ABD. SUPERIOR | 60    | 6     | 360
+ *   …
+ *   TOTAL         |       |       | 12.780     ← checksum
+ *
+ * Exame sem quantidade fica de fora. Linha solta depois do TOTAL ("BRUTO NF R$ …") é ignorada:
+ * o valor da nota não entra no fechamento, o médico recebe o total dos exames (Mavi, 22/10).
+ */
+export function parseListaExames(grid: unknown[][]) {
+  const blocos: Bloco[] = [];
+  let atual: Bloco | null = null;
+  let cols: { tipo: number; qtd: number; uni: number; total: number } | null = null;
+
+  for (const row of grid) {
+    const vals = (row || []).map(cell);
+    const preenchidos = vals.filter((v) => v !== "");
+    if (!preenchidos.length) continue;
+
+    const iTipo = vals.findIndex((v) => norm(v).startsWith("exame"));
+    const iQtd = vals.findIndex((v) => /^(qtde?|quant)/.test(norm(v)));
+    if (iTipo >= 0 && iQtd >= 0) {
+      cols = {
+        tipo: iTipo, qtd: iQtd,
+        uni: vals.findIndex((v) => /^(valor|vlr)/.test(norm(v)) && !norm(v).includes("total")),
+        total: vals.findIndex((v) => norm(v).includes("total")),
+      };
+      continue;
+    }
+
+    // linha de uma célula só: nome do profissional (com ou sem "PROFISSIONAL:") abre um bloco novo
+    if (preenchidos.length === 1) {
+      const t = preenchidos[0];
+      if (/^bruto/.test(norm(t))) { atual = null; cols = null; continue; }
+      if (/^total/i.test(t) || num(t)) continue;
+      atual = { nome: t.replace(/^\s*profissional\s*:\s*/i, "").trim(), crm: "", uf: "", cpf: "", unidade: "", itens: [], checksum: null };
+      cols = null;
+      blocos.push(atual);
+      continue;
+    }
+    if (!atual || !cols) continue;
+
+    const rotulo = vals[cols.tipo];
+    if (/^total/i.test(rotulo)) { atual.checksum = cols.total >= 0 ? num(row[cols.total]) : null; atual = null; cols = null; continue; }
+    const qtd = num(row[cols.qtd]);
+    const uni = cols.uni >= 0 ? num(row[cols.uni]) : 0;
+    const valor = (cols.total >= 0 ? num(row[cols.total]) : 0) || r2v(qtd * uni);
+    if (!qtd && !valor) continue;
+    atual.itens.push({ ...itemVazio(), tipo: rotulo, descricao: rotulo, quantidade: qtd, valorUnitario: uni, valor });
+  }
+
+  const soma = (b: Bloco) => b.itens.reduce((t, i) => t + i.valor, 0);
+  const divergencias = blocos
+    .filter((b) => b.itens.length && b.checksum !== null && Math.abs(soma(b) - b.checksum!) > 0.01)
+    .map((b) => ({ medico: b.nome, calculado: Number(soma(b).toFixed(2)), relatorio: b.checksum }));
+  return { blocos: blocos.filter((b) => b.itens.length > 0), divergencias };
+}
+const r2v = (n: number) => Math.round(n * 100) / 100;
+
 /** Genérico: tabela plana guiada por mapa_colunas (Marieta, CIS…). */
 export function parseGenerico(grid: unknown[][], cfg: any) {
   const hRow = Math.max(1, Number(cfg.header_row) || 1);
