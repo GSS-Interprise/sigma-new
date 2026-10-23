@@ -113,6 +113,21 @@ serve(async (req) => {
         const nomeArq = `${(documento || "contrato").replace(/[^\w\-. ]+/g, "_").slice(0, 80)}.pdf`;
         for (const medicoId of medicos) {
           const marca = `ideia:${docId}`;
+          // O primeiro contrato é acompanhado no Kanban de médicos, não no corpo clínico (Bianca, 23/10):
+          // o PDF também vai para os anexos do card ligado a esse médico. Uma vez por card e documento.
+          const { data: cards } = await svc.from("medico_kanban_cards").select("id").eq("medico_id", medicoId);
+          for (const card of cards ?? []) {
+            const nomeCard = `Contrato assinado - ${nomeArq}`;
+            const { data: jaCard } = await svc.from("medico_kanban_card_anexos").select("id")
+              .eq("card_id", card.id).eq("arquivo_nome", nomeCard).maybeSingle();
+            if (jaCard) continue;
+            const pathCard = `${card.id}/${Date.now()}_${nomeArq}`;
+            const { error: e1 } = await svc.storage.from("medico-kanban-anexos").upload(pathCard, pdf, { contentType: "application/pdf" });
+            if (e1) throw e1;
+            await svc.from("medico_kanban_card_anexos").insert({
+              card_id: card.id, arquivo_nome: nomeCard, arquivo_url: pathCard, usuario_nome: "Ideia Signer",
+            });
+          }
           const { data: ja } = await svc.from("medico_documentos").select("id").eq("medico_id", medicoId).eq("observacoes", marca).maybeSingle();
           if (ja) continue;
           const path = `${medicoId}/${Date.now()}_${nomeArq}`;

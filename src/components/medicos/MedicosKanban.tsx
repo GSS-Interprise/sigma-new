@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { User, Phone, Mail, FileText, Calendar, CreditCard } from "lucide-react";
+import { User, Phone, Mail, FileText, Calendar, CreditCard, FileCheck } from "lucide-react";
 import { toast } from "sonner";
 import { format, differenceInDays, isValid } from "date-fns";
 import { useKanbanColumns } from "@/hooks/useKanbanColumns";
@@ -48,6 +48,8 @@ type MedicoKanbanCard = {
   created_at: string;
   updated_at: string;
   etiquetas: string[] | null;
+  // vem do cadastro do médico: o Ideia marca quando o contrato é concluído (ideia-webhook)
+  contrato_assinado?: boolean;
 };
 
 export function MedicosKanban({ searchTerm = "" }: { searchTerm?: string }) {
@@ -119,6 +121,7 @@ export function MedicosKanban({ searchTerm = "" }: { searchTerm?: string }) {
         .map((card: any) => ({
           ...card,
           etiquetas: card.medicos?.leads?.tags || card.etiquetas || [],
+          contrato_assinado: !!card.medicos?.aprovacao_contrato_assinado,
           medicos: undefined,
         }));
     },
@@ -397,6 +400,13 @@ export function MedicosKanban({ searchTerm = "" }: { searchTerm?: string }) {
                                 />
                               </div>
                             </div>
+
+                            {/* Bianca (23/10): o primeiro contrato é acompanhado aqui no Kanban, não no corpo clínico */}
+                            {card.contrato_assinado && (
+                              <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 gap-1 text-[11px] font-medium">
+                                <FileCheck className="h-3 w-3" /> Contrato assinado
+                              </Badge>
+                            )}
 
                             {/* Informações — dados sensíveis mascarados por padrão (LGPD) */}
                             <div className="space-y-1.5 text-xs">
