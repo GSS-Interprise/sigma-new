@@ -18,6 +18,14 @@ export const nomeLimpo = (s: string) => (s || "").replace(/\([^)]*\)/g, " ").rep
 // qualquer), e o "%" nas pontas cobre espaço sobrando no cadastro ("Priscila Souza Sales ").
 export const padraoSemAcento = (s: string) =>
   "%" + nomeLimpo(s).replace(/[^A-Za-z0-9 .,'-]/g, "_").replace(/[aeioucnAEIOUCN]/g, "_") + "%";
+// Busca larga pelo primeiro e último nome ("%eduardo%bon%"): a planilha abrevia o nome do meio
+// ("Eduardo Bon" para EDUARDO DA SILVA BON, Tijucas/setembro, 23/10). O casamento fino fica no index.
+export const padraoPrimeiroUltimo = (s: string) => {
+  const t = nomeLimpo(s).split(" ").filter(Boolean);
+  if (t.length < 2) return null;
+  const nucleo = (w: string) => w.replace(/[^A-Za-z0-9.,'-]/g, "_").replace(/[aeioucnAEIOUCN]/g, "_");
+  return `%${nucleo(t[0])}%${nucleo(t[t.length - 1])}%`;
+};
 export const cell = (v: unknown) => (v === null || v === undefined ? "" : String(v).trim());
 const filled = (row: unknown[]) => row.filter((v) => cell(v) !== "").length;
 

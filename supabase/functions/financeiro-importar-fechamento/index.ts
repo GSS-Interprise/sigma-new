@@ -11,7 +11,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
-import { parseDrEscalaCompleto, parseGenerico, parseMatrizExames, parseCarestreamResumo, parseDrEscalaConsolidado, parseListaExames, abaDoMes, norm, digits, nomeLimpo, padraoSemAcento, type Bloco } from "./parser.ts";
+import { parseDrEscalaCompleto, parseGenerico, parseMatrizExames, parseCarestreamResumo, parseDrEscalaConsolidado, parseListaExames, abaDoMes, norm, digits, nomeLimpo, padraoSemAcento, padraoPrimeiroUltimo, type Bloco } from "./parser.ts";
 
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
 
@@ -193,7 +193,10 @@ serve(async (req) => {
     const nomes = [...new Set(blocos.map((b) => nomeLimpo(b.nome)).filter(Boolean))];
     if (nomes.length) {
       const { data } = await svc.from("medicos").select("id, nome_completo, crm, cpf")
-        .or(nomes.map((n) => `nome_completo.ilike.${q(padraoSemAcento(n))}`).join(","));
+        .or(nomes.flatMap((n) => {
+          const pu = padraoPrimeiroUltimo(n);
+          return [`nome_completo.ilike.${q(padraoSemAcento(n))}`, ...(pu ? [`nome_completo.ilike.${q(pu)}`] : [])];
+        }).join(","));
       pool.push(...(data || []));
     }
     const byCpf = new Map<string, string>(), byCrm = new Map<string, string>(), byNome = new Map<string, string>();
@@ -202,8 +205,22 @@ serve(async (req) => {
       const kr = digits(m.crm || ""); if (kr && !byCrm.has(kr)) byCrm.set(kr, m.id);
       const kn = norm(m.nome_completo || ""); if (kn && !byNome.has(kn)) byNome.set(kn, m.id);
     }
+    // Nome abreviado na planilha ("Tassio Costa" para TASSIO OLIVEIRA E COSTA): mesmo primeiro e último nome e os
+    // nomes da planilha na mesma ordem no cadastro. Só casa quando há UM médico possível; com dois, fica para a equipe.
+    const toks = (s: string) => norm(nomeLimpo(s)).split(" ").filter(Boolean);
+    const emOrdem = (a: string[], c: string[]) => { let j = 0; for (const t of c) if (t === a[j]) j++; return j === a.length; };
+    const porNomeParcial = (nome: string): string | null => {
+      const t = toks(nome);
+      if (t.length < 2) return null;
+      const ids = new Set(pool.filter((m) => {
+        const c = toks(m.nome_completo || "");
+        return c.length > t.length && c[0] === t[0] && c[c.length - 1] === t[t.length - 1] && emOrdem(t, c);
+      }).map((m) => m.id as string));
+      return ids.size === 1 ? [...ids][0] : null;
+    };
     const casar = (b: Bloco): string | null =>
-      (b.cpf && byCpf.get(b.cpf)) || (digits(b.crm) && byCrm.get(digits(b.crm))) || byNome.get(norm(nomeLimpo(b.nome))) || null;
+      (b.cpf && byCpf.get(b.cpf)) || (digits(b.crm) && byCrm.get(digits(b.crm))) || byNome.get(norm(nomeLimpo(b.nome)))
+      || porNomeParcial(b.nome) || null;
 
     // ── idempotência por config+mês, PRESERVANDO os ajustes já lançados ──
     const tag = `[cfg:${config_id}]`;
