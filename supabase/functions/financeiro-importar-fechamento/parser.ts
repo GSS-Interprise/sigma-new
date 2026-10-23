@@ -517,6 +517,80 @@ export function parseListaExames(grid: unknown[][]) {
 }
 const r2v = (n: number) => Math.round(n * 100) / 100;
 
+/**
+ * Tabelas lado a lado por tipo de atendimento (CIS Navegantes, 23/10):
+ *
+ *   CONSULTAS/HORAS                         | PROCEDIMENTOS                 | COLONOS
+ *   Profissional | Quantidade | Valor | À pagar | Profissional | Quantidade | ...
+ *   Dermatologia - Lilian Viana | 108 | 60 | 6480 | Dermatologia - Lilian Viana | 57 | 75 | 4275
+ *   Anestesiologia - Vanessa ... por hora | 12 | 166,67 | 2000,04
+ *
+ * O mesmo médico aparece em mais de uma tabela: vira um lançamento só, com um item por tipo, para a
+ * mensagem de nota dizer quantas consultas, procedimentos e colonoscopias ele fez. "por hora" no nome
+ * vira horas. Linha sem o nome do médico ("Urologia - ") não tem a quem pagar: sai como aviso.
+ */
+export function parseTabelasPorTipo(grid: unknown[][]) {
+  let hRow = -1;
+  for (let r = 0; r < Math.min(grid.length, 15); r++) {
+    if ((grid[r] || []).filter((v) => norm(cell(v)).startsWith("profissional")).length >= 1) { hRow = r; break; }
+  }
+  if (hRow < 0) return { blocos: [], avisos: [], erro: "não achei a linha de cabeçalho ('Profissional') no arquivo" };
+  const head = (grid[hRow] || []).map((v) => norm(cell(v)));
+  const grupos = head.map((h, i) => (h.startsWith("profissional") ? i : -1)).filter((i) => i >= 0).map((ci) => {
+    const titulo = norm(cell((grid[hRow - 1] || [])[ci]));
+    const tipo = titulo.startsWith("colono") ? "colonoscopias" : titulo.startsWith("proced") ? "procedimentos" : "consultas";
+    const depois = (pred: (h: string) => boolean) => { for (let i = ci + 1; i < ci + 6 && i < head.length; i++) if (pred(head[i])) return i; return -1; };
+    return { ci, tipo, iQtd: depois((h) => h.startsWith("quant")), iUni: depois((h) => h.startsWith("valor")), iTot: depois((h) => h.includes("pagar")) };
+  });
+
+  type Linha = { esp: string; nome: string; tipo: string; qtd: number; uni: number; valor: number; horas: boolean };
+  const linhas: Linha[] = [];
+  const avisos: { linha: string; valor: number; motivo: string }[] = [];
+  for (const row of grid.slice(hRow + 1)) {
+    for (const g of grupos) {
+      const rotulo = cell((row || [])[g.ci]);
+      if (!rotulo || /^total/i.test(rotulo)) continue;
+      const qtd = g.iQtd >= 0 ? num(row[g.iQtd]) : 0;
+      const uni = g.iUni >= 0 ? num(row[g.iUni]) : 0;
+      const valor = (g.iTot >= 0 ? num(row[g.iTot]) : 0) || Math.round(qtd * uni * 100) / 100;
+      if (!valor) continue;
+      // "Especialidade - Nome", às vezes sem espaço antes do traço ("Endocrinologia- Felipe Capri")
+      const m = rotulo.match(/^([^-]*?)\s*-\s*(.*)$/);
+      const esp = m ? m[1] : rotulo;
+      const bruto = m ? m[2] : "";
+      const horas = /por hora\s*$/i.test(bruto);
+      const nome = bruto.replace(/por hora\s*$/i, "").trim();
+      if (!nome) { avisos.push({ linha: rotulo, valor, motivo: "linha sem o nome do médico: não importada" }); continue; }
+      linhas.push({ esp: esp.trim(), nome, tipo: g.tipo, qtd, uni, valor, horas });
+    }
+  }
+
+  // mesmo médico em mais de uma tabela: mesmo nome, ou nome curto que é o começo do longo na mesma
+  // especialidade ("Proctologia - Bruno Felipe" e "Proctologia - Bruno Felipe Carvalho")
+  const toks = (s: string) => norm(s).split(" ").filter(Boolean);
+  const nomes = [...new Set(linhas.map((l) => norm(l.nome)))];
+  const canon = new Map<string, string>();
+  for (const l of linhas) {
+    const t = toks(l.nome);
+    const maiores = nomes.filter((n) => n !== norm(l.nome) && t.every((w, i) => toks(n)[i] === w)
+      && linhas.some((x) => norm(x.nome) === n && x.esp === l.esp));
+    canon.set(norm(l.nome), maiores.length === 1 ? maiores[0] : norm(l.nome));
+  }
+  const blocos = new Map<string, Bloco>();
+  for (const l of linhas) {
+    const k = canon.get(norm(l.nome))!;
+    const nomeBloco = linhas.find((x) => norm(x.nome) === k)?.nome ?? l.nome;
+    if (!blocos.has(k)) blocos.set(k, { nome: nomeBloco, crm: "", uf: "", cpf: "", unidade: "", itens: [], checksum: null });
+    blocos.get(k)!.itens.push({
+      ...itemVazio(), setor: l.esp, valor: l.valor, valorUnitario: l.uni,
+      ...(l.horas
+        ? { minutos: Math.round(l.qtd * 60), descricao: `${l.qtd} horas` }
+        : { tipo: l.tipo, descricao: l.tipo, quantidade: l.qtd }),
+    });
+  }
+  return { blocos: [...blocos.values()], avisos };
+}
+
 /** Genérico: tabela plana guiada por mapa_colunas (Marieta, CIS…). */
 export function parseGenerico(grid: unknown[][], cfg: any) {
   const hRow = Math.max(1, Number(cfg.header_row) || 1);

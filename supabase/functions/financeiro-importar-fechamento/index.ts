@@ -11,7 +11,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
-import { parseDrEscalaCompleto, parseGenerico, parseMatrizExames, parseCarestreamResumo, parseDrEscalaConsolidado, parseListaExames, abaDoMes, norm, digits, nomeLimpo, padraoSemAcento, padraoPrimeiroUltimo, type Bloco } from "./parser.ts";
+import { parseDrEscalaCompleto, parseGenerico, parseMatrizExames, parseCarestreamResumo, parseDrEscalaConsolidado, parseListaExames, parseTabelasPorTipo, abaDoMes, norm, digits, nomeLimpo, padraoSemAcento, padraoPrimeiroUltimo, type Bloco } from "./parser.ts";
 
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
 
@@ -86,6 +86,15 @@ serve(async (req) => {
       // divergência aqui NÃO bloqueia: a Mavi legitimamente sobrescreve o total de alguns
       // médicos à mão (ex.: Carlos Cristofaro no CEPON, que tem produção em arquivo próprio).
       avisos = p.divergencias;
+    } else if (cfg.parser === "tabelas_por_tipo") {
+      // CIS Navegantes: competência da tela, local do nome do arquivo (igual à lista de exames)
+      if (!mesRef || !anoRef) return json({ error: "faltam campos: mes, ano" }, 400);
+      const p: any = parseTabelasPorTipo(grid);
+      if (p.erro) return json({ error: p.erro }, 400);
+      const local = String(arquivo_nome || "").replace(/\.[^.]+$/, "").replace(/\s*\(\d+\)\s*$/, "")
+        .replace(/\s*-\s*[^-]*$/, "").trim();
+      blocos = p.blocos.map((b: Bloco) => ({ ...b, unidade: b.unidade || local, itens: b.itens.map((i) => ({ ...i, local: i.local || local })) }));
+      avisos = p.avisos;
     } else if (cfg.parser === "lista_exames") {
       // não traz período nem local: a competência vem da tela e o local do nome do arquivo
       // ("Santo Antônio do Pinhal - setembro.xlsx"), o mesmo que vai na mensagem da nota

@@ -48,10 +48,22 @@ function resumoProducao(pag: Pag, itens: Item[]): string {
   if (qtd.length) {
     const total = qtd.reduce((s, i) => s + Number(i.quantidade), 0);
     const consultas = qtd.every((i) => /consult/i.test(i.descricao || ""));
-    // "realizadas" vem do texto da Mavi: exame de radiologia entra como "consultas/exames" para concordar
-    partes.push(`${total} ${consultas ? (total === 1 ? "consulta" : "consultas") : "consultas/exames"}`);
+    // planilha separada por tipo (CIS Navegantes): a Mavi quer que o médico veja quantas consultas,
+    // procedimentos e colonoscopias fez, cada um com seu número
+    const TIPOS = /^(consultas|procedimentos|colonoscopias)$/i;
+    if (qtd.every((i) => TIPOS.test(i.descricao || ""))) {
+      const porTipo = new Map<string, number>();
+      for (const i of qtd) porTipo.set(i.descricao!.toLowerCase(), (porTipo.get(i.descricao!.toLowerCase()) ?? 0) + Number(i.quantidade));
+      const ordem = ["consultas", "procedimentos", "colonoscopias"];
+      for (const [t, n] of [...porTipo].sort((x, y) => ordem.indexOf(x[0]) - ordem.indexOf(y[0])))
+        partes.push(`${n} ${n === 1 ? t.replace(/s$/, "") : t}`);
+    } else {
+      // "realizadas" vem do texto da Mavi: exame de radiologia entra como "consultas/exames" para concordar
+      partes.push(`${total} ${consultas ? (total === 1 ? "consulta" : "consultas") : "consultas/exames"}`);
+    }
   }
-  return semAcento(partes.join(" e ") || "atividades");
+  const lista = partes.length > 1 ? `${partes.slice(0, -1).join(", ")} e ${partes[partes.length - 1]}` : partes[0];
+  return semAcento(lista || "atividades");
 }
 // O local é o nome que a Mavi dá ao arquivo do Dr. Escala antes de importar ("Ibirama", "Nova Prata"):
 // é a cidade, que o médico reconhece. Sem arquivo, usa a unidade da escala.
