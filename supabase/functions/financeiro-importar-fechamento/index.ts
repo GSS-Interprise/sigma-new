@@ -214,7 +214,11 @@ serve(async (req) => {
       if (t.length < 2) return null;
       const ids = new Set(pool.filter((m) => {
         const c = toks(m.nome_completo || "");
-        return c.length > t.length && c[0] === t[0] && c[c.length - 1] === t[t.length - 1] && emOrdem(t, c);
+        // último nome igual (falta o do meio) OU a planilha é o começo do nome do cadastro (falta o último:
+        // "YURI FRANCO GUIMARÃES" para YURI FRANCO GUIMARAES DE CASTRO, Santo Antônio do Pinhal, 23/10)
+        const ultimoIgual = c[c.length - 1] === t[t.length - 1];
+        const comeco = t.every((w, i) => c[i] === w);
+        return c.length > t.length && c[0] === t[0] && emOrdem(t, c) && (ultimoIgual || comeco);
       }).map((m) => m.id as string));
       return ids.size === 1 ? [...ids][0] : null;
     };

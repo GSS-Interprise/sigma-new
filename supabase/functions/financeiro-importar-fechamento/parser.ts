@@ -24,6 +24,7 @@ export const padraoPrimeiroUltimo = (s: string) => {
   const t = nomeLimpo(s).split(" ").filter(Boolean);
   if (t.length < 2) return null;
   const nucleo = (w: string) => w.replace(/[^A-Za-z0-9.,'-]/g, "_").replace(/[aeioucnAEIOUCN]/g, "_");
+  // primeiro e último da PLANILHA: cobre tanto o nome do meio quanto o último sobrenome faltando no cadastro
   return `%${nucleo(t[0])}%${nucleo(t[t.length - 1])}%`;
 };
 export const cell = (v: unknown) => (v === null || v === undefined ? "" : String(v).trim());
