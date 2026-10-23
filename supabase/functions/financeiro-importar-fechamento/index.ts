@@ -218,7 +218,13 @@ serve(async (req) => {
         // "YURI FRANCO GUIMARÃES" para YURI FRANCO GUIMARAES DE CASTRO, Santo Antônio do Pinhal, 23/10)
         const ultimoIgual = c[c.length - 1] === t[t.length - 1];
         const comeco = t.every((w, i) => c[i] === w);
-        return c.length > t.length && c[0] === t[0] && emOrdem(t, c) && (ultimoIgual || comeco);
+        // com primeiro e último iguais o meio pode vir diferente: inicial ou grafia ("Karen Jammile N. Enes" para
+        // KAREN JAMMILLE FIGUEIREDO NASCIMENTO ENES); a trava é haver um único candidato
+        // nome do meio da planilha "parece" com algum do cadastro: igual, inicial ("N.") ou mesmas 4 primeiras letras
+        const parece = (a: string, b: string) => a === b || (a.replace(/\.$/, "").length === 1 && b.startsWith(a[0]))
+          || (a.length >= 4 && b.length >= 4 && a.slice(0, 4) === b.slice(0, 4));
+        const meioOk = t.slice(1, -1).every((w) => c.slice(1, -1).some((x) => parece(w, x)));
+        return c.length >= t.length && c[0] === t[0] && ((ultimoIgual && meioOk) || (comeco && emOrdem(t, c)));
       }).map((m) => m.id as string));
       return ids.size === 1 ? [...ids][0] : null;
     };
