@@ -20,7 +20,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ca, itensDe } from "../_shared/contaazul.ts";
-import { CNPJ_GSS, CNPJS_GRUPO_GSS, leituraAssistida, lerNfse, textoPdf } from "../_shared/nfse.ts";
+import { CNPJ_GSS, CNPJS_GRUPO_GSS, leituraAssistida, leituraFoto, lerNfse, textoPdf } from "../_shared/nfse.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -56,7 +56,12 @@ async function conferirPagamento(svc: Svc, pag: any) {
   if (!pag.nf_arquivo_path) return { id: pag.id, status: null, motivo: "sem nota recebida" };
   const bytes = await baixar(svc, pag.nf_arquivo_path);
   const ehPdf = !!bytes && bytes[0] === 0x25 && bytes[1] === 0x50; // %P
-  const nota = bytes && ehPdf ? await lerNfse(bytes, CNPJS_GRUPO_GSS) : null;
+  // foto ou print da nota (PNG/JPEG): lida pela IA, sempre para confirmação de uma pessoa
+  const mimeImg = bytes && bytes[0] === 0x89 && bytes[1] === 0x50 ? "image/png"
+    : bytes && bytes[0] === 0xff && bytes[1] === 0xd8 ? "image/jpeg" : null;
+  const porFoto = !ehPdf && !!mimeImg;
+  const nota = bytes && ehPdf ? await lerNfse(bytes, CNPJS_GRUPO_GSS)
+    : porFoto ? await leituraFoto(bytes!, mimeImg!, CNPJS_GRUPO_GSS) : null;
   // layout que a leitura por regra não entende: um modelo lê o mesmo texto e SUGERE os valores.
   // A sugestão preenche o líquido, mas a nota fica para confirmação de uma pessoa.
   const sugestao = nota?.legivel && !nota.impostosLidos && bytes ? await leituraAssistida(await textoPdf(bytes)) : null;
@@ -67,6 +72,9 @@ async function conferirPagamento(svc: Svc, pag: any) {
 
   const itens: Array<{ chave: string; rotulo: string; ok: boolean | null; detalhe: string }> = [];
   let status: "ok" | "divergente" | "manual" = "ok";
+  if (porFoto && nota) {
+    itens.push({ chave: "leitura", rotulo: "Leitura da nota", ok: null, detalhe: "Nota enviada como foto: os valores foram lidos pela IA. Confira número, CNPJ e valores e aceite." });
+  }
   if (!nota || !nota.legivel) {
     status = "manual";
     itens.push({ chave: "leitura", rotulo: "Leitura da nota", ok: null, detalhe: bytes ? "Arquivo sem texto (foto ou escaneado): conferir à mão." : "Arquivo não encontrado." });

@@ -303,6 +303,69 @@ export type LeituraAssistida = {
   irrf: number; contribSociais: number; inssRetido: number; issRetido: number; numero: string | null;
 };
 
+/**
+ * Nota mandada como FOTO ou print (Isabela, agosto: IMG_4659.png). Sem texto para a leitura por regra, a
+ * imagem vai para o modelo, que devolve os campos da nota. Vale como SUGESTÃO: a conferência fica "conferir
+ * à mão" até alguém aceitar. Prova: bruto menos retenções tem que dar o líquido.
+ */
+export async function leituraFoto(bytes: Uint8Array, mime: string, cnpjsTomador: string[] = CNPJS_GRUPO_GSS): Promise<Nfse | null> {
+  const chave = Deno.env.get("LOVABLE_API_KEY");
+  if (!chave || bytes.length > 8_000_000) return null;
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  const dataUrl = `data:${mime};base64,${btoa(bin)}`;
+  const pedido = `Esta imagem é uma nota fiscal de serviço brasileira (NFS-e). Devolva SOMENTE um JSON:
+{"numero_nota": string ou null, "prestador_cnpj": string ou null, "tomador_cnpj": string ou null, "valor_servico": número,
+"irrf": número, "pis_cofins_csll_retidos": número, "inss_retido": número, "iss_retido": número, "total_retencoes": número,
+"valor_liquido": número, "simples_nacional": true/false/null, "competencia": "AAAA-MM-DD" ou null, "emissao": "AAAA-MM-DD" ou null}
+Regras: use apenas o que está escrito na imagem; ponto como separador decimal; 0 quando o campo vier vazio ou com traço;
+não calcule impostos por alíquota; "valor_servico" é o valor bruto; se não houver valor líquido escrito, devolva null.`;
+  try {
+    const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${chave}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          { role: "system", content: "Você extrai dados de notas fiscais e responde apenas com JSON válido, sem comentários." },
+          { role: "user", content: [{ type: "text", text: pedido }, { type: "image_url", image_url: { url: dataUrl } }] },
+        ],
+      }),
+    });
+    if (!r.ok) return null;
+    const corpo = await r.json();
+    const txt = String(corpo?.choices?.[0]?.message?.content ?? "");
+    const j = JSON.parse(txt.slice(txt.indexOf("{"), txt.lastIndexOf("}") + 1));
+    const n = (x: unknown) => (typeof x === "number" && Number.isFinite(x) ? x : Number(x));
+    const valor = n(j.valor_servico);
+    if (!(valor > 0)) return null;
+    const partes = [n(j.irrf) || 0, n(j.pis_cofins_csll_retidos) || 0, n(j.inss_retido) || 0, n(j.iss_retido) || 0];
+    const ret = Number.isFinite(n(j.total_retencoes)) ? n(j.total_retencoes) : partes.reduce((a, b) => a + b, 0);
+    const liqLido = n(j.valor_liquido);
+    // sem líquido escrito e sem retenção, o líquido é o próprio bruto; com retenção, a conta tem que fechar
+    const liq = liqLido > 0 ? liqLido : (ret <= 0.01 ? valor : NaN);
+    const contaFecha = Number.isFinite(liq) && Math.abs(valor - ret - liq) <= 0.05;
+    const dig = (s: unknown) => (s ? String(s).replace(/\D/g, "") : "");
+    const tomador = dig(j.tomador_cnpj), prestador = dig(j.prestador_cnpj);
+    return {
+      legivel: true, ehNfse: true, tomadorGss: tomador.length === 14 && cnpjsTomador.includes(tomador),
+      prestadorCnpj: prestador.length === 14 ? prestador : null, prestadorNome: null, prestadorEmail: null,
+      valor, chave: null, descricao: null,
+      numero: j.numero_nota ? String(j.numero_nota).replace(/^0+(?=\d)/, "") : null,
+      competencia: /^\d{4}-\d{2}-\d{2}$/.test(String(j.competencia)) ? String(j.competencia) : null,
+      emissao: /^\d{4}-\d{2}-\d{2}$/.test(String(j.emissao)) ? String(j.emissao) : null,
+      tomadorCnpj: tomador || null, tomadorNome: null,
+      irrf: contaFecha ? partes[0] : null, contribSociais: contaFecha ? partes[1] : null,
+      inssRetido: contaFecha ? partes[2] : null, issRetido: contaFecha ? partes[3] : null,
+      totalRetencoes: contaFecha ? Math.round(ret * 100) / 100 : null, valorLiquido: contaFecha ? liq : null,
+      simplesNacional: typeof j.simples_nacional === "boolean" ? j.simples_nacional : null,
+      impostosLidos: contaFecha,
+    } as Nfse;
+  } catch {
+    return null;
+  }
+}
+
 export async function leituraAssistida(texto: string): Promise<LeituraAssistida | null> {
   const chave = Deno.env.get("LOVABLE_API_KEY");
   const t = texto.replace(/\s+/g, " ").trim();
