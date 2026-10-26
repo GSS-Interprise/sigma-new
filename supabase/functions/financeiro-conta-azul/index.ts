@@ -174,7 +174,8 @@ async function referencias(svc: Svc) {
   const conta = contas.find((c) => c.ca_id === cfg("financeiro_contaazul_conta_id")) ?? contas.find((c) => /unicred/i.test(c.nome || ""));
   const centroMed = centros.find((c) => c.ca_id === cfg("financeiro_contaazul_centro_medicos_id")) ?? centros.find((c) => /^m[eé]dicos\s*-\s*custo vari/i.test(c.nome || ""));
   return {
-    pessoasPorDoc, categoriasMed, categorias: todas.filter((x) => x.tipo === "categoria"), centros, conta, centroMed,
+    pessoasPorDoc, pessoas: todas.filter((x) => x.tipo === "pessoa"),
+    categoriasMed, categorias: todas.filter((x) => x.tipo === "categoria"), centros, conta, centroMed,
     escrita: cfg("financeiro_contaazul_escrita") === "1",
     linkBase: (cfg("financeiro_nf_link_base") || "https://sigma-gss.lovable.app").replace(/\/+$/, ""),
   };
@@ -273,7 +274,12 @@ function sugerirCategoria(unidade: string, categoriasMed: any[]) {
     .sort((a, b) => b.t.length - a.t.length);
   if (!bons.length) return null;
   const melhor = bons.filter((x) => x.t.length === bons[0].t.length);
-  return melhor.length === 1 ? melhor[0].c : null; // empate não é sugestão
+  if (melhor.length === 1) return melhor[0].c;
+  // empate: a cidade costuma vir no fim do nome da unidade ("Uti adulto - HOSPITAL ... - IBIRAMA" bate com
+  // MED. IBIRAMA e com MED. UTI BH/MG; vale a da cidade). Sem desempate claro, não sugere.
+  const ultima = [...palavras(unidade.split(/\s+-\s+/).pop() || "")];
+  const daCidade = melhor.filter((x) => x.t.some((w) => ultima.includes(w)));
+  return daCidade.length === 1 ? daCidade[0].c : null;
 }
 
 async function montarPagar(svc: Svc, ids: string[], ajustes: Record<string, any>) {
@@ -287,20 +293,66 @@ async function montarPagar(svc: Svc, ids: string[], ajustes: Record<string, any>
     : { data: [] as any[] };
   const hoje = iso(new Date());
 
+  // Lançamento sem nota (Mavi, 26/10): o médico entra no Conta Azul como "SEM NF" para a Thais não pagar
+  // antes da nota, já com os dados bancários. Sem a nota não há CNPJ lido; vem do cadastro do CNPJ do
+  // médico, de uma nota anterior dele ou, por último, do nome no Conta Azul ("RODRIGO DUARTE / QUALITYCARE…").
+  const medIds = [...new Set((pags ?? []).map((p: any) => p.medico_id).filter(Boolean))];
+  const cnpjDoMedico = new Map<string, string>();
+  const bancoDoMedico = new Map<string, string>();
+  if (medIds.length) {
+    const [{ data: cads }, { data: antigos }, { data: meds }] = await Promise.all([
+      svc.from("financeiro_medico_cnpj").select("medico_id, cnpj").in("medico_id", medIds),
+      svc.from("financeiro_pagamentos").select("medico_id, nf_prestador_cnpj, created_at").in("medico_id", medIds)
+        .not("nf_prestador_cnpj", "is", null).order("created_at", { ascending: false }),
+      svc.from("medicos").select("id, lead_id").in("id", medIds),
+    ]);
+    for (const c of [...(cads ?? []), ...(antigos ?? []).map((a: any) => ({ medico_id: a.medico_id, cnpj: a.nf_prestador_cnpj }))]) {
+      const d = dig(c.cnpj);
+      if (d.length === 14 && !cnpjDoMedico.has(c.medico_id)) cnpjDoMedico.set(c.medico_id, d);
+    }
+    const leadIds = (meds ?? []).map((m: any) => m.lead_id).filter(Boolean);
+    const { data: leads } = leadIds.length
+      ? await svc.from("leads").select("id, banco, agencia, conta_corrente, chave_pix").in("id", leadIds)
+      : { data: [] as any[] };
+    for (const m of meds ?? []) {
+      const l = (leads ?? []).find((x: any) => x.id === m.lead_id);
+      if (!l) continue;
+      const partes = [l.chave_pix && `Pix ${l.chave_pix}`, l.banco && `Banco ${l.banco}`, l.agencia && `Ag ${l.agencia}`,
+        l.conta_corrente && `CC ${l.conta_corrente}`].filter(Boolean);
+      if (partes.length) bancoDoMedico.set(m.id, partes.join(" · "));
+    }
+  }
+  const porNome = (medico: string) => {
+    const tm = palavras(medico);
+    const achados = ref.pessoas.filter((c: any) => {
+      const pessoa = [...palavras(String(c.nome || "").split("/")[0])];
+      return pessoa.length >= 2 && pessoa.every((w) => tm.has(w))
+        && (c.dados?.perfis ?? []).some((x: any) => /fornecedor/i.test(String(x?.tipo_perfil ?? x)));
+    });
+    return achados.length === 1 ? achados : [];
+  };
+
   const itens = (pags ?? []).map((p: any) => {
     const aj = ajustes?.[p.id] ?? {};
     const problemas: string[] = [], avisos: string[] = [];
     if (p.ca_evento_id) problemas.push("Já lançado no Conta Azul.");
-    if (!["recebida", "conferida"].includes(p.nf_status)) problemas.push("Nota fiscal ainda não recebida.");
-    if (!["ok", "aceita"].includes(p.nf_conferencia_status ?? "")) {
+    const semNf = !["recebida", "conferida"].includes(p.nf_status);
+    if (semNf) avisos.push("Sem nota: vai como SEM NF, pelo valor do fechamento. A Thais não paga até a nota chegar.");
+    else if (!["ok", "aceita"].includes(p.nf_conferencia_status ?? "")) {
       problemas.push(p.nf_conferencia_status === "divergente" ? "Nota com divergência: corrigir ou aceitar a exceção." : p.nf_conferencia_status === "manual" ? "Conferência da nota precisa ser feita à mão." : "Nota ainda não conferida.");
     }
-    const cands = p.nf_prestador_cnpj ? (ref.pessoasPorDoc.get(p.nf_prestador_cnpj) ?? []) : [];
+    const cnpj = p.nf_prestador_cnpj || (p.medico_id ? cnpjDoMedico.get(p.medico_id) : null) || null;
+    const porCnpj = cnpj ? (ref.pessoasPorDoc.get(cnpj) ?? []) : [];
+    // nota antiga (antes da leitura do CNPJ) também cai no nome, sempre com um único candidato
+    const cands = porCnpj.length ? porCnpj : (!p.nf_prestador_cnpj ? porNome(p.profissional_nome || "") : []);
     const forcado = aj.fornecedor_id ? cands.find((c: any) => c.ca_id === aj.fornecedor_id) : null;
     const escolha = forcado ? { escolhido: forcado, ambiguo: false } : escolherFornecedor(cands, p.profissional_nome || "");
     const fornecedor = escolha.escolhido;
-    if (!p.nf_prestador_cnpj) problemas.push("CNPJ do prestador não foi lido na nota.");
-    else if (!cands.length) problemas.push("Fornecedor não cadastrado no Conta Azul com este CNPJ.");
+    if (!cands.length) {
+      problemas.push(!cnpj
+        ? (semNf ? "Sem nota e sem CNPJ conhecido: fornecedor não encontrado no Conta Azul pelo nome." : "CNPJ do prestador não foi lido na nota.")
+        : "Fornecedor não cadastrado no Conta Azul com este CNPJ.");
+    }
     else if (escolha.ambiguo) problemas.push(`Há ${cands.length} fornecedores com este CNPJ no Conta Azul: escolher o do médico.`);
 
     const definida = (mapa ?? []).find((m: any) => m.unidade === p.unidade);
@@ -314,8 +366,10 @@ async function montarPagar(svc: Svc, ids: string[], ajustes: Record<string, any>
     if (!ref.centroMed) problemas.push("Centro de custo dos médicos não encontrado.");
 
     // valor: o líquido da nota (é o que a GSS lança); sem leitura de impostos, tem que informar
-    const valor = aj.valor != null ? Number(aj.valor) : (p.nf_valor_liquido != null ? Number(p.nf_valor_liquido) : null);
-    if (valor == null || !(valor > 0)) problemas.push("Valor líquido não lido na nota: informar o valor a lançar.");
+    const valor = aj.valor != null ? Number(aj.valor)
+      : semNf ? Number(p.valor_total ?? 0)
+      : (p.nf_valor_liquido != null ? Number(p.nf_valor_liquido) : null);
+    if (valor == null || !(valor > 0)) problemas.push(semNf ? "Sem valor a pagar no fechamento." : "Valor líquido não lido na nota: informar o valor a lançar.");
     else if (aj.valor != null && p.nf_valor_liquido != null && Math.abs(valor - Number(p.nf_valor_liquido)) > 0.01) avisos.push(`Valor informado diferente do líquido da nota (${brl(p.nf_valor_liquido)}).`);
 
     // vencimento: último dia do mês seguinte ao de referência (padrão dos lançamentos atuais)
@@ -325,14 +379,15 @@ async function montarPagar(svc: Svc, ids: string[], ajustes: Record<string, any>
     // competência no mesmo mês do vencimento, como nos lançamentos atuais
     const competencia = hoje.slice(0, 7) === vencimento.slice(0, 7) ? hoje : `${vencimento.slice(0, 7)}-01`;
     const numero = String(aj.nf_numero ?? p.nf_numero ?? "").trim();
-    if (!numero) avisos.push("Número da nota não foi lido: a descrição sai sem número.");
-    const descricao = `REF. ${MESES[(p.mes_referencia ?? 1) - 1]} - NF ${numero || "S/N"}`;
+    if (!numero && !semNf) avisos.push("Número da nota não foi lido: a descrição sai sem número.");
+    const descricao = `REF. ${MESES[(p.mes_referencia ?? 1) - 1]} - ${semNf ? "SEM NF" : `NF ${numero || "S/N"}`}`;
+    const banco = p.medico_id ? bancoDoMedico.get(p.medico_id) : undefined;
     const v = valor ?? 0;
 
     const payload = (fornecedor && categoria && ref.conta && ref.centroMed && v > 0) ? {
       descricao, data_competencia: competencia, valor: v,
       conta_financeira: ref.conta.ca_id, id_fornecedor: fornecedor.ca_id,
-      observacao: `Lançado pelo Sigma. Nota e comprovante: ${ref.linkBase}/financeiro`,
+      observacao: `Lançado pelo Sigma${semNf ? " SEM NOTA: não pagar até a nota chegar" : ""}.${banco ? ` Dados bancários: ${banco}.` : ""} Nota e comprovante: ${ref.linkBase}/financeiro`,
       referencia_externa: `sigma-pag-${p.id}`,
       rateio: [{ id_categoria: categoria.ca_id, valor: v, rateio_centro_custo: [{ id_centro_custo: ref.centroMed.ca_id, valor: v }] }],
       condicao_pagamento: { parcelas: [{ descricao, data_vencimento: vencimento, conta_financeira: ref.conta.ca_id, detalhe_valor: { valor_bruto: v } }] },
