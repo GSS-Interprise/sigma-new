@@ -38,6 +38,7 @@ export type Nfse = {
   valorLiquido: number | null;
   simplesNacional: boolean | null;
   impostosLidos: boolean;        // a nota trouxe o quadro de retenções de forma legível
+  dadosBancarios?: DadosBancarios | null; // só na leitura de foto; no PDF vem de dadosBancariosDoTexto
 };
 
 const digitos = (s: string) => s.replace(/\D/g, "");
@@ -317,7 +318,8 @@ export async function leituraFoto(bytes: Uint8Array, mime: string, cnpjsTomador:
   const pedido = `Esta imagem é uma nota fiscal de serviço brasileira (NFS-e). Devolva SOMENTE um JSON:
 {"numero_nota": string ou null, "prestador_cnpj": string ou null, "tomador_cnpj": string ou null, "valor_servico": número,
 "irrf": número, "pis_cofins_csll_retidos": número, "inss_retido": número, "iss_retido": número, "total_retencoes": número,
-"valor_liquido": número, "simples_nacional": true/false/null, "competencia": "AAAA-MM-DD" ou null, "emissao": "AAAA-MM-DD" ou null}
+"valor_liquido": número, "simples_nacional": true/false/null, "competencia": "AAAA-MM-DD" ou null, "emissao": "AAAA-MM-DD" ou null,
+"dados_bancarios": {"banco": string ou null, "agencia": string ou null, "conta": string ou null, "pix": string ou null}}
 Regras: use apenas o que está escrito na imagem; ponto como separador decimal; 0 quando o campo vier vazio ou com traço;
 não calcule impostos por alíquota; "valor_servico" é o valor bruto; se não houver valor líquido escrito, devolva null.`;
   try {
@@ -360,10 +362,79 @@ não calcule impostos por alíquota; "valor_servico" é o valor bruto; se não h
       totalRetencoes: contaFecha ? Math.round(ret * 100) / 100 : null, valorLiquido: contaFecha ? liq : null,
       simplesNacional: typeof j.simples_nacional === "boolean" ? j.simples_nacional : null,
       impostosLidos: contaFecha,
+      dadosBancarios: normalizarBancarios(j.dados_bancarios),
     } as Nfse;
   } catch {
     return null;
   }
+}
+
+export type DadosBancarios = { banco: string | null; agencia: string | null; conta: string | null; pix: string | null };
+
+/** Texto curto para a observação do lançamento: "Pix 123 · Banco Inter · Ag 0001 · CC 1234-5". */
+export function dadosBancariosTexto(d: DadosBancarios | null | undefined): string {
+  if (!d) return "";
+  return [d.pix && `Pix ${d.pix}`, d.banco && `Banco ${d.banco}`, d.agencia && `Ag ${d.agencia}`, d.conta && `CC ${d.conta}`]
+    .filter(Boolean).join(" · ");
+}
+
+/**
+ * Dados bancários que o médico escreve nas observações da nota (amostra de 26/10: "Agência: 4340 Conta
+ * corrente: 206.136-8", "Ag 0001 Cc 5172406682 Nu bank Chave pix: 680...", "Banco Inter :077 Agência: 0001
+ * Conta: 21526219-0 Pix: 34.298.105/0001-90"). Cada nota escreve de um jeito, então o modelo lê só o trecho
+ * em volta das palavras-chave. Sem nada claro, devolve null: melhor faltar do que pagar na conta errada.
+ */
+export async function dadosBancariosDoTexto(texto: string): Promise<DadosBancarios | null> {
+  const chave = Deno.env.get("LOVABLE_API_KEY");
+  const t = texto.replace(/\s+/g, " ");
+  // só o entorno de banco/agência/conta/pix; a "chave de acesso" da nota o modelo descarta (ver regras)
+  const trechos = [...t.matchAll(/.{0,80}(\bpix\b|banco|ag[eê]ncia|\bag\b|c\/c|\bcc\b|conta corrente|conta:|dep[oó]sito na conta).{0,120}/gi)]
+    .map((m) => m[0]);
+  if (!chave || !trechos.length) return null;
+  const pedido = `Trechos de uma nota fiscal de serviço brasileira. Se o prestador informou dados bancários para pagamento, devolva SOMENTE um JSON:
+{"banco": string ou null, "agencia": string ou null, "conta": string ou null, "pix": string ou null}
+Regras: copie como está escrito (com dígito); "banco" é o nome e/ou código do banco; não confunda com a chave de acesso da nota fiscal (número de 44 ou 50 dígitos), que NÃO é Pix; se não houver dados bancários, devolva todos null.
+
+TRECHOS:
+${trechos.join("\n").slice(0, 3000)}`;
+  try {
+    const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${chave}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          { role: "system", content: "Você extrai dados de notas fiscais e responde apenas com JSON válido, sem comentários." },
+          { role: "user", content: pedido },
+        ],
+      }),
+    });
+    if (!r.ok) return null;
+    const corpo = await r.json();
+    const txt = String(corpo?.choices?.[0]?.message?.content ?? "");
+    const j = JSON.parse(txt.slice(txt.indexOf("{"), txt.lastIndexOf("}") + 1));
+    return normalizarBancarios(j, t);
+  } catch {
+    return null;
+  }
+}
+
+/** Limpa a resposta do modelo e só aceita o que está escrito no texto da nota (quando há texto). */
+export function normalizarBancarios(j: any, texto?: string): DadosBancarios | null {
+  const limpo = (v: unknown) => {
+    const s = v == null ? "" : String(v).trim();
+    return s && !/^(null|n\/a|-)$/i.test(s) ? s.slice(0, 80) : null;
+  };
+  const d: DadosBancarios = { banco: limpo(j?.banco), agencia: limpo(j?.agencia), conta: limpo(j?.conta), pix: limpo(j?.pix) };
+  // chave de acesso da NFS-e (44/50 dígitos) não é Pix
+  if (d.pix && d.pix.replace(/\D/g, "").length >= 40) d.pix = null;
+  if (texto) {
+    const soDig = texto.replace(/\D/g, "");
+    const escrito = (v: string | null) => !v || soDig.includes(v.replace(/\D/g, "")) || texto.toLowerCase().includes(v.toLowerCase());
+    if (!escrito(d.conta)) d.conta = null;
+    if (!escrito(d.pix)) d.pix = null;
+  }
+  return d.conta || d.pix ? d : null;
 }
 
 export async function leituraAssistida(texto: string): Promise<LeituraAssistida | null> {

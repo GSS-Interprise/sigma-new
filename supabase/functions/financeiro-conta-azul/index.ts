@@ -20,7 +20,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ca, itensDe } from "../_shared/contaazul.ts";
-import { CNPJ_GSS, CNPJS_GRUPO_GSS, leituraAssistida, leituraFoto, lerNfse, textoPdf } from "../_shared/nfse.ts";
+import { CNPJ_GSS, CNPJS_GRUPO_GSS, dadosBancariosDoTexto, dadosBancariosTexto, leituraAssistida, leituraFoto, lerNfse, textoPdf } from "../_shared/nfse.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -30,6 +30,7 @@ const json = (o: unknown, s = 200) =>
   new Response(JSON.stringify(o), { status: s, headers: { ...cors, "Content-Type": "application/json" } });
 
 const BUCKET = "financeiro-anexos";
+const LINK_NF = `${Deno.env.get("SUPABASE_URL")}/functions/v1/financeiro-nf-publica`;
 const PAPEIS = ["admin", "gestor_financeiro"];
 const MESES = ["JANEIRO", "FEVEREIRO", "MARÇO", "ABRIL", "MAIO", "JUNHO", "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO"];
 const dig = (s: unknown) => String(s ?? "").replace(/\D/g, "");
@@ -150,8 +151,23 @@ async function conferirPagamento(svc: Svc, pag: any) {
   };
   // exceção já assumida por alguém continua valendo enquanto a nota for a mesma
   if (pag.nf_conferencia_status !== "aceita" || status === "ok") patch.nf_conferencia_status = status;
+  // dados bancários escritos na nota (Raul, 26/10): vão para a observação do lançamento no Conta Azul
+  const bancarios = porFoto ? (nota?.dadosBancarios ?? null) : (bytes && ehPdf ? await dadosBancariosDoTexto(await textoPdf(bytes)) : null);
+  if (bancarios) patch.nf_dados_bancarios = bancarios;
   await svc.from("financeiro_pagamentos").update(patch).eq("id", pag.id);
+  if (bancarios && pag.medico_id) await completarBancariosDoLead(svc, pag.medico_id, bancarios);
   return { id: pag.id, status: patch.nf_conferencia_status ?? pag.nf_conferencia_status, itens };
+}
+
+/** Ficha do médico sem banco/Pix ganha o que veio da nota; o que a equipe já preencheu nunca é trocado. */
+async function completarBancariosDoLead(svc: Svc, medicoId: string, d: { banco: string | null; agencia: string | null; conta: string | null; pix: string | null }) {
+  const { data: m } = await svc.from("medicos").select("lead_id").eq("id", medicoId).maybeSingle();
+  if (!m?.lead_id) return;
+  const { data: l } = await svc.from("leads").select("banco, agencia, conta_corrente, chave_pix").eq("id", m.lead_id).maybeSingle();
+  if (!l || l.chave_pix || l.conta_corrente) return;
+  await svc.from("leads").update({
+    banco: l.banco || d.banco, agencia: l.agencia || d.agencia, conta_corrente: d.conta, chave_pix: d.pix,
+  }).eq("id", m.lead_id);
 }
 
 // ── referências do Conta Azul (lidas do espelho) ──────────────────────────
@@ -323,8 +339,14 @@ function sugerirCategoria(unidade: string, categoriasMed: any[]) {
 
 async function montarPagar(svc: Svc, ids: string[], ajustes: Record<string, any>) {
   const ref = await referencias(svc);
+  // token do link público da nota: gerado uma vez por pagamento (o link resolve a nota vigente na hora)
+  const { data: semToken } = await svc.from("financeiro_pagamentos").select("id").in("id", ids).is("nf_link_token", null);
+  for (const x of semToken ?? []) {
+    const tok = [...crypto.getRandomValues(new Uint8Array(18))].map((b) => b.toString(16).padStart(2, "0")).join("");
+    await svc.from("financeiro_pagamentos").update({ nf_link_token: tok }).eq("id", x.id).is("nf_link_token", null);
+  }
   const { data: pags } = await svc.from("financeiro_pagamentos")
-    .select("id, profissional_nome, medico_id, unidade, mes_referencia, ano_referencia, valor_total, status, nf_status, nf_numero, nf_prestador_cnpj, nf_valor_bruto, nf_retencoes, nf_valor_liquido, nf_conferencia_status, ca_evento_id, ca_lancado_em")
+    .select("id, profissional_nome, medico_id, unidade, mes_referencia, ano_referencia, valor_total, status, nf_status, nf_numero, nf_prestador_cnpj, nf_valor_bruto, nf_retencoes, nf_valor_liquido, nf_conferencia_status, nf_link_token, nf_dados_bancarios, ca_evento_id, ca_lancado_em")
     .in("id", ids);
   const unidades = [...new Set((pags ?? []).map((p: any) => p.unidade).filter(Boolean))];
   const { data: mapa } = unidades.length
@@ -420,13 +442,15 @@ async function montarPagar(svc: Svc, ids: string[], ajustes: Record<string, any>
     const numero = String(aj.nf_numero ?? p.nf_numero ?? "").trim();
     if (!numero && !semNf) avisos.push("Número da nota não foi lido: a descrição sai sem número.");
     const descricao = `REF. ${MESES[(p.mes_referencia ?? 1) - 1]} - ${semNf ? "SEM NF" : `NF ${numero || "S/N"}`}`;
-    const banco = p.medico_id ? bancoDoMedico.get(p.medico_id) : undefined;
+    const banco = (p.medico_id ? bancoDoMedico.get(p.medico_id) : undefined) || dadosBancariosTexto(p.nf_dados_bancarios) || undefined;
+    // link que abre só a nota deste pagamento, sem login (a API do Conta Azul não aceita anexo)
+    const linkNf = p.nf_link_token ? `${LINK_NF}?t=${p.nf_link_token}` : null;
     const v = valor ?? 0;
 
     const payload = (fornecedor && categoria && ref.conta && ref.centroMed && v > 0) ? {
       descricao, data_competencia: competencia, valor: v,
       conta_financeira: ref.conta.ca_id, id_fornecedor: fornecedor.ca_id,
-      observacao: `Lançado pelo Sigma${semNf ? " SEM NOTA: não pagar até a nota chegar" : ""}.${banco ? ` Dados bancários: ${banco}.` : ""} Nota e comprovante: ${ref.linkBase}/financeiro`,
+      observacao: `Lançado pelo Sigma${semNf ? " SEM NOTA: não pagar até a nota chegar" : ""}.${banco ? ` Dados bancários: ${banco}.` : ""}${linkNf ? ` Nota fiscal: ${linkNf}` : ""}`,
       referencia_externa: `sigma-pag-${p.id}`,
       rateio: [{ id_categoria: categoria.ca_id, valor: v, rateio_centro_custo: [{ id_centro_custo: ref.centroMed.ca_id, valor: v }] }],
       condicao_pagamento: { parcelas: [{ descricao, data_vencimento: vencimento, conta_financeira: ref.conta.ca_id, detalhe_valor: { valor_bruto: v } }] },
@@ -601,6 +625,31 @@ serve(async (req) => {
         catch (e: any) { fornecedores.push({ pagamento_id: p.id, erro: String(e?.message || e).slice(0, 200) }); }
       }
       return json({ ok: true, resultados, fornecedores });
+    }
+
+    // lê os dados bancários das notas já recebidas, sem refazer a conferência (preenchimento retroativo)
+    if (acao === "extrair_bancarios") {
+      const { data: pags } = await svc.from("financeiro_pagamentos").select("id, medico_id, nf_arquivo_path")
+        .in("id", ids).not("nf_arquivo_path", "is", null);
+      const resultados = [];
+      for (const p of pags ?? []) {
+        try {
+          const bytes = await baixar(svc, p.nf_arquivo_path);
+          if (!bytes) { resultados.push({ id: p.id, ok: false, erro: "arquivo" }); continue; }
+          const ehPdf = bytes[0] === 0x25 && bytes[1] === 0x50;
+          const mime = bytes[0] === 0x89 && bytes[1] === 0x50 ? "image/png" : bytes[0] === 0xff && bytes[1] === 0xd8 ? "image/jpeg" : null;
+          const d = ehPdf ? await dadosBancariosDoTexto(await textoPdf(bytes))
+            : mime ? ((await leituraFoto(bytes, mime, CNPJS_GRUPO_GSS))?.dadosBancarios ?? null) : null;
+          if (d) {
+            await svc.from("financeiro_pagamentos").update({ nf_dados_bancarios: d }).eq("id", p.id);
+            if (p.medico_id) await completarBancariosDoLead(svc, p.medico_id, d);
+          }
+          resultados.push({ id: p.id, ok: !!d, dados: d });
+        } catch (e) {
+          resultados.push({ id: p.id, ok: false, erro: String(e).slice(0, 120) });
+        }
+      }
+      return json({ ok: true, resultados });
     }
 
     if (acao === "aceitar_nota") {

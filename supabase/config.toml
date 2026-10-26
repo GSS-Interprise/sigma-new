@@ -120,3 +120,6 @@ verify_jwt = false
 # Pública: o link do relatório de aprovação abre sem login e o chakra-webhook chama com a chave de serviço.
 [functions.financeiro-aprovacao-whatsapp]
 verify_jwt = false
+
+[functions.financeiro-nf-publica]
+verify_jwt = false
