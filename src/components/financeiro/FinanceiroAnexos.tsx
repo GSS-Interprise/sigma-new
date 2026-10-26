@@ -4,9 +4,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Loader2, Eye, Trash2, Receipt, Send } from "lucide-react";
+import { FileText, Loader2, Eye, Trash2, Receipt, Send, CheckCircle2, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { FinanceiroFileViewerDialog } from "./FinanceiroFileViewerDialog";
+import { MarcarPagoDialog } from "./MarcarPagoDialog";
 
 const BUCKET = "financeiro-anexos";
 const sanitize = (n: string) => n.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-zA-Z0-9.\-_]/g, "_");
@@ -18,6 +19,22 @@ export function FinanceiroAnexos({ pagamentoId }: { pagamentoId: string }) {
   const [viewer, setViewer] = useState<{ path: string; nome: string } | null>(null);
   const nfRef = useRef<HTMLInputElement>(null);
   const compRef = useRef<HTMLInputElement>(null);
+
+  const [pagoOpen, setPagoOpen] = useState(false);
+  const { data: pag } = useQuery({
+    queryKey: ["financeiro-pagamento-status", pagamentoId],
+    queryFn: async () => {
+      const { data } = await (supabase as any).from("financeiro_pagamentos")
+        .select("status, data_pagamento").eq("id", pagamentoId).maybeSingle();
+      return data as { status: string; data_pagamento: string | null } | null;
+    },
+  });
+  const pago = pag?.status === "pago";
+  const atualizar = () => {
+    qc.invalidateQueries({ queryKey: ["financeiro-pagamento-status", pagamentoId] });
+    qc.invalidateQueries({ queryKey: ["financeiro-pagamentos"] });
+    qc.invalidateQueries({ queryKey: ["financeiro-nf"] });
+  };
 
   const { data: anexos = [] } = useQuery({
     queryKey: ["financeiro-anexos", pagamentoId],
@@ -36,14 +53,27 @@ export function FinanceiroAnexos({ pagamentoId }: { pagamentoId: string }) {
       const path = `${pagamentoId}/${Date.now()}_${sanitize(file.name)}`;
       const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, file, { contentType: file.type });
       if (upErr) throw upErr;
-      const { error: insErr } = await (supabase as any).from("financeiro_anexos").insert({
+      const { data: anexo, error: insErr } = await (supabase as any).from("financeiro_anexos").insert({
         pagamento_id: pagamentoId, tipo, arquivo_path: path, arquivo_nome: file.name, mime: file.type, criado_por: u?.user?.id ?? null,
-      });
+      }).select("id").single();
       if (insErr) throw insErr;
       if (tipo === "nf") await (supabase as any).from("financeiro_pagamentos").update({ nf_status: "recebida" }).eq("id", pagamentoId);
+      if (tipo === "comprovante") {
+        // comprovante anexado à mão vale como o do canal: marca como pago e segue para o médico e a contabilidade
+        if (!pago) {
+          await (supabase as any).from("financeiro_pagamentos")
+            .update({ status: "pago", data_pagamento: new Date().toISOString().slice(0, 10) }).eq("id", pagamentoId);
+        }
+        const { data: env, error: envErr } = await supabase.functions.invoke("financeiro-enviar-comprovante", {
+          body: { pagamento_id: pagamentoId, anexo_id: anexo?.id, para: ["medico", "contabilidade"] },
+        });
+        if (envErr || (env as any)?.ok === false) toast.warning("Comprovante anexado e pagamento marcado como pago, mas o envio ao médico falhou. Use o botão Enviar.");
+        else toast.success("Comprovante anexado, pagamento marcado como pago e enviado ao médico.");
+      } else {
+        toast.success("NF anexada.");
+      }
       qc.invalidateQueries({ queryKey: ["financeiro-anexos", pagamentoId] });
-      qc.invalidateQueries({ queryKey: ["financeiro-pagamentos"] });
-      toast.success(`${tipo === "nf" ? "NF" : "Comprovante"} anexado.`);
+      atualizar();
     } catch (e: any) {
       toast.error("Erro ao anexar: " + (e?.message || ""));
     }
@@ -63,6 +93,15 @@ export function FinanceiroAnexos({ pagamentoId }: { pagamentoId: string }) {
     qc.invalidateQueries({ queryKey: ["financeiro-pagamentos"] });
   };
 
+  const desfazerPagamento = async () => {
+    if (!window.confirm("Desfazer o pagamento? O médico volta para a pagar. Os comprovantes anexados continuam na ficha.")) return;
+    const { error } = await (supabase as any).from("financeiro_pagamentos")
+      .update({ status: "pendente", data_pagamento: null }).eq("id", pagamentoId);
+    if (error) { toast.error("Erro ao desfazer: " + error.message); return; }
+    toast.success("Pagamento desfeito. Se já houver baixa no Conta Azul, ela continua lá.");
+    atualizar();
+  };
+
   const remover = async (a: any) => {
     await supabase.storage.from(BUCKET).remove([a.arquivo_path]);
     await (supabase as any).from("financeiro_anexos").delete().eq("id", a.id);
@@ -73,8 +112,16 @@ export function FinanceiroAnexos({ pagamentoId }: { pagamentoId: string }) {
   return (
     <Card>
       <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-        <CardTitle className="text-base">Anexos (NF e comprovante)</CardTitle>
-        <div className="flex gap-2">
+        <div>
+          <CardTitle className="text-base">Anexos (NF e comprovante)</CardTitle>
+          {pago && (
+            <p className="text-xs text-emerald-700 mt-1 flex items-center gap-1">
+              <CheckCircle2 className="h-3.5 w-3.5" /> Pago
+              {pag?.data_pagamento ? ` em ${new Date(pag.data_pagamento + "T00:00:00").toLocaleDateString("pt-BR")}` : ""}
+            </p>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-2">
           <input ref={nfRef} type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(f, "nf"); e.target.value = ""; }} />
           <Button size="sm" variant="outline" onClick={() => nfRef.current?.click()} disabled={!!uploading}>
             {uploading === "nf" ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <FileText className="h-4 w-4 mr-1" />} Anexar NF
@@ -83,6 +130,15 @@ export function FinanceiroAnexos({ pagamentoId }: { pagamentoId: string }) {
           <Button size="sm" variant="outline" onClick={() => compRef.current?.click()} disabled={!!uploading}>
             {uploading === "comprovante" ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Receipt className="h-4 w-4 mr-1" />} Anexar comprovante
           </Button>
+          {pago ? (
+            <Button size="sm" variant="ghost" onClick={desfazerPagamento} disabled={!!uploading} title="Volta o médico para a pagar">
+              <Undo2 className="h-4 w-4 mr-1" /> Desfazer pagamento
+            </Button>
+          ) : (
+            <Button size="sm" variant="outline" onClick={() => setPagoOpen(true)} disabled={!!uploading} title="Pago por fora ou comprovante chega depois">
+              <CheckCircle2 className="h-4 w-4 mr-1" /> Marcar como pago
+            </Button>
+          )}
         </div>
       </CardHeader>
       <CardContent>
@@ -113,6 +169,7 @@ export function FinanceiroAnexos({ pagamentoId }: { pagamentoId: string }) {
           </div>
         )}
       </CardContent>
+      <MarcarPagoDialog open={pagoOpen} onOpenChange={setPagoOpen} pagamentoIds={[pagamentoId]} onPago={atualizar} />
       <FinanceiroFileViewerDialog path={viewer?.path ?? null} nome={viewer?.nome} open={!!viewer} onOpenChange={(o) => !o && setViewer(null)} />
     </Card>
   );

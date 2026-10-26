@@ -16,6 +16,7 @@ import {
 import { toast } from "sonner";
 import { LancarContaAzulDialog } from "@/components/financeiro/LancarContaAzulDialog";
 import { BaixaContaAzulDialog } from "@/components/financeiro/BaixaContaAzulDialog";
+import { MarcarPagoDialog } from "@/components/financeiro/MarcarPagoDialog";
 
 /**
  * Notas fiscais — o posto de trabalho da etapa mais maçante do financeiro (reunião com
@@ -107,6 +108,7 @@ export default function FinanceiroNotasFiscais(
   const [alvoContato, setAlvoContato] = useState<Linha | null>(null);
   const [lancarOpen, setLancarOpen] = useState(false);
   const [baixaOpen, setBaixaOpen] = useState(false);
+  const [pagoOpen, setPagoOpen] = useState(false);
   const [alvoConf, setAlvoConf] = useState<Linha | null>(null);
   const [liquidoManual, setLiquidoManual] = useState("");
   const [contatoNovo, setContatoNovo] = useState("");
@@ -607,6 +609,7 @@ export default function FinanceiroNotasFiscais(
                 <div className="flex-1" />
                 <Button size="sm" variant="outline" disabled={enviando} onClick={() => setLancarOpen(true)}>Lançar no Conta Azul</Button>
                 <Button size="sm" variant="outline" disabled={enviando} onClick={() => setBaixaOpen(true)}>Dar baixa no Conta Azul</Button>
+                <Button size="sm" variant="outline" disabled={enviando} onClick={() => setPagoOpen(true)}>Marcar como pago</Button>
                 <Button size="sm" variant="outline" disabled={enviando} onClick={verPrevia}>Ver prévia</Button>
                 <Button size="sm" variant="outline" disabled={enviando}
                   onClick={() => { setTesteEmails(""); setTesteOpen(true); }}>
@@ -631,6 +634,8 @@ export default function FinanceiroNotasFiscais(
 
       <LancarContaAzulDialog open={lancarOpen} onOpenChange={setLancarOpen} pagamentoIds={selecionados.map((l) => l.id)}
         onLancado={() => qc.invalidateQueries({ queryKey: ["financeiro-nf"] })} />
+      <MarcarPagoDialog open={pagoOpen} onOpenChange={setPagoOpen} pagamentoIds={selecionados.map((l) => l.id)}
+        onPago={() => { qc.invalidateQueries({ queryKey: ["financeiro-nf"] }); qc.invalidateQueries({ queryKey: ["financeiro-pagamentos"] }); }} />
       <BaixaContaAzulDialog open={baixaOpen} onOpenChange={setBaixaOpen} pagamentoIds={selecionados.map((l) => l.id)}
         onBaixado={() => qc.invalidateQueries({ queryKey: ["financeiro-nf"] })} />
 
