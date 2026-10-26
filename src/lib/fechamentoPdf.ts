@@ -17,6 +17,7 @@ export interface FechamentoPdfLancamento {
   valor_total?: number | null;
   medico_id?: string | null;
   // quando a nota e o lançamento já existem (aprovação depois da nota)
+  nf_status?: string | null;
   nf_numero?: string | null;
   nf_valor_liquido?: number | null;
   fornecedor?: string | null;          // razão social da PJ do médico (financeiro_medico_cnpj.razao)
@@ -42,11 +43,15 @@ export function gerarFechamentoPdf(mes: number, ano: number, lancamentos: Fecham
 
   const linhas = lancamentos.map((p) => {
     const valor = Number(p.nf_valor_liquido ?? p.valor_total ?? 0);
+    const bruto = Number(p.valor_total ?? 0);
+    // nota recebida sem o número lido não é "pendente" (Isabela e Nelson, agosto, 26/10)
+    const temNota = ["recebida", "conferida"].includes(p.nf_status ?? "") || !!p.nf_numero;
+    const nf = p.nf_numero ? `NF ${p.nf_numero}` : temNota ? "NF recebida" : "NF pendente";
     const venc = p.ca_vencimento || p.data_vencimento || null;
     const pago = !!(p.data_pagamento || p.ca_baixa_em || p.status === "pago");
     return {
-      venc, pag: p.data_pagamento || (p.ca_baixa_em ? p.ca_baixa_em.slice(0, 10) : null), pago, valor,
-      descricao: `REF. ${ref} - NF ${p.nf_numero || "pendente"}`,
+      venc, pag: p.data_pagamento || (p.ca_baixa_em ? p.ca_baixa_em.slice(0, 10) : null), pago, valor, bruto,
+      descricao: `REF. ${ref} - ${nf}`,
       fornecedor: (p.fornecedor || p.profissional_nome || "-").toUpperCase(),
       categoria: `MED. ${(p.unidade || "SEM UNIDADE").toUpperCase()}`,
       emAberto: pago ? 0 : valor,
@@ -66,15 +71,20 @@ export function gerarFechamentoPdf(mes: number, ano: number, lancamentos: Fecham
   doc.setFontSize(9); doc.setTextColor(60, 60, 60);
   doc.text("GSS - GESTAO SERVICOS A SAUDE LTDA · CNPJ 18.670.594/0001-03 · Avenida Osvaldo Reis, 2470", 14, 22);
   doc.text(`Competência: ${MESES[mes - 1] ?? mes}/${ano} · Gerado pelo Sigma em ${format(new Date(), "dd/MM/yyyy HH:mm")}`, 14, 27);
+  // O card do fechamento mostra o bruto das notas; aqui os valores são o líquido pago ao médico.
+  // A diferença são os impostos retidos que a GSS recolhe (Mavi, 26/10: "o total fica divergente").
+  const totalBruto = linhas.reduce((a, l) => a + l.bruto, 0);
+  doc.text(`Bruto das notas: R$ ${brl(totalBruto)} · Impostos retidos: R$ ${brl(totalBruto - linhas.reduce((a, l) => a + l.valor, 0))} · `
+    + `Líquido a pagar aos médicos: R$ ${brl(linhas.reduce((a, l) => a + l.valor, 0))}`, 14, 32);
 
   // indicadores
-  const cards: Array<[string, number]> = [["Vencidos (R$)", vencidos], ["Vencem hoje (R$)", vencemHoje], ["A vencer (R$)", aVencer], ["Pagos (R$)", pagos], ["Total do período (R$)", totalPeriodo]];
+  const cards: Array<[string, number]> = [["Vencidos (R$)", vencidos], ["Vencem hoje (R$)", vencemHoje], ["A vencer (R$)", aVencer], ["Pagos (R$)", pagos], ["Líquido do período (R$)", totalPeriodo]];
   const largura = (297 - 28 - 4 * 4) / 5;
   cards.forEach(([rot, v], i) => {
     const x = 14 + i * (largura + 4);
-    doc.setFillColor(234, 243, 232); doc.roundedRect(x, 31, largura, 15, 2, 2, "F");
-    doc.setFontSize(8); doc.setTextColor(90, 90, 90); doc.text(rot, x + 3, 36);
-    doc.setFontSize(12); doc.setTextColor(23, 96, 41); doc.text(brl(v), x + 3, 43);
+    doc.setFillColor(234, 243, 232); doc.roundedRect(x, 36, largura, 15, 2, 2, "F");
+    doc.setFontSize(8); doc.setTextColor(90, 90, 90); doc.text(rot, x + 3, 41);
+    doc.setFontSize(12); doc.setTextColor(23, 96, 41); doc.text(brl(v), x + 3, 48);
   });
   doc.setTextColor(0, 0, 0);
 
@@ -97,12 +107,12 @@ export function gerarFechamentoPdf(mes: number, ano: number, lancamentos: Fecham
   }
 
   autoTable(doc, {
-    head: [["Vencimento", "Pagamento", "Descrição", "Fornecedor", "Categoria", "Valor total (R$)", "Em aberto (R$)", "Situação"]],
+    head: [["Vencimento", "Pagamento", "Descrição", "Fornecedor", "Categoria", "Valor líquido (R$)", "Em aberto (R$)", "Situação"]],
     body,
     foot: [["", "", "", "", `Totais do período · ${linhas.length} registro(s)`,
       { content: brl(totalPeriodo), styles: { halign: "right" } },
       { content: brl(linhas.reduce((a, l) => a + l.emAberto, 0)), styles: { halign: "right" } }, ""]],
-    startY: 51,
+    startY: 56,
     styles: { fontSize: 8, cellPadding: 1.8 },
     headStyles: { fillColor: [23, 96, 41] },       // verde GSS
     footStyles: { fillColor: [234, 243, 232], textColor: [23, 96, 41], fontStyle: "bold" },

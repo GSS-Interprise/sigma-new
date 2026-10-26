@@ -141,7 +141,7 @@ export function FinanceiroFecharDialog({ mes, ano, reenvio = false }: { mes: num
       try {
         const { data: pags } = await (supabase as any)
           .from("financeiro_pagamentos")
-          .select("profissional_nome, profissional_crm, unidade, total_plantoes, valor_total, medico_id, nf_numero, nf_valor_liquido, nf_prestador_cnpj, data_vencimento, ca_vencimento, data_pagamento, ca_baixa_em, status")
+          .select("profissional_nome, profissional_crm, unidade, total_plantoes, valor_total, medico_id, nf_status, nf_numero, nf_valor_liquido, nf_prestador_cnpj, data_vencimento, ca_vencimento, data_pagamento, ca_baixa_em, status")
           .eq("mes_referencia", mes).eq("ano_referencia", ano).not("conferido_em", "is", null);
         // fornecedor como no Conta Azul: razão social da PJ do médico, quando já conhecida
         const cnpjs = [...new Set((pags ?? []).map((p: any) => p.nf_prestador_cnpj).filter(Boolean))];
