@@ -11,7 +11,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
-import { parseDrEscalaCompleto, parseGenerico, parseMatrizExames, parseCarestreamResumo, parseDrEscalaConsolidado, parseListaExames, parseTabelasPorTipo, abaDoMes, norm, digits, nomeLimpo, padraoSemAcento, padraoPrimeiroUltimo, type Bloco } from "./parser.ts";
+import { parseDrEscalaCompleto, parseGenerico, parseMatrizExames, parseCarestreamResumo, parseDrEscalaConsolidado, parseListaExames, parseTabelasPorTipo, abaDoMes, norm, digits, nomeLimpo, padraoSemAcento, padraoPrimeiroUltimo, padraoSemPrimeiro, type Bloco } from "./parser.ts";
 
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
 
@@ -203,8 +203,9 @@ serve(async (req) => {
     if (nomes.length) {
       const { data } = await svc.from("medicos").select("id, nome_completo, crm, cpf")
         .or(nomes.flatMap((n) => {
-          const pu = padraoPrimeiroUltimo(n);
-          return [`nome_completo.ilike.${q(padraoSemAcento(n))}`, ...(pu ? [`nome_completo.ilike.${q(pu)}`] : [])];
+          const pu = padraoPrimeiroUltimo(n), sp = padraoSemPrimeiro(n);
+          return [`nome_completo.ilike.${q(padraoSemAcento(n))}`, ...(pu ? [`nome_completo.ilike.${q(pu)}`] : []),
+            ...(sp ? [`nome_completo.ilike.${q(sp)}`] : [])];
         }).join(","));
       pool.push(...(data || []));
     }
@@ -216,7 +217,23 @@ serve(async (req) => {
     }
     // Nome abreviado na planilha ("Tassio Costa" para TASSIO OLIVEIRA E COSTA): mesmo primeiro e último nome e os
     // nomes da planilha na mesma ordem no cadastro. Só casa quando há UM médico possível; com dois, fica para a equipe.
-    const toks = (s: string) => norm(nomeLimpo(s)).split(" ").filter(Boolean);
+    // "da/de/do/das/dos/e" não contam ("Saulo Da Silva De Oliveira Pereira" para Saulo da silva oliveira Pereira)
+    const PARTICULAS = new Set(["da", "de", "do", "das", "dos", "e"]);
+    const toks = (s: string) => norm(nomeLimpo(s)).split(" ").filter((w) => w && !PARTICULAS.has(w));
+    // uma letra de diferença no primeiro nome ("Gulherme" × Guilherme, "Mariana" × Marina), só com 4+ letras
+    const umaLetra = (a: string, b: string) => {
+      if (a === b) return true;
+      if (a.length < 4 || b.length < 4 || Math.abs(a.length - b.length) > 1) return false;
+      // a última letra tem que ser igual: Maria x Mario são pessoas diferentes
+      if (a[a.length - 1] !== b[b.length - 1]) return false;
+      let i = 0, j = 0, dif = 0;
+      while (i < a.length && j < b.length) {
+        if (a[i] === b[j]) { i++; j++; continue; }
+        if (++dif > 1) return false;
+        if (a.length > b.length) i++; else if (b.length > a.length) j++; else { i++; j++; }
+      }
+      return dif + (a.length - i) + (b.length - j) <= 1;
+    };
     const emOrdem = (a: string[], c: string[]) => { let j = 0; for (const t of c) if (t === a[j]) j++; return j === a.length; };
     const porNomeParcial = (nome: string): string | null => {
       const t = toks(nome);
@@ -226,14 +243,14 @@ serve(async (req) => {
         // último nome igual (falta o do meio) OU a planilha é o começo do nome do cadastro (falta o último:
         // "YURI FRANCO GUIMARÃES" para YURI FRANCO GUIMARAES DE CASTRO, Santo Antônio do Pinhal, 23/10)
         const ultimoIgual = c[c.length - 1] === t[t.length - 1];
-        const comeco = t.every((w, i) => c[i] === w);
+        const comeco = t.every((w, i) => (i === 0 ? umaLetra(w, c[0]) : c[i] === w));
         // com primeiro e último iguais o meio pode vir diferente: inicial ou grafia ("Karen Jammile N. Enes" para
         // KAREN JAMMILLE FIGUEIREDO NASCIMENTO ENES); a trava é haver um único candidato
         // nome do meio da planilha "parece" com algum do cadastro: igual, inicial ("N.") ou mesmas 4 primeiras letras
         const parece = (a: string, b: string) => a === b || (a.replace(/\.$/, "").length === 1 && b.startsWith(a[0]))
           || (a.length >= 4 && b.length >= 4 && a.slice(0, 4) === b.slice(0, 4));
         const meioOk = t.slice(1, -1).every((w) => c.slice(1, -1).some((x) => parece(w, x)));
-        return c.length >= t.length && c[0] === t[0] && ((ultimoIgual && meioOk) || (comeco && emOrdem(t, c)));
+        return c.length >= t.length && umaLetra(t[0], c[0]) && ((ultimoIgual && meioOk) || (comeco && emOrdem(t.slice(1), c.slice(1))));
       }).map((m) => m.id as string));
       return ids.size === 1 ? [...ids][0] : null;
     };

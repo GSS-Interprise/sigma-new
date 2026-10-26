@@ -27,6 +27,14 @@ export const padraoPrimeiroUltimo = (s: string) => {
   // primeiro e último da PLANILHA: cobre tanto o nome do meio quanto o último sobrenome faltando no cadastro
   return `%${nucleo(t[0])}%${nucleo(t[t.length - 1])}%`;
 };
+// Sem o primeiro nome: pega cadastro quando a planilha erra o primeiro nome ("Gulherme Guiss Maciel" para
+// GUILHERME GUISS MACIEL, Penha, 26/10). Também largo; o casamento fino continua no index.
+export const padraoSemPrimeiro = (s: string) => {
+  const t = nomeLimpo(s).split(" ").filter((w) => w.length > 2);
+  if (t.length < 2) return null;
+  const nucleo = (w: string) => w.replace(/[^A-Za-z0-9.,'-]/g, "_").replace(/[aeioucnAEIOUCN]/g, "_");
+  return t.length === 2 ? `%${nucleo(t[1])}%` : `%${nucleo(t[1])}%${nucleo(t[t.length - 1])}%`;
+};
 export const cell = (v: unknown) => (v === null || v === undefined ? "" : String(v).trim());
 const filled = (row: unknown[]) => row.filter((v) => cell(v) !== "").length;
 
