@@ -51,6 +51,10 @@ export function LancarContaAzulDialog({ pagamentoIds, open, onOpenChange, onLanc
   const [escrita, setEscrita] = useState(false);
   const [carregando, setCarregando] = useState(false);
   const [enviando, setEnviando] = useState(false);
+  // busca de fornecedor para quem ficou sem (nota sem CNPJ lido): a lista vem do Conta Azul uma vez
+  const [fornecedores, setFornecedores] = useState<{ id: string; nome: string; documento: string }[] | null>(null);
+  const [buscaForn, setBuscaForn] = useState<Record<string, string>>({});
+  const [catTodos, setCatTodos] = useState("");
 
   const carregar = async (aj: Record<string, Ajuste>) => {
     setCarregando(true);
@@ -68,6 +72,34 @@ export function LancarContaAzulDialog({ pagamentoIds, open, onOpenChange, onLanc
     chamar({ acao: "categorias" }).then((r) => setCategorias(r.categorias || [])).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, pagamentoIds.join(",")]);
+
+  const semFornecedor = itens.some((i) => !i.ja_lancado && !i.fornecedor && !i.fornecedores_possiveis?.length);
+  useEffect(() => {
+    if (!open || !semFornecedor || fornecedores) return;
+    chamar({ acao: "fornecedores" }).then((r) => setFornecedores(r.fornecedores || [])).catch(() => setFornecedores([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, semFornecedor]);
+  const semAcento = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const achados = (termo: string) => {
+    const t = semAcento(termo.trim());
+    if (t.length < 3 || !fornecedores) return [];
+    const dig = termo.replace(/\D/g, "");
+    return fornecedores.filter((f) => semAcento(f.nome).includes(t) || (dig.length >= 5 && f.documento.includes(dig))).slice(0, 8);
+  };
+
+  // Aplicar a todos (Mavi, 26/10: Penha tem 18 médicos e era um por um). A categoria fica gravada para cada
+  // unidade e o Sigma lembra nos próximos meses.
+  const pendentes = itens.filter((i) => !i.ja_lancado);
+  const aplicarTodos = async (patch: Ajuste) => {
+    const novo = { ...ajustes };
+    for (const i of pendentes) novo[i.id] = { ...novo[i.id], ...patch };
+    setAjustes(novo);
+    if (patch.categoria_id) {
+      const unidades = [...new Set(pendentes.map((i) => i.unidade).filter(Boolean))] as string[];
+      await Promise.all(unidades.map((u) => chamar({ acao: "definir_categoria", unidade: u, categoria_id: patch.categoria_id }).catch(() => null)));
+    }
+    carregar(novo);
+  };
 
   const ajustar = (id: string, patch: Ajuste) => {
     const novo = { ...ajustes, [id]: { ...ajustes[id], ...patch } };
@@ -99,6 +131,23 @@ export function LancarContaAzulDialog({ pagamentoIds, open, onOpenChange, onLanc
           <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
             <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
             <span><b>Modo simulação.</b> O envio ao Conta Azul está desligado: esta tela mostra exatamente o que seria lançado, mas nada é enviado.</span>
+          </div>
+        )}
+
+        {pendentes.length > 1 && (
+          <div className="grid gap-2 rounded-md border bg-muted/30 p-3 sm:grid-cols-2">
+            <div>
+              <p className="text-[11px] text-muted-foreground">Categoria para todos ({pendentes.length})</p>
+              <Select value={catTodos} onValueChange={(v) => { setCatTodos(v); aplicarTodos({ categoria_id: v }); }}>
+                <SelectTrigger className="h-8"><SelectValue placeholder="Escolha a categoria MED." /></SelectTrigger>
+                <SelectContent className="max-h-72">{categorias.map((c) => <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div>
+              <p className="text-[11px] text-muted-foreground">Vencimento para todos</p>
+              <Input className="h-8" type="date" defaultValue={pendentes[0]?.vencimento}
+                onChange={(e) => e.target.value && aplicarTodos({ vencimento: e.target.value })} />
+            </div>
           </div>
         )}
 
@@ -145,7 +194,23 @@ export function LancarContaAzulDialog({ pagamentoIds, open, onOpenChange, onLanc
                           <SelectTrigger className="h-8"><SelectValue placeholder="Escolha o fornecedor" /></SelectTrigger>
                           <SelectContent>{i.fornecedores_possiveis.map((f) => <SelectItem key={f.id} value={f.id}>{f.nome}</SelectItem>)}</SelectContent>
                         </Select>
-                      ) : <p>{i.fornecedor?.nome || <span className="text-amber-700">não encontrado</span>}</p>}
+                      ) : i.fornecedor ? <p>{i.fornecedor.nome}</p> : (
+                        <div className="relative">
+                          <Input className="h-8" placeholder="Buscar fornecedor pelo nome ou CNPJ…"
+                            value={buscaForn[i.id] ?? ""} onChange={(e) => setBuscaForn({ ...buscaForn, [i.id]: e.target.value })} />
+                          {achados(buscaForn[i.id] ?? "").length > 0 && (
+                            <div className="absolute z-10 mt-1 w-full rounded-md border bg-popover shadow-md">
+                              {achados(buscaForn[i.id] ?? "").map((f) => (
+                                <button key={f.id} type="button" className="block w-full px-2 py-1.5 text-left text-xs hover:bg-muted"
+                                  onClick={() => { setBuscaForn({ ...buscaForn, [i.id]: "" }); ajustar(i.id, { fornecedor_id: f.id }); }}>
+                                  {f.nome}{f.documento ? <span className="text-muted-foreground"> · {f.documento}</span> : null}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          {fornecedores === null && <p className="text-[10px] text-muted-foreground mt-0.5">carregando fornecedores…</p>}
+                        </div>
+                      )}
                     </div>
                     <div className="col-span-2">
                       <p className="text-[11px] text-muted-foreground">Categoria {i.categoria?.sugerida && <span className="text-amber-700">(sugerida: confira)</span>}</p>

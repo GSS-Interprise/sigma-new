@@ -38,6 +38,12 @@ const r2 = (n: number) => Math.round(n * 100) / 100;
 const brl = (n: number | null | undefined) => n == null ? "—" : Number(n).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 const ultimoDia = (ano: number, mes1a12: number) => iso(new Date(Date.UTC(ano, mes1a12, 0)));
+// vencimento padrão: último dia ÚTIL do mês (Mavi, 26/10: 31/10/2026 é sábado, o certo é 30/10)
+const ultimoDiaUtil = (ano: number, mes1a12: number) => {
+  const d = new Date(Date.UTC(ano, mes1a12, 0));
+  while (d.getUTCDay() === 0 || d.getUTCDay() === 6) d.setUTCDate(d.getUTCDate() - 1);
+  return iso(d);
+};
 const semAcento = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 const PARADAS = new Set("de da do das dos e municipio municipal fundo saude prefeitura hospital associacao instituto fundacao estado governo ubs unidade secretaria sc rs mg pr sp ce ma go med fms".split(" "));
 const palavras = (s: string) => new Set(semAcento(s).replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter((w) => w.length > 2 && !PARADAS.has(w) && !/^\d+$/.test(w)));
@@ -400,17 +406,20 @@ async function montarPagar(svc: Svc, ids: string[], ajustes: Record<string, any>
   const medIds = [...new Set((pags ?? []).map((p: any) => p.medico_id).filter(Boolean))];
   const cnpjDoMedico = new Map<string, string>();
   const bancoDoMedico = new Map<string, string>();
+  // nome completo do cadastro: a planilha abrevia ("Mariana Violetita") e o Conta Azul tem o nome inteiro
+  const nomeDoMedico = new Map<string, string>();
   if (medIds.length) {
     const [{ data: cads }, { data: antigos }, { data: meds }] = await Promise.all([
       svc.from("financeiro_medico_cnpj").select("medico_id, cnpj").in("medico_id", medIds),
       svc.from("financeiro_pagamentos").select("medico_id, nf_prestador_cnpj, created_at").in("medico_id", medIds)
         .not("nf_prestador_cnpj", "is", null).order("created_at", { ascending: false }),
-      svc.from("medicos").select("id, lead_id").in("id", medIds),
+      svc.from("medicos").select("id, lead_id, nome_completo").in("id", medIds),
     ]);
     for (const c of [...(cads ?? []), ...(antigos ?? []).map((a: any) => ({ medico_id: a.medico_id, cnpj: a.nf_prestador_cnpj }))]) {
       const d = dig(c.cnpj);
       if (d.length === 14 && !cnpjDoMedico.has(c.medico_id)) cnpjDoMedico.set(c.medico_id, d);
     }
+    for (const m of meds ?? []) if (m.nome_completo) nomeDoMedico.set(m.id, String(m.nome_completo));
     const leadIds = (meds ?? []).map((m: any) => m.lead_id).filter(Boolean);
     const { data: leads } = leadIds.length
       ? await svc.from("leads").select("id, banco, agencia, conta_corrente, chave_pix").in("id", leadIds)
@@ -445,16 +454,19 @@ async function montarPagar(svc: Svc, ids: string[], ajustes: Record<string, any>
     const cnpj = p.nf_prestador_cnpj || (p.medico_id ? cnpjDoMedico.get(p.medico_id) : null) || null;
     const porCnpj = cnpj ? (ref.pessoasPorDoc.get(cnpj) ?? []) : [];
     // nota antiga (antes da leitura do CNPJ) também cai no nome, sempre com um único candidato
-    const cands = porCnpj.length ? porCnpj : (!p.nf_prestador_cnpj ? porNome(p.profissional_nome || "") : []);
-    const forcado = aj.fornecedor_id ? cands.find((c: any) => c.ca_id === aj.fornecedor_id) : null;
+    const cands = porCnpj.length ? porCnpj : (!p.nf_prestador_cnpj ? porNome((p.medico_id && nomeDoMedico.get(p.medico_id)) || p.profissional_nome || "") : []);
+    // fornecedor escolhido à mão pela busca da tela vale mesmo sem CNPJ lido (Mavi, 26/10, REDEH Bombinhas)
+    const forcado = aj.fornecedor_id
+      ? (cands.find((c: any) => c.ca_id === aj.fornecedor_id) ?? ref.pessoas.find((c: any) => c.ca_id === aj.fornecedor_id) ?? null)
+      : null;
     const escolha = forcado ? { escolhido: forcado, ambiguo: false } : escolherFornecedor(cands, p.profissional_nome || "");
     const fornecedor = escolha.escolhido;
-    if (!cands.length) {
+    if (!fornecedor && !cands.length) {
       problemas.push(!cnpj
-        ? (semNf ? "Sem nota e sem CNPJ conhecido: fornecedor não encontrado no Conta Azul pelo nome." : "CNPJ do prestador não foi lido na nota.")
-        : "Fornecedor não cadastrado no Conta Azul com este CNPJ.");
+        ? "Fornecedor não encontrado: o CNPJ não foi lido na nota. Busque o fornecedor pelo nome abaixo."
+        : "Fornecedor não cadastrado no Conta Azul com este CNPJ. Busque pelo nome abaixo ou cadastre no Conta Azul.");
     }
-    else if (escolha.ambiguo) problemas.push(`Há ${cands.length} fornecedores com este CNPJ no Conta Azul: escolher o do médico.`);
+    else if (!forcado && escolha.ambiguo) problemas.push(`Há ${cands.length} fornecedores com este CNPJ no Conta Azul: escolher o do médico.`);
 
     const definida = (mapa ?? []).find((m: any) => m.unidade === p.unidade);
     const escolhida = aj.categoria_id ? ref.categoriasMed.find((c: any) => c.ca_id === aj.categoria_id) : null;
@@ -476,7 +488,7 @@ async function montarPagar(svc: Svc, ids: string[], ajustes: Record<string, any>
     // vencimento: último dia do mês seguinte ao de referência (padrão dos lançamentos atuais)
     const mesSeg = p.mes_referencia === 12 ? 1 : p.mes_referencia + 1;
     const anoSeg = p.mes_referencia === 12 ? p.ano_referencia + 1 : p.ano_referencia;
-    const vencimento = /^\d{4}-\d{2}-\d{2}$/.test(String(aj.vencimento || "")) ? String(aj.vencimento) : ultimoDia(anoSeg, mesSeg);
+    const vencimento = /^\d{4}-\d{2}-\d{2}$/.test(String(aj.vencimento || "")) ? String(aj.vencimento) : ultimoDiaUtil(anoSeg, mesSeg);
     // competência no mesmo mês do vencimento, como nos lançamentos atuais
     const competencia = hoje.slice(0, 7) === vencimento.slice(0, 7) ? hoje : `${vencimento.slice(0, 7)}-01`;
     const numero = String(aj.nf_numero ?? p.nf_numero ?? "").trim();
@@ -712,6 +724,15 @@ serve(async (req) => {
         .eq("id", String(input.pagamento_id || ""));
       if (error) throw error;
       return json({ ok: true });
+    }
+
+    if (acao === "fornecedores") {
+      const ref = await referencias(svc);
+      const lista = ref.pessoas
+        .filter((c: any) => (c.dados?.perfis ?? []).some((x: any) => /fornecedor/i.test(String(x?.tipo_perfil ?? x))))
+        .map((c: any) => ({ id: c.ca_id, nome: c.nome, documento: dig(c.dados?.documento) }))
+        .sort((a: any, b: any) => String(a.nome).localeCompare(String(b.nome)));
+      return json({ ok: true, fornecedores: lista });
     }
 
     if (acao === "categorias") {
