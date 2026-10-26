@@ -244,6 +244,37 @@ async function garantirFornecedor(svc: Svc, pagamentoId: string, criar: boolean,
   return { criado: { id, nome } };
 }
 
+/**
+ * Lançamento feito SEM NF (Mavi, 26/10) e a nota chegou: troca a descrição da parcela no Conta Azul para o
+ * número da nota. O valor NÃO é alterado aqui: o rateio da categoria fica no lançamento e a API só mexe na
+ * parcela; se o líquido da nota diferir do valor lançado, a conferência da nota avisa para ajustar à mão.
+ * Só roda com a escrita ligada e só em parcela que ainda diz "SEM NF" (idempotente).
+ */
+async function atualizarLancamentoSemNf(svc: Svc, pagamentoId: string) {
+  const { data: p } = await svc.from("financeiro_pagamentos")
+    .select("id, mes_referencia, nf_status, nf_numero, nf_valor_liquido, ca_parcela_id, ca_valor, nf_conferencia")
+    .eq("id", pagamentoId).maybeSingle();
+  if (!p?.ca_parcela_id || !["recebida", "conferida"].includes(p.nf_status)) return null;
+  const { data: cfgEscrita } = await svc.from("config_lista_items").select("valor").eq("campo_nome", "financeiro_contaazul_escrita").maybeSingle();
+  if (String(cfgEscrita?.valor || "").trim() !== "1") return null;
+  const parcela = await ca(svc, `/v1/financeiro/parcelas/${p.ca_parcela_id}`);
+  if (!/SEM NF/i.test(String(parcela?.descricao || ""))) return null;
+  const descricao = `REF. ${MESES[(p.mes_referencia ?? 1) - 1]} - NF ${String(p.nf_numero || "S/N").trim()}`;
+  await ca(svc, `/v1/financeiro/parcelas/${p.ca_parcela_id}`, { method: "PATCH", body: JSON.stringify({ versao: parcela.versao, descricao }) });
+  const liq = p.nf_valor_liquido != null ? Number(p.nf_valor_liquido) : null;
+  const difere = liq != null && Math.abs(liq - Number(p.ca_valor ?? 0)) > 0.01;
+  const item = {
+    chave: "conta_azul", ok: difere ? null : true, rotulo: "Lançamento no Conta Azul",
+    detalhe: difere
+      ? `Lançado SEM NF por ${brl(Number(p.ca_valor))}; a nota veio com líquido de ${brl(liq)}. Descrição atualizada para "${descricao}", ajuste o valor no Conta Azul.`
+      : `Descrição atualizada de SEM NF para "${descricao}".`,
+  };
+  const conf = p.nf_conferencia ?? {};
+  conf.itens = [...(conf.itens ?? []).filter((i: any) => i?.chave !== "conta_azul"), item];
+  await svc.from("financeiro_pagamentos").update({ nf_conferencia: conf, ca_erro: difere ? item.detalhe : null }).eq("id", p.id);
+  return item;
+}
+
 /** Guarda pessoas do Conta Azul na cópia local, no mesmo formato da sincronização (contaazul-oauth). */
 async function guardarPessoas(svc: any, pessoas: any[]) {
   const linhas = pessoas.filter((e) => e?.id).map((e) => ({
@@ -550,6 +581,10 @@ serve(async (req) => {
         .select("id, medico_id, valor_total, nf_arquivo_path, nf_conferencia_status").in("id", ids);
       const resultados = [];
       for (const p of pags ?? []) resultados.push(await conferirPagamento(svc, p));
+      // nota de quem já foi lançado SEM NF: atualiza a descrição no Conta Azul (nunca derruba a conferência)
+      for (const p of pags ?? []) {
+        try { await atualizarLancamentoSemNf(svc, p.id); } catch (e) { console.error("sem nf", p.id, String(e)); }
+      }
       // Médico novo vira fornecedor no Conta Azul assim que a nota chega (Raul, 21/10): toda chegada de nota
       // (link, WhatsApp, tela) passa por aqui. Falha no cadastro nunca derruba a conferência.
       const fornecedores = [];
