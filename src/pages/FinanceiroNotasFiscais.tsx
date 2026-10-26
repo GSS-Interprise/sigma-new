@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { LancarContaAzulDialog } from "@/components/financeiro/LancarContaAzulDialog";
 import { BaixaContaAzulDialog } from "@/components/financeiro/BaixaContaAzulDialog";
 import { MarcarPagoDialog } from "@/components/financeiro/MarcarPagoDialog";
+import { BaixarNotasMesButton } from "@/components/financeiro/BaixarNotasMesButton";
 
 /**
  * Notas fiscais — o posto de trabalho da etapa mais maçante do financeiro (reunião com
@@ -431,9 +432,12 @@ export default function FinanceiroNotasFiscais(
                 Competência {String(mes).padStart(2, "0")}/{ano}
                 <span className="ml-2 text-xs font-normal text-muted-foreground">{linhas.length} médico(s)</span>
               </CardTitle>
-              <div className="relative w-full sm:max-w-xs">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar médico…" className="pl-8 h-9" />
+              <div className="flex w-full sm:w-auto items-center gap-2">
+                <div className="relative w-full sm:w-64">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar médico…" className="pl-8 h-9" />
+                </div>
+                <BaixarNotasMesButton mes={mes} ano={ano} />
               </div>
             </div>
             {/* indicadores de cobrança: clicar filtra a lista */}
