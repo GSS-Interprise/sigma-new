@@ -104,6 +104,10 @@ serve(async (req) => {
       if (medicos.length) {
         await svc.from("medicos").update({ aprovacao_contrato_assinado: true })
           .in("id", medicos).not("aprovacao_contrato_assinado", "is", true);
+        // card do Kanban de médicos vai para "Pronto para Cadastro" (Bianca, 23/10). Só avança: card que já
+        // está em Cadastrado, Validação Documental ou Ativo fica onde está.
+        await svc.from("medico_kanban_cards").update({ status: "pronto_cadastro", updated_at: new Date().toISOString() })
+          .in("medico_id", medicos).in("status", ["novo_canal", "captando_info", "revisar_dados"]);
       }
       if (k?.valor && medicos.length) {
         const r = await fetch(`https://app.ideiasigner.com.br/api/documents/${docId}/content?type=PrinterFriendlyVersion`,
