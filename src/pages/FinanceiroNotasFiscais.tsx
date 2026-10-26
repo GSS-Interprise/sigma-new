@@ -11,13 +11,17 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
-  Loader2, Search, Send, BellRing, FileCheck2, Link2, Upload, Eye, X, Mail, MessageCircle, AlertTriangle, Pencil,
+  Loader2, Search, Send, BellRing, FileCheck2, Link2, Upload, Eye, X, Mail, MessageCircle, AlertTriangle, Pencil, ArrowLeftRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { LancarContaAzulDialog } from "@/components/financeiro/LancarContaAzulDialog";
 import { BaixaContaAzulDialog } from "@/components/financeiro/BaixaContaAzulDialog";
 import { MarcarPagoDialog } from "@/components/financeiro/MarcarPagoDialog";
 import { BaixarNotasMesButton } from "@/components/financeiro/BaixarNotasMesButton";
+
+// Fora do componente de propósito: definida dentro, era um componente novo a cada render, o React remontava a
+// lista inteira e a rolagem voltava ao topo depois de abrir uma conferência ou salvar um contato (Amni, 26/10).
+const SemMoldura = ({ children }: { children: React.ReactNode }) => <>{children}</>;
 
 /**
  * Notas fiscais — o posto de trabalho da etapa mais maçante do financeiro (reunião com
@@ -96,7 +100,8 @@ export default function FinanceiroNotasFiscais(
   const setMes = setMesLocal;
   const setAno = setAnoLocal;
   const [busca, setBusca] = useState("");
-  const [filtro, setFiltro] = useState<"todos" | "a_pedir" | "pedidas" | "atrasadas" | "sem_resposta" | "recebidas" | "sem_contato">("todos");
+  const [filtro, setFiltro] = useState<"todos" | "a_pedir" | "pedidas" | "atrasadas" | "sem_resposta" | "recebidas" | "conferir" | "sem_contato">("todos");
+  const [alvoMover, setAlvoMover] = useState<{ origem: Linha; opcoes: Linha[]; destino: string } | null>(null);
   const [sel, setSel] = useState<Set<string>>(new Set());
   // WhatsApp oficial é o padrão desde a aprovação dos templates (25/09): é onde o médico responde
   const [canal, setCanal] = useState<"email" | "whatsapp">("whatsapp");
@@ -169,6 +174,12 @@ export default function FinanceiroNotasFiscais(
   const liberado = ["em_nf", "aguardando_aprovacao", "aprovado", "pago"].includes(String(data?.fechamentoStatus));
 
   const temContato = (l: Linha) => (canal === "email" ? !!l.email : !!l.telefone);
+  // nota com divergência ou que precisa de conferência à mão (Amni, 26/10)
+  const precisaConferir = (l: Linha) => !l.ca_evento_id && !!l.nf_arquivo_path
+    && (["divergente", "manual"].includes(String(l.nf_conferencia_status)) || !!l.conferir);
+  // outros lançamentos do mesmo médico na competência, ainda sem nota: destino para mover a nota
+  const outrosLocais = (l: Linha) => todasLinhas.filter((x) => x.id !== l.id && !!l.medico_id
+    && x.medico_id === l.medico_id && !x.nf_arquivo_path && !x.ca_evento_id);
   const indicadores = useMemo(() => ({
     a_pedir: linhas.filter((l) => (l.nf_status ?? "nao_solicitada") === "nao_solicitada").length,
     pedidas: linhas.filter((l) => l.nf_status === "solicitada").length,
@@ -176,6 +187,7 @@ export default function FinanceiroNotasFiscais(
     sem_resposta: linhas.filter(semResposta).length,
     recebidas: linhas.filter((l) => l.nf_status === "recebida" || l.nf_status === "conferida").length,
     sem_contato: linhas.filter((l) => l.nf_status !== "dispensada" && !temContato(l)).length,
+    conferir: linhas.filter(precisaConferir).length,
   }), [linhas, canal]);
 
   const visiveis = useMemo(() => {
@@ -188,6 +200,7 @@ export default function FinanceiroNotasFiscais(
       if (filtro === "sem_resposta" && !semResposta(l)) return false;
       if (filtro === "recebidas" && !["recebida", "conferida"].includes(st)) return false;
       if (filtro === "sem_contato" && (temContato(l) || l.nf_status === "dispensada")) return false;
+      if (filtro === "conferir" && !precisaConferir(l)) return false;
       if (termo && !semAcento(l.profissional_nome || "").includes(termo)) return false;
       return true;
     });
@@ -330,6 +343,25 @@ export default function FinanceiroNotasFiscais(
     qc.invalidateQueries({ queryKey: ["financeiro-nf"] });
   };
 
+  const moverNota = async (origemId: string, destinoId: string) => {
+    setEnviando(true);
+    const { error } = await (supabase as any).rpc("financeiro_mover_nf", { p_origem: origemId, p_destino: destinoId });
+    if (error) {
+      setEnviando(false);
+      const m = error.message || "";
+      toast.error(m.includes("ja_no_conta_azul") ? "A nota já foi lançada no Conta Azul."
+        : m.includes("destino_ja_tem_nota") ? "O outro local já tem nota."
+        : m.includes("sem_permissao") ? "Seu usuário não pode mover notas." : "Não foi possível mover: " + m);
+      return;
+    }
+    // confere de novo no lugar certo (o valor esperado muda); nenhuma mensagem vai para o médico
+    await supabase.functions.invoke("financeiro-conta-azul", { body: { acao: "conferir", pagamento_ids: [destinoId] } }).catch(() => {});
+    setEnviando(false);
+    setAlvoMover(null);
+    toast.success("Nota movida para o outro local. Nenhuma mensagem foi enviada ao médico.");
+    qc.invalidateQueries({ queryKey: ["financeiro-nf"] });
+  };
+
   const verNota = async (l: Linha) => {
     if (!l.nf_arquivo_path) return;
     const { data: s, error } = await supabase.storage.from(BUCKET).createSignedUrl(l.nf_arquivo_path, 300);
@@ -370,10 +402,11 @@ export default function FinanceiroNotasFiscais(
     { k: "atrasadas", label: "Atrasadas (+48h)", n: indicadores.atrasadas, cls: indicadores.atrasadas ? "text-orange-600" : "" },
     { k: "sem_resposta", label: "Sem resposta (3 cobranças)", n: indicadores.sem_resposta, cls: indicadores.sem_resposta ? "text-red-600" : "" },
     { k: "recebidas", label: "Recebidas", n: indicadores.recebidas, cls: "text-emerald-700" },
+    { k: "conferir", label: "Conferir", n: indicadores.conferir, cls: indicadores.conferir ? "text-amber-700" : "" },
     { k: "sem_contato", label: "Sem contato", n: indicadores.sem_contato },
   ];
 
-  const Moldura = embutido ? ({ children }: { children: React.ReactNode }) => <>{children}</> : AppLayout;
+  const Moldura = embutido ? SemMoldura : AppLayout;
 
   return (
     <Moldura>
@@ -458,7 +491,7 @@ export default function FinanceiroNotasFiscais(
                 </div>
               </div>
             )}
-            <div className="grid grid-cols-3 sm:grid-cols-7 gap-1.5">
+            <div className="grid grid-cols-4 sm:grid-cols-8 gap-1.5">
               {CHIPS.map((c) => (
                 <button key={c.k} onClick={() => setFiltro(c.k)}
                   className={`rounded-md border px-2.5 py-1.5 text-left transition-colors ${filtro === c.k ? "border-primary bg-primary/5" : "hover:bg-muted"}`}>
@@ -573,6 +606,13 @@ export default function FinanceiroNotasFiscais(
                                   <Eye className="h-4 w-4" />
                                 </button>
                               )}
+                              {l.nf_arquivo_path && !l.ca_evento_id && outrosLocais(l).length > 0 && (
+                                <button title="Mover a nota para outro local deste médico" disabled={enviando}
+                                  onClick={() => { const op = outrosLocais(l); setAlvoMover({ origem: l, opcoes: op, destino: op[0].id }); }}
+                                  className="text-muted-foreground hover:text-foreground">
+                                  <ArrowLeftRight className="h-4 w-4" />
+                                </button>
+                              )}
                               {l.nf_status === "recebida" && !l.ca_evento_id && (
                                 <button title="Desconsiderar este arquivo (não é a nota)" disabled={enviando} onClick={() => desconsiderarNota(l)}
                                   className="text-muted-foreground hover:text-red-600">
@@ -636,6 +676,31 @@ export default function FinanceiroNotasFiscais(
       <input ref={uploadRef} type="file" accept=".pdf,.xml,image/*" className="hidden"
         onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) anexarManual(f); }} />
 
+      <Dialog open={!!alvoMover} onOpenChange={(o) => !o && setAlvoMover(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Mover nota para outro local</DialogTitle></DialogHeader>
+          {alvoMover && (
+            <div className="space-y-3 text-sm">
+              <p className="text-muted-foreground">
+                A nota de <b>{alvoMover.origem.profissional_nome}</b> está em <b>{nomeFech(alvoMover.origem.arquivo_origem)}</b> ({brl(Number(alvoMover.origem.valor_total))}).
+                Para qual local ela é? O local de origem volta para "aguardando nota", sem mandar mensagem ao médico.
+              </p>
+              <Select value={alvoMover.destino} onValueChange={(v) => setAlvoMover({ ...alvoMover, destino: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {alvoMover.opcoes.map((o) => (
+                    <SelectItem key={o.id} value={o.id}>{nomeFech(o.arquivo_origem)} · {brl(Number(o.valor_total))}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAlvoMover(null)} disabled={enviando}>Cancelar</Button>
+            <Button onClick={() => alvoMover && moverNota(alvoMover.origem.id, alvoMover.destino)} disabled={enviando}>Mover nota</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <LancarContaAzulDialog open={lancarOpen} onOpenChange={setLancarOpen} pagamentoIds={selecionados.map((l) => l.id)}
         onLancado={() => qc.invalidateQueries({ queryKey: ["financeiro-nf"] })} />
       <MarcarPagoDialog open={pagoOpen} onOpenChange={setPagoOpen} pagamentoIds={selecionados.map((l) => l.id)}

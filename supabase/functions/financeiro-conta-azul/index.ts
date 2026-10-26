@@ -154,7 +154,37 @@ async function conferirPagamento(svc: Svc, pag: any) {
   // Dados bancários NÃO vêm da nota (Mavi, 26/10: "errar dados bancários é complicado"): a equipe confere
   // e mantém na ficha do médico, e é só de lá que a observação do lançamento puxa.
   await svc.from("financeiro_pagamentos").update(patch).eq("id", pag.id);
-  return { id: pag.id, status: patch.nf_conferencia_status ?? pag.nf_conferencia_status, itens };
+  return { id: pag.id, status: patch.nf_conferencia_status ?? pag.nf_conferencia_status, itens,
+    valorNota: nota?.valor ?? null, descricaoNota: nota?.descricao ?? null };
+}
+
+/**
+ * Médico em mais de um local (Amni, 26/10): a nota responde ao último pedido mandado para aquele número, então
+ * a nota de um local caía no lançamento do outro. Se o valor da nota não bate com o lançamento, procura outro
+ * do MESMO médico, na mesma competência e ainda sem nota, com o mesmo valor ou com a cidade escrita na nota.
+ * Só devolve quando há um único candidato; na dúvida a nota fica onde está e a equipe move pela tela.
+ */
+async function outroLocalDaNota(svc: Svc, pag: any, lido: { valorNota: number | null; descricaoNota: string | null }) {
+  if (!pag.medico_id) return null;
+  const v = lido.valorNota;
+  if (v != null && Math.abs(Number(pag.valor_total ?? 0) - v) <= 1) return null;
+  const { data: irmaos } = await svc.from("financeiro_pagamentos")
+    .select("id, valor_total, arquivo_origem, unidade")
+    .eq("medico_id", pag.medico_id).eq("mes_referencia", pag.mes_referencia).eq("ano_referencia", pag.ano_referencia)
+    .is("nf_arquivo_path", null).is("ca_evento_id", null).neq("id", pag.id);
+  if (!irmaos?.length) return null;
+  if (v != null) {
+    const porValor = irmaos.filter((x: any) => Math.abs(Number(x.valor_total ?? 0) - v) <= 1);
+    if (porValor.length === 1) return { id: porValor[0].id as string, motivo: "valor da nota" };
+  }
+  // cidade: o nome que a equipe dá ao arquivo do fechamento ("REDEH Porto Belo - setembro.xlsx")
+  const desc = semAcento(lido.descricaoNota || "");
+  if (!desc) return null;
+  const local = (x: any) => semAcento(String(x.arquivo_origem || x.unidade || "").replace(/^\[cfg:[^\]]*\]\s*/, "")
+    .replace(/\.[^.]+$/, "").replace(/\s*-\s*[^-]*$/, "").replace(/^redeh\s+/i, "").trim());
+  const porCidade = irmaos.filter((x: any) => { const l = local(x); return l.length >= 4 && desc.includes(l); });
+  if (porCidade.length === 1 && !desc.includes(local(pag) || "\u0000")) return { id: porCidade[0].id as string, motivo: "cidade escrita na nota" };
+  return null;
 }
 
 // ── referências do Conta Azul (lidas do espelho) ──────────────────────────
@@ -596,13 +626,27 @@ serve(async (req) => {
     const ids: string[] = Array.isArray(input.pagamento_ids) ? input.pagamento_ids.slice(0, 300) : [];
 
     if (acao === "conferir") {
-      const { data: pags } = await svc.from("financeiro_pagamentos")
-        .select("id, medico_id, valor_total, nf_arquivo_path, nf_conferencia_status").in("id", ids);
-      const resultados = [];
-      for (const p of pags ?? []) resultados.push(await conferirPagamento(svc, p));
-      // nota de quem já foi lançado SEM NF: atualiza a descrição no Conta Azul (nunca derruba a conferência)
+      const CAMPOS = "id, medico_id, valor_total, nf_arquivo_path, nf_conferencia_status, mes_referencia, ano_referencia, arquivo_origem, unidade";
+      const { data: pags } = await svc.from("financeiro_pagamentos").select(CAMPOS).in("id", ids);
+      const resultados: any[] = [];
       for (const p of pags ?? []) {
-        try { await atualizarLancamentoSemNf(svc, p.id); } catch (e) { console.error("sem nf", p.id, String(e)); }
+        const r = await conferirPagamento(svc, p);
+        const destino = await outroLocalDaNota(svc, p, r).catch(() => null);
+        if (destino) {
+          const { error: eMov } = await svc.rpc("financeiro_mover_nf", { p_origem: p.id, p_destino: destino.id });
+          if (!eMov) {
+            const { data: dp } = await svc.from("financeiro_pagamentos").select(CAMPOS).eq("id", destino.id).single();
+            const r2 = await conferirPagamento(svc, dp);
+            resultados.push({ ...r2, movida_de: p.id, motivo_movida: destino.motivo });
+            continue;
+          }
+          console.error("mover nf", p.id, destino.id, eMov.message);
+        }
+        resultados.push(r);
+      }
+      // nota de quem já foi lançado SEM NF: atualiza a descrição no Conta Azul (nunca derruba a conferência)
+      for (const r of resultados) {
+        try { await atualizarLancamentoSemNf(svc, r.id); } catch (e) { console.error("sem nf", r.id, String(e)); }
       }
       // Médico novo vira fornecedor no Conta Azul assim que a nota chega (Raul, 21/10): toda chegada de nota
       // (link, WhatsApp, tela) passa por aqui. Falha no cadastro nunca derruba a conferência.
