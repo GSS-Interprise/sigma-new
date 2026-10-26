@@ -6,14 +6,15 @@ import { Link } from "react-router-dom";
 import { useCaptacaoPermissions, CaptacaoPermission } from "@/hooks/useCaptacaoPermissions";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useModulosManutencao } from "@/hooks/useModulosManutencao";
+import { podeAbrirRotaDisparos } from "@/lib/acessoDisparos";
 import { ManutencaoAdminModal } from "@/components/disparos/ManutencaoAdminModal";
 import { ManutencaoBlockModal } from "@/components/disparos/ManutencaoBlockModal";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 
 export default function Disparos() {
-  const { hasCaptacaoPermission, canManageCaptadores, isLoading } = useCaptacaoPermissions();
-  const { isAdmin } = usePermissions();
+  const { hasCaptacaoPermission, canManageCaptadores, acessoIndividualDisparos, isLoading } = useCaptacaoPermissions();
+  const { isAdmin, canView } = usePermissions();
   const { isEmManutencao } = useModulosManutencao();
   const [adminModalOpen, setAdminModalOpen] = useState(false);
   const [blockModal, setBlockModal] = useState<{ open: boolean; nome: string }>({ open: false, nome: "" });
@@ -70,7 +71,11 @@ export default function Disparos() {
     { name: "BI - Prospec", href: "/disparos/bi-prospec", icon: BarChart3, description: "Análise de tráfego pago, disparos e conversões", permission: "disparos_zap" as CaptacaoPermission, adminOnly: false },
   ];
 
+  const acessoDisparos = { isAdmin, podeVerModuloPeloPerfil: canView("disparos"), acessoIndividual: acessoIndividualDisparos };
+
   const visibleModules = allModules.filter((module) => {
+    // Com liberação individual (sem o módulo no perfil) só aparecem as telas que a rota deixa abrir
+    if (!podeAbrirRotaDisparos(acessoDisparos, module.href)) return false;
     if (module.adminOnly) return isAdmin;
     if (module.permission === null) return canManageCaptadores;
     return hasCaptacaoPermission(module.permission);

@@ -23,6 +23,8 @@ export interface CaptacaoPermissoes {
   pode_blacklist: boolean;
   pode_seigzaps_config: boolean;
   pode_contratos_servicos: boolean;
+  /** Acesso individual à central /disparos e a Chips & Instâncias (ver src/lib/acessoDisparos.ts) */
+  pode_acessar_disparos?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -207,6 +209,7 @@ export function useCaptacaoPermissions() {
     userPermissions,
     hasCaptacaoPermission,
     hasAnyCaptacaoAccess,
+    acessoIndividualDisparos: !!userPermissions?.pode_acessar_disparos,
     updatePermissions: updatePermissionsMutation.mutate,
     isUpdating: updatePermissionsMutation.isPending,
     isLoading: isLoadingLeader || isLoadingGestor || isLoadingPermissions,
