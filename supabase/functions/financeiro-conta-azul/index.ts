@@ -20,7 +20,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ca, itensDe } from "../_shared/contaazul.ts";
-import { CNPJ_GSS, CNPJS_GRUPO_GSS, dadosBancariosDoTexto, dadosBancariosTexto, leituraAssistida, leituraFoto, lerNfse, textoPdf } from "../_shared/nfse.ts";
+import { CNPJ_GSS, CNPJS_GRUPO_GSS, dadosBancariosDoTexto, leituraAssistida, leituraFoto, lerNfse, textoPdf } from "../_shared/nfse.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -151,23 +151,10 @@ async function conferirPagamento(svc: Svc, pag: any) {
   };
   // exceção já assumida por alguém continua valendo enquanto a nota for a mesma
   if (pag.nf_conferencia_status !== "aceita" || status === "ok") patch.nf_conferencia_status = status;
-  // dados bancários escritos na nota (Raul, 26/10): vão para a observação do lançamento no Conta Azul
-  const bancarios = porFoto ? (nota?.dadosBancarios ?? null) : (bytes && ehPdf ? await dadosBancariosDoTexto(await textoPdf(bytes)) : null);
-  if (bancarios) patch.nf_dados_bancarios = bancarios;
+  // Dados bancários NÃO vêm da nota (Mavi, 26/10: "errar dados bancários é complicado"): a equipe confere
+  // e mantém na ficha do médico, e é só de lá que a observação do lançamento puxa.
   await svc.from("financeiro_pagamentos").update(patch).eq("id", pag.id);
-  if (bancarios && pag.medico_id) await completarBancariosDoLead(svc, pag.medico_id, bancarios);
   return { id: pag.id, status: patch.nf_conferencia_status ?? pag.nf_conferencia_status, itens };
-}
-
-/** Ficha do médico sem banco/Pix ganha o que veio da nota; o que a equipe já preencheu nunca é trocado. */
-async function completarBancariosDoLead(svc: Svc, medicoId: string, d: { banco: string | null; agencia: string | null; conta: string | null; pix: string | null }) {
-  const { data: m } = await svc.from("medicos").select("lead_id").eq("id", medicoId).maybeSingle();
-  if (!m?.lead_id) return;
-  const { data: l } = await svc.from("leads").select("banco, agencia, conta_corrente, chave_pix").eq("id", m.lead_id).maybeSingle();
-  if (!l || l.chave_pix || l.conta_corrente) return;
-  await svc.from("leads").update({
-    banco: l.banco || d.banco, agencia: l.agencia || d.agencia, conta_corrente: d.conta, chave_pix: d.pix,
-  }).eq("id", m.lead_id);
 }
 
 // ── referências do Conta Azul (lidas do espelho) ──────────────────────────
@@ -442,7 +429,7 @@ async function montarPagar(svc: Svc, ids: string[], ajustes: Record<string, any>
     const numero = String(aj.nf_numero ?? p.nf_numero ?? "").trim();
     if (!numero && !semNf) avisos.push("Número da nota não foi lido: a descrição sai sem número.");
     const descricao = `REF. ${MESES[(p.mes_referencia ?? 1) - 1]} - ${semNf ? "SEM NF" : `NF ${numero || "S/N"}`}`;
-    const banco = (p.medico_id ? bancoDoMedico.get(p.medico_id) : undefined) || dadosBancariosTexto(p.nf_dados_bancarios) || undefined;
+    const banco = p.medico_id ? bancoDoMedico.get(p.medico_id) : undefined;
     // link que abre só a nota deste pagamento, sem login (a API do Conta Azul não aceita anexo)
     const linkNf = p.nf_link_token ? `${LINK_NF}?t=${p.nf_link_token}` : null;
     const v = valor ?? 0;
@@ -627,7 +614,8 @@ serve(async (req) => {
       return json({ ok: true, resultados, fornecedores });
     }
 
-    // lê os dados bancários das notas já recebidas, sem refazer a conferência (preenchimento retroativo)
+    // lê os dados bancários das notas já recebidas e guarda só no pagamento, para consulta; não preenche a
+    // ficha nem a observação do lançamento (decisão da Mavi, 26/10)
     if (acao === "extrair_bancarios") {
       const { data: pags } = await svc.from("financeiro_pagamentos").select("id, medico_id, nf_arquivo_path")
         .in("id", ids).not("nf_arquivo_path", "is", null);
@@ -642,7 +630,6 @@ serve(async (req) => {
             : mime ? ((await leituraFoto(bytes, mime, CNPJS_GRUPO_GSS))?.dadosBancarios ?? null) : null;
           if (d) {
             await svc.from("financeiro_pagamentos").update({ nf_dados_bancarios: d }).eq("id", p.id);
-            if (p.medico_id) await completarBancariosDoLead(svc, p.medico_id, d);
           }
           resultados.push({ id: p.id, ok: !!d, dados: d });
         } catch (e) {
