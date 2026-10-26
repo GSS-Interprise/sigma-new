@@ -19,7 +19,7 @@
 // = "1". Sem isso devolvem "escrita_desligada" e a prévia continua funcionando.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { ca, itensDe } from "../_shared/contaazul.ts";
+import { ca, itensDe, listarTudo } from "../_shared/contaazul.ts";
 import { CNPJ_GSS, CNPJS_GRUPO_GSS, dadosBancariosDoTexto, leituraAssistida, leituraFoto, lerNfse, textoPdf } from "../_shared/nfse.ts";
 
 const cors = {
@@ -185,6 +185,29 @@ async function outroLocalDaNota(svc: Svc, pag: any, lido: { valorNota: number | 
   const porCidade = irmaos.filter((x: any) => { const l = local(x); return l.length >= 4 && desc.includes(l); });
   if (porCidade.length === 1 && !desc.includes(local(pag) || "\u0000")) return { id: porCidade[0].id as string, motivo: "cidade escrita na nota" };
   return null;
+}
+
+/**
+ * Categoria criada no Conta Azul durante o dia não aparecia até a cópia das 6h (Mavi, 26/10: "MED. ANTÔNIO
+ * DIAS"). Ao abrir o lançamento, as categorias são relidas do Conta Azul, no máximo a cada 5 minutos.
+ * Se a API falhar, segue com a cópia que já existe.
+ */
+async function atualizarCategorias(svc: Svc) {
+  const { data: ult } = await svc.from("contaazul_cache").select("atualizado_em").eq("tipo", "categoria")
+    .order("atualizado_em", { ascending: false }).limit(1).maybeSingle();
+  if (ult?.atualizado_em && Date.now() - new Date(ult.atualizado_em).getTime() < 5 * 60_000) return;
+  try {
+    const itens = await listarTudo(svc, "/v1/categorias");
+    const agora = new Date().toISOString();
+    const linhas = itens
+      .map((i: any) => ({ tipo: "categoria", ca_id: String(i.id ?? i.uuid ?? ""), nome: String(i.nome ?? i.descricao ?? "").slice(0, 300), dados: i, atualizado_em: agora }))
+      .filter((l: any, idx: number, arr: any[]) => l.ca_id && arr.findIndex((x) => x.ca_id === l.ca_id) === idx);
+    for (let i = 0; i < linhas.length; i += 500) {
+      await svc.from("contaazul_cache").upsert(linhas.slice(i, i + 500), { onConflict: "tipo,ca_id" });
+    }
+  } catch (e) {
+    console.error("categorias", String(e));
+  }
 }
 
 // ── referências do Conta Azul (lidas do espelho) ──────────────────────────
@@ -692,6 +715,7 @@ serve(async (req) => {
     }
 
     if (acao === "categorias") {
+      await atualizarCategorias(svc);
       const ref = await referencias(svc);
       return json({ ok: true, categorias: ref.categoriasMed.map((c: any) => ({ id: c.ca_id, nome: c.nome })), escrita: ref.escrita, conta: ref.conta?.nome ?? null, centro: ref.centroMed?.nome ?? null });
     }
@@ -714,6 +738,7 @@ serve(async (req) => {
     }
 
     if (acao === "previa" || acao === "lancar") {
+      await atualizarCategorias(svc);
       const { ref, itens } = await montarPagar(svc, ids, input.ajustes ?? {});
       const resposta = (extra: Record<string, unknown> = {}) => json({
         ok: true, escrita_ligada: ref.escrita, ...extra,
