@@ -38,6 +38,7 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePermissions, type Modulo } from "@/hooks/usePermissions";
 import { useCaptacaoPermissions } from "@/hooks/useCaptacaoPermissions";
+import { podeAbrirRotaDisparos, temAcessoCompletoDisparos } from "@/lib/acessoDisparos";
 import {
   Sidebar as SidebarUI,
   SidebarContent,
@@ -125,7 +126,7 @@ export function Sidebar() {
   const location = useLocation();
   const { signOut } = useAuth();
   const { isAdmin, hasPermission, userRoles, isLeader } = usePermissions();
-  const { hasAnyCaptacaoAccess } = useCaptacaoPermissions();
+  const { hasAnyCaptacaoAccess, acessoIndividualDisparos } = useCaptacaoPermissions();
   const { open } = useSidebar();
 
   const isExterno = userRoles?.some((role) => role.role === "externos");
@@ -138,7 +139,11 @@ export function Sidebar() {
     if (!modulo) return true;
     if (modulo === "dashboard") return true; // Home sempre visível
     if (modulo === "disparos") {
-      return isAdmin || hasPermission("disparos", "visualizar") || hasAnyCaptacaoAccess();
+      const acesso = { isAdmin, podeVerModuloPeloPerfil: hasPermission("disparos", "visualizar"), acessoIndividual: acessoIndividualDisparos };
+      if (temAcessoCompletoDisparos(acesso)) return true;
+      // Liberação individual: só os itens cujas rotas abrem para ela (central e Chips & Instâncias)
+      if (acessoIndividualDisparos) return podeAbrirRotaDisparos(acesso, item.href);
+      return hasAnyCaptacaoAccess();
     }
     return isAdmin || hasPermission(modulo, "visualizar");
   };

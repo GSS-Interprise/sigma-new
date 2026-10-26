@@ -105,14 +105,14 @@ const App = () => (
             <Route path="/licitacoes/robo" element={<ProtectedRoute><PermissionRoute modulo="licitacoes"><Licitacoes board="robo" /></PermissionRoute></ProtectedRoute>} />
             <Route path="/licitacoes/triagem" element={<ProtectedRoute><PermissionRoute modulo="licitacoes"><TriagemLicitacoes /></PermissionRoute></ProtectedRoute>} />
             <Route path="/licitacoes/comparativo" element={<ProtectedRoute><PermissionRoute modulo="licitacoes"><ComparativoPncp /></PermissionRoute></ProtectedRoute>} />
-            <Route path="/disparos" element={<ProtectedRoute><PermissionRoute modulo="disparos"><Disparos /></PermissionRoute></ProtectedRoute>} />
+            <Route path="/disparos" element={<ProtectedRoute><PermissionRoute modulo="disparos" aceitaAcessoIndividualDisparos><Disparos /></PermissionRoute></ProtectedRoute>} />
             <Route path="/disparos/zap" element={<ProtectedRoute><PermissionRoute modulo="disparos"><DisparosZap /></PermissionRoute></ProtectedRoute>} />
             <Route path="/disparos/email" element={<ProtectedRoute><PermissionRoute modulo="disparos"><DisparosEmail /></PermissionRoute></ProtectedRoute>} />
             <Route path="/disparos/acompanhamento" element={<ProtectedRoute><PermissionRoute modulo="disparos"><DisparosAcompanhamento /></PermissionRoute></ProtectedRoute>} />
             <Route path="/disparos/leads" element={<ProtectedRoute><PermissionRoute modulo="disparos"><DisparosLeads /></PermissionRoute></ProtectedRoute>} />
             <Route path="/disparos/blacklist" element={<ProtectedRoute><PermissionRoute modulo="disparos"><DisparosBlackList /></PermissionRoute></ProtectedRoute>} />
             <Route path="/disparos/sigzap" element={<ProtectedRoute><PermissionRoute modulo="disparos"><DisparosSigZap /></PermissionRoute></ProtectedRoute>} />
-            <Route path="/disparos/config" element={<ProtectedRoute><PermissionRoute modulo="disparos"><DisparosConfig /></PermissionRoute></ProtectedRoute>} />
+            <Route path="/disparos/config" element={<ProtectedRoute><PermissionRoute modulo="disparos" aceitaAcessoIndividualDisparos><DisparosConfig /></PermissionRoute></ProtectedRoute>} />
             <Route path="/disparos/contratos" element={<ProtectedRoute><PermissionRoute modulo="disparos"><DisparosContratos /></PermissionRoute></ProtectedRoute>} />
             <Route path="/disparos/captadores" element={<ProtectedRoute><PermissionRoute modulo="disparos"><Captadores /></PermissionRoute></ProtectedRoute>} />
             <Route path="/disparos/regiao-interesse" element={<ProtectedRoute><PermissionRoute modulo="disparos"><DisparosRegiaoInteresse /></PermissionRoute></ProtectedRoute>} />

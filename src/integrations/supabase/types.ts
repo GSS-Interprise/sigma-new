@@ -3288,6 +3288,7 @@ export type Database = {
           cor: string | null
           created_at: string
           id: string
+          pode_acessar_disparos: boolean
           pode_acompanhamento: boolean
           pode_blacklist: boolean
           pode_contratos_servicos: boolean
@@ -3303,6 +3304,7 @@ export type Database = {
           cor?: string | null
           created_at?: string
           id?: string
+          pode_acessar_disparos?: boolean
           pode_acompanhamento?: boolean
           pode_blacklist?: boolean
           pode_contratos_servicos?: boolean
@@ -3318,6 +3320,7 @@ export type Database = {
           cor?: string | null
           created_at?: string
           id?: string
+          pode_acessar_disparos?: boolean
           pode_acompanhamento?: boolean
           pode_blacklist?: boolean
           pode_contratos_servicos?: boolean
