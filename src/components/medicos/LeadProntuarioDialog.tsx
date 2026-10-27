@@ -38,7 +38,9 @@ import { LeadLinksExternosSection } from "./LeadLinksExternosSection";
 import { LeadAtividadesPanel } from "./LeadAtividadesPanel";
 import { LeadChannelsSidebar } from "./LeadChannelsSidebar";
 import { atualizarStatusLead, registrarConversaoMedico, registrarEdicaoLead, registrarCriacaoLead, registrarDesconversaoParaLead, registrarReprocessamentoKanban } from "@/lib/leadHistoryLogger";
-import { EspecialidadeMultiSelect } from "./EspecialidadeMultiSelect";
+import { EspecialidadesRqeEditor } from "./EspecialidadesRqeEditor";
+import { useEspecialidades } from "@/hooks/useEspecialidades";
+import { EspecialidadeRqe, formatarEspecialidade, lerRqeDoTexto, linhaIncompleta, rqeSoNumero } from "@/lib/especialidades";
 import { UnidadeMultiSelect } from "./UnidadeMultiSelect";
 import { BlacklistSection } from "./BlacklistSection";
 import { BloqueioTemporarioSection } from "./BloqueioTemporarioSection";
@@ -72,6 +74,11 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
   const [activeTab, setActiveTab] = useState("dados");
   const [editedData, setEditedData] = useState<Record<string, any>>({});
   const [hasChanges, setHasChanges] = useState(false);
+  // Especialidades com o RQE de cada uma (lead_especialidades). Salvas pela RPC
+  // salvar_especialidades_lead, que também atualiza os campos antigos do lead e do médico.
+  const [espRqe, setEspRqe] = useState<EspecialidadeRqe[]>([]);
+  const [espRqeOriginal, setEspRqeOriginal] = useState<string>('[]');
+  const { data: catalogoEspecialidades = [] } = useEspecialidades();
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [sidebarConversaId, setSidebarConversaId] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -396,6 +403,52 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
     }
   }, [lead, isNewLead, open, adjustTextareaHeight]);
 
+  const { data: espRqeBanco } = useQuery({
+    queryKey: ['lead-especialidades-rqe', leadId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('lead_especialidades')
+        .select('especialidade_id, rqe, sem_rqe, especialidades(nome)')
+        .eq('lead_id', leadId!);
+      if (error) throw error;
+      return (data || [])
+        .map((r: any) => ({
+          especialidade_id: r.especialidade_id,
+          nome: r.especialidades?.nome || '',
+          rqe: r.rqe || '',
+          sem_rqe: !!r.sem_rqe,
+        }))
+        .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')) as EspecialidadeRqe[];
+    },
+    enabled: !!leadId && open && !isNewLead,
+  });
+
+  useEffect(() => {
+    if (isNewLead && open) {
+      setEspRqe([]);
+      setEspRqeOriginal('[]');
+    } else if (espRqeBanco) {
+      setEspRqe(espRqeBanco);
+      setEspRqeOriginal(JSON.stringify(espRqeBanco));
+    }
+  }, [espRqeBanco, isNewLead, open]);
+
+  const resumoEspRqe = (lista: EspecialidadeRqe[]) =>
+    lista.map(l => `${formatarEspecialidade(l.nome)} - ${l.sem_rqe ? 'sem RQE' : 'RQE ' + (l.rqe || '?')}`).join(', ');
+
+  const handleEspRqeChange = (lista: EspecialidadeRqe[]) => {
+    setEspRqe(lista);
+    setHasChanges(true);
+  };
+
+  const salvarEspRqe = async (idDoLead: string) => {
+    const { error } = await supabase.rpc('salvar_especialidades_lead' as any, {
+      p_lead_id: idDoLead,
+      p_itens: espRqe.map(l => ({ especialidade_id: l.especialidade_id, rqe: rqeSoNumero(l.rqe), sem_rqe: l.sem_rqe })),
+    });
+    if (error) throw new Error('Dados salvos, mas as especialidades não: ' + error.message);
+  };
+
   // Check if lead has been converted to medico
   const { data: medicoVinculado } = useQuery({
     queryKey: ['lead-medico-vinculo', leadId],
@@ -427,6 +480,11 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
   // Save mutation
   const saveMutation = useMutation({
     mutationFn: async () => {
+      const incompletas = espRqe.filter(linhaIncompleta);
+      if (incompletas.length > 0) {
+        throw new Error(`Falta o RQE de ${incompletas.map(l => formatarEspecialidade(l.nome)).join(', ')}. Informe o número ou marque Sem RQE (generalista).`);
+      }
+      const espMudou = JSON.stringify(espRqe) !== espRqeOriginal;
       // Convert empty strings to null for numeric and date fields
       const sanitizedData = { ...editedData };
       
@@ -584,6 +642,8 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
           }
         }
 
+        if (espRqe.length > 0) await salvarEspRqe(newLead.id);
+
         return { isNew: true, newLeadId: newLead.id, createdAsCorpoClinico: createAsCorpoClinico, createdFromKanban: shouldAutoCreateMedicoAndKanban };
       }
 
@@ -604,6 +664,14 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
         }
       });
 
+      if (espMudou) {
+        camposAlterados.push('especialidades_rqe');
+        // a RPC troca leads.rqe pelo resumo novo; o texto antigo (CFM/planilha) fica guardado aqui
+        dadosAntigos.especialidades_rqe = resumoEspRqe(JSON.parse(espRqeOriginal)) +
+          (lead.rqe ? ` | texto antigo: ${lead.rqe}` : '');
+        dadosNovos.especialidades_rqe = resumoEspRqe(espRqe);
+      }
+
       if (camposAlterados.length === 0) {
         throw new Error('Nenhuma alteração detectada');
       }
@@ -619,6 +687,8 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
         .eq('id', leadId);
 
       if (error) throw error;
+
+      if (espMudou) await salvarEspRqe(leadId);
 
       await registrarEdicaoLead(leadId, dadosAntigos, dadosNovos, camposAlterados);
 
@@ -636,7 +706,9 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
       if (!isNewLead && leadId) {
         queryClient.invalidateQueries({ queryKey: ['lead-prontuario', leadId] });
         queryClient.invalidateQueries({ queryKey: ['lead-historico', leadId] });
+        queryClient.invalidateQueries({ queryKey: ['lead-especialidades-rqe', leadId] });
       }
+      queryClient.invalidateQueries({ queryKey: ['corpo-clinico'] });
       setHasChanges(false);
       let message: string;
       if (result?.createdAsCorpoClinico) {
@@ -1908,26 +1980,15 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                                 />
                               </div>
 
-                              <div className="space-y-1">
-                                <label className="text-xs text-muted-foreground flex items-center gap-1.5">
-                                  <Stethoscope className="h-3 w-3" />
-                                  RQE
-                                </label>
-                                <Input
-                                  value={editedData.rqe || ''}
-                                  onChange={(e) => handleFieldChange('rqe', e.target.value)}
-                                  className={invisibleInputClass}
-                                />
-                              </div>
-
-                              <div className="space-y-1">
+                              <div className="space-y-1 col-span-2 min-w-0">
                                 <label className="text-xs text-muted-foreground flex items-center gap-1.5">
                                   <Briefcase className="h-3 w-3" />
-                                  Especialidades Médicas
+                                  Especialidades e RQE
                                 </label>
-                                <EspecialidadeMultiSelect
-                                  value={editedData.especialidades || []}
-                                  onChange={(value) => handleFieldChange('especialidades', value)}
+                                <EspecialidadesRqeEditor
+                                  value={espRqe}
+                                  onChange={handleEspRqeChange}
+                                  textoAntigo={lead?.rqe}
                                 />
                               </div>
 
@@ -2557,8 +2618,8 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                             // Campos opcionais (se tiver)
                             const cnpj = editedData.cnpj?.trim() || lead?.cnpj?.trim();
                             const crm = editedData.crm?.trim() || lead?.crm?.trim();
-                            const rqe = editedData.rqe?.trim() || lead?.rqe?.trim();
-                            const especialidade = editedData.especialidade?.trim() || lead?.especialidade?.trim() || (editedData.especialidades?.length > 0) || (lead?.especialidades?.length > 0);
+                            const rqe = espRqe.length > 0 && !espRqe.some(linhaIncompleta) ? resumoEspRqe(espRqe) : '';
+                            const especialidade = espRqe.length > 0 ? espRqe.map(l => formatarEspecialidade(l.nome)).join(', ') : '';
                             
                             // Verifica campos obrigatórios
                             const camposObrigatorios = [
@@ -2576,7 +2637,7 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                               { campo: 'CNPJ', preenchido: !!cnpj, valor: cnpj },
                               { campo: 'CRM', preenchido: !!crm, valor: crm },
                               { campo: 'RQE', preenchido: !!rqe, valor: rqe },
-                              { campo: 'Especialidade', preenchido: !!especialidade, valor: especialidade === true ? 'Informado' : especialidade },
+                              { campo: 'Especialidade', preenchido: !!especialidade, valor: especialidade },
                             ];
                             
                             const todosObrigatoriosPreenchidos = camposObrigatorios.every(c => c.preenchido);
@@ -3064,7 +3125,15 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
           if (data.cpf) newData.cpf = data.cpf;
           if (data.data_nascimento) newData.data_nascimento = data.data_nascimento;
           if (data.crm) newData.crm = data.crm;
-          if (data.rqe) newData.rqe = data.rqe;
+          if (data.rqe) {
+            newData.rqe = data.rqe;
+            const lidos = lerRqeDoTexto(data.rqe, catalogoEspecialidades);
+            if (lidos.length > 0) {
+              const porId = new Map(espRqe.map(l => [l.especialidade_id, l]));
+              lidos.forEach(l => porId.set(l.especialidade_id, l));
+              setEspRqe(Array.from(porId.values()));
+            }
+          }
           if (data.especialidade) newData.especialidade = data.especialidade;
           if (data.telefone) newData.phone_e164 = normalizeToE164(data.telefone);
           if (data.email) newData.email = data.email;

@@ -8,7 +8,8 @@ import { exportMedicosToPDF } from "@/lib/pdfExport";
 import { MedicoDialog } from "./MedicoDialog";
 import { LeadProntuarioDialog } from "./LeadProntuarioDialog";
 import { ImportarMedicosDialog } from "./ImportarMedicosDialog";
-import { FiltroMedicos } from "./FiltroMedicos";
+import { FiltroMedicos, PendenciaEspecialidade } from "./FiltroMedicos";
+import { formatarEspecialidade } from "@/lib/especialidades";
 import { MedicosMetrics } from "./MedicosMetrics";
 import { useAuth } from "@/contexts/AuthContext";
 import { subDays, isAfter, parseISO } from "date-fns";
@@ -49,6 +50,7 @@ export function CorpoClinicoTab() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedClientes, setSelectedClientes] = useState<string[]>([]);
   const [selectedEspecialidades, setSelectedEspecialidades] = useState<string[]>([]);
+  const [pendenciaEsp, setPendenciaEsp] = useState<PendenciaEspecialidade | null>(null);
   const [medicoDialogOpen, setMedicoDialogOpen] = useState(false);
   const [prontuarioDialogOpen, setProntuarioDialogOpen] = useState(false);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
@@ -124,15 +126,19 @@ export function CorpoClinicoTab() {
       const medicoIds = medicosFiltrados.map(m => m.id);
       
       // 4. Buscar leads e vínculos em paralelo (uma query para cada)
-      const [leadsResult, vinculosResult] = await Promise.all([
+      // Especialidades padronizadas (catálogo + RQE) de cada médico, num JSON só
+      const [leadsResult, vinculosResult, espResult] = await Promise.all([
         leadIds.length > 0 
           ? supabase.from('leads').select('id, unidades_vinculadas, status_contrato, especialidades').in('id', leadIds)
           : Promise.resolve({ data: [], error: null }),
         supabase.from('medico_vinculo_unidade')
           .select('medico_id, unidade_id, unidades!inner(id, nome, codigo, clientes!inner(nome_fantasia))')
           .in('medico_id', medicoIds)
-          .eq('status', 'ativo')
+          .eq('status', 'ativo'),
+        supabase.rpc('medicos_especialidades_padrao' as any),
       ]);
+      if (espResult.error) throw espResult.error;
+      const espPorMedico = (espResult.data || {}) as Record<string, Array<{ nome: string; rqe: string | null; sem_rqe: boolean }>>;
       
       // 5. Coletar todas as unidades_vinculadas dos leads para buscar detalhes
       const allUnidadeIds = new Set<string>();
@@ -182,17 +188,15 @@ export function CorpoClinicoTab() {
       return medicosFiltrados.map(medico => {
         let unidades_vinculadas: Array<{ id: string; cliente_nome: string; unidade_nome: string; unidade_codigo?: string }> = [];
         let status_contrato_final = medico.status_contrato;
-        let especialidade_final = medico.especialidade || [];
+        const espPadrao = espPorMedico[medico.id] || [];
+        const especialidade_final = espPadrao.map(e => e.nome);
+        const falta_rqe = espPadrao.some(e => !e.rqe && !e.sem_rqe);
         
         // Verificar se tem dados do lead
         if (medico.lead_id && leadsMap.has(medico.lead_id)) {
           const leadData = leadsMap.get(medico.lead_id)!;
           if (leadData.status_contrato) {
             status_contrato_final = leadData.status_contrato;
-          }
-          // Usar especialidades do lead se o médico não tiver ou estiver vazio
-          if (leadData.especialidades && leadData.especialidades.length > 0) {
-            especialidade_final = leadData.especialidades;
           }
           unidades_vinculadas = leadData.unidades_vinculadas
             .map(uid => unidadesMap.get(uid))
@@ -213,6 +217,7 @@ export function CorpoClinicoTab() {
         return {
           ...medico,
           especialidade: especialidade_final,
+          falta_rqe,
           status_contrato: status_contrato_final,
           unidades_vinculadas
         } as MedicoComClientes;
@@ -243,6 +248,11 @@ export function CorpoClinicoTab() {
       .filter(esp => esp && esp.trim() !== '');
     return Array.from(new Set(allEspecialidades)).sort();
   }, [medicos]);
+
+  const contagemPendencias = useMemo(() => ({
+    sem_especialidade: (medicos || []).filter(m => (m.especialidade || []).length === 0).length,
+    falta_rqe: (medicos || []).filter(m => m.falta_rqe).length,
+  }), [medicos]);
 
   const addToBlacklistMutation = useMutation({
     mutationFn: async ({ medicoId, phone, nome }: { medicoId: string; phone: string; nome: string }) => {
@@ -297,8 +307,11 @@ export function CorpoClinicoTab() {
       
       // Filtro por especialidade
       const medicoEspecialidades = Array.isArray(medico.especialidade) ? medico.especialidade : [];
-      const matchesEspecialidade = selectedEspecialidades.length === 0 ||
-        medicoEspecialidades.some(esp => selectedEspecialidades.includes(esp));
+      const matchesEspecialidade = (selectedEspecialidades.length === 0 ||
+        medicoEspecialidades.some(esp => selectedEspecialidades.includes(esp))) &&
+        (pendenciaEsp === null ||
+          (pendenciaEsp === 'sem_especialidade' && medicoEspecialidades.length === 0) ||
+          (pendenciaEsp === 'falta_rqe' && medico.falta_rqe));
       
       // Filtro por cliente vinculado
       const matchesCliente = selectedClientes.length === 0 || 
@@ -344,7 +357,7 @@ export function CorpoClinicoTab() {
     }
 
     return result;
-  }, [medicos, searchTerm, selectedEspecialidades, selectedClientes, activeMetricFilters]);
+  }, [medicos, searchTerm, selectedEspecialidades, selectedClientes, activeMetricFilters, pendenciaEsp]);
 
   const handleEspecialidadeToggle = (especialidade: string) => {
     setSelectedEspecialidades(prev =>
@@ -362,6 +375,7 @@ export function CorpoClinicoTab() {
     setSearchTerm("");
     setSelectedClientes([]);
     setSelectedEspecialidades([]);
+    setPendenciaEsp(null);
     setActiveMetricFilters([]);
   };
 
@@ -421,6 +435,9 @@ export function CorpoClinicoTab() {
         selectedEspecialidades={selectedEspecialidades}
         clientes={clientes}
         especialidades={especialidadesDisponiveis}
+        pendencia={pendenciaEsp}
+        contagemPendencias={contagemPendencias}
+        onPendenciaToggle={(p) => setPendenciaEsp(prev => (prev === p ? null : p))}
         onSearchChange={setSearchTerm}
         onClienteToggle={handleClienteToggle}
         onEspecialidadeToggle={handleEspecialidadeToggle}
@@ -527,9 +544,9 @@ export function CorpoClinicoTab() {
                     {medico.nome_completo}
                   </TableCell>
                   <TableCell>
-                    {Array.isArray(medico.especialidade) 
-                      ? medico.especialidade.join(', ') 
-                      : medico.especialidade || '-'}
+                    {Array.isArray(medico.especialidade) && medico.especialidade.length > 0
+                      ? medico.especialidade.map(formatarEspecialidade).join(', ')
+                      : <span className="text-muted-foreground">Sem especialidade</span>}
                   </TableCell>
                   <TableCell>
                     {medico.unidades_vinculadas && medico.unidades_vinculadas.length > 0

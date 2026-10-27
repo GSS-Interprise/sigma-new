@@ -4,6 +4,9 @@ import { Input } from "@/components/ui/input";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { X, ChevronDown } from "lucide-react";
 import { useState } from "react";
+import { formatarEspecialidade } from "@/lib/especialidades";
+
+export type PendenciaEspecialidade = "sem_especialidade" | "falta_rqe";
 
 interface FiltroMedicosProps {
   searchNome: string;
@@ -15,7 +18,15 @@ interface FiltroMedicosProps {
   onClienteToggle: (clienteId: string) => void;
   onEspecialidadeToggle: (especialidade: string) => void;
   onClearFilters: () => void;
+  pendencia?: PendenciaEspecialidade | null;
+  contagemPendencias?: Record<PendenciaEspecialidade, number>;
+  onPendenciaToggle?: (p: PendenciaEspecialidade) => void;
 }
+
+const PENDENCIAS: Array<{ id: PendenciaEspecialidade; rotulo: string }> = [
+  { id: "falta_rqe", rotulo: "Falta RQE" },
+  { id: "sem_especialidade", rotulo: "Sem especialidade" },
+];
 
 export function FiltroMedicos({
   searchNome,
@@ -27,10 +38,13 @@ export function FiltroMedicos({
   onClienteToggle,
   onEspecialidadeToggle,
   onClearFilters,
+  pendencia = null,
+  contagemPendencias,
+  onPendenciaToggle,
 }: FiltroMedicosProps) {
   const [clientesOpen, setClientesOpen] = useState(false);
   const [especialidadesOpen, setEspecialidadesOpen] = useState(false);
-  const hasActiveFilters = searchNome.length > 0 || selectedClientes.length > 0 || selectedEspecialidades.length > 0;
+  const hasActiveFilters = searchNome.length > 0 || selectedClientes.length > 0 || selectedEspecialidades.length > 0 || pendencia !== null;
 
   return (
     <div className="space-y-4 mb-6 p-4 border rounded-lg bg-card">
@@ -65,6 +79,23 @@ export function FiltroMedicos({
             <ChevronDown className={`h-4 w-4 transition-transform ${especialidadesOpen ? 'rotate-180' : ''}`} />
           </CollapsibleTrigger>
           <CollapsibleContent>
+            {onPendenciaToggle && contagemPendencias && (
+              <div className="flex flex-wrap items-center gap-2 pt-2">
+                <span className="text-xs text-muted-foreground">Para completar:</span>
+                {PENDENCIAS.map((p) => (
+                  <Badge
+                    key={p.id}
+                    variant="outline"
+                    className={`cursor-pointer border-dashed border-amber-400 text-amber-800 hover:opacity-80 dark:text-amber-300 ${
+                      pendencia === p.id ? "bg-amber-100 dark:bg-amber-950/40 border-solid" : ""
+                    }`}
+                    onClick={() => onPendenciaToggle(p.id)}
+                  >
+                    {p.rotulo} ({contagemPendencias[p.id]})
+                  </Badge>
+                ))}
+              </div>
+            )}
             <div className="flex flex-wrap gap-2 pt-2 max-h-48 overflow-y-auto">
               {especialidades.map((especialidade) => (
                 <Badge
@@ -73,7 +104,7 @@ export function FiltroMedicos({
                   className="cursor-pointer hover:opacity-80"
                   onClick={() => onEspecialidadeToggle(especialidade)}
                 >
-                  {especialidade}
+                  {formatarEspecialidade(especialidade)}
                 </Badge>
               ))}
             </div>
