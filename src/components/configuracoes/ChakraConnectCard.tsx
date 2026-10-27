@@ -25,7 +25,11 @@ type ChakraPhone = {
   webhook_configured?: boolean;
   last_webhook_event_at?: string | null;
   last_webhook_error?: string | null;
+  responsavel_id?: string | null;
 };
+
+type Pessoa = { id: string; nome_completo: string | null };
+const SEM_DONO = "__sem_dono__";
 
 function getChakraSendBlock(phone: ChakraPhone) {
   const payload = phone.provider_payload || {};
@@ -98,6 +102,8 @@ export function ChakraConnectCard() {
   const [isPreparing, setIsPreparing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [phones, setPhones] = useState<ChakraPhone[]>([]);
+  const [pessoas, setPessoas] = useState<Pessoa[]>([]);
+  const [salvandoDono, setSalvandoDono] = useState<string | null>(null);
   const [pendingConnection, setPendingConnection] = useState<PendingConnection | null>(null);
 
   const loadConnections = useCallback(async () => {
@@ -124,7 +130,7 @@ export function ChakraConnectCard() {
     }
     const { data, error } = await supabase
       .from("whatsapp_chakra_connections" as never)
-      .select("plugin_id, waba_id, phone_number_id, phone_e164, display_name, status, quality_rating, messaging_limit_tier, name_status, provider_payload, webhook_configured, last_webhook_event_at, last_webhook_error")
+      .select("plugin_id, waba_id, phone_number_id, phone_e164, display_name, status, quality_rating, messaging_limit_tier, name_status, provider_payload, webhook_configured, last_webhook_event_at, last_webhook_error, responsavel_id")
       .order("updated_at", { ascending: false });
     if (!error) {
       const connectedPhones = (data || []) as unknown as ChakraPhone[];
@@ -137,6 +143,25 @@ export function ChakraConnectCard() {
   }, []);
 
   useEffect(() => { void loadConnections(); }, [loadConnections]);
+
+  useEffect(() => {
+    void supabase.from("profiles").select("id, nome_completo").eq("status", "ativo").order("nome_completo")
+      .then(({ data }) => setPessoas((data || []) as Pessoa[]));
+  }, []);
+
+  // Dono do número = quem prospecta por ele. As mensagens que saem do celular contam para essa pessoa.
+  const definirDono = async (phone: ChakraPhone, valor: string) => {
+    const responsavelId = valor === SEM_DONO ? null : valor;
+    setSalvandoDono(phone.phone_number_id);
+    const { error } = await supabase.rpc("definir_responsavel_numero" as never, {
+      p_phone_number_id: phone.phone_number_id, p_responsavel_id: responsavelId,
+    } as never);
+    setSalvandoDono(null);
+    if (error) { toast.error("Não foi possível salvar o dono do número: " + error.message); return; }
+    setPhones((atual) => atual.map((p) => p.phone_number_id === phone.phone_number_id ? { ...p, responsavel_id: responsavelId } : p));
+    const nome = pessoas.find((p) => p.id === responsavelId)?.nome_completo;
+    toast.success(nome ? `${phone.phone_e164 || "Número"} agora é de ${nome}.` : `${phone.phone_e164 || "Número"} ficou sem dono.`);
+  };
 
   useEffect(() => () => {
     sdkInstance.current?.destroy?.();
@@ -372,6 +397,25 @@ export function ChakraConnectCard() {
                     <div className="min-w-0">
                       <p className="truncate font-medium">{phone.display_name || phone.phone_e164 || phone.phone_number_id}</p>
                       <p className="text-xs text-muted-foreground">{phone.phone_e164 || "Número retornado pelo Chakra"}</p>
+                      <div className="mt-2 flex items-center gap-2">
+                        <Label htmlFor={`dono-${phone.phone_number_id}`} className="shrink-0 text-xs">Quem usa</Label>
+                        <Select
+                          value={phone.responsavel_id || SEM_DONO}
+                          onValueChange={(valor) => void definirDono(phone, valor)}
+                          disabled={salvandoDono === phone.phone_number_id}
+                        >
+                          <SelectTrigger id={`dono-${phone.phone_number_id}`} className="h-9 min-w-0 flex-1 bg-background">
+                            <SelectValue placeholder="Escolher pessoa" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={SEM_DONO}>Ninguém ainda</SelectItem>
+                            {pessoas.map((p) => (
+                              <SelectItem key={p.id} value={p.id}>{p.nome_completo || "Sem nome"}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {salvandoDono === phone.phone_number_id && <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />}
+                      </div>
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         <Badge variant="secondary">{phone.status || "conectado"}</Badge>
                         <Badge variant={phone.webhook_configured ? "outline" : "destructive"}>
