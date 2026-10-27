@@ -49,8 +49,10 @@ export function NumerosEquipeCampanha({ value, onChange }: { value: string[]; on
                 <Checkbox checked={marcado} onCheckedChange={(c) => alternar(n.phone_number_id, c === true)} />
                 <Smartphone className="h-4 w-4 shrink-0 text-muted-foreground" />
                 <span className="min-w-0">
-                  <span className="block truncate text-sm font-medium">{n.dono || "Sem dono definido"}</span>
-                  <span className="block truncate text-xs text-muted-foreground">{n.phone_e164 || n.display_name}</span>
+                  <span className="block truncate text-sm font-medium">{n.dono || n.display_name || n.phone_e164}</span>
+                  <span className="block truncate text-xs text-muted-foreground">
+                    {n.phone_e164}{!n.dono && " · sem dono definido"}
+                  </span>
                 </span>
               </label>
             );

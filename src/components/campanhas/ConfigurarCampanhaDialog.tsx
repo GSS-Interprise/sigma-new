@@ -450,7 +450,8 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
           <div className="text-center py-12 text-muted-foreground">Carregando...</div>
         ) : (
           <Tabs value={tab} onValueChange={setTab} className="flex-1 overflow-hidden flex flex-col">
-            <div className="overflow-x-auto pb-1">
+            {/* shrink-0: sem isso a coluna do diálogo espreme a fileira e as abas aparecem cortadas */}
+            <div className="shrink-0 overflow-x-auto pb-1">
             <TabsList className="h-auto w-max min-w-full justify-start">
               <TabsTrigger value="disparo" className="min-h-11 gap-1.5">
                 <Smartphone className="h-3.5 w-3.5" />
@@ -462,7 +463,7 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
               </TabsTrigger>
               <TabsTrigger value="responsavel" className="min-h-11 gap-1.5">
                 <UserPlus className="h-3.5 w-3.5" />
-                Responsável
+                Equipe
               </TabsTrigger>
               <TabsTrigger value="estrategias" className="min-h-11 gap-1.5">
                 <Target className="h-3.5 w-3.5" />
