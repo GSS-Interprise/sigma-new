@@ -727,6 +727,22 @@ serve(async (req) => {
     }
 
     if (acao === "fornecedores") {
+      // Busca ao vivo no Conta Azul: a cópia local é de 1x por dia, e o fornecedor cadastrado depois
+      // não aparecia na busca (Amni, 27/10: Jorge Edson cadastrado no CA e "não puxa nada").
+      const busca = String(input.busca || "").trim();
+      if (busca.length >= 3) {
+        const semAc = (t: string) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+        const termos = semAc(busca).split(/\s+/).filter(Boolean);
+        const vivos = itensDe(await ca(svc, `/v1/pessoas?busca=${encodeURIComponent(busca)}&tamanho_pagina=50`));
+        // o filtro do CA pode ser solto: só volta quem tem todos os pedaços digitados no nome ou o documento
+        const dBusca = busca.replace(/\D/g, "");
+        const bons = vivos.filter((e: any) => {
+          const nome = semAc(String(e?.nome ?? ""));
+          return termos.every((t) => nome.includes(t)) || (dBusca.length >= 5 && dig(e?.documento).includes(dBusca));
+        });
+        await guardarPessoas(svc, bons);
+        return json({ ok: true, fornecedores: bons.map((e: any) => ({ id: String(e.id), nome: String(e.nome ?? ""), documento: dig(e?.documento) })) });
+      }
       const ref = await referencias(svc);
       const lista = ref.pessoas
         .filter((c: any) => (c.dados?.perfis ?? []).some((x: any) => /fornecedor/i.test(String(x?.tipo_perfil ?? x))))

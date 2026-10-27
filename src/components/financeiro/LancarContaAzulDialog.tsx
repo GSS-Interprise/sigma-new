@@ -80,12 +80,33 @@ export function LancarContaAzulDialog({ pagamentoIds, open, onOpenChange, onLanc
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, semFornecedor]);
   const semAcento = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  // pedaços em qualquer ordem ("jorge edson" acha "JORGE EDSON DE LIMA/…")
   const achados = (termo: string) => {
-    const t = semAcento(termo.trim());
-    if (t.length < 3 || !fornecedores) return [];
+    const partes = semAcento(termo.trim()).split(/\s+/).filter(Boolean);
+    if (partes.join("").length < 3 || !fornecedores) return [];
     const dig = termo.replace(/\D/g, "");
-    return fornecedores.filter((f) => semAcento(f.nome).includes(t) || (dig.length >= 5 && f.documento.includes(dig))).slice(0, 8);
+    return fornecedores.filter((f) => partes.every((p) => semAcento(f.nome).includes(p)) || (dig.length >= 5 && f.documento.includes(dig))).slice(0, 8);
   };
+  // Sem resultado na cópia local (1x por dia), busca ao vivo no Conta Azul: fornecedor cadastrado hoje aparece.
+  const [buscandoCa, setBuscandoCa] = useState<string | null>(null);
+  const [semResultadoCa, setSemResultadoCa] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    const termos = Object.values(buscaForn).map((t) => (t ?? "").trim()).filter((t) => t.length >= 4 && achados(t).length === 0 && !semResultadoCa[t]);
+    if (!termos.length || !fornecedores) return;
+    const termo = termos[0];
+    const espera = setTimeout(async () => {
+      setBuscandoCa(termo);
+      try {
+        const r = await chamar({ acao: "fornecedores", busca: termo });
+        const novos = (r.fornecedores || []) as { id: string; nome: string; documento: string }[];
+        if (novos.length) setFornecedores((atual) => [...(atual || []).filter((f) => !novos.some((n) => n.id === f.id)), ...novos]);
+        else setSemResultadoCa((s) => ({ ...s, [termo]: true }));
+      } catch { setSemResultadoCa((s) => ({ ...s, [termo]: true })); }
+      finally { setBuscandoCa(null); }
+    }, 500);
+    return () => clearTimeout(espera);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [buscaForn, fornecedores]);
 
   // Aplicar a todos (Mavi, 26/10: Penha tem 18 médicos e era um por um). A categoria fica gravada para cada
   // unidade e o Sigma lembra nos próximos meses.
@@ -209,6 +230,8 @@ export function LancarContaAzulDialog({ pagamentoIds, open, onOpenChange, onLanc
                             </div>
                           )}
                           {fornecedores === null && <p className="text-[10px] text-muted-foreground mt-0.5">carregando fornecedores…</p>}
+                          {buscandoCa && buscandoCa === (buscaForn[i.id] ?? "").trim() && <p className="text-[10px] text-muted-foreground mt-0.5">buscando no Conta Azul…</p>}
+                          {semResultadoCa[(buscaForn[i.id] ?? "").trim()] && <p className="text-[10px] text-red-600 mt-0.5">Nenhum fornecedor com esse nome no Conta Azul.</p>}
                         </div>
                       )}
                     </div>
