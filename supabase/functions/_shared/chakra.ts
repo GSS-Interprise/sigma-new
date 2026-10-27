@@ -183,6 +183,12 @@ const CHAKRA_IDS_CONTA_PULSE = [
   "83996e9c-4ccc-423e-9466-13c317955700", // plugin do número da Amni
   "286031407919518", // WABA do número da Amni
   "238442722693276", // phone_number_id da Amni
+  // Gestão (Pediatria) e os dois do Maikon: a conta GSS ainda não tem plugin deles ("Plugin not
+  // found") nem enxerga os templates. Ficam na Pulse até o Vinicius conectar de novo pelo Sigma;
+  // depois de reconectar, tirar as linhas do número (o WABA e o número continuam os mesmos).
+  "c5a9ba61-dd01-43b3-81b8-4f638a13e5c9", "987580980748042", "1179260535268840", // Gestão 47 9292-0538
+  "f26514cf-181c-438f-9875-3861597c4e8f", "1108596901697420", "1316919421507205", // Maikon 47 6429-1713
+  "f72e550c-a846-4351-81c0-8b2b5fe45129", "1701305377585648", "1265298783330718", // Maikon 47 9264-7508
 ];
 
 export function chakraKeyFor(pathOuId = ""): string | undefined {
