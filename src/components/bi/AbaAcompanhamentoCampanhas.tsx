@@ -269,7 +269,7 @@ export function AbaAcompanhamentoCampanhas() {
                       <td className="py-2.5 px-2 text-center">
                         <span className={`inline-flex items-center gap-1 text-xs tabular-nums ${c.whatsapp_provider !== "evolution" && c.whatsapp_provider ? "text-blue-700 font-medium" : c.chips_online === 0 ? "text-red-600 font-medium" : "text-slate-600"}`}>
                           <Smartphone className="h-3.5 w-3.5" />
-                          {c.whatsapp_provider === "chakra" ? "API oficial · Chakra" : c.whatsapp_provider === "twilio" ? "API oficial · Twilio" : `${c.chips_online}/${c.chips_total}`}
+                          {c.whatsapp_provider === "chakra" ? "API oficial · Chakra" : c.whatsapp_provider === "twilio" ? "API oficial" : `${c.chips_online}/${c.chips_total}`}
                         </span>
                       </td>
                     </tr>

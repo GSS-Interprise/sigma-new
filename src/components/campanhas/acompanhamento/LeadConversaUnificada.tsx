@@ -49,7 +49,6 @@ interface OfficialTemplateOption {
   friendly_name: string;
   category: string | null;
   language: string;
-  twilio_account_key: string | null;
 }
 
 // Tentativas rejeitadas pela Meta ficam preservadas no banco para auditoria e
@@ -134,11 +133,11 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("whatsapp_official_senders")
-        .select("provider, twilio_account_key")
+        .select("provider")
         .eq("id", campanhaCanal?.official_sender_id)
         .single();
       if (error) throw error;
-      return data as { provider: string; twilio_account_key: string | null };
+      return data as { provider: string };
     },
   });
   const [officialTemplateId, setOfficialTemplateId] = useState("");
@@ -148,7 +147,8 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
     queryFn: async (): Promise<OfficialTemplateOption[]> => {
       const { data, error } = await supabase
         .from("whatsapp_official_templates" as never)
-        .select("id, provider, friendly_name, category, language, twilio_account_key")
+        .select("id, provider, friendly_name, category, language")
+        .eq("provider", "chakra")
         .eq("approval_status", "approved")
         .order("friendly_name");
       if (error) throw error;
@@ -158,8 +158,7 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
   });
   const compatibleOfficialTemplates = campanhaSender
     ? officialTemplates.filter((template) =>
-        template.provider === campanhaSender.provider &&
-        (campanhaSender.provider === "chakra" || template.twilio_account_key === campanhaSender.twilio_account_key))
+        template.provider === campanhaSender.provider)
     : officialTemplates;
 
   useEffect(() => {
@@ -168,6 +167,8 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
     setOfficialTemplateId(preferred?.id || compatibleOfficialTemplates[0]?.id || "");
   }, [campanhaCanal?.official_template_id, officialTemplateId, compatibleOfficialTemplates]);
 
+  // "twilio" segue aqui só para conversas antigas (Twilio saiu em 27/10/2026):
+  // elas continuam sendo oficiais (janela de 24h) e nunca caem no envio Evolution.
   const isOfficialConversation = ["twilio", "chakra"].includes(String(conv?.instance?.provider));
   const officialServiceWindowOpen = !isOfficialConversation || Boolean(
     conv?.service_window_expires_at && new Date(conv.service_window_expires_at).getTime() > Date.now(),
@@ -216,7 +217,7 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
   const enviar = useMutation({
     mutationFn: async ({ msg, clientMessageId = crypto.randomUUID() }: { msg: string; clientMessageId?: string }) => {
       if (["twilio", "chakra"].includes(String(conv?.instance?.provider))) {
-        const { data, error } = await supabase.functions.invoke("twilio-whatsapp-send", {
+        const { data, error } = await supabase.functions.invoke("whatsapp-oficial-send", {
           // Mantém o card da campanha sincronizado também nas respostas livres
           // dentro da janela oficial de 24 horas.
           body: { conversation_id: conv.id, campaign_lead_id: campanhaLeadId, body: msg },
@@ -271,7 +272,7 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
       if (isOfficialCampaign) {
         if (!campanhaLeadId) throw new Error("Lead da campanha não identificado");
         if (!officialTemplateId) throw new Error("Escolha um template oficial aprovado.");
-        const { data, error } = await supabase.functions.invoke("twilio-whatsapp-send", {
+        const { data, error } = await supabase.functions.invoke("whatsapp-oficial-send", {
           body: { campaign_lead_id: campanhaLeadId, template_id: officialTemplateId },
         });
         if (error) throw new Error(error.message || "Não foi possível enviar o template oficial");

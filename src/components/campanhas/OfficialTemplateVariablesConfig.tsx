@@ -105,7 +105,7 @@ export function OfficialTemplateVariablesConfig({ templateId, value, onChange }:
       <div>
         <Label>Variáveis do template</Label>
         <p className="mt-1 text-xs text-muted-foreground">
-          Use dados dinâmicos do Sigma ou digite um valor fixo. Nenhum exemplo da Twilio será enviado.
+          Use dados dinâmicos do Sigma ou digite um valor fixo. Os exemplos cadastrados no template não são enviados.
         </p>
       </div>
 

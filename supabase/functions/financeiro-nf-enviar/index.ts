@@ -154,7 +154,7 @@ serve(async (req) => {
   try {
     const authorization = req.headers.get("Authorization") || "";
     // aceita a service-role tanto pela chave exata quanto pelo claim do JWT — é como o
-    // twilio-whatsapp-send faz; sem isso um cron/edge interna cai em "unauthorized"
+    // whatsapp-oficial-send faz; sem isso um cron/edge interna cai em "unauthorized"
     const temClaimServiceRole = (() => {
       const token = authorization.replace(/^Bearer\s+/i, "");
       const parte = token.split(".")[1];

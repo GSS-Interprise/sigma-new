@@ -1,6 +1,8 @@
+// Envio pela API oficial do WhatsApp (Chakra). Era "twilio-whatsapp-send": o Twilio foi
+// cortado do Sigma em 27/10/2026 e a função ganhou o nome do que faz. Mesmo contrato de
+// entrada e saída da antiga.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { twilioCredentials } from "../_shared/twilio-auth.ts";
 import {
   ChakraApiError,
   chakraApi,
@@ -201,7 +203,7 @@ serve(async (req) => {
       campaign = campaignResult.data;
       lead = leadResult.data;
       if (
-        !(["twilio", "chakra"] as string[]).includes(campaign.whatsapp_provider)
+        campaign.whatsapp_provider !== "chakra"
       ) {
         return json(
           { ok: false, error: "campaign_not_official_provider" },
@@ -221,7 +223,7 @@ serve(async (req) => {
         .eq("id", data.instance_id)
         .single();
       if (instanceError) throw instanceError;
-      if (!(["twilio", "chakra"] as string[]).includes(instance.provider)) {
+      if (instance.provider !== "chakra") {
         return json(
           { ok: false, error: "conversation_not_official_provider" },
           409,
@@ -290,6 +292,9 @@ serve(async (req) => {
     }
     const sender = senders[0];
     officialSenderId = String(sender.id);
+    if (sender.provider !== "chakra") {
+      return json({ ok: false, error: "provedor_desativado", provider: sender.provider }, 409);
+    }
     if (
       !["approved", "online", "active", "activated", "connected"].includes(
         String(sender.status).toLowerCase(),
@@ -370,15 +375,6 @@ serve(async (req) => {
       }
       if (data.approval_status !== "approved") {
         return json({ ok: false, error: "template_not_approved" }, 409);
-      }
-      if (
-        sender.provider === "twilio" &&
-        data.twilio_account_key !== sender.twilio_account_key
-      ) {
-        return json({
-          ok: false,
-          error: "twilio_sender_template_account_mismatch",
-        }, 409);
       }
       if (
         sender.provider === "chakra" && /\uFFFD|Ã/.test(String(data.body || ""))
@@ -598,7 +594,7 @@ serve(async (req) => {
     }
 
     let providerMessage: Record<string, any>;
-    if (sender.provider === "chakra") {
+    {
       const pluginId = String(sender.chakra_plugin_id || "");
       const phoneNumberId = String(sender.chakra_phone_number_id || "");
       if (!pluginId || !phoneNumberId) {
@@ -656,57 +652,6 @@ serve(async (req) => {
         id: messageId,
         status: String(result.status || "queued").toLowerCase(),
       };
-    } else {
-      const callbackUrl = Deno.env.get("TWILIO_STATUS_CALLBACK_URL") ||
-        `${supabaseUrl}/functions/v1/twilio-whatsapp-webhook`;
-      const form = new URLSearchParams({
-        From: `whatsapp:${sender.phone_e164}`,
-        To: `whatsapp:${toPhone}`,
-        StatusCallback: callbackUrl,
-      });
-      if (template) {
-        form.set("ContentSid", template.content_sid);
-        form.set("ContentVariables", JSON.stringify(resolvedTemplateVariables));
-      } else {
-        form.set("Body", body);
-      }
-
-      const credentials = twilioCredentials(sender.twilio_account_key);
-      const twilioResponse = await fetch(
-        `https://api.twilio.com/2010-04-01/Accounts/${credentials.sid}/Messages.json`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: credentials.header,
-            "Content-Type": "application/x-www-form-urlencoded",
-          },
-          body: form,
-        },
-      );
-      const twilioMessage = await twilioResponse.json();
-      if (!twilioResponse.ok) {
-        console.error("[twilio-send]", twilioMessage);
-        if (twilioResponse.status === 429) {
-          await releaseOfficialSenderLease(admin, officialSenderId, officialLeaseToken, 60_000);
-          officialLeaseToken = null;
-          return json({
-            ok: false,
-            error: "official_provider_rate_limited",
-            provider_code: twilioMessage.code || null,
-            provider_message: twilioMessage.message || null,
-            retry_after_ms: 60_000,
-          }, 429);
-        }
-        await releaseOfficialSenderLease(admin, officialSenderId, officialLeaseToken);
-        officialLeaseToken = null;
-        return json({
-          ok: false,
-          error: "twilio_send_failed",
-          provider_code: twilioMessage.code || null,
-          provider_message: twilioMessage.message || null,
-        }, 502);
-      }
-      providerMessage = twilioMessage;
     }
     await releaseOfficialSenderLease(admin, officialSenderId, officialLeaseToken);
     officialLeaseToken = null;
@@ -791,7 +736,7 @@ serve(async (req) => {
       ...(diagnosticBypass ? { diagnostic_bypass: true } : {}),
     });
   } catch (error) {
-    console.error("[twilio-send]", error);
+    console.error("[whatsapp-oficial-send]", error);
     if (error instanceof ChakraApiError) {
       const status = error.status === 429 ? 429 : 502;
       await releaseOfficialSenderLease(

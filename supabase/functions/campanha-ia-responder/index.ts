@@ -1,6 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { twilioCredentials } from "../_shared/twilio-auth.ts";
 import { sendWhatsAppText } from "../_shared/evo-sender.ts";
 
 const corsHeaders = {
@@ -54,24 +53,6 @@ serve(async (req) => {
     const finalText = repairMojibake(aggregated_texts || message_text || "");
     const hasMedia = (message_type === "audio" || message_type === "image") &&
       msg_id;
-    let twilioAccountKey = "principal";
-    if (conversation_id) {
-      const { data: conversationContext } = await supabase
-        .from("sigzap_conversations")
-        .select("instance_id")
-        .eq("id", conversation_id)
-        .maybeSingle();
-      if (conversationContext?.instance_id) {
-        const { data: instanceContext } = await supabase
-          .from("sigzap_instances")
-          .select("provider, twilio_account_key")
-          .eq("id", conversationContext.instance_id)
-          .maybeSingle();
-        if (instanceContext?.provider === "twilio") {
-          twilioAccountKey = instanceContext.twilio_account_key || "principal";
-        }
-      }
-    }
     if (!finalText && !hasMedia) {
       throw new Error("message_text ou mídia obrigatórios");
     }
@@ -470,7 +451,7 @@ serve(async (req) => {
       console.log(`[ia] 🎙️ Decrypt áudio (msg ${msg_id})`);
       try {
         const media = media_url && !instance_name
-          ? await downloadTwilioMedia(media_url, twilioAccountKey)
+          ? await baixarMidiaPorUrl(media_url)
           : await decryptMedia(evoUrl, evoKey, instance_name, msg_id, phone);
         if (media) {
           const ext = media.mimetype.includes("ogg")
@@ -738,7 +719,7 @@ serve(async (req) => {
       historico.push({ role: "gss", text: msg, ts: new Date().toISOString() });
     }
 
-    // Uma só rodada por lead: o lease vale para Evolution e Twilio. Antes
+    // Uma só rodada por lead: o lease vale para Evolution e a API oficial. Antes
     // ele só era adquirido no caminho Evolution.
     let responseTurnToken: string | null = null;
     if (messages.length > 0) {
@@ -773,7 +754,7 @@ serve(async (req) => {
     // e delay=0 (edge controla typing/sleep como antes pra parecer humano).
     if (
       messages.length > 0 &&
-      ["twilio", "chakra"].includes(String(campanha?.whatsapp_provider)) &&
+      String(campanha?.whatsapp_provider) === "chakra" &&
       conversation_id
     ) {
       const { data: canSend, error: consumeTurnError } = await supabase.rpc(
@@ -788,7 +769,7 @@ serve(async (req) => {
       }
       for (const message of messages) {
         const response = await fetch(
-          `${supabaseUrl}/functions/v1/twilio-whatsapp-send`,
+          `${supabaseUrl}/functions/v1/whatsapp-oficial-send`,
           {
             method: "POST",
             headers: {
@@ -1281,18 +1262,15 @@ async function decryptMedia(
   };
 }
 
-async function downloadTwilioMedia(
+// Mídia que chega com URL própria (canal oficial). O Twilio, que exigia credencial aqui,
+// foi cortado em 27/10/2026.
+async function baixarMidiaPorUrl(
   mediaUrl: string,
-  accountKey = "principal",
 ): Promise<{ base64: string; mimetype: string } | null> {
-  const credentials = twilioCredentials(accountKey);
-
-  const response = await fetch(mediaUrl, {
-    headers: { Authorization: credentials.header },
-  });
+  const response = await fetch(mediaUrl);
   if (!response.ok) {
     console.warn(
-      `[ia] download Twilio ${response.status}: ${
+      `[ia] download da mídia ${response.status}: ${
         (await response.text()).slice(0, 200)
       }`,
     );

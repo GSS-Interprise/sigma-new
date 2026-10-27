@@ -232,7 +232,7 @@ export function StatusOperacionalPanel() {
                         ? "border-indigo-200 bg-indigo-50 text-indigo-700"
                         : "border-slate-200 bg-slate-50 text-slate-700",
                     )}>
-                      {campaign.whatsapp_provider === "chakra" ? "API oficial · Chakra" : campaign.whatsapp_provider === "twilio" ? "API oficial · Twilio" : "Evolution"}
+                      {campaign.whatsapp_provider === "chakra" ? "API oficial · Chakra" : campaign.whatsapp_provider === "twilio" ? "API oficial" : "Evolution"}
                     </Badge>
                     {campaign.whatsapp_provider !== "evolution" && campaign.whatsapp_provider ? (
                       <p className="text-[11px] text-muted-foreground">

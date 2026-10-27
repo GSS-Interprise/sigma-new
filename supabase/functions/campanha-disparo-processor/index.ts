@@ -79,7 +79,7 @@ serve(async (req) => {
       return json({ ok: true, msg: "skipped:manual — 1o contato e manual, sem disparo automatico" });
 
     // Nunca fazer fallback silencioso para Evolution quando a operação escolheu
-    // a API oficial. O envio Twilio só será liberado com sender e callbacks prontos.
+    // a API oficial (Chakra; o Twilio foi cortado em 27/10/2026).
     if (["pausada", "finalizada", "arquivada"].includes(camp.status))
       return json({ ok: true, msg: `Campanha ${camp.status}` });
 
@@ -145,8 +145,8 @@ serve(async (req) => {
     if (!locked)
       return json({ ok: true, msg: "Outro processo rodando" });
 
-    if (["twilio", "chakra"].includes(String(camp.whatsapp_provider))) {
-      return await processTwilioBatch(supabase, camp, supabaseUrl, supabaseKey);
+    if (String(camp.whatsapp_provider) === "chakra") {
+      return await processOfficialBatch(supabase, camp, supabaseUrl, supabaseKey);
     }
 
     // ── Buscar cadência da campanha (se ativa) ──
@@ -625,10 +625,10 @@ function json(body: Record<string, unknown>) {
   });
 }
 
-async function processTwilioBatch(supabase: any, camp: any, supabaseUrl: string, serviceRole: string) {
+async function processOfficialBatch(supabase: any, camp: any, supabaseUrl: string, serviceRole: string) {
   if (!camp.official_sender_id || !camp.official_template_id) {
     await supabase.from("campanhas").update({ next_batch_at: null }).eq("id", camp.id);
-    return json({ ok: false, error: "twilio_campaign_not_configured" });
+    return json({ ok: false, error: "official_campaign_not_configured" });
   }
 
   const bindings = camp.official_template_variables || {};
@@ -637,7 +637,7 @@ async function processTwilioBatch(supabase: any, camp: any, supabaseUrl: string,
     Object.values(bindings).some((value) => !String(value || "").trim())
   ) {
     await supabase.from("campanhas").update({ next_batch_at: null }).eq("id", camp.id);
-    return json({ ok: false, error: "twilio_template_variables_not_configured" });
+    return json({ ok: false, error: "official_template_variables_not_configured" });
   }
 
   const [{ data: sender }, { data: template }] = await Promise.all([
@@ -654,7 +654,7 @@ async function processTwilioBatch(supabase: any, camp: any, supabaseUrl: string,
   ]);
   if (!sender || !["approved", "online", "active", "activated", "connected"].includes(String(sender.status).toLowerCase())) {
     await supabase.from("campanhas").update({ next_batch_at: null }).eq("id", camp.id);
-    return json({ ok: false, error: "twilio_sender_not_active" });
+    return json({ ok: false, error: "official_sender_not_active" });
   }
   if (camp.whatsapp_provider === "chakra") {
     const { data: connection, error: connectionError } = await supabase
@@ -684,7 +684,7 @@ async function processTwilioBatch(supabase: any, camp: any, supabaseUrl: string,
   }
   if (template?.approval_status !== "approved") {
     await supabase.from("campanhas").update({ next_batch_at: null }).eq("id", camp.id);
-    return json({ ok: false, error: "twilio_template_not_approved" });
+    return json({ ok: false, error: "official_template_not_approved" });
   }
 
   const brtAgora = new Date(Date.now() - 3 * 3600 * 1000);
@@ -749,7 +749,7 @@ async function processTwilioBatch(supabase: any, camp: any, supabaseUrl: string,
   let responseStatus = 200;
   try {
     const response = await fetchWithTimeout(
-      `${supabaseUrl}/functions/v1/twilio-whatsapp-send`,
+      `${supabaseUrl}/functions/v1/whatsapp-oficial-send`,
       {
         method: "POST",
         headers: {
@@ -798,7 +798,7 @@ async function processTwilioBatch(supabase: any, camp: any, supabaseUrl: string,
       .join(": ");
     const reason = [data?.error || await describeFunctionError(error), providerDetail]
       .filter(Boolean)
-      .join(" — ") || "twilio_send_failed";
+      .join(" — ") || "official_send_failed";
     const { error: reconcileError } = await supabase.rpc(
       "reconcile_whatsapp_delivery",
       {

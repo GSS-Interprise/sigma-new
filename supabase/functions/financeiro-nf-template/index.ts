@@ -3,7 +3,7 @@
 //
 // O link do médico vai no BOTÃO de URL dinâmica (sufixo = token), não no corpo: aprova
 // mais fácil e a mensagem fica limpa. Texto sem acento de propósito — template com
-// acento já chegou corrompido do provedor nesta WABA (ver twilio-whatsapp-send).
+// acento já chegou corrompido do provedor nesta WABA (ver whatsapp-oficial-send).
 //
 // Input opcional: { nome?, corpo?, texto_botao?, link_base?, tipo?, variaveis?, exemplo?, dry_run?: boolean }
 // "variaveis" dá o papel de cada {{n}} (nome, competencia, producao, valor): é por ele que o

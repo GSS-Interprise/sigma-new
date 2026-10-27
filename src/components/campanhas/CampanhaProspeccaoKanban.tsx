@@ -516,7 +516,8 @@ function LeadCard({
   const tags = lead.tags || [];
   const atendimentoHumano = campLead.humano_assumiu === true;
   const campanhaManual = tipoEnvio === "manual";
-  const janela = whatsappProvider === "twilio" ? janelaAtendimento(campLead.last_incoming_at) : null;
+  // janela de 24h da API oficial (Chakra; o Twilio foi cortado em 27/10/2026)
+  const janela = whatsappProvider === "chakra" ? janelaAtendimento(campLead.last_incoming_at) : null;
   const envioComFalha = Boolean(campLead.erro_envio) || ["retry_wait", "failed_permanent"].includes(String(campLead.envio_status));
 
   return (

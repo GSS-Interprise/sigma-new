@@ -21,7 +21,6 @@ import {
   RefreshCw,
   Search,
   Send,
-  ShieldCheck,
   Trash2,
   XCircle,
 } from "lucide-react";
@@ -40,12 +39,9 @@ interface OfficialTemplate {
   approval_status: string;
   rejection_reason: string | null;
   updated_at: string;
-  twilio_account_key: string | null;
   twilio_payload: { components?: Array<{ type?: string; buttons?: Array<{ type?: string; text?: string }> }> } | null;
 }
 
-// Canal do template novo: o Chakra é a API oficial em uso; as subcontas Twilio continuam disponíveis.
-const CHAKRA_ACCOUNT = "chakra";
 const INTEREST_BUTTONS = ["Tenho interesse", "Sem interesse"];
 
 /** Botões de resposta rápida do template (Chakra/Meta guarda em components → BUTTONS). */
@@ -59,7 +55,7 @@ function templateButtons(template: Pick<OfficialTemplate, "twilio_payload">): st
     .filter(Boolean);
 }
 
-type StatusFilter = "all" | "approved" | "review" | "draft" | "rejected";
+type StatusFilter = "all" | "approved" | "review" | "rejected";
 
 const STATUS: Record<string, { label: string; className: string; help: string }> = {
   approved: {
@@ -93,7 +89,6 @@ const FILTERS: Array<{ value: StatusFilter; label: string }> = [
   { value: "all", label: "Todos" },
   { value: "approved", label: "Aprovados" },
   { value: "review", label: "Em análise" },
-  { value: "draft", label: "Rascunhos" },
   { value: "rejected", label: "Rejeitados" },
 ];
 
@@ -108,7 +103,6 @@ function hasEncodingProblem(body: string | null) {
 function matchesFilter(template: OfficialTemplate, filter: StatusFilter) {
   if (filter === "all") return true;
   if (filter === "review") return ["pending", "received"].includes(template.approval_status);
-  if (filter === "draft") return template.approval_status === "unsubmitted";
   return template.approval_status === filter;
 }
 
@@ -149,8 +143,6 @@ export default function WhatsAppTemplates() {
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<OfficialTemplate | null>(null);
-  const [submitTemplate, setSubmitTemplate] = useState<OfficialTemplate | null>(null);
-  const [submitCategory, setSubmitCategory] = useState<"UTILITY" | "MARKETING">("MARKETING");
   const [filter, setFilter] = useState<StatusFilter>("all");
   const [search, setSearch] = useState("");
   const [name, setName] = useState("");
@@ -162,10 +154,8 @@ export default function WhatsAppTemplates() {
     "2": "Pediatria",
     "3": "Chapecó/SC",
   });
-  const [templateAccountKey, setTemplateAccountKey] = useState(CHAKRA_ACCOUNT);
   const [buttons, setButtons] = useState<string[]>(INTEREST_BUTTONS);
   const [createCategory, setCreateCategory] = useState<"UTILITY" | "MARKETING">("MARKETING");
-  const isChakraCreate = templateAccountKey === CHAKRA_ACCOUNT;
 
   const variableKeys = useMemo(() => {
     const found = Array.from(body.matchAll(/\{\{(\d+)\}\}/g), (match) => match[1]);
@@ -178,6 +168,8 @@ export default function WhatsAppTemplates() {
       const { data, error } = await supabase
         .from("whatsapp_official_templates" as never)
         .select("*")
+        // Twilio saiu do Sigma (27/10/2026): as linhas antigas dela ficam no banco, fora da tela.
+        .eq("provider", "chakra")
         .eq("language", "pt_BR")
         .order("updated_at", { ascending: false });
       if (error) throw error;
@@ -185,40 +177,11 @@ export default function WhatsAppTemplates() {
     },
   });
 
-  const { data: officialSenders = [] } = useQuery({
-    queryKey: ["active-whatsapp-official-senders", "template-accounts"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("whatsapp_official_senders" as never)
-        .select("provider, twilio_account_key, display_name, phone_e164")
-        .eq("provider", "twilio")
-        .in("status", ["approved", "online", "active", "activated", "connected"])
-        .order("display_name");
-      if (error) throw error;
-      return (data || []) as Array<{ provider: string; twilio_account_key: string; display_name: string | null; phone_e164: string }>;
-    },
-  });
-
-  const templateAccounts = useMemo(() => {
-    const accounts = new Map<string, { label: string; phone: string }>();
-    accounts.set("principal", { label: "Conta principal", phone: "" });
-    for (const sender of officialSenders) {
-      if (!accounts.has(sender.twilio_account_key)) {
-        accounts.set(sender.twilio_account_key, {
-          label: sender.display_name || "Remetente oficial",
-          phone: sender.phone_e164,
-        });
-      }
-    }
-    return [...accounts.entries()];
-  }, [officialSenders]);
-
   const counts = useMemo(
     () => ({
       all: templates.length,
       approved: templates.filter((item) => item.approval_status === "approved").length,
       review: templates.filter((item) => ["pending", "received"].includes(item.approval_status)).length,
-      draft: templates.filter((item) => item.approval_status === "unsubmitted").length,
       rejected: templates.filter((item) => item.approval_status === "rejected").length,
     }),
     [templates],
@@ -234,17 +197,6 @@ export default function WhatsAppTemplates() {
       return matchesSearch && matchesFilter(template, filter);
     });
   }, [filter, search, templates]);
-
-  const invoke = useMutation({
-    mutationFn: async (payload: Record<string, unknown>) => {
-      const { data, error } = await supabase.functions.invoke("twilio-content-templates", { body: payload });
-      if (error) throw error;
-      if (!data?.ok) throw new Error(data?.error || "Falha na integração com a Twilio");
-      return data;
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["whatsapp-official-templates"] }),
-    onError: (error) => toast.error(errorMessage(error)),
-  });
 
   const syncChakra = useMutation({
     mutationFn: async () => {
@@ -289,57 +241,23 @@ export default function WhatsAppTemplates() {
     onError: (error) => toast.error(errorMessage(error)),
   });
 
-  async function syncTemplates() {
-    const accountKeys = [...new Set(templateAccounts.map(([key]) => key))].filter((key) => key !== CHAKRA_ACCOUNT);
-    for (const accountKey of accountKeys) {
-      await invoke.mutateAsync({ action: "sync", account_key: accountKey });
-    }
-    toast.success(`${accountKeys.length} conta(s) sincronizada(s) com a Twilio`);
-  }
-
   async function createTemplate() {
     if (!name.trim() || !body.trim()) return toast.error("Preencha o nome e a mensagem");
     const sequential = variableKeys.every((key, index) => Number(key) === index + 1);
     if (!sequential) return toast.error("As variáveis devem ser sequenciais: {{1}}, {{2}}, {{3}}");
     const variables = Object.fromEntries(variableKeys.map((key) => [key, samples[key] || `exemplo_${key}`]));
-    if (isChakraCreate) {
-      const cleanButtons = buttons.map((button) => button.trim()).filter(Boolean);
-      if (cleanButtons.some((button) => button.length > 25)) return toast.error("Cada botão pode ter até 25 caracteres");
-      await createChakra.mutateAsync({
-        action: "create_template",
-        name: name.trim(),
-        body: body.trim(),
-        variables,
-        category: createCategory,
-        buttons: cleanButtons,
-      });
-      setCreateOpen(false);
-      setName("");
-      return;
-    }
-    await invoke.mutateAsync({
-      action: "create",
-      friendly_name: name.trim(),
-      language: "pt_BR",
+    const cleanButtons = buttons.map((button) => button.trim()).filter(Boolean);
+    if (cleanButtons.some((button) => button.length > 25)) return toast.error("Cada botão pode ter até 25 caracteres");
+    await createChakra.mutateAsync({
+      action: "create_template",
+      name: name.trim(),
       body: body.trim(),
       variables,
-      account_key: templateAccountKey,
+      category: createCategory,
+      buttons: cleanButtons,
     });
     setCreateOpen(false);
     setName("");
-    toast.success("Rascunho criado na Twilio");
-  }
-
-  async function submitForApproval() {
-    if (!submitTemplate) return;
-    await invoke.mutateAsync({
-      action: "submit",
-      content_sid: submitTemplate.content_sid,
-      name: submitTemplate.friendly_name,
-      category: submitCategory,
-    });
-    setSubmitTemplate(null);
-    toast.success("Template enviado para aprovação do WhatsApp");
   }
 
   return (
@@ -356,10 +274,6 @@ export default function WhatsAppTemplates() {
             </p>
           </div>
           <div className="grid grid-cols-1 gap-2 xs:grid-cols-2 sm:flex">
-            <Button variant="outline" className="min-h-11" onClick={syncTemplates} disabled={invoke.isPending}>
-              <RefreshCw className={`mr-2 h-4 w-4 ${invoke.isPending ? "animate-spin" : ""}`} />
-              Sincronizar
-            </Button>
             <Button variant="outline" className="min-h-11" onClick={() => syncChakra.mutate()} disabled={syncChakra.isPending}>
               <RefreshCw className={`mr-2 h-4 w-4 ${syncChakra.isPending ? "animate-spin" : ""}`} />
               Sincronizar Chakra
@@ -375,7 +289,7 @@ export default function WhatsAppTemplates() {
           </div>
         </header>
 
-        <section className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <section className="grid grid-cols-3 gap-2">
           <Card>
             <CardContent className="p-3 sm:p-4">
               <p className="text-xs text-muted-foreground">Aprovados</p>
@@ -386,12 +300,6 @@ export default function WhatsAppTemplates() {
             <CardContent className="p-3 sm:p-4">
               <p className="text-xs text-muted-foreground">Em análise</p>
               <p className="mt-1 text-2xl font-bold text-amber-700">{counts.review}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-3 sm:p-4">
-              <p className="text-xs text-muted-foreground">Rascunhos</p>
-              <p className="mt-1 text-2xl font-bold">{counts.draft}</p>
             </CardContent>
           </Card>
           <Card>
@@ -454,7 +362,7 @@ export default function WhatsAppTemplates() {
                         <div className="min-w-0">
                           <h2 className="truncate text-base font-semibold">{template.friendly_name}</h2>
                           <p className="mt-1 text-xs text-muted-foreground">
-                            {template.language} · {template.category || "Sem categoria"} · {template.provider === "chakra" ? "Chakra" : `Conta: ${template.twilio_account_key || "principal"}`}
+                            {template.language} · {template.category || "Sem categoria"} · Chakra
                           </p>
                         </div>
                         <Badge variant="outline" className={`shrink-0 ${meta.className}`}>
@@ -501,18 +409,6 @@ export default function WhatsAppTemplates() {
                         >
                           Visualizar
                         </Button>
-                        {template.approval_status === "unsubmitted" && (
-                          <Button
-                            className="min-h-11 flex-1"
-                            onClick={() => {
-                              setSubmitTemplate(template);
-                              setSubmitCategory("MARKETING");
-                            }}
-                          >
-                            <Send className="mr-2 h-4 w-4" />
-                            Enviar para aprovação
-                          </Button>
-                        )}
                       </div>
                     </CardContent>
                   </Card>
@@ -584,33 +480,10 @@ export default function WhatsAppTemplates() {
           <DialogHeader>
             <DialogTitle>Novo template oficial</DialogTitle>
             <DialogDescription>
-              {isChakraCreate
-                ? "No Chakra o template vai direto para a análise da Meta (leva de algumas horas a um dia)."
-                : "O template é criado como rascunho. O envio para a Meta é uma ação separada."}
+              Enviado para todas as contas do Chakra conectadas, direto para a análise da Meta (leva de algumas horas a um dia).
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="space-y-1.5">
-              <Label>Canal</Label>
-              <Select value={templateAccountKey} onValueChange={setTemplateAccountKey}>
-                <SelectTrigger className="min-h-11">
-                  <SelectValue placeholder="Selecione a conta" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={CHAKRA_ACCOUNT}>Chakra · API oficial em uso</SelectItem>
-                  {templateAccounts.map(([key, account]) => (
-                    <SelectItem key={key} value={key}>
-                      {account.label}{account.phone ? ` · ${account.phone}` : ""} · {key}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                {isChakraCreate
-                  ? "Enviado para todas as contas do Chakra conectadas."
-                  : "O template só poderá ser usado por remetentes da mesma subconta."}
-              </p>
-            </div>
             <div className="space-y-1.5">
               <Label htmlFor="template-name">Nome interno</Label>
               <Input
@@ -641,107 +514,58 @@ export default function WhatsAppTemplates() {
                 ))}
               </div>
             )}
-            {isChakraCreate && (
-              <>
-                <div className="space-y-1.5">
-                  <Label>Categoria</Label>
-                  <Select value={createCategory} onValueChange={(value) => setCreateCategory(value as "UTILITY" | "MARKETING")}>
-                    <SelectTrigger className="min-h-11">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="MARKETING">Marketing — primeira abordagem/prospecção</SelectItem>
-                      <SelectItem value="UTILITY">Utility — atendimento ou relação existente</SelectItem>
-                    </SelectContent>
-                  </Select>
+            <div className="space-y-1.5">
+              <Label>Categoria</Label>
+              <Select value={createCategory} onValueChange={(value) => setCreateCategory(value as "UTILITY" | "MARKETING")}>
+                <SelectTrigger className="min-h-11">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="MARKETING">Marketing — primeira abordagem/prospecção</SelectItem>
+                  <SelectItem value="UTILITY">Utility — atendimento ou relação existente</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Label>Botões de resposta (até 3)</Label>
+                <div className="flex gap-2">
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setButtons(INTEREST_BUTTONS)}>
+                    Usar botões de interesse
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" disabled={buttons.length >= 3} onClick={() => setButtons((current) => [...current, ""])}>
+                    <Plus className="mr-1 h-4 w-4" /> Botão
+                  </Button>
                 </div>
-                <div className="space-y-2">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <Label>Botões de resposta (até 3)</Label>
-                    <div className="flex gap-2">
-                      <Button type="button" variant="ghost" size="sm" onClick={() => setButtons(INTEREST_BUTTONS)}>
-                        Usar botões de interesse
-                      </Button>
-                      <Button type="button" variant="outline" size="sm" disabled={buttons.length >= 3} onClick={() => setButtons((current) => [...current, ""])}>
-                        <Plus className="mr-1 h-4 w-4" /> Botão
-                      </Button>
-                    </div>
-                  </div>
-                  {buttons.length === 0 && <p className="text-xs text-muted-foreground">Sem botões: o médico responde por texto.</p>}
-                  {buttons.map((button, index) => (
-                    <div key={index} className="flex gap-2">
-                      <Input
-                        value={button}
-                        maxLength={25}
-                        placeholder="Texto do botão (até 25 caracteres)"
-                        onChange={(event) => setButtons((current) => current.map((item, i) => (i === index ? event.target.value : item)))}
-                      />
-                      <Button type="button" variant="ghost" size="icon" aria-label="Remover botão" onClick={() => setButtons((current) => current.filter((_, i) => i !== index))}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))}
-                  <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
-                    <strong className="text-foreground">Como os botões de interesse funcionam:</strong> “Tenho interesse” segue a conversa
-                    normalmente. “Sem interesse” encerra só esta campanha e o sistema pergunta se o médico quer continuar
-                    recebendo outras oportunidades — só quem responder “Não quero mais” vai para a lista de bloqueio.
-                    Os textos aprovados até hoje não usam acento; mantenha assim para evitar rejeição.
-                  </div>
+              </div>
+              {buttons.length === 0 && <p className="text-xs text-muted-foreground">Sem botões: o médico responde por texto.</p>}
+              {buttons.map((button, index) => (
+                <div key={index} className="flex gap-2">
+                  <Input
+                    value={button}
+                    maxLength={25}
+                    placeholder="Texto do botão (até 25 caracteres)"
+                    onChange={(event) => setButtons((current) => current.map((item, i) => (i === index ? event.target.value : item)))}
+                  />
+                  <Button type="button" variant="ghost" size="icon" aria-label="Remover botão" onClick={() => setButtons((current) => current.filter((_, i) => i !== index))}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
                 </div>
-              </>
-            )}
+              ))}
+              <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
+                <strong className="text-foreground">Como os botões de interesse funcionam:</strong> “Tenho interesse” segue a conversa
+                normalmente. “Sem interesse” encerra só esta campanha e o sistema pergunta se o médico quer continuar
+                recebendo outras oportunidades — só quem responder “Não quero mais” vai para a lista de bloqueio.
+                Os textos aprovados até hoje não usam acento; mantenha assim para evitar rejeição.
+              </div>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" className="min-h-11" onClick={() => setCreateOpen(false)}>
               Cancelar
             </Button>
-            <Button className="min-h-11" onClick={createTemplate} disabled={invoke.isPending || createChakra.isPending}>
-              {isChakraCreate ? "Enviar para aprovação" : "Criar rascunho"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={!!submitTemplate} onOpenChange={(open) => !open && setSubmitTemplate(null)}>
-        <DialogContent className="w-[calc(100vw-1rem)] sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Enviar para aprovação</DialogTitle>
-            <DialogDescription>
-              A categoria é avaliada pela Meta e não deve ser escolhida apenas pelo tom do texto.
-            </DialogDescription>
-          </DialogHeader>
-          <Select
-            value={submitCategory}
-            onValueChange={(value) => setSubmitCategory(value as "UTILITY" | "MARKETING")}
-          >
-            <SelectTrigger className="min-h-11">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="MARKETING">Marketing — primeira abordagem/prospecção</SelectItem>
-              <SelectItem value="UTILITY">Utility — atendimento ou relação existente</SelectItem>
-            </SelectContent>
-          </Select>
-          <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
-            {submitCategory === "MARKETING" ? (
-              <span className="flex gap-2">
-                <Clock3 className="h-4 w-4 shrink-0" />
-                Indicado para apresentar oportunidades a novos contatos.
-              </span>
-            ) : (
-              <span className="flex gap-2">
-                <ShieldCheck className="h-4 w-4 shrink-0" />
-                Use somente para atualização solicitada ou atendimento em andamento.
-              </span>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" className="min-h-11" onClick={() => setSubmitTemplate(null)}>
-              Cancelar
-            </Button>
-            <Button className="min-h-11" onClick={submitForApproval} disabled={invoke.isPending}>
-              <CheckCircle2 className="mr-2 h-4 w-4" />
-              Confirmar envio
+            <Button className="min-h-11" onClick={createTemplate} disabled={createChakra.isPending}>
+              Enviar para aprovação
             </Button>
           </DialogFooter>
         </DialogContent>

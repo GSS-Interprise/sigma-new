@@ -99,7 +99,7 @@ async function sendLead(admin: any, supabaseUrl: string, serviceRole: string, le
 
   try {
     const response = await fetchWithTimeout(
-      `${supabaseUrl}/functions/v1/twilio-whatsapp-send`,
+      `${supabaseUrl}/functions/v1/whatsapp-oficial-send`,
       {
         method: "POST",
         headers: {

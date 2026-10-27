@@ -790,7 +790,7 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
         if (mediaUrl || mediaType || quotedMessageId) {
           throw new Error("Por enquanto, a API oficial aceita texto nesta conversa. Envie anexos pelo WhatsApp.");
         }
-        const { data, error } = await supabase.functions.invoke("twilio-whatsapp-send", {
+        const { data, error } = await supabase.functions.invoke("whatsapp-oficial-send", {
           body: { conversation_id: conversaId, body: texto },
         });
         if (error) {
