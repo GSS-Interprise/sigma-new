@@ -305,12 +305,18 @@ serve(async (req) => {
           };
           const { data: existing, error: existingError } = await admin
             .from("whatsapp_official_templates")
-            .select("id")
+            .select("id, body, variables")
             .eq("content_sid", contentSid)
             .maybeSingle();
           if (existingError) throw existingError;
+          // Os rótulos das variáveis (nome, valor, link...) são dados à mão e dizem ao envio o que
+          // vai em cada posição. Com o mesmo texto, a sincronização não pode trocá-los por
+          // "Variável N": foi isso que fez a Meta recusar os pedidos de NF em 27/10 (parâmetros vazios).
+          const manterRotulos = existing && existing.body === values.body && existing.variables &&
+            Object.keys(existing.variables).length === Object.keys(values.variables).length;
+          const { variables: _v, ...semRotulos } = values;
           const result = existing
-            ? await admin.from("whatsapp_official_templates").update(values).eq("id", existing.id).select("id, friendly_name, approval_status").single()
+            ? await admin.from("whatsapp_official_templates").update(manterRotulos ? semRotulos : values).eq("id", existing.id).select("id, friendly_name, approval_status").single()
             : await admin.from("whatsapp_official_templates").insert({ ...values, created_by: actorId }).select("id, friendly_name, approval_status").single();
           if (result.error) throw result.error;
           synced.push({ ...result.data, plugin_id: target.plugin_id, waba_id: target.waba_id });

@@ -189,7 +189,10 @@ export async function chakraApi(path: string, init: RequestInit = {}) {
   });
   const payload = parsePayload(await response.text());
   if (!response.ok) {
-    const detail = payload?.message || payload?.error || payload?.raw || "request_failed";
+    // Sem message/error/raw o Chakra devolve o erro da Meta aninhado (_data, error_data...):
+    // guarda o corpo cru, senão o 400 vira só "request_failed" e não dá para diagnosticar.
+    const detail = payload?.message || payload?.error || payload?.raw ||
+      (payload && Object.keys(payload).length ? JSON.stringify(payload).slice(0, 600) : "request_failed");
     const providerMessage = typeof detail === "string"
       ? detail
       : JSON.stringify(detail);
