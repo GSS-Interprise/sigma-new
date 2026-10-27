@@ -102,16 +102,36 @@ export function ChakraConnectCard() {
   const [isPreparing, setIsPreparing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [phones, setPhones] = useState<ChakraPhone[]>([]);
+  const [carregandoLista, setCarregandoLista] = useState(true);
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   const [salvandoDono, setSalvandoDono] = useState<string | null>(null);
   const [pendingConnection, setPendingConnection] = useState<PendingConnection | null>(null);
 
+  // A lista aparece primeiro; status, webhook e templates são conferidos depois e a lista
+  // é relida. Antes a tela ficava ~8 s dizendo "Nenhum número vinculado" enquanto sincronizava.
+  const lerLista = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("whatsapp_chakra_connections" as never)
+      .select("plugin_id, waba_id, phone_number_id, phone_e164, display_name, status, quality_rating, messaging_limit_tier, name_status, provider_payload, webhook_configured, last_webhook_event_at, last_webhook_error, responsavel_id")
+      .order("updated_at", { ascending: false });
+    setCarregandoLista(false);
+    if (!error) {
+      const connectedPhones = (data || []) as unknown as ChakraPhone[];
+      setPhones(connectedPhones);
+      const pluginIds = [...new Set(connectedPhones.map((phone) => phone.plugin_id).filter(Boolean))];
+      // Reuse the GSS plugin by default so another WABA/number is not accidentally
+      // onboarded as a second client in Chakra when the operator leaves this blank.
+      if (!pluginIdTouched.current && pluginIds.length === 1) setPluginId(pluginIds[0]!);
+    }
+  }, []);
+
   const loadConnections = useCallback(async () => {
+    await lerLista();
     const { data: statusResult, error: statusError } = await supabase.functions.invoke("chakra-connect", {
       body: { action: "refresh_status" },
     });
     if (statusError || !statusResult?.ok) {
-      console.warn("NÃ£o foi possÃ­vel atualizar o status do nÃºmero Chakra", statusError || statusResult?.error);
+      console.warn("Não foi possível atualizar o status do número Chakra", statusError || statusResult?.error);
     }
     // Revalida/configura o webhook do plugin ao abrir a tela. Isso cobre
     // números já conectados antes da automação ser publicada, sem reimportar
@@ -128,19 +148,8 @@ export function ChakraConnectCard() {
     if (templateError || !templateResult?.ok) {
       console.warn("Chakra template sync failed", templateError || templateResult?.error);
     }
-    const { data, error } = await supabase
-      .from("whatsapp_chakra_connections" as never)
-      .select("plugin_id, waba_id, phone_number_id, phone_e164, display_name, status, quality_rating, messaging_limit_tier, name_status, provider_payload, webhook_configured, last_webhook_event_at, last_webhook_error, responsavel_id")
-      .order("updated_at", { ascending: false });
-    if (!error) {
-      const connectedPhones = (data || []) as unknown as ChakraPhone[];
-      setPhones(connectedPhones);
-      const pluginIds = [...new Set(connectedPhones.map((phone) => phone.plugin_id).filter(Boolean))];
-      // Reuse the GSS plugin by default so another WABA/number is not accidentally
-      // onboarded as a second client in Chakra when the operator leaves this blank.
-      if (!pluginIdTouched.current && pluginIds.length === 1) setPluginId(pluginIds[0]!);
-    }
-  }, []);
+    await lerLista();
+  }, [lerLista]);
 
   useEffect(() => { void loadConnections(); }, [loadConnections]);
 
@@ -384,7 +393,9 @@ export function ChakraConnectCard() {
               </a>
             </Button>
           </div>
-          {phones.length === 0 ? (
+          {carregandoLista ? (
+            <p className="flex items-center gap-2 rounded-lg border border-dashed p-4 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Carregando números…</p>
+          ) : phones.length === 0 ? (
             <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">Nenhum número vinculado ainda. Inicie a conexão acima e conclua o fluxo da Meta/Chakra para registrá-lo aqui.</p>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2">

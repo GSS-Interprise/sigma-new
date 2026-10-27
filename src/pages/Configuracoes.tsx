@@ -108,13 +108,13 @@ export default function Configuracoes() {
                 <TabsTrigger
                   key={key}
                   value={key}
-                  className="flex flex-col items-start gap-0.5 py-2.5 px-3 text-left data-[state=active]:bg-background"
+                  className="flex min-w-0 flex-col items-start gap-0.5 whitespace-normal py-2.5 px-2 sm:px-3 text-left data-[state=active]:bg-background"
                 >
-                  <span className="flex items-center gap-2 font-medium">
-                    <Icon className="h-4 w-4" />
+                  <span className="flex min-w-0 items-center gap-2 font-medium leading-tight">
+                    <Icon className="h-4 w-4 shrink-0" />
                     {g.label}
                   </span>
-                  <span className="text-[11px] text-muted-foreground font-normal leading-tight">
+                  <span className="hidden md:block text-[11px] text-muted-foreground font-normal leading-tight">
                     {g.desc}
                   </span>
                 </TabsTrigger>
@@ -125,12 +125,13 @@ export default function Configuracoes() {
 
         {/* Sub-abas do grupo ativo */}
         <Tabs value={abaAtiva} onValueChange={setAbaAtiva}>
+          {/* no celular as sub-abas rolam de lado em vez de espremer o texto */}
           <TabsList
-            className="grid w-full"
+            className="flex w-full justify-start overflow-x-auto sm:grid"
             style={{ gridTemplateColumns: `repeat(${grupo.abas.length}, minmax(0, 1fr))` }}
           >
             {grupo.abas.map((aba) => (
-              <TabsTrigger key={aba.value} value={aba.value}>
+              <TabsTrigger key={aba.value} value={aba.value} className="shrink-0 sm:shrink">
                 {aba.label}
               </TabsTrigger>
             ))}
