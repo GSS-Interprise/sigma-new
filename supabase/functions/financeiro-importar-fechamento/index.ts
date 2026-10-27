@@ -20,6 +20,31 @@ async function sha256(s: string): Promise<string> {
   return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+// Competência do fechamento a partir do período escrito no arquivo ("21/08/2026 - 20/09/2026").
+// O mês manda no ARQUIVO (foi assim que julho virou agosto), mas período que cruza dois meses
+// vale para qualquer um deles: a tela escolhe (Mavi, 27/10: "Vitória 21.08 a 20.09 - setembro"
+// era barrado como agosto). Sem mês na tela, vale o mês do fim do período.
+function periodoDoArquivo(p: { mes: number; ano: number; mesFim?: number; anoFim?: number }, mes: unknown, ano: unknown, confirmar: unknown) {
+  const fim = { mes: p.mesFim || p.mes, ano: p.anoFim || p.ano };
+  if (!mes || !ano) return { mes: fim.mes, ano: fim.ano, conflito: null };
+  const tela = { mes: Number(mes), ano: Number(ano) };
+  const bate = (x: { mes: number; ano: number }) => x.mes === tela.mes && x.ano === tela.ano;
+  if (bate({ mes: p.mes, ano: p.ano }) || bate(fim)) return { ...tela, conflito: null };
+  // "Usar MM/AAAA (do arquivo)": a tela confirma com o mês antigo no corpo (o estado ainda não
+  // atualizou), então confirmar = usar o mês do arquivo
+  if (confirmar) return { ...fim, conflito: null };
+  const txt = (x: { mes: number; ano: number }) => `${String(x.mes).padStart(2, "0")}/${x.ano}`;
+  const doArquivo = fim.mes !== p.mes || fim.ano !== p.ano ? `${txt({ mes: p.mes, ano: p.ano })} a ${txt(fim)}` : txt(fim);
+  return {
+    ...tela,
+    conflito: {
+      erro_periodo: true,
+      msg: `O arquivo é de ${doArquivo}, mas a tela está em ${txt(tela)}.`,
+      periodo_arquivo: fim,
+    },
+  };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
   const json = (o: unknown, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { ...cors, "Content-Type": "application/json" } });
@@ -64,14 +89,9 @@ serve(async (req) => {
       const p: any = parseDrEscalaConsolidado(grid, gridFmt);
       if (p.erro) return json({ error: p.erro }, 400);
       if (!p.mes || !p.ano) return json({ error: "não achei o período no arquivo (esperado 'dd/mm/aaaa - dd/mm/aaaa' nas primeiras linhas)" }, 400);
-      if (mes && ano && (Number(mes) !== p.mes || Number(ano) !== p.ano) && !confirmar_periodo) {
-        return json({
-          erro_periodo: true,
-          msg: `O arquivo é de ${String(p.mes).padStart(2, "0")}/${p.ano}, mas a tela está em ${String(mes).padStart(2, "0")}/${ano}.`,
-          periodo_arquivo: { mes: p.mes, ano: p.ano },
-        }, 409);
-      }
-      mesRef = p.mes; anoRef = p.ano; blocos = p.blocos;
+      const per = periodoDoArquivo(p, mes, ano, confirmar_periodo);
+      if (per.conflito) return json(per.conflito, 409);
+      mesRef = per.mes; anoRef = per.ano; blocos = p.blocos;
     } else if (cfg.parser === "carestream_resumo") {
       if (!mesRef || !anoRef) return json({ error: "faltam campos: mes, ano" }, 400);
       const p: any = parseCarestreamResumo(grid);
@@ -108,17 +128,12 @@ serve(async (req) => {
       const p = parseDrEscalaCompleto(grid);
       if (!p.mes || !p.ano) return json({ error: "não achei o período no arquivo (esperado 'dd/mm/aaaa - dd/mm/aaaa' nas primeiras linhas)" }, 400);
       // o mês manda no ARQUIVO. Se a tela pediu outro, barra — foi assim que julho virou agosto.
-      if (mes && ano && (Number(mes) !== p.mes || Number(ano) !== p.ano) && !confirmar_periodo) {
-        return json({
-          erro_periodo: true,
-          msg: `O arquivo é de ${String(p.mes).padStart(2, "0")}/${p.ano}, mas a tela está em ${String(mes).padStart(2, "0")}/${ano}.`,
-          periodo_arquivo: { mes: p.mes, ano: p.ano },
-        }, 409);
-      }
+      const per = periodoDoArquivo(p, mes, ano, confirmar_periodo);
+      if (per.conflito) return json(per.conflito, 409);
       if (p.divergencias.length) {
         return json({ erro_checksum: true, msg: "A soma dos plantões não bate com o total do próprio relatório.", divergencias: p.divergencias }, 422);
       }
-      mesRef = p.mes; anoRef = p.ano; blocos = p.blocos;
+      mesRef = per.mes; anoRef = per.ano; blocos = p.blocos;
     } else {
       if (!mesRef || !anoRef) return json({ error: "faltam campos: mes, ano" }, 400);
       const p: any = parseGenerico(grid, cfg);

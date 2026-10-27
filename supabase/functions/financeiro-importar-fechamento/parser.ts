@@ -123,10 +123,11 @@ export function horasEmMinutos(v: unknown): number {
  * O cabeçalho é relido a cada bloco, então mudar a ordem das colunas não quebra.
  */
 export function parseDrEscalaCompleto(grid: unknown[][]) {
-  let mes = 0, ano = 0;
+  // período pode cruzar dois meses (21/08 a 20/09 = competência de setembro): guarda início e fim
+  let mes = 0, ano = 0, mesFim = 0, anoFim = 0;
   for (const row of grid.slice(0, 10)) {
     const m = cell(row[0]).match(/(\d{2})\/(\d{2})\/(\d{4})\s*[-–]\s*(\d{2})\/(\d{2})\/(\d{4})/);
-    if (m) { mes = parseInt(m[2]); ano = parseInt(m[3]); break; }
+    if (m) { mes = parseInt(m[2]); ano = parseInt(m[3]); mesFim = parseInt(m[5]); anoFim = parseInt(m[6]); break; }
   }
 
   const blocos: Bloco[] = [];
@@ -194,7 +195,7 @@ export function parseDrEscalaCompleto(grid: unknown[][]) {
       relatorio: b.checksum,
     }));
 
-  return { mes, ano, blocos: blocos.filter((b) => b.itens.length > 0), divergencias };
+  return { mes, ano, mesFim, anoFim, blocos: blocos.filter((b) => b.itens.length > 0), divergencias };
 }
 
 /**
@@ -381,17 +382,18 @@ export function parseCarestreamResumo(grid: unknown[][]) {
  * presentes, entram como parcela já paga e como ajuste. Se não, o import segue igual.
  */
 export function parseDrEscalaConsolidado(grid: unknown[][], gridFmt?: unknown[][]) {
-  let mes = 0, ano = 0;
+  // período pode cruzar dois meses (21/08 a 20/09 = competência de setembro): guarda início e fim
+  let mes = 0, ano = 0, mesFim = 0, anoFim = 0;
   for (const row of grid.slice(0, 10)) {
     const m = cell(row[0]).match(/(\d{2})\/(\d{2})\/(\d{4})\s*[-–]\s*(\d{2})\/(\d{2})\/(\d{4})/);
-    if (m) { mes = parseInt(m[2]); ano = parseInt(m[3]); break; }
+    if (m) { mes = parseInt(m[2]); ano = parseInt(m[3]); mesFim = parseInt(m[5]); anoFim = parseInt(m[6]); break; }
   }
 
   let hRow = -1;
   for (let r = 0; r < Math.min(grid.length, 15); r++) {
     if (norm(cell((grid[r] || [])[0])).startsWith("profissional")) { hRow = r; break; }
   }
-  if (hRow < 0) return { mes, ano, blocos: [], erro: "não achei a linha de cabeçalho ('Profissional') no arquivo" };
+  if (hRow < 0) return { mes, ano, mesFim, anoFim, blocos: [], erro: "não achei a linha de cabeçalho ('Profissional') no arquivo" };
 
   const headers = (grid[hRow] || []).map((h) => cell(h));
   const acha = (...nomes: string[]) =>
@@ -460,7 +462,7 @@ export function parseDrEscalaConsolidado(grid: unknown[][], gridFmt?: unknown[][
       plantoes,
     } as Bloco);
   }
-  return { mes, ano, blocos, divergencias: [] };
+  return { mes, ano, mesFim, anoFim, blocos, divergencias: [] };
 }
 
 /**
