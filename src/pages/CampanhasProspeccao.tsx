@@ -58,6 +58,7 @@ import { AcompanhamentoView } from "@/components/campanhas/acompanhamento/Acompa
 import { DashboardCampanhas } from "@/components/campanhas/DashboardCampanhas";
 import { StatusOperacionalPanel } from "@/components/campanhas/StatusOperacionalPanel";
 import { AdicionarMedicosCampanhaDialog } from "@/components/campanhas/AdicionarMedicosCampanhaDialog";
+import { ImportarEmailsEnviadosDialog } from "@/components/campanhas/ImportarEmailsEnviadosDialog";
 import { ErrorBoundary } from "@/components/common/ErrorBoundary";
 import { useAdicionarLeadsCampanha } from "@/hooks/useCampanhaLeads";
 import { CampanhaEmailPainel } from "@/components/email/CampanhaEmailPainel";
@@ -147,6 +148,7 @@ export default function CampanhasProspeccao() {
   const [strategyToAdd, setStrategyToAdd] = useState("");
   const [addDoctorsOpen, setAddDoctorsOpen] = useState(false);
   const [emailOpen, setEmailOpen] = useState(false);
+  const [emailsEnviadosOpen, setEmailsEnviadosOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const view = (searchParams.get("view") || "campanhas") as
     | "campanhas"
@@ -511,19 +513,32 @@ export default function CampanhasProspeccao() {
                 <UserPlus className="mr-1 h-4 w-4" />
                 Adicionar médicos
               </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="min-h-11"
-                onClick={() => setEmailOpen(true)}
-                title="Mandar e-mail para os médicos desta campanha"
-              >
-                <Mail className="mr-1 h-4 w-4" />
-                E-mail
-              </Button>
+              {/* e-mail marketing (Sigma envia) e e-mail nominal (equipe envia e sobe a planilha) */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button size="sm" variant="outline" className="min-h-11">
+                    <Mail className="mr-1 h-4 w-4" />
+                    E-mail
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem className="min-h-10" onClick={() => setEmailOpen(true)}>
+                    Mandar e-mail pelo Sigma
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="min-h-10" onClick={() => setEmailsEnviadosOpen(true)}>
+                    Registrar e-mails enviados pela equipe
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
 
             <CampanhaProspeccaoKanban campanhaId={selecionada} />
+            <ImportarEmailsEnviadosDialog
+              open={emailsEnviadosOpen}
+              onOpenChange={setEmailsEnviadosOpen}
+              campanhaId={selecionada}
+              campanhaNome={campanhaSelecionada.nome}
+            />
             <AdicionarMedicosCampanhaDialog
               open={addDoctorsOpen}
               onOpenChange={setAddDoctorsOpen}
