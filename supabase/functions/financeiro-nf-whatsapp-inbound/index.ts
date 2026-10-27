@@ -13,7 +13,7 @@
 // segurança fica "a confirmar", com o palpite preenchido.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { chakraApi } from "../_shared/chakra.ts";
+import { chakraApi, chakraKeyFor } from "../_shared/chakra.ts";
 import { CNPJS_GRUPO_GSS, lerNfse, textoPdf, type Nfse } from "../_shared/nfse.ts";
 
 const cors = {
@@ -62,8 +62,9 @@ function extrairMensagem(payload: any) {
  * "Fetch Whatsapp Media API"): o GET devolve uma URL já proxiada por eles, que aceita o
  * mesmo token. A URL que vem no webhook (lookaside.fbsbx.com) exige o token da Meta.
  */
-async function baixarMidia(mediaId: string): Promise<{ bytes: Uint8Array; mime?: string }> {
-  const key = (Deno.env.get("CHAKRA_API_KEY_GSS") || Deno.env.get("CHAKRA_API_KEY"))?.trim();
+// a mídia só abre com a chave da conta onde o número está conectado (pluginId diz qual)
+async function baixarMidia(mediaId: string, pluginId: string): Promise<{ bytes: Uint8Array; mime?: string }> {
+  const key = chakraKeyFor(pluginId);
   const h = { Authorization: `Bearer ${key}` };
   const r = await fetch(`https://api.chakrahq.com/v1/whatsapp/v24.0/media/${mediaId}`, { headers: h });
   if (!r.ok) throw new Error(`midia_meta_${r.status}:${(await r.text()).slice(0, 120)}`);
@@ -200,7 +201,7 @@ serve(async (req) => {
     let arquivo: { bytes: Uint8Array; mime?: string } | null = null;
     let erroDownload: string | null = null;
     try {
-      arquivo = await baixarMidia(msg.midia.id);
+      arquivo = await baixarMidia(msg.midia.id, String(sender?.chakra_plugin_id || ""));
     } catch (e: any) {
       erroDownload = String(e?.message || e).slice(0, 300);
     }

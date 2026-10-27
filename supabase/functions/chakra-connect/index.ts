@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   chakraApi,
+  chakraKeyFor,
   chakraCampaignTemplateDefinition,
   chakraQuickReplyComponents,
   extractBodyText,
@@ -69,8 +70,7 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const chakraKey = Deno.env.get("CHAKRA_API_KEY_GSS") || Deno.env.get("CHAKRA_API_KEY");
-    if (!chakraKey) return json({ ok: false, error: "chakra_not_configured" }, 503);
+    if (!chakraKeyFor()) return json({ ok: false, error: "chakra_not_configured" }, 503);
 
     const admin = createClient(supabaseUrl, serviceRole);
     const authHeader = req.headers.get("Authorization") || "";
@@ -96,7 +96,7 @@ serve(async (req) => {
       const response = await fetch(`https://api.chakrahq.com${path}`, {
         ...init,
         headers: {
-          Authorization: `Bearer ${chakraKey}`,
+          Authorization: `Bearer ${chakraKeyFor(path)}`,
           "Content-Type": "application/json",
           ...(init.headers || {}),
         },

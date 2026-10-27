@@ -176,10 +176,24 @@ export function extractTemplateVariables(body: string) {
   return Object.fromEntries([...new Set(positions)].map((position) => [position, `Variável ${position}`]));
 }
 
+// Desde 27/10 o Sigma usa a conta Chakra da própria GSS (CHAKRA_API_KEY_GSS). Os ids abaixo
+// (plugin, WABA e número do financeiro/Amni) continuam na conta da Pulse (CHAKRA_API_KEY) até
+// migrarem: plugin e WABA só respondem à conta onde foram conectados. Tirar daqui = migrou.
+const CHAKRA_IDS_CONTA_PULSE = [
+  "83996e9c-4ccc-423e-9466-13c317955700", // plugin do número da Amni
+  "286031407919518", // WABA do número da Amni
+  "238442722693276", // phone_number_id da Amni
+];
+
+export function chakraKeyFor(pathOuId = ""): string | undefined {
+  const pulse = Deno.env.get("CHAKRA_API_KEY")?.trim();
+  const gss = Deno.env.get("CHAKRA_API_KEY_GSS")?.trim();
+  if (CHAKRA_IDS_CONTA_PULSE.some((id) => pathOuId.includes(id))) return pulse || gss;
+  return gss || pulse;
+}
+
 export async function chakraApi(path: string, init: RequestInit = {}) {
-  // Conta Chakra da própria GSS (27/10). Sem ela, volta para a conta da Pulse: remover o
-  // secret CHAKRA_API_KEY_GSS é o rollback.
-  const key = (Deno.env.get("CHAKRA_API_KEY_GSS") || Deno.env.get("CHAKRA_API_KEY"))?.trim();
+  const key = chakraKeyFor(path);
   if (!key) throw new Error("chakra_not_configured");
   const response = await fetch(`https://api.chakrahq.com${path}`, {
     ...init,
