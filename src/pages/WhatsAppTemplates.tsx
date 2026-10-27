@@ -263,7 +263,7 @@ export default function WhatsAppTemplates() {
   return (
     <AppLayout>
       <main className="mx-auto w-full max-w-7xl space-y-5 p-4 sm:p-6">
-        <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <header className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
             <h1 className="flex items-center gap-2 text-xl font-bold sm:text-2xl">
               <FileText className="h-6 w-6 shrink-0 text-primary" />
@@ -273,7 +273,7 @@ export default function WhatsAppTemplates() {
               Crie, submeta e acompanhe templates oficiais em português do Brasil.
             </p>
           </div>
-          <div className="grid grid-cols-1 gap-2 xs:grid-cols-2 sm:flex">
+          <div className="grid grid-cols-1 gap-2 xs:grid-cols-2 sm:flex sm:flex-wrap lg:shrink-0">
             <Button variant="outline" className="min-h-11" onClick={() => syncChakra.mutate()} disabled={syncChakra.isPending}>
               <RefreshCw className={`mr-2 h-4 w-4 ${syncChakra.isPending ? "animate-spin" : ""}`} />
               Sincronizar Chakra
@@ -320,8 +320,8 @@ export default function WhatsAppTemplates() {
 
         <section className="space-y-3">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
-              <Tabs value={filter} onValueChange={(value) => setFilter(value as StatusFilter)}>
+            <div className="min-w-0 overflow-x-auto lg:shrink-0">
+              <Tabs value={filter} onValueChange={(value) => setFilter(value as StatusFilter)} className="w-max">
                 <TabsList className="h-auto w-max">
                   {FILTERS.map((item) => (
                     <TabsTrigger key={item.value} value={item.value} className="min-h-10 gap-1.5">
