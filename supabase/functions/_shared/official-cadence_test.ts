@@ -1,6 +1,7 @@
 import {
   DEFAULT_OFFICIAL_MIN_GAP_MS,
   classifyOfficialThrottle,
+  canRetrySenderCooldownWithinRun,
   resolveOfficialIntervalMs,
 } from "./official-cadence.ts";
 import { assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
@@ -43,4 +44,11 @@ Deno.test("429 and internal sender contention defer without classifying a recipi
     reason: "sender_cooldown",
   });
   assertEquals(classifyOfficialThrottle(400, { error: "invalid_recipient" }), null);
+});
+
+Deno.test("local sender cooldown retries only when there is room for the wait and next request", () => {
+  assertEquals(canRetrySenderCooldownWithinRun(3_500, 25_000, 20_000), true);
+  assertEquals(canRetrySenderCooldownWithinRun(3_500, 23_499, 20_000), false);
+  assertEquals(canRetrySenderCooldownWithinRun(30_000, 25_000, 20_000), false);
+  assertEquals(canRetrySenderCooldownWithinRun(-1, 25_000, 20_000), false);
 });

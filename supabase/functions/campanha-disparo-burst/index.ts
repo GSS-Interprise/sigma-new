@@ -1,5 +1,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { classifyOfficialThrottle } from "../_shared/official-cadence.ts";
+import {
+  canRetrySenderCooldownWithinRun,
+  classifyOfficialThrottle,
+} from "../_shared/official-cadence.ts";
 
 
 const corsHeaders = {
@@ -247,8 +250,20 @@ Deno.serve(async (req) => {
         }, 202);
       }
       const wave = (leads || []).slice(index, index + WAVE_CONCURRENCY);
-      const results = await Promise.all(wave.map((lead: any) => sendLead(admin, supabaseUrl, serviceRole, lead)));
-      for (const result of results) {
+      for (const lead of wave) {
+        let result = await sendLead(admin, supabaseUrl, serviceRole, lead);
+        while (result.outcome === "rate_limited" && result.reason === "sender_cooldown") {
+          const retryAfterMs = Number(result.retryAfterMs);
+          const remainingRunMs = MAX_RUN_MS - (Date.now() - executionStartedAt);
+          if (!canRetrySenderCooldownWithinRun(retryAfterMs, remainingRunMs, SEND_TIMEOUT_MS)) {
+            break;
+          }
+          // Retry the same deferred lead after the sender lease expires. This
+          // uses the shared pacing gate unchanged; provider 429s still yield
+          // immediately to the scheduler below.
+          await new Promise((resolve) => setTimeout(resolve, retryAfterMs + 250));
+          result = await sendLead(admin, supabaseUrl, serviceRole, lead);
+        }
         if (result.outcome !== "skipped" && !(
           result.outcome === "rate_limited" && result.reason === "sender_cooldown"
         )) attempted += 1;

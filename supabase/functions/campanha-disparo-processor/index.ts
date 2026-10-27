@@ -15,13 +15,37 @@ const corsHeaders = {
 const MAX_EXECUTION_MS = 50_000;
 const SEND_TIMEOUT_MS = 15_000;
 const LOCK_DURATION_S = 90;
-// A API oficial tem throughput próprio. Mantemos espaçamento entre contatos
-// para não criar rajada, mas permitimos atingir o teto diário do piloto.
-// Campanhas oficiais retomam com uma cadência gradual durante o aquecimento.
-// O limite diário continua sendo controlado por campanha; o intervalo evita
-// rajadas sem tornar a retomada lenta demais para a operação.
-const OFFICIAL_INTERVAL_MIN_MS = 5 * 60 * 1000;
-const OFFICIAL_INTERVAL_MAX_MS = 10 * 60 * 1000;
+function brazilDateKey(now = new Date()) {
+  const brt = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+  return [
+    brt.getUTCFullYear(),
+    String(brt.getUTCMonth() + 1).padStart(2, "0"),
+    String(brt.getUTCDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+/**
+ * Resolve the campaign limit without changing the base setting. The schedule
+ * is intentionally date-keyed in BRT so a UTC midnight cannot advance a step
+ * before the team expects it locally.
+ */
+function scheduledDailyLimit(campaign: any): number | null {
+  const base = Number(campaign.limite_diario_campanha);
+  const schedule = campaign.limite_diario_programado;
+  if (!schedule || typeof schedule !== "object" || Array.isArray(schedule)) {
+    return Number.isFinite(base) && base > 0 ? base : null;
+  }
+
+  const today = brazilDateKey();
+  const scheduled = Object.entries(schedule)
+    .filter(([date, value]) => /^\d{4}-\d{2}-\d{2}$/.test(date) && date <= today && Number(value) > 0)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .at(-1)?.[1];
+
+  const resolved = Number(scheduled);
+  if (Number.isFinite(resolved) && resolved > 0) return resolved;
+  return Number.isFinite(base) && base > 0 ? base : null;
+}
 
 function officialInterval(campaign: any) {
   return resolveOfficialIntervalMs(campaign);
@@ -151,7 +175,7 @@ serve(async (req) => {
     // Quando null, o SISTEMA governa pela soma do limite diário dos chips da campanha
     // (respeita o limite seguro de cada chip — anti-ban). Campanhas antigas com valor
     // explícito continuam respeitando o que foi configurado.
-    let limiteDiario = camp.limite_diario_campanha as number | null;
+    let limiteDiario = scheduledDailyLimit(camp);
     if (!limiteDiario) {
       const limIds: string[] = camp.chip_ids?.length ? camp.chip_ids : (camp.chip_id ? [camp.chip_id] : []);
       if (limIds.length > 0) {
@@ -670,7 +694,7 @@ async function processTwilioBatch(supabase: any, camp: any, supabaseUrl: string,
     brtAgora.getUTCDate(),
     3,
   ));
-  const limiteDiario = camp.limite_diario_campanha || 250;
+  const limiteDiario = scheduledDailyLimit(camp) || 250;
   // O teto da campanha é de novas conversas. Respostas da IA e mensagens
   // manuais dentro da janela de 24h não devem consumir esse limite. O campo
   // data_primeiro_contato só é preenchido no primeiro envio do lead.

@@ -14,6 +14,19 @@ export const DEFAULT_OFFICIAL_INTERVAL_MS = {
 export const DEFAULT_OFFICIAL_MIN_GAP_MS = 3_500;
 export const DEFAULT_PROVIDER_RETRY_MS = 60_000;
 
+// The official sender's shared lease can briefly reject a local concurrent
+// worker. A one-shot may wait for that lease in-process, but only if there is
+// enough execution budget left for both the wait and one full send request.
+export function canRetrySenderCooldownWithinRun(
+  retryAfterMs: number,
+  remainingRunMs: number,
+  sendTimeoutMs: number,
+) {
+  return Number.isFinite(retryAfterMs) && retryAfterMs >= 0 &&
+    Number.isFinite(remainingRunMs) && Number.isFinite(sendTimeoutMs) &&
+    retryAfterMs + sendTimeoutMs < remainingRunMs;
+}
+
 type CampaignCadence = {
   delay_between_batches_min?: unknown;
   delay_between_batches_max?: unknown;

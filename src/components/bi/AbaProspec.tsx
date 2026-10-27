@@ -46,6 +46,21 @@ function startOfMonthsAgo(n: number) {
   return d.toISOString().slice(0, 10);
 }
 
+function currentBrtDayBounds() {
+  const now = new Date();
+  const brt = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+  const inicio = new Date(Date.UTC(
+    brt.getUTCFullYear(),
+    brt.getUTCMonth(),
+    brt.getUTCDate(),
+    3,
+  ));
+  return {
+    inicio: inicio.toISOString(),
+    fim: new Date(inicio.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+  };
+}
+
 function KPI({ icon: Icon, label, value, sub, color = C.blue }: any) {
   return (
     <Card>
@@ -115,6 +130,25 @@ export function AbaProspec() {
     staleTime: 60_000,
     retry: false,
     enabled: tabAtiva !== "resumo", // o Resumo (funil) não usa o dashboard antigo — não bloqueia o open
+  });
+
+  const apiOficialHojeBounds = useMemo(() => currentBrtDayBounds(), []);
+  const {
+    data: apiOficialHoje,
+    isFetching: isFetchingApiOficial,
+    refetch: refetchApiOficial,
+  } = useQuery({
+    queryKey: ["bi-campanhas-api-oficial-hoje"],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).rpc("get_bi_campanhas_api_oficial", {
+        p_inicio: apiOficialHojeBounds.inicio,
+        p_fim: apiOficialHojeBounds.fim,
+      });
+      if (error) throw error;
+      return data as any;
+    },
+    staleTime: 30_000,
+    retry: false,
   });
 
   const semPermissao = (dashboardError as any)?.code === "42501";
@@ -276,6 +310,20 @@ export function AbaProspec() {
 
   const taxaResp = totalGeralDisparos > 0 ? ((totaisGerais.responderam / totalGeralDisparos) * 100).toFixed(1) : "0";
   const taxaConv = totalGeralDisparos > 0 ? ((totaisGerais.convertidos / totalGeralDisparos) * 100).toFixed(1) : "0";
+  const apiOficial = {
+    novos: Number(apiOficialHoje?.primeiros_contatos) || 0,
+    cap: Number(apiOficialHoje?.cap_diario) || 250,
+    outbound: Number(apiOficialHoje?.mensagens_outbound) || 0,
+    continuacoesIa: Number(apiOficialHoje?.continuacoes_ia) || 0,
+    equipe: Number(apiOficialHoje?.mensagens_equipe) || 0,
+    entregues: Number(apiOficialHoje?.entregues) || 0,
+    lidas: Number(apiOficialHoje?.lidas) || 0,
+    pendentes: Number(apiOficialHoje?.pendentes) || 0,
+    naoEntregues: Number(apiOficialHoje?.nao_entregues) || 0,
+  };
+  const apiOficialProgresso = apiOficial.cap > 0
+    ? Math.min(100, (apiOficial.novos / apiOficial.cap) * 100)
+    : 0;
 
   return (
     <div className="space-y-6">
@@ -328,6 +376,75 @@ export function AbaProspec() {
         </div>
       </div>
       </>)}
+
+      {/* Cap diário de novas conversas pela API oficial. Respostas da IA não entram. */}
+      {apiOficialHoje && (
+        <Card className="border-cyan-200 bg-gradient-to-br from-cyan-50/70 via-background to-background">
+          <CardHeader className="pb-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Radio className="h-4 w-4 text-cyan-700" />
+                  API oficial — novas conversas de hoje
+                </CardTitle>
+                <CardDescription>
+                  O cap considera apenas o primeiro contato de cada lead. Respostas da IA na janela de 24h ficam fora desta conta.
+                </CardDescription>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => refetchApiOficial()}
+                disabled={isFetchingApiOficial}
+                className="h-9 shrink-0 self-start"
+              >
+                <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${isFetchingApiOficial ? "animate-spin" : ""}`} />
+                Atualizar
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-end justify-between gap-2">
+                <div>
+                  <p className="text-2xl font-bold tracking-tight text-cyan-950">
+                    {apiOficial.novos.toLocaleString("pt-BR")} <span className="text-sm font-medium text-muted-foreground">/ {apiOficial.cap.toLocaleString("pt-BR")}</span>
+                  </p>
+                  <p className="text-xs text-muted-foreground">novos primeiros contatos · {apiOficialProgresso.toFixed(0)}% do cap diário</p>
+                </div>
+                <Badge variant="outline" className={apiOficial.novos >= apiOficial.cap ? "border-green-300 bg-green-50 text-green-700" : "border-cyan-300 bg-cyan-50 text-cyan-800"}>
+                  {apiOficial.novos >= apiOficial.cap ? "Cap atingido" : "Em andamento"}
+                </Badge>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-cyan-100" aria-label={`${apiOficialProgresso.toFixed(0)}% do cap diário utilizado`}>
+                <div className="h-full rounded-full bg-cyan-600 transition-all" style={{ width: `${apiOficialProgresso}%` }} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {[
+                ["Mensagens outbound", apiOficial.outbound, "text-slate-700"],
+                ["Continuações IA", apiOficial.continuacoesIa, "text-violet-700"],
+                ["Entregues / lidas", `${apiOficial.entregues} / ${apiOficial.lidas}`, "text-green-700"],
+                ["Não entregues", apiOficial.naoEntregues, "text-red-700"],
+              ].map(([label, value, color]) => (
+                <div key={String(label)} className="min-w-0 rounded-lg border bg-background/80 p-3">
+                  <p className="truncate text-[11px] text-muted-foreground">{label}</p>
+                  <p className={`mt-1 text-lg font-bold tabular-nums ${color}`}>{typeof value === "number" ? value.toLocaleString("pt-BR") : value}</p>
+                </div>
+              ))}
+            </div>
+            {(apiOficial.pendentes > 0 || apiOficial.equipe > 0) && (
+              <p className="text-xs text-muted-foreground">
+                {apiOficial.pendentes > 0 && `${apiOficial.pendentes.toLocaleString("pt-BR")} aguardando atualização de status`}
+                {apiOficial.pendentes > 0 && apiOficial.equipe > 0 && " · "}
+                {apiOficial.equipe > 0 && `${apiOficial.equipe.toLocaleString("pt-BR")} mensagens enviadas pela equipe`}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Tabs value={tabAtiva} onValueChange={setTabAtiva} className="space-y-4">
         <TabsList>

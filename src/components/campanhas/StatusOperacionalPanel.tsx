@@ -39,10 +39,17 @@ interface CampaignState {
   nome: string;
   configured_status: string;
   tipo_envio: string | null;
+  whatsapp_provider: "evolution" | "twilio" | "chakra" | null;
   configured_chip_ids: string[];
   chips_configured: number;
   chips_connected: number;
   chips_usable: number;
+  official_sender_configured: boolean;
+  official_template_configured: boolean;
+  leads_pendentes: number;
+  disparos_hoje: number;
+  disparos_24h: number;
+  limite_diario: number;
   ultimo_disparo: string | null;
   operational_state: OperationalState;
   operational_reason: string;
@@ -83,7 +90,7 @@ export function StatusOperacionalPanel() {
     refetchInterval: 60_000,
     queryFn: async () => {
       const [{ data: campaigns, error }, { data: chips, error: chipsError }] = await Promise.all([
-        supabase.from("vw_campanha_operational_state" as never).select("*"),
+        supabase.from("vw_campanha_operational_state_v2" as never).select("*"),
         supabase.from("chips").select("id, nome"),
       ]);
       if (error) throw error;
@@ -114,9 +121,9 @@ export function StatusOperacionalPanel() {
 
   const campaigns = data?.campaigns ?? [];
   const order: OperationalState[] = [
-    "desconectada", "restrita", "sem_chip", "rodando", "aguardando",
+    "configurando", "desconectada", "restrita", "sem_chip", "rodando", "aguardando",
     "limite_atingido", "sem_leads", "fora_horario", "manual",
-    "pausada", "configurando", "finalizada",
+    "pausada", "finalizada",
   ];
   const visible = campaigns
     .filter((campaign) => campaign.operational_state !== "finalizada")
@@ -125,8 +132,14 @@ export function StatusOperacionalPanel() {
 
   const count = (state: OperationalState) =>
     campaigns.filter((campaign) => campaign.operational_state === state).length;
-  const attention = count("desconectada") + count("restrita") + count("sem_chip");
+  const attention = campaigns.filter((campaign) =>
+    campaign.configured_status === "ativa" &&
+    ["configurando", "desconectada", "restrita", "sem_chip"].includes(campaign.operational_state),
+  ).length;
   const active = campaigns.filter((campaign) => campaign.configured_status === "ativa").length;
+  const official = campaigns.filter((campaign) => campaign.whatsapp_provider !== "evolution" && !!campaign.whatsapp_provider).length;
+  const evolution = campaigns.filter((campaign) => campaign.whatsapp_provider === "evolution" || !campaign.whatsapp_provider).length;
+  const pending = campaigns.reduce((total, campaign) => total + (campaign.leads_pendentes || 0), 0);
 
   return (
     <div className="space-y-5">
@@ -136,19 +149,21 @@ export function StatusOperacionalPanel() {
         Atualização automática a cada minuto.
       </p>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8">
         <SummaryCard label="Campanhas ativas" value={active} className="text-blue-700" />
+        <SummaryCard label="API oficial" value={official} className="text-indigo-700" />
+        <SummaryCard label="Evolution" value={evolution} className="text-slate-700" />
         <SummaryCard label="Enviando agora" value={count("rodando")} className="text-emerald-700" />
         <SummaryCard label="Fora do horário" value={count("fora_horario")} className="text-slate-700" />
         <SummaryCard label="Manuais" value={count("manual")} className="text-violet-700" />
-        <SummaryCard label="Sem leads" value={count("sem_leads")} className="text-amber-700" />
+        <SummaryCard label="Leads na fila" value={pending} className="text-amber-700" />
         <SummaryCard label="Com problema" value={attention} className="text-red-700" />
       </div>
 
       {attention > 0 && (
         <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50/60 p-3 text-sm text-red-800">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          <span><strong>{attention} campanha(s) exigem ação.</strong> Consulte o motivo e os chips abaixo.</span>
+          <span><strong>{attention} campanha(s) exigem ação.</strong> Consulte o motivo e o canal abaixo.</span>
         </div>
       )}
 
@@ -160,7 +175,7 @@ export function StatusOperacionalPanel() {
               <th className="px-3 py-3 font-medium">Estado real</th>
               <th className="px-3 py-3 font-medium">O que está acontecendo</th>
               <th className="px-3 py-3 font-medium">Horário</th>
-              <th className="px-3 py-3 font-medium">Chips da campanha</th>
+              <th className="px-3 py-3 font-medium">Canal e capacidade</th>
               <th className="px-3 py-3 font-medium">Último envio</th>
             </tr>
           </thead>
@@ -211,6 +226,20 @@ export function StatusOperacionalPanel() {
                     ) : <span className="text-muted-foreground">Sem janela</span>}
                   </td>
                   <td className="px-3 py-3">
+                    <Badge variant="outline" className={cn(
+                      "mb-1 whitespace-nowrap",
+                      campaign.whatsapp_provider !== "evolution" && !!campaign.whatsapp_provider
+                        ? "border-indigo-200 bg-indigo-50 text-indigo-700"
+                        : "border-slate-200 bg-slate-50 text-slate-700",
+                    )}>
+                      {campaign.whatsapp_provider === "chakra" ? "API oficial · Chakra" : campaign.whatsapp_provider === "twilio" ? "API oficial · Twilio" : "Evolution"}
+                    </Badge>
+                    {campaign.whatsapp_provider !== "evolution" && campaign.whatsapp_provider ? (
+                      <p className="text-[11px] text-muted-foreground">
+                        {campaign.disparos_hoje}/{campaign.limite_diario} novos hoje · {campaign.leads_pendentes} na fila
+                      </p>
+                    ) : (
+                    <>
                     <div className="flex flex-wrap gap-1">
                       {campaign.configured_chip_ids.length === 0 && <span className="text-xs text-muted-foreground">—</span>}
                       {campaign.configured_chip_ids.map((chipId) => (
@@ -224,6 +253,8 @@ export function StatusOperacionalPanel() {
                         {campaign.chips_configured} configurado(s) · {campaign.chips_connected} conectado(s) ·{" "}
                         <strong>{campaign.chips_usable} utilizável(is)</strong>
                       </p>
+                    )}
+                    </>
                     )}
                   </td>
                   <td className="px-3 py-3 text-xs text-muted-foreground">

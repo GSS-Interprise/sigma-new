@@ -27,6 +27,8 @@ import {
   Settings,
   ListChecks,
   Target,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useChipsEmUso } from "@/hooks/useChipsEmUso";
@@ -43,6 +45,11 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   campanhaId: string | null;
 }
+
+type LimiteProgramado = {
+  data: string;
+  limite: number;
+};
 
 // A API oficial tem capacidade própria; não deve herdar o ritmo anti-ban dos
 // chips Evolution nem nascer artificialmente limitada a 30 contatos/dia.
@@ -66,6 +73,7 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
   const [chipIds, setChipIds] = useState<string[]>([]);
   const [rotationStrategy, setRotationStrategy] = useState("round_robin");
   const [limiteDiario, setLimiteDiario] = useState(DEFAULT_EVOLUTION_DAILY_LIMIT);
+  const [limitesProgramados, setLimitesProgramados] = useState<LimiteProgramado[]>([]);
   const [batchSize, setBatchSize] = useState(5);
   const [whatsappProvider, setWhatsappProvider] = useState<"evolution" | "twilio" | "chakra">("evolution");
   const [officialCadenceMin, setOfficialCadenceMin] = useState(2);
@@ -104,6 +112,7 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
       official_template_id?: string | null;
       official_sender_id?: string | null;
       official_template_variables?: OfficialTemplateBindings | null;
+      limite_diario_programado?: Record<string, number> | null;
     };
     setChipIds(campanha.chip_ids || []);
     setRotationStrategy(campanha.rotation_strategy || "round_robin");
@@ -112,6 +121,11 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
       campanha.limite_diario_campanha ||
         (provider !== "evolution" ? DEFAULT_OFFICIAL_DAILY_LIMIT : DEFAULT_EVOLUTION_DAILY_LIMIT),
     );
+    const schedule = Object.entries(officialConfig.limite_diario_programado || {})
+      .map(([data, limite]) => ({ data, limite: Number(limite) }))
+      .filter((item) => /^\d{4}-\d{2}-\d{2}$/.test(item.data) && Number.isFinite(item.limite) && item.limite > 0)
+      .sort((a, b) => a.data.localeCompare(b.data));
+    setLimitesProgramados(schedule);
     setBatchSize(campanha.batch_size || (provider !== "evolution" ? 10 : 5));
     setWhatsappProvider(provider);
     if (provider !== "evolution") {
@@ -294,8 +308,13 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
         officialCadenceMax < officialCadenceMin + 1 ||
         officialCadenceMax > 20
       )) {
-        throw new Error("A cadência oficial deve ficar entre 2 e 20 minutos, com máximo igual ou maior que o mínimo");
+        throw new Error("A cadência oficial deve ficar entre 2 e 20 minutos, com o máximo pelo menos 1 minuto acima do mínimo");
       }
+      // etapa sem data ou com data repetida seria descartada/sobrescrita sem aviso
+      const datasEtapas = limitesProgramados.map((item) => item.data);
+      if (datasEtapas.some((d) => !/^\d{4}-\d{2}-\d{2}$/.test(d))) throw new Error("Preencha a data de cada aumento programado ou remova a etapa");
+      if (new Set(datasEtapas).size !== datasEtapas.length) throw new Error("Há dois aumentos programados na mesma data");
+      if (limitesProgramados.some((item) => !(item.limite >= 1 && item.limite <= 500))) throw new Error("Cada aumento programado deve ficar entre 1 e 500 envios por dia");
       const briefingAtualizado = {
         ...(campanha.briefing_ia || {}),
         handoff_nome: handoffNome.trim() || "[A_CONFIGURAR]",
@@ -310,6 +329,12 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
           chip_fallback_id: chipIds[1] || null,
           rotation_strategy: rotationStrategy,
           limite_diario_campanha: limiteDiario,
+          limite_diario_programado: Object.fromEntries(
+            limitesProgramados
+              .filter((item) => /^\d{4}-\d{2}-\d{2}$/.test(item.data) && item.limite > 0)
+              .sort((a, b) => a.data.localeCompare(b.data))
+              .map((item) => [item.data, item.limite]),
+          ),
           batch_size: batchSize,
           delay_between_batches_min: whatsappProvider !== "evolution"
             ? officialCadenceMin * 60
@@ -527,6 +552,58 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
                   </div>
                 )}
 
+                {whatsappProvider !== "evolution" && (
+                  <div className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50/40 p-3">
+                    <div>
+                      <Label>Intervalo entre novos contatos</Label>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Um contato por ciclo. O padrão é 2–3 minutos; a espera indicada pelo Chakra/Meta pode alongar a cadência.
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="config-official-cadence-min" className="text-xs">Mínimo (minutos)</Label>
+                        <Input
+                          id="config-official-cadence-min"
+                          type="number"
+                          inputMode="numeric"
+                          min={2}
+                          max={20}
+                          step={1}
+                          className="min-h-11 bg-background"
+                          value={officialCadenceMin}
+                          onChange={(event) => setOfficialCadenceMin(Number(event.target.value))}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="config-official-cadence-max" className="text-xs">Máximo (minutos)</Label>
+                        <Input
+                          id="config-official-cadence-max"
+                          type="number"
+                          inputMode="numeric"
+                          min={2}
+                          max={20}
+                          step={1}
+                          className="min-h-11 bg-background"
+                          value={officialCadenceMax}
+                          onChange={(event) => setOfficialCadenceMax(Number(event.target.value))}
+                        />
+                      </div>
+                    </div>
+                    {(officialCadenceMin < 2 || officialCadenceMax < officialCadenceMin + 1 || officialCadenceMax > 20) && (
+                      <p className="text-xs text-destructive">
+                        Use no mínimo 2 minutos e deixe o máximo pelo menos 1 minuto acima, até 20 minutos.
+                      </p>
+                    )}
+                    <p className="text-xs text-emerald-900">
+                      Em 10 horas, 2–3 minutos representam cerca de 200–300 contatos teóricos. O teto diário configurado (padrão Sigma: 250), pausas e campanhas no mesmo número podem reduzir o total.
+                    </p>
+                    <p className="text-xs text-amber-800">
+                      Use somente com opt-in registrado para mensagens da GSS no WhatsApp e respeite pedidos de saída.
+                    </p>
+                  </div>
+                )}
+
                 {whatsappProvider === "evolution" && (
                 <div>
                   <Label className="text-sm">
@@ -617,7 +694,7 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
                 </div>
                 )}
 
-                <div className="grid grid-cols-2 gap-3 pt-2 border-t">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t">
                   <div className="space-y-1.5">
                     <Label className="text-xs">
                       {whatsappProvider !== "evolution"
@@ -629,13 +706,89 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
                       value={limiteDiario}
                       onChange={(e) => setLimiteDiario(Number(e.target.value))}
                       min={1}
-                      max={whatsappProvider !== "evolution" ? DEFAULT_OFFICIAL_DAILY_LIMIT : 500}
+                      max={whatsappProvider !== "evolution" ? 500 : 500}
                     />
                     <p className="text-[11px] text-muted-foreground">
                       {whatsappProvider !== "evolution"
-                        ? "Piloto atual da API oficial: até 250 novos contatos/dia."
+                        ? "Até 500 novos contatos/dia. Use a programação abaixo para aumentar por etapas."
                         : "O ritmo é governado pelos limites e pela saúde dos chips conectados."}
                     </p>
+
+                    {whatsappProvider !== "evolution" && (
+                      <div className="mt-3 space-y-2 rounded-md border bg-muted/20 p-3">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div>
+                            <p className="text-xs font-medium">Aumentos programados</p>
+                            <p className="text-[11px] text-muted-foreground">
+                              O limite base continua valendo até a data de cada etapa (horário de Brasília).
+                            </p>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="min-h-11"
+                            onClick={() => setLimitesProgramados((current) => [
+                              ...current,
+                              { data: "", limite: Math.min(500, Math.max(1, limiteDiario)) },
+                            ])}
+                          >
+                            <Plus className="mr-1.5 h-4 w-4" />
+                            Adicionar etapa
+                          </Button>
+                        </div>
+
+                        {limitesProgramados.length === 0 ? (
+                          <p className="text-[11px] text-muted-foreground">
+                            Nenhuma etapa programada.
+                          </p>
+                        ) : (
+                          <div className="space-y-2">
+                            {limitesProgramados.map((item, index) => (
+                              <div
+                                key={index}
+                                className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,140px)_44px]"
+                              >
+                                <div className="space-y-1">
+                                  <Label className="text-[11px]">A partir de</Label>
+                                  <Input
+                                    type="date"
+                                    value={item.data}
+                                    onChange={(event) => setLimitesProgramados((current) => current.map((entry, entryIndex) =>
+                                      entryIndex === index ? { ...entry, data: event.target.value } : entry,
+                                    ))}
+                                    className="min-h-11"
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <Label className="text-[11px]">Envios/dia</Label>
+                                  <Input
+                                    type="number"
+                                    min={1}
+                                    max={500}
+                                    value={item.limite}
+                                    onChange={(event) => setLimitesProgramados((current) => current.map((entry, entryIndex) =>
+                                      entryIndex === index ? { ...entry, limite: Number(event.target.value) } : entry,
+                                    ))}
+                                    className="min-h-11"
+                                  />
+                                </div>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  aria-label="Remover etapa"
+                                  className="min-h-11 min-w-11 self-end text-muted-foreground hover:text-destructive"
+                                  onClick={() => setLimitesProgramados((current) => current.filter((_, entryIndex) => entryIndex !== index))}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-xs">Tamanho do lote</Label>

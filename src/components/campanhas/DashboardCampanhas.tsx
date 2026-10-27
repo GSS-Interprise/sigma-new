@@ -181,7 +181,7 @@ export function DashboardCampanhas() {
     queryKey: ["campaign-operational-state"],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("vw_campanha_operational_state" as never)
+        .from("vw_campanha_operational_state_v2" as never)
         .select("campanha_id, operational_state, operational_reason, chips_configured, chips_usable");
       if (error) throw error;
       const map = new Map<string, {

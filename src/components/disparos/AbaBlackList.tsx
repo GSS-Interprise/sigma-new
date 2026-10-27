@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useCaptacaoPermissions } from "@/hooks/useCaptacaoPermissions";
 import { usePermissions } from "@/hooks/usePermissions";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -44,8 +45,10 @@ export function AbaBlackList() {
   const [reason, setReason] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const queryClient = useQueryClient();
+  const { hasCaptacaoPermission } = useCaptacaoPermissions();
   const { isAdmin, canDelete } = usePermissions();
-  const canManageBlacklist = isAdmin || canDelete("disparos");
+  // permissão da captação (Vinicius) sem tirar quem já podia (admin, gestor de contratos)
+  const canManageBlacklist = hasCaptacaoPermission("blacklist") || isAdmin || canDelete("disparos");
 
   // Buscar médicos disponíveis (não na black list)
   const { data: medicosDisponiveis = [] } = useQuery({

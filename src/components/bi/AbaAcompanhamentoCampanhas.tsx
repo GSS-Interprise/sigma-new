@@ -25,6 +25,8 @@ type Campanha = {
   disparos_hoje: number; disparos_7d: number; disparos_total: number; ultimo_disparo: string | null;
   leads: number; frio: number; contatados: number; em_conversa: number; quente: number; convertido: number;
   chips_total: number; chips_online: number;
+  whatsapp_provider?: "evolution" | "twilio" | "chakra" | null;
+  canal_configurado?: boolean;
 };
 type Dados = {
   hoje: { ia: number; manual: number; total: number };
@@ -46,7 +48,11 @@ function desdeFrom(key: string): string | null {
 type Saude = { key: string; label: string; cor: string };
 function saudeDe(c: Campanha): Saude {
   if (c.status === "pausada") return { key: "pausada", label: "Pausada", cor: C.soft };
-  if (c.chips_online === 0) return { key: "sem_chip", label: "Sem chip online", cor: C.red };
+  if (c.whatsapp_provider !== "evolution" && c.whatsapp_provider) {
+    if (!c.canal_configurado) return { key: "configurando", label: "Canal oficial incompleto", cor: C.red };
+  } else if (c.chips_online === 0) {
+    return { key: "sem_chip", label: "Sem chip online", cor: C.red };
+  }
   if (c.disparos_hoje > 0) return { key: "rodando", label: "Disparando hoje", cor: C.green };
   if (c.disparos_7d > 0) return { key: "lenta", label: "Lenta", cor: C.amber };
   return { key: "parada", label: "Parada", cor: C.red };
@@ -86,9 +92,9 @@ export function AbaAcompanhamentoCampanhas() {
   const campanhas = useMemo(() => {
     let cs = (data?.campanhas ?? []).map((c) => ({ ...c, saude: saudeDe(c) }));
     if (tipoFiltro !== "todas") cs = cs.filter((c) => c.tipo === tipoFiltro);
-    if (soAtencao) cs = cs.filter((c) => c.saude.key === "parada" || c.saude.key === "sem_chip");
+    if (soAtencao) cs = cs.filter((c) => c.saude.key === "parada" || c.saude.key === "sem_chip" || c.saude.key === "configurando");
     // ordena: problemas primeiro, depois rodando, depois resto
-    const rank = (k: string) => (k === "sem_chip" || k === "parada" ? 0 : k === "lenta" ? 1 : k === "rodando" ? 2 : 3);
+    const rank = (k: string) => (k === "sem_chip" || k === "parada" || k === "configurando" ? 0 : k === "lenta" ? 1 : k === "rodando" ? 2 : 3);
     return cs.sort((a, b) => rank(a.saude.key) - rank(b.saude.key) || b.disparos_7d - a.disparos_7d);
   }, [data, tipoFiltro, soAtencao]);
 
@@ -98,7 +104,11 @@ export function AbaAcompanhamentoCampanhas() {
   const r = data.resumo;
   const ativasBase = Math.max(r.ativas, 1);
   const lentas = Math.max(r.ativas - r.rodando_hoje - r.paradas, 0);
-  const precisamAtencao = (data.campanhas ?? []).filter((c) => c.status === "ativa" && (c.chips_online === 0 || (c.ultimo_disparo === null || new Date(c.ultimo_disparo).getTime() < Date.now() - 2 * 86400000)));
+  const precisamAtencao = (data.campanhas ?? []).filter((c) => c.status === "ativa" && (
+    (c.whatsapp_provider !== "evolution" && c.whatsapp_provider && !c.canal_configurado) ||
+    (c.whatsapp_provider === "evolution" && c.chips_online === 0) ||
+    (c.ultimo_disparo === null || new Date(c.ultimo_disparo).getTime() < Date.now() - 2 * 86400000)
+  ));
 
   return (
     <div className="space-y-5">
@@ -155,7 +165,11 @@ export function AbaAcompanhamentoCampanhas() {
               <div key={c.campanha_id} className="flex items-center justify-between rounded-lg bg-white/70 px-3 py-1.5 text-sm">
                 <span className="truncate text-slate-700">{c.campanha}</span>
                 <span className="shrink-0 ml-2 text-xs font-medium text-red-700">
-                  {c.chips_online === 0 ? "sem chip online" : `parada · ${haQuanto(c.ultimo_disparo)}`}
+                  {c.whatsapp_provider !== "evolution" && c.whatsapp_provider && !c.canal_configurado
+                    ? "canal oficial incompleto"
+                    : c.whatsapp_provider === "evolution" && c.chips_online === 0
+                      ? "sem chip online"
+                      : `parada · ${haQuanto(c.ultimo_disparo)}`}
                 </span>
               </div>
             ))}
@@ -253,8 +267,9 @@ export function AbaAcompanhamentoCampanhas() {
                         </div>
                       </td>
                       <td className="py-2.5 px-2 text-center">
-                        <span className={`inline-flex items-center gap-1 text-xs tabular-nums ${c.chips_online === 0 ? "text-red-600 font-medium" : "text-slate-600"}`}>
-                          <Smartphone className="h-3.5 w-3.5" /> {c.chips_online}/{c.chips_total}
+                        <span className={`inline-flex items-center gap-1 text-xs tabular-nums ${c.whatsapp_provider !== "evolution" && c.whatsapp_provider ? "text-blue-700 font-medium" : c.chips_online === 0 ? "text-red-600 font-medium" : "text-slate-600"}`}>
+                          <Smartphone className="h-3.5 w-3.5" />
+                          {c.whatsapp_provider === "chakra" ? "API oficial · Chakra" : c.whatsapp_provider === "twilio" ? "API oficial · Twilio" : `${c.chips_online}/${c.chips_total}`}
                         </span>
                       </td>
                     </tr>

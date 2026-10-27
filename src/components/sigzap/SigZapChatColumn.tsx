@@ -786,7 +786,7 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
       const contact = conversa.contact as any;
       const instance = conversa.instance as any;
 
-      if (instance?.provider === "twilio") {
+      if (["twilio", "chakra"].includes(String(instance?.provider))) {
         if (mediaUrl || mediaType || quotedMessageId) {
           throw new Error("Por enquanto, a API oficial aceita texto nesta conversa. Envie anexos pelo WhatsApp.");
         }
@@ -1218,7 +1218,7 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
   // Check if user can send messages - everyone can send, colors identify who is attending
   const assignedUser = conversa?.assigned_user as any;
   const canSendMessages = !!conversa;
-  const isOfficialConversation = (conversa?.instance as any)?.provider === "twilio";
+  const isOfficialConversation = ["twilio", "chakra"].includes(String((conversa?.instance as any)?.provider));
   const officialWindowOpen = !isOfficialConversation ||
     (!!conversa?.service_window_expires_at &&
       new Date(conversa.service_window_expires_at).getTime() > Date.now());

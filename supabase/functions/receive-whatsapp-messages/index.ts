@@ -44,6 +44,7 @@ interface EvolutionMessage {
       options?: Array<{ optionName?: string }>;
       selectableOptionsCount?: number;
     };
+    interactiveMessage?: { type?: string; text?: string };
   };
   messageId?: string;
   messageTimestamp?: number;
@@ -281,6 +282,18 @@ function extractMessageContent(payload: EvolutionMessage): {
       quotedMessageId: quoted?.stanzaId,
       quotedMessageText: quoted?.quotedMessage?.conversation ||
         quoted?.quotedMessage?.extendedTextMessage?.text,
+    };
+  }
+
+  // Coexistência pode entregar respostas de botoes como `unsupported`.
+  // Preservar o tipo evita exibir "Mensagem sem conteúdo" no Sigma e deixa
+  // claro para a equipe que houve uma interação, mesmo sem o texto do botao.
+  if (msgType === "interactive" || evolutionMessage.interactiveMessage) {
+    const interactive = evolutionMessage.interactiveMessage || {};
+    const kind = interactive.type ? ` · ${interactive.type}` : "";
+    return {
+      text: `[Mensagem interativa recebida${kind}]`,
+      type: "interactive",
     };
   }
 
@@ -778,7 +791,9 @@ serve(async (req) => {
       payload.message?.conversation ||
       payload.message?.extendedTextMessage || payload.message?.imageMessage ||
       payload.message?.videoMessage || payload.message?.audioMessage ||
-      payload.message?.documentMessage;
+      payload.message?.documentMessage || payload.message?.interactiveMessage ||
+      (payload as any).data?.message?.interactiveMessage ||
+      (payload as any).data?.message?.unsupportedMessage;
 
     // Se for update de status, apenas atualizar o status da mensagem existente
     if (isMessageUpdate) {

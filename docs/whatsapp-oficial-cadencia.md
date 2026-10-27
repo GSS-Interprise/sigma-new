@@ -11,6 +11,7 @@
 
 - Quando Chakra/Meta retorna `429`, Sigma grava o cooldown pelo `Retry-After` e reagenda o lead/run para depois desse prazo. Sem uma duração fornecida, usa 60 segundos como fallback.
 - Contenção do próprio gate e `429` não contam como mensagem enviada, não incrementam o contador de falhas/retries do lead e não removem o lead da fila.
+- No envio controlado one-shot, se a contenção for somente a janela local de 3,5 s do remetente e houver orçamento de execução suficiente, o worker aguarda e tenta novamente o mesmo lead. Rate limit do provedor continua reagendado para o scheduler; essa otimização não reduz nem contorna o intervalo compartilhado.
 - Respostas finais de entrega continuam vindo pelos webhooks, independentemente da aceitação inicial pelo provedor.
 - A reserva de chamada tem lease para recuperar automaticamente quando uma Edge Function é encerrada antes de liberá-la.
 
