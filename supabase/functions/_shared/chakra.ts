@@ -177,7 +177,9 @@ export function extractTemplateVariables(body: string) {
 }
 
 export async function chakraApi(path: string, init: RequestInit = {}) {
-  const key = Deno.env.get("CHAKRA_API_KEY")?.trim();
+  // Conta Chakra da própria GSS (27/10). Sem ela, volta para a conta da Pulse: remover o
+  // secret CHAKRA_API_KEY_GSS é o rollback.
+  const key = (Deno.env.get("CHAKRA_API_KEY_GSS") || Deno.env.get("CHAKRA_API_KEY"))?.trim();
   if (!key) throw new Error("chakra_not_configured");
   const response = await fetch(`https://api.chakrahq.com${path}`, {
     ...init,

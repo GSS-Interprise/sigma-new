@@ -63,7 +63,7 @@ function extrairMensagem(payload: any) {
  * mesmo token. A URL que vem no webhook (lookaside.fbsbx.com) exige o token da Meta.
  */
 async function baixarMidia(mediaId: string): Promise<{ bytes: Uint8Array; mime?: string }> {
-  const key = Deno.env.get("CHAKRA_API_KEY")?.trim();
+  const key = (Deno.env.get("CHAKRA_API_KEY_GSS") || Deno.env.get("CHAKRA_API_KEY"))?.trim();
   const h = { Authorization: `Bearer ${key}` };
   const r = await fetch(`https://api.chakrahq.com/v1/whatsapp/v24.0/media/${mediaId}`, { headers: h });
   if (!r.ok) throw new Error(`midia_meta_${r.status}:${(await r.text()).slice(0, 120)}`);
