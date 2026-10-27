@@ -175,7 +175,10 @@ export default function FinanceiroNotasFiscais(
 
   const temContato = (l: Linha) => (canal === "email" ? !!l.email : !!l.telefone);
   // nota com divergência ou que precisa de conferência à mão (Amni, 26/10)
+  // O aviso da chegada (l.conferir: foto, valor diferente) só vale enquanto a conferência não
+  // resolveu: nota aceita ou conferida ok sai da lista (Amni, 27/10: ficava presa em "Conferir").
   const precisaConferir = (l: Linha) => !l.ca_evento_id && !!l.nf_arquivo_path
+    && !["aceita", "ok"].includes(String(l.nf_conferencia_status))
     && (["divergente", "manual"].includes(String(l.nf_conferencia_status)) || !!l.conferir);
   // outros lançamentos do mesmo médico na competência, ainda sem nota: destino para mover a nota
   const outrosLocais = (l: Linha) => todasLinhas.filter((x) => x.id !== l.id && !!l.medico_id
@@ -572,6 +575,13 @@ export default function FinanceiroNotasFiscais(
                                 className={`ml-1 rounded-full px-2 py-0.5 text-[11px] hover:underline ${CONF[l.nf_conferencia_status].cls}`}>
                                 {CONF[l.nf_conferencia_status].label}
                               </button>
+                            ) : l.conferir && l.nf_arquivo_path ? (
+                              // nota anexada sem conferência rodada (ex.: veio na importação): abre para conferir e aceitar
+                              <button type="button" title={l.conferir}
+                                onClick={() => { setAlvoConf(l); setLiquidoManual(""); }}
+                                className={`ml-1 rounded-full px-2 py-0.5 text-[11px] hover:underline ${CONF.manual.cls}`}>
+                                Conferir
+                              </button>
                             ) : null}
                           </TableCell>
                           <TableCell className="hidden sm:table-cell text-xs text-muted-foreground tabular-nums">
@@ -721,8 +731,11 @@ export default function FinanceiroNotasFiscais(
                 <div><p className="font-medium leading-tight">{i.rotulo}</p><p className="text-xs text-muted-foreground">{i.detalhe}</p></div>
               </div>
             ))}
+            {alvoConf?.conferir && !(alvoConf.nf_conferencia?.itens ?? []).length && (
+              <p className="text-sm text-amber-700">Na chegada: {alvoConf.conferir}.</p>
+            )}
           </div>
-          {alvoConf && ["divergente", "manual"].includes(alvoConf.nf_conferencia_status ?? "") && (
+          {alvoConf && precisaConferir(alvoConf) && (
             <div className="rounded-md border bg-muted/30 p-3 space-y-2">
               <p className="text-xs text-muted-foreground">
                 Para seguir com esta nota mesmo assim, aceite a exceção. {alvoConf.nf_valor_liquido == null && "Informe o valor líquido a pagar, que a leitura não encontrou."}
@@ -734,7 +747,7 @@ export default function FinanceiroNotasFiscais(
           )}
           <DialogFooter>
             <Button variant="outline" disabled={enviando} onClick={() => alvoConf && conferirDeNovo(alvoConf)}>Conferir de novo</Button>
-            {alvoConf && ["divergente", "manual"].includes(alvoConf.nf_conferencia_status ?? "") && (
+            {alvoConf && precisaConferir(alvoConf) && (
               <Button disabled={enviando} onClick={() => aceitarNota(alvoConf)}>
                 {enviando && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />} Aceitar esta nota
               </Button>

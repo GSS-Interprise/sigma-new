@@ -177,6 +177,13 @@ serve(async (req) => {
     const msg = extrairMensagem(payload);
     if (!msg?.midia?.id) return json({ ok: true, ignorado: "sem_documento" });
 
+    // o mesmo evento chega por dois webhooks em paralelo: só a primeira entrega processa
+    // (senão o médico recebe a confirmação duas vezes). Reprocessamento silencioso passa direto.
+    if (msg.mensagemId && !silencioso) {
+      const { error: dup } = await svc.from("financeiro_nf_inbound_claims").insert({ mensagem_id: msg.mensagemId });
+      if (dup?.code === "23505") return json({ ok: true, ignorado: "evento_repetido" });
+    }
+
     // nota já anexada a um pagamento não volta a ser decidida: reprocessar não desfaz vínculo
     if (msg.mensagemId) {
       const { data: ja } = await svc.from("financeiro_nf_inbox")
