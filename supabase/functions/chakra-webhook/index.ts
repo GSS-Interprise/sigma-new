@@ -1075,10 +1075,21 @@ serve(async (request) => {
             const sentAt = new Date(
               Number(asObject(payload.data).messageTimestamp || Date.now() / 1000) * 1000,
             ).toISOString();
-            await markManualContact(admin, leadId, conversationId, sentAt)
-              .catch((error) =>
-                console.warn("[chakra] falha ao registrar contato manual:", error)
-              );
+            // regra no banco (registrar_contato_equipe): campanha que lista este número
+            // ganha o primeiro contato, com o dono do número como quem contatou
+            const { error: contatoError } = await admin.rpc("registrar_contato_equipe", {
+              p_lead_id: leadId,
+              p_phone_number_id: String(event.phoneNumberId || connection.phone_number_id || ""),
+              p_conversa_id: conversationId || null,
+              p_quando: sentAt,
+            });
+            if (contatoError) {
+              console.warn("[chakra] falha ao registrar contato da equipe:", contatoError.message);
+              await markManualContact(admin, leadId, conversationId, sentAt)
+                .catch((error) =>
+                  console.warn("[chakra] falha ao registrar contato manual:", error)
+                );
+            }
           }
           const messageData = asObject(payload.data);
           const messageKey = asObject(messageData.key);
