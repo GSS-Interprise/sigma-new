@@ -35,6 +35,8 @@ import { useChipsEmUso } from "@/hooks/useChipsEmUso";
 import { toast } from "sonner";
 import { ConfirmDestructive } from "@/components/common/ConfirmDestructive";
 import { CampaignStrategiesConfig } from "./CampaignStrategiesConfig";
+import { NumerosEquipeCampanha } from "./NumerosEquipeCampanha";
+import { RampaEnviosCampanha, type Rampa } from "./RampaEnviosCampanha";
 import {
   OfficialTemplateVariablesConfig,
   type OfficialTemplateBindings,
@@ -74,6 +76,8 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
   const [rotationStrategy, setRotationStrategy] = useState("round_robin");
   const [limiteDiario, setLimiteDiario] = useState(DEFAULT_EVOLUTION_DAILY_LIMIT);
   const [limitesProgramados, setLimitesProgramados] = useState<LimiteProgramado[]>([]);
+  const [numerosEquipe, setNumerosEquipe] = useState<string[]>([]);
+  const [rampa, setRampa] = useState<Rampa>({ ativa: false, incremento: 10, cadaDias: 2, teto: 450 });
   const [batchSize, setBatchSize] = useState(5);
   const [whatsappProvider, setWhatsappProvider] = useState<"evolution" | "twilio" | "chakra">("evolution");
   const [officialCadenceMin, setOfficialCadenceMin] = useState(2);
@@ -126,6 +130,15 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
       .filter((item) => /^\d{4}-\d{2}-\d{2}$/.test(item.data) && Number.isFinite(item.limite) && item.limite > 0)
       .sort((a, b) => a.data.localeCompare(b.data));
     setLimitesProgramados(schedule);
+    const extra = campanha as typeof campanha & {
+      numeros_equipe?: string[] | null; rampa_ativa?: boolean; rampa_incremento?: number;
+      rampa_cada_dias?: number; rampa_teto?: number;
+    };
+    setNumerosEquipe(extra.numeros_equipe || []);
+    setRampa({
+      ativa: !!extra.rampa_ativa, incremento: extra.rampa_incremento ?? 10,
+      cadaDias: extra.rampa_cada_dias ?? 2, teto: extra.rampa_teto ?? 450,
+    });
     setBatchSize(campanha.batch_size || (provider !== "evolution" ? 10 : 5));
     setWhatsappProvider(provider);
     if (provider !== "evolution") {
@@ -329,6 +342,12 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
           chip_fallback_id: chipIds[1] || null,
           rotation_strategy: rotationStrategy,
           limite_diario_campanha: limiteDiario,
+          numeros_equipe: numerosEquipe,
+          // o banco recusa mudança na subida de quem não cuida dela (trigger); valor igual passa
+          rampa_ativa: rampa.ativa,
+          rampa_incremento: rampa.incremento,
+          rampa_cada_dias: rampa.cadaDias,
+          rampa_teto: rampa.teto,
           limite_diario_programado: Object.fromEntries(
             limitesProgramados
               .filter((item) => /^\d{4}-\d{2}-\d{2}$/.test(item.data) && item.limite > 0)
@@ -789,6 +808,14 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
                         )}
                       </div>
                     )}
+
+                    <RampaEnviosCampanha
+                      value={rampa}
+                      onChange={setRampa}
+                      limiteAtual={limiteDiario}
+                      proximoEm={(campanha as { rampa_proximo_em?: string | null } | undefined)?.rampa_proximo_em}
+                      motivoParada={(campanha as { rampa_parada_motivo?: string | null } | undefined)?.rampa_parada_motivo}
+                    />
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-xs">Tamanho do lote</Label>
@@ -824,6 +851,8 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
               </TabsContent>
 
               <TabsContent value="responsavel" className="m-0 space-y-4">
+                <NumerosEquipeCampanha value={numerosEquipe} onChange={setNumerosEquipe} />
+
                 <div className="bg-amber-50 border border-amber-200 rounded p-3 text-xs text-amber-900">
                   <strong>Importante:</strong> quando a IA detectar um lead quente, ela vai
                   enviar um WhatsApp <strong>pra esse número</strong>. Confirme que é um
