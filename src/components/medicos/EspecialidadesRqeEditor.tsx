@@ -53,7 +53,9 @@ export function EspecialidadesRqeEditor({ value, onChange, textoAntigo }: Props)
 
   const adicionar = (e: { id: string; nome: string }) => {
     if (!escolhidas.has(e.id)) {
-      onChange([...value, { especialidade_id: e.id, nome: e.nome, rqe: "", sem_rqe: false }]);
+      // Generalista e residente não têm RQE: já entram marcados
+      const semRqe = e.nome === "MEDICINA GENERALISTA" || e.nome.startsWith("RESIDENTE DE ");
+      onChange([...value, { especialidade_id: e.id, nome: e.nome, rqe: "", sem_rqe: semRqe }]);
     }
     setOpen(false);
   };

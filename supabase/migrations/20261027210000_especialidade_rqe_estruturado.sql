@@ -157,3 +157,11 @@ update lead_especialidades le
    and l.rqe ~ '^\D*\d{3,6}\D*$'
    and l.id in (select lead_id from medicos where lead_id is not null)
    and (select count(*) from lead_especialidades x where x.lead_id = le.lead_id) = 1;
+
+-- 4) Medicina Generalista e "Residente de ..." não têm RQE por definição: ficam sem_rqe.
+update lead_especialidades le
+   set sem_rqe = true
+  from especialidades e
+ where e.id = le.especialidade_id
+   and coalesce(le.rqe, '') = '' and not le.sem_rqe
+   and (e.nome = 'MEDICINA GENERALISTA' or e.nome like 'RESIDENTE DE %');
