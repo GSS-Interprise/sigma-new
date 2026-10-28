@@ -332,7 +332,11 @@ export default function FinanceiroNotasFiscais(
 
   // arquivo que não é a nota (ex.: foto qualquer mandada no WhatsApp): volta para "aguardando nota" (19/10)
   const desconsiderarNota = async (l: Linha) => {
-    if (!window.confirm(`Desconsiderar o arquivo recebido de ${l.profissional_nome}? O médico volta para "aguardando nota".`)) return;
+    // Já lançado no Conta Azul: o lançamento fica lá com o número desta nota na descrição (28/10)
+    const avisoContaAzul = l.ca_evento_id
+      ? `\n\nEste pagamento já está no Conta Azul. O lançamento continua lá, com o número desta nota na descrição: ajuste por lá se precisar.`
+      : "";
+    if (!window.confirm(`Desconsiderar o arquivo recebido de ${l.profissional_nome}? O médico volta para "aguardando nota".${avisoContaAzul}`)) return;
     setEnviando(true);
     const { error } = await (supabase as any).rpc("financeiro_desconsiderar_nf", { p_pagamento_id: l.id });
     setEnviando(false);
@@ -623,7 +627,7 @@ export default function FinanceiroNotasFiscais(
                                   <ArrowLeftRight className="h-4 w-4" />
                                 </button>
                               )}
-                              {l.nf_status === "recebida" && !l.ca_evento_id && (
+                              {l.nf_status === "recebida" && (
                                 <button title="Desconsiderar este arquivo (não é a nota)" disabled={enviando} onClick={() => desconsiderarNota(l)}
                                   className="text-muted-foreground hover:text-red-600">
                                   <X className="h-4 w-4" />
