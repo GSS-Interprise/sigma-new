@@ -62,11 +62,22 @@ function extrairMensagem(payload: any) {
  * "Fetch Whatsapp Media API"): o GET devolve uma URL já proxiada por eles, que aceita o
  * mesmo token. A URL que vem no webhook (lookaside.fbsbx.com) exige o token da Meta.
  */
-// a mídia só abre com a chave da conta onde o número está conectado (pluginId diz qual)
+// A mídia não segue a conta do número: desde 27/10 o arquivo da Amni (número na conta da Pulse)
+// só abre com a chave da conta GSS, e a da Pulse dá 404 (testado em 28/10). Tenta a conta do
+// número primeiro e, se não achar, a outra.
 async function baixarMidia(mediaId: string, pluginId: string): Promise<{ bytes: Uint8Array; mime?: string }> {
-  const key = chakraKeyFor(pluginId);
-  const h = { Authorization: `Bearer ${key}` };
-  const r = await fetch(`https://api.chakrahq.com/v1/whatsapp/v24.0/media/${mediaId}`, { headers: h });
+  const primeira = chakraKeyFor(pluginId);
+  const chaves = [primeira, Deno.env.get("CHAKRA_API_KEY_GSS")?.trim(), Deno.env.get("CHAKRA_API_KEY")?.trim()]
+    .filter((k, i, a): k is string => !!k && a.indexOf(k) === i);
+  let r: Response | null = null;
+  let h: Record<string, string> = {};
+  for (const key of chaves) {
+    h = { Authorization: `Bearer ${key}` };
+    r = await fetch(`https://api.chakrahq.com/v1/whatsapp/v24.0/media/${mediaId}`, { headers: h });
+    if (r.status !== 404) break;
+    await r.body?.cancel();
+  }
+  if (!r) throw new Error("chakra_not_configured");
   if (!r.ok) throw new Error(`midia_meta_${r.status}:${(await r.text()).slice(0, 120)}`);
   const meta = await r.json();
   if (!meta?.url) throw new Error("midia_sem_url");
