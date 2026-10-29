@@ -33,7 +33,7 @@ import { LeadPropostasSection } from "./LeadPropostasSection";
 import { LeadHistoricoAnotacoesSection } from "./LeadHistoricoAnotacoesSection";
 import { LeadPerfilIaSection } from "./LeadPerfilIaSection";
 import { LeadTimelineUnificadoSection } from "./LeadTimelineUnificadoSection";
-import { LeadAnexosSection } from "./LeadAnexosSection";
+import { LeadAnexosSection, enviarAnexosDoLead } from "./LeadAnexosSection";
 import { LeadLinksExternosSection } from "./LeadLinksExternosSection";
 import { LeadAtividadesPanel } from "./LeadAtividadesPanel";
 import { LeadChannelsSidebar } from "./LeadChannelsSidebar";
@@ -77,6 +77,8 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
   // Especialidades com o RQE de cada uma (lead_especialidades). Salvas pela RPC
   // salvar_especialidades_lead, que também atualiza os campos antigos do lead e do médico.
   const [espRqe, setEspRqe] = useState<EspecialidadeRqe[]>([]);
+  // arquivos escolhidos no cadastro de lead novo: só sobem depois que o lead existe
+  const [anexosPendentes, setAnexosPendentes] = useState<File[]>([]);
   const [espRqeOriginal, setEspRqeOriginal] = useState<string>('[]');
   const { data: catalogoEspecialidades = [] } = useEspecialidades();
   const [importDialogOpen, setImportDialogOpen] = useState(false);
@@ -321,6 +323,7 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
   // Initialize editedData when lead loads or when creating new lead
   useEffect(() => {
     if (isNewLead && open) {
+      setAnexosPendentes([]);
       // Initialize empty form for new lead (pré-preenche CPF se fornecido pelo CpfGateDialog)
       setEditedData({
         nome: '',
@@ -643,6 +646,15 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
         }
 
         if (espRqe.length > 0) await salvarEspRqe(newLead.id);
+        if (anexosPendentes.length > 0) {
+          try {
+            await enviarAnexosDoLead(newLead.id, anexosPendentes);
+          } catch (e: any) {
+            // o lead já foi criado: avisa sem desfazer, para a pessoa anexar de novo no prontuário
+            toast.error(`Médico criado, mas os anexos não subiram: ${e?.message || e}. Anexe de novo no prontuário.`);
+          }
+          setAnexosPendentes([]);
+        }
 
         return { isNew: true, newLeadId: newLead.id, createdAsCorpoClinico: createAsCorpoClinico, createdFromKanban: shouldAutoCreateMedicoAndKanban };
       }
@@ -2204,7 +2216,7 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                           )}
 
                           {/* Anexos - no final */}
-                          <LeadAnexosSection leadId={leadId} />
+                          <LeadAnexosSection leadId={isNewLead ? null : leadId} pendentes={anexosPendentes} onPendentesChange={setAnexosPendentes} />
 
                         </>
                       )}

@@ -23,7 +23,40 @@ import jpgIcon from "@/assets/file-icons/jpg.png";
 import pngIcon from "@/assets/file-icons/png.png";
 
 interface LeadAnexosSectionProps {
-  leadId: string;
+  leadId: string | null;
+  // Cadastro de lead novo: o lead ainda não existe, então os arquivos ficam nesta fila e são
+  // enviados por enviarAnexosDoLead logo depois de criar (erro do Wagner em 29/10: lead_id nulo).
+  pendentes?: File[];
+  onPendentesChange?: (arquivos: File[]) => void;
+}
+
+/** Sobe o arquivo para o storage e registra em lead_anexos. Usado também depois de criar o lead. */
+export async function enviarAnexosDoLead(leadId: string, arquivos: File[]) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Usuário não autenticado');
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('nome_completo')
+    .eq('id', user.id)
+    .single();
+
+  for (const file of arquivos) {
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${leadId}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+    const { error: uploadError } = await supabase.storage.from('lead-anexos').upload(fileName, file);
+    if (uploadError) throw uploadError;
+    const { data: { publicUrl } } = supabase.storage.from('lead-anexos').getPublicUrl(fileName);
+    const { error: insertError } = await supabase.from('lead_anexos').insert({
+      lead_id: leadId,
+      arquivo_nome: file.name,
+      arquivo_url: publicUrl,
+      arquivo_tipo: file.type,
+      arquivo_tamanho: file.size,
+      usuario_id: user.id,
+      usuario_nome: profile?.nome_completo || 'Usuário',
+    });
+    if (insertError) throw insertError;
+  }
 }
 
 const FILE_ICONS: Record<string, string> = {
@@ -52,7 +85,7 @@ function getFileIconComponent(fileName: string) {
   return File;
 }
 
-export function LeadAnexosSection({ leadId }: LeadAnexosSectionProps) {
+export function LeadAnexosSection({ leadId, pendentes = [], onPendentesChange }: LeadAnexosSectionProps) {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -164,50 +197,14 @@ export function LeadAnexosSection({ leadId }: LeadAnexosSectionProps) {
     },
   });
 
-  const uploadFile = async (file: File) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('Usuário não autenticado');
-
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('nome_completo')
-      .eq('id', user.id)
-      .single();
-
-    const fileExt = file.name.split('.').pop();
-    const fileName = `${leadId}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from('lead-anexos')
-      .upload(fileName, file);
-
-    if (uploadError) throw uploadError;
-
-    const { data: { publicUrl } } = supabase.storage
-      .from('lead-anexos')
-      .getPublicUrl(fileName);
-
-    const { error: insertError } = await supabase
-      .from('lead_anexos')
-      .insert({
-        lead_id: leadId,
-        arquivo_nome: file.name,
-        arquivo_url: publicUrl,
-        arquivo_tipo: file.type,
-        arquivo_tamanho: file.size,
-        usuario_id: user.id,
-        usuario_nome: profile?.nome_completo || 'Usuário',
-      });
-
-    if (insertError) throw insertError;
-  };
-
   const handleUploadFiles = async (files: FileList | File[]) => {
+    if (!leadId) {
+      onPendentesChange?.([...pendentes, ...Array.from(files)]);
+      return;
+    }
     setUploading(true);
     try {
-      for (const file of Array.from(files)) {
-        await uploadFile(file);
-      }
+      await enviarAnexosDoLead(leadId, Array.from(files));
       queryClient.invalidateQueries({ queryKey: ['lead-anexos', leadId] });
       toast.success('Arquivo(s) enviado(s) com sucesso');
     } catch (error: any) {
@@ -329,8 +326,35 @@ export function LeadAnexosSection({ leadId }: LeadAnexosSectionProps) {
         </Button>
       </div>
 
+      {!leadId && (
+        pendentes.length > 0 ? (
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Para anexar ao criar ({pendentes.length})</p>
+            <ul className="space-y-1.5">
+              {pendentes.map((arquivo, i) => (
+                <li key={`${arquivo.name}-${i}`} className="flex items-center gap-2 rounded-md border bg-background px-2.5 py-1.5 text-sm">
+                  <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0 flex-1 truncate" title={arquivo.name}>{arquivo.name}</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 shrink-0 text-muted-foreground"
+                    aria-label={`Tirar ${arquivo.name}`}
+                    onClick={() => onPendentesChange?.(pendentes.filter((_, j) => j !== i))}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs text-muted-foreground">Os arquivos são anexados quando você clicar em Criar.</p>
+          </div>
+        ) : null
+      )}
+
       {/* File List - Horizontal Scroll */}
-      {anexos && anexos.length > 0 ? (
+      {!leadId ? null : anexos && anexos.length > 0 ? (
         <div className="space-y-3 w-full max-w-full overflow-hidden">
           <p className="text-sm font-medium">Anexos Existentes:</p>
           <div 
