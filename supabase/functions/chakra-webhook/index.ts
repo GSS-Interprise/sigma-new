@@ -412,9 +412,12 @@ function normalizedMessage(
     root.messageId,
     root.provider_message_id,
   );
-  const timestamp = Number(
+  // O eco das mensagens enviadas pela API vem em milissegundos ("1793205999510"); o resto em
+  // segundos. Sem normalizar, a data caía no ano 58000 e o banco recusava (22009).
+  const timestampBruto = Number(
     item.timestamp || root.timestamp || Math.floor(Date.now() / 1000),
   );
+  const timestamp = timestampBruto > 1e11 ? Math.floor(timestampBruto / 1000) : timestampBruto;
   if (!remoteJid || !messageId) return null;
   const buttonReply = fromMe ? null : chakraButtonReply(item);
   const normalizedType = buttonReply ? "text" : firstText(
