@@ -1082,11 +1082,24 @@ serve(async (req) => {
         .select("id, contact_phone")
         .single();
 
-      if (createContactError) {
+      // Corrida: duas mensagens do mesmo contato chegam juntas (histórico importado ao conectar
+      // um número, ou o mesmo evento pelos dois webhooks da Chakra). A segunda bate na chave
+      // única e usa o contato que a primeira acabou de criar, em vez de perder a mensagem.
+      if (createContactError?.code === "23505") {
+        const { data: criadoAoMesmoTempo } = await supabase
+          .from("sigzap_contacts")
+          .select("id, contact_phone")
+          .eq("contact_jid", contactJid)
+          .eq("instance_id", instance.id)
+          .maybeSingle();
+        if (!criadoAoMesmoTempo) throw createContactError;
+        contact = criadoAoMesmoTempo;
+      } else if (createContactError) {
         console.error("❌ Erro ao criar contato:", createContactError);
         throw createContactError;
+      } else {
+        contact = newContact;
       }
-      contact = newContact;
       console.log("✅ Contato criado:", contact.id, "Nome:", contactNameToUse);
     } else {
       // Atualizar nome do contato se mudou - APENAS quando a mensagem NÃO é enviada por nós (fromMe = false)
@@ -1130,6 +1143,9 @@ serve(async (req) => {
       ? new Date(new Date(sentAt).getTime() + 24 * 60 * 60 * 1000).toISOString()
       : null;
 
+    // Mesma corrida do contato: se outra entrega criou a conversa no meio do caminho, usa a dela
+    // e segue como conversa existente (update logo abaixo).
+    let conversaCriadaAgora = false;
     if (!conversation) {
       const { data: newConversation, error: createConversationError } =
         await supabase
@@ -1146,13 +1162,26 @@ serve(async (req) => {
           .select("id, unread_count")
           .single();
 
-      if (createConversationError) {
+      if (createConversationError?.code === "23505") {
+        const { data: criadaAoMesmoTempo } = await supabase
+          .from("sigzap_conversations")
+          .select("id, unread_count")
+          .eq("contact_id", contact.id)
+          .eq("instance_id", instance.id)
+          .maybeSingle();
+        if (!criadaAoMesmoTempo) throw createConversationError;
+        conversation = criadaAoMesmoTempo;
+      } else if (createConversationError) {
         console.error("❌ Erro ao criar conversa:", createConversationError);
         throw createConversationError;
+      } else {
+        conversation = newConversation;
+        conversaCriadaAgora = true;
+        console.log("✅ Conversa criada:", conversation.id);
       }
-      conversation = newConversation;
-      console.log("✅ Conversa criada:", conversation.id);
-    } else {
+    }
+
+    if (!conversaCriadaAgora) {
       // Atualizar conversa existente
       const newUnreadCount = fromMe ? 0 : (conversation.unread_count || 0) + 1;
 
@@ -1387,6 +1416,19 @@ serve(async (req) => {
       .select("id")
       .single();
 
+    // A mesma mensagem chega pelos dois webhooks da Chakra quase juntas: as duas passam pela
+    // checagem de duplicata acima e a segunda bate no índice único. Já está gravada: não é erro.
+    if (msgError?.code === "23505") {
+      console.log("⚠️ Mensagem gravada por outra entrega ao mesmo tempo:", messageId);
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: "Mensagem já processada",
+          data: { conversationId: conversation.id },
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
     if (msgError) {
       console.error("❌ Erro ao inserir mensagem:", msgError);
       throw msgError;
@@ -1502,8 +1544,11 @@ serve(async (req) => {
     );
   } catch (error: unknown) {
     console.error("❌ Erro no endpoint de mensagens:", error);
+    // Erro do Supabase não é instância de Error: sem ler .message, tudo virava "Erro desconhecido"
     const errorMessage = error instanceof Error
       ? error.message
+      : (error as { message?: string; code?: string })?.message
+      ? `${(error as { code?: string }).code ?? ""} ${(error as { message: string }).message}`.trim()
       : "Erro desconhecido";
     return new Response(
       JSON.stringify({

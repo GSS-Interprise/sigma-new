@@ -917,6 +917,66 @@ async function updateTemplateStatus(
     .like("content_sid", `%:${templateId}`);
 }
 
+const TIPOS_MENSAGEM = ["message", "message_echo", "smb_message_echo", "messages"];
+
+// Reprocessamento (29/10/2026): mensagens que falharam na corrida do receiver ou chegaram antes de
+// a conexão do número ser salva (histórico importado ao conectar). Só grava no histórico: sem IA,
+// sem descadastro, sem contato da equipe, porque são conversas antigas. A rota só existe enquanto
+// o secret SIGMA_REPLAY_TOKEN estiver definido; apagar o secret desliga.
+async function reprocessarEventos(ids: string[]) {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+  const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  const admin = createClient(supabaseUrl, serviceRole);
+  const resultados: Record<string, number> = {};
+  const conta = (k: string) => (resultados[k] = (resultados[k] || 0) + 1);
+
+  for (const id of ids.slice(0, 200)) {
+    const { data: ev } = await admin.from("whatsapp_chakra_webhook_events")
+      .select("id, event_type, phone_number_id, payload").eq("id", id).maybeSingle();
+    if (!ev || !TIPOS_MENSAGEM.includes(ev.event_type)) { conta("fora_do_escopo"); continue; }
+    const payloadEvento = asObject(ev.payload);
+    if (payloadEvento.descartado) { conta("descartado"); continue; }
+
+    const wabaId = String(payloadEvento.wabaId || "");
+    const consulta = admin.from("whatsapp_chakra_connections")
+      .select("id, plugin_id, waba_id, phone_number_id, phone_e164, display_name, somente_leads");
+    const { data: connection } = ev.phone_number_id
+      ? await consulta.eq("phone_number_id", ev.phone_number_id).maybeSingle()
+      : wabaId ? await consulta.eq("waba_id", wabaId).maybeSingle() : { data: null };
+    if (!connection) { conta("sem_conexao"); continue; }
+    const phoneNumberId = String(ev.phone_number_id || connection.phone_number_id);
+
+    try {
+      const instance = await ensureInstance(admin, connection);
+      const payload = normalizedMessage(ev.event_type, payloadEvento, phoneNumberId, instance.name);
+      if (payload && connection.somente_leads) {
+        const contato = digits(String(asObject(asObject(payload.data).key).remoteJid || "").split("@")[0]);
+        const { data: leadId } = await admin.rpc("find_lead_by_phone", { p_phone: `+${contato}` });
+        if (!leadId) {
+          await admin.from("whatsapp_chakra_webhook_events").update({
+            processing_status: "ignored", phone_number_id: phoneNumberId, error_message: null,
+            payload: { descartado: "contato_fora_da_base" },
+          }).eq("id", id);
+          conta("fora_da_base");
+          continue;
+        }
+      }
+      if (payload) await forwardMessage(supabaseUrl, serviceRole, payload);
+      await admin.from("whatsapp_chakra_webhook_events").update({
+        processing_status: "processed", phone_number_id: phoneNumberId, error_message: null,
+      }).eq("id", id);
+      conta(payload ? "gravada" : "sem_mensagem");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "processing_failed";
+      await admin.from("whatsapp_chakra_webhook_events").update({
+        processing_status: "failed", error_message: `reprocesso:${message}`.slice(0, 500),
+      }).eq("id", id);
+      conta("falhou");
+    }
+  }
+  return resultados;
+}
+
 serve(async (request) => {
   if (request.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -926,6 +986,11 @@ serve(async (request) => {
   }
 
   const rawBody = await request.text();
+  const replayToken = Deno.env.get("SIGMA_REPLAY_TOKEN")?.trim();
+  if (replayToken && request.headers.get("x-sigma-replay") === replayToken) {
+    const { ids } = JSON.parse(rawBody || "{}");
+    return json({ ok: true, resultados: await reprocessarEventos(Array.isArray(ids) ? ids : []) });
+  }
   if (!(await verifySignature(rawBody, request))) {
     return json({ ok: false, error: "invalid_chakra_signature" }, 401);
   }
