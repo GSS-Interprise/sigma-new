@@ -95,8 +95,17 @@ async function pedidoEmAberto(svc: any, telefone: string): Promise<{ aberto: boo
   const { data: solic } = await svc.from("financeiro_nf_solicitacoes")
     .select("destino, pagamento_id, created_at").eq("status", "enviada").gte("created_at", desde)
     .order("created_at", { ascending: false }).limit(500);
-  const s = (solic ?? []).find((x: any) => sufixo(x.destino || "") === fim);
-  if (s) return { aberto: true, pagamentoId: s.pagamento_id };
+  // O pedido só vale enquanto o pagamento ainda espera a nota. Em 29/10 a nota de um
+  // à vista pedido por fora (Lauro, plantões de outubro) caiu no pedido de 20/10 da
+  // competência 09, que o à vista já tinha zerado (nf_status 'dispensada').
+  const doNumero = (solic ?? []).filter((x: any) => sufixo(x.destino || "") === fim && x.pagamento_id);
+  if (doNumero.length) {
+    const { data: esperando } = await svc.from("financeiro_pagamentos").select("id")
+      .in("id", doNumero.map((x: any) => x.pagamento_id)).eq("nf_status", "solicitada");
+    const abertos = new Set((esperando ?? []).map((p: any) => p.id));
+    const s = doNumero.find((x: any) => abertos.has(x.pagamento_id));
+    if (s) return { aberto: true, pagamentoId: s.pagamento_id };
+  }
 
   const { data: medicos } = await svc.from("medicos").select("id, telefone").not("telefone", "is", null);
   const ids = (medicos ?? []).filter((m: any) => sufixo(m.telefone) === fim).map((m: any) => m.id);
