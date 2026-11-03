@@ -28,6 +28,7 @@ serve(async (req) => {
   const input = await req.json().catch(() => ({}));
   const limite = Math.min(Math.max(Number(input.limite) || 40, 1), 100);
   const dias = Math.min(Math.max(Number(input.dias) || 31, 1), 60);
+  // data real da mensagem (sent_at): o histórico do celular é gravado hoje com mensagens de meses atrás.
   // cursor: só mensagens mais antigas que esta data, para o arquivo que a Meta não tem mais (404)
   // não voltar no topo de todo lote.
   const antes = typeof input.antes === "string" && input.antes ? input.antes : new Date().toISOString();
@@ -50,16 +51,16 @@ serve(async (req) => {
   // .in() com milhares de ids estoura a URL: busca em fatias.
   for (let i = 0; i < ids.length && pendentes.length < limite; i += 150) {
     const { data, error } = await supabase.from("sigzap_messages")
-      .select("id, conversation_id, wa_message_id, message_type, media_mime_type, media_filename, raw_payload, created_at")
+      .select("id, conversation_id, wa_message_id, message_type, media_mime_type, media_filename, raw_payload, sent_at")
       .in("conversation_id", ids.slice(i, i + 150)).in("message_type", TIPOS)
-      .is("media_url", null).gte("created_at", desde).lt("created_at", antes)
-      .order("created_at", { ascending: false }).limit(limite - pendentes.length);
+      .is("media_url", null).gte("sent_at", desde).lt("sent_at", antes)
+      .order("sent_at", { ascending: false }).limit(limite - pendentes.length);
     if (error) return json({ ok: false, error: error.message }, 500);
     pendentes.push(...(data || []));
   }
 
   // fatias diferentes vêm cada uma em ordem: reordena para o cursor andar certo
-  pendentes.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+  pendentes.sort((a, b) => String(b.sent_at).localeCompare(String(a.sent_at)));
   const resultado: any[] = [];
   for (const m of pendentes) {
     const mediaId = chakraMediaIdDoPayload(m.raw_payload);
@@ -87,7 +88,7 @@ serve(async (req) => {
   return json({
     ok: true,
     processadas: resultado.length,
-    proximo_antes: pendentes.length ? pendentes[pendentes.length - 1].created_at : null,
+    proximo_antes: pendentes.length ? pendentes[pendentes.length - 1].sent_at : null,
     salvas: resultado.filter((r) => r.ok).length,
     falhas: resultado.filter((r) => !r.ok),
   });
