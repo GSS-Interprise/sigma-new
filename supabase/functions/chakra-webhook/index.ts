@@ -1257,6 +1257,15 @@ serve(async (request) => {
         await updateDeliveryStatus(admin, event.payload);
       } else if (event.type === "message_template_status_update") {
         await updateTemplateStatus(admin, event.payload);
+      } else if (event.type === "history") {
+        // Histórico do celular (coexistência): vira mensagem na caixa de entrada pelo banco,
+        // sem passar pelo receive (mensagem antiga não pode acionar IA nem mexer em campanha).
+        const { data: salvo } = await admin.from("whatsapp_chakra_webhook_events")
+          .select("id").eq("event_hash", eventHash).maybeSingle();
+        if (salvo?.id) {
+          const { error: histErro } = await admin.rpc("importar_historico_chakra", { p_event_id: salvo.id });
+          if (histErro) throw histErro;
+        }
       }
       await admin.from("whatsapp_chakra_webhook_events").update({
         processing_status: "processed",
