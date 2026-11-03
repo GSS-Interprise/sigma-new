@@ -645,8 +645,28 @@ serve(async (req) => {
       if (connectionsError) throw connectionsError;
 
       const refreshed: any[] = [];
+      const failed: any[] = [];
       for (const connection of connections || []) {
-        const response = await chakra(`/v1/ext/whatsapp-phone-number/${connection.phone_number_id}`);
+        // Um número que a conta não enxerga mais (404 depois de reconectar em outra conta Chakra)
+        // não pode parar a atualização dos outros: em 03/11 um 404 deixou 9 números com saúde de 27/10.
+        const path = `/v1/ext/whatsapp-phone-number/${connection.phone_number_id}`;
+        let response: any;
+        try {
+          response = await chakra(path);
+        } catch (error) {
+          // Os números fixados na conta Pulse (Amni, Gestão, Maikon) dão 404 nesta rota com a chave
+          // da Pulse, mas a conta GSS enxerga os quatro: tenta a outra chave antes de desistir.
+          const outra = [Deno.env.get("CHAKRA_API_KEY_GSS")?.trim(), Deno.env.get("CHAKRA_API_KEY")?.trim()]
+            .find((key) => key && key !== chakraKeyFor(path));
+          const retry = outra && String(error).includes("chakra_404")
+            ? await fetch(`https://api.chakrahq.com${path}`, { headers: { Authorization: `Bearer ${outra}` } })
+            : null;
+          if (!retry?.ok) {
+            failed.push({ phone_number_id: connection.phone_number_id, error: error instanceof Error ? error.message : String(error) });
+            continue;
+          }
+          response = await retry.json();
+        }
         const phone = unwrapChakraPayload(response);
         const quality = phone.qualityScore?.score || phone.quality_score || null;
         const nextProviderPayload = {
@@ -689,7 +709,7 @@ serve(async (req) => {
           .eq("chakra_phone_number_id", connection.phone_number_id);
         refreshed.push(saved);
       }
-      return json({ ok: true, refreshed });
+      return json({ ok: failed.length === 0, refreshed, failed });
     }
 
     if (action === "list_phone_numbers") {
