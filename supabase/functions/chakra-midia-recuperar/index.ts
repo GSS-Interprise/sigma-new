@@ -40,35 +40,43 @@ serve(async (req) => {
   const refPorInstancia = new Map((instancias || []).map((i: any) => [i.id, String(i.external_ref || "")]));
   if (!refPorInstancia.size) return json({ ok: true, processadas: 0 });
 
-  const { data: conversas, error: convErro } = await supabase.from("sigzap_conversations")
-    .select("id, instance_id").in("instance_id", [...refPorInstancia.keys()]);
-  if (convErro) return json({ ok: false, error: convErro.message }, 500);
-  const instPorConversa = new Map((conversas || []).map((c: any) => [c.id, c.instance_id]));
+  // O select para em 1.000 linhas: com o histórico do celular os números oficiais passaram de 8 mil
+  // conversas e a recuperação só via as primeiras. Pagina até acabar.
+  const instPorConversa = new Map<string, string>();
+  for (let de = 0; ; de += 1000) {
+    const { data: conversas, error: convErro } = await supabase.from("sigzap_conversations")
+      .select("id, instance_id").in("instance_id", [...refPorInstancia.keys()])
+      .order("id").range(de, de + 999);
+    if (convErro) return json({ ok: false, error: convErro.message }, 500);
+    for (const c of conversas || []) instPorConversa.set(c.id, c.instance_id);
+    if (!conversas || conversas.length < 1000) break;
+  }
 
   const desde = new Date(Date.now() - dias * 24 * 3600 * 1000).toISOString();
   const ids = [...instPorConversa.keys()];
-  const pendentes: any[] = [];
-  // .in() com milhares de ids estoura a URL: busca em fatias.
-  for (let i = 0; i < ids.length && pendentes.length < limite; i += 150) {
+  let pendentes: any[] = [];
+  // .in() com milhares de ids estoura a URL: busca em fatias. Cada fatia traz até `limite` e só
+  // depois de juntar todas pega as mais recentes; parar na primeira fatia cheia fazia o cursor
+  // pular mensagens novas de outras conversas. Só o pedaço do payload com o id da mídia.
+  for (let i = 0; i < ids.length; i += 150) {
     const { data, error } = await supabase.from("sigzap_messages")
-      .select("id, conversation_id, wa_message_id, message_type, media_mime_type, media_filename, raw_payload, sent_at")
+      .select("id, conversation_id, wa_message_id, message_type, media_mime_type, media_filename, sent_at, msg:raw_payload->data->message")
       .in("conversation_id", ids.slice(i, i + 150)).in("message_type", TIPOS)
       .is("media_url", null).gte("sent_at", desde).lt("sent_at", antes)
-      .order("sent_at", { ascending: false }).limit(limite - pendentes.length);
+      .order("sent_at", { ascending: false }).limit(limite);
     if (error) return json({ ok: false, error: error.message }, 500);
     pendentes.push(...(data || []));
   }
-
-  // fatias diferentes vêm cada uma em ordem: reordena para o cursor andar certo
   pendentes.sort((a, b) => String(b.sent_at).localeCompare(String(a.sent_at)));
+  pendentes = pendentes.slice(0, limite);
   const resultado: any[] = [];
   for (const m of pendentes) {
-    const mediaId = chakraMediaIdDoPayload(m.raw_payload);
+    const mediaId = chakraMediaIdDoPayload({ data: { message: m.msg } });
     if (!mediaId) {
       resultado.push({ id: m.id, ok: false, erro: "sem_media_id" });
       continue;
     }
-    const instanceId = instPorConversa.get(m.conversation_id);
+    const instanceId = instPorConversa.get(m.conversation_id) || "";
     try {
       const url = await guardarMidiaChakra(supabase, {
         mediaId,
