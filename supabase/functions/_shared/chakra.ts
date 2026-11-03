@@ -305,3 +305,67 @@ export function chakraQuickReplyComponents(body: string, examples: string[], but
   }
   return components;
 }
+
+/**
+ * id da mídia → bytes, pelo endpoint documentado do Chakra (apidocs.chakrahq.com,
+ * "Fetch Whatsapp Media API"): o GET devolve uma URL já proxiada por eles, que aceita o
+ * mesmo token. A URL que vem no webhook (lookaside.fbsbx.com) exige o token da Meta.
+ * A mídia não segue a conta do número: desde 27/10 o arquivo da Amni (número na conta da Pulse)
+ * só abre com a chave da conta GSS, e a da Pulse dá 404 (testado em 28/10). Tenta a conta do
+ * número primeiro (dica = plugin, phone_number_id ou external_ref) e, se não achar, a outra.
+ * A Meta guarda o arquivo por 30 dias; depois disso o GET devolve erro.
+ */
+export async function baixarMidiaChakra(mediaId: string, dica = ""): Promise<{ bytes: Uint8Array; mime?: string }> {
+  const chaves = [chakraKeyFor(dica), Deno.env.get("CHAKRA_API_KEY_GSS")?.trim(), Deno.env.get("CHAKRA_API_KEY")?.trim()]
+    .filter((k, i, a): k is string => !!k && a.indexOf(k) === i);
+  let r: Response | null = null;
+  let h: Record<string, string> = {};
+  for (const key of chaves) {
+    h = { Authorization: `Bearer ${key}` };
+    r = await fetch(`https://api.chakrahq.com/v1/whatsapp/v24.0/media/${encodeURIComponent(mediaId)}`, { headers: h });
+    if (r.status !== 404) break;
+    await r.body?.cancel();
+  }
+  if (!r) throw new Error("chakra_not_configured");
+  // 404 nas duas contas = a Meta não tem mais o arquivo (passou dos 30 dias); o corpo já foi descartado.
+  if (r.status === 404) throw new Error("midia_meta_404");
+  if (!r.ok) throw new Error(`midia_meta_${r.status}:${(await r.text()).slice(0, 120)}`);
+  const meta = await r.json();
+  if (!meta?.url) throw new Error("midia_sem_url");
+  const arq = await fetch(String(meta.url), { headers: h });
+  if (!arq.ok) throw new Error(`midia_download_${arq.status}`);
+  return { bytes: new Uint8Array(await arq.arrayBuffer()), mime: String(meta.mime_type || arq.headers.get("content-type") || "") };
+}
+
+/** id da mídia da Meta dentro do payload normalizado (data.message.<tipo>Message.id). */
+export function chakraMediaIdDoPayload(raw: any): string {
+  const msg = raw?.data?.message || raw?.raw_payload?.data?.message || {};
+  for (const k of ["imageMessage", "audioMessage", "videoMessage", "documentMessage", "stickerMessage"]) {
+    const id = msg?.[k]?.id;
+    if (id) return String(id);
+  }
+  return "";
+}
+
+const EXTENSAO_MIME: Record<string, string> = {
+  "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "image/gif": ".gif",
+  "audio/ogg": ".ogg", "audio/mpeg": ".mp3", "audio/mp4": ".m4a", "audio/aac": ".aac", "audio/amr": ".amr",
+  "video/mp4": ".mp4", "video/3gpp": ".3gp", "application/pdf": ".pdf",
+};
+
+/** Baixa a mídia da Chakra e guarda no bucket sigzap-media (mesmo caminho da Evolution). Devolve a URL pública. */
+export async function guardarMidiaChakra(
+  supabase: any,
+  o: { mediaId: string; dica: string; instanceId: string; conversationId: string; messageId: string; mime?: string; nomeArquivo?: string },
+): Promise<string> {
+  const { bytes, mime } = await baixarMidiaChakra(o.mediaId, o.dica);
+  if (!bytes.byteLength) throw new Error("midia_vazia");
+  const tipo = (o.mime || mime || "application/octet-stream").split(";")[0].trim().toLowerCase();
+  const doNome = o.nomeArquivo?.match(/\.[a-z0-9]{1,5}$/i)?.[0] || "";
+  const ext = EXTENSAO_MIME[tipo] || doNome || "";
+  const seguro = o.messageId.replace(/[^A-Za-z0-9._-]/g, "_").slice(-120);
+  const caminho = `${o.instanceId}/${o.conversationId}/${seguro}${ext}`;
+  const { error } = await supabase.storage.from("sigzap-media").upload(caminho, bytes, { contentType: tipo, upsert: true });
+  if (error) throw new Error(`midia_upload:${error.message}`);
+  return supabase.storage.from("sigzap-media").getPublicUrl(caminho).data.publicUrl;
+}

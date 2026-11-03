@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { chakraMediaIdDoPayload, guardarMidiaChakra } from "../_shared/chakra.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1377,6 +1378,28 @@ serve(async (req) => {
         serverUrl,
         payloadApiKey,
       );
+    } else if (
+      provider === "chakra" &&
+      ["image", "video", "audio", "document", "sticker"].includes(messageContent.type)
+    ) {
+      // A Chakra manda só o id da mídia da Meta, sem URL: até 03/11 áudio, imagem e documento
+      // dos números oficiais ficavam sem arquivo. Falha no download não pode perder a mensagem.
+      const mediaId = chakraMediaIdDoPayload(payload.raw_payload || payload);
+      if (mediaId) {
+        try {
+          storedMediaUrl = await guardarMidiaChakra(supabase, {
+            mediaId,
+            dica: String(instanceUuid || ""),
+            instanceId: instance.id,
+            conversationId: conversation.id,
+            messageId,
+            mime: messageContent.mediaMimeType,
+            nomeArquivo: messageContent.mediaFilename,
+          });
+        } catch (error) {
+          console.error("Mídia da Chakra não baixada", mediaId, error);
+        }
+      }
     }
 
     // 6. Inserir mensagem

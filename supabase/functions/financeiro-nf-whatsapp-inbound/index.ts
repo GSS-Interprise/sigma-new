@@ -13,7 +13,7 @@
 // segurança fica "a confirmar", com o palpite preenchido.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { chakraApi, chakraKeyFor } from "../_shared/chakra.ts";
+import { baixarMidiaChakra, chakraApi } from "../_shared/chakra.ts";
 import { CNPJS_GRUPO_GSS, lerNfse, textoPdf, type Nfse } from "../_shared/nfse.ts";
 
 const cors = {
@@ -57,34 +57,8 @@ function extrairMensagem(payload: any) {
   return { de, midia, nomePerfil, mensagemId, quando };
 }
 
-/**
- * id da mídia → bytes, pelo endpoint documentado do Chakra (apidocs.chakrahq.com,
- * "Fetch Whatsapp Media API"): o GET devolve uma URL já proxiada por eles, que aceita o
- * mesmo token. A URL que vem no webhook (lookaside.fbsbx.com) exige o token da Meta.
- */
-// A mídia não segue a conta do número: desde 27/10 o arquivo da Amni (número na conta da Pulse)
-// só abre com a chave da conta GSS, e a da Pulse dá 404 (testado em 28/10). Tenta a conta do
-// número primeiro e, se não achar, a outra.
-async function baixarMidia(mediaId: string, pluginId: string): Promise<{ bytes: Uint8Array; mime?: string }> {
-  const primeira = chakraKeyFor(pluginId);
-  const chaves = [primeira, Deno.env.get("CHAKRA_API_KEY_GSS")?.trim(), Deno.env.get("CHAKRA_API_KEY")?.trim()]
-    .filter((k, i, a): k is string => !!k && a.indexOf(k) === i);
-  let r: Response | null = null;
-  let h: Record<string, string> = {};
-  for (const key of chaves) {
-    h = { Authorization: `Bearer ${key}` };
-    r = await fetch(`https://api.chakrahq.com/v1/whatsapp/v24.0/media/${mediaId}`, { headers: h });
-    if (r.status !== 404) break;
-    await r.body?.cancel();
-  }
-  if (!r) throw new Error("chakra_not_configured");
-  if (!r.ok) throw new Error(`midia_meta_${r.status}:${(await r.text()).slice(0, 120)}`);
-  const meta = await r.json();
-  if (!meta?.url) throw new Error("midia_sem_url");
-  const arq = await fetch(String(meta.url), { headers: h });
-  if (!arq.ok) throw new Error(`midia_download_${arq.status}`);
-  return { bytes: new Uint8Array(await arq.arrayBuffer()), mime: String(meta.mime_type || arq.headers.get("content-type") || "") };
-}
+// Download da mídia da Chakra mora em _shared/chakra.ts (também usado pela caixa de entrada).
+const baixarMidia = baixarMidiaChakra;
 
 /** Pedido de NF em aberto para este telefone: a solicitação que mandamos (60 dias) ou o
  *  médico do cadastro com nota pedida. Devolve o pagamento quando a solicitação o indica. */
