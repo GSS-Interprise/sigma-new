@@ -640,7 +640,7 @@ serve(async (req) => {
     if (action === "refresh_status") {
       const { data: connections, error: connectionsError } = await admin
         .from("whatsapp_chakra_connections")
-        .select("id, phone_number_id, provider_payload")
+        .select("id, phone_number_id, provider_payload, status")
         .not("phone_number_id", "is", null);
       if (connectionsError) throw connectionsError;
 
@@ -680,7 +680,11 @@ serve(async (req) => {
         const values = {
           phone_e164: phoneFrom(phone),
           display_name: phone.verifiedName || phone.displayName || phone.display_phone_number || null,
-          status: asText(phone.status || phone.chakraStatus || "connected", 40).toLowerCase(),
+          // "desconectado" é marcação manual do Sigma (ex.: 9292-0538 com a conta travada pela Meta
+          // em 03/11): a Chakra continua dizendo CONNECTED e o refresh religaria o número nas campanhas.
+          status: connection.status === "desconectado"
+            ? "desconectado"
+            : asText(phone.status || phone.chakraStatus || "connected", 40).toLowerCase(),
           quality_rating: quality,
           messaging_limit_tier: phone.messagingLimitTier || phone.messaging_limit_tier || null,
           name_status: phone.nameStatus || phone.name_status || null,
