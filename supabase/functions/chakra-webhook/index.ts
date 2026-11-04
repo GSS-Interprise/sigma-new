@@ -40,6 +40,11 @@ function firstText(...values: unknown[]) {
   return values.map((value) => text(value, 240)).find(Boolean) || "";
 }
 
+function textoCompleto(...values: unknown[]) {
+  return values.map((value) => typeof value === "string" ? value.trim().slice(0, 8000) : "")
+    .find(Boolean) || "";
+}
+
 function digits(value: unknown) {
   return String(value ?? "").replace(/\D/g, "");
 }
@@ -170,12 +175,38 @@ function pluginIdFrom(value: AnyRecord) {
   );
 }
 
-// Reação, edição e apagar mensagem também chegam como echo, mas não são mensagem nova:
-// gravá-los criava balão vazio na conversa e contava como contato com o lead.
+// Reação da equipe também chega como echo, mas não é mensagem nova: gravá-la criava balão
+// vazio na conversa e contava como contato com o lead. Edição e apagar seguem adiante e são
+// aplicados na mensagem original (aplicarEdicaoOuApagada).
 function isEchoMessage(item: unknown) {
-  return !["reaction", "edit", "revoke"].includes(
-    String(asObject(item).type || "").toLowerCase(),
-  );
+  return String(asObject(item).type || "").toLowerCase() !== "reaction";
+}
+
+/**
+ * Edição e "apagar para todos" não são mensagem nova: alteram a original. Até 04/11 viravam
+ * "[Mensagem sem conteúdo]", contavam como resposta do médico e moviam o lead para em conversa.
+ * Devolve true quando o item era edição ou apagada (tratado aqui, sem passar pelo receive).
+ */
+async function aplicarEdicaoOuApagada(admin: AdminClient, item: AnyRecord) {
+  const tipo = text(item.type, 40).toLowerCase();
+  if (tipo !== "edit" && tipo !== "revoke") return false;
+  const dados = asObject(tipo === "edit" ? item.edit : item.revoke);
+  const original = text(dados.original_message_id, 200);
+  if (!original) return true;
+  let patch: AnyRecord;
+  if (tipo === "edit") {
+    const nova = asObject(dados.message);
+    const novoTipo = text(nova.type, 40).toLowerCase();
+    const novoTexto = textoCompleto(nova.text?.body, asObject(nova[novoTipo]).caption);
+    if (!novoTexto) return true;
+    patch = novoTipo && novoTipo !== "text" ? { media_caption: novoTexto, message_text: novoTexto } : { message_text: novoTexto };
+  } else {
+    patch = { message_text: "[Mensagem apagada]" };
+  }
+  const { error } = await admin.from("sigzap_messages").update(patch)
+    .eq("wa_message_id", original);
+  if (error) throw error;
+  return true;
 }
 
 function extractMetaEvents(body: AnyRecord) {
@@ -299,8 +330,12 @@ function extractEvents(body: AnyRecord) {
 function messageObject(item: AnyRecord, fromMe: boolean) {
   const type = firstText(item.type, item.message_type, item.messageType)
     .toLowerCase();
-  const textBody = firstText(
+  // Texto da mensagem sem o corte de 240 do firstText (até 04/11 cortava mensagem longa no
+  // banco). Só aceita string: o eco da API traz `text: { text: { body } }`, e String(objeto)
+  // gravava "[object Object]".
+  const textBody = textoCompleto(
     item.text?.body,
+    item.text?.text?.body,
     item.body,
     item.message_text,
     item.text,
@@ -361,6 +396,38 @@ function messageObject(item: AnyRecord, fromMe: boolean) {
     return {
       interactiveMessage: {
         type: firstText(unsupported.raw_type, unsupported.type, "interativa"),
+      },
+    };
+  }
+  // Reação do contato: o receive grava o emoji na mensagem reagida e não cria mensagem nova.
+  if (type === "reaction" || item.reaction) {
+    const reaction = asObject(item.reaction);
+    return {
+      reactionMessage: {
+        key: { id: text(reaction.message_id, 200) },
+        text: text(reaction.emoji, 20),
+      },
+    };
+  }
+  // Contato compartilhado: o vCard da Chakra vem em base64. Antes virava "[Mensagem sem conteúdo]".
+  if (type === "contacts" || Array.isArray(item.contacts)) {
+    const contatos = Array.isArray(item.contacts) ? item.contacts.map(asObject) : [];
+    const primeiro = contatos[0] || {};
+    let vcard = "";
+    try {
+      vcard = new TextDecoder().decode(
+        Uint8Array.from(atob(String(primeiro.vcard || "")), (c) => c.charCodeAt(0)),
+      );
+    } catch { /* vCard ausente ou já em texto */ }
+    const telefone = asObject(primeiro.phones?.[0]);
+    if (!vcard.includes("TEL") && telefone.phone) {
+      vcard = `TEL${telefone.wa_id ? `;waid=${digits(telefone.wa_id)}` : ""}:${telefone.phone}`;
+    }
+    return {
+      contactMessage: {
+        displayName: contatos.map((c) => text(asObject(c.name).formatted_name, 80)).filter(Boolean).join(", ") ||
+          text(telefone.phone, 40),
+        vcard,
       },
     };
   }
@@ -431,7 +498,7 @@ function normalizedMessage(
     item.sticker ? "sticker" : "",
     item.unsupported ? "interactive" : "",
     "text",
-  );
+  ).replace(/^contacts$/, "contact");
   const pushName = firstText(
     contact.profile?.name,
     contact.name,
@@ -1104,6 +1171,16 @@ serve(async (request) => {
           event.type,
         )
       ) {
+        const itemBruto = asObject(
+          asObject(event.payload).item || asObject(event.payload).message || event.payload,
+        );
+        if (await aplicarEdicaoOuApagada(admin, itemBruto)) {
+          await admin.from("whatsapp_chakra_webhook_events").update({
+            processing_status: "processed",
+          }).eq("event_hash", eventHash);
+          results.push({ type: event.type, status: "applied_to_original" });
+          continue;
+        }
         const instance = await ensureInstance(admin, connection);
         const payload = normalizedMessage(
           event.type,
