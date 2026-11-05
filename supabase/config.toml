@@ -43,6 +43,10 @@ verify_jwt = false
 [functions.campanha-email-sender]
 verify_jwt = false
 
+# Volta do Google (GET sem token do Sigma). Os POSTs conferem o usuário dentro da função.
+[functions.gmail-oauth]
+verify_jwt = false
+
 [functions.lead-perfil-extrator]
 verify_jwt = false
 

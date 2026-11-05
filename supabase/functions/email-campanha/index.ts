@@ -15,6 +15,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { renderEmail, aplicarVariaveis, type EmailConteudo, conteudoPronto } from "../_shared/email-marketing.ts";
+import { GmailErro, gmailAccessToken, gmailEnviar, gmailMensagemRaw } from "../_shared/gmail.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -92,12 +93,13 @@ async function varsDosLeads(svc: any, leadIds: string[]) {
   return new Map((data ?? []).map((l: any) => [l.id, l]));
 }
 
-function montarEmail(ctx: Ctx, c: any, conteudo: EmailConteudo, assunto: string, envio: { email: string; token: string }, vars: any, teste = false) {
+// pelaCaixaDaEquipe: o remetente é a conta Gmail (montado em processarGmail), não o de marketing
+function montarEmail(ctx: Ctx, c: any, conteudo: EmailConteudo, assunto: string, envio: { email: string; token: string }, vars: any, teste = false, pelaCaixaDaEquipe = false) {
   const linkDescadastro = `${ctx.appUrl}/descadastro/${envio.token}`;
   const umClique = `${ctx.supabaseUrl}/functions/v1/email-descadastro?t=${envio.token}`;
   const { html, text } = renderEmail(conteudo, vars ?? {}, linkDescadastro);
   return {
-    from: remetente(c.email_remetente_nome || c.nome_remetente, teste ? ctx.fromTeste : ctx.from!),
+    from: pelaCaixaDaEquipe ? "" : remetente(c.email_remetente_nome || c.nome_remetente, teste ? ctx.fromTeste : ctx.from!),
     to: [envio.email],
     subject: (teste ? "[TESTE] " : "") + aplicarVariaveis(assunto, vars ?? {}),
     html, text,
@@ -110,8 +112,121 @@ function montarEmail(ctx: Ctx, c: any, conteudo: EmailConteudo, assunto: string,
   };
 }
 
+/** Tira da leva quem se descadastrou depois de entrar na fila e endereço fora do padrão. */
+async function filtrarFila(ctx: Ctx, c: any, fila: any[]) {
+  const emails = fila.map((f: any) => f.email);
+  const { data: saiu } = await ctx.svc.from("email_optout").select("email").in("email", emails);
+  const bloqueados = new Set((saiu ?? []).map((o: any) => o.email));
+  if (bloqueados.size) {
+    await ctx.svc.from("email_envios").update({ status: "bloqueado", erro: "descadastrado antes do envio" })
+      .eq("campanha_id", c.id).in("email", [...bloqueados]);
+  }
+  const invalidos = fila.filter((f: any) => !bloqueados.has(f.email) && !EMAIL_VALIDO.test(String(f.email || "").trim()));
+  if (invalidos.length) {
+    await ctx.svc.from("email_envios").update({ status: "bloqueado", erro: "endereço de e-mail inválido" })
+      .in("id", invalidos.map((f: any) => f.id));
+  }
+  const invalido = new Set(invalidos.map((f: any) => f.id));
+  return fila.filter((f: any) => !bloqueados.has(f.email) && !invalido.has(f.id));
+}
+
+// Caixas da equipe: até 25 por conta a cada rodada do cron (2 min) e só em horário comercial,
+// para não parecer robô para o Google. 1.800/dia por conta saem em ~2h30 de envio.
+const GMAIL_POR_RODADA = 25;
+const GMAIL_HORARIO = [8, 20]; // horas de Brasília
+
+function proximaMeiaNoiteBrt() {
+  return new Date(new Date(hojeBrtInicio()).getTime() + 24 * 3600 * 1000).toISOString();
+}
+
+/** Envia a próxima leva pelas caixas Gmail escolhidas na campanha, dividindo pela cota de cada uma. */
+async function processarGmail(ctx: Ctx, c: any) {
+  const conteudo = (c.email_conteudo ?? {}) as EmailConteudo;
+  const assunto = c.assunto_email || "";
+  if (!assunto || !conteudoPronto(conteudo)) return { campanha: c.id, enviados: 0, motivo: "configuracao_incompleta" };
+  const horaBrt = new Date(Date.now() - 3 * 3600 * 1000).getUTCHours();
+  if (horaBrt < GMAIL_HORARIO[0] || horaBrt >= GMAIL_HORARIO[1]) return { campanha: c.id, enviados: 0, motivo: "fora_do_horario" };
+
+  const ids: string[] = c.email_contas_gmail_ids ?? [];
+  if (!ids.length) return { campanha: c.id, enviados: 0, motivo: "sem_contas" };
+  const { data: contasBrutas } = await ctx.svc.from("email_contas_gmail")
+    .select("id, email, nome, refresh_token, cota_diaria, pausada_ate").in("id", ids).eq("status", "conectada");
+  const agora = Date.now();
+  const contas: any[] = [];
+  for (const conta of contasBrutas ?? []) {
+    if (conta.pausada_ate && new Date(conta.pausada_ate).getTime() > agora) continue;
+    // a cota é da conta, somando todas as campanhas
+    const { count } = await ctx.svc.from("email_envios").select("id", { count: "exact", head: true })
+      .eq("conta_gmail_id", conta.id).gte("enviado_em", hojeBrtInicio());
+    const vaga = Math.min(GMAIL_POR_RODADA, Math.max(0, conta.cota_diaria - (count ?? 0)));
+    if (vaga > 0) contas.push({ ...conta, vaga });
+  }
+  const capacidade = contas.reduce((s, x) => s + x.vaga, 0);
+  if (!capacidade) return { campanha: c.id, enviados: 0, motivo: "cota_das_contas" };
+
+  const { data: fila } = await ctx.svc.from("email_envios").select("id, lead_id, email, nome, token")
+    .eq("campanha_id", c.id).eq("status", "fila").order("created_at").limit(capacidade);
+  if (!fila?.length) {
+    await ctx.svc.from("campanhas").update({ email_status: "concluido", email_concluido_em: new Date().toISOString() }).eq("id", c.id);
+    return { campanha: c.id, enviados: 0, motivo: "concluida" };
+  }
+  const envios = await filtrarFila(ctx, c, fila);
+  const vars = await varsDosLeads(ctx.svc, envios.map((f: any) => f.lead_id).filter(Boolean));
+
+  let enviados = 0, i = 0;
+  const problemas: string[] = [];
+  for (const conta of contas) {
+    let token: string;
+    try {
+      token = await gmailAccessToken(conta.refresh_token);
+    } catch (e) {
+      const erro = e instanceof GmailErro && e.tipo === "conexao" ? "A conexão com o Gmail caiu. Conecte de novo." : String((e as Error).message);
+      await ctx.svc.from("email_contas_gmail").update({ status: e instanceof GmailErro && e.tipo === "conexao" ? "erro" : "conectada", erro, updated_at: new Date().toISOString() }).eq("id", conta.id);
+      problemas.push(`${conta.email}: ${erro}`);
+      continue;
+    }
+    for (let k = 0; k < conta.vaga && i < envios.length; k++, i++) {
+      const f = envios[i];
+      const m = montarEmail(ctx, c, conteudo, assunto, f, vars.get(f.lead_id) ?? { nome: f.nome }, false, true);
+      try {
+        const gmailId = await gmailEnviar(token, gmailMensagemRaw({
+          deNome: conta.nome || c.email_remetente_nome || "GSS Saúde", deEmail: conta.email, para: f.email,
+          assunto: m.subject, html: m.html, text: m.text, headers: m.headers,
+        }));
+        await ctx.svc.from("email_envios").update({
+          status: "enviado", enviado_em: new Date().toISOString(), erro: null, conta_gmail_id: conta.id, gmail_message_id: gmailId,
+        }).eq("id", f.id);
+        if (f.lead_id) {
+          await ctx.svc.from("lead_historico").insert({
+            lead_id: f.lead_id, tipo_evento: "email_enviado",
+            descricao_resumida: `E-mail da campanha "${c.nome}" enviado por ${conta.nome || conta.email}: ${m.subject}`.slice(0, 250),
+            metadados: { campanha_id: c.id, origem: "email_gmail", conta_gmail_id: conta.id },
+          });
+        }
+        enviados++;
+      } catch (e) {
+        const ge = e instanceof GmailErro ? e : new GmailErro("outro", String((e as Error).message));
+        if (ge.tipo === "destinatario") {
+          await ctx.svc.from("email_envios").update({ status: "erro", erro: ge.message }).eq("id", f.id);
+          continue;
+        }
+        // cota ou conexão: o e-mail volta para a fila e a conta para por hoje (ou até reconectar)
+        await ctx.svc.from("email_contas_gmail").update(ge.tipo === "cota"
+          ? { pausada_ate: proximaMeiaNoiteBrt(), erro: "O Google avisou que a cota de hoje acabou.", updated_at: new Date().toISOString() }
+          : { status: ge.tipo === "conexao" ? "erro" : "conectada", erro: ge.message, updated_at: new Date().toISOString() }).eq("id", conta.id);
+        problemas.push(`${conta.email}: ${ge.message}`);
+        break; // sem o i++ do laço: o envio atual não saiu e a próxima conta tenta ele
+
+      }
+    }
+    await ctx.svc.from("email_contas_gmail").update({ ultimo_envio_em: new Date().toISOString() }).eq("id", conta.id);
+  }
+  return { campanha: c.id, enviados, via: "gmail", ...(problemas.length ? { problemas } : {}) };
+}
+
 /** Envia a próxima leva de UMA campanha, respeitando o limite diário. */
 async function processarCampanha(ctx: Ctx, c: any) {
+  if (c.email_envio_via === "gmail") return processarGmail(ctx, c);
   const conteudo = (c.email_conteudo ?? {}) as EmailConteudo;
   const assunto = c.assunto_email || "";
   if (!ctx.from || !assunto || !conteudoPronto(conteudo)) return { campanha: c.id, enviados: 0, motivo: "configuracao_incompleta" };
@@ -129,21 +244,7 @@ async function processarCampanha(ctx: Ctx, c: any) {
     return { campanha: c.id, enviados: 0, motivo: "concluida" };
   }
 
-  // quem saiu depois de entrar na fila não recebe
-  const emails = fila.map((f: any) => f.email);
-  const { data: saiu } = await ctx.svc.from("email_optout").select("email").in("email", emails);
-  const bloqueados = new Set((saiu ?? []).map((o: any) => o.email));
-  if (bloqueados.size) {
-    await ctx.svc.from("email_envios").update({ status: "bloqueado", erro: "descadastrado antes do envio" })
-      .eq("campanha_id", c.id).in("email", [...bloqueados]);
-  }
-  const invalidos = fila.filter((f: any) => !bloqueados.has(f.email) && !EMAIL_VALIDO.test(String(f.email || "").trim()));
-  if (invalidos.length) {
-    await ctx.svc.from("email_envios").update({ status: "bloqueado", erro: "endereço de e-mail inválido" })
-      .in("id", invalidos.map((f: any) => f.id));
-  }
-  const invalido = new Set(invalidos.map((f: any) => f.id));
-  const envios = fila.filter((f: any) => !bloqueados.has(f.email) && !invalido.has(f.id));
+  const envios = await filtrarFila(ctx, c, fila);
   const vars = await varsDosLeads(ctx.svc, envios.map((f: any) => f.lead_id).filter(Boolean));
 
   let enviados = 0;
@@ -202,7 +303,7 @@ serve(async (req) => {
       await svc.from("campanhas").update({ email_status: "enviando" })
         .eq("email_status", "agendado").lte("data_agendamento", new Date().toISOString());
       const { data: ativas } = await svc.from("campanhas")
-        .select("id, nome, nome_remetente, email_remetente_nome, email_conteudo, assunto_email, email_limite_diario")
+        .select("id, nome, nome_remetente, email_remetente_nome, email_conteudo, assunto_email, email_limite_diario, email_envio_via, email_contas_gmail_ids")
         .eq("email_status", "enviando");
       const out = [];
       for (const c of ativas ?? []) out.push(await processarCampanha(ctx, c));
@@ -212,7 +313,7 @@ serve(async (req) => {
     const campanhaId = String(input.campanha_id || "");
     if (!campanhaId) return json({ ok: false, error: "campanha_id obrigatorio" }, 400);
     const { data: c } = await svc.from("campanhas")
-      .select("id, nome, canal, nome_remetente, email_remetente_nome, email_conteudo, assunto_email, email_limite_diario, email_status, data_agendamento")
+      .select("id, nome, canal, nome_remetente, email_remetente_nome, email_conteudo, assunto_email, email_limite_diario, email_status, data_agendamento, email_envio_via, email_contas_gmail_ids")
       .eq("id", campanhaId).maybeSingle();
     if (!c) return json({ ok: false, error: "campanha_nao_encontrada" }, 404);
 
@@ -242,7 +343,11 @@ serve(async (req) => {
     }
 
     if (acao === "iniciar") {
-      if (!ctx.from) {
+      if (c.email_envio_via === "gmail") {
+        const { count } = await svc.from("email_contas_gmail").select("id", { count: "exact", head: true })
+          .in("id", c.email_contas_gmail_ids ?? []).eq("status", "conectada");
+        if (!count) return json({ ok: false, error: "sem_contas_gmail" }, 409);
+      } else if (!ctx.from) {
         return json({ ok: false, error: "remetente_nao_configurado",
           detalhe: "Configure o remetente de marketing (email_marketing_from) com o subdomínio próprio antes do primeiro envio." }, 409);
       }
