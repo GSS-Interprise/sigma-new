@@ -43,8 +43,12 @@ const LIMITE_GMAIL = 100 * 1024;
 type Arte = { nome: string; url: string };
 
 export function EmailComposer({
-  valor, onChange, campanhaId, desabilitado = false,
-}: { valor: EmailRascunho; onChange: (v: EmailRascunho) => void; campanhaId: string; desabilitado?: boolean }) {
+  valor, onChange, campanhaId, desabilitado = false, remetentePelaCaixa = false,
+}: {
+  valor: EmailRascunho; onChange: (v: EmailRascunho) => void; campanhaId: string; desabilitado?: boolean;
+  // envio pelas caixas Gmail da equipe: o remetente é o nome de cada caixa, não um nome digitado
+  remetentePelaCaixa?: boolean;
+}) {
   const [testePara, setTestePara] = useState("");
   const [enviandoTeste, setEnviandoTeste] = useState(false);
   const [subindo, setSubindo] = useState(false);
@@ -191,8 +195,10 @@ export function EmailComposer({
           </div>
           <div>
             <Label className="text-xs">Nome do remetente</Label>
-            <Input value={valor.remetente_nome} disabled={desabilitado} onChange={(e) => set("remetente_nome", e.target.value)}
-              placeholder="GSS Saúde · Vagas" />
+            {remetentePelaCaixa
+              ? <Input value="Nome de quem envia (cada caixa)" disabled readOnly />
+              : <Input value={valor.remetente_nome} disabled={desabilitado} onChange={(e) => set("remetente_nome", e.target.value)}
+                  placeholder="GSS Saúde · Vagas" />}
           </div>
         </div>
 

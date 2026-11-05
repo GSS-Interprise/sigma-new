@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { EmailComposer, conteudoDoRascunho, type EmailRascunho } from "./EmailComposer";
 import { NovaCampanhaEmailDialog } from "./NovaCampanhaEmailDialog";
 import { EmailMetricas } from "./EmailMetricas";
+import { ContasGmailEnvio, capacidadeDiaria, useContasGmail } from "./ContasGmailEnvio";
 
 /**
  * E-mail de UMA campanha. Serve para os dois casos:
@@ -32,6 +33,7 @@ export const EMAIL_STATUS: Record<string, { label: string; cls: string }> = {
 const ERROS: Record<string, string> = {
   remetente_nao_configurado:
     "O remetente de marketing ainda não foi configurado. Ele usa um subdomínio próprio para não afetar os e-mails do dia a dia da GSS — assim que o subdomínio estiver pronto, o envio é liberado.",
+  sem_contas_gmail: "Escolha ao menos uma caixa Gmail conectada para enviar.",
 };
 
 async function chamar(acao: string, campanhaId: string, extra: Record<string, unknown> = {}) {
@@ -51,7 +53,7 @@ export function CampanhaEmailPainel({ campanhaId }: { campanhaId: string }) {
     queryKey: ["email-campanha", campanhaId],
     queryFn: async () => {
       const { data, error } = await (supabase as any).from("campanhas")
-        .select("id, nome, canal, assunto_email, data_agendamento, email_ativo, email_publico, email_conteudo, email_remetente_nome, email_limite_diario, email_status, email_iniciado_em, email_concluido_em")
+        .select("id, nome, canal, assunto_email, data_agendamento, email_ativo, email_publico, email_conteudo, email_remetente_nome, email_limite_diario, email_status, email_iniciado_em, email_concluido_em, email_envio_via, email_contas_gmail_ids")
         .eq("id", campanhaId).single();
       if (error) throw error;
       return data as any;
@@ -65,6 +67,9 @@ export function CampanhaEmailPainel({ campanhaId }: { campanhaId: string }) {
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [confirmar, setConfirmar] = useState(false);
   const [editarPublico, setEditarPublico] = useState(false);
+  const [via, setVia] = useState<"marketing" | "gmail">("marketing");
+  const [contasIds, setContasIds] = useState<string[]>([]);
+  const { data: contasGmail } = useContasGmail();
 
   useEffect(() => {
     if (!c) return;
@@ -76,6 +81,8 @@ export function CampanhaEmailPainel({ campanhaId }: { campanhaId: string }) {
       imagem_url: ct.imagem_url ?? "", html: ct.html ?? "",
     });
     setLimite(c.email_limite_diario ?? 500);
+    setVia(c.email_envio_via === "gmail" ? "gmail" : "marketing");
+    setContasIds(c.email_contas_gmail_ids ?? []);
     setAgendamento(c.data_agendamento && c.canal === "email" ? toLocalInput(c.data_agendamento) : "");
   }, [c?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -98,6 +105,8 @@ export function CampanhaEmailPainel({ campanhaId }: { campanhaId: string }) {
       email_conteudo: conteudoDoRascunho(rascunho),
       email_limite_diario: Math.max(10, Math.min(20000, Number(limite) || 500)),
       email_ativo: true,
+      email_envio_via: via,
+      email_contas_gmail_ids: contasIds,
     };
     // agendamento só na campanha de e-mail: na de WhatsApp a data é da própria campanha
     if (ehEmail) patch.data_agendamento = agendamento ? new Date(agendamento).toISOString() : null;
@@ -142,7 +151,9 @@ export function CampanhaEmailPainel({ campanhaId }: { campanhaId: string }) {
     qc.invalidateQueries({ queryKey: ["campanhas-email"] });
   };
 
-  const dias = estimativa ? Math.ceil(estimativa / Math.max(1, limite)) : 0;
+  // pelas caixas da equipe o ritmo é a soma das cotas das contas escolhidas
+  const porDia = via === "gmail" ? capacidadeDiaria(contasGmail ?? [], contasIds) : limite;
+  const dias = estimativa && porDia ? Math.ceil(estimativa / porDia) : 0;
   const st = EMAIL_STATUS[status] ?? EMAIL_STATUS.rascunho;
 
   return (
@@ -166,7 +177,7 @@ export function CampanhaEmailPainel({ campanhaId }: { campanhaId: string }) {
             </Button>
           )}
           {(status === "rascunho" || status === "concluido") && (
-            <Button size="sm" className="gap-1.5" disabled={!!ocupado || !estimativa} onClick={() => setConfirmar(true)}>
+            <Button size="sm" className="gap-1.5" disabled={!!ocupado || !estimativa || (via === "gmail" && !porDia)} onClick={() => setConfirmar(true)}>
               {ocupado === "iniciar" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               {status === "concluido" ? "Enviar para quem entrou depois" : "Disparar e-mail"}
             </Button>
@@ -202,14 +213,26 @@ export function CampanhaEmailPainel({ campanhaId }: { campanhaId: string }) {
             </div>
           </div>
         )}
-        <div>
-          <Label className="text-xs">Limite por dia</Label>
-          <Input type="number" min={10} max={20000} value={limite} disabled={!editavel && status !== "enviando"}
-            onChange={(e) => setLimite(Number(e.target.value))} />
-          <p className="text-[11px] text-muted-foreground mt-1">
-            {dias > 0 ? `Termina em ~${dias} dia${dias > 1 ? "s" : ""}.` : " "} Subir aos poucos protege a reputação do domínio.
-          </p>
-        </div>
+        {via === "marketing" ? (
+          <div>
+            <Label className="text-xs">Limite por dia</Label>
+            <Input type="number" min={10} max={20000} value={limite} disabled={!editavel && status !== "enviando"}
+              onChange={(e) => setLimite(Number(e.target.value))} />
+            <p className="text-[11px] text-muted-foreground mt-1">
+              {dias > 0 ? `Termina em ~${dias} dia${dias > 1 ? "s" : ""}.` : " "} Subir aos poucos protege a reputação do domínio.
+            </p>
+          </div>
+        ) : (
+          <div>
+            <Label className="text-xs">Por dia</Label>
+            <p className="mt-1 text-sm font-medium tabular-nums">
+              {porDia ? `Até ${porDia.toLocaleString("pt-BR")} e-mails` : "Escolha as caixas abaixo"}
+            </p>
+            <p className="text-[11px] text-muted-foreground mt-1">
+              {dias > 0 ? `Termina em ~${dias} dia${dias > 1 ? "s" : ""}. ` : ""}Das 8h às 20h, dentro da cota de cada caixa.
+            </p>
+          </div>
+        )}
         {ehEmail && (
           <div>
             <Label className="text-xs">Começar em (opcional)</Label>
@@ -218,7 +241,22 @@ export function CampanhaEmailPainel({ campanhaId }: { campanhaId: string }) {
         )}
       </div>
 
-      <EmailComposer valor={rascunho} onChange={setRascunho} campanhaId={campanhaId} desabilitado={!editavel} />
+      <div className="space-y-2">
+        <Label className="text-xs">Quem envia</Label>
+        <div className="flex max-w-xl rounded-md border p-0.5 text-sm">
+          {([["marketing", "Marketing da GSS"], ["gmail", "Gmail da equipe"]] as const).map(([v, l]) => (
+            <button key={v} type="button" disabled={!editavel} onClick={() => setVia(v)}
+              className={`flex-1 rounded px-2 py-1.5 ${via === v ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+              {l}
+            </button>
+          ))}
+        </div>
+        {via === "gmail" && (
+          <ContasGmailEnvio selecionadas={contasIds} onChange={setContasIds} desabilitado={!editavel && status !== "enviando"} />
+        )}
+      </div>
+
+      <EmailComposer valor={rascunho} onChange={setRascunho} campanhaId={campanhaId} desabilitado={!editavel} remetentePelaCaixa={via === "gmail"} />
       {!editavel && (
         <p className="text-xs text-muted-foreground">Para mudar o texto, pause o envio. A mudança vale para quem ainda está na fila.</p>
       )}
@@ -242,7 +280,8 @@ export function CampanhaEmailPainel({ campanhaId }: { campanhaId: string }) {
                 : `Disparar para ${estimativa?.toLocaleString("pt-BR")} médicos?`}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Saem até {limite.toLocaleString("pt-BR")} por dia{dias > 1 ? `, ao longo de ~${dias} dias` : ""}.
+              Saem até {porDia.toLocaleString("pt-BR")} por dia{dias > 1 ? `, ao longo de ~${dias} dias` : ""}
+              {via === "gmail" ? `, pelas ${contasIds.length} caixa${contasIds.length > 1 ? "s" : ""} Gmail escolhida${contasIds.length > 1 ? "s" : ""}` : ""}.
               Quem já recebeu este e-mail não recebe de novo, e quem se descadastrou fica de fora.
               {ehEmail && agendamento ? ` Começa em ${new Date(agendamento).toLocaleString("pt-BR")}.` : ""}
             </AlertDialogDescription>
