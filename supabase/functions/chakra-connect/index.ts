@@ -637,6 +637,61 @@ serve(async (req) => {
       });
     }
 
+    // Envio de teste da tela Configurações › WhatsApp. Manda um template (envio iniciado pela empresa,
+    // o mesmo tipo da campanha), porque é ele que a Meta bloqueia com 141006; texto livre só sai na
+    // janela de 24 h e não prova nada. O resultado final (entregue/falhou) chega depois pelo webhook
+    // de status e é lido pela RPC whatsapp_envio_teste_status.
+    if (action === "send_test") {
+      const connectionId = asText(input.connectionId, 60);
+      const to = asText(input.to, 30).replace(/\D/g, "");
+      if (!connectionId || to.length < 12) return json({ ok: false, error: "numero_destino_invalido" }, 400);
+      const { data: connection, error: connectionError } = await admin
+        .from("whatsapp_chakra_connections")
+        .select("id, plugin_id, phone_number_id, phone_e164")
+        .eq("id", connectionId)
+        .single();
+      if (connectionError || !connection) return json({ ok: false, error: "numero_nao_encontrado" }, 404);
+      const { data: templates, error: templatesError } = await admin
+        .from("whatsapp_official_templates")
+        .select("friendly_name, language, variables, category")
+        .eq("provider", "chakra")
+        .eq("approval_status", "approved")
+        .like("content_sid", `chakra:${connection.plugin_id}:%`);
+      if (templatesError) throw templatesError;
+      const lista = (templates || []) as Array<{ friendly_name: string; language: string | null; variables: Record<string, string> | null; category: string | null }>;
+      const template = lista.find((t) => t.friendly_name === asText(input.templateName, 120))
+        || lista.find((t) => t.friendly_name === "gss_oportunidade_sair_20261026")
+        || lista.find((t) => (t.category || "").toUpperCase() === "MARKETING")
+        || lista[0];
+      if (!template) return json({ ok: false, error: "numero_sem_template_aprovado" }, 409);
+      const variaveis = template.variables || {};
+      const posicoes = Object.keys(variaveis).sort((a, b) => Number(a) - Number(b));
+      const payload = {
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to,
+        type: "template",
+        template: {
+          name: template.friendly_name,
+          language: { policy: "deterministic", code: template.language || "pt_BR" },
+          ...(posicoes.length > 0
+            ? { components: [{ type: "body", parameters: posicoes.map((p, i) => ({ type: "text", text: i === 0 ? "Teste Sigma" : String(variaveis[p] || "teste") })) }] }
+            : {}),
+        },
+      };
+      try {
+        const response = await chakra(
+          `/v1/ext/plugin/whatsapp/${connection.plugin_id}/api/v24.0/${connection.phone_number_id}/messages`,
+          { method: "POST", body: JSON.stringify(payload) },
+        );
+        const result = unwrapChakraPayload(response);
+        const messageId = String(result.messages?.[0]?.id || result.messageId || result.id || "");
+        return json({ ok: true, messageId, template: template.friendly_name });
+      } catch (error) {
+        return json({ ok: false, error: error instanceof Error ? error.message : String(error), template: template.friendly_name }, 502);
+      }
+    }
+
     if (action === "refresh_status") {
       const { data: connections, error: connectionsError } = await admin
         .from("whatsapp_chakra_connections")
@@ -713,6 +768,8 @@ serve(async (req) => {
           .eq("chakra_phone_number_id", connection.phone_number_id);
         refreshed.push(saved);
       }
+      // A disponibilidade depende da saúde recém-sincronizada: recalcula na hora em vez de esperar o cron.
+      await admin.rpc("whatsapp_numeros_recalcular_disponibilidade");
       return json({ ok: failed.length === 0, refreshed, failed });
     }
 

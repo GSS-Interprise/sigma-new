@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useSearchParams } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -7,8 +7,7 @@ import { ShieldAlert, Users, Plug, FileClock } from "lucide-react";
 import { UsuariosTab } from "@/components/configuracoes/UsuariosTab";
 import { PermissoesTab } from "@/components/configuracoes/PermissoesTab";
 import { HistoricoTab } from "@/components/configuracoes/HistoricoTab";
-import { ChipsTab } from "@/components/configuracoes/ChipsTab";
-import { WhatsAppTab } from "@/components/configuracoes/WhatsAppTab";
+import { NumerosOficiaisTab } from "@/components/configuracoes/NumerosOficiaisTab";
 import { LogPermissoesTab } from "@/components/configuracoes/LogPermissoesTab";
 import { ApiTokensTab } from "@/components/configuracoes/ApiTokensTab";
 import { SetoresTab } from "@/components/configuracoes/SetoresTab";
@@ -37,10 +36,10 @@ const GRUPOS = {
   integracoes: {
     label: "Canais & Integrações",
     icon: Plug,
-    desc: "Chips de WhatsApp, APIs externas e webhooks",
+    desc: "Números de WhatsApp, APIs externas e webhooks",
     abas: [
-      { value: "chips", label: "Chips WhatsApp", Component: ChipsTab },
-      { value: "whatsapp", label: "WhatsApp API", Component: WhatsAppTab },
+      // Só API oficial (Chakra) desde 08/11: a aba de chips Evolution e o formulário antigo da Meta saíram.
+      { value: "whatsapp", label: "WhatsApp", Component: NumerosOficiaisTab },
       { value: "tokens", label: "API Tokens", Component: ApiTokensTab },
       { value: "webhooks", label: "Webhooks", Component: WebhookCentralTab },
     ],
@@ -60,8 +59,15 @@ type GrupoKey = keyof typeof GRUPOS;
 
 export default function Configuracoes() {
   const { isAdmin } = usePermissions();
-  const [grupoAtivo, setGrupoAtivo] = useState<GrupoKey>("acesso");
-  const [abaAtiva, setAbaAtiva] = useState<string>(GRUPOS.acesso.abas[0].value);
+  // ?tab=<aba> abre direto na aba (o menu lateral leva para ?tab=whatsapp).
+  const [searchParams] = useSearchParams();
+  const abaInicial = searchParams.get("tab");
+  const grupoInicial = (Object.keys(GRUPOS) as GrupoKey[]).find((key) =>
+    GRUPOS[key].abas.some((aba) => aba.value === abaInicial)) ?? "acesso";
+  const [grupoAtivo, setGrupoAtivo] = useState<GrupoKey>(grupoInicial);
+  const [abaAtiva, setAbaAtiva] = useState<string>(
+    GRUPOS[grupoInicial].abas.some((aba) => aba.value === abaInicial) ? abaInicial! : GRUPOS[grupoInicial].abas[0].value,
+  );
 
   if (!isAdmin) {
     return (

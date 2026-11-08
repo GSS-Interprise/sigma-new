@@ -5,32 +5,25 @@ import {
   Users,
   Activity,
   FileText,
-  Send,
   Settings,
   LogOut,
   Gavel,
-  Sparkles,
-  GitCompare,
-  Bot,
   Calendar,
   DollarSign,
   BarChart3,
-  Package,
-  Stethoscope,
   Headset,
   MessageSquare,
   MessageCircle,
   Menu,
-  Megaphone,
   Shield,
   Rocket,
   UserSearch,
-  Newspaper,
   ClipboardCheck,
   Receipt,
   Footprints,
   ListTodo,
   ListChecks,
+  Smartphone,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -65,6 +58,8 @@ type NavGroup = {
 };
 
 // Ordem aplica anchoring + activation energy: Prospecção (operação que mais roda) logo após Home.
+// Menu enxuto (08/11, plano GSS dono no comando): Notícias, Disparos & Chips, Saúde dos Chips, Licitações (Robô),
+// Triagem PNCP, PNCP × Effecti, Radiologia, Marketing e Patrimônio saíram do menu; as rotas continuam por URL.
 // Agrupamento = mental accounting (usuário pensa por domínio). Permissões inalteradas — só muda o visual.
 const navigationGroups: NavGroup[] = [
   {
@@ -79,9 +74,7 @@ const navigationGroups: NavGroup[] = [
       { name: "Minhas Tarefas", href: "/tarefas", icon: ListTodo, modulo: "disparos" },
       { name: "Conversas", href: "/disparos/sigzap", icon: MessageCircle, modulo: "disparos" },
       { name: "Leads", href: "/leads", icon: UserSearch, modulo: "disparos" },
-      { name: "Notícias", href: "/noticias", icon: Newspaper, modulo: "disparos" },
-      { name: "Disparos & Chips", href: "/disparos", icon: Send, modulo: "disparos" },
-      { name: "Saúde dos Chips", href: "/disparos/chips-saude", icon: Activity, modulo: "disparos" },
+      { name: "Números WhatsApp", href: "/configuracoes?tab=whatsapp", icon: Smartphone, adminOnly: true },
     ],
   },
   {
@@ -93,11 +86,7 @@ const navigationGroups: NavGroup[] = [
       { name: "Escalas", href: "/escalas", icon: Calendar, modulo: "escalas" },
       { name: "Clientes e Contratos", href: "/contratos", icon: FileText, modulo: "contratos" },
       { name: "Licitações", href: "/licitacoes", icon: Gavel, modulo: "licitacoes" },
-      { name: "Licitações (Robô)", href: "/licitacoes/robo", icon: Bot, modulo: "licitacoes", adminOnly: true },
-      { name: "Triagem PNCP", href: "/licitacoes/triagem", icon: Sparkles, modulo: "licitacoes", adminOnly: true },
-      { name: "PNCP × Effecti", href: "/licitacoes/comparativo", icon: GitCompare, modulo: "licitacoes" },
       { name: "AGES", href: "/ages", icon: Building2, modulo: "ages" },
-      { name: "Radiologia", href: "/radiologia", icon: Stethoscope, modulo: "radiologia" },
     ],
   },
   {
@@ -105,11 +94,9 @@ const navigationGroups: NavGroup[] = [
     items: [
       { name: "BI", href: "/bi", icon: BarChart3, modulo: "bi" },
       { name: "Atividades de Campo", href: "/atividades-campo", icon: Footprints, adminOrLeader: true },
-      { name: "Marketing", href: "/marketing", icon: Megaphone, modulo: "marketing" },
       { name: "Financeiro", href: "/financeiro", icon: DollarSign, modulo: "financeiro" },
       { name: "Aprovações", href: "/financeiro/aprovacoes", icon: ClipboardCheck, modulo: "financeiro" },
       { name: "Comprovantes", href: "/financeiro/comprovantes", icon: Receipt, modulo: "financeiro" },
-      { name: "Patrimônio", href: "/patrimonio", icon: Package, modulo: "patrimonio" },
     ],
   },
 ];
@@ -144,7 +131,7 @@ export function Sidebar() {
   };
 
   const renderItem = (item: NavItem) => {
-    const isActive = location.pathname === item.href;
+    const isActive = location.pathname + location.search === item.href || location.pathname === item.href;
     return (
       <SidebarMenuItem key={item.name} className={cn(!open && "flex justify-center")}>
         <SidebarMenuButton asChild isActive={isActive}>
