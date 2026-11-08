@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { AlertTriangle, ChevronDown, Download, Loader2, RefreshCw, Send } from "lucide-react";
+import { AlertTriangle, ChevronDown, Download, Loader2, MoreHorizontal, RefreshCw, Send } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,9 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { ChakraConnectCard } from "./ChakraConnectCard";
 
@@ -34,6 +37,7 @@ type Numero = {
   disponibilidade: "disponivel" | "atencao" | "indisponivel" | null;
   disponibilidade_motivo: string | null;
   disponibilidade_em: string | null;
+  meta_pode_enviar: string | null;
   enviadas_7d: number;
   falhas_7d: number;
   ultima_entrega: string | null;
@@ -153,7 +157,8 @@ export function NumerosOficiaisTab() {
   const prospeccao = ordenados.filter((n) => n.uso === "prospeccao");
   const outros = ordenados.filter((n) => n.uso !== "prospeccao");
   const prontos = prospeccao.filter((n) => n.disponibilidade === "disponivel").length;
-  const comPagamento = prospeccao.filter((n) => (n.disponibilidade_motivo || "").includes("141006")).length;
+  // Conta pela saúde da Meta, não pelo motivo exibido: um número RED também pode estar com pagamento recusado.
+  const bloqueadosMeta = prospeccao.filter((n) => n.meta_pode_enviar === "BLOCKED").length;
   const atualizadoEm = numeros.map((n) => n.disponibilidade_em).filter(Boolean).sort().at(-1) || null;
 
   return (
@@ -185,12 +190,12 @@ export function NumerosOficiaisTab() {
           </div>
         </div>
 
-        {comPagamento > 0 && (
+        {bloqueadosMeta > 0 && (
           <div className="mt-4 flex gap-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
             <p>
-              <strong>{comPagamento} números com pagamento recusado pela Meta.</strong> Cadastre o cartão no portfólio
-              da GSS no Meta Business e vincule a cada conta de WhatsApp. Depois, use “Enviar teste” para confirmar.
+              <strong>{bloqueadosMeta} de {prospeccao.length} números bloqueados pela Meta para campanha (pagamento recusado).</strong>{" "}
+              Vincule o cartão do portfólio da GSS a cada conta de WhatsApp no Meta Business. Depois, “Enviar teste” confirma.
             </p>
           </div>
         )}
@@ -253,15 +258,14 @@ function TabelaNumeros({
         <p className="px-5 py-6 text-sm text-muted-foreground">Nenhum número neste grupo.</p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full table-fixed text-sm">
             <thead className="bg-muted/40 text-left text-xs text-muted-foreground">
               <tr>
-                <th className="px-5 py-2 font-medium">Número</th>
-                <th className="px-3 py-2 font-medium">Situação</th>
-                <th className="px-3 py-2 font-medium">Última entrega</th>
-                <th className="px-3 py-2 font-medium">Responsável</th>
-                <th className="px-3 py-2 font-medium">Uso</th>
-                <th className="px-5 py-2" />
+                <th className="w-[24%] px-5 py-2 font-medium">Número</th>
+                <th className="w-[33%] px-3 py-2 font-medium">Situação</th>
+                <th className="hidden w-[15%] px-3 py-2 font-medium xl:table-cell">Última entrega</th>
+                <th className="w-[23%] px-3 py-2 font-medium">Responsável</th>
+                <th className="w-[6rem] px-5 py-2 xl:w-[12.5rem]"><span className="sr-only">Ações</span></th>
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -271,20 +275,22 @@ function TabelaNumeros({
                   <tr key={n.connection_id} className="align-top">
                     <td className="px-5 py-3">
                       <div className="font-medium tabular-nums">{formatarTelefone(n.phone_e164)}</div>
-                      <div className="max-w-[220px] truncate text-xs text-muted-foreground" title={n.display_name || ""}>
+                      <div className="truncate text-xs text-muted-foreground" title={n.display_name || ""}>
                         {n.display_name || "Sem nome"} · conta {n.conta}
                       </div>
+                      {/* abaixo de 1280 px a coluna "Última entrega" some e a informação vem aqui */}
+                      <div className="mt-1 text-xs text-muted-foreground xl:hidden">Entregou {haQuanto(n.ultima_entrega)}</div>
                     </td>
                     <td className="px-3 py-3">
                       <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset", disp.classe)}>
                         {disp.rotulo}
                       </span>
-                      <div className="mt-1 max-w-[340px] text-xs text-muted-foreground">
+                      <div className="mt-1 text-xs text-muted-foreground">
                         {n.disponibilidade_motivo || "Ainda não conferido."}
                         {n.uso === "prospeccao" && !n.tem_template_padrao && " Sem o modelo padrão de prospecção."}
                       </div>
                     </td>
-                    <td className="px-3 py-3 whitespace-nowrap">
+                    <td className="hidden px-3 py-3 xl:table-cell">
                       <div>{haQuanto(n.ultima_entrega)}</div>
                       <div className="text-xs text-muted-foreground tabular-nums">
                         7 dias: {n.enviadas_7d} enviadas{n.falhas_7d > 0 && `, ${n.falhas_7d} falharam`}
@@ -295,30 +301,38 @@ function TabelaNumeros({
                         value={n.responsavel_id || "nenhum"}
                         onValueChange={(v) => onAtualizar(n, { responsavel_id: v === "nenhum" ? null : v })}
                       >
-                        <SelectTrigger className="h-8 w-[180px]"><SelectValue placeholder="Sem responsável" /></SelectTrigger>
+                        <SelectTrigger className="h-8 w-full"><SelectValue placeholder="Ninguém" /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="nenhum">Sem responsável</SelectItem>
+                          <SelectItem value="nenhum">Ninguém</SelectItem>
                           {pessoas.map((p) => (
                             <SelectItem key={p.id} value={p.id}>{p.nome_completo || "Sem nome"}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </td>
-                    <td className="px-3 py-3">
-                      <Select value={n.uso} onValueChange={(v) => onAtualizar(n, { uso: v as Numero["uso"] })}>
-                        <SelectTrigger className="h-8 w-[130px]"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          {(Object.keys(USO_ROTULO) as Numero["uso"][]).map((u) => (
-                            <SelectItem key={u} value={u}>{USO_ROTULO[u]}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </td>
-                    <td className="px-5 py-3 text-right">
+                    <td className="py-3 pl-3 pr-5">
+                      <div className="flex items-center justify-end gap-1">
                       <Button size="sm" variant="outline" onClick={() => onTeste(n)} disabled={n.templates_aprovados === 0}
-                        title={n.templates_aprovados === 0 ? "Este número não tem nenhum modelo aprovado" : undefined}>
-                        <Send className="mr-1.5 h-3.5 w-3.5" /> Enviar teste
+                        aria-label="Enviar teste"
+                        title={n.templates_aprovados === 0 ? "Este número não tem nenhum modelo aprovado" : "Enviar teste"}>
+                        <Send className="h-3.5 w-3.5 xl:mr-1.5" /> <span className="hidden xl:inline">Enviar teste</span>
                       </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="sm" variant="ghost" className="h-8 w-8 shrink-0 p-0" aria-label="Mudar o uso do número">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuLabel>Usar este número para</DropdownMenuLabel>
+                          <DropdownMenuRadioGroup value={n.uso} onValueChange={(v) => onAtualizar(n, { uso: v as Numero["uso"] })}>
+                            {(Object.keys(USO_ROTULO) as Numero["uso"][]).map((u) => (
+                              <DropdownMenuRadioItem key={u} value={u}>{USO_ROTULO[u]}</DropdownMenuRadioItem>
+                            ))}
+                          </DropdownMenuRadioGroup>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                      </div>
                     </td>
                   </tr>
                 );

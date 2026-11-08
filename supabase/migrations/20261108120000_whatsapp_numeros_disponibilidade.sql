@@ -87,13 +87,13 @@ begin
       end as disp,
       case
         when status = 'desconectado' then 'Desligado manualmente no Sigma.'
-        when upper(coalesce(quality_rating, '')) = 'RED' then 'Qualidade vermelha na Meta: risco de bloqueio do número.'
+        when upper(coalesce(quality_rating, '')) = 'RED' then 'Qualidade vermelha na Meta: risco de perder o número.'
         when conta_bloqueada then 'A Meta bloqueou o envio da conta (não é pagamento). Ver o painel da Chakra.'
         when instance_id is null then 'Nenhuma mensagem deste número chega ao Sigma desde a conexão.'
-        when pagamento_bloqueado then 'Pagamento da conta na Meta com erro (141006): campanha e 1º contato bloqueados; respostas em até 24 h funcionam.'
+        when pagamento_bloqueado then 'Pagamento recusado pela Meta (141006): campanha bloqueada; responder em até 24 h funciona.'
         when enviadas >= 10 and falhas::numeric / enviadas >= 0.2
           then round(100 * falhas::numeric / enviadas) || '% das mensagens falharam nos últimos 7 dias.'
-        when upper(coalesce(name_status, '')) = 'DECLINED' then 'Nome de exibição recusado pela Meta: limite de envio reduzido.'
+        when upper(coalesce(name_status, '')) = 'DECLINED' then 'Nome de exibição recusado: limite de envio reduzido.'
         when ultima_entrega is null or ultima_entrega < now() - interval '7 days' then 'Nenhuma entrega nos últimos 7 dias.'
         else 'Entregando normalmente.'
       end as motivo
