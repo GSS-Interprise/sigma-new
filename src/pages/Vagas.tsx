@@ -132,7 +132,7 @@ export default function Vagas() {
           <SearchableSelect options={opcoesEsp} value={especialidade} onChange={setEspecialidade}
             placeholder="Especialidade" searchPlaceholder="Buscar especialidade..." className="h-9 w-48" />
           <Select value={responsavel} onValueChange={setResponsavel}>
-            <SelectTrigger className="h-9 w-44" aria-label="Responsável"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-9 w-56" aria-label="Responsável"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="todos">Todos os responsáveis</SelectItem>
               <SelectItem value="ninguem">Sem responsável</SelectItem>
@@ -149,9 +149,9 @@ export default function Vagas() {
           <table className="w-full table-fixed text-sm">
             <thead className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
               <tr>
-                <th className="w-[9%] px-4 py-2.5 font-medium">Aberta há</th>
-                <th className="w-[29%] px-3 py-2.5 font-medium">Vaga</th>
-                <th className="w-[24%] px-3 py-2.5 font-medium">Onde</th>
+                <th className="w-[10%] whitespace-nowrap px-4 py-2.5 font-medium">Aberta há</th>
+                <th className="w-[28%] px-3 py-2.5 font-medium">Vaga</th>
+                <th className="w-[23%] px-3 py-2.5 font-medium">Onde</th>
                 <th className="w-[15%] px-3 py-2.5 font-medium">Responsável</th>
                 <th className="w-[17%] px-3 py-2.5 font-medium">Campanha</th>
                 <th className="w-[6%] px-3 py-2.5"><span className="sr-only">Ações</span></th>
@@ -177,7 +177,7 @@ export default function Vagas() {
               )}
               {filtradas.map((v) => (
                 <tr key={v.id} className="align-top hover:bg-muted/30">
-                  <td className="px-4 py-3">
+                  <td className="whitespace-nowrap px-4 py-3">
                     <span className={cn("text-xl font-semibold tabular-nums", COR_DIAS[v.faixa])}>{v.dias_aberta}</span>
                     <span className="ml-1 text-xs text-muted-foreground">{v.dias_aberta === 1 ? "dia" : "dias"}</span>
                   </td>
@@ -207,7 +207,7 @@ export default function Vagas() {
                       </Link>
                     ) : podeGerir ? (
                       <Button variant="outline" size="sm" className="h-8" onClick={() => navigate(`/prospeccao/nova?vaga=${v.id}`)}>
-                        <Rocket className="mr-1.5 h-3.5 w-3.5" />Criar campanha
+                        <Rocket className="mr-1.5 h-3.5 w-3.5" />Criar<span className="hidden xl:inline">&nbsp;campanha</span>
                       </Button>
                     ) : <span className="text-muted-foreground">—</span>}
                   </td>
