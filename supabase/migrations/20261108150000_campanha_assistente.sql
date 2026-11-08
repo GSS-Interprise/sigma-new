@@ -279,11 +279,11 @@ begin
     criada_via, aprovado_por, aprovado_em, criado_por, created_by, created_by_name
   ) values (
     coalesce(nullif(p ->> 'nome', ''), 'Campanha ' || to_char(now(), 'DD/MM')),
-    'whatsapp', v_status, 'prospeccao', 'ia',
+    'whatsapp'::canal_campanha, v_status::status_campanha, 'prospeccao', 'ia',
     v_esp, v_esp[1], v_ufs, v_ufs[1], v_cidades,
     'chakra', v_senders, v_senders[1], v_template_name, v_template_id,
     coalesce(p -> 'template_variables', '{}'::jsonb), v_por_numero * cardinality(v_senders),
-    true, 7, 17, array[1, 2, 3, 4, 5],
+    true, 7, 17, array[1, 2, 3, 4, 5]::smallint[],
     coalesce(p -> 'briefing', '{}'::jsonb), true, v_user, 'Equipe GSS',
     'assistente', v_user, now(), v_user, v_user, v_nome_user
   ) returning id into v_campanha;
