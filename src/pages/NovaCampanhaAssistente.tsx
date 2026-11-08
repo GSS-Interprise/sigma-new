@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Bot, Check, Loader2, Pencil, Sparkles } from "lucide-react";
 import { toast } from "sonner";
@@ -87,6 +87,23 @@ export default function NovaCampanhaAssistente() {
   const [limitePorNumero, setLimitePorNumero] = useState(LIMITE_PADRAO);
   const [nome, setNome] = useState("");
 
+  // Vindo de /vagas ("Criar campanha para esta vaga"): especialidade, UF e vaga já respondidas.
+  const [params] = useSearchParams();
+  const vagaId = params.get("vaga");
+  useEffect(() => {
+    if (!vagaId) return;
+    let cancelado = false;
+    (supabase as any).from("vagas").select("especialidade_id, uf, cidade, hospital_nome, tipo, valor").eq("id", vagaId).maybeSingle()
+      .then(({ data }: { data: any }) => {
+        if (cancelado || !data) return;
+        setEspecialidadeIds([data.especialidade_id]);
+        if (data.uf) setUfs([data.uf]);
+        const valor = String(data.valor || "").match(/\d[\d.]*(,\d+)?/)?.[0] || "";
+        setVaga((v) => ({ ...v, cidade: data.cidade, hospital: data.hospital_nome, tipo: data.tipo, valorMin: valor }));
+      });
+    return () => { cancelado = true; };
+  }, [vagaId]);
+
   const { data: especialidades = [] } = useEspecialidades();
   const { data: listas = [] } = useListasProntas();
   const { data: numeros = [], isLoading: carregandoNumeros } = useNumerosOficiais();
@@ -162,7 +179,9 @@ export default function NovaCampanhaAssistente() {
         },
       });
       if (error) throw error;
-      return data as { campanha_id: string; leads: number; status: string };
+      const r = data as { campanha_id: string; leads: number; status: string };
+      if (vagaId) await (supabase as any).from("vagas").update({ campanha_id: r.campanha_id }).eq("id", vagaId);
+      return r;
     },
     onSuccess: (r) => {
       qc.invalidateQueries({ queryKey: ["campanhas-prospeccao"] });

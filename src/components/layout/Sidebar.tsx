@@ -24,6 +24,7 @@ import {
   ListTodo,
   ListChecks,
   Smartphone,
+  Briefcase,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -80,6 +81,7 @@ const navigationGroups: NavGroup[] = [
   {
     label: "Operação clínica",
     items: [
+      { name: "Vagas em aberto", href: "/vagas", icon: Briefcase },
       { name: "Médicos", href: "/medicos", icon: Users, modulo: "medicos" },
       { name: "Pareceres", href: "/parecer", icon: ClipboardCheck, adminOrLeader: true },
       { name: "Relacionamento", href: "/relacionamento-medico", icon: Activity, modulo: "relacionamento" },

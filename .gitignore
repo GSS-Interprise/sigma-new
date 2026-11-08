@@ -32,7 +32,7 @@ supabase/.temp/
 *.xlsx
 *.docx
 prints/
-vagas/
+/vagas/
 plan/
 
 # Planos de trabalho pessoais do Claude (Raul)
