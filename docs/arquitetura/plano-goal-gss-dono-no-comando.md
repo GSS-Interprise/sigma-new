@@ -2,6 +2,7 @@
 
 > **Spec:** `docs/arquitetura/gss-dono-no-comando-mapa.md` (mapa da reunião com o Maikon, revisado em 08/11).
 > **Escrito em:** 08/11/2026, a partir da revisão do Raul na sessão (assistente de campanha primeiro, Conversas no formato WhatsApp, Configurações › WhatsApp, menu enxuto, vagas, investigação da Chakra).
+> **Revisão 08/11 (2ª rodada):** decisões D-A a D-G respondidas pelo Raul (tabela no fim); entram a Fase 7 (Raio-X do mercado — `docs/arquitetura/bi-raio-x-mercado-medico.md`), a Fase 8 (agente com a persona do Maikon que converte) e a Fase 9 (LinkedIn e Instagram no mesmo Kanban); `/impeccable` em toda tela.
 > **Para agentes:** executar fase a fase, na ordem. Cada tarefa tem "Pronto quando" verificável. Não pular o portão de tela nem o teste real de envio.
 
 **Objetivo:** o dono da GSS cria uma campanha conversando com um assistente, usando só os números oficiais (Chakra); vê e responde as conversas de todos os números numa tela igual ao WhatsApp; enxerga os números disponíveis em Configurações › WhatsApp; acompanha as vagas em aberto (plantão e ambulatório) com os dias contados; e o menu mostra só o que a GSS usa.
@@ -11,7 +12,8 @@
 ### Texto sugerido para o `/goal`
 
 ```
-/goal Executar docs/arquitetura/plano-goal-gss-dono-no-comando.md da Fase 0 à Fase 6, na ordem.
+/goal Executar docs/arquitetura/plano-goal-gss-dono-no-comando.md da Fase 0 à Fase 9, na ordem
+(Fase 5 pode correr em paralelo).
 Cada tarefa só fecha quando o "Pronto quando" dela for verdade (build sem erro, SQL de conferência,
 portão de tela em 1440 e 1024 px, envio real de teste quando houver WhatsApp). Commit + push na main
 a cada tarefa (identidade Raul, pull antes). Edge alterada = deploy confirmado. Tabela nova = GRANT.
@@ -29,7 +31,7 @@ Parar e perguntar ao Raul nas decisões marcadas com 🛑.
 - Texto com acento gravado por script: UTF-8 explícito; conferir com `SELECT` antes de usar.
 - **WhatsApp só pela API oficial (Chakra).** Nada novo usa Evolution.
 - **Status da Chakra/Meta não prova nada; só envio real de teste prova** (feedback de 05/11). Envio de teste vai para o número do Raul, com o "ok" dele.
-- Tela: carregar a skill `qualidade-de-tela` antes; portão visual só em **1440 e 1024 px** (ninguém usa o Sigma no celular).
+- Tela: carregar a skill `qualidade-de-tela` antes; rodar **`/impeccable`** (critique + polish) em cada tela nova antes de fechar a tarefa; portão visual só em **1440 e 1024 px** (ninguém usa o Sigma no celular).
 - Não há suíte de testes no repo. Verificação = `npm run build` sem erro + SQL de conferência + portão de tela + teste manual no navegador (localhost).
 - Esconder do menu ≠ apagar: as rotas continuam existindo (reversível).
 
@@ -37,9 +39,10 @@ Parar e perguntar ao Raul nas decisões marcadas com 🛑.
 
 1. **Template é por WABA, não por número.** Uma campanha com vários números precisa do mesmo template aprovado em cada WABA. Hoje o padrão `gss_oportunidade_sair_20261026` está aprovado em 5 números (3416, 2474, 3444, 0538, 3761), **reprovado** no da Ester (5309) e **ausente** no 8860 (Amni), 6429 e 9264. O assistente só pode oferecer números onde o template escolhido existe aprovado.
 2. **Fora da janela de 24 h só sai template.** Na tela de Conversas, se a última mensagem do médico tem mais de 24 h, o campo de texto livre vira "escolher template".
-3. **Evolution ainda está viva em 7 campanhas "ativas"** (Pediatria SP, Pediatria SC, Telerradiologia ×2, US, US Brasil, Pediatras RQE) e no número "Prospecção radiologia" (385 mensagens enviadas em 14 dias). Tirar a Evolution da criação não pode derrubar essas campanhas sem decisão (🛑 D-A).
-4. **Grupo de WhatsApp não existe na API oficial** (como regra prática). O PDF das 7h no "grupo dos sócios" não sai pela Chakra (🛑 D-C).
-5. **OpenAI sem crédito desde 14/10.** O assistente de campanha não pode depender de LLM para funcionar: as perguntas são guiadas por botões; a IA só ajuda em texto livre e na sugestão de template, com fallback.
+3. **Evolution fica como está nas campanhas antigas** (decisão D-A). Conferido em 08/11: o número "Prospecção radiologia" está **desconectado** e o último envio foi em **30/10** — nada saiu em novembro; ainda chegam respostas atrasadas (até 03/11). As 7 campanhas marcadas "ativa" em Evolution não disparam. A tarefa 2.4 só tira a Evolution da **criação** de campanha nova.
+4. **Grupo de WhatsApp não existe na API oficial.** Decidido (D-C): o PDF das 7h vai por **e-mail para os sócios** e por **WhatsApp oficial para o Maikon** (individual).
+5. **OpenAI sem crédito desde 14/10.** O assistente de campanha não pode depender de LLM para funcionar: as perguntas são guiadas por botões; a IA só ajuda em texto livre e na sugestão de template, com fallback. **Efeito medido:** dos médicos que responderam depois de 14/10, só 17% receberam alguma resposta nossa (47 de 273); antes eram 43%. É a maior causa de não conversão (Fase 8).
+6. **Número da Amni (99018-860) é só para as automações financeiras** (Raul, 08/11). Nunca entra em campanha de prospecção.
 
 ---
 
@@ -56,7 +59,7 @@ Parar e perguntar ao Raul nas decisões marcadas com 🛑.
 | 93618-3444 | Gestão Serviço Saúde | GSS | NON_EXISTS | — | 339 / 209 / 1 | **Disponível** |
 | 93618-3761 | Maicon Madeira | GSS | NON_EXISTS | — | 195 / 186 / 3 | **Disponível** (teve 131042 pagamento) |
 | 9713-2474 | GSS - Gestao Servico saude | GSS | NON_EXISTS | — | 328 / 39 / 3 | Envia; entrega baixa a conferir (130472 / 131042) |
-| 99018-860 | Amni Julia - GSS | **Pulse (Raul)** | NON_EXISTS | GREEN | 390 / 48 / 0 | Envia; sem o template padrão |
+| 99018-860 | Amni Julia - GSS | **Pulse (Raul)** | NON_EXISTS | GREEN | 390 / 48 / 0 | **Só financeiro** — fora da prospecção (não precisa do template de prospecção) |
 | 9233-5309 | Ester - GSS | GSS | NON_EXISTS | GREEN | 389 / 71 / 1 | Template padrão **reprovado**; WABA com 141006 (pagamento) |
 | 9264-7508 | Maikon Madeira | GSS | NON_EXISTS | **RED** | 25 / 0 / 0 | Último entregue 16/10 — **não usar** até conferir |
 | 6429-1713 | Maikon Madeira | GSS | **DECLINED** | — | 0 / 0 / 0 | Sem envio; último evento 24/09 |
@@ -74,6 +77,7 @@ Parar e perguntar ao Raul nas decisões marcadas com 🛑.
 
 ### Tarefa 0.2 — Sincronizar o que falta
 - **Arquivos:** `supabase/functions/chakra-connect/index.ts`.
+- Criar `whatsapp_chakra_connections.uso text not null default 'prospeccao'` (`'prospeccao' | 'financeiro' | 'pessoal'`); marcar o 99018-860 como `financeiro`. Assistente e Conversas de prospecção ignoram `financeiro`.
 - Sincronizar `messaging_limit_tier` e criar `whatsapp_chakra_connections.disponibilidade` (`'disponivel' | 'atencao' | 'indisponivel'`) + `disponibilidade_motivo text`, calculados a partir da última entrega real e dos erros dos últimos 7 dias (regra: entregou nas últimas 72 h e falhas < 20% → disponível; entregou mas falhas ≥ 20% ou erro de pagamento → atenção; sem entrega em 7 dias ou qualidade RED → indisponível).
 - Cron diário recalcula.
 - **Pronto quando:** `select phone_e164, disponibilidade, disponibilidade_motivo from whatsapp_chakra_connections` bate com a tabela da Tarefa 0.1.
@@ -84,8 +88,8 @@ Parar e perguntar ao Raul nas decisões marcadas com 🛑.
 
 ### Tarefa 1.1 — Esconder do menu o que não se usa
 - **Arquivo:** `src/components/layout/Sidebar.tsx` (array `navigationGroups`, linhas ~70–121).
-- Sair do menu: **Notícias**, **Disparos & Chips**, **Saúde dos Chips**, **Licitações (Robô)**, **Triagem PNCP**, **PNCP × Effecti**, **Radiologia**.
-- Pedidos do Maikon ainda a confirmar com o Raul: **Marketing**, **Patrimônio**, **Minhas Tarefas** (🛑 D-B).
+- Sair do menu: **Notícias**, **Disparos & Chips**, **Saúde dos Chips**, **Licitações (Robô)**, **Triagem PNCP**, **PNCP × Effecti**, **Radiologia**, **Marketing**, **Patrimônio**.
+- **Minhas Tarefas fica** (Raul, 08/11: é importante).
 - Rotas em `src/App.tsx` ficam (acesso direto por URL continua).
 - **Pronto quando:** sidebar renderiza sem os itens; `npm run build` ok; portão de tela 1440/1024.
 
@@ -132,14 +136,14 @@ Parar e perguntar ao Raul nas decisões marcadas com 🛑.
   1. **Para qual especialidade e região?** Busca de especialidade + UFs/cidades. Mostra na hora "CFM: 49.948 pediatras no Brasil, 2.310 em SC" (RPC 2.2).
   2. **De onde vem a lista?** "Usar uma lista que já tenho" (escolher em `disparo_listas`/listas importadas) · "Montar agora do CRM + CFM" · "Pedir extração do Life's Hub" (desabilitado com aviso até a Fase 5 existir). Mostra quantos entram e quantos saíram (blacklist, já em campanha).
   3. **Qual mensagem?** "Usar o modelo padrão" (pré-selecionado: o template aprovado em mais números) · outro aprovado · "Criar um novo" (texto sugerido pela IA → envio para aprovação na Meta via `chakra-connect create_template`; a campanha fica esperando a aprovação).
-  4. **Por quais números?** Lista dos números **disponíveis** (Fase 0.2) **que têm o template escolhido**; número sem o template aparece apagado com o motivo. Pergunta "quantos?" com sugestão (leads ÷ limite diário).
+  4. **Por quais números?** Lista dos números **disponíveis** (Fase 0.2), com `uso='prospeccao'`, **que têm o template escolhido**; número sem o template aparece apagado com o motivo. Pergunta "quantos?" com sugestão (leads ÷ limite diário).
   5. **Resumo** em linguagem de dono: "Vou falar com 1.240 pediatras de SC, pelos números 3416 e 3444, com o modelo X, até 35 por número por dia, das 7h às 17h, em dias úteis. Termina em ~18 dias." Botões **Criar e começar** · **Criar pausada** · **Voltar**.
 - IA (opcional) no passo 1 e 3: edge `campanha-assistente-ia` (Gemini se houver chave; senão OpenAI; senão desliga o campo de texto livre).
 - **Pronto quando:** do zero até a campanha criada em menos de 2 minutos, sem abrir o formulário antigo; campanha criada aparece no Kanban com os números e o template certos; portão de tela 1440/1024 nos 5 passos e no estado "nenhum número tem esse template".
 
 ### Tarefa 2.4 — Tirar a Evolution da criação
 - **Arquivos:** `NovaCampanhaProspeccaoDialog.tsx` (estado `whatsappProvider`, linha 83): padrão `chakra`, opção Evolution escondida.
-- 🛑 D-A antes de mexer nas 7 campanhas ativas em Evolution.
+- Campanhas antigas em Evolution ficam como estão (D-A); nada é migrado nem apagado.
 - **Pronto quando:** nenhuma campanha nova nasce com `whatsapp_provider='evolution'`.
 
 ---
@@ -186,15 +190,15 @@ Parar e perguntar ao Raul nas decisões marcadas com 🛑.
 ### Tarefa 4.3 — Relatório diário das 7h
 - **Edge:** criar `supabase/functions/vagas-relatorio-diario/index.ts` — gera PDF (vagas abertas por dias, as mais antigas no topo, total por especialidade), guarda no Storage, envia.
 - **Cron:** `pg_cron` às 10:00 UTC (7h BRT), dias úteis.
-- 🛑 D-C: canal de entrega — (a) e-mail para os sócios (Resend/Gmail, sem risco); (b) WhatsApp oficial para cada sócio, individual, com template de utilidade com documento; (c) grupo — só pela Evolution (não oficial, contraria a decisão de 08/11).
-- **Pronto quando:** rodar a edge manualmente gera o PDF certo e ele chega no canal escolhido.
+- Entrega (D-C): **e-mail** para os sócios (Maikon, João, Eron) com o PDF anexo + **WhatsApp oficial para o Maikon**, individual, com template de utilidade com documento no cabeçalho (`gss_vagas_diario_v1`, aprovar num número da conta GSS, ex.: 93618-3444).
+- **Pronto quando:** rodar a edge manualmente gera o PDF certo, o e-mail chega aos sócios e o WhatsApp chega ao Maikon (envio real, com "ok").
 
 ---
 
 ## Fase 5 — Rotinas na VPS da GSS · 2 dias (pode rodar em paralelo às Fases 2–4)
 
 ### Tarefa 5.1 — Base da VPS
-- Hermes (ou runner Node + Playwright, se 🛑 D-D vetar a assinatura) na VPS KVM4 `root@147.93.71.48`, em container próprio no Easypanel.
+- **Hermes com a assinatura de IA da GSS** (D-D) na VPS KVM4 `root@147.93.71.48`, em container próprio no Easypanel, com navegador (Playwright/Chromium) para logar no Life's Hub e consultar o CFM. Credenciais em variáveis de ambiente da VPS (nunca no repo nem no Vault).
 - Fila no Sigma: tabela `rotina_pedidos (id, tipo text, payload jsonb, status ('pendente','executando','feito','erro'), resultado jsonb, erro text, tentativas int, criado_em, iniciado_em, concluido_em)` + `GRANT`. A VPS consulta a fila (service_role), executa e grava o resultado.
 - **Pronto quando:** pedido `tipo='ping'` vai de pendente a feito em menos de 1 min.
 
@@ -205,7 +209,8 @@ Parar e perguntar ao Raul nas decisões marcadas com 🛑.
 - **Pronto quando:** 5 CRMs de teste com foto e situação na ficha.
 
 ### Tarefa 5.3 — Depois da 5.2
-- CNES (vínculos do médico), atualização periódica do universo CFM (`cfm_medicos_staging`), Life's Hub (🛑 D-E login e termos), processos (🛑 D-F fonte). Cada uma vira uma rotina nova na mesma fila.
+- **Life's Hub** (D-E decidido: o Hermes loga): rotina `lifeshub_lista` — entrada `{especialidade, ufs, cidades}`, extrai a lista, grava em `disparo_listas` como lista "Life's Hub — <especialidade> — <data>"; o passo 2 do assistente passa a oferecer "Pedir extração do Life's Hub".
+- CNES (vínculos do médico), atualização periódica do universo CFM (`cfm_medicos_staging`), processos (🛑 D-F fonte). Cada uma vira uma rotina nova na mesma fila.
 
 ---
 
@@ -213,13 +218,85 @@ Parar e perguntar ao Raul nas decisões marcadas com 🛑.
 
 - **Arquivos:** criar `src/components/campanhas/PainelDonoCampanha.tsx`; aba "Resumo" padrão ao abrir uma campanha.
 - Funil em linguagem de dono: universo CFM → na lista → enviados → entregues → responderam → interessados → convertidos, por número e por canal (WhatsApp, e-mail).
-- Bloco **Objeções:** edge `campanha-objecoes-ia` lê as respostas dos médicos e agrupa os motivos (valor, distância, agenda, já tem vínculo…) com contagem e 2 exemplos cada; roda 1×/dia por campanha ativa; resultado em `campanha_objecoes`.
-- Depende de crédito de IA (🛑 D-G).
+- Bloco **Objeções:** lê `conversa_classificacao` (Fase 7.2) filtrada pela campanha — mesma classificação do Raio-X, sem edge separada.
+- Fazer depois da 7.2 (ou mostrar "objeções em processamento" até lá).
 - **Pronto quando:** a campanha de Pediatria mostra o funil com números que batem com o banco e as objeções agrupadas; portão de tela 1440/1024.
+
+## Fase 7 — Raio-X do mercado médico (BI de argumento) · 2,5 dias
+
+**Spec completa:** `docs/arquitetura/bi-raio-x-mercado-medico.md`. Resumo: a tela que o Maikon abre na frente do hospital — mercado (CFM) → o que já fizemos → como o mercado responde → por que dizem não → o que destrava. Modo apresentação (sem nome de médico, PDF) e modo gestão (operação).
+
+### Tarefa 7.1 — Universo CFM normalizado
+- Migração: `cfm_medico_especialidades (nu_crm, sg_uf, especialidade_id, rqe)` a partir do texto de `cfm_medicos_staging.especialidade` ("&PEDIATRIA - RQE Nº: 1261", várias por médico) casado com `especialidades.nome/aliases`; relatório do que não casou.
+- **Pronto quando:** total de pediatras e ginecologistas (Brasil e SC) bate com contagem manual por texto; < 2% de textos sem casamento.
+
+### Tarefa 7.2 — Classificação das conversas
+- Tabela `conversa_classificacao` + edge `conversas-classificar` + cron 2 h + backfill (campos e categorias na spec, seção 3 e 6).
+- **Pronto quando:** ≥ 95% das conversas com resposta classificadas; 50 conferidas por uma pessoa com ≥ 85% de acerto no resultado.
+
+### Tarefa 7.3 — Funções do BI
+- `bi_raiox_funil`, `bi_raiox_objecoes`, `bi_raiox_destrava` (assinaturas e regras na spec, seções 4 e 6).
+- **Pronto quando:** Pediatria/SC e Ginecologia/Brasil batem com SQL manual.
+
+### Tarefa 7.4 — Tela e PDF
+- **Arquivos:** `src/components/bi/raiox/` (`RaioXMercado.tsx`, `BlocoMercado.tsx`, `BlocoEsforco.tsx`, `BlocoFunil.tsx`, `BlocoObjecoes.tsx`, `BlocoDestrava.tsx`, `ModoGestao.tsx`); aba **"Raio-X do mercado"** primeira no BI; botões Apresentar e Baixar PDF; atalhos na campanha e na vaga.
+- Skills: `qualidade-de-tela`, `dataviz`, `kpi-dashboard-design`, `/impeccable`.
+- **Pronto quando:** critérios da spec, seção 8.
+
+## Fase 8 — Agente com a persona do Maikon que converte · 2 dias
+
+**Problema medido:** quem responde não é atendido (17% receberam resposta depois de 14/10) e, quando é, não converte (Pediatria: 666 responderam → 20 convertidos). Nas respostas reais, os médicos pedem **valor, dias e carga** (155 mensagens citando valor em 120 dias), muitos são **secretárias** e alguns **indicam colegas** — o roteiro atual não trata esses casos.
+
+### Tarefa 8.1 — A IA nunca para em silêncio
+- `supabase/functions/campanha-ia-responder/index.ts` (usa `gpt-4o`, linhas ~522 e ~588): cadeia de provedores (Gemini → OpenAI) e, se todos falharem, a conversa vai para a fila "esperando resposta" com aviso ao responsável (WhatsApp/e-mail) em vez de ficar muda.
+- Depende de crédito de IA (🛑 D-G).
+- **Pronto quando:** simular falha do provedor principal → resposta sai pelo segundo; falha de todos → alerta chega e a conversa aparece no modo gestão do Raio-X.
+
+### Tarefa 8.2 — Persona do Maikon
+- Tom tirado das mensagens reais que o Maikon escreve pelos números dele (amostra de conversas `from_me` com `sent_by_user_id` dele): saudação, tamanho das frases, como fala de valor. Gravar como `persona_contexto` padrão do briefing (`b.persona_contexto`, linha ~1359), editável por campanha.
+- Apresentação honesta: "Sou o Maikon, médico e sócio da GSS" — e o agente responde que é assistente se perguntarem (sem fingir ser humano quando perguntado diretamente).
+- **Pronto quando:** o Maikon lê 5 conversas simuladas e aprova o tom.
+
+### Tarefa 8.3 — Roteiro por situação
+Usar a mesma classificação da Fase 7 (em tempo real, na resposta) para escolher o próximo passo:
+| Situação | O agente faz |
+|---|---|
+| Pergunta valor / dias / carga | Responde com a faixa do briefing (`valor_min`–`valor_max`, `valor_por`) e as datas; termina pedindo disponibilidade |
+| Distância | Oferece o formato que reduz deslocamento (plantão concentrado, moradia, se o briefing tiver); pergunta onde mora; grava a cidade |
+| Agenda cheia | Oferece escala flexível / sobreaviso / datas avulsas; pede para voltar a falar em 30 dias (agenda tarefa) |
+| Secretária / consultório | Mensagem curta "para encaminhar à doutora" + pede o contato direto |
+| Indicação | Agradece, pede nome e telefone do indicado, **cria lead novo** ligado a quem indicou |
+| Desconfiança | Explica de onde veio o contato (base pública do CFM), oferece sair da lista (opt-out vai para `blacklist`) |
+| Interessado | Qualificação curta (de onde é, formação, residência — R5), pede **currículo** (PDF anexado ao lead) e passa para humano com resumo |
+- **Pronto quando:** cada situação testada com uma conversa simulada; indicação gera lead; currículo recebido aparece na ficha.
+
+### Tarefa 8.4 — Medir
+- Modo gestão do Raio-X mostra por campanha: % resposta, % interessado, % convertido, tempo da primeira resposta, por roteiro.
+- **Pronto quando:** os números da semana aparecem e batem com o banco.
+
+## Fase 9 — LinkedIn e Instagram na mesma campanha e no mesmo Kanban · 2 dias
+
+**Pedido do Raul:** a campanha gera leads e ações de LinkedIn e Instagram junto com WhatsApp e e-mail, tudo no mesmo Kanban. As ferramentas ainda vão ser escolhidas pelo Raul (🛑 D-I); o desenho abaixo não depende delas.
+
+### Tarefa 9.1 — Canais no modelo
+- `campanhas.canais text[]` (`whatsapp`, `email`, `linkedin`, `instagram`) — o assistente (passo 4) pergunta os canais.
+- Tabela `campanha_toques (id, campanha_lead_id, canal, tipo ('conexao','mensagem','seguir','dm','email','whatsapp'), status ('sugerido','feito','respondido','falhou'), executado_por, executado_em, url_perfil, observacao)` + `GRANT`.
+- `leads.linkedin_url`, `leads.instagram_handle` (se ainda não existirem).
+- **Pronto quando:** campanha com 4 canais guarda toques por canal.
+
+### Tarefa 9.2 — Kanban com canais
+- Card do Kanban (`CampanhaProspeccaoKanban.tsx`) mostra ícones por canal com estado (cinza = não tentado, azul = enviado, verde = respondeu).
+- Lead que chega só por LinkedIn/Instagram (sem telefone) entra no mesmo Kanban, na mesma etapa.
+- **Pronto quando:** card com WhatsApp + LinkedIn mostra os dois estados; `/impeccable` + portão 1440/1024.
+
+### Tarefa 9.3 — Fila assistida
+- Tela "Fila do dia" do responsável: até 20 conexões de LinkedIn e N ações de Instagram sugeridas, com o texto pronto e o link do perfil; a pessoa executa e marca "feito" (modo assistido — automatizar arrisca bloquear a conta, decisão de 05/11).
+- Integração com a ferramenta que o Raul escolher entra aqui depois (D-I).
+- **Pronto quando:** a fila mostra 20 sugestões, marcar "feito" atualiza o card.
 
 ## Depois do pacote (fora do `/goal` atual)
 
-IA qualifica e pede currículo (R5) · tempo de resposta por pessoa (R8) · memória de problema do médico (R12) · notificações dos hospitais (R10) · concorrentes (R11) · contratos por pergunta (R14) · pós-primeiro-plantão (R13) · parabéns (R15).
+Memória de problema do médico (R12) · notificações dos hospitais (R10) · concorrentes (R11) · contratos por pergunta (R14) · pós-primeiro-plantão (R13) · parabéns (R15) · CNES e processos (Fase 5.3).
 
 ---
 
@@ -227,14 +304,15 @@ IA qualifica e pede currículo (R5) · tempo de resposta por pessoa (R8) · mem�
 
 | # | Decisão | Opções |
 |---|---|---|
-| D-A | As 7 campanhas ativas em Evolution e o número "Prospecção radiologia" | Pausar e migrar para Chakra · deixar terminar · manter só a radiologia na Evolution |
-| D-B | Esconder também Marketing, Patrimônio e Minhas Tarefas | Sim · não |
-| D-C | Canal do PDF das 7h | E-mail · WhatsApp oficial individual · grupo pela Evolution |
-| D-D | Motor da VPS | Hermes com a assinatura da GSS (risco de termos) · API paga · Gemini · Playwright sem IA |
-| D-E | Life's Hub | Login com o Vinícius e aceite do risco de termos |
-| D-F | Fonte de processos | Escavador / Jusbrasil (pago) · só tribunais com busca pública |
-| D-G | Crédito de IA | Recarregar OpenAI · chave Gemini via Fred |
-| D-H | Envios de teste | "ok" do Raul a cada rodada de testes reais |
+| D-A | ✅ Campanhas antigas em Evolution e radiologia | **Manter como estão** (Raul, 08/11). Radiologia desconectada desde 30/10 |
+| D-B | ✅ Menu | **Esconder Marketing e Patrimônio; Minhas Tarefas fica** |
+| D-C | ✅ PDF das 7h | **E-mail para os sócios + WhatsApp oficial para o Maikon** |
+| D-D | ✅ Motor da VPS | **Hermes com a assinatura da GSS**, logando no Life's Hub e no CFM |
+| D-E | ✅ Life's Hub | **O Hermes loga** (credencial com o Vinícius) |
+| D-F | 🛑 Fonte de processos | Escavador / Jusbrasil (pago) · só tribunais com busca pública |
+| D-G | 🛑 Crédito de IA | Recarregar OpenAI · chave Gemini via Fred — **bloqueia as Fases 7.2 e 8** |
+| D-H | 🛑 Envios de teste | "ok" do Raul a cada rodada de testes reais |
+| D-I | 🛑 Ferramentas de LinkedIn e Instagram | Raul vai pesquisar alternativas; a Fase 9 começa em modo assistido |
 
 ## Checklist
 
@@ -253,3 +331,14 @@ IA qualifica e pede currículo (R5) · tempo de resposta por pessoa (R8) · mem�
 - [ ] 5.1 Base da VPS + fila
 - [ ] 5.2 Foto do CFM
 - [ ] 6 Tela da campanha para o dono + objeções
+- [ ] 7.1 Universo CFM normalizado
+- [ ] 7.2 Classificação das conversas
+- [ ] 7.3 Funções do Raio-X
+- [ ] 7.4 Tela Raio-X + PDF
+- [ ] 8.1 IA nunca para em silêncio
+- [ ] 8.2 Persona do Maikon
+- [ ] 8.3 Roteiro por situação
+- [ ] 8.4 Medição da conversão
+- [ ] 9.1 Canais no modelo
+- [ ] 9.2 Kanban com canais
+- [ ] 9.3 Fila assistida LinkedIn/Instagram
