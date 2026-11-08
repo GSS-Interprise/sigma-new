@@ -213,7 +213,7 @@ serve(async (req) => {
     } else if (conversationIdInput) {
       const { data, error } = await admin
         .from("sigzap_conversations")
-        .select("id, lead_id, instance_id, service_window_expires_at")
+        .select("id, lead_id, instance_id, contact_id, service_window_expires_at")
         .eq("id", conversationIdInput)
         .single();
       if (error) throw error;
@@ -231,13 +231,25 @@ serve(async (req) => {
       }
       conversation = { ...data, instance };
 
-      const { data: leadData, error: leadError } = await admin
-        .from("leads")
-        .select("id, nome, phone_e164")
-        .eq("id", data.lead_id)
-        .single();
-      if (leadError) throw leadError;
-      lead = leadData;
+      if (data.lead_id) {
+        const { data: leadData, error: leadError } = await admin
+          .from("leads")
+          .select("id, nome, phone_e164")
+          .eq("id", data.lead_id)
+          .single();
+        if (leadError) throw leadError;
+        lead = leadData;
+      } else {
+        // Conversa sem lead vinculado (quem escreveu primeiro para o número, colega, hospital):
+        // responde pelo telefone do contato. Antes isso dava erro e ~1.400 conversas ficavam sem resposta.
+        const { data: contact, error: contactError } = await admin
+          .from("sigzap_contacts")
+          .select("contact_name, contact_phone")
+          .eq("id", data.contact_id)
+          .single();
+        if (contactError) throw contactError;
+        lead = { id: null, nome: contact.contact_name, phone_e164: contact.contact_phone };
+      }
     } else if (leadIdInput && (isInternalSend || isServiceRole)) {
       const { data: leadData, error: leadError } = await admin
         .from("leads")

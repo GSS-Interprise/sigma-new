@@ -72,7 +72,7 @@ const navigationGroups: NavGroup[] = [
       { name: "Listas", href: "/disparos/leads?tab=listas", icon: ListChecks, modulo: "disparos" },
       { name: "Templates WhatsApp", href: "/prospeccao/templates-whatsapp", icon: FileText, modulo: "disparos" },
       { name: "Minhas Tarefas", href: "/tarefas", icon: ListTodo, modulo: "disparos" },
-      { name: "Conversas", href: "/disparos/sigzap", icon: MessageCircle, modulo: "disparos" },
+      { name: "Conversas", href: "/conversas", icon: MessageCircle, modulo: "disparos" },
       { name: "Leads", href: "/leads", icon: UserSearch, modulo: "disparos" },
       { name: "Números WhatsApp", href: "/configuracoes?tab=whatsapp", icon: Smartphone, adminOnly: true },
     ],
