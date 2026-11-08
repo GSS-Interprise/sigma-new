@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { RegistroProfissionalCard } from "@/components/medicos/RegistroProfissionalCard";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -395,6 +396,8 @@ export function LeadProfile360Modal({ open, onOpenChange, leadId }: Props) {
                     )}
                   </div>
                 </Card>
+
+                <RegistroProfissionalCard leadId={leadId} />
 
                 {/* 3. Cross-campanha */}
                 <Card className="p-4 space-y-3">

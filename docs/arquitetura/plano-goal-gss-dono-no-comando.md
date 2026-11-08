@@ -208,6 +208,7 @@ Parar e perguntar ao Raul nas decisões marcadas com 🛑.
 - Volume baixo (só médico quente); intervalo entre consultas; captcha → marcar erro e seguir (sem burlar captcha).
 - **Pronto quando:** 5 CRMs de teste com foto e situação na ficha.
 - 🛑 **Bloqueio (08/11):** a foto só sai pela API `medicos/buscar_foto`, que exige token de reCAPTCHA (sem token: `{"status":"erro","dados":"não permitido"}`; o `security_hash` da base não basta). Foto automática = burlar captcha, fora do plano. Situação e especialidades já estão na base CFM (`cfm_medicos_staging`, 978 mil na VPS) e não precisam de consulta nova. Decisão do Raul pendente sobre a foto.
+- **Entregue (08/11):** bloco "Registro profissional" na ficha (Perfil 360º). CFM da base (situação, inscrição, especialidades com RQE, outras UFs) pela função `lead_registro_profissional`; CNES (estabelecimento, função, carga horária, SUS) pelo botão "Buscar no CNES" → edge `medico-cnes` → tabela `medico_cnes`, homônimos filtrados pela UF do CRM e, se sobrar mais de um, a pessoa escolhe. A VPS não alcança `cnes.datasus.gov.br` (timeout); o Supabase alcança. Foto: link "Ver foto no CFM".
 
 > **5.1 entregue (08/11):** fila `rotina_pedidos` + RPCs `rotina_pedir` / `rotina_pegar` / `rotina_concluir`, edge `rotinas-fila` (chave `ROTINAS_WORKER_KEY`, a VPS não recebe a service role), worker `vps/sigma-rotinas` como serviço systemd `sigma-rotinas` em `/opt/sigma-rotinas`. Ping de pendente a feito em 1,9 s. O Hermes entra como executor das rotinas que precisam de agente (Life's Hub).
 
