@@ -1,0 +1,15 @@
+[Unit]
+Description=Sigma GSS - worker das rotinas (fila rotina_pedidos)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/opt/sigma-rotinas
+ExecStart=/usr/bin/python3 -u /opt/sigma-rotinas/worker.py
+Restart=always
+RestartSec=15
+# Memória limitada: a VPS divide 8 GB com Evolution, N8N e os Postgres.
+MemoryMax=1G
+
+[Install]
+WantedBy=multi-user.target

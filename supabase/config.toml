@@ -123,3 +123,6 @@ verify_jwt = false
 
 [functions.financeiro-nf-publica]
 verify_jwt = false
+
+[functions.rotinas-fila]
+verify_jwt = false

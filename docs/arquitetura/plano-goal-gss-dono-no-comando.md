@@ -207,6 +207,9 @@ Parar e perguntar ao Raul nas decisões marcadas com 🛑.
 - Gatilho: lead vira "quente" (etapa do Kanban) ou botão "Buscar no CFM" na ficha.
 - Volume baixo (só médico quente); intervalo entre consultas; captcha → marcar erro e seguir (sem burlar captcha).
 - **Pronto quando:** 5 CRMs de teste com foto e situação na ficha.
+- 🛑 **Bloqueio (08/11):** a foto só sai pela API `medicos/buscar_foto`, que exige token de reCAPTCHA (sem token: `{"status":"erro","dados":"não permitido"}`; o `security_hash` da base não basta). Foto automática = burlar captcha, fora do plano. Situação e especialidades já estão na base CFM (`cfm_medicos_staging`, 978 mil na VPS) e não precisam de consulta nova. Decisão do Raul pendente sobre a foto.
+
+> **5.1 entregue (08/11):** fila `rotina_pedidos` + RPCs `rotina_pedir` / `rotina_pegar` / `rotina_concluir`, edge `rotinas-fila` (chave `ROTINAS_WORKER_KEY`, a VPS não recebe a service role), worker `vps/sigma-rotinas` como serviço systemd `sigma-rotinas` em `/opt/sigma-rotinas`. Ping de pendente a feito em 1,9 s. O Hermes entra como executor das rotinas que precisam de agente (Life's Hub).
 
 ### Tarefa 5.3 — Depois da 5.2
 - **Life's Hub** (D-E decidido: o Hermes loga): rotina `lifeshub_lista` — entrada `{especialidade, ufs, cidades}`, extrai a lista, grava em `disparo_listas` como lista "Life's Hub — <especialidade> — <data>"; o passo 2 do assistente passa a oferecer "Pedir extração do Life's Hub".
