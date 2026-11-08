@@ -2,6 +2,7 @@
 
 > Fonte: reunião de sábado 07/11/2026 com o Maikon (transcrição Fireflies `qox-gvsj-mjp`) + explicação do Raul na sessão.
 > Prazo pedido: **10 dias** (revisão com o Maikon no sábado 14/11; entrega até ~17/11).
+> **Revisão 08/11 (Raul):** campanha criada por um assistente de IA que conversa (R1); só API oficial do WhatsApp (Chakra), Evolution sai do fluxo; MCP/"Dots" é do CRM pessoal do Maikon e sai deste mapa; rotinas da VPS (foto do CFM) podem começar já; vagas em aberto confirmadas.
 > Este documento é o mapa. A execução de cada frente vira checklist aqui mesmo (seção 7) e tarefa no Pulse OS.
 
 ## 1. O problema em uma frase
@@ -12,7 +13,7 @@ Regra de desenho que sai da reunião: **ignorar o vício do processo do funcion�
 
 ## 2. O que é da GSS e o que não é
 
-**Entra neste mapa (Sigma / CRM da GSS):** campanhas, listas, universo CFM, canais, IA de resposta, dossiê do médico, dashboard/BI, conversas da equipe, vagas em aberto, notificações dos hospitais, concorrentes, histórico de problema do médico, pós-primeiro-plantão, alertas de contrato, limpeza do menu, acessos, operação por IA.
+**Entra neste mapa (Sigma / CRM da GSS):** campanhas, listas, universo CFM, canais, IA de resposta, dossiê do médico, dashboard/BI, conversas da equipe, vagas em aberto, notificações dos hospitais, concorrentes, histórico de problema do médico, pós-primeiro-plantão, alertas de contrato, limpeza do menu, acessos, rotinas automáticas na VPS da GSS.
 
 **Não entra (outros projetos — registrar no lugar certo):**
 
@@ -20,6 +21,7 @@ Regra de desenho que sai da reunião: **ignorar o vício do processo do funcion�
 |---|---|
 | Radar cirúrgico, pacientes (TAV, revascularização, robótica), protocolos por cirurgia, cobrança de exames | CRM do Maikon (`/radar-cirurgico`, no ar desde 30/10, sem paciente) + Jornada Paciente (protocolos, produto para outros cirurgiões) |
 | Financeiro "Dona Helena", tarefas atrasadas da Isa/Mari | CRM do Maikon |
+| Operar o CRM pelo assistente pessoal do Maikon ("Dots", MCP) | CRM do Maikon — não é da GSS e não entra agora (Raul, 08/11) |
 | Contatos com IA buscando diretores de hospital (oferecer Dr. Escala, curso de gestão) | A confirmar com o Raul — parece CRM do Maikon |
 | Tele / consórcio RS (Raul como gerente de projeto), credenciamento | Projeto novo, fora do Sigma |
 | Sistema da UTI (Hospital do Coração), Dados para Donos, Open Finance, curso de gestão | Fora do Sigma |
@@ -44,10 +46,17 @@ Regra de desenho que sai da reunião: **ignorar o vício do processo do funcion�
 
 Legenda de peso: **P1** = coração do pedido (entra nos 10 dias) · **P2** = entra se couber · **P3** = depois.
 
-### R1. Criar campanha em poucos cliques — P1
+### R1. Criar campanha com um assistente de IA — P1 (primeira entrega)
 - **Pedido:** "Eu queria que fosse fácil de eu criar uma campanha" — especialidade + região, ele aprova o texto.
 - **Existe:** `NovaCampanhaProspeccaoDialog.tsx` (2.036 linhas, ~44 campos num formulário só; provedor Evolution ou Chakra; lista opcional). 22 campanhas paradas em rascunho.
-- **Lacuna:** fluxo curto para o dono (3 passos: público → texto → canais/ligar), com padrões do anti-ban já preenchidos; o formulário completo vira "avançado". Aprovação do texto registrada (quem aprovou, quando).
+- **Decisão do Raul (08/11):** a campanha é criada **conversando com um assistente de IA** dentro do Sigma, que pergunta só o essencial, nesta ordem:
+  1. Especialidade e região (mostra o universo do CFM — R2).
+  2. Lista: usar uma lista já extraída/importada **ou** extrair uma nova (CRM + CFM; Life's Hub quando a rotina da VPS existir — R3). Quais leads entram (filtros, sem blacklist, sem duplicata).
+  3. Template: usar um template já aprovado na Meta (o padrão, quase sempre o mesmo) **ou** criar um novo.
+  4. Números: quantos números oficiais usar e quais (um ou vários — R4).
+  5. Resumo final para o dono confirmar ("sim" cria; nada dispara sem confirmação). Aprovação registrada (quem, quando).
+- **Só API oficial:** a GSS não usa mais API não oficial. O assistente só oferece números Chakra; Evolution, chips, aquecimento e campos de anti-ban de chip saem do fluxo de criação.
+- **Lacuna:** a tela do assistente (conversa + painel com o rascunho da campanha sendo montado ao lado), uma edge que interpreta as respostas e preenche os mesmos campos da campanha atual, e o formulário antigo fica só como "avançado".
 
 ### R2. Universo do CFM por especialidade e região — P1
 - **Pedido:** "quero que primeiro ele pegue o número de intensivistas pediátricos que tem no Brasil".
@@ -60,7 +69,7 @@ Legenda de peso: **P1** = coração do pedido (entra nos 10 dias) · **P2** = en
 - **Lacuna:** gerar a lista ao criar a campanha (especialidade + região → leads do CRM + CFM, sem duplicata, sem blacklist). Life's Hub **sem API** (caro): automação de navegador logada, rodando na VPS da GSS. "Lista do Thiago" — confirmar o que é (Raul: "os do Thiago já estão aqui").
 
 ### R4. Canais: WhatsApp, e-mail, LinkedIn, Instagram — P1 (WhatsApp/e-mail) · P2 (LinkedIn/Instagram)
-- **Existe:** WhatsApp oficial Chakra (coexistência, histórico importado) e Evolution; e-mail pelo Resend e pelas caixas Gmail da equipe (tela ainda não publicada no Lovable). LinkedIn/Instagram só como rótulo.
+- **Existe:** WhatsApp oficial Chakra (coexistência, histórico importado) — **único canal de WhatsApp daqui em diante** (Evolution/API não oficial sai, decisão 08/11); e-mail pelo Resend e pelas caixas Gmail da equipe (tela ainda não publicada no Lovable). LinkedIn/Instagram só como rótulo.
 - **Lacuna:** vários números Chakra numa mesma campanha (em andamento); imagem gerada para o e-mail; LinkedIn do Maikon 20/dia e Instagram em **modo assistido** (fila de sugestões que o Maikon executa) — automatizar arrisca bloquear a conta dele (decisão de 05/11).
 
 ### R5. IA de resposta que qualifica e pede currículo — P1
@@ -111,7 +120,7 @@ Legenda de peso: **P1** = coração do pedido (entra nos 10 dias) · **P2** = en
 ### R14. Contratos: perguntar e ser avisado — P2
 - **Pedido:** "uma janelinha pra me fazer as perguntas" e alertas de datas (Bianca deve sair).
 - **Existe:** `contratos-avisos`, `vencimentos-alertas`.
-- **Lacuna:** caixa de pergunta em linguagem natural sobre contratos (resolvida pela operação por IA, R17).
+- **Lacuna:** caixa de pergunta em linguagem natural sobre contratos dentro do Sigma (não via assistente pessoal do Maikon).
 
 ### R15. Relacionamento automático — P3
 - **Pedido:** mensagem de parabéns automática.
@@ -122,11 +131,17 @@ Legenda de peso: **P1** = coração do pedido (entra nos 10 dias) · **P2** = en
 - **Pedido:** tirar o que não serve ("reseta tudo"): Triagem PNCP e PNCP × Effecti (para o Maikon), campos de psicólogo/fono e "idades", Marketing (ninguém usa), Patrimônio (nunca preenchido), "Minhas OS"; logo da GSS grande ("Sigma" foi nome do Ewerton, pode mudar).
 - **Lacuna:** menu por papel (dono vê o que importa), esconder telas mortas, marca GSS.
 
-### R17. Operar o CRM por IA — P1 (base) · P2 (ações)
-- **Decidido na reunião:** o Maikon fala com o assistente dele (chamado de "Dots" na transcrição) e **não** com um segundo agente no WhatsApp; o Raul cria a API do CRM + **MCP** e manda prompts para conectar. Ex.: "crie uma campanha para este número com esta planilha".
-- **Ideia do Raul (sessão):** instalar o **Hermes na VPS KVM4 da GSS**, usando a assinatura do Claude da GSS como motor das rotinas pesadas (Life's Hub, CFM, CNES, processos) — o Maikon confirmou que a GSS tem Claude e Gemini.
-- **Existe:** APIs por token (`api_tokens`, `get-lead-by-id`, `api-licitacoes`…), nenhum MCP.
-- **Lacuna:** MCP do Sigma (ler campanhas/vagas/contratos, criar campanha a partir de planilha, criar vaga, perguntar sobre contrato) + Hermes na VPS como executor.
+### R17. Rotinas automáticas na VPS da GSS — P1 (pode começar já)
+- **Ideia do Raul:** instalar o **Hermes na VPS KVM4 da GSS**, usando a assinatura de IA da GSS (Claude/Gemini, confirmado pelo Maikon) como motor das rotinas que dependem de navegador.
+- **Rotinas mapeadas:**
+  1. **CFM — foto e situação do médico:** abrir a consulta pública do CFM no navegador, buscar por CRM/UF, salvar a foto e a situação na ficha do médico. Primeira rotina (Raul, 08/11).
+  2. **CFM — universo por especialidade:** atualizar `cfm_medicos_staging` periodicamente (última carga 07/06).
+  3. **CNES:** locais onde o médico trabalha.
+  4. **Life's Hub:** extrair lista por especialidade/região (sem API; navegador logado — D3).
+  5. **Processos:** conforme a fonte decidida (D4).
+  6. **PDF das vagas às 7h** (R9) — pode rodar no cron do Supabase em vez da VPS.
+- **Regra:** a VPS só executa; o resultado sempre volta para uma tabela do Sigma (fila de pedidos → VPS pega → grava resultado).
+- **Fora daqui:** MCP para o assistente pessoal do Maikon ("Dots") é do CRM dele, não da GSS, e não entra agora (Raul, 08/11).
 
 ### R18. Acessos — P1 (imediato)
 - **Pedido:** login para o João e o Eron; Maikon ver financeiro e aprovações.
@@ -138,14 +153,15 @@ Legenda de peso: **P1** = coração do pedido (entra nos 10 dias) · **P2** = en
 ```
                  Maikon / João / Eron
                   │            │
-          tela do Sigma    assistente do Maikon ──MCP──┐
-                  │                                    │
-        ┌─────────▼────────────────────────────────────▼──┐
+       tela do Sigma + assistente de criação de campanha
+                  │
+        ┌─────────▼───────────────────────────────────────┐
         │  Sigma (Supabase): campanhas, listas, leads,    │
         │  vagas, notificações, dossiê, BI, conversas     │
         └───────▲───────────────▲──────────────▲──────────┘
                 │               │              │
-   Chakra (vários números)   e-mail       VPS KVM4 da GSS
+   Chakra (só API oficial,   e-mail       VPS KVM4 da GSS
+   vários números)
    coexistência + histórico  Resend/Gmail  Hermes + Claude/Gemini
                                             ├ Life's Hub (navegador)
                                             ├ CFM: universo + foto
@@ -156,14 +172,15 @@ Legenda de peso: **P1** = coração do pedido (entra nos 10 dias) · **P2** = en
 
 Princípios:
 - **O Sigma guarda e mostra; a VPS executa o que é lento ou depende de navegador.** Resultado sempre volta para uma tabela do Sigma (nada fica só na VPS).
-- **Toda ação do assistente que dispara mensagem ou muda dinheiro pede "sim"** (mesmo portão do Madeira no CRM do Maikon).
+- **O assistente de campanha nunca dispara sozinho:** cria a campanha só depois do "sim" do dono.
+- **WhatsApp só pela API oficial (Chakra).**
 - **LinkedIn e Instagram só assistidos.**
 
 ## 6. Riscos e decisões abertas
 
 | # | Ponto | Por que importa | Quem decide |
 |---|---|---|---|
-| D1 | O que é o "Dots" (assistente do Maikon) e onde roda | Define se o MCP é remoto (HTTP) e como autenticar | Raul confirma |
+| D1 | ~~O que é o "Dots"~~ | Resolvido 08/11: é do CRM pessoal do Maikon; MCP fora deste mapa | — |
 | D2 | Assinatura do Claude da GSS como motor no Hermes | Uso fora do Claude Code pode ferir os termos da assinatura (mesma ressalva registrada no projeto da Wood); alternativa é API paga ou Gemini via Fred | Raul |
 | D3 | Life's Hub sem API | Automação de navegador logada pode violar o contrato do Life's Hub e quebra quando a tela muda | Raul + Maikon (login com o Vinícius) |
 | D4 | Fonte de processos | Não há busca pública nacional por nome de parte (DataJud busca por número); serviços como Escavador/Jusbrasil são pagos | Maikon (custo) |
@@ -179,11 +196,11 @@ Princípios:
 | Onda | Dias | Entrega | Requisitos |
 |---|---|---|---|
 | 0 | seg 09/11 | Acessos João/Eron, menu limpo e marca GSS, crédito/IA destravada | R18, R16, D6 |
-| 1 | 09–11/11 | Campanha em 3 passos com universo CFM e lista automática do CRM; tela da campanha para o dono com objeções | R1, R2, R3 (parte CRM), R7 |
+| 1 | 09–11/11 | **Assistente de IA que cria a campanha** (lista existente ou nova, template, números oficiais), com universo CFM e lista automática do CRM; tela da campanha para o dono com objeções | R1, R2, R3 (parte CRM), R7 |
 | 2 | 11–12/11 | Vagas em aberto com relógio + PDF 7h no grupo; memória de problema do médico | R9, R12 |
-| 3 | 12–14/11 | Hermes na VPS da GSS; dossiê do médico quente (CNES, CFM, redes; processos conforme D4); Life's Hub automatizado | R6, R3 (Life's Hub), R17 (executor) |
+| 3 | 09–14/11 (em paralelo, começa já) | Hermes na VPS da GSS; rotina CFM (foto + situação) primeiro; depois CNES, Life's Hub e dossiê do médico quente | R17, R6, R3 (Life's Hub) |
 | — | sáb 14/11 | Revisão com o Maikon | — |
-| 4 | 16–17/11 | MCP do Sigma para o assistente; IA qualifica e pede currículo; tempo de resposta por pessoa | R17, R5, R8 |
+| 4 | 16–17/11 | IA qualifica e pede currículo; tempo de resposta por pessoa | R5, R8 |
 | Depois | — | Notificações dos hospitais, concorrentes, contratos por pergunta, pós-plantão, parabéns | R10, R11, R14, R13, R15 |
 
 ### Checklist
@@ -191,14 +208,14 @@ Princípios:
 - [ ] R18 Acessos João e Eron
 - [ ] R16 Menu limpo + marca GSS
 - [ ] D6 IA das campanhas com crédito/fallback
-- [ ] R1 Campanha em 3 passos
+- [ ] R1 Assistente de IA que cria a campanha (só API oficial)
 - [ ] R2 Universo CFM na campanha e no BI (+ rotina de atualização)
 - [ ] R3 Lista automática (CRM + CFM) · Life's Hub na VPS
 - [ ] R7 Tela da campanha para o dono + objeções + BI por especialidade
 - [ ] R9 Vagas em aberto + PDF 7h
 - [ ] R12 Memória de problema do médico
 - [ ] R6 Dossiê do médico quente
-- [ ] R17 Hermes na VPS + MCP do Sigma
+- [ ] R17 Hermes na VPS + rotina CFM (foto) · CNES · Life's Hub
 - [ ] R5 IA qualifica + currículo
 - [ ] R8 Todos os números + tempo de resposta por pessoa
 - [ ] R4 Vários números Chakra por campanha · e-mail com imagem · LinkedIn/Instagram assistidos
