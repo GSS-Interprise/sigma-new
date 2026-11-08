@@ -626,9 +626,43 @@ function json(body: Record<string, unknown>) {
 }
 
 async function processOfficialBatch(supabase: any, camp: any, supabaseUrl: string, serviceRole: string) {
-  if (!camp.official_sender_id || !camp.official_template_id) {
+  // Vários números por campanha (08/11): revezamento simples pelo cursor. O modelo é escolhido pelo
+  // NOME e cada número usa a cópia aprovada na própria conta (template é por WABA, não por número).
+  const pausados = new Set<string>((camp.official_senders_pausados || []).map(String));
+  const todosNumeros: string[] = (camp.official_sender_ids?.length ? camp.official_sender_ids : [camp.official_sender_id])
+    .filter(Boolean)
+    .map(String);
+  const numeros = todosNumeros.filter((id) => !pausados.has(id));
+  if (todosNumeros.length === 0 || (!camp.official_template_id && !camp.official_template_name)) {
     await supabase.from("campanhas").update({ next_batch_at: null }).eq("id", camp.id);
     return json({ ok: false, error: "official_campaign_not_configured" });
+  }
+  if (numeros.length === 0) {
+    await supabase.from("campanhas").update({ status: "pausada", next_batch_at: null }).eq("id", camp.id);
+    return json({ ok: false, error: "todos_os_numeros_da_campanha_bloqueados" });
+  }
+  const cursor = Number(camp.official_sender_cursor || 0);
+  const senderId = numeros[cursor % numeros.length];
+  let templateId = String(camp.official_template_id || "");
+  if (camp.official_template_name) {
+    const { data: copia } = await supabase.rpc("campanha_template_do_numero", {
+      p_sender_id: senderId,
+      p_template_name: camp.official_template_name,
+    });
+    if (copia) {
+      templateId = String(copia);
+    } else if (numeros.length === 1 && camp.official_template_id) {
+      // Campanha antiga de um número só: o template salvo pode estar com plugin antigo no content_sid
+      // (GO e ANESTESIO em 08/11) e mesmo assim enviar. Mantém o comportamento de antes.
+      templateId = String(camp.official_template_id);
+    } else {
+      // Número sem a cópia aprovada do modelo: tira da rodada desta campanha e segue nos outros.
+      await supabase.from("campanhas").update({
+        official_senders_pausados: [...pausados, senderId],
+        next_batch_at: new Date(Date.now() + 5_000).toISOString(),
+      }).eq("id", camp.id);
+      return json({ ok: false, error: "modelo_sem_copia_no_numero", sender_id: senderId });
+    }
   }
 
   const bindings = camp.official_template_variables || {};
@@ -644,12 +678,12 @@ async function processOfficialBatch(supabase: any, camp: any, supabaseUrl: strin
     supabase
       .from("whatsapp_official_senders")
       .select("status, provider, chakra_phone_number_id")
-      .eq("id", camp.official_sender_id)
+      .eq("id", senderId)
       .maybeSingle(),
     supabase
       .from("whatsapp_official_templates")
       .select("approval_status")
-      .eq("id", camp.official_template_id)
+      .eq("id", templateId)
       .maybeSingle(),
   ]);
   if (!sender || !["approved", "online", "active", "activated", "connected"].includes(String(sender.status).toLowerCase())) {
@@ -757,7 +791,7 @@ async function processOfficialBatch(supabase: any, camp: any, supabaseUrl: strin
           Authorization: `Bearer ${serviceRole}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ campaign_lead_id: campaignLead.id }),
+        body: JSON.stringify({ campaign_lead_id: campaignLead.id, sender_id: senderId, template_id: templateId }),
       },
       SEND_TIMEOUT_MS,
     );
@@ -837,11 +871,18 @@ async function processOfficialBatch(supabase: any, camp: any, supabaseUrl: strin
     // repetindo falhas enquanto a Meta ainda não liberou a conta.
     const wabaPaymentBlocked = extractProviderCode(reason) === "131042" ||
       /business eligibility payment issue/i.test(reason);
+    if (wabaPaymentBlocked && numeros.length > 1) {
+      // Campanha com vários números: só este sai da rodada; os outros continuam.
+      await supabase.from("campanhas").update({
+        official_senders_pausados: [...pausados, senderId],
+        next_batch_at: new Date(Date.now() + 5_000).toISOString(),
+      }).eq("id", camp.id);
+      return json({ ok: false, error: reason, action: "numero_retirado_da_campanha", sender_id: senderId });
+    }
     if (wabaPaymentBlocked) {
       // O mesmo remetente oficial pode estar associado a várias campanhas.
       // Pausar todas evita que o scheduler troque de campanha e continue
       // gerando falhas enquanto a WABA estiver bloqueada.
-      const senderId = String(camp.official_sender_id || "").trim();
       const pauseQuery = supabase
         .from("campanhas")
         .update({ status: "pausada", next_batch_at: null })
@@ -861,11 +902,14 @@ async function processOfficialBatch(supabase: any, camp: any, supabaseUrl: strin
   const nextBatchAt = new Date(
     Date.now() + randomDelay(interval.min, interval.max),
   ).toISOString();
-  await supabase.from("campanhas").update({ next_batch_at: nextBatchAt }).eq("id", camp.id);
+  await supabase.from("campanhas")
+    .update({ next_batch_at: nextBatchAt, official_sender_cursor: cursor + 1 })
+    .eq("id", camp.id);
   selfInvoke(supabase, camp.id);
   return json({
     ok: true,
     sent: 1,
+    sender_id: senderId,
     channel: "official",
     next_batch_at: nextBatchAt,
     interval_min_seconds: Math.round(interval.min / 1000),

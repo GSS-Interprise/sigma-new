@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { CaptacaoProtectedRoute } from "@/components/auth/CaptacaoProtectedRoute";
@@ -162,6 +162,20 @@ export default function CampanhasProspeccao() {
     else sp.set("view", next);
     setSearchParams(sp);
   };
+  const navigate = useNavigate();
+  // Vindo do assistente de campanha: ?campanha=<id> abre a campanha criada; ?avancado=1 abre o formulário completo.
+  useEffect(() => {
+    const campanhaParam = searchParams.get("campanha");
+    const avancado = searchParams.get("avancado");
+    if (!campanhaParam && !avancado) return;
+    if (campanhaParam) setSelecionada(campanhaParam);
+    if (avancado) setDialogOpen(true);
+    const sp = new URLSearchParams(searchParams);
+    sp.delete("campanha");
+    sp.delete("avancado");
+    setSearchParams(sp, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const adicionarLeads = useAdicionarLeadsCampanha();
   const { data: addStrategies = [] } = useQuery({
     queryKey: ["campaign-strategies-add-leads", selecionada],
@@ -736,7 +750,10 @@ export default function CampanhasProspeccao() {
                       <option value="configurando">Configurando</option>
                     </select>
                   </div>
-                  <Button onClick={() => setDialogOpen(true)}>
+                  <Button variant="ghost" className="text-muted-foreground" onClick={() => setDialogOpen(true)}>
+                    Modo avançado
+                  </Button>
+                  <Button onClick={() => navigate("/prospeccao/nova")}>
                     <Plus className="h-4 w-4 mr-2" />
                     Nova Campanha
                   </Button>
@@ -753,7 +770,7 @@ export default function CampanhasProspeccao() {
                   <p className="text-muted-foreground">
                     Nenhuma campanha de prospecção criada.
                   </p>
-                  <Button className="mt-4" onClick={() => setDialogOpen(true)}>
+                  <Button className="mt-4" onClick={() => navigate("/prospeccao/nova")}>
                     <Plus className="h-4 w-4 mr-2" />
                     Criar primeira campanha
                   </Button>

@@ -80,7 +80,8 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
   const [idadeMax, setIdadeMax] = useState("");
   const [filtroOrigem, setFiltroOrigem] = useState("");
   const [chipIds, setChipIds] = useState<string[]>([]);
-  const [whatsappProvider, setWhatsappProvider] = useState<"evolution" | "chakra">("evolution");
+  // Só API oficial desde 08/11/2026: campanha nova nasce na Chakra; Evolution fica só nas campanhas antigas.
+  const [whatsappProvider, setWhatsappProvider] = useState<"evolution" | "chakra">("chakra");
   const [listaId, setListaId] = useState("");
   const [officialTemplateId, setOfficialTemplateId] = useState<string | null>(null);
   const [officialSenderId, setOfficialSenderId] = useState<string | null>(null);
@@ -89,8 +90,8 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
   const [batchSize, setBatchSize] = useState(10);
   const [delayMinMs, setDelayMinMs] = useState(8);
   const [delayMaxMs, setDelayMaxMs] = useState(25);
-  const [delayBatchMin, setDelayBatchMin] = useState(5);
-  const [delayBatchMax, setDelayBatchMax] = useState(10);
+  const [delayBatchMin, setDelayBatchMin] = useState(2);
+  const [delayBatchMax, setDelayBatchMax] = useState(3);
   // WS2: janela de disparo (default 07-17h dias úteis)
   const [janela, setJanela] = useState<JanelaHorario>({ ativo: true, inicio: 7, fim: 17, dias: [1, 2, 3, 4, 5] });
   const [mensagemInicial, setMensagemInicial] = useState("");
@@ -622,8 +623,8 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
     setBatchSize(10);
     setDelayMinMs(8);
     setDelayMaxMs(25);
-    setDelayBatchMin(5);
-    setDelayBatchMax(10);
+    setDelayBatchMin(2);
+    setDelayBatchMax(3);
     setJanela({ ativo: true, inicio: 7, fim: 17, dias: [1, 2, 3, 4, 5] });
     setMensagemInicial("");
     setCadenciaAtiva(true);
@@ -659,7 +660,7 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
     setBHandoffGatilhos("");
     setBPalavrasProibidas("");
     setExcludedLeadIds(new Set());
-    setWhatsappProvider("evolution");
+    setWhatsappProvider("chakra");
     setOfficialTemplateId(null);
     setTab("basico");
   };
@@ -781,7 +782,6 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
               <Select value={whatsappProvider} onValueChange={(value) => handleProviderChange(value as "evolution" | "chakra")}>
                 <SelectTrigger className="min-h-11"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="evolution">API não oficial · Evolution</SelectItem>
                   <SelectItem value="chakra">API oficial · Chakra (coexistência)</SelectItem>
                 </SelectContent>
               </Select>

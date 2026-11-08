@@ -31,6 +31,7 @@ import DisparosCampanhaPropostas from "./pages/DisparosCampanhaPropostas";
 import DisparosBIProspec from "./pages/DisparosBIProspec";
 import CampanhasProspeccao from "./pages/CampanhasProspeccao";
 import WhatsAppTemplates from "./pages/WhatsAppTemplates";
+import NovaCampanhaAssistente from "./pages/NovaCampanhaAssistente";
 import Noticias from "./pages/Noticias";
 import Parecer from "./pages/Parecer";
 import AtividadesCampo from "./pages/AtividadesCampo";
@@ -123,6 +124,7 @@ const App = () => (
             <Route path="/disparos/campanhas/:id/propostas" element={<ProtectedRoute><PermissionRoute modulo="disparos"><DisparosCampanhaPropostas /></PermissionRoute></ProtectedRoute>} />
             <Route path="/disparos/bi-prospec" element={<ProtectedRoute><PermissionRoute modulo="disparos"><DisparosBIProspec /></PermissionRoute></ProtectedRoute>} />
             <Route path="/prospeccao" element={<ProtectedRoute><PermissionRoute modulo="disparos"><CampanhasProspeccao /></PermissionRoute></ProtectedRoute>} />
+            <Route path="/prospeccao/nova" element={<ProtectedRoute><PermissionRoute modulo="disparos"><NovaCampanhaAssistente /></PermissionRoute></ProtectedRoute>} />
             <Route path="/prospeccao/templates-whatsapp" element={<ProtectedRoute><PermissionRoute modulo="disparos"><WhatsAppTemplates /></PermissionRoute></ProtectedRoute>} />
             <Route path="/noticias" element={<ProtectedRoute><PermissionRoute modulo="disparos"><Noticias /></PermissionRoute></ProtectedRoute>} />
             <Route path="/parecer" element={<ProtectedRoute><PermissionRoute adminOrLeader><Parecer /></PermissionRoute></ProtectedRoute>} />

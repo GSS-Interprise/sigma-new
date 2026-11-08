@@ -188,7 +188,7 @@ serve(async (req) => {
         admin
           .from("campanhas")
           .select(
-            "id, nome, nome_remetente, briefing_ia, whatsapp_provider, official_template_id, official_sender_id, official_template_variables",
+            "id, nome, nome_remetente, briefing_ia, whatsapp_provider, official_template_id, official_sender_id, official_sender_ids, official_template_variables",
           )
           .eq("id", campaignLead.campanha_id)
           .single(),
@@ -268,11 +268,19 @@ serve(async (req) => {
     if (campaign?.whatsapp_provider) {
       senderQuery = senderQuery.eq("provider", campaign.whatsapp_provider);
     }
-    if (campaign?.official_sender_id) {
+    const senderOverride = senderIdInput && (isInternalSend || isServiceRole) ? senderIdInput : "";
+    if (senderOverride && campaign) {
+      // Campanha com vários números: o processor escolhe o número da vez; só vale se for da campanha.
+      const daCampanha = [campaign.official_sender_id, ...(campaign.official_sender_ids || [])].map(String);
+      if (!daCampanha.includes(senderOverride)) {
+        return json({ ok: false, error: "sender_not_in_campaign" }, 409);
+      }
+    }
+    if (campaign?.official_sender_id && !senderOverride) {
       senderQuery = senderQuery.eq("id", campaign.official_sender_id);
     }
-    if (senderIdInput && (isInternalSend || isServiceRole)) {
-      senderQuery = senderQuery.eq("id", senderIdInput);
+    if (senderOverride) {
+      senderQuery = senderQuery.eq("id", senderOverride);
     }
     if (conversation?.instance?.external_ref) {
       senderQuery = senderQuery.eq(
