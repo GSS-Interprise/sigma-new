@@ -225,6 +225,7 @@ Parar e perguntar ao Raul nas decisões marcadas com 🛑.
 - Bloco **Objeções:** lê `conversa_classificacao` (Fase 7.2) filtrada pela campanha — mesma classificação do Raio-X, sem edge separada.
 - Fazer depois da 7.2 (ou mostrar "objeções em processamento" até lá).
 - **Pronto quando:** a campanha de Pediatria mostra o funil com números que batem com o banco e as objeções agrupadas; portão de tela 1440/1024.
+- **Entregue (08/11):** aba "Resumo" (padrão) com `PainelDonoCampanha` + RPC `campanha_painel_dono`. Funil conta cada médico pelo melhor resultado (falhou e foi reenviado = enviado); Pediatria: 46.737 no CFM → 3.851 na lista → 952 enviados → 871 entregues → 170 responderam. Motivo das falhas em português de dono. Objeções: até a 7.2, mostra as últimas respostas.
 
 ## Fase 7 — Raio-X do mercado médico (BI de argumento) · 2,5 dias
 

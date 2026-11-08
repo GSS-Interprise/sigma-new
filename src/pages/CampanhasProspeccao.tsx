@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from "react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PainelDonoCampanha } from "@/components/campanhas/PainelDonoCampanha";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -423,50 +425,6 @@ export default function CampanhasProspeccao() {
           }
         >
           <div className="p-4 md:p-6 space-y-4">
-            {/* Manual: a equipe conduz; em_conversa significa que o médico respondeu. */}
-            <div className={`grid grid-cols-2 gap-3 ${campanhaSelecionada.tipo_envio === "manual" ? "md:grid-cols-5" : "md:grid-cols-6"}`}>
-              <MetricCard
-                label="Pendentes"
-                value={campanhaSelecionada.total_frio}
-                color="text-slate-600"
-              />
-              <MetricCard
-                label="Aguardando"
-                value={campanhaSelecionada.total_contatado}
-                color="text-blue-600"
-              />
-              {campanhaSelecionada.tipo_envio === "manual" ? (
-                <MetricCard
-                  label="Respondeu"
-                  value={campanhaSelecionada.total_em_conversa}
-                  color="text-orange-600"
-                />
-              ) : (
-                <>
-                  <MetricCard
-                    label="IA Conversando"
-                    value={campanhaSelecionada.total_em_conversa}
-                    color="text-cyan-600"
-                  />
-                  <MetricCard
-                    label="Aquecidos"
-                    value={campanhaSelecionada.total_aquecido}
-                    color="text-amber-600"
-                  />
-                </>
-              )}
-              <MetricCard
-                label="Quentes"
-                value={campanhaSelecionada.total_quente}
-                color="text-red-600"
-              />
-              <MetricCard
-                label="Convertidos"
-                value={campanhaSelecionada.total_convertido}
-                color="text-green-600"
-              />
-            </div>
-
             {totalLeadsDe(campanhaSelecionada) === 0 && (
               <div className="flex items-start gap-2 rounded-md border border-sky-300 bg-sky-50 px-3 py-2 text-sm text-sky-900">
                 <UserPlus className="h-4 w-4 mt-0.5 shrink-0" />
@@ -477,7 +435,7 @@ export default function CampanhasProspeccao() {
               </div>
             )}
 
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
               {addStrategies.length > 0 && (
                 <select
                   className="min-h-11 w-full rounded-md border bg-background px-3 text-sm sm:max-w-64"
@@ -546,7 +504,61 @@ export default function CampanhasProspeccao() {
               </DropdownMenu>
             </div>
 
-            <CampanhaProspeccaoKanban campanhaId={selecionada} />
+            <Tabs defaultValue="resumo">
+              <TabsList>
+                <TabsTrigger value="resumo">Resumo</TabsTrigger>
+                <TabsTrigger value="kanban">Kanban</TabsTrigger>
+              </TabsList>
+              <TabsContent value="resumo" className="mt-4">
+                <PainelDonoCampanha campanhaId={selecionada} />
+              </TabsContent>
+              <TabsContent value="kanban" className="mt-4 space-y-4">
+                {/* Manual: a equipe conduz; em_conversa significa que o médico respondeu. */}
+                <div className={`grid grid-cols-2 gap-3 ${campanhaSelecionada.tipo_envio === "manual" ? "md:grid-cols-5" : "md:grid-cols-6"}`}>
+                  <MetricCard
+                    label="Pendentes"
+                    value={campanhaSelecionada.total_frio}
+                    color="text-slate-600"
+                  />
+                  <MetricCard
+                    label="Aguardando"
+                    value={campanhaSelecionada.total_contatado}
+                    color="text-blue-600"
+                  />
+                  {campanhaSelecionada.tipo_envio === "manual" ? (
+                    <MetricCard
+                      label="Respondeu"
+                      value={campanhaSelecionada.total_em_conversa}
+                      color="text-orange-600"
+                    />
+                  ) : (
+                    <>
+                      <MetricCard
+                        label="IA Conversando"
+                        value={campanhaSelecionada.total_em_conversa}
+                        color="text-cyan-600"
+                      />
+                      <MetricCard
+                        label="Aquecidos"
+                        value={campanhaSelecionada.total_aquecido}
+                        color="text-amber-600"
+                      />
+                    </>
+                  )}
+                  <MetricCard
+                    label="Quentes"
+                    value={campanhaSelecionada.total_quente}
+                    color="text-red-600"
+                  />
+                  <MetricCard
+                    label="Convertidos"
+                    value={campanhaSelecionada.total_convertido}
+                    color="text-green-600"
+                  />
+                </div>
+                <CampanhaProspeccaoKanban campanhaId={selecionada} />
+              </TabsContent>
+            </Tabs>
             <ImportarEmailsEnviadosDialog
               open={emailsEnviadosOpen}
               onOpenChange={setEmailsEnviadosOpen}
