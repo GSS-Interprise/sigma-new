@@ -651,6 +651,21 @@ serve(async (req) => {
         .eq("id", connectionId)
         .single();
       if (connectionError || !connection) return json({ ok: false, error: "numero_nao_encontrado" }, 404);
+      // Texto livre: só entrega dentro da janela de 24 h (o destino escreveu para o número antes).
+      // Serve para testar o número sem o limite da Meta de mensagens de marketing por pessoa (131049).
+      const texto = asText(input.texto, 500);
+      if (texto) {
+        try {
+          const response = await chakra(
+            `/v1/ext/plugin/whatsapp/${connection.plugin_id}/api/v24.0/${connection.phone_number_id}/messages`,
+            { method: "POST", body: JSON.stringify({ messaging_product: "whatsapp", recipient_type: "individual", to, type: "text", text: { body: texto } }) },
+          );
+          const result = unwrapChakraPayload(response);
+          return json({ ok: true, messageId: String(result.messages?.[0]?.id || result.messageId || result.id || ""), template: null });
+        } catch (error) {
+          return json({ ok: false, error: error instanceof Error ? error.message : String(error) }, 502);
+        }
+      }
       const { data: templates, error: templatesError } = await admin
         .from("whatsapp_official_templates")
         .select("friendly_name, language, variables, category")
