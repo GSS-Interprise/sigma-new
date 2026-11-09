@@ -8,7 +8,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...cors, "Content-Type": "application/json" } });
-const MODELO = "gpt-4o-mini";
+// Gemini desde 09/11: a OpenAI ficou sem crédito (D-G). gemini-2.5-* não aceita conta nova (404).
+const MODELO = "gemini-3.5-flash";
 const PARALELO = 5;
 
 const RESULTADOS = ["interessado", "objecao", "sem_interesse", "filtro_secretaria", "indicacao", "contato_errado", "fora_do_perfil", "desconfianca"];
@@ -39,21 +40,26 @@ Leia a conversa e devolva SÓ um JSON com estes campos:
 - "confianca": de 0 a 1.`;
 
 async function classificar(chave: string, conversa: string) {
-  const r = await fetch("https://api.openai.com/v1/chat/completions", {
+  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODELO}:generateContent`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${chave}`, "Content-Type": "application/json" },
+    headers: { "x-goog-api-key": chave, "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: MODELO, temperature: 0, response_format: { type: "json_object" },
-      messages: [{ role: "system", content: PROMPT }, { role: "user", content: conversa.slice(0, 12_000) }],
+      systemInstruction: { parts: [{ text: PROMPT }] },
+      contents: [{ role: "user", parts: [{ text: conversa.slice(0, 12_000) }] }],
+      generationConfig: { temperature: 0, responseMimeType: "application/json" },
     }),
     signal: AbortSignal.timeout(45_000),
   });
   const corpo = await r.json().catch(() => ({}));
   if (!r.ok) {
-    const codigo = corpo?.error?.code || corpo?.error?.type || `http_${r.status}`;
-    throw Object.assign(new Error(codigo), { fatal: r.status === 401 || /quota|billing|credit/i.test(String(codigo)) });
+    const codigo = corpo?.error?.status || `http_${r.status}`;
+    // Chave inválida, sem cota ou cobrança: parar o lote. 503/429 de pico: só esta conversa falha e volta na próxima rodada.
+    throw Object.assign(new Error(`${codigo}: ${String(corpo?.error?.message || "").slice(0, 120)}`), {
+      fatal: r.status === 401 || r.status === 403 || /billing|credit|RESOURCE_EXHAUSTED.*quota/i.test(`${codigo} ${corpo?.error?.message}`),
+    });
   }
-  return JSON.parse(corpo.choices?.[0]?.message?.content || "{}");
+  const txt = corpo.candidates?.[0]?.content?.parts?.map((p: any) => p.text || "").join("") || "{}";
+  return JSON.parse(txt.replace(/^```(?:json)?\s*|\s*```$/g, ""));
 }
 
 // A IA às vezes devolve fora da lista; o banco recusa (check), então limpa aqui.
@@ -83,8 +89,8 @@ serve(async (req) => {
   }
   if (!ok) return json({ ok: false, error: "sem_permissao" }, 401);
 
-  const chave = Deno.env.get("OPENAI_API_KEY");
-  if (!chave) return json({ ok: false, error: "sem_chave_openai" }, 500);
+  const chave = Deno.env.get("GEMINI_API_KEY");
+  if (!chave) return json({ ok: false, error: "sem_chave_gemini" }, 500);
   const body = await req.json().catch(() => ({}));
   const teste = body?.teste === true;
   const limite = teste ? 1 : Math.min(Math.max(Number(body?.limite) || 50, 1), 200);
