@@ -30,7 +30,9 @@ export function useContasGmail() {
     queryKey: ["email-contas-gmail"],
     queryFn: async () => {
       // RPC nova ainda fora dos tipos gerados do Supabase
-      const rpc = supabase.rpc as unknown as (fn: string) => Promise<{ data: ContaGmail[] | null; error: Error | null }>;
+      // bind: sem ele o rpc perde o "this" do cliente e falha antes de chamar o banco
+      // ("Não foi possível carregar as contas" para todo mundo, 09/11)
+      const rpc = supabase.rpc.bind(supabase) as unknown as (fn: string) => Promise<{ data: ContaGmail[] | null; error: Error | null }>;
       const { data, error } = await rpc("email_contas_gmail_uso");
       if (error) throw error;
       return (data ?? []) as ContaGmail[];
