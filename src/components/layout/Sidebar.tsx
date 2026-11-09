@@ -25,6 +25,7 @@ import {
   ListChecks,
   Smartphone,
   Send,
+  Stethoscope,
   Briefcase,
   type LucideIcon,
 } from "lucide-react";
@@ -32,7 +33,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePermissions, type Modulo } from "@/hooks/usePermissions";
-import { useCaptacaoPermissions } from "@/hooks/useCaptacaoPermissions";
+import { useCaptacaoPermissions, type CaptacaoPermission } from "@/hooks/useCaptacaoPermissions";
 import {
   Sidebar as SidebarUI,
   SidebarContent,
@@ -52,6 +53,7 @@ type NavItem = {
   modulo?: Modulo; // módulo de permissão (vazio = sempre visível p/ autenticado)
   adminOnly?: boolean;
   adminOrLeader?: boolean;
+  captacao?: CaptacaoPermission; // além do módulo, exige esta permissão de captação (admin passa)
 };
 
 type NavGroup = {
@@ -61,7 +63,7 @@ type NavGroup = {
 
 // Ordem aplica anchoring + activation energy: Prospecção (operação que mais roda) logo após Home.
 // Menu enxuto (08/11, plano GSS dono no comando): Notícias, Saúde dos Chips, Licitações (Robô),
-// Triagem PNCP, PNCP × Effecti, Radiologia, Marketing e Patrimônio saíram do menu; as rotas continuam por URL.
+// Triagem PNCP, PNCP × Effecti, Marketing e Patrimônio saíram do menu; as rotas continuam por URL.
 // Agrupamento = mental accounting (usuário pensa por domínio). Permissões inalteradas — só muda o visual.
 const navigationGroups: NavGroup[] = [
   {
@@ -78,7 +80,7 @@ const navigationGroups: NavGroup[] = [
       { name: "Leads", href: "/leads", icon: UserSearch, modulo: "disparos" },
       // Voltou em 09/11: a captação converte médico e conecta chip por aqui (Vinícius ficou sem o caminho).
       { name: "Disparos & Chips", href: "/disparos", icon: Send, modulo: "disparos" },
-      { name: "Números WhatsApp", href: "/configuracoes?tab=whatsapp", icon: Smartphone, adminOnly: true },
+      { name: "Números WhatsApp", href: "/numeros-whatsapp", icon: Smartphone, modulo: "disparos", captacao: "seigzaps_config" },
     ],
   },
   {
@@ -92,6 +94,8 @@ const navigationGroups: NavGroup[] = [
       { name: "Clientes e Contratos", href: "/contratos", icon: FileText, modulo: "contratos" },
       { name: "Licitações", href: "/licitacoes", icon: Gavel, modulo: "licitacoes" },
       { name: "AGES", href: "/ages", icon: Building2, modulo: "ages" },
+      // Voltou em 09/11: gestor de radiologia (Vinícius) ficou sem caminho; só aparece para quem tem o módulo.
+      { name: "Radiologia", href: "/radiologia", icon: Stethoscope, modulo: "radiologia" },
     ],
   },
   {
@@ -117,7 +121,7 @@ export function Sidebar() {
   const location = useLocation();
   const { signOut } = useAuth();
   const { isAdmin, hasPermission, userRoles, isLeader } = usePermissions();
-  const { hasAnyCaptacaoAccess } = useCaptacaoPermissions();
+  const { hasAnyCaptacaoAccess, hasCaptacaoPermission } = useCaptacaoPermissions();
   const { open } = useSidebar();
 
   const isExterno = userRoles?.some((role) => role.role === "externos");
@@ -126,6 +130,7 @@ export function Sidebar() {
   const canSee = (item: NavItem): boolean => {
     if (item.adminOnly) return isAdmin;
     if (item.adminOrLeader) return isAdmin || isLeader;
+    if (item.captacao && !isAdmin && !hasCaptacaoPermission(item.captacao)) return false;
     const modulo = item.modulo;
     if (!modulo) return true;
     if (modulo === "dashboard") return true; // Home sempre visível

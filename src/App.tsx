@@ -31,6 +31,7 @@ import DisparosCampanhaPropostas from "./pages/DisparosCampanhaPropostas";
 import DisparosBIProspec from "./pages/DisparosBIProspec";
 import CampanhasProspeccao from "./pages/CampanhasProspeccao";
 import WhatsAppTemplates from "./pages/WhatsAppTemplates";
+import NumerosWhatsApp from "./pages/NumerosWhatsApp";
 import NovaCampanhaAssistente from "./pages/NovaCampanhaAssistente";
 import Conversas from "./pages/Conversas";
 import Vagas from "./pages/Vagas";
@@ -129,6 +130,7 @@ const App = () => (
             <Route path="/vagas" element={<ProtectedRoute><Vagas /></ProtectedRoute>} />
             <Route path="/conversas" element={<ProtectedRoute><PermissionRoute modulo="disparos"><Conversas /></PermissionRoute></ProtectedRoute>} />
             <Route path="/prospeccao/nova" element={<ProtectedRoute><PermissionRoute modulo="disparos"><NovaCampanhaAssistente /></PermissionRoute></ProtectedRoute>} />
+            <Route path="/numeros-whatsapp" element={<ProtectedRoute><PermissionRoute modulo="disparos"><NumerosWhatsApp /></PermissionRoute></ProtectedRoute>} />
             <Route path="/prospeccao/templates-whatsapp" element={<ProtectedRoute><PermissionRoute modulo="disparos"><WhatsAppTemplates /></PermissionRoute></ProtectedRoute>} />
             <Route path="/noticias" element={<ProtectedRoute><PermissionRoute modulo="disparos"><Noticias /></PermissionRoute></ProtectedRoute>} />
             <Route path="/parecer" element={<ProtectedRoute><PermissionRoute adminOrLeader><Parecer /></PermissionRoute></ProtectedRoute>} />
