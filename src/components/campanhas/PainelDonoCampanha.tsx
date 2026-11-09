@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { Link } from "react-router-dom";
 import { AlertTriangle, Mail, MessageCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -51,6 +52,19 @@ export function PainelDonoCampanha({ campanhaId }: { campanhaId: string }) {
     },
     refetchInterval: 120_000,
   });
+
+  // Atalho para o Raio-X (Fase 7) com a especialidade e a UF da campanha (só quando há uma UF).
+  const { data: alvo } = useQuery({
+    queryKey: ["campanha-alvo-raiox", campanhaId],
+    queryFn: async () => {
+      const { data } = await (supabase as any).from("campanhas")
+        .select("especialidade_id, especialidade_ids, regiao_estado, regiao_estados").eq("id", campanhaId).maybeSingle();
+      return data as { especialidade_id: string | null; especialidade_ids: string[] | null; regiao_estado: string | null; regiao_estados: string[] | null } | null;
+    },
+  });
+  const espAlvo = alvo?.especialidade_id || alvo?.especialidade_ids?.[0];
+  const ufsAlvo = alvo?.regiao_estados?.length ? alvo.regiao_estados : alvo?.regiao_estado ? [alvo.regiao_estado] : [];
+  const raiox = espAlvo ? `/bi?tab=raiox&esp=${espAlvo}${ufsAlvo.length === 1 ? `&uf=${ufsAlvo[0]}` : ""}` : null;
 
   if (isLoading) return <div className="space-y-3"><Skeleton className="h-28 w-full" /><Skeleton className="h-48 w-full" /></div>;
   if (error || !data) return <Card className="p-6 text-sm text-red-600">Não consegui montar o resumo. Recarregue a página.</Card>;
@@ -156,7 +170,9 @@ export function PainelDonoCampanha({ campanhaId }: { campanhaId: string }) {
       <Card className="p-4">
         <div className="mb-2 flex items-baseline justify-between gap-3">
           <h3 className="text-sm font-semibold">O que os médicos estão respondendo</h3>
-          <span className="text-xs text-muted-foreground">Objeções agrupadas chegam com o Raio-X</span>
+          {raiox && (
+            <Link to={raiox} className="shrink-0 text-xs text-primary hover:underline">Ver Raio-X desta especialidade</Link>
+          )}
         </div>
         {data.respostas.length === 0 ? (
           <p className="text-sm text-muted-foreground">Ninguém respondeu ainda.</p>

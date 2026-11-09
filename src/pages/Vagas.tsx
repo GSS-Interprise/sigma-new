@@ -220,6 +220,10 @@ export default function Vagas() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => navigate(`/bi?tab=raiox&esp=${v.especialidade_id}${v.uf ? `&uf=${v.uf}` : ""}`)}>
+                            Por que está difícil?
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
                           <DropdownMenuItem onClick={() => setPreenchendo(v)}>Marcar preenchida</DropdownMenuItem>
                           {v.status === "aberta" ? (
                             <DropdownMenuItem onClick={() => mover(v, { status: "em_negociacao" }, "Vaga em negociação.")}>Em negociação</DropdownMenuItem>

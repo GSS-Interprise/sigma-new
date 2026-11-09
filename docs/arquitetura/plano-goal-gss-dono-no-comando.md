@@ -248,6 +248,12 @@ Parar e perguntar ao Raul nas decisões marcadas com 🛑.
 - Skills: `qualidade-de-tela`, `dataviz`, `kpi-dashboard-design`, `/impeccable`.
 - **Pronto quando:** critérios da spec, seção 8.
 
+- **Entregue (09/11):**
+  - 7.1: `cfm_medico_especialidades` (505.667 linhas; 2 sem casamento, Foniatria). 17 nomes antigos do CFM viraram aliases. Pediatria 49.937 (SC 2.136) e GO 38.951 (SC 1.654) batem com contagem por texto. `campanha_assistente_universo_cfm` passou a usar a tabela.
+  - 7.2: `conversa_classificacao`, RPC `conversas_classificar_pendentes`, edge `conversas-classificar` (gpt-4o-mini) e cron `conversas-classificar` (2 h). Teste real: `credit_balance_exhausted`. 734 conversas na fila; começa sozinho quando houver crédito (D-G).
+  - 7.3: `bi_raiox_funil/objecoes/destrava/gestao`. Contatos leem três gerações de dado (mensagem ligada por `campanha_lead_id`, só `conversa_id`, legado Evolution só com `data_primeiro_contato`). Pediatria/SC: alcançados no WhatsApp 335 = SQL manual.
+  - 7.4: aba "Raio-X do mercado" (primeira para diretoria), modos Apresentação e Gestão, Apresentar (tela cheia), Baixar PDF (impressão só do modo apresentação, sem nomes). Atalhos na vaga ("Por que está difícil?") e no Resumo da campanha.
+
 ## Fase 8 — Agente com a persona do Maikon que converte · 2 dias
 
 **Problema medido:** quem responde não é atendido (17% receberam resposta depois de 14/10) e, quando é, não converte (Pediatria: 666 responderam → 20 convertidos). Nas respostas reais, os médicos pedem **valor, dias e carga** (155 mensagens citando valor em 120 dias), muitos são **secretárias** e alguns **indicam colegas** — o roteiro atual não trata esses casos.
@@ -336,10 +342,10 @@ Memória de problema do médico (R12) · notificações dos hospitais (R10) · c
 - [ ] 5.1 Base da VPS + fila
 - [ ] 5.2 Foto do CFM
 - [ ] 6 Tela da campanha para o dono + objeções
-- [ ] 7.1 Universo CFM normalizado
-- [ ] 7.2 Classificação das conversas
-- [ ] 7.3 Funções do Raio-X
-- [ ] 7.4 Tela Raio-X + PDF
+- [x] 7.1 Universo CFM normalizado
+- [ ] 7.2 Classificação das conversas (construída e agendada; parada por falta de crédito na OpenAI)
+- [x] 7.3 Funções do Raio-X
+- [x] 7.4 Tela Raio-X + PDF
 - [ ] 8.1 IA nunca para em silêncio
 - [ ] 8.2 Persona do Maikon
 - [ ] 8.3 Roteiro por situação

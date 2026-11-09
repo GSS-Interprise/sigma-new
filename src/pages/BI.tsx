@@ -15,6 +15,7 @@ import { AbaContratos } from "@/components/bi/AbaContratos";
 import { AbaAges } from "@/components/bi/AbaAges";
 import { AbaTI } from "@/components/bi/AbaTI";
 import { AbaClienteExterno } from "@/components/bi/AbaClienteExterno";
+import { RaioXMercado } from "@/components/bi/raiox/RaioXMercado";
 import { usePermissions } from "@/hooks/usePermissions";
 
 const ALL_MODULE_KEYS = BI_CATEGORIES.flatMap((c) => c.modules.map((m) => m.key));
@@ -25,6 +26,7 @@ const CLIENT_MODULES: Record<string, string> = {
 };
 
 const MODULE_COMPONENTS: Record<string, React.ComponentType> = {
+  raiox: RaioXMercado,
   licitacoes: AbaLicitacoes,
   competitiva: AbaInteligenciaCompetitiva,
   contratos: AbaContratos,
@@ -41,11 +43,13 @@ const MODULE_COMPONENTS: Record<string, React.ComponentType> = {
 };
 
 export default function BI() {
-  const { isAdmin, isLicitador, isLiderLicitacao } = usePermissions();
+  const { isAdmin, isLicitador, isLiderLicitacao, userRoles } = usePermissions();
   const restrictToLicitacoes = !isAdmin && (isLicitador || isLiderLicitacao);
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = (searchParams.get("tab") || "").toLowerCase();
-  const defaultModule = restrictToLicitacoes ? "licitacoes" : "prospeccao";
+  // Raio-X do mercado é a primeira aba para a diretoria (plano GSS dono no comando, Fase 7).
+  const ehDiretoria = isAdmin || userRoles.some((r: any) => r.role === "diretoria");
+  const defaultModule = restrictToLicitacoes ? "licitacoes" : ehDiretoria ? "raiox" : "prospeccao";
   const requestedModule = ALL_MODULE_KEYS.includes(tabParam) ? tabParam : defaultModule;
   const activeModule = restrictToLicitacoes ? "licitacoes" : requestedModule;
 
