@@ -1,7 +1,7 @@
 // Fase 7.2 (Raio-X do mercado): classifica cada conversa de campanha em um resultado e,
 // quando houver, uma objeção principal. Categorias: docs/arquitetura/bi-raio-x-mercado-medico.md §3.
 // Fila: RPC conversas_classificar_pendentes (médico respondeu depois do 1º envio e ainda não
-// classificado, ou falou de novo). Cron a cada 2 h; backfill chamando com { limite: 200 } até zerar.
+// classificado, ou falou de novo). Cron a cada 10 min, 40 por rodada (limite por minuto do Gemini gratuito).
 // Só service role (cron) ou admin. { teste: true } classifica 1 conversa e não grava.
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
@@ -9,8 +9,10 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...cors, "Content-Type": "application/json" } });
 // Gemini desde 09/11: a OpenAI ficou sem crédito (D-G). gemini-2.5-* não aceita conta nova (404).
-const MODELO = "gemini-3.5-flash";
-const PARALELO = 5;
+// Chave no plano gratuito: o limite é por minuto. Lote pequeno, 2 por vez, e cron a cada 10 min (não a cada 2 h).
+const MODELO = "gemini-3.5-flash-lite";
+const PARALELO = 2;
+const espera = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const RESULTADOS = ["interessado", "objecao", "sem_interesse", "filtro_secretaria", "indicacao", "contato_errado", "fora_do_perfil", "desconfianca"];
 const OBJECOES = ["distancia", "agenda", "valor", "modelo_trabalho", "so_remoto", "estrutura", "outro"];
@@ -39,7 +41,7 @@ Leia a conversa e devolva SÓ um JSON com estes campos:
 - "trecho": a frase do médico que melhor mostra o resultado, até 160 caracteres, SEM nomes de pessoas, ou null.
 - "confianca": de 0 a 1.`;
 
-async function classificar(chave: string, conversa: string) {
+async function classificar(chave: string, conversa: string, tentativa = 0): Promise<any> {
   const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODELO}:generateContent`, {
     method: "POST",
     headers: { "x-goog-api-key": chave, "Content-Type": "application/json" },
@@ -51,11 +53,13 @@ async function classificar(chave: string, conversa: string) {
     signal: AbortSignal.timeout(45_000),
   });
   const corpo = await r.json().catch(() => ({}));
+  // 429/503 = limite por minuto ou pico: espera e tenta de novo; na 3ª vez desiste e a conversa volta na próxima rodada.
+  if ((r.status === 429 || r.status === 503) && tentativa < 2) { await espera(20_000); return classificar(chave, conversa, tentativa + 1); }
   if (!r.ok) {
     const codigo = corpo?.error?.status || `http_${r.status}`;
     // Chave inválida, sem cota ou cobrança: parar o lote. 503/429 de pico: só esta conversa falha e volta na próxima rodada.
     throw Object.assign(new Error(`${codigo}: ${String(corpo?.error?.message || "").slice(0, 120)}`), {
-      fatal: r.status === 401 || r.status === 403 || /billing|credit|RESOURCE_EXHAUSTED.*quota/i.test(`${codigo} ${corpo?.error?.message}`),
+      fatal: r.status === 401 || r.status === 403 || r.status === 429,
     });
   }
   const txt = corpo.candidates?.[0]?.content?.parts?.map((p: any) => p.text || "").join("") || "{}";
@@ -93,7 +97,7 @@ serve(async (req) => {
   if (!chave) return json({ ok: false, error: "sem_chave_gemini" }, 500);
   const body = await req.json().catch(() => ({}));
   const teste = body?.teste === true;
-  const limite = teste ? 1 : Math.min(Math.max(Number(body?.limite) || 50, 1), 200);
+  const limite = teste ? 1 : Math.min(Math.max(Number(body?.limite) || 20, 1), 40);
 
   const { data: fila, error } = await svc.rpc("conversas_classificar_pendentes", { p_limite: limite });
   if (error) return json({ ok: false, error: error.message }, 500);
