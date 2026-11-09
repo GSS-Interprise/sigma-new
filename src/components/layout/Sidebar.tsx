@@ -24,6 +24,7 @@ import {
   ListTodo,
   ListChecks,
   Smartphone,
+  Send,
   Briefcase,
   type LucideIcon,
 } from "lucide-react";
@@ -59,7 +60,7 @@ type NavGroup = {
 };
 
 // Ordem aplica anchoring + activation energy: Prospecção (operação que mais roda) logo após Home.
-// Menu enxuto (08/11, plano GSS dono no comando): Notícias, Disparos & Chips, Saúde dos Chips, Licitações (Robô),
+// Menu enxuto (08/11, plano GSS dono no comando): Notícias, Saúde dos Chips, Licitações (Robô),
 // Triagem PNCP, PNCP × Effecti, Radiologia, Marketing e Patrimônio saíram do menu; as rotas continuam por URL.
 // Agrupamento = mental accounting (usuário pensa por domínio). Permissões inalteradas — só muda o visual.
 const navigationGroups: NavGroup[] = [
@@ -75,6 +76,8 @@ const navigationGroups: NavGroup[] = [
       { name: "Minhas Tarefas", href: "/tarefas", icon: ListTodo, modulo: "disparos" },
       { name: "Conversas", href: "/conversas", icon: MessageCircle, modulo: "disparos" },
       { name: "Leads", href: "/leads", icon: UserSearch, modulo: "disparos" },
+      // Voltou em 09/11: a captação converte médico e conecta chip por aqui (Vinícius ficou sem o caminho).
+      { name: "Disparos & Chips", href: "/disparos", icon: Send, modulo: "disparos" },
       { name: "Números WhatsApp", href: "/configuracoes?tab=whatsapp", icon: Smartphone, adminOnly: true },
     ],
   },
