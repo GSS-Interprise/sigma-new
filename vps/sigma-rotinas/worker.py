@@ -1,11 +1,13 @@
 """Worker das rotinas do Sigma na VPS da GSS (plano GSS dono no comando, Fase 5).
 
 Pega pedidos da fila rotina_pedidos pela edge rotinas-fila, executa e devolve o resultado.
-Só biblioteca padrão: roda no python3 do sistema, sem venv.
+O laço só usa biblioteca padrão; a rotina lifeshub_lista precisa do venv /opt/sigma-rotinas/venv
+(playwright + chromium + openpyxl), que é o python do serviço.
 
 Configuração em /opt/sigma-rotinas/.env (chmod 600, fora do git):
   SIGMA_URL=https://zupsbgtoeoixfokzkjro.supabase.co
   ROTINAS_KEY=<mesmo valor do secret ROTINAS_WORKER_KEY do Supabase>
+  LIFESHUB_EMAIL=... / LIFESHUB_SENHA=...   (login do Life's Hub, rotina lifeshub_lista)
 
 Rotina nova = função em ROTINAS + o tipo na lista de rotina_pedir (migração) .
 """
@@ -59,8 +61,29 @@ def rotina_ping(payload):
     return {"pong": WORKER, "em": datetime.now(timezone.utc).isoformat(), "eco": payload}
 
 
+def rotina_lifeshub_lista(payload, pedido_id):
+    """Extrai a lista do Life's Hub e pede ao Sigma para importar como lista de disparo."""
+    import lifeshub  # Playwright só é carregado quando a rotina roda (o ping não depende dele)
+
+    r = lifeshub.extrair(payload)
+    xlsx_b64 = r.pop("xlsx_b64")
+    if not xlsx_b64:
+        return {**r, "lista": None, "aviso": "nenhum médico com telefone nessa busca"}
+    hoje = datetime.now().strftime("%d/%m/%Y")
+    nome = f"Life's Hub — {r['especialidade']} — {'/'.join(r['ufs'])} — {hoje}"
+    imp = fila({"action": "importar_lista", "pedido_id": pedido_id, "xlsx_b64": xlsx_b64,
+                "nome_lista": nome, "especialidade": r["especialidade"]})
+    if not imp.get("ok"):
+        raise RuntimeError(f"importação no Sigma falhou: {imp.get('error')}")
+    return {**r, "lista": nome, "import_job_id": imp.get("job_id")}
+
+
+# Rotinas que recebem o id do pedido (precisam falar com a fila no meio da execução).
+COM_PEDIDO = {"lifeshub_lista"}
+
 ROTINAS = {
     "ping": rotina_ping,
+    "lifeshub_lista": rotina_lifeshub_lista,
 }
 
 
@@ -70,7 +93,8 @@ def executar(pedido):
     tipo, pid = pedido["tipo"], pedido["id"]
     inicio = time.time()
     try:
-        resultado = ROTINAS[tipo](pedido.get("payload") or {})
+        args = (pedido.get("payload") or {}, pid) if tipo in COM_PEDIDO else (pedido.get("payload") or {},)
+        resultado = ROTINAS[tipo](*args)
         fila({"action": "concluir", "id": pid, "ok": True, "resultado": resultado})
         log(f"feito {tipo} {pid} em {time.time() - inicio:.1f}s")
     except Exception as e:  # noqa: BLE001 — qualquer falha da rotina vira erro no pedido, o laço segue

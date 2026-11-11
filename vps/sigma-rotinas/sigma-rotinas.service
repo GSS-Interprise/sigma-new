@@ -5,7 +5,8 @@ Wants=network-online.target
 
 [Service]
 WorkingDirectory=/opt/sigma-rotinas
-ExecStart=/usr/bin/python3 -u /opt/sigma-rotinas/worker.py
+# venv com Playwright + Chromium + openpyxl (rotina lifeshub_lista).
+ExecStart=/opt/sigma-rotinas/venv/bin/python -u /opt/sigma-rotinas/worker.py
 Restart=always
 RestartSec=15
 # Memória limitada: a VPS divide 8 GB com Evolution, N8N e os Postgres.
