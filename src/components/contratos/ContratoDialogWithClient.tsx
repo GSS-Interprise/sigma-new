@@ -95,7 +95,8 @@ const formSchema = z.object({
   
   // Dados do Contrato
   codigo_contrato: z.string().min(1, "Código do contrato é obrigatório"),
-  codigo_interno: z.number().optional(),
+  // Pré-contrato vindo da licitação fica sem número até virar contrato (0af8f01): aceitar null.
+  codigo_interno: z.number().nullable().optional(),
   tipo_servico: z.array(z.string()).min(1, "Selecione pelo menos um tipo de serviço"),
   objeto_contrato: z.string().optional(),
   data_inicio: z.date(),
