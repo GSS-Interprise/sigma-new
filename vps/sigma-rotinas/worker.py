@@ -20,6 +20,7 @@ import traceback
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 INTERVALO_VAZIO = 10  # segundos entre consultas quando a fila está vazia
 WORKER = socket.gethostname()
@@ -69,8 +70,9 @@ def rotina_lifeshub_lista(payload, pedido_id):
     xlsx_b64 = r.pop("xlsx_b64")
     if not xlsx_b64:
         return {**r, "lista": None, "aviso": "nenhum médico com telefone nessa busca"}
-    hoje = datetime.now().strftime("%d/%m/%Y")
-    nome = f"Life's Hub — {r['especialidade']} — {'/'.join(r['ufs'])} — {hoje}"
+    # Hora de Brasília no nome: a VPS roda em UTC e duas extrações no mesmo dia saíam com o mesmo nome.
+    quando = datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%d/%m/%Y %Hh%M")
+    nome = f"Life's Hub — {r['especialidade']} — {'/'.join(r['ufs'])} — {quando}"
     imp = fila({"action": "importar_lista", "pedido_id": pedido_id, "xlsx_b64": xlsx_b64,
                 "nome_lista": nome, "especialidade": r["especialidade"]})
     if not imp.get("ok"):

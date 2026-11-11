@@ -321,29 +321,32 @@ Memória de problema do médico (R12) · notificações dos hospitais (R10) · c
 | D-D | ✅ Motor da VPS | **Hermes com a assinatura da GSS**, logando no Life's Hub e no CFM |
 | D-E | ✅ Life's Hub | **O Hermes loga** (credencial com o Vinícius) |
 | D-F | 🛑 Fonte de processos | Escavador / Jusbrasil (pago) · só tribunais com busca pública |
-| D-G | 🛑 Crédito de IA | Recarregar OpenAI · chave Gemini via Fred — **bloqueia as Fases 7.2 e 8** |
+| D-G | 🛑 Crédito de IA | Recarregar OpenAI · chave Gemini via Fred — a 7.2 já roda no Gemini (11/11); **a Fase 8 continua esperando a decisão** |
 | D-H | 🛑 Envios de teste | "ok" do Raul a cada rodada de testes reais |
 | D-I | 🛑 Ferramentas de LinkedIn e Instagram | Raul vai pesquisar alternativas; a Fase 9 começa em modo assistido |
 
 ## Checklist
 
-- [ ] 0.1 Diagnóstico dos números oficiais
-- [ ] 0.2 Disponibilidade calculada + limite sincronizado
-- [ ] 1.1 Menu enxuto
-- [ ] 1.2 Configurações › WhatsApp
-- [ ] 2.1 Vários números oficiais por campanha
-- [ ] 2.2 Prévia e criação pelo assistente (RPC)
-- [ ] 2.3 Tela do assistente
-- [ ] 2.4 Evolution fora da criação
-- [ ] 3.1 Conversas no formato WhatsApp
-- [ ] 4.1 Tabela de vagas
-- [ ] 4.2 Tela de vagas
-- [ ] 4.3 PDF das 7h
-- [ ] 5.1 Base da VPS + fila
-- [ ] 5.2 Foto do CFM
-- [ ] 6 Tela da campanha para o dono + objeções
+> Conferido em 11/11/2026 contra o repo e o banco. Entrega do pacote para o Maikon: até 14/11.
+
+- [x] 0.1 Diagnóstico dos números oficiais (`docs/arquitetura/chakra-numeros-diagnostico.md`)
+- [x] 0.2 Disponibilidade calculada + limite sincronizado (colunas `uso`, `disponibilidade`, `messaging_limit_tier` + cron)
+- [x] 1.1 Menu enxuto (`f42feb8`, ajustes `edb1967`, `fdb38fa`)
+- [x] 1.2 Configurações › WhatsApp (`f42feb8`, `1d5e512`; texto livre na janela de 24 h `0acbeb4`)
+- [x] 2.1 Vários números oficiais por campanha (`5d09ad3`) — nenhuma campanha com 2+ números em uso ainda
+- [x] 2.2 Prévia e criação pelo assistente (RPC) (`5d09ad3`, `33c963e`)
+- [x] 2.3 Tela do assistente (`5d09ad3`)
+- [x] 2.4 Evolution fora da criação — o formulário só oferece Chakra. As campanhas novas com `whatsapp_provider='evolution'` desde 08/11 são todas de e-mail (padrão da coluna), não disparam WhatsApp
+- [x] 3.1 Conversas no formato WhatsApp (`3b61d67`)
+- [x] 4.1 Tabela de vagas (`4b0f973`)
+- [x] 4.2 Tela de vagas (`4b0f973`, `b8fed43`)
+- [x] 4.3 PDF das 7h (edge `vagas-relatorio-diario` + cron ativo)
+- [x] 5.1 Base da VPS + fila (`9b1d3c3`)
+- [~] 5.2 Registro do CFM e CNES na ficha entregues (`47698ca`); foto automática 🛑 bloqueada por reCAPTCHA (link "Ver foto no CFM")
+- [x] 5.3 Life's Hub: robô na VPS + botão no assistente (`3b82e0a`, `9ad1de1`; nome da lista com data e hora). Teste GO 11/11: 1.162 exportados, 659 na lista. Processos 🛑 D-F
+- [x] 6 Tela da campanha para o dono + objeções (`23a5564`)
 - [x] 7.1 Universo CFM normalizado
-- [ ] 7.2 Classificação das conversas (construída e agendada; parada por falta de crédito na OpenAI)
+- [x] 7.2 Classificação das conversas — passou para o Gemini (`7f7631b`, `2b8c286`); 812 conversas classificadas, rodando
 - [x] 7.3 Funções do Raio-X
 - [x] 7.4 Tela Raio-X + PDF
 - [ ] 8.1 IA nunca para em silêncio
