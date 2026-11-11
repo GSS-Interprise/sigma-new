@@ -866,6 +866,31 @@ async function processOfficialBatch(supabase: any, camp: any, supabaseUrl: strin
         }).eq("id", camp.id),
         ]);
     }
+    // Erro do MODELO neste número (132001 = o modelo não existe na conta do número;
+    // 132000/132012 = variáveis; 132015/132016 = modelo pausado/desativado) não é culpa
+    // do médico. Antes, cada lead tentava 4 vezes e ia para "descartado": a campanha de
+    // GO queimou 379 leads assim (05–11/11). Agora o lead volta intacto para a fila e o
+    // número sai da rodada (ou a campanha pausa, se for o único número).
+    const codigoProvedor = extractProviderCode(reason);
+    if (["132001", "132000", "132012", "132015", "132016"].includes(String(codigoProvedor))) {
+      await supabase.from("campanha_leads").update({
+        status: "frio",
+        envio_status: "not_sent",
+        retry_count: Number(campaignLead.retry_count || 0),
+        next_retry_at: null,
+        data_status: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }).eq("id", campaignLead.id);
+      if (numeros.length > 1) {
+        await supabase.from("campanhas").update({
+          official_senders_pausados: [...pausados, senderId],
+          next_batch_at: new Date(Date.now() + 5_000).toISOString(),
+        }).eq("id", camp.id);
+        return json({ ok: false, error: reason, action: "numero_retirado_modelo_invalido", sender_id: senderId });
+      }
+      await supabase.from("campanhas").update({ status: "pausada", next_batch_at: null }).eq("id", camp.id);
+      return json({ ok: false, error: reason, action: "campanha_pausada_modelo_invalido" });
+    }
     // 131042 é um bloqueio da WABA (elegibilidade/pagamento), não um erro
     // deste lead. Pausar a campanha evita que o scheduler consuma toda a lista
     // repetindo falhas enquanto a Meta ainda não liberou a conta.
