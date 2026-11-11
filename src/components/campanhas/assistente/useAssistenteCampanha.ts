@@ -116,3 +116,39 @@ export function usePrevia(especialidadeIds: string[], ufs: string[], listaId: st
     staleTime: 60_000,
   });
 }
+
+// Extração do Life's Hub (rotina lifeshub_lista, Fase 5.3): o Sigma grava o pedido, o robô da VPS extrai e a
+// importação cria a lista. Acompanhamos o pedido e depois o job de importação até a lista existir.
+export type ExtracaoLifesHub = {
+  fase: "extraindo" | "importando" | "pronta" | "erro";
+  listaId: string | null;
+  exportados: number | null;
+  comTelefone: number | null;
+  erro: string | null;
+};
+
+export function useExtracaoLifesHub(pedidoId: string | null) {
+  return useQuery({
+    queryKey: ["assistente-lifeshub", pedidoId],
+    enabled: !!pedidoId,
+    queryFn: async (): Promise<ExtracaoLifesHub> => {
+      const { data: p, error } = await (supabase as any).from("rotina_pedidos")
+        .select("status, resultado, erro").eq("id", pedidoId).single();
+      if (error) throw error;
+      const r = p.resultado || {};
+      const base = { listaId: null, exportados: r.exportados ?? null, comTelefone: r.com_telefone ?? null, erro: null };
+      if (p.status === "erro") return { ...base, fase: "erro", erro: p.erro || "A extração falhou." };
+      if (p.status !== "feito") return { ...base, fase: "extraindo" };
+      if (!r.import_job_id) return { ...base, fase: "erro", erro: "Ninguém dessa busca tem telefone no Life's Hub." };
+      const { data: job } = await (supabase as any).from("lead_import_jobs")
+        .select("status, lista_destino_id, erros").eq("id", r.import_job_id).single();
+      if (job?.status === "concluido") return { ...base, fase: "pronta", listaId: job.lista_destino_id };
+      if (job?.status === "erro") return { ...base, fase: "erro", erro: "A importação da lista falhou." };
+      return { ...base, fase: "importando" };
+    },
+    refetchInterval: (q) => {
+      const fase = (q.state.data as ExtracaoLifesHub | undefined)?.fase;
+      return fase === "pronta" || fase === "erro" ? false : 3000;
+    },
+  });
+}

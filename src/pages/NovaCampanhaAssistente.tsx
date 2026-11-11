@@ -14,8 +14,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { SearchableMultiSelect } from "@/components/ui/searchable-multi-select";
 import { cn } from "@/lib/utils";
 import {
-  useEspecialidades, useListasProntas, useModelosAprovados, useNumerosOficiais, usePrevia, useUniversoCfm,
-  type ModeloAprovado, type NumeroOficial,
+  useEspecialidades, useExtracaoLifesHub, useListasProntas, useModelosAprovados, useNumerosOficiais, usePrevia, useUniversoCfm,
+  type ExtracaoLifesHub, type ModeloAprovado, type NumeroOficial,
 } from "@/components/campanhas/assistente/useAssistenteCampanha";
 
 /**
@@ -79,7 +79,8 @@ export default function NovaCampanhaAssistente() {
 
   const [especialidadeIds, setEspecialidadeIds] = useState<string[]>([]);
   const [ufs, setUfs] = useState<string[]>([]);
-  const [origem, setOrigem] = useState<"crm" | "lista" | null>(null);
+  const [origem, setOrigem] = useState<"crm" | "lista" | "lifeshub" | null>(null);
+  const [pedidoLifesHub, setPedidoLifesHub] = useState<string | null>(null);
   const [listaId, setListaId] = useState<string | null>(null);
   const [vaga, setVaga] = useState({ cidade: "", hospital: "", tipo: "plantao", valorMin: "", valorMax: "", valorPor: "plantao_12h" });
   const [modeloNome, setModeloNome] = useState<string | null>(null);
@@ -110,7 +111,32 @@ export default function NovaCampanhaAssistente() {
   const { data: modelos = [], isLoading: carregandoModelos } = useModelosAprovados();
   const { data: universo, isFetching: carregandoUniverso } = useUniversoCfm(especialidadeIds, ufs);
   const listaUsada = origem === "lista" ? listaId : null;
-  const { data: previa, isFetching: carregandoPrevia } = usePrevia(origem === "lista" ? [] : especialidadeIds, origem === "lista" ? [] : ufs, listaUsada);
+  const semCrm = origem === "lista" || origem === "lifeshub";
+  const { data: previa, isFetching: carregandoPrevia } = usePrevia(semCrm ? [] : especialidadeIds, semCrm ? [] : ufs, listaUsada);
+
+  // Life's Hub: um pedido por especialidade, sempre com estado (o robô filtra pela UF do CRM).
+  const { data: extracao } = useExtracaoLifesHub(pedidoLifesHub);
+  const pedirLifesHub = useMutation({
+    mutationFn: async () => {
+      const esp = especialidades.find((e) => e.id === especialidadeIds[0]);
+      const { data, error } = await (supabase as any).rpc("rotina_pedir", {
+        p_tipo: "lifeshub_lista", p_payload: { especialidade: esp?.nome, ufs },
+      });
+      if (error) throw error;
+      return data as string;
+    },
+    onSuccess: (id) => setPedidoLifesHub(id),
+    onError: (e: Error) => toast.error(`Não consegui pedir a extração: ${e.message}`),
+  });
+  // Lista pronta: entra como "lista pronta" já escolhida, e a prévia mostra quantos entram.
+  useEffect(() => {
+    if (extracao?.fase !== "pronta" || !extracao.listaId) return;
+    qc.invalidateQueries({ queryKey: ["assistente-listas"] });
+    setOrigem("lista");
+    setListaId(extracao.listaId);
+    setPedidoLifesHub(null);
+    toast.success(`Lista do Life's Hub pronta: ${mil(extracao.comTelefone)} médicos com telefone.`);
+  }, [extracao?.fase, extracao?.listaId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const espNomes = especialidades.filter((e) => especialidadeIds.includes(e.id)).map((e) => titulo(e.nome));
   const espTexto = espNomes.join(", ");
@@ -299,7 +325,8 @@ export default function NovaCampanhaAssistente() {
                             titulo="Montar agora" detalhe={`Do CRM: ${espTexto || "especialidade"} ${ufs.length ? `em ${regiaoTexto}` : "no Brasil todo"}`} />
                           <OpcaoCard ativo={origem === "lista"} onClick={() => setOrigem("lista")}
                             titulo="Usar uma lista pronta" detalhe="Uma lista que a equipe já montou" />
-                          <OpcaoCard ativo={false} desabilitado titulo="Extrair do Life's Hub" detalhe="Em breve, pela VPS da GSS" />
+                          <OpcaoCard ativo={origem === "lifeshub"} onClick={() => { setOrigem("lifeshub"); setListaId(null); }}
+                            titulo="Extrair do Life's Hub" detalhe="O robô busca médicos com telefone" />
                         </div>
                         {origem === "lista" && (
                           <Select value={listaId || ""} onValueChange={setListaId}>
@@ -310,6 +337,16 @@ export default function NovaCampanhaAssistente() {
                               ))}
                             </SelectContent>
                           </Select>
+                        )}
+                        {origem === "lifeshub" && (
+                          <PainelLifesHub
+                            espNome={especialidadeIds.length === 1 ? espTexto : null}
+                            ufs={ufs}
+                            pedindo={pedirLifesHub.isPending}
+                            extracao={pedidoLifesHub ? extracao ?? { fase: "extraindo", listaId: null, exportados: null, comTelefone: null, erro: null } : null}
+                            onPedir={() => pedirLifesHub.mutate()}
+                            onNovaTentativa={() => setPedidoLifesHub(null)}
+                          />
                         )}
                         {origem && (origem === "crm" || listaId) && (
                           <div className="rounded-lg border bg-muted/30 p-3 text-sm">
@@ -497,6 +534,48 @@ function Campo({ label, children }: { label: string; children: React.ReactNode }
     <div className="min-w-0 space-y-1.5">
       <Label>{label}</Label>
       {children}
+    </div>
+  );
+}
+
+function PainelLifesHub({ espNome, ufs, pedindo, extracao, onPedir, onNovaTentativa }: {
+  espNome: string | null; ufs: string[]; pedindo: boolean; extracao: ExtracaoLifesHub | null;
+  onPedir: () => void; onNovaTentativa: () => void;
+}) {
+  if (!espNome || ufs.length === 0) {
+    return (
+      <p className="rounded-lg border bg-muted/30 p-3 text-sm text-muted-foreground">
+        Para extrair do Life's Hub, volte à primeira pergunta e escolha <strong>uma</strong> especialidade e os estados.
+      </p>
+    );
+  }
+  if (extracao?.fase === "erro") {
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm">
+        <p className="min-w-0">{extracao.erro}</p>
+        <Button size="sm" variant="outline" onClick={onNovaTentativa}>Tentar de novo</Button>
+      </div>
+    );
+  }
+  if (extracao) {
+    const importando = extracao.fase === "importando";
+    return (
+      <div className="flex items-center gap-2 rounded-lg border bg-muted/30 p-3 text-sm">
+        <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+        <span>
+          {importando
+            ? `Criando a lista com ${mil(extracao.comTelefone)} médicos que têm telefone…`
+            : "O robô está extraindo do Life's Hub. Leva cerca de 1 minuto."}
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/30 p-3 text-sm">
+      <p className="min-w-0">{espNome} com CRM em {ufs.join(", ")}. Só entra quem tem telefone.</p>
+      <Button size="sm" onClick={onPedir} disabled={pedindo}>
+        {pedindo && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Extrair agora
+      </Button>
     </div>
   );
 }
