@@ -1649,7 +1649,7 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit, onError)} className="space-y-6">
             <Tabs value={activeTab} onValueChange={handleTabChange}>
-              <div className="-mx-1 overflow-x-auto px-1">
+              <div className="overflow-x-auto">
                 <TabsList className="grid min-w-[28rem] w-full grid-cols-3 sm:min-w-0">
                   <TabsTrigger value="cadastro">Cadastro</TabsTrigger>
                   <TabsTrigger value="itens">Itens do Contrato</TabsTrigger>
