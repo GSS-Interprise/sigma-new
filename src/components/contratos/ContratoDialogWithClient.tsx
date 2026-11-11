@@ -1251,23 +1251,27 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
           if (preContratoId && preContratoId !== result.contratoId) {
             const { data: preContrato } = await supabase
               .from('contratos')
-              .select('codigo_interno')
+              .select('codigo_interno, status_contrato')
               .eq('id', preContratoId)
               .maybeSingle();
 
-            if (preContrato?.codigo_interno) {
-              await supabase
-                .from('contratos')
-                .update({ codigo_interno: preContrato.codigo_interno })
-                .eq('id', result.contratoId);
-            }
+            // Só apaga se ainda for pré-contrato: se ele já foi salvo como contrato (pela lista), apagar
+            // levaria embora um contrato de verdade com número (caso LC-7209706, ID 106, em 11/11/2026).
+            if (preContrato?.status_contrato === 'Pre-Contrato') {
+              if (preContrato.codigo_interno) {
+                await supabase
+                  .from('contratos')
+                  .update({ codigo_interno: preContrato.codigo_interno })
+                  .eq('id', result.contratoId);
+              }
 
-            // Remover o pré-contrato automático (substituído pelo real)
-            const { error: eDelPre } = await supabase
-              .from('contratos')
-              .delete()
-              .eq('id', preContratoId);
-            if (eDelPre) throw eDelPre;
+              // Remover o pré-contrato automático (substituído pelo real)
+              const { error: eDelPre } = await supabase
+                .from('contratos')
+                .delete()
+                .eq('id', preContratoId);
+              if (eDelPre) throw eDelPre;
+            }
           }
 
           queryClient.invalidateQueries({ queryKey: ['contratos-rascunho'] });

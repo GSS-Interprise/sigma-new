@@ -68,6 +68,8 @@ conferir(dialog.includes("status_contrato: statusContratoNoFormulario(contrato.s
   "formulário carrega o status do contrato aberto pela regra acima");
 conferir(/const contratoData = contrato\?\.id && values\.codigo_interno/.test(dialog),
   "insert continua sem codigo_interno e edição continua mandando o número que já existe");
+conferir(/if \(preContrato\?\.status_contrato === 'Pre-Contrato'\) \{[\s\S]{0,600}\.delete\(\)/.test(dialog),
+  "consolidar a licitação só apaga o registro antigo se ele ainda for pré-contrato");
 
 // ---------- Parte 2: banco ----------
 console.log("\nParte 2: trigger do banco (Postgres em memória)");
