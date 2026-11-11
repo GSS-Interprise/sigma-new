@@ -266,7 +266,7 @@ export function AbaCadastroContrato({ form, clienteExistente, isViewMode = false
           <CardTitle>Dados do Cliente</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormField
               control={form.control}
               name="cnpj"
@@ -305,7 +305,7 @@ export function AbaCadastroContrato({ form, clienteExistente, isViewMode = false
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormField
               control={form.control}
               name="nome_fantasia"
@@ -349,7 +349,7 @@ export function AbaCadastroContrato({ form, clienteExistente, isViewMode = false
             )}
           />
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormField
               control={form.control}
               name="email_contato"
@@ -388,7 +388,7 @@ export function AbaCadastroContrato({ form, clienteExistente, isViewMode = false
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormField
               control={form.control}
               name="email_financeiro"
@@ -426,7 +426,7 @@ export function AbaCadastroContrato({ form, clienteExistente, isViewMode = false
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormField
               control={form.control}
               name="tipo_contratacao"
@@ -503,7 +503,7 @@ export function AbaCadastroContrato({ form, clienteExistente, isViewMode = false
           <CardTitle>Dados do Contrato</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormField
               control={form.control}
               name="codigo_contrato"
@@ -592,7 +592,7 @@ export function AbaCadastroContrato({ form, clienteExistente, isViewMode = false
                 <strong> Prazo:</strong> Define duração em meses | 
                 <strong> Data de Término:</strong> Calculada automaticamente
               </p>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <FormField
                   control={form.control}
                   name="data_inicio"
@@ -815,7 +815,7 @@ export function AbaCadastroContrato({ form, clienteExistente, isViewMode = false
           )}
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormField
               control={form.control}
               name="condicao_pagamento"
@@ -862,7 +862,7 @@ export function AbaCadastroContrato({ form, clienteExistente, isViewMode = false
           </div>
 
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormField
               control={form.control}
               name="status_contrato"

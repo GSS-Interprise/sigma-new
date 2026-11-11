@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { addMonths, subDays } from "date-fns";
 import { validateCNPJ, validatePhone } from "@/lib/validators";
+import { formSchema, statusContratoNoFormulario } from "./contratoFormSchema";
 import { normalizeToE164, formatPhoneForDisplay } from "@/lib/phoneUtils";
 import { AbaCadastroContrato } from "./AbaCadastroContrato";
 import { AbaItensContrato } from "./AbaItensContrato";
@@ -71,42 +72,6 @@ const formatTelefone = (value: string) => {
       .slice(0, 15);
   }
 };
-
-const formSchema = z.object({
-  // Dados do Cliente
-  cnpj: z.string().min(14, "CNPJ é obrigatório").refine(validateCNPJ, "CNPJ inválido"),
-  nome_fantasia: z.string().min(1, "Nome fantasia é obrigatório"),
-  razao_social: z.string().min(1, "Razão social é obrigatória"),
-  estado: z.string().optional(),
-  endereco: z.string().min(1, "Endereço é obrigatório"),
-  email_contato: z.string().email("E-mail inválido"),
-  telefone_contato: z.string()
-    .min(1, "Telefone é obrigatório")
-    .refine((val) => {
-      const clean = val.replace(/\D/g, '');
-      return clean.length === 10 || clean.length === 11;
-    }, "Telefone inválido. Digite 10 ou 11 dígitos (ex: 11 98765-4321)"),
-  email_financeiro: z.string().email("E-mail inválido").optional().or(z.literal("")),
-  telefone_financeiro: z.string().optional(),
-  nome_unidade: z.string().min(1, "Nome da unidade é obrigatório"),
-  tipo_contratacao: z.enum(['credenciamento', 'licitacao', 'dispensa', 'direta_privada']).optional(),
-  condicao_pagamento: z.string().optional(),
-  valor_estimado: z.number().optional(),
-  
-  // Dados do Contrato
-  codigo_contrato: z.string().min(1, "Código do contrato é obrigatório"),
-  // Pré-contrato vindo da licitação fica sem número até virar contrato (0af8f01): aceitar null.
-  codigo_interno: z.number().nullable().optional(),
-  tipo_servico: z.array(z.string()).min(1, "Selecione pelo menos um tipo de serviço"),
-  objeto_contrato: z.string().optional(),
-  data_inicio: z.date(),
-  prazo_meses: z.number().min(1, "Prazo deve ser maior que 0").optional().nullable(),
-  data_termino: z.date().optional().nullable(),
-  status_contrato: z.enum(['Ativo', 'Inativo', 'Suspenso', 'Em Processo de Renovação']),
-  assinado: z.enum(['Sim', 'Pendente', 'Em Análise', 'Aguardando Retorno']),
-  motivo_pendente: z.string().optional().nullable(),
-  dias_aviso_vencimento: z.number().min(30, "Mínimo 30 dias").max(60, "Máximo 60 dias").default(60),
-});
 
 interface TableConfig {
   contratos: string;
@@ -416,7 +381,7 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
         data_inicio: dataInicioDoContrato,
         prazo_meses: contrato.prazo_meses || 12,
         data_termino: dataTerminoDoContrato,
-        status_contrato: contrato.status_contrato || 'Ativo',
+        status_contrato: statusContratoNoFormulario(contrato.status_contrato),
         assinado: contrato.assinado || 'Pendente',
         motivo_pendente: contrato.motivo_pendente || '',
         dias_aviso_vencimento: contrato.dias_aviso_vencimento || 60,
@@ -845,6 +810,9 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
       console.log('📋 Dados do contrato a salvar:', contratoData);
 
       let contratoId: string;
+      // Pré-contrato salvo pela lista vira contrato: a licitação arrematada dele precisa fechar junto (onSuccess)
+      let rascunhoDoPreContrato: string | null = null;
+      let numeroGerado: number | null = null;
       if (contrato?.id) {
         console.log('✏️ Atualizando contrato existente:', contrato.id);
         
@@ -865,7 +833,7 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
           .from(tables.contratos as any)
           .update(dadosUpdate)
           .eq('id', contrato.id)
-          .select('id');
+          .select('id, codigo_interno');
 
         if (contratoError) {
           console.error('❌ Erro ao atualizar contrato:', contratoError);
@@ -877,6 +845,21 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
         }
         contratoId = contrato.id;
         console.log('✅ Contrato atualizado com sucesso');
+
+        // Pré-contrato aberto pela lista de contratos (sem rascunhoId): o trigger acabou de dar o número.
+        // Se a licitação arrematada dele ficasse aberta, consolidá-la depois apagaria este contrato como
+        // "pré-contrato substituído" (bloco de consolidação no onSuccess).
+        const statusAntigo = (contratoAntigo as unknown as { status_contrato?: string } | null)?.status_contrato;
+        if (!rascunhoId && tables.contratos === 'contratos' && statusAntigo === 'Pre-Contrato') {
+          numeroGerado = (gravados as unknown as { codigo_interno: number | null }[])[0]?.codigo_interno ?? null;
+          const { data: rascunhoAberto } = await supabase
+            .from('contrato_rascunho')
+            .select('id')
+            .eq('contrato_id', contrato.id)
+            .eq('status', 'rascunho')
+            .maybeSingle();
+          rascunhoDoPreContrato = rascunhoAberto?.id ?? null;
+        }
         
         // Registrar auditoria de edição
         if (contratoAntigo) {
@@ -1190,7 +1173,7 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
 
       // Email é enviado separadamente via modal
 
-      return { contratoId };
+      return { contratoId, rascunhoDoPreContrato, numeroGerado };
     },
     onSuccess: async (result) => {
       console.log('🎉 SUCESSO - Contrato salvo no banco!');
@@ -1201,7 +1184,8 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
       // Se vier de consolidação de rascunho, marcar como consolidado
       // Nota: rascunhoId é o indicador principal — não depende de !contrato,
       // pois o pré-contrato automático pode ter sido passado como 'contrato' para edição.
-      if (rascunhoId && result?.contratoId) {
+      const rascunhoAlvo = rascunhoId || result?.rascunhoDoPreContrato;
+      if (rascunhoAlvo && result?.contratoId) {
         try {
           const { data: { user } } = await supabase.auth.getUser();
 
@@ -1209,7 +1193,7 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
           const { data: rascunho } = await supabase
             .from('contrato_rascunho')
             .select('contrato_id, status, licitacao_id')
-            .eq('id', rascunhoId)
+            .eq('id', rascunhoAlvo)
             .maybeSingle();
 
           // Marcar rascunho como consolidado
@@ -1221,16 +1205,19 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
               consolidado_em: new Date().toISOString(),
               consolidado_por: user?.id || null,
             })
-            .eq('id', rascunhoId);
+            .eq('id', rascunhoAlvo);
           if (eRasc) throw eRasc;
 
           // Copiar anexos do rascunho para o contrato real
           const { data: anexosRascunho } = await supabase
             .from('contrato_rascunho_anexos')
             .select('*')
-            .eq('contrato_rascunho_id', rascunhoId);
+            .eq('contrato_rascunho_id', rascunhoAlvo);
 
-          if (anexosRascunho && anexosRascunho.length > 0) {
+          // O pré-contrato já recebe os anexos da licitação (copiarAnexosLicitacaoParaContrato): quando ele
+          // mesmo é o contrato salvo, copiar de novo duplicaria tudo
+          const ehOProprioPreContrato = rascunho?.contrato_id === result.contratoId;
+          if (!ehOProprioPreContrato && anexosRascunho && anexosRascunho.length > 0) {
             const anexosParaContrato = anexosRascunho.map((anexo: any) => ({
               contrato_id: result.contratoId,
               // "<licitacaoId>/arq" é do bucket licitacoes-anexos: grava com o bucket para abrir no contrato
@@ -1264,23 +1251,27 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
           if (preContratoId && preContratoId !== result.contratoId) {
             const { data: preContrato } = await supabase
               .from('contratos')
-              .select('codigo_interno')
+              .select('codigo_interno, status_contrato')
               .eq('id', preContratoId)
               .maybeSingle();
 
-            if (preContrato?.codigo_interno) {
-              await supabase
-                .from('contratos')
-                .update({ codigo_interno: preContrato.codigo_interno })
-                .eq('id', result.contratoId);
-            }
+            // Só apaga se ainda for pré-contrato: se ele já foi salvo como contrato (pela lista), apagar
+            // levaria embora um contrato de verdade com número (caso LC-7209706, ID 106, em 11/11/2026).
+            if (preContrato?.status_contrato === 'Pre-Contrato') {
+              if (preContrato.codigo_interno) {
+                await supabase
+                  .from('contratos')
+                  .update({ codigo_interno: preContrato.codigo_interno })
+                  .eq('id', result.contratoId);
+              }
 
-            // Remover o pré-contrato automático (substituído pelo real)
-            const { error: eDelPre } = await supabase
-              .from('contratos')
-              .delete()
-              .eq('id', preContratoId);
-            if (eDelPre) throw eDelPre;
+              // Remover o pré-contrato automático (substituído pelo real)
+              const { error: eDelPre } = await supabase
+                .from('contratos')
+                .delete()
+                .eq('id', preContratoId);
+              if (eDelPre) throw eDelPre;
+            }
           }
 
           queryClient.invalidateQueries({ queryKey: ['contratos-rascunho'] });
@@ -1294,7 +1285,9 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
       if (falhaConsolidacao) {
         toast.error(`Contrato criado, mas a licitação arrematada não foi fechada: ${falhaConsolidacao}`, { duration: 10000 });
       } else {
-        toast.success(contrato ? 'Contrato atualizado com sucesso!' : 'Contrato criado com sucesso!');
+        toast.success(result?.numeroGerado
+          ? `Contrato salvo com o ID ${result.numeroGerado}.`
+          : contrato ? 'Contrato atualizado com sucesso!' : 'Contrato criado com sucesso!');
       }
       
       try {
@@ -1660,7 +1653,7 @@ export function ContratoDialogWithClient({ open, onOpenChange, contrato, mode = 
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit, onError)} className="space-y-6">
             <Tabs value={activeTab} onValueChange={handleTabChange}>
-              <div className="-mx-1 overflow-x-auto px-1">
+              <div className="overflow-x-auto">
                 <TabsList className="grid min-w-[28rem] w-full grid-cols-3 sm:min-w-0">
                   <TabsTrigger value="cadastro">Cadastro</TabsTrigger>
                   <TabsTrigger value="itens">Itens do Contrato</TabsTrigger>
