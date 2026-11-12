@@ -132,3 +132,6 @@ verify_jwt = true
 
 [functions.whatsapp-monitor]
 verify_jwt = true
+
+[functions.sla-coletor]
+verify_jwt = false
