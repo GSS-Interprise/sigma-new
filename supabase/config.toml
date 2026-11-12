@@ -126,3 +126,6 @@ verify_jwt = false
 
 [functions.rotinas-fila]
 verify_jwt = false
+
+[functions.chakra-diagnostico]
+verify_jwt = true
