@@ -7,7 +7,7 @@
 $base = "C:\ProgramData\ssh-tunel"
 $saida = "$base\captura"
 $url = "https://zupsbgtoeoixfokzkjro.supabase.co/functions/v1/sla-coletor"
-$versao = "coletor-v1"
+$versao = "coletor-v2"
 $inicio = Get-Date
 New-Item -ItemType Directory -Force $saida | Out-Null
 function Log($msg) {
@@ -102,6 +102,27 @@ if (-not $pacs) {
   $res = Enviar @{ unidade = "marieta"; lida_em = (Get-Date).ToUniversalTime().ToString("o"); status = "erro"; linhas = @(); detalhe = @{ motivo = "pacs_fechado"; versao = $versao } }
   Log "erro pacs_fechado -> $res"; exit
 }
+# A lista do Vue PACS NAO atualiza sozinha (testado em 12/11: 30 min parada; 1 clique trouxe 19 exames novos).
+# Clica em "Atualizar" (setas verdes da barra, x 340 y 95 nesta tela) antes de ler. So clica se a janela da
+# frente for o PACS: com outra janela por cima, o clique cairia em outro programa.
+Add-Type @"
+using System; using System.Runtime.InteropServices;
+public static class Jan {
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+  [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+  [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint dx, uint dy, uint d, UIntPtr e);
+}
+"@
+$pidFrente = 0; [void][Jan]::GetWindowThreadProcessId([Jan]::GetForegroundWindow(), [ref]$pidFrente)
+$atualizou = $false
+if ($pidFrente -eq $pacs.Id) {
+  [void][Jan]::SetCursorPos(340, 95); Start-Sleep -Milliseconds 150
+  [Jan]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero); Start-Sleep -Milliseconds 60; [Jan]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)
+  [void][Jan]::SetCursorPos(1900, 1060)   # mouse fora da grade: tooltip por cima atrapalha o OCR
+  Start-Sleep -Seconds 4                  # tempo da lista recarregar do servidor
+  $atualizou = $true
+}
 try {
   $vt = [System.Windows.Forms.SystemInformation]::VirtualScreen
   $tela = New-Object System.Drawing.Bitmap $vt.Width, $vt.Height
@@ -170,10 +191,10 @@ $cheia = $false
 if ($faixas.Count -gt 0) { $ult = $faixas[$faixas.Count - 1][0]; $cheia = ($ult + 25) -ge ($alturaTela - 90) }
 $envio = @($linhas | Where-Object { $_.hora } | ForEach-Object { @{ data = $_.data; hora = $_.hora; origem = $_.origem } })
 $detalhe = @{
-  versao = $versao; faixas = $faixas.Count; sem_hora = @($linhas | Where-Object { -not $_.hora }).Count
+  atualizou = $atualizou; versao = $versao; faixas = $faixas.Count; sem_hora = @($linhas | Where-Object { -not $_.hora }).Count
   precisao_minuto = @($linhas | Where-Object { $_.via -eq 'minuto' }).Count; sem_data = @($linhas | Where-Object { -not $_.data }).Count
   duracao_ms = [int]((Get-Date) - $inicio).TotalMilliseconds
 }
 $status = if ($faixas.Count -eq 0) { 'sem_grade' } else { 'ok' }
 $res = Enviar @{ unidade = "marieta"; lida_em = $lidaEm; status = $status; cheia = $cheia; linhas = $envio; detalhe = $detalhe }
-Log "$status faixas=$($faixas.Count) enviadas=$($envio.Count) sem_hora=$($detalhe.sem_hora) cheia=$cheia $($detalhe.duracao_ms)ms -> $res"
+Log "$status atualizou=$atualizou faixas=$($faixas.Count) enviadas=$($envio.Count) sem_hora=$($detalhe.sem_hora) cheia=$cheia $($detalhe.duracao_ms)ms -> $res"
