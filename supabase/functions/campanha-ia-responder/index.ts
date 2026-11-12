@@ -2,6 +2,11 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendWhatsAppText } from "../_shared/evo-sender.ts";
 
+// Gemini: endpoint compatível com OpenAI (chat, visão) e nativo (áudio). Ver o comentário em "Processar multimodal".
+const GEMINI_CHAT = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+const GEMINI_NATIVO = "https://generativelanguage.googleapis.com/v1beta/models";
+const MODELO_IA = "gemini-3.5-flash";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -440,8 +445,10 @@ serve(async (req) => {
 
     // ── 4. Processar multimodal ──
     let processedText = finalText;
-    const apiKey = Deno.env.get("OPENAI_API_KEY");
-    if (!apiKey) throw new Error("OPENAI_API_KEY não configurada");
+    // IA = Gemini desde 12/11/2026: a conta da OpenAI ficou sem crédito ("429 no credits remaining") desde 09/11 e
+    // 92 respostas a 77 médicos falharam. Mesma GEMINI_API_KEY do conversas-classificar (conta bi@, projeto bi-gss).
+    const apiKey = Deno.env.get("GEMINI_API_KEY");
+    if (!apiKey) throw new Error("GEMINI_API_KEY não configurada");
 
     // Áudio: decrypt via Evolution → Whisper
     if (
@@ -459,23 +466,25 @@ serve(async (req) => {
             : media.mimetype.includes("mp3")
             ? "mp3"
             : "m4a";
-          const audioBlob = base64ToBlob(media.base64, media.mimetype);
-          const formData = new FormData();
-          formData.append("file", audioBlob, `audio.${ext}`);
-          formData.append("model", "whisper-1");
-          formData.append("language", "pt");
-
+          // Transcrição pelo Gemini (API nativa: aceita ogg/opus do WhatsApp direto em inline_data).
           const whisperResp = await fetch(
-            "https://api.openai.com/v1/audio/transcriptions",
+            `${GEMINI_NATIVO}/${MODELO_IA}:generateContent?key=${apiKey}`,
             {
               method: "POST",
-              headers: { Authorization: `Bearer ${apiKey}` },
-              body: formData,
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                contents: [{
+                  parts: [
+                    { text: "Transcreva este áudio em português, palavra por palavra. Responda só com a transcrição." },
+                    { inline_data: { mime_type: media.mimetype.split(";")[0] || `audio/${ext}`, data: media.base64 } },
+                  ],
+                }],
+              }),
             },
           );
-
           if (whisperResp.ok) {
-            const transcript = ((await whisperResp.json()).text || "").trim();
+            const transcript = (((await whisperResp.json()).candidates?.[0]?.content?.parts ?? [])
+              .map((p: any) => p.text || "").join("")).trim();
             if (transcript) {
               processedText = finalText && finalText !== "[audio]"
                 ? `${finalText}\n[Áudio do médico]: ${transcript}`
@@ -484,7 +493,7 @@ serve(async (req) => {
             }
           } else {
             console.warn(
-              `[ia] ⚠️ Whisper ${whisperResp.status}: ${
+              `[ia] ⚠️ Transcrição ${whisperResp.status}: ${
                 (await whisperResp.text()).slice(0, 200)
               }`,
             );
@@ -511,7 +520,7 @@ serve(async (req) => {
         if (media) {
           const dataUrl = `data:${media.mimetype};base64,${media.base64}`;
           const visionResp = await fetch(
-            "https://api.openai.com/v1/chat/completions",
+            GEMINI_CHAT,
             {
               method: "POST",
               headers: {
@@ -519,8 +528,10 @@ serve(async (req) => {
                 "Content-Type": "application/json",
               },
               body: JSON.stringify({
-                model: "gpt-4o",
-                max_tokens: 300,
+                model: MODELO_IA,
+                // o modelo pensa antes de responder e o pensamento conta no limite: folga para não vir vazio
+                max_tokens: 2000,
+                reasoning_effort: "low",
                 messages: [{
                   role: "user",
                   content: [
@@ -577,7 +588,7 @@ serve(async (req) => {
     const prompt = buildPrompt(briefing, lead, perfilInteresse, timelineOutros);
 
     const aiResponse = await fetch(
-      "https://api.openai.com/v1/chat/completions",
+      GEMINI_CHAT,
       {
         method: "POST",
         headers: {
@@ -585,8 +596,9 @@ serve(async (req) => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "gpt-4o",
-          max_tokens: 800,
+          model: MODELO_IA,
+          max_tokens: 4000,
+          reasoning_effort: "low",
           temperature: 0.7,
           messages: [
             { role: "system", content: prompt },
@@ -602,7 +614,7 @@ serve(async (req) => {
 
     if (!aiResponse.ok) {
       throw new Error(
-        `OpenAI ${aiResponse.status}: ${
+        `Gemini ${aiResponse.status}: ${
           (await aiResponse.text()).slice(0, 200)
         }`,
       );
