@@ -187,7 +187,9 @@ const CHAKRA_IDS_CONTA_PULSE = [
   // found") nem enxerga os templates. Ficam na Pulse até o Vinicius conectar de novo pelo Sigma;
   // depois de reconectar, tirar as linhas do número (o WABA e o número continuam os mesmos).
   "c5a9ba61-dd01-43b3-81b8-4f638a13e5c9", "987580980748042", "1179260535268840", // Gestão 47 9292-0538
-  "f26514cf-181c-438f-9875-3861597c4e8f", "1108596901697420", "1316919421507205", // Maikon 47 6429-1713
+  // Maikon 47 6429-1713 saiu daqui em 12/11: a conta da Pulse não enxerga mais a WABA dele
+  // (modelos enviados por ela ficavam "pendentes" sem nunca chegar à Meta). Usa o plugin
+  // d9a6180c da conta GSS, que lista a WABA 1108596901697420.
   "f72e550c-a846-4351-81c0-8b2b5fe45129", "1701305377585648", "1265298783330718", // Maikon 47 9264-7508
 ];
 
