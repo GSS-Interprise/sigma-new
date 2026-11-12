@@ -160,13 +160,13 @@ async function config(admin: any, nome: string) {
   return String(data?.valor ?? "").trim();
 }
 
-async function checarExames(admin: any, forcar = false) {
+async function checarExames(admin: any, forcar = false, unidades = UNIDADES) {
   if (!forcar && (await config(admin, "sla_alertas_ativo")) !== "true") return { pulado: "sla_alertas_ativo desligado" };
   const sender = await remetente(admin);
   const agora = new Date();
   const res: any[] = [];
   const emails: string[] = [];
-  for (const unidade of UNIDADES) {
+  for (const unidade of unidades) {
     // Coletor parado = fila velha: o exame pode já ter sido laudado. Não alerta médico com dado velho
     // (a queda já tem o aviso próprio).
     const { data: queda } = await admin.from("sla_coletor_quedas").select("id").eq("unidade", unidade).is("fechada_em", null).maybeSingle();
@@ -329,7 +329,7 @@ Deno.serve(async (req) => {
   const body = await req.json().catch(() => ({}));
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   try {
-    if (body.acao === "exames") return json({ ok: true, exames: await checarExames(admin, !!body.forcar) });
+    if (body.acao === "exames") return json({ ok: true, exames: await checarExames(admin, !!body.forcar, Array.isArray(body.unidades) ? body.unidades.map(String) : UNIDADES) });
     if (body.acao === "assumir") return json({ ok: true, ...(await assumir(admin, String(body.telefone || ""), String(body.payload || ""))) });
     if (body.acao === "status_templates") return json({ ok: true, modelos: await statusTemplates(admin) });
     if (body.acao === "criar_templates") return json({ ok: true, modelos: await criarTemplates(admin, !!body.dry_run) });

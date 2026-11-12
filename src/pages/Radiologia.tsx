@@ -2,7 +2,10 @@ import { useState, useMemo } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Calendar, ClipboardList, AlertCircle, FileEdit, Activity, Building2, CalendarDays, ArrowUpDown, ArrowUp, ArrowDown, History } from "lucide-react";
+import { Calendar, ClipboardList, AlertCircle, FileEdit, Activity, Building2, CalendarDays, ArrowUpDown, ArrowUp, ArrowDown, History, Timer, UserCheck } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
+import { AbaSlaAoVivo } from "@/components/radiologia/sla/AbaSlaAoVivo";
+import { AbaEscalaPlantao } from "@/components/radiologia/sla/AbaEscalaPlantao";
 import { AbaAgendasAtualizada } from "@/components/radiologia/AbaAgendasAtualizada";
 import { AbaProducaoExamesAtualizada } from "@/components/radiologia/AbaProducaoExamesAtualizada";
 import { AbaPendenciasAtrasos } from "@/components/radiologia/AbaPendenciasAtrasos";
@@ -20,6 +23,11 @@ export default function Radiologia() {
   const [selectedClienteId, setSelectedClienteId] = useState<string>("todos");
   const [selectedDataFilter, setSelectedDataFilter] = useState<string>("todas");
   const [dateSortOrder, setDateSortOrder] = useState<'count' | 'date_asc' | 'date_desc'>('count');
+  // Aba na URL (?aba=) para o link do e-mail de alerta abrir direto no SLA. As abas de SLA não usam os filtros
+  // de cliente e data do topo (eles são das abas de importação), então os filtros somem nelas.
+  const [params, setParams] = useSearchParams();
+  const aba = params.get("aba") || "sla";
+  const abaSla = aba === "sla" || aba === "escala-sla";
 
   // Buscar clientes que têm pendências importadas usando RPC ou query mais eficiente
   const { data: clientesComPendencias = [] } = useQuery({
@@ -143,10 +151,10 @@ export default function Radiologia() {
     <div className="flex items-center justify-between w-full">
       <div>
         <h1 className="text-2xl font-bold">Radiologia</h1>
-        <p className="text-sm text-muted-foreground">Gestão completa de agendas, produção e controle de exames radiológicos</p>
+        <p className="text-sm text-muted-foreground">{abaSla ? "Prazo de laudo dos exames do PACS (Hospital Marieta)" : "Gestão completa de agendas, produção e controle de exames radiológicos"}</p>
       </div>
       
-      <div className="flex items-center gap-4">
+      <div className={abaSla ? "hidden" : "flex items-center gap-4"}>
         <div className="flex items-center gap-1">
           <CalendarDays className="h-4 w-4 text-muted-foreground" />
           <Select value={selectedDataFilter} onValueChange={setSelectedDataFilter}>
@@ -208,8 +216,16 @@ export default function Radiologia() {
     <AppLayout headerActions={headerActions}>
       <div className="p-4 space-y-6">
 
-        <Tabs defaultValue="agendas" className="w-full">
-          <TabsList className="grid w-full grid-cols-6">
+        <Tabs value={aba} onValueChange={(v) => setParams({ aba: v }, { replace: true })} className="w-full">
+          <TabsList className="flex h-auto w-full flex-wrap justify-start">
+            <TabsTrigger value="sla" className="gap-2">
+              <Timer className="h-4 w-4" />
+              SLA ao vivo
+            </TabsTrigger>
+            <TabsTrigger value="escala-sla" className="gap-2">
+              <UserCheck className="h-4 w-4" />
+              Escala de plantão
+            </TabsTrigger>
             <TabsTrigger value="agendas" className="gap-2">
               <Calendar className="h-4 w-4" />
               Agendas
@@ -235,6 +251,14 @@ export default function Radiologia() {
               Histórico de Imports
             </TabsTrigger>
           </TabsList>
+
+          <TabsContent value="sla" className="space-y-6">
+            <AbaSlaAoVivo />
+          </TabsContent>
+
+          <TabsContent value="escala-sla" className="space-y-6">
+            <AbaEscalaPlantao />
+          </TabsContent>
 
           <TabsContent value="agendas" className="space-y-6">
             <AbaAgendasAtualizada clienteIdFilter={clienteIdFilter} />
