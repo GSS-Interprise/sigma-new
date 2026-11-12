@@ -64,8 +64,10 @@ e avisa o radiologista de plantão antes do prazo vencer; se vencer, liga e sobe
 
 ## Decisões (Raul, 12/11)
 
-1. **Mensagem ao médico sem nome do paciente**: só origem, unidade, hora do exame e prazo. O coletor nem lê o nome.
-2. **Remetente**: número oficial da Amni (o mesmo do financeiro; config `sla_whatsapp_sender_id`). Modelos
+1. ~~Mensagem ao médico sem nome do paciente~~ → **mudou em 12/11 (Raul): a mensagem leva o nome do paciente e o
+   estudo** (pedido do Wagner no grupo). O coletor passa a ler Nome e Descrição; o nome fica no banco só enquanto o
+   exame está na fila (apagado quando o exame sai) e os modelos ganham uma versão nova com esses campos.
+2. **Remetente**: ~~número da Amni~~ → **não usar a Amni** (Raul, 12/11); config `sla_whatsapp_sender_id` vazia até escolher outro número da GSS. Modelos
    `gss_sla_laudo_prazo_v1` (80%) e `gss_sla_laudo_vencido_v1` (100%), UTILITY, botão "Assumir laudo",
    enviados à Meta em 12/11 pela conta Chakra GSS (a da Pulse responde "WABA is not part of plugin configuration").
 3. **100% sem número de voz**: 2º WhatsApp ao plantonista + WhatsApp e e-mail ao coordenador.
