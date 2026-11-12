@@ -161,7 +161,7 @@ export function RaioXMercado() {
                     <BlocoFunil f={f} />
                   </div>
                   <BlocoObjecoes o={objecoes.data} />
-                  <BlocoDestrava d={destrava.data} esp={espNome} uf={uf} />
+                  <BlocoDestrava d={destrava.data} o={objecoes.data} esp={espNome} uf={uf} />
                 </>
               ))}
             </>

@@ -93,8 +93,17 @@ function resolveBinding(binding: string, context: Record<string, unknown>) {
       if (!current || typeof current !== "object") return undefined;
       return (current as Record<string, unknown>)[key];
     }, context);
-    return value == null ? "" : repairMojibake(value);
+    if (value == null) return "";
+    const texto = repairMojibake(value);
+    // Nome vem do CRM em caixa alta ("LARA COSTA KEVORKIAN"); no WhatsApp do médico vai como nome próprio.
+    return path.trim().endsWith("nome") && typeof texto === "string" && texto === texto.toUpperCase() ? nomeProprio(texto) : texto;
   }).trim();
+}
+
+const MINUSCULAS_NOME = new Set(["de", "da", "do", "das", "dos", "e"]);
+function nomeProprio(s: string) {
+  return s.trim().toLowerCase().split(/\s+/)
+    .map((p, i) => (i > 0 && MINUSCULAS_NOME.has(p) ? p : p.charAt(0).toUpperCase() + p.slice(1))).join(" ");
 }
 
 async function releaseOfficialSenderLease(

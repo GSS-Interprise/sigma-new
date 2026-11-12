@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { AlertTriangle, Check, CheckCheck, Clock, FileText, Loader2, MessageSquareText, Search, Send, UserCheck } from "lucide-react";
@@ -14,6 +15,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { SigZapAudioPlayer, SigZapVideoPlayer } from "@/components/sigzap/SigZapMediaPlayer";
 import { SigZapDocumentCard } from "@/components/sigzap/SigZapDocumentCard";
 import { cn } from "@/lib/utils";
+import { motivoLegivel, nomeModelo, nomeProprio, trechoModelo } from "@/lib/textoDono";
 import {
   useListaConversas, useMensagens, useModelosConversa, useNumerosConversa, useTempoRealConversas,
   type ConversaItem, type FiltroConversa, type Mensagem, type ModeloConversa, type NumeroConversa,
@@ -26,6 +28,7 @@ import {
  */
 
 const FILTROS: { valor: FiltroConversa; rotulo: string }[] = [
+  { valor: "precisa_resposta", rotulo: "Precisa de resposta" },
   { valor: "nao_lidas", rotulo: "Não lidas" },
   { valor: "todas", rotulo: "Todas" },
   { valor: "minhas", rotulo: "Minhas" },
@@ -36,7 +39,9 @@ const fone = (v: string | null | undefined) => {
   const d = String(v || "").replace(/\D/g, "").replace(/^55/, "");
   return d.length === 11 ? `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}` : d.length === 10 ? `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}` : String(v || "");
 };
-const nomeConversa = (c: ConversaItem) => c.lead?.nome || c.contact?.contact_name || fone(c.contact?.contact_phone);
+const nomeConversa = (c: ConversaItem) => (c.lead?.nome ? nomeProprio(c.lead.nome) : c.contact?.contact_name || fone(c.contact?.contact_phone));
+// Verde do WhatsApp escurecido: o #25d366 original com texto branco fica em 2:1 de contraste.
+const BADGE = "rounded-full bg-[#008069] px-1.5 py-0.5 text-[11px] font-semibold leading-none text-white tabular-nums";
 const iniciais = (nome: string) => nome.replace(/^(dr\.?|dra\.?)\s+/i, "").split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join("").toUpperCase() || "?";
 const horaLista = (iso: string | null) => {
   if (!iso) return "";
@@ -65,10 +70,11 @@ export default function Conversas() {
   const { user } = useAuth();
   const qc = useQueryClient();
   const [numeroSel, setNumeroSel] = useState<string | null>(null);
-  const [filtro, setFiltro] = useState<FiltroConversa>("nao_lidas");
+  const [filtro, setFiltro] = useState<FiltroConversa>("precisa_resposta");
   const [busca, setBusca] = useState("");
   const [buscaAplicada, setBuscaAplicada] = useState("");
-  const [conversaId, setConversaId] = useState<string | null>(null);
+  const [params] = useSearchParams();
+  const [conversaId, setConversaId] = useState<string | null>(params.get("conversa"));
 
   useEffect(() => {
     const t = setTimeout(() => setBuscaAplicada(busca), 350);
@@ -80,7 +86,19 @@ export default function Conversas() {
   const lista = useListaConversas(instanceIds, filtro, buscaAplicada, user?.id || null);
   const conversas = useMemo(() => (lista.data?.pages || []).flat(), [lista.data]);
   const numeroPorInstancia = useMemo(() => new Map(numeros.map((n) => [n.instance_id, n])), [numeros]);
-  const conversa = conversas.find((c) => c.id === conversaId) || null;
+  // Conversa aberta por link pode não estar na página carregada da lista: busca a linha dela.
+  const naLista = conversas.find((c) => c.id === conversaId);
+  const { data: avulsa } = useQuery({
+    queryKey: ["conversa-avulsa", conversaId],
+    enabled: !!conversaId && !naLista && !lista.isLoading,
+    queryFn: async () => {
+      const { data } = await supabase.from("sigzap_conversations")
+        .select("id, instance_id, lead_id, last_message_text, last_message_at, unread_count, assigned_user_id, service_window_expires_at, contact:sigzap_contacts(contact_name, contact_phone, profile_picture_url), lead:leads(nome)")
+        .eq("id", conversaId as string).maybeSingle();
+      return (data || null) as unknown as ConversaItem | null;
+    },
+  });
+  const conversa = naLista || (avulsa?.id === conversaId ? avulsa : null);
   useTempoRealConversas(conversaId);
 
   const abrir = async (c: ConversaItem) => {
@@ -108,7 +126,7 @@ export default function Conversas() {
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar nome ou telefone" className="h-9 pl-9" />
               </div>
-              <div className="flex gap-1.5">
+              <div className="flex flex-wrap gap-1.5">
                 {FILTROS.map((f) => (
                   <button key={f.valor} type="button" onClick={() => setFiltro(f.valor)}
                     className={cn("rounded-full px-3 py-1 text-xs font-medium transition-colors",
@@ -123,7 +141,7 @@ export default function Conversas() {
                 <div className="flex items-center gap-2 p-4 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Carregando conversas…</div>
               ) : conversas.length === 0 ? (
                 <p className="p-6 text-center text-sm text-muted-foreground">
-                  {filtro === "nao_lidas" ? "Nenhuma conversa esperando resposta." : "Nenhuma conversa aqui."}
+                  {filtro === "precisa_resposta" ? "Ninguém esperando resposta agora." : filtro === "nao_lidas" ? "Nenhuma conversa não lida." : "Nenhuma conversa aqui."}
                 </p>
               ) : (
                 <ul>
@@ -187,7 +205,7 @@ function ChipNumero({ ativo, onClick, titulo, subtitulo, naoLidas, alerta }: {
         {subtitulo && <span className="block max-w-[150px] truncate text-[11px] text-muted-foreground">{subtitulo}</span>}
       </span>
       {naoLidas > 0 && (
-        <span className="rounded-full bg-[#25d366] px-1.5 py-0.5 text-[11px] font-semibold leading-none text-white tabular-nums">
+        <span className={BADGE}>
           {naoLidas > 999 ? "999+" : naoLidas}
         </span>
       )}
@@ -225,7 +243,7 @@ function LinhaConversa({ conversa, ativa, numero, mostrarNumero, onClick }: {
           <span className="mt-0.5 flex items-center justify-between gap-2">
             <span className="truncate text-xs text-muted-foreground">{conversa.last_message_text || "—"}</span>
             {conversa.unread_count > 0 && (
-              <span className="shrink-0 rounded-full bg-[#25d366] px-1.5 py-0.5 text-[11px] font-semibold leading-none text-white tabular-nums">{conversa.unread_count}</span>
+              <span className={cn("shrink-0", BADGE)}>{conversa.unread_count}</span>
             )}
           </span>
           {mostrarNumero && numero && (
@@ -354,7 +372,8 @@ function JanelaConversa({ conversa, numero, userId }: { conversa: ConversaItem; 
         ) : (
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
-              <Clock className="h-4 w-4 shrink-0" /> O médico não escreve há mais de 24 h. A Meta só deixa mandar um modelo aprovado.
+              <Clock className="h-4 w-4 shrink-0" />
+              {ultimaDoMedico ? "O médico não escreve há mais de 24 h." : "O médico ainda não respondeu."} A Meta só deixa mandar um modelo aprovado.
             </p>
             <EscolherModelo modelos={modelos} nome={nome} enviando={enviarModelo.isPending}
               onEnviar={(modelo, valores) => enviarModelo.mutate({ modelo, valores })} />
@@ -402,7 +421,7 @@ function Balao({ mensagem: m }: { mensagem: Mensagem }) {
             : m.message_status === "delivered" ? <CheckCheck className="h-3.5 w-3.5" />
             : <Check className="h-3.5 w-3.5" />)}
         </span>
-        {falhou && <p className="text-[11px] text-red-600">Não entregue{m.provider_error_message ? `: ${m.provider_error_message}` : ""}</p>}
+        {falhou && <p className="text-[11px] text-red-600">Não entregue{m.provider_error_message ? `: ${motivoLegivel(m.provider_error_message)}` : ""}</p>}
       </div>
     </div>
   );
@@ -437,8 +456,9 @@ function EscolherModelo({ modelos, nome, enviando, onEnviar }: {
         <div className="max-h-40 space-y-1 overflow-y-auto">
           {modelos.map((m) => (
             <button key={m.template_id} type="button" onClick={() => escolher(m)}
-              className={cn("w-full truncate rounded-md border px-2 py-1.5 text-left text-xs hover:bg-muted/60", escolhido?.template_id === m.template_id && "border-primary bg-primary/5")}>
-              {m.friendly_name}
+              className={cn("w-full rounded-md border px-2 py-1.5 text-left text-xs hover:bg-muted/60", escolhido?.template_id === m.template_id && "border-primary bg-primary/5")}>
+              <span className="block truncate font-medium">{nomeModelo(m.friendly_name)}</span>
+              <span className="block truncate text-muted-foreground">{trechoModelo(m.body)}</span>
             </button>
           ))}
         </div>

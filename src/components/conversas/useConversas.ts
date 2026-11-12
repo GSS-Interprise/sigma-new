@@ -51,7 +51,7 @@ export type ModeloConversa = {
   category: string | null;
 };
 
-export type FiltroConversa = "nao_lidas" | "todas" | "minhas" | "sem_dono";
+export type FiltroConversa = "precisa_resposta" | "nao_lidas" | "todas" | "minhas" | "sem_dono";
 
 const PAGINA = 60;
 const rpc = (nome: string, args?: Record<string, unknown>) => (supabase as any).rpc(nome, args);
@@ -88,9 +88,19 @@ export function useListaConversas(instanceIds: string[], filtro: FiltroConversa,
         contatoIds = (contatos || []).map((c) => c.id);
         if (contatoIds.length === 0) return [] as ConversaItem[];
       }
+      const colunas = "id, instance_id, lead_id, last_message_text, last_message_at, unread_count, assigned_user_id, service_window_expires_at, contact:sigzap_contacts(contact_name, contact_phone, profile_picture_url), lead:leads(nome)";
+      // "Precisa de resposta": última mensagem do médico, sem descadastro, resposta automática nem recusa
+      // (regras na RPC, supabase/migrations/20261112110000_conversas_precisa_resposta.sql).
+      if (filtro === "precisa_resposta") {
+        const { data, error } = await rpc("conversas_precisa_resposta", { p_instance_ids: instanceIds, p_contact_ids: contatoIds })
+          .select(colunas)
+          .range(Number(pageParam), Number(pageParam) + PAGINA - 1);
+        if (error) throw error;
+        return (data || []) as unknown as ConversaItem[];
+      }
       let q = supabase
         .from("sigzap_conversations")
-        .select("id, instance_id, lead_id, last_message_text, last_message_at, unread_count, assigned_user_id, service_window_expires_at, contact:sigzap_contacts(contact_name, contact_phone, profile_picture_url), lead:leads(nome)")
+        .select(colunas)
         .in("instance_id", instanceIds)
         .not("last_message_at", "is", null)
         .order("last_message_at", { ascending: false })

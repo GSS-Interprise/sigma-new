@@ -6,6 +6,7 @@ import { AlertTriangle, Mail, MessageCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { motivoLegivel, nomeProprio } from "@/lib/textoDono";
 
 /**
  * Resumo da campanha para o dono (plano GSS dono no comando, Fase 6).
@@ -33,13 +34,16 @@ const fone = (e164: string) => {
   return d.length === 11 ? `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}` : d.length === 10 ? `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}` : e164;
 };
 
-// Erros da Meta em português de dono (os três que mais aparecem nas campanhas).
-function motivoLegivel(m: string) {
-  if (/account locked|141006|payment/i.test(m)) return "Conta da Meta bloqueada (pagamento)";
-  if (/healthy ecosystem|131049/i.test(m)) return "Meta segurou o envio para proteger o número";
-  if (/undeliverable|131026|not a valid whatsapp/i.test(m)) return "Número sem WhatsApp ou inválido";
-  if (/re-engagement|131047|24 hours/i.test(m)) return "Fora da janela de 24 h";
-  return m.length > 70 ? `${m.slice(0, 70)}…` : m;
+// A RPC devolve todos os motivos brutos (somam 'falharam'); aqui viram até 4 linhas em português,
+// e o resto entra em "Outros motivos" para a soma continuar batendo com o título.
+function agruparMotivos(erros: { motivo: string; n: number }[]) {
+  const por = new Map<string, number>();
+  for (const e of erros) por.set(motivoLegivel(e.motivo), (por.get(motivoLegivel(e.motivo)) ?? 0) + e.n);
+  const outros = por.get("Outros motivos") ?? 0;
+  por.delete("Outros motivos");
+  const lista = [...por].map(([motivo, n]) => ({ motivo, n })).sort((a, b) => b.n - a.n);
+  const resto = lista.slice(4).reduce((t, x) => t + x.n, 0) + outros;
+  return [...lista.slice(0, 4), ...(resto > 0 ? [{ motivo: "Outros motivos", n: resto }] : [])];
 }
 
 export function PainelDonoCampanha({ campanhaId }: { campanhaId: string }) {
@@ -83,11 +87,12 @@ export function PainelDonoCampanha({ campanhaId }: { campanhaId: string }) {
   return (
     <div className="space-y-4">
       <Card className="p-4">
-        <ol className="grid grid-cols-4 gap-2 xl:grid-cols-7">
+        {/* Funil numa linha só a partir de 1024 px: quebrar 4 + 3 corta a leitura da esquerda para a direita. */}
+        <ol className="grid grid-cols-4 gap-2 lg:grid-cols-7">
           {etapas.map((e, i) => (
             <li key={e.rotulo} className="min-w-0 rounded-md bg-muted/40 px-3 py-2.5">
               <p className="truncate text-xs text-muted-foreground">{e.rotulo}</p>
-              <p className={`text-xl font-semibold tabular-nums ${i === etapas.length - 1 && (e.valor ?? 0) > 0 ? "text-emerald-700" : ""}`}>
+              <p className={`text-lg font-semibold tabular-nums xl:text-xl ${i === etapas.length - 1 && (e.valor ?? 0) > 0 ? "text-emerald-700" : ""}`}>
                 {e.valor === null ? "—" : mil(e.valor)}
               </p>
               <p className="truncate text-xs text-muted-foreground">{e.base || (e.valor === null ? "sem especialidade" : " ")}</p>
@@ -151,9 +156,9 @@ export function PainelDonoCampanha({ campanhaId }: { campanhaId: string }) {
               Por que {mil(f.falharam)} não receberam
             </h3>
             <ul className="space-y-2 text-sm">
-              {data.erros.map((e) => (
+              {agruparMotivos(data.erros).map((e) => (
                 <li key={e.motivo} className="flex items-baseline justify-between gap-3">
-                  <span className="min-w-0">{motivoLegivel(e.motivo)}</span>
+                  <span className="min-w-0">{e.motivo}</span>
                   <span className="shrink-0 tabular-nums font-medium">{mil(e.n)}</span>
                 </li>
               ))}
@@ -180,7 +185,7 @@ export function PainelDonoCampanha({ campanhaId }: { campanhaId: string }) {
           <ul className="divide-y">
             {data.respostas.map((r, i) => (
               <li key={i} className="grid grid-cols-[180px_minmax(0,1fr)_110px] gap-3 py-2 text-sm">
-                <span className="truncate font-medium">{r.nome || "Sem nome"}</span>
+                <span className="truncate font-medium">{r.nome ? nomeProprio(r.nome) : "Sem nome"}</span>
                 <span className="line-clamp-2 text-muted-foreground">{r.texto}</span>
                 <span className="text-right text-xs text-muted-foreground">{formatDistanceToNow(new Date(r.em), { addSuffix: true, locale: ptBR })}</span>
               </li>

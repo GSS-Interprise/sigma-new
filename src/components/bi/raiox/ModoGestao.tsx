@@ -1,4 +1,5 @@
 import { formatDistanceToNow } from "date-fns";
+import { Link } from "react-router-dom";
 import { ptBR } from "date-fns/locale";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -7,9 +8,7 @@ import { mil, pct, useRaioXGestao, type FiltroRaioX } from "./useRaioX";
 // Modo gestão (só GSS, spec §5): o mesmo filtro com o diagnóstico da operação.
 // O que espera ação vem primeiro: médicos que responderam e estão sem resposta nossa há mais de 2 h.
 
-// Nomes chegam em caixa alta do CRM ("MARIA DA SILVA"); na lista leem melhor como nome próprio.
-const MINUSCULAS = new Set(["de", "da", "do", "das", "dos", "e"]);
-const nomeProprio = (s: string) => s.toLowerCase().split(" ").map((p, i) => (i > 0 && MINUSCULAS.has(p) ? p : p.charAt(0).toUpperCase() + p.slice(1))).join(" ");
+import { nomeProprio } from "@/lib/textoDono";
 
 export function ModoGestao({ filtro }: { filtro: FiltroRaioX }) {
   const { data: g, isLoading } = useRaioXGestao(filtro, true);
@@ -24,14 +23,17 @@ export function ModoGestao({ filtro }: { filtro: FiltroRaioX }) {
         <Card className="p-5">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Esperando resposta nossa</p>
           <p className={`mt-2 text-4xl font-semibold tabular-nums ${g.esperando_resposta > 0 ? "text-red-600" : ""}`}>{mil(g.esperando_resposta)}</p>
-          <p className="mt-1 text-sm text-muted-foreground">médicos responderam e estão há mais de 2 h sem retorno</p>
+          <p className="mt-1 text-sm text-muted-foreground">médicos responderam e estão há mais de 2 h sem retorno · os mais recentes primeiro</p>
           {g.esperando.length > 0 && (
             <ul className="mt-4 divide-y border-t">
               {g.esperando.slice(0, 8).map((e) => (
-                <li key={e.conversation_id} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_120px] gap-3 py-2 text-sm">
-                  <span className="truncate font-medium">{nomeProprio(e.nome)}</span>
-                  <span className="truncate text-muted-foreground">{e.campanha?.trim() || "—"}</span>
-                  <span className="text-right text-xs text-muted-foreground">{formatDistanceToNow(new Date(e.ultima_do_medico), { addSuffix: true, locale: ptBR })}</span>
+                <li key={e.conversation_id}>
+                  <Link to={`/conversas?conversa=${e.conversation_id}`}
+                    className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_120px] gap-3 py-2 text-sm hover:bg-muted/50">
+                    <span className="truncate font-medium text-primary">{nomeProprio(e.nome)}</span>
+                    <span className="truncate text-muted-foreground">{e.campanha?.trim() || "—"}</span>
+                    <span className="text-right text-xs text-muted-foreground">{formatDistanceToNow(new Date(e.ultima_do_medico), { addSuffix: true, locale: ptBR })}</span>
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -40,9 +42,9 @@ export function ModoGestao({ filtro }: { filtro: FiltroRaioX }) {
         <Card className="p-5">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tempo até a 1ª resposta</p>
           <p className="mt-2 text-4xl font-semibold tabular-nums">{tempoTxt}</p>
-          <p className="mt-1 text-sm text-muted-foreground">mediana depois que o médico responde</p>
+          <p className="mt-1 text-sm text-muted-foreground">mediana da resposta de uma pessoa da equipe (sem contar a IA)</p>
           {g.sem_resposta_nossa > 0 && (
-            <p className="mt-3 text-sm"><span className="font-medium tabular-nums">{mil(g.sem_resposta_nossa)}</span> nunca receberam resposta</p>
+            <p className="mt-3 text-sm"><span className="font-medium tabular-nums">{mil(g.sem_resposta_nossa)}</span> nunca tiveram resposta de uma pessoa</p>
           )}
         </Card>
       </div>
@@ -58,7 +60,7 @@ export function ModoGestao({ filtro }: { filtro: FiltroRaioX }) {
                 <th className="w-[46%] pb-1.5 font-medium">Campanha</th>
                 <th className="pb-1.5 text-right font-medium">Alcançados</th>
                 <th className="pb-1.5 text-right font-medium">Responderam</th>
-                <th className="pb-1.5 text-right font-medium">Não entregues</th>
+                <th className="pb-1.5 text-right font-medium">Falharam</th>
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -67,7 +69,7 @@ export function ModoGestao({ filtro }: { filtro: FiltroRaioX }) {
                   <td className="truncate py-2 pr-3">{c.nome.trim()}</td>
                   <td className="py-2 text-right tabular-nums">{mil(c.alcancados)}</td>
                   <td className="py-2 text-right tabular-nums">{mil(c.responderam)} <span className="text-xs text-muted-foreground">{pct(c.responderam, c.alcancados)}%</span></td>
-                  <td className={`py-2 text-right tabular-nums ${c.nao_entregues > 0 ? "text-red-600" : ""}`}>{mil(c.nao_entregues)}</td>
+                  <td className={`py-2 text-right tabular-nums ${c.falharam > 0 ? "text-red-600" : ""}`}>{mil(c.falharam)}</td>
                 </tr>
               ))}
             </tbody>

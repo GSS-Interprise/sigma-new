@@ -13,6 +13,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SearchableMultiSelect } from "@/components/ui/searchable-multi-select";
 import { cn } from "@/lib/utils";
+import { nomeModelo, trechoModelo } from "@/lib/textoDono";
 import {
   useEspecialidades, useExtracaoLifesHub, useListasProntas, useModelosAprovados, useNumerosOficiais, usePrevia, useUniversoCfm,
   type ExtracaoLifesHub, type ModeloAprovado, type NumeroOficial,
@@ -146,7 +147,7 @@ export default function NovaCampanhaAssistente() {
   const modelosUsaveis = modelos.filter((m) => Object.keys(m.variables || {}).length <= 3);
   const modelo = modelosUsaveis.find((m) => m.friendly_name === modeloNome);
   const variaveis: Record<string, string> = { "1": "{{lead.nome}}", "2": espNomes[0] || "", "3": vaga.cidade.trim() };
-  const previaTexto = preencherModelo(modelo, { ...variaveis, "1": "Ana" });
+  const previaTexto = preencherModelo(modelo, { ...variaveis, "1": "Maria Clara Souza" });
   const numerosComModelo = numeros.filter((n) => modeloNome && n.templates.includes(modeloNome));
   const numerosSel = numeros.filter((n) => numerosEscolhidos.includes(n.sender_id));
   const porDia = limitePorNumero * Math.max(numerosSel.length, 1);
@@ -231,7 +232,7 @@ export default function NovaCampanhaAssistente() {
     publico: espTexto ? `${espTexto} · ${regiaoTexto}` : "",
     lista: origem === "crm" ? `Montar agora do CRM: ${mil(previa?.entram)} médicos` : origem === "lista" && lista ? `Lista “${lista.nome}”: ${mil(previa?.entram)} médicos` : "",
     vaga: vaga.cidade ? `${TIPOS_VAGA.find((t) => t.value === vaga.tipo)?.label} em ${vaga.cidade}${vaga.hospital ? ` (${vaga.hospital})` : ""} · ${valorTexto}` : "",
-    mensagem: modelo ? `Modelo ${modelo.friendly_name}` : "",
+    mensagem: modelo ? nomeModelo(modelo.friendly_name) : "",
     numeros: numerosSel.length ? `${numerosSel.length} número(s), até ${limitePorNumero} por número/dia` : "",
     resumo: "",
   };
@@ -243,14 +244,14 @@ export default function NovaCampanhaAssistente() {
       </Button>
       <div className="min-w-0">
         <h1 className="text-2xl font-bold">Nova campanha</h1>
-        <p className="text-sm text-muted-foreground">Seis perguntas e a campanha está pronta.</p>
+        <p className="text-sm text-muted-foreground">Cinco perguntas e a campanha está pronta.</p>
       </div>
     </div>
   );
 
   return (
     <AppLayout headerActions={headerActions}>
-      <div className="mx-auto grid max-w-6xl gap-6 p-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="mx-auto grid max-w-6xl gap-6 p-4 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="min-w-0 space-y-4">
           {PASSOS.map((p) => {
             const atual = p === passo;
@@ -356,7 +357,7 @@ export default function NovaCampanhaAssistente() {
                               <>
                                 <p><strong className="tabular-nums">{mil(previa.entram)}</strong> médicos entram nesta campanha.</p>
                                 <p className="mt-1 text-xs text-muted-foreground">
-                                  {mil(previa.em_outras_campanhas)} ficaram de fora porque já estão em outra campanha. Quem pediu para sair, está na lista de bloqueio ou sem WhatsApp também não entra.
+                                  Fora: {mil(previa.em_outras_campanhas)} já em outra campanha, quem pediu para sair, bloqueados e sem WhatsApp.
                                 </p>
                                 {previa.top_cidades.length > 0 && (
                                   <p className="mt-1 text-xs text-muted-foreground">
@@ -385,19 +386,23 @@ export default function NovaCampanhaAssistente() {
                           </Select>
                         </Campo>
                         <Campo label="Valor (opcional)">
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
                             <Input inputMode="decimal" className="w-24" value={vaga.valorMin} onChange={(e) => setVaga({ ...vaga, valorMin: e.target.value })} placeholder="1.800" aria-label="Valor de" />
                             <span className="text-sm text-muted-foreground">a</span>
                             <Input inputMode="decimal" className="w-24" value={vaga.valorMax} onChange={(e) => setVaga({ ...vaga, valorMax: e.target.value })} placeholder="2.200" aria-label="Valor até" />
                             <Select value={vaga.valorPor} onValueChange={(v) => setVaga({ ...vaga, valorPor: v })}>
-                              <SelectTrigger className="min-w-0 flex-1"><SelectValue /></SelectTrigger>
+                              <SelectTrigger className="min-w-[170px] flex-1"><SelectValue /></SelectTrigger>
                               <SelectContent>{VALOR_POR.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent>
                             </Select>
                           </div>
                         </Campo>
-                        <p className="text-xs text-muted-foreground md:col-span-2">
-                          A IA usa isso para responder quando o médico perguntar valor e local — é a pergunta que mais aparece.
-                        </p>
+                        {ufs.length === 0 && origem === "crm" && vaga.cidade.trim().length >= 3 && (
+                          <p className="flex flex-wrap items-center gap-x-2 text-sm text-amber-800 dark:text-amber-300 md:col-span-2">
+                            O público é o Brasil todo para uma vaga em {vaga.cidade.trim()}.
+                            <button type="button" className="font-medium underline" onClick={() => irPara("publico")}>Escolher os estados</button>
+                          </p>
+                        )}
+                        <p className="text-xs text-muted-foreground md:col-span-2">A IA usa isso quando o médico pergunta valor e local.</p>
                       </div>
                     )}
 
@@ -414,9 +419,10 @@ export default function NovaCampanhaAssistente() {
                                 className={cn("w-full rounded-lg border p-3 text-left text-sm transition-colors hover:bg-muted/50",
                                   modeloNome === m.friendly_name && "border-primary ring-1 ring-primary")}>
                                 <div className="flex items-center justify-between gap-2">
-                                  <span className="truncate font-medium">{m.friendly_name}</span>
-                                  <span className="shrink-0 text-xs text-muted-foreground">aprovado em {m.numeros} número(s)</span>
+                                  <span className="truncate font-medium">{nomeModelo(m.friendly_name)}</span>
+                                  <span className="shrink-0 text-xs text-muted-foreground">{m.numeros} {m.numeros === 1 ? "número" : "números"}</span>
                                 </div>
+                                <p className="mt-0.5 truncate text-xs text-muted-foreground">{trechoModelo(m.body)}</p>
                               </button>
                             ))}
                           </div>
@@ -452,6 +458,15 @@ export default function NovaCampanhaAssistente() {
                             onChange={(e) => setLimitePorNumero(Math.max(1, Math.min(250, Number(e.target.value) || 1)))} />
                           <span className="text-muted-foreground">primeiros contatos por número, por dia</span>
                         </div>
+                        {!carregandoNumeros && !numeros.some((n) => n.templates.includes(modeloNome) && n.disponibilidade !== "indisponivel") && (
+                          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+                            <p className="min-w-0">Nenhum número pode mandar este modelo agora.</p>
+                            <div className="flex shrink-0 gap-2">
+                              <Button size="sm" variant="outline" onClick={() => irPara("mensagem")}>Trocar o modelo</Button>
+                              <Button size="sm" variant="outline" asChild><Link to="/configuracoes?tab=whatsapp">Ver os números</Link></Button>
+                            </div>
+                          </div>
+                        )}
                         {numerosSel.some((n) => n.disponibilidade !== "disponivel") && (
                           <p className="text-xs text-amber-700 dark:text-amber-300">
                             Algum número escolhido está com atenção na Meta. A campanha tenta; se a Meta recusar, o número sai da rodada e os outros seguem.
@@ -493,7 +508,7 @@ export default function NovaCampanhaAssistente() {
           })}
         </div>
 
-        <aside className="lg:sticky lg:top-4 lg:self-start">
+        <aside className="xl:sticky xl:top-4 xl:self-start">
           <Card className="p-4">
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-sm font-semibold">Rascunho da campanha</h2>
@@ -603,7 +618,8 @@ const SELO = {
 function LinhaNumero({ numero, temModelo, marcado, onToggle }: {
   numero: NumeroOficial; temModelo: boolean; marcado: boolean; onToggle: (on: boolean) => void;
 }) {
-  const selo = SELO[numero.disponibilidade || "indisponivel"];
+  // "Sem este modelo" é cinza: não é problema do número, é só o modelo escolhido que não está nele.
+  const selo = temModelo ? SELO[numero.disponibilidade || "indisponivel"] : { rotulo: "Sem este modelo", classe: "bg-muted text-muted-foreground" };
   const bloqueado = !temModelo || numero.disponibilidade === "indisponivel";
   const id = `num-${numero.sender_id}`;
   return (
@@ -618,7 +634,7 @@ function LinhaNumero({ numero, temModelo, marcado, onToggle }: {
           {numero.display_name || "Sem nome"}{numero.responsavel_nome ? ` · ${numero.responsavel_nome}` : ""}
         </span>
         <span className="block text-xs text-muted-foreground">
-          {!temModelo ? "Este número não tem o modelo escolhido aprovado." : numero.disponibilidade_motivo}
+          {!temModelo ? "O modelo escolhido não está aprovado neste número." : (numero.disponibilidade_motivo || "").replace(/\s*\(\d{5,6}\)/g, "")}
         </span>
       </label>
     </li>
