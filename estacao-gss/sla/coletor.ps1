@@ -7,7 +7,7 @@
 $base = "C:\ProgramData\ssh-tunel"
 $saida = "$base\captura"
 $url = "https://zupsbgtoeoixfokzkjro.supabase.co/functions/v1/sla-coletor"
-$versao = "coletor-v4"
+$versao = "coletor-v6"
 $inicio = Get-Date
 New-Item -ItemType Directory -Force $saida | Out-Null
 function Log($msg) {
@@ -82,6 +82,66 @@ public static class Grade {
       if (Math.Min(da, db) > tol) { Tinta++; } if (Math.Min(da, db) > tol) for (int j = 0; j < esc; j++) for (int i = 0; i < esc; i++) o.SetPixel(pad + x * esc + i, pad + y * esc + j, Color.Black);
     }
     return o;
+  }
+  // Leitura da hora por modelo de glifo (12/11): o OCR do Windows falha em ~10% das linhas mesmo com a celula nitida.
+  // A fonte do PACS e fixa: cada caractere da coluna Hora tem sempre o mesmo desenho. Os modelos saem das linhas
+  // que o OCR leu certo (hora conhecida) e servem para ler as que falharam.
+  // Glifos: colunas com tinta separadas por coluna vazia; tinta = longe da cor dominante da celula.
+  public static List<bool[,]> Glifos(Bitmap src, Rectangle rc, int tol) {
+    var hist = new Dictionary<int, int>();
+    for (int y = 0; y < rc.Height; y++) for (int x = 0; x < rc.Width; x++) { int k = src.GetPixel(rc.X + x, rc.Y + y).ToArgb(); int v; hist.TryGetValue(k, out v); hist[k] = v + 1; }
+    int a = 0, na = -1; foreach (var kv in hist) if (kv.Value > na) { a = kv.Key; na = kv.Value; }
+    Color f = Color.FromArgb(a);
+    var tinta = new bool[rc.Width, rc.Height];
+    for (int y = 0; y < rc.Height; y++) for (int x = 0; x < rc.Width; x++) {
+      Color p = src.GetPixel(rc.X + x, rc.Y + y);
+      tinta[x, y] = Math.Abs(p.R - f.R) + Math.Abs(p.G - f.G) + Math.Abs(p.B - f.B) > tol;
+    }
+    var r = new List<bool[,]>(); int ini = -1;
+    for (int x = 0; x <= rc.Width; x++) {
+      bool col = false;
+      if (x < rc.Width) for (int y = 0; y < rc.Height; y++) if (tinta[x, y]) { col = true; break; }
+      if (col && ini < 0) ini = x;
+      if (!col && ini >= 0) {
+        var g = new bool[x - ini, rc.Height];
+        for (int gx = 0; gx < x - ini; gx++) for (int y = 0; y < rc.Height; y++) g[gx, y] = tinta[ini + gx, y];
+        r.Add(g); ini = -1;
+      }
+    }
+    return r;
+  }
+  // Diferenca entre dois glifos (pixels diferentes, alinhados a esquerda e ao topo; largura diferente custa caro).
+  public static int Dist(bool[,] a, bool[,] b) {
+    int w = Math.Max(a.GetLength(0), b.GetLength(0)), h = Math.Max(a.GetLength(1), b.GetLength(1)), d = 0;
+    for (int x = 0; x < w; x++) for (int y = 0; y < h; y++) {
+      bool pa = x < a.GetLength(0) && y < a.GetLength(1) && a[x, y];
+      bool pb = x < b.GetLength(0) && y < b.GetLength(1) && b[x, y];
+      if (pa != pb) d++;
+    }
+    return d + 6 * Math.Abs(a.GetLength(0) - b.GetLength(0));
+  }
+  public static Dictionary<char, List<bool[,]>> Modelos = new Dictionary<char, List<bool[,]>>();
+  public static void Aprender(Bitmap src, Rectangle rc, string hora) {
+    var gs = Glifos(src, rc, 160);
+    if (gs.Count < hora.Length) return;
+    for (int i = 0; i < hora.Length; i++) {
+      char c = hora[i];
+      if (!Modelos.ContainsKey(c)) Modelos[c] = new List<bool[,]>();
+      if (Modelos[c].Count < 6) Modelos[c].Add(gs[i]);
+    }
+  }
+  // Le "HH:MM:SS" pelos modelos; null se faltar modelo ou algum glifo ficar longe demais de todos.
+  public static string Ler(Bitmap src, Rectangle rc) {
+    var gs = Glifos(src, rc, 160);
+    if (gs.Count < 8) return null;
+    var sb = new System.Text.StringBuilder();
+    for (int i = 0; i < 8; i++) {
+      char melhor = '?'; int md = int.MaxValue;
+      foreach (var kv in Modelos) foreach (var m in kv.Value) { int d = Dist(gs[i], m); if (d < md) { md = d; melhor = kv.Key; } }
+      if (md > 12) return null;
+      sb.Append(melhor);
+    }
+    return sb.ToString();
   }
 }
 "@
@@ -177,11 +237,14 @@ $cheia = Cheia $pg
 if ($cheia -and $atualizou) { foreach ($x in (SemUltima $pg)) { [void]$acum.Add($x) } } else { foreach ($x in $pg) { [void]$acum.Add($x) } }
 $paginas = 1; $rolou = 0; $quebrou = $false
 if ($cheia -and $atualizou) {
-  while ($paginas -lt 15) {
-    Roda 1; $rolou++
+  # 3 cliques = 9 linhas por passo (sobrepoe ~20 das ~29 visiveis). Com 1 clique e limite de 15 telas, a fila de
+  # 64 exames (12/11 a tarde) nao chegava ao fim e nenhuma saida era registrada.
+  while ($paginas -lt 40) {
+    Roda 3; $rolou++
     $nova = Capturar; [void]$telas.Add($nova); $pn = Pagina $nova
     $pc = SemUltima $pn
     # Deslocamento por votacao: cada linha da tela nova que ja foi vista vota em (posicao antiga - posicao nova).
+    # 1 clique = 3 linhas nesta tela; o passo e de 3 cliques.
     # Algumas linhas mudam de aparencia entre uma captura e outra (realce, redesenho), entao nao se exige
     # igualdade total: vale o deslocamento mais votado, com pelo menos 5 votos. 1 clique = 3 linhas nesta tela.
     function Votar($lista) {
@@ -229,15 +292,24 @@ foreach ($item in $acum) {
     if (-not $data) { $md = [regex]::Match($t, '(?<!\d)([0-3]\d)/([01]\d)/(20\d\d)(?!\d)'); if ($md.Success) { $data = $md.Value } }
     if ($m.Success) { $hora = "$($m.Groups[1].Value):$($m.Groups[2].Value):$($m.Groups[3].Value)"; $via = $tent[2]; break }
   }
-  [void]$linhas.Add([ordered]@{ n = $n; y = $f[0]; data = $data; origem = $nomes[$f[1]]; hora = $hora; nao_lido = $lido; via = $via; tents = $tents; cor = "$($f[2]),$($f[3]),$($f[4])" })
+  [void]$linhas.Add([ordered]@{ n = $n; bm = $tela; y = $f[0]; data = $data; origem = $nomes[$f[1]]; hora = $hora; nao_lido = $lido; via = $via; tents = $tents; cor = "$($f[2]),$($f[3]),$($f[4])" })
 }
 # 2a passada: so as palavras que cairam na coluna Hora (x mediano das horas lidas), com troca das
 # letras que o OCR confunde com digito (O->0, l/I/|->1, S->5, B->8, Z->2).
 $colHora = $null
 if ($xsHora.Count -gt 0) { $o = @($xsHora | Sort-Object); $colHora = $o[[int]($o.Count / 2)] }
 if ($colHora) {
+  # Modelos de glifo a partir das horas lidas com segundos (ver Grade.Aprender).
+  foreach ($l in $linhas) {
+    if ($l.hora -and $l.hora.Length -eq 8 -and $l.via -like 'bin*') {
+      try { [Grade]::Aprender($l.bm, (New-Object System.Drawing.Rectangle ($colHora - 10), $l.y, 72, 25), $l.hora) } catch {}
+    }
+  }
   foreach ($l in $linhas) {
     if ($l.hora) { continue }
+    # 1o: leitura por modelo de glifo (a celula esta nitida; quem falha e o OCR)
+    try { $hm = [Grade]::Ler($l.bm, (New-Object System.Drawing.Rectangle ($colHora - 10), $l.y, 72, 25)) } catch { $hm = $null }
+    if ($hm -and $hm -match '^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$') { $l.hora = $hm; $l.via = 'modelo'; continue }
     $vistos = @()
     foreach ($tt in $l.tents) {
       $esc = $tt[0]
@@ -255,7 +327,13 @@ if ($colHora) {
         if ($m.Success) { $l.hora = "$($m.Groups[1].Value):$($m.Groups[2].Value)"; $l.via = 'minuto'; break }
       }
     }
-    if (-not $l.hora) { $l.via = 'falhou: ' + ($vistos -join ' / ') }
+    if (-not $l.hora) {
+      $l.via = 'falhou: ' + ($vistos -join ' / ')
+      # Diagnostico (12/11): guarda SO a celula da coluna Hora (sem nome de paciente) das linhas que falharam.
+      if (Test-Path "$base\diag_hora.on") {
+        try { $cel = $l.bm.Clone((New-Object System.Drawing.Rectangle ($colHora - 10), $l.y, 90, 25), $l.bm.PixelFormat); $cel.Save("$saida\falha_$($l.n).png"); $cel.Dispose() } catch {}
+      }
+    }
   }
 }
 foreach ($bm in $telas) { $bm.Dispose() }
@@ -263,6 +341,7 @@ Remove-Item "$saida\linha.png" -ErrorAction SilentlyContinue
 $envio = @($linhas | Where-Object { $_.hora } | ForEach-Object { @{ data = $_.data; hora = $_.hora; origem = $_.origem } })
 $detalhe = @{
   atualizou = $atualizou; versao = $versao; faixas = $acum.Count; paginas = $paginas; quebrou = $quebrou; sem_hora = @($linhas | Where-Object { -not $_.hora }).Count
+  por_modelo = @($linhas | Where-Object { $_.via -eq 'modelo' }).Count
   precisao_minuto = @($linhas | Where-Object { $_.via -eq 'minuto' }).Count; sem_data = @($linhas | Where-Object { -not $_.data }).Count
   duracao_ms = [int]((Get-Date) - $inicio).TotalMilliseconds
 }
