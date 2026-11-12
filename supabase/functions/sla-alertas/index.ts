@@ -1,11 +1,113 @@
 // Alertas do SLA de laudos (radiologia GSS). Cron a cada 5 min com {"acao": "coletor"}; só service_role chama.
+//   criar_templates — envia à Meta os modelos de alerta (80% e vencido), com o botão "Assumir laudo"
 //   coletor — sem leitura "ok" da estação há mais de 15 min: abre uma queda e avisa por e-mail; quando volta, fecha e avisa.
 // Os alertas para o médico (80% / 100% do prazo) entram aqui depois (docs/arquitetura/sla-laudos-radiologia.md).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
+import { chakraApi, unwrapChakraPayload } from "../_shared/chakra.ts";
 
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { "Content-Type": "application/json" } });
 const UNIDADES = ["marieta"];
 const LIMITE_MIN = 15;
+
+// Modelos de alerta. Sem acento: os modelos acentuados desta conta foram recusados pela Meta (financeiro, 10/2026).
+// Sem nome de paciente (decisão do Raul, 12/11): o médico acha o exame no PACS pela origem e pela hora.
+// O botão leva o payload "sla_assumir:<alerta_id>" no envio; o chakra-webhook repassa para cá.
+export const PAYLOAD_ASSUMIR = "sla_assumir:";
+const MODELOS = [
+  {
+    nome: "gss_sla_laudo_prazo_v1",
+    corpo: "Alerta de SLA de laudo - {{1}}, {{2}}: o exame das {{3}} vence em {{4}}. Confira o PACS e toque em Assumir laudo para parar os avisos.",
+    exemplo: ["Pronto Socorro", "Hospital Marieta", "08:22", "20 min"],
+    variaveis: { "1": "Origem", "2": "Unidade", "3": "Hora do exame", "4": "Tempo restante" },
+  },
+  {
+    nome: "gss_sla_laudo_vencido_v1",
+    corpo: "SLA de laudo vencido - {{1}}, {{2}}: o exame das {{3}} passou do prazo ha {{4}} e ninguem assumiu o laudo. Confira o PACS e toque em Assumir laudo.",
+    exemplo: ["Pronto Socorro", "Hospital Marieta", "08:22", "15 min"],
+    variaveis: { "1": "Origem", "2": "Unidade", "3": "Hora do exame", "4": "Tempo de atraso" },
+  },
+];
+
+async function remetente(admin: any) {
+  const { data: cfg } = await admin.from("config_lista_items").select("valor").eq("campo_nome", "sla_whatsapp_sender_id").maybeSingle();
+  if (!cfg?.valor) throw new Error("config sla_whatsapp_sender_id ausente");
+  const { data } = await admin.from("whatsapp_official_senders")
+    .select("id, phone_e164, chakra_plugin_id, chakra_waba_id, chakra_phone_number_id").eq("id", cfg.valor).maybeSingle();
+  if (!data) throw new Error("remetente do SLA nao encontrado");
+  return data;
+}
+
+// Criação de modelo da Amni: a rota padrão (chakraApi) manda a WABA 286031407919518 pela conta da Pulse, que hoje
+// responde 200 com {"_errors":["WABA ... is not part of plugin configuration or is not connected"]} e o modelo
+// nunca chega à Meta (12/11). A conta GSS tem o plugin d9a6180c com essa WABA: cria por ela. O envio continua
+// pela rota padrão até alguém migrar a Amni de conta (ver _shared/chakra.ts, CHAKRA_IDS_CONTA_PULSE).
+async function chakraGss(path: string, init: RequestInit = {}) {
+  const key = Deno.env.get("CHAKRA_API_KEY_GSS")?.trim();
+  if (!key) throw new Error("CHAKRA_API_KEY_GSS ausente");
+  const r = await fetch(`https://api.chakrahq.com${path}`, {
+    ...init, headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", ...(init.headers || {}) },
+  });
+  const corpo: any = await r.json().catch(() => ({}));
+  if (!r.ok || (Array.isArray(corpo?._errors) && corpo._errors.length)) {
+    throw new Error(`chakra ${r.status}: ${JSON.stringify(corpo?._errors ?? corpo).slice(0, 300)}`);
+  }
+  return corpo;
+}
+
+async function criarTemplates(admin: any, dryRun: boolean) {
+  const sender = await remetente(admin);
+  const out: unknown[] = [];
+  for (const m of MODELOS) {
+    const componentes = [
+      { type: "BODY", text: m.corpo, example: { body_text: [m.exemplo] } },
+      { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: "Assumir laudo" }] },
+    ];
+    if (dryRun) { out.push({ nome: m.nome, remetente: sender.phone_e164, componentes }); continue; }
+    const resposta = await chakraGss(`/v1/ext/plugin/whatsapp/api/v24.0/${sender.chakra_waba_id}/message_templates`,
+      { method: "POST", body: JSON.stringify({ name: m.nome, category: "UTILITY", language: "pt_BR", components: componentes }) });
+    const remoto = unwrapChakraPayload(resposta);
+    const remotoId = String(remoto.id || remoto.message_template_id || m.nome);
+    const st = String(remoto.status || "PENDING").toLowerCase();
+    const { error } = await admin.from("whatsapp_official_templates").upsert({
+      provider: "chakra", content_sid: `chakra:${sender.chakra_plugin_id}:${remotoId}`, friendly_name: m.nome, language: "pt_BR",
+      category: "UTILITY", body: m.corpo, variables: m.variaveis,
+      approval_status: st === "approved" ? "approved" : st === "rejected" ? "rejected" : "pending", twilio_payload: remoto,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "content_sid" });
+    if (error) throw error;
+    out.push({ nome: m.nome, status: st, id: remotoId, bruto: JSON.stringify(resposta).slice(0, 400) });
+  }
+  return out;
+}
+
+// Situação dos modelos direto na Meta (via Chakra): a conta que não enxerga a WABA aceita o modelo como "pendente"
+// e nunca manda à Meta, então só vale o que a listagem da WABA mostra.
+async function statusTemplates(admin: any) {
+  const sender = await remetente(admin);
+  const out: unknown[] = [];
+  // O filtro ?name= é ignorado e a lista vem paginada: percorre as páginas pelo cursor.
+  const todos: any[] = [];
+  let after = "";
+  for (let i = 0; i < 15; i++) {
+    // Sem unwrapChakraPayload: ele devolveria o próprio array "data" e perderia o "paging".
+    const r: any = await chakraGss(
+      `/v1/ext/plugin/whatsapp/api/v24.0/${sender.chakra_waba_id}/message_templates${after ? `?after=${encodeURIComponent(after)}` : ""}`);
+    if (Array.isArray(r?.data)) todos.push(...r.data);
+    after = r?.paging?.cursors?.after && r?.paging?.next ? r.paging.cursors.after : "";
+    if (!after) break;
+  }
+  for (const m of MODELOS) {
+    const t = todos.find((x: any) => x.name === m.nome);
+    const st = String(t?.status || "nao_encontrado").toLowerCase();
+    if (t) {
+      await admin.from("whatsapp_official_templates").update({
+        approval_status: st === "approved" ? "approved" : st === "rejected" ? "rejected" : "pending", updated_at: new Date().toISOString(),
+      }).eq("friendly_name", m.nome);
+    }
+    out.push({ nome: m.nome, status: st, motivo: t?.rejected_reason ?? null, total_na_waba: todos.length, nomes: todos.map((x: any) => x.name).join(",") });
+  }
+  return out;
+}
 
 function ehServiceRole(auth: string) {
   try {
@@ -89,6 +191,8 @@ Deno.serve(async (req) => {
   const body = await req.json().catch(() => ({}));
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   try {
+    if (body.acao === "status_templates") return json({ ok: true, modelos: await statusTemplates(admin) });
+    if (body.acao === "criar_templates") return json({ ok: true, modelos: await criarTemplates(admin, !!body.dry_run) });
     // body.unidades só para teste manual (ex.: ["teste"]); o cron não manda.
     if (body.acao === "coletor") return json({ ok: true, coletor: await checarColetor(admin, Array.isArray(body.unidades) ? body.unidades.map(String) : UNIDADES) });
     return json({ ok: false, error: "acao" }, 400);
