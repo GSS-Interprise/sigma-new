@@ -235,6 +235,18 @@ serve(async (req) => {
       }
     }
 
+    // Telefone já marcado como errado, do consultório ou que pediu para sair (contato inteligente, 12/11): a IA não
+    // conversa por ele. A mensagem fica registrada na conversa; o lead segue pelo telefone principal.
+    {
+      const { data: situacaoFone } = await supabase.from("lead_telefone_situacao")
+        .select("situacao").eq("lead_id", lead.id)
+        .eq("telefone", phoneDigits.startsWith("55") ? phoneDigits : `55${phoneDigits}`).maybeSingle();
+      if (situacaoFone && ["errado", "consultorio", "saiu"].includes(situacaoFone.situacao)) {
+        await addOperationalTags(supabase, lead.id, [OPERATIONAL_TAGS.incoming]);
+        return json({ ok: true, reason: `telefone_${situacaoFone.situacao}` });
+      }
+    }
+
     // Segunda barreira contra reentrega/retry: mesmo que outro webhook tente
     // processar a mensagem, apenas um worker recebe o lease do msg_id.
     if (msg_id) {
@@ -1179,6 +1191,14 @@ function isExplicitAutoReply(text: string): boolean {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
+  // Robô ou secretária de consultório (33% das respostas na leitura de 12/11): "Como posso te ajudar?" tem "?" e
+  // passava como intenção humana. Dois sinais de consultório bastam, com ou sem pergunta.
+  const sinaisConsultorio = [
+    /secretari[ao]/, /consultorio/, /agendamento|agendar (sua |a )?consulta/, /convenio/, /digite (a opcao|o numero|apenas)/,
+    /horario de atendimento|nosso horario/, /pronto (atendimento|socorro)|urgencia|emergencia/, /seja (muito )?bem[- ]?vind/,
+    /agradece (o |o seu |seu |o teu |teu )?contato/, /paciente|seu (pequeno|filho)|mamae/, /receitas?/,
+  ].filter((pattern) => pattern.test(normalized)).length;
+  if (sinaisConsultorio >= 2) return true;
   const hasHumanIntent = /\?/.test(normalized) ||
     (normalized.length < 160 &&
       /\b(qual seria|pode mandar|manda|tenho interesse|gostaria|quero|me fala|me conta|como funciona|posso|sim)\b/
