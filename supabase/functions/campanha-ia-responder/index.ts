@@ -6,6 +6,26 @@ import { sendWhatsAppText } from "../_shared/evo-sender.ts";
 const GEMINI_CHAT = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
 const GEMINI_NATIVO = "https://generativelanguage.googleapis.com/v1beta/models";
 const MODELO_IA = "gemini-3.5-flash";
+// Reserva quando o principal responde 429/503 ("high demand", visto em 12/11 logo na troca).
+const MODELOS_RESERVA = ["gemini-3.5-flash-lite"]; // gemini-2.5-flash: 404 "no longer available to new users"
+
+// fetch no endpoint de chat com nova tentativa e troca de modelo: 503/429/500 tenta de novo em 2 s com o mesmo
+// modelo e depois passa para a reserva. Outros erros voltam na hora (o chamador trata).
+async function geminiChat(url: string, init: RequestInit): Promise<Response> {
+  const corpo = JSON.parse(String(init.body ?? "{}"));
+  let ultima: Response | null = null;
+  for (const modelo of [corpo.model ?? MODELO_IA, MODELO_IA, ...MODELOS_RESERVA].filter((m, i, a) => a.indexOf(m) === i)) {
+    for (let tentativa = 0; tentativa < 2; tentativa++) {
+      const r = await fetch(url, { ...init, body: JSON.stringify({ ...corpo, model: modelo }) });
+      if (r.ok || ![404, 429, 500, 503].includes(r.status)) return r;
+      // guarda o corpo numa resposta nova: a original já foi lida e devolvê-la daria "Body already consumed"
+      ultima = new Response(await r.text().catch(() => ""), { status: r.status });
+      if (r.status === 404) break; // modelo indisponível para esta conta: vai direto para a reserva
+      await new Promise((ok) => setTimeout(ok, 2000));
+    }
+  }
+  return ultima!;
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -38,7 +58,7 @@ serve(async (req) => {
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const supabase = createClient(supabaseUrl, supabaseKey);
+  let supabase: any = createClient(supabaseUrl, supabaseKey);
   let claimedMessageId: string | null = null;
 
   try {
@@ -51,7 +71,15 @@ serve(async (req) => {
       msg_id,
       conversation_id,
       aggregated_texts,
+      previa = false,
     } = await req.json();
+
+    // Prévia (12/11): gera a resposta que a IA mandaria, sem enviar nem gravar nada (revisão humana antes de
+    // reprocessar mensagens que ficaram sem resposta). Só service_role: devolve nome e texto da conversa.
+    if (previa) {
+      if (!ehServiceRole(req.headers.get("Authorization") || "")) return new Response(JSON.stringify({ ok: false, reason: "sem_permissao" }), { status: 401 });
+      supabase = somenteLeitura(supabase);
+    }
 
     if (!phone) throw new Error("phone obrigatório");
 
@@ -519,7 +547,7 @@ serve(async (req) => {
         );
         if (media) {
           const dataUrl = `data:${media.mimetype};base64,${media.base64}`;
-          const visionResp = await fetch(
+          const visionResp = await geminiChat(
             GEMINI_CHAT,
             {
               method: "POST",
@@ -587,7 +615,7 @@ serve(async (req) => {
     // ── 5. Prompt + IA ──
     const prompt = buildPrompt(briefing, lead, perfilInteresse, timelineOutros);
 
-    const aiResponse = await fetch(
+    const aiResponse = await geminiChat(
       GEMINI_CHAT,
       {
         method: "POST",
@@ -713,6 +741,14 @@ serve(async (req) => {
       console.warn(`[ia] resposta repetida bloqueada para ${lead.id}`);
       messages.splice(0, messages.length);
       await addOperationalTags(supabase, lead.id, [OPERATIONAL_TAGS.incoming]);
+    }
+    if (previa) {
+      return json({
+        ok: true, previa: true, lead: { id: lead.id, nome: lead.nome, especialidade: lead.especialidade },
+        campanha: campanha?.nome ?? null, mensagens: messages, resposta_repetida: respostaRepetida, parse_falhou: parseFalhou,
+        aguarda_humano: parsed.AGUARDA_RESPOSTA_HUMANA === true, pergunta_para_responsavel: parsed.pergunta_para_responsavel ?? null,
+        maturidade: parsed.maturidade_lead ?? null, conversa_encerrada: parsed.conversa_encerrada ?? null,
+      });
     }
     const maturidade = String(parsed.maturidade_lead || "").toLowerCase();
     // ALERTA_LEAD só conta se maturidade explícita é "quente" (safety net contra modelo marcar errado)
@@ -1767,4 +1803,50 @@ Regras:
 - NUMERO_ERRADO=true quando a pessoa que respondeu informa que o número não é do destinatário do disparo (ver <numero_errado>). NUNCA combinar com ALERTA_LEAD=true nem JA_NO_QUADRO=true.
 </saida>
 </prompt>`;
+}
+
+function ehServiceRole(auth: string) {
+  try {
+    const p = JSON.parse(atob(auth.replace(/^Bearer\s+/i, "").split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    return p?.role === "service_role";
+  } catch {
+    return false;
+  }
+}
+
+// Cliente só de leitura para a prévia: insert/update/upsert/delete e rpc viram no-op (o claim responde "ok" para o
+// fluxo seguir até a IA). Nada é gravado e nada é enviado: a prévia retorna antes do envio.
+// deno-lint-ignore no-explicit-any
+function somenteLeitura(c: any): any {
+  const nada = (): any => {
+    const p: any = new Proxy(function () {}, {
+      get(_t, k) {
+        if (k === "then") return (ok: any) => ok({ data: null, error: null });
+        return () => p;
+      },
+      apply() { return p; },
+    });
+    return p;
+  };
+  return new Proxy(c, {
+    get(t, k) {
+      if (k === "rpc") {
+        return (nome: string) => Promise.resolve({ data: nome === "campanha_ia_claim_message" ? true : null, error: null });
+      }
+      if (k === "from") {
+        return (tabela: string) => {
+          const b = t.from(tabela);
+          return new Proxy(b, {
+            get(bt, bk) {
+              if (["insert", "update", "upsert", "delete"].includes(String(bk))) return () => nada();
+              const v = (bt as any)[bk];
+              return typeof v === "function" ? v.bind(bt) : v;
+            },
+          });
+        };
+      }
+      const v = t[k];
+      return typeof v === "function" ? v.bind(t) : v;
+    },
+  });
 }
