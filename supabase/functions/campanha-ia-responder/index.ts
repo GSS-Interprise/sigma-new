@@ -722,15 +722,22 @@ serve(async (req) => {
         // quando o modelo tenta fragmentar a resposta em várias mensagens.
         .slice(0, 1);
 
-    // A resposta negativa pode ter chegado enquanto o modelo gerava texto.
-    // Revalida antes de qualquer envio para cancelar essa rodada obsoleta.
-    if (conversation_id) {
+    // A resposta negativa pode ter chegado enquanto o modelo gerava texto (~30 s).
+    // Revalida antes de qualquer envio para cancelar essa rodada obsoleta. Vale sempre: antes só rodava com
+    // conversation_id, que o Chakra não manda — em 12/11 o médico mandou "Sir" e "Sair" 3 s depois, o descadastro
+    // rodou e a IA respondeu ao "Sir" mesmo assim. Confere também o bloqueio (blacklist, com e sem o 9).
+    {
       const { data: latestLeadState } = await supabase
         .from("campanha_leads")
         .select("status")
         .eq("id", campLead.id)
         .maybeSingle();
-      if (latestLeadState?.status === "descartado") {
+      const semPais = phoneDigits.replace(/^55/, "");
+      const variantes = [semPais, semPais.length === 10 ? semPais.slice(0, 2) + "9" + semPais.slice(2) : semPais.length === 11 ? semPais.slice(0, 2) + semPais.slice(3) : semPais]
+        .map((d) => `+55${d}`);
+      const { data: bloqueado } = await supabase.from("blacklist").select("id").in("phone_e164", variantes).limit(1);
+      const { data: optOut } = await supabase.from("leads").select("opt_out").eq("id", lead.id).maybeSingle();
+      if (latestLeadState?.status === "descartado" || (bloqueado?.length ?? 0) > 0 || optOut?.opt_out === true) {
         const cancelledResult = {
           ok: true,
           reason: "rodada_cancelada_lead_encerrado",

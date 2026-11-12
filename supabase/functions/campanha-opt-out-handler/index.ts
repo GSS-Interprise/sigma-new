@@ -19,7 +19,12 @@ serve(async (req) => {
     if (!phone) throw new Error("phone obrigatório");
 
     const phoneDigits = String(phone).replace(/\D/g, "");
-    const phoneE164 = phoneDigits.startsWith("55") ? `+${phoneDigits}` : `+55${phoneDigits}`;
+    // O WhatsApp manda celular antigo sem o 9 (55 41 9198-2008); o lead está com o 9 (+55 41 99198-2008). Sem
+    // normalizar, o bloqueio não casava com o lead e leads.opt_out ficava falso (12/11). Celular de 8 dígitos
+    // começando em 6-9 ganha o 9.
+    let local = phoneDigits.startsWith("55") ? phoneDigits.slice(2) : phoneDigits;
+    if (local.length === 10 && /^[6-9]$/.test(local[2])) local = local.slice(0, 2) + "9" + local.slice(2);
+    const phoneE164 = `+55${local}`;
 
     console.log(`[opt-out] 🛑 ${phoneE164}: "${(msg_text || "").slice(0, 100)}"`);
 
