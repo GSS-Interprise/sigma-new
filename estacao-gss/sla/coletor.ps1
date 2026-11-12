@@ -7,7 +7,7 @@
 $base = "C:\ProgramData\ssh-tunel"
 $saida = "$base\captura"
 $url = "https://zupsbgtoeoixfokzkjro.supabase.co/functions/v1/sla-coletor"
-$versao = "coletor-v2"
+$versao = "coletor-v3"
 $inicio = Get-Date
 New-Item -ItemType Directory -Force $saida | Out-Null
 function Log($msg) {
@@ -37,8 +37,13 @@ public static class Grade {
   // Linhas da grade: passo fixo de 25 px a partir da primeira linha colorida; a classe e a cor
   // que mais aparece numa amostra da linha (o texto nao atrapalha). Saida: [y0, classe, R, G, B]
   public static List<int[]> Linhas(Bitmap b, int x0, int w, int y0, int y1, int passo) {
-    var r = new List<int[]>(); int y = y0;
+    int y = y0;
     while (y < y1 && Cls(b.GetPixel(x0 + 4, y)) == 0) y++;
+    return LinhasDe(b, x0, w, y, y1, passo);
+  }
+  // Linhas a partir de um inicio exato (sem procurar a 1a cor): usado para alinhar telas depois de rolar.
+  public static List<int[]> LinhasDe(Bitmap b, int x0, int w, int y, int y1, int passo) {
+    var r = new List<int[]>();
     for (; y + passo <= y1; y += passo) {
       var cont = new int[4]; Color ex = Color.White;
       for (int x = x0; x < x0 + w; x += 7) for (int dy = 3; dy < passo - 3; dy += 4) {
@@ -48,6 +53,12 @@ public static class Grade {
       r.Add(new int[] { y, best, ex.R, ex.G, ex.B });
     }
     return r;
+  }
+  // Impressao digital de uma linha (pixels): reconhece a mesma linha em telas diferentes ao rolar a lista.
+  public static ulong Hash(Bitmap b, int x0, int w, int y) {
+    ulong h = 1469598103934665603UL;
+    for (int yy = 2; yy < 23; yy++) for (int x = x0; x < x0 + w; x += 2) { h ^= (ulong)(uint)b.GetPixel(x, y + yy).ToArgb(); h *= 1099511628211UL; }
+    return h;
   }
   // Recorte ampliado e binarizado: as 2 cores mais comuns da linha sao fundo (zebra de colunas);
   // pixel longe das duas vira tinta (preto), o resto branco. Serve para texto escuro ou claro.
@@ -111,7 +122,7 @@ public static class Jan {
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
-  [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint dx, uint dy, uint d, UIntPtr e);
+  [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint dx, uint dy, int d, UIntPtr e);
 }
 "@
 $pidFrente = 0; [void][Jan]::GetWindowThreadProcessId([Jan]::GetForegroundWindow(), [ref]$pidFrente)
@@ -123,24 +134,89 @@ if ($pidFrente -eq $pacs.Id) {
   Start-Sleep -Seconds 4                  # tempo da lista recarregar do servidor
   $atualizou = $true
 }
-try {
+function Capturar {
   $vt = [System.Windows.Forms.SystemInformation]::VirtualScreen
-  $tela = New-Object System.Drawing.Bitmap $vt.Width, $vt.Height
-  $gr = [System.Drawing.Graphics]::FromImage($tela); $gr.CopyFromScreen($vt.Left, $vt.Top, 0, 0, $tela.Size); $gr.Dispose()
-} catch {
+  $bm = New-Object System.Drawing.Bitmap $vt.Width, $vt.Height
+  $gr = [System.Drawing.Graphics]::FromImage($bm); $gr.CopyFromScreen($vt.Left, $vt.Top, 0, 0, $bm.Size); $gr.Dispose()
+  $bm
+}
+function Roda($cliques) {
+  # Roda do mouse sobre a grade; depois tira o mouse de cima (tooltip atrapalha) e espera redesenhar.
+  [void][Jan]::SetCursorPos(1200, 600); Start-Sleep -Milliseconds 100
+  [Jan]::mouse_event(0x0800, 0, 0, (-120 * $cliques), [UIntPtr]::Zero); Start-Sleep -Milliseconds 120
+  [void][Jan]::SetCursorPos(1900, 1060); Start-Sleep -Milliseconds 700
+}
+try { $tela = Capturar } catch {
   # Tela bloqueada ou sessao desconectada: CopyFromScreen falha.
   $res = Enviar @{ unidade = "marieta"; lida_em = (Get-Date).ToUniversalTime().ToString("o"); status = "erro"; linhas = @(); detalhe = @{ motivo = "tela_indisponivel"; versao = $versao } }
   Log "erro tela_indisponivel -> $res"; exit
 }
 $lidaEm = (Get-Date).ToUniversalTime().ToString("o")
-# Grade comeca em x=487, y~245 nesta estacao; varre ate o rodape para pegar lista maior que o recorte antigo.
 $gx = 487; $gw = 1425
-$faixas = [Grade]::Linhas($tela, $gx, $gw, 236, $tela.Height - 40, 25)
+$alturaTela = $tela.Height
+# Inicio da grade: 1a linha colorida (y 247 nesta tela). Fica fixo para todas as paginas: rolar desloca a lista
+# por linhas inteiras, e com o inicio fixo a mesma linha da o mesmo hash nas duas telas.
+$faixas = [Grade]::Linhas($tela, $gx, $gw, 236, $alturaTela - 40, 25)
+$y0 = if ($faixas.Count -gt 0) { $faixas[0][0] } else { 0 }
+# Hash so da parte esquerda da linha (Data, Nome, Hora, Tipo; x 487-1087): avisos do Windows (OneDrive) cobrem a
+# direita da grade em posicoes fixas da tela e faziam a mesma linha ter hash diferente em telas diferentes.
+function Pagina($bm, $ini = $y0) {
+  $fs = [Grade]::LinhasDe($bm, $gx, $gw, $ini, $alturaTela - 40, 25)
+  @($fs | ForEach-Object { [pscustomobject]@{ f = $_; h = [Grade]::Hash($bm, $gx, 600, $_[0]); bm = $bm } })
+}
+function Cheia($pg) { $pg.Count -gt 0 -and ($pg[$pg.Count - 1].f[0] + 25) -ge ($alturaTela - 90) }
+
+# Le a lista inteira: rola 1 clique por vez (11 linhas nesta tela) e junta as paginas pela sobreposicao dos hashes.
+$telas = New-Object System.Collections.ArrayList; [void]$telas.Add($tela)
+$acum = New-Object System.Collections.ArrayList
+# A ultima linha de uma tela cheia pode estar cortada pela borda da grade (hash diferente da mesma linha
+# inteira na tela seguinte): ela fica de fora da juncao e so entra quando aparecer inteira.
+function SemUltima($p) { if ($p.Count -le 1) { @() } else { @($p[0..($p.Count - 2)]) } }
+$pg = @(); if ($y0) { $pg = Pagina $tela }
+$cheia = Cheia $pg
+if ($cheia -and $atualizou) { foreach ($x in (SemUltima $pg)) { [void]$acum.Add($x) } } else { foreach ($x in $pg) { [void]$acum.Add($x) } }
+$paginas = 1; $rolou = 0; $quebrou = $false
+if ($cheia -and $atualizou) {
+  while ($paginas -lt 15) {
+    Roda 1; $rolou++
+    $nova = Capturar; [void]$telas.Add($nova); $pn = Pagina $nova
+    $pc = SemUltima $pn
+    # Deslocamento por votacao: cada linha da tela nova que ja foi vista vota em (posicao antiga - posicao nova).
+    # Algumas linhas mudam de aparencia entre uma captura e outra (realce, redesenho), entao nao se exige
+    # igualdade total: vale o deslocamento mais votado, com pelo menos 5 votos. 1 clique = 3 linhas nesta tela.
+    function Votar($lista) {
+      $v = @{}
+      for ($i = 0; $i -lt $lista.Count; $i++) {
+        for ($j = 0; $j -lt $acum.Count; $j++) { if ($acum[$j].h -eq $lista[$i].h) { $d = $j - $i; $v[$d] = 1 + [int]$v[$d]; break } }
+      }
+      $v
+    }
+    $votos = Votar $pc
+    $desloc = $null; $mv = 0
+    foreach ($d in $votos.Keys) { if ($votos[$d] -gt $mv) { $mv = $votos[$d]; $desloc = $d } }
+    if ($mv -lt 5) {
+      # No fim da lista a grade encosta a ultima linha na borda de baixo e sai do passo de 25 px a partir de y0:
+      # procura o deslocamento vertical (1-24 px) que realinha as linhas.
+      for ($dy = 1; $dy -lt 25; $dy++) {
+        $pt = Pagina $nova ($y0 + $dy); $ptc = SemUltima $pt; $vt2 = Votar $ptc
+        foreach ($d in $vt2.Keys) { if ($vt2[$d] -gt $mv) { $mv = $vt2[$d]; $desloc = $d; $pn = $pt; $pc = $ptc; $votos = $vt2 } }
+        if ($mv -ge 5) { break }
+      }
+    }
+    if ($null -eq $desloc -or $mv -lt 5) { $diag = (0..24 | ForEach-Object { $pt = Pagina $nova ($y0 + $_); $mm = 0; foreach ($q in $pt) { foreach ($a2 in $acum) { if ($a2.h -eq $q.h) { $mm++; break } } }; "$($_):$($pt.Count):$mm" }) -join " "; $pgIg = 0; foreach ($q in $pn) { foreach ($a2 in $pg) { if ($a2.h -eq $q.h) { $pgIg++; break } } }; $cores = (247, 260, 272, 285, 297, 600, 900, 990, 1000, 1010 | ForEach-Object { $c = $nova.GetPixel(491, $_); "$($_)=$($c.R),$($c.G),$($c.B)" }) -join " "; Log "debug pagina=$paginas diag=$diag pn_vs_pg=$pgIg cores=$cores"; Log "debug sem_juncao votos=$(($votos.GetEnumerator() | ForEach-Object { "$($_.Key):$($_.Value)" }) -join ',')"; $quebrou = $true; break }
+    $k = $acum.Count - $desloc   # linhas da tela nova que ja estao no acumulado
+    if ($k -ge $pc.Count) { [void]$acum.Add($pn[$pn.Count - 1]); $cheia = $false; break }   # nao andou: fim da lista
+    for ($i = $k; $i -lt $pc.Count; $i++) { [void]$acum.Add($pc[$i]) }
+    $pg = $pn; $paginas++
+  }
+  Roda (-60)   # volta ao topo para a proxima leitura e para quem olhar a tela
+}
+
 $linhas = New-Object System.Collections.ArrayList
 $xsHora = New-Object System.Collections.ArrayList
 $n = 0
-foreach ($f in $faixas) {
-  $n++
+foreach ($item in $acum) {
+  $n++; $f = $item.f; $tela = $item.bm
   $rc = New-Object System.Drawing.Rectangle $gx, $f[0], $gw, 25
   $data = $null; $hora = ''; $lido = $false; $via = ''; $tents = New-Object System.Collections.ArrayList
   foreach ($tent in @(@(160, 3, 'bin160'), @(110, 3, 'bin110'), @(220, 4, 'bin220'), @(60, 3, 'bin60'), @(250, 3, 'bin250'), @(160, 4, 'bin160x4'), @(110, 2, 'bin110x2'))) {
@@ -182,19 +258,14 @@ if ($colHora) {
     if (-not $l.hora) { $l.via = 'falhou: ' + ($vistos -join ' / ') }
   }
 }
-$alturaTela = $tela.Height
-$tela.Dispose()
+foreach ($bm in $telas) { $bm.Dispose() }
 Remove-Item "$saida\linha.png" -ErrorAction SilentlyContinue
-# Lista "cheia": a ultima linha encosta no fim da area visivel, pode haver exame abaixo (sem rolagem ainda).
-# Nesse caso o Sigma nao marca saida de ninguem nesta leitura.
-$cheia = $false
-if ($faixas.Count -gt 0) { $ult = $faixas[$faixas.Count - 1][0]; $cheia = ($ult + 25) -ge ($alturaTela - 90) }
 $envio = @($linhas | Where-Object { $_.hora } | ForEach-Object { @{ data = $_.data; hora = $_.hora; origem = $_.origem } })
 $detalhe = @{
-  atualizou = $atualizou; versao = $versao; faixas = $faixas.Count; sem_hora = @($linhas | Where-Object { -not $_.hora }).Count
+  atualizou = $atualizou; versao = $versao; faixas = $acum.Count; paginas = $paginas; quebrou = $quebrou; sem_hora = @($linhas | Where-Object { -not $_.hora }).Count
   precisao_minuto = @($linhas | Where-Object { $_.via -eq 'minuto' }).Count; sem_data = @($linhas | Where-Object { -not $_.data }).Count
   duracao_ms = [int]((Get-Date) - $inicio).TotalMilliseconds
 }
-$status = if ($faixas.Count -eq 0) { 'sem_grade' } else { 'ok' }
+$status = if ($acum.Count -eq 0) { 'sem_grade' } else { 'ok' }
 $res = Enviar @{ unidade = "marieta"; lida_em = $lidaEm; status = $status; cheia = $cheia; linhas = $envio; detalhe = $detalhe }
-Log "$status atualizou=$atualizou faixas=$($faixas.Count) enviadas=$($envio.Count) sem_hora=$($detalhe.sem_hora) cheia=$cheia $($detalhe.duracao_ms)ms -> $res"
+Log "$status atualizou=$atualizou paginas=$paginas quebrou=$quebrou faixas=$($acum.Count) enviadas=$($envio.Count) sem_hora=$($detalhe.sem_hora) cheia=$cheia $($detalhe.duracao_ms)ms -> $res"
