@@ -137,4 +137,4 @@ verify_jwt = true
 verify_jwt = false
 
 [functions.sla-alertas]
-verify_jwt = true
+verify_jwt = false

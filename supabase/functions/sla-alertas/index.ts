@@ -264,6 +264,7 @@ function motivoQueda(ultima: { status: string; detalhe: any; lida_em: string } |
   const m = ultima.detalhe?.motivo;
   if (m === "pacs_fechado") return "O Vue PACS está fechado na estação.";
   if (m === "tela_indisponivel") return "A tela da estação está bloqueada ou a sessão do usuário caiu.";
+  if (m === "vpn_desconectada") return "A VPN do hospital (Sophos) caiu: o PACS não alcança o servidor. Alguém precisa reconectar a VPN na estação.";
   if (ultima.status === "sem_grade") return "O PACS está aberto, mas a lista não aparece: outra janela por cima, outra pasta ou a VPN caiu.";
   return `Última leitura com status "${ultima.status}".`;
 }
@@ -294,7 +295,9 @@ const hora = (iso: string | null) => iso
 async function checarColetor(admin: any, unidades = UNIDADES) {
   const res: unknown[] = [];
   for (const unidade of unidades) {
-    const { data: ok } = await admin.from("sla_leituras").select("lida_em").eq("unidade", unidade).eq("status", "ok")
+    // Leitura "viva": ok, ou lista vazia com o servidor do PACS respondendo (fila zerada de verdade, ex.: madrugada).
+    const { data: ok } = await admin.from("sla_leituras").select("lida_em").eq("unidade", unidade)
+      .or("status.eq.ok,detalhe->>motivo.eq.lista_vazia")
       .order("lida_em", { ascending: false }).limit(1).maybeSingle();
     const { data: ultima } = await admin.from("sla_leituras").select("lida_em, status, detalhe").eq("unidade", unidade)
       .order("lida_em", { ascending: false }).limit(1).maybeSingle();
@@ -324,8 +327,21 @@ async function checarColetor(admin: any, unidades = UNIDADES) {
   return res;
 }
 
+// Quem chama: o cron (JWT service_role do Vault) e o chakra-webhook (SUPABASE_SERVICE_ROLE_KEY, que não é JWT e o
+// gateway recusava com 401 — o clique em "Assumir laudo" falhou assim em 12/11). Por isso verify_jwt = false e a
+// checagem é aqui: chave igual à do ambiente, ou JWT service_role confirmado por uma leitura que só ele consegue.
+async function autorizado(auth: string) {
+  const chave = auth.replace(/^Bearer\s+/i, "").trim();
+  if (!chave) return false;
+  if (chave === (Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "").trim()) return true;
+  if (!ehServiceRole(auth)) return false;
+  const { error } = await createClient(Deno.env.get("SUPABASE_URL")!, chave, { auth: { persistSession: false } })
+    .from("integracao_segredos").select("nome").limit(1);
+  return !error;
+}
+
 Deno.serve(async (req) => {
-  if (!ehServiceRole(req.headers.get("Authorization") || "")) return json({ ok: false, error: "sem_permissao" }, 401);
+  if (!(await autorizado(req.headers.get("Authorization") || ""))) return json({ ok: false, error: "sem_permissao" }, 401);
   const body = await req.json().catch(() => ({}));
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   try {

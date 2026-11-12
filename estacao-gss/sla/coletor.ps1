@@ -7,7 +7,7 @@
 $base = "C:\ProgramData\ssh-tunel"
 $saida = "$base\captura"
 $url = "https://zupsbgtoeoixfokzkjro.supabase.co/functions/v1/sla-coletor"
-$versao = "coletor-v3"
+$versao = "coletor-v4"
 $inicio = Get-Date
 New-Item -ItemType Directory -Force $saida | Out-Null
 function Log($msg) {
@@ -267,5 +267,12 @@ $detalhe = @{
   duracao_ms = [int]((Get-Date) - $inicio).TotalMilliseconds
 }
 $status = if ($acum.Count -eq 0) { 'sem_grade' } else { 'ok' }
+# Lista vazia: testa o servidor do PACS (pela VPN). Em 12/11 a VPN do Sophos caiu a tarde e a grade ficou vazia;
+# o motivo exato vai no alerta. TcpClient com 3 s (Test-NetConnection demora ~20 s quando falha).
+if ($status -eq 'sem_grade') {
+  $vpnOk = $false
+  try { $tc = New-Object System.Net.Sockets.TcpClient; $vpnOk = $tc.ConnectAsync("192.168.0.90", 2104).Wait(3000) -and $tc.Connected; $tc.Close() } catch { $vpnOk = $false }
+  $detalhe.motivo = if ($vpnOk) { 'lista_vazia' } else { 'vpn_desconectada' }
+}
 $res = Enviar @{ unidade = "marieta"; lida_em = $lidaEm; status = $status; cheia = $cheia; linhas = $envio; detalhe = $detalhe }
-Log "$status atualizou=$atualizou paginas=$paginas quebrou=$quebrou faixas=$($acum.Count) enviadas=$($envio.Count) sem_hora=$($detalhe.sem_hora) cheia=$cheia $($detalhe.duracao_ms)ms -> $res"
+Log "$status $($detalhe.motivo) atualizou=$atualizou paginas=$paginas quebrou=$quebrou faixas=$($acum.Count) enviadas=$($envio.Count) sem_hora=$($detalhe.sem_hora) cheia=$cheia $($detalhe.duracao_ms)ms -> $res"
