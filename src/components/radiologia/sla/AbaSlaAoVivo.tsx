@@ -97,7 +97,7 @@ export function AbaSlaAoVivo() {
       <Card>
         <CardContent className="p-0">
           <div className="hidden grid-cols-[96px_150px_minmax(180px,1fr)_minmax(200px,1.2fr)_96px] gap-3 border-b px-4 py-2 text-xs font-medium text-muted-foreground xl:grid">
-            <span>Origem</span><span>Exame</span><span>Prazo</span><span>Situação</span><span />
+            <span>Origem</span><span>Paciente e exame</span><span>Prazo</span><span>Situação</span><span />
           </div>
           {fila.isLoading && <div className="space-y-2 p-4">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-10 w-full" />)}</div>}
           {fila.error && <p className="p-4 text-sm text-red-700">Não deu para carregar a fila: {(fila.error as Error).message}</p>}
@@ -110,11 +110,15 @@ export function AbaSlaAoVivo() {
           {visiveis.map(({ e, s }) => {
             const sit = situacao(e, alertas);
             return (
-              <div key={e.id} className="grid grid-cols-[96px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 border-b px-4 py-2.5 text-sm last:border-b-0 xl:grid-cols-[96px_150px_minmax(180px,1fr)_minmax(200px,1.2fr)_96px]">
+              <div key={e.id} className="grid grid-cols-[96px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 border-b px-4 py-2.5 text-sm last:border-b-0 xl:grid-cols-[96px_minmax(220px,1.4fr)_minmax(170px,1fr)_minmax(190px,1fr)_80px]">
                 <OrigemSelo origem={e.origem} />
-                <span className="font-medium tabular-nums">
-                  {ehHoje(e.inicio_em) ? `Exame das ${horaCurta(e.inicio_em)}` : `Exame de ${diaHora(e.inicio_em)}`}
-                </span>
+                {/* nome do paciente (lido do PACS; apagado quando o exame sai da fila) + estudo e hora */}
+                <div className="min-w-0">
+                  <p className="truncate font-medium" title={e.paciente ?? undefined}>{e.paciente || "Paciente não lido"}</p>
+                  <p className="truncate text-xs text-muted-foreground tabular-nums" title={e.estudo ?? undefined}>
+                    {e.estudo ? `${e.estudo} · ` : ""}{ehHoje(e.inicio_em) ? `das ${horaCurta(e.inicio_em)}` : diaHora(e.inicio_em)}
+                  </p>
+                </div>
                 {/* abaixo de xl: linha 1 = origem, exame, prazo; linha 2 = situação e Abrir */}
                 <div className="flex items-center justify-end gap-2 xl:justify-start">
                   <div className="h-1.5 w-20 shrink-0 overflow-hidden rounded bg-muted">

@@ -30,10 +30,11 @@ Deno.serve(async (req) => {
 
   const { data: al } = await admin.from("sla_alertas").select("id, exame_id, destino_nome, tipo, status").eq("id", alertaId).maybeSingle();
   if (!al) return xml(`<Hangup/>`);
-  const { data: ex } = await admin.from("sla_exames").select("id, origem, inicio_em, vence_em, assumido_em, unidade").eq("id", al.exame_id).maybeSingle();
+  const { data: ex } = await admin.from("sla_exames").select("id, origem, inicio_em, vence_em, assumido_em, unidade, paciente, estudo").eq("id", al.exame_id).maybeSingle();
   const atrasoMin = ex ? Math.max(0, Math.round((Date.now() - new Date(ex.vence_em).getTime()) / 60000)) : 0;
   const texto = ex
-    ? `Atenção, plantão da radiologia. Alerta de prazo de laudo da G S S. Exame do ${ORIGEM[ex.origem] ?? ex.origem}, das ${hora(ex.inicio_em)}, `
+    ? `Atenção, plantão da radiologia. Alerta de prazo de laudo da G S S. Exame do ${ORIGEM[ex.origem] ?? ex.origem}, `
+      + (ex.paciente ? `paciente ${ex.paciente}, ${ex.estudo ? `${ex.estudo}, ` : ""}` : "") + `das ${hora(ex.inicio_em)}, `
       + (atrasoMin > 0 ? `passou do prazo há ${atrasoMin} minutos. ` : `está perto de vencer. `) + `Confira o PACS.`
     : "Atenção, plantão da radiologia. Alerta de prazo de laudo da G S S. Confira o PACS.";
   const qs = (p: string) => esc(`${BASE}?a=${alertaId}&t=${u.searchParams.get("t")}&p=${p}`);

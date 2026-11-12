@@ -47,9 +47,9 @@ export function ExameSlaDialog({ exame, alertas, onClose, agora }: { exame: Exam
     <Dialog open onOpenChange={(o) => { if (!o) { setTexto(""); onClose(); } }}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><OrigemSelo origem={exame.origem} /> Exame {quando}</DialogTitle>
+          <DialogTitle className="flex items-center gap-2"><OrigemSelo origem={exame.origem} /> <span className="min-w-0 truncate">{exame.paciente || `Exame ${quando}`}</span></DialogTitle>
           <DialogDescription>
-            {ORIGEM[exame.origem].nome} · prazo até {diaHora(exame.vence_em)} · <span className={s.estado === "vencido" ? "font-semibold text-red-700" : ""}>{textoPrazo(s.faltaMin)}</span>
+            {exame.estudo ? `${exame.estudo} · ` : ""}{exame.paciente ? `exame ${quando} · ` : ""}{ORIGEM[exame.origem].nome} · prazo até {diaHora(exame.vence_em)} · <span className={s.estado === "vencido" ? "font-semibold text-red-700" : ""}>{textoPrazo(s.faltaMin)}</span>
             {exame.precisao === "minuto" && " · hora lida sem os segundos"}
           </DialogDescription>
         </DialogHeader>

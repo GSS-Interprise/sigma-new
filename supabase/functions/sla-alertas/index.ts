@@ -30,6 +30,19 @@ const MODELOS = [
     exemplo: ["Pronto Socorro", "Hospital Marieta", "08:22", "15 min"],
     variaveis: { "1": "Origem", "2": "Unidade", "3": "Hora do exame", "4": "Tempo de atraso" },
   },
+  // v2 (12/11): com nome do paciente e estudo (decisão do Raul, pedido do Wagner). Usado quando aprovado; senão, v1.
+  {
+    nome: "gss_sla_laudo_prazo_v2",
+    corpo: "Alerta de SLA de laudo - {{1}}, {{2}}: paciente {{3}}, {{4}}, exame das {{5}}, vence em {{6}}. Confira o PACS e toque em Assumir laudo para parar os avisos.",
+    exemplo: ["Pronto Socorro", "Hospital Marieta", "Maria Silva", "TC Cranio", "08:22", "20 min"],
+    variaveis: { "1": "Origem", "2": "Unidade", "3": "Paciente", "4": "Estudo", "5": "Hora do exame", "6": "Tempo restante" },
+  },
+  {
+    nome: "gss_sla_laudo_vencido_v2",
+    corpo: "SLA de laudo vencido - {{1}}, {{2}}: paciente {{3}}, {{4}}, exame das {{5}}, passou do prazo ha {{6}} e ninguem assumiu o laudo. Confira o PACS e toque em Assumir laudo.",
+    exemplo: ["Pronto Socorro", "Hospital Marieta", "Maria Silva", "TC Cranio", "08:22", "15 min"],
+    variaveis: { "1": "Origem", "2": "Unidade", "3": "Paciente", "4": "Estudo", "5": "Hora do exame", "6": "Tempo de atraso" },
+  },
 ];
 
 async function remetente(admin: any) {
@@ -58,10 +71,11 @@ async function chakraGss(path: string, init: RequestInit = {}) {
   return corpo;
 }
 
-async function criarTemplates(admin: any, dryRun: boolean) {
+async function criarTemplates(admin: any, dryRun: boolean, nomes?: string[]) {
   const sender = await remetente(admin);
   const out: unknown[] = [];
-  for (const m of MODELOS) {
+  // nomes: cria só estes (ex.: os v2 num número que já tem os v1)
+  for (const m of MODELOS.filter((x) => !nomes?.length || nomes.includes(x.nome))) {
     const componentes = [
       { type: "BODY", text: m.corpo, example: { body_text: [m.exemplo] } },
       { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: "Assumir laudo" }] },
@@ -168,6 +182,9 @@ async function checarExames(admin: any, forcar = false, unidades = UNIDADES) {
   const agora = new Date();
   const res: any[] = [];
   const emails: string[] = [];
+  const { data: v2 } = await admin.from("whatsapp_official_templates").select("friendly_name")
+    .in("friendly_name", ["gss_sla_laudo_prazo_v2", "gss_sla_laudo_vencido_v2"]).eq("approval_status", "approved");
+  const v2Aprovado = (v2 ?? []).length === 2;
   for (const unidade of unidades) {
     // Coletor parado = fila velha: o exame pode já ter sido laudado. Não alerta médico com dado velho
     // (a queda já tem o aviso próprio).
@@ -175,7 +192,7 @@ async function checarExames(admin: any, forcar = false, unidades = UNIDADES) {
     if (queda) { res.push({ unidade, pulado: "coletor_parado" }); continue; }
 
     const { data: exames } = await admin.from("sla_exames")
-      .select("id, origem, inicio_em, vence_em")
+      .select("id, origem, inicio_em, vence_em, paciente, estudo")
       .eq("unidade", unidade).is("saiu_em", null).is("ausente_em", null).is("assumido_em", null).is("silenciado_em", null)
       .lte("inicio_em", agora.toISOString());
     if (!exames?.length) { res.push({ unidade, exames: 0 }); continue; }
@@ -193,9 +210,13 @@ async function checarExames(admin: any, forcar = false, unidades = UNIDADES) {
       if (!tipo || feito.has(`${e.id}:${tipo}`)) continue;
       const origem = ORIGEM[e.origem] ?? e.origem, hh = horaExame(e.inicio_em), un = NOME_UNIDADE[unidade] ?? unidade;
       const tempo = tipo === "vencido" ? duracao((agora.getTime() - fim) / 60000) : duracao((fim - agora.getTime()) / 60000);
-      const modelo = tipo === "vencido" ? "gss_sla_laudo_vencido_v1" : "gss_sla_laudo_prazo_v1";
+      const comNome = v2Aprovado && e.paciente;
+      const modelo = `gss_sla_laudo_${tipo === "vencido" ? "vencido" : "prazo"}_${comNome ? "v2" : "v1"}`;
+      const params = comNome
+        ? [origem, un, String(e.paciente).slice(0, 60), String(e.estudo || "exame").slice(0, 60), hh, tempo]
+        : [origem, un, hh, tempo];
       const destinos = tipo === "vencido" ? [...plantonistas, ...coordenadores] : plantonistas;
-      const linha = `${origem}, exame das ${hh}: ${tipo === "vencido" ? `vencido há ${tempo}` : `vence em ${tempo}`}`;
+      const linha = `${origem}${e.paciente ? `, ${e.paciente}${e.estudo ? ` (${e.estudo})` : ""}` : ""}, exame das ${hh}: ${tipo === "vencido" ? `vencido há ${tempo}` : `vence em ${tempo}`}`;
 
       if (!destinos.length) {
         // Sem ninguém na escala neste horário: registra e avisa por e-mail (uma vez por exame e tipo).
@@ -209,7 +230,7 @@ async function checarExames(admin: any, forcar = false, unidades = UNIDADES) {
           exame_id: e.id, tipo, papel: d.papel, plantao_id: d.id, destino_nome: d.nome, destino: d.telefone, canal: "whatsapp",
         }).select("id").single();
         try {
-          const wamid = await enviarModelo(sender, d.telefone, modelo, [origem, un, hh, tempo], al.id);
+          const wamid = await enviarModelo(sender, d.telefone, modelo, params, al.id);
           await admin.from("sla_alertas").update({ status: "enviado", mensagem_id: wamid }).eq("id", al.id);
           res.push({ exame: e.id, tipo, para: d.nome, ok: true });
         } catch (err) {
@@ -410,7 +431,7 @@ Deno.serve(async (req) => {
     if (body.acao === "exames") return json({ ok: true, exames: await checarExames(admin, !!body.forcar, Array.isArray(body.unidades) ? body.unidades.map(String) : UNIDADES) });
     if (body.acao === "assumir") return json({ ok: true, ...(await assumir(admin, String(body.telefone || ""), String(body.payload || ""))) });
     if (body.acao === "status_templates") return json({ ok: true, modelos: await statusTemplates(admin) });
-    if (body.acao === "criar_templates") return json({ ok: true, modelos: await criarTemplates(admin, !!body.dry_run) });
+    if (body.acao === "criar_templates") return json({ ok: true, modelos: await criarTemplates(admin, !!body.dry_run, Array.isArray(body.nomes) ? body.nomes.map(String) : undefined) });
     // body.unidades só para teste manual (ex.: ["teste"]); o cron não manda.
     if (body.acao === "coletor") return json({ ok: true, coletor: await checarColetor(admin, Array.isArray(body.unidades) ? body.unidades.map(String) : UNIDADES) });
     return json({ ok: false, error: "acao" }, 400);

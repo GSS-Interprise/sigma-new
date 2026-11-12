@@ -1,5 +1,6 @@
 // Porta do coletor de SLA de laudos: a estação da GSS lê a fila "Não lido" do Vue PACS por OCR e manda aqui
-// só data, hora e origem de cada linha (nome de paciente nunca sai da estação).
+// data, hora, origem, nome do paciente e estudo de cada linha (nome incluído por decisão do Raul em 12/11; o banco
+// apaga o nome quando o exame sai da fila).
 // A estação se identifica com x-sla-key (secret SLA_COLETOR_KEY); a service role fica só aqui.
 //   { unidade, lida_em, status: "ok"|"sem_grade"|"erro", cheia, linhas: [{ data, hora, origem }], detalhe }
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
@@ -24,7 +25,7 @@ serve(async (req) => {
     return json({ ok: false, error: "lida_em" }, 400); // relógio da estação errado distorce o SLA
   }
 
-  // Só os 3 campos passam, mesmo que a estação mande mais (garante que nome não entra no banco por engano).
+  // Só estes campos passam, mesmo que a estação mande mais.
   // Data lida pelo OCR só vale se existir e estiver entre 10 dias atrás e amanhã; senão o banco deduz pelo relógio.
   const dataValida = (v: unknown): string | null => {
     if (typeof v !== "string" || !/^\d{2}\/\d{2}\/\d{4}$/.test(v)) return null;
@@ -35,7 +36,10 @@ serve(async (req) => {
     return dias > 1.5 || dias < -10 ? null : iso;
   };
   const linhas = (Array.isArray(body.linhas) ? body.linhas : []).slice(0, 300).map((l: Record<string, unknown>) => {
-    return { data: dataValida(l?.data), hora: String(l?.hora || ""), origem: String(l?.origem || "").toLowerCase() };
+    return {
+      data: dataValida(l?.data), hora: String(l?.hora || ""), origem: String(l?.origem || "").toLowerCase(),
+      paciente: String(l?.paciente || "").slice(0, 120) || null, estudo: String(l?.estudo || "").slice(0, 120) || null,
+    };
   }).filter((l: { hora: string; origem: string }) => /^\d{2}:\d{2}(:\d{2})?$/.test(l.hora) && ORIGENS.has(l.origem));
 
   const svc = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);

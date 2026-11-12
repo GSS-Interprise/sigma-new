@@ -25,6 +25,8 @@ export type Exame = {
   assumido_por: string | null;
   assumido_via: "whatsapp" | "sigma" | null;
   silenciado_em: string | null;
+  paciente: string | null;
+  estudo: string | null;
 };
 export type Alerta = {
   id: string;
@@ -64,7 +66,7 @@ export function useFila() {
     refetchInterval: 30_000,
     queryFn: async () => {
       const { data, error } = await db.from("sla_exames")
-        .select("id, origem, inicio_em, vence_em, precisao, visto_primeiro_em, assumido_em, assumido_por, assumido_via, silenciado_em")
+        .select("id, origem, inicio_em, vence_em, precisao, visto_primeiro_em, assumido_em, assumido_por, assumido_via, silenciado_em, paciente, estudo")
         .eq("unidade", UNIDADE).is("saiu_em", null).is("ausente_em", null).order("vence_em");
       if (error) throw error;
       return (data ?? []) as Exame[];
