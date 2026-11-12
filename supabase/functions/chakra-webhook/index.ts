@@ -1270,6 +1270,14 @@ serve(async (request) => {
               body: JSON.stringify({ acao: "responder", telefone: contactPhone, payload: messageData.buttonReply.id }),
             });
             if (!approvalResponse.ok) throw new Error(`aprovacao_financeiro_${approvalResponse.status}`);
+          } else if (!messageKey.fromMe && String(messageData.buttonReply?.id || "").startsWith("sla_assumir:")) {
+            // Médico tocou em "Assumir laudo" no alerta de SLA da radiologia: para os avisos daquele exame.
+            const slaResponse = await fetch(`${supabaseUrl}/functions/v1/sla-alertas`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${serviceRole}`, apikey: serviceRole, "Content-Type": "application/json" },
+              body: JSON.stringify({ acao: "assumir", telefone: contactPhone, payload: messageData.buttonReply.id }),
+            });
+            if (!slaResponse.ok) throw new Error(`sla_assumir_${slaResponse.status}`);
           } else if (buttonIntent === "outras_sim") {
             // Fica no cadastro para futuras vagas; nada a registrar nem a mandar para a IA.
             await replyToContact(chakraTextMessage(

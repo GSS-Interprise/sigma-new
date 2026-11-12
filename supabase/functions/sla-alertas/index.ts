@@ -1,7 +1,9 @@
-// Alertas do SLA de laudos (radiologia GSS). Cron a cada 5 min com {"acao": "coletor"}; só service_role chama.
-//   criar_templates — envia à Meta os modelos de alerta (80% e vencido), com o botão "Assumir laudo"
-//   coletor — sem leitura "ok" da estação há mais de 15 min: abre uma queda e avisa por e-mail; quando volta, fecha e avisa.
-// Os alertas para o médico (80% / 100% do prazo) entram aqui depois (docs/arquitetura/sla-laudos-radiologia.md).
+// Alertas do SLA de laudos (radiologia GSS). Plano: docs/arquitetura/sla-laudos-radiologia.md. Só service_role chama.
+//   coletor (cron 5 min) — sem leitura "ok" da estação há mais de 15 min: abre uma queda e avisa por e-mail; quando volta, avisa.
+//   exames  (cron 2 min) — 80% do prazo: WhatsApp ao plantonista com "Assumir laudo"; 100% sem assumir: de novo ao
+//                          plantonista + coordenador (WhatsApp e e-mail). Só roda com config sla_alertas_ativo = "true".
+//   assumir              — clique no botão (chamado pelo chakra-webhook): marca o exame como assumido e para os avisos.
+//   criar_templates / status_templates — modelos na Meta.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { chakraApi, unwrapChakraPayload } from "../_shared/chakra.ts";
 
@@ -109,6 +111,142 @@ async function statusTemplates(admin: any) {
   return out;
 }
 
+// ── Motor de alertas ao médico ─────────────────────────────────────────────
+// Envio pela conta Chakra GSS, plugin d9a6180c (BM GSS, inclui a Amni): é a conta em que os modelos foram criados.
+const PLUGIN_GSS = "d9a6180c-4ae4-4ed4-9c16-401b781e1ee7";
+const ORIGEM: Record<string, string> = { ps: "Pronto Socorro", internado: "Internado", externo: "Externo" };
+const NOME_UNIDADE: Record<string, string> = { marieta: "Hospital Marieta" };
+const dig = (v: unknown) => String(v ?? "").replace(/\D/g, "");
+// Mesmo número com ou sem o 9 e o 55: compara DDD + 8 últimos dígitos.
+const mesmoNumero = (a: string, b: string) => {
+  const n = (x: string) => { const d = dig(x).replace(/^55/, ""); return d.slice(0, 2) + d.slice(-8); };
+  return n(a) === n(b);
+};
+const duracao = (min: number) => {
+  const m = Math.max(1, Math.round(min));
+  return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ""}`;
+};
+const horaExame = (iso: string) => new Date(iso).toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" });
+
+async function enviarModelo(sender: any, para: string, modelo: string, params: string[], alertaId: string) {
+  const resp = await chakraGss(`/v1/ext/plugin/whatsapp/${PLUGIN_GSS}/api/v24.0/${sender.chakra_phone_number_id}/messages`, {
+    method: "POST",
+    body: JSON.stringify({
+      messaging_product: "whatsapp", recipient_type: "individual", to: para, type: "template",
+      template: {
+        name: modelo, language: { policy: "deterministic", code: "pt_BR" },
+        components: [
+          { type: "body", parameters: params.map((t) => ({ type: "text", text: t })) },
+          // o payload identifica o alerta no clique (o texto do botão é igual para todos)
+          { type: "button", sub_type: "quick_reply", index: "0", parameters: [{ type: "payload", payload: PAYLOAD_ASSUMIR + alertaId }] },
+        ],
+      },
+    }),
+  });
+  return JSON.stringify(resp).match(/wamid\.[A-Za-z0-9=_-]+/)?.[0] ?? null;
+}
+
+async function enviarTexto(sender: any, para: string, texto: string) {
+  try {
+    await chakraGss(`/v1/ext/plugin/whatsapp/${PLUGIN_GSS}/api/v24.0/${sender.chakra_phone_number_id}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ messaging_product: "whatsapp", recipient_type: "individual", to: para, type: "text", text: { body: texto } }),
+    });
+  } catch (e) { console.warn("[sla-alertas] texto", e); }
+}
+
+async function config(admin: any, nome: string) {
+  const { data } = await admin.from("config_lista_items").select("valor").eq("campo_nome", nome).maybeSingle();
+  return String(data?.valor ?? "").trim();
+}
+
+async function checarExames(admin: any, forcar = false) {
+  if (!forcar && (await config(admin, "sla_alertas_ativo")) !== "true") return { pulado: "sla_alertas_ativo desligado" };
+  const sender = await remetente(admin);
+  const agora = new Date();
+  const res: any[] = [];
+  const emails: string[] = [];
+  for (const unidade of UNIDADES) {
+    // Coletor parado = fila velha: o exame pode já ter sido laudado. Não alerta médico com dado velho
+    // (a queda já tem o aviso próprio).
+    const { data: queda } = await admin.from("sla_coletor_quedas").select("id").eq("unidade", unidade).is("fechada_em", null).maybeSingle();
+    if (queda) { res.push({ unidade, pulado: "coletor_parado" }); continue; }
+
+    const { data: exames } = await admin.from("sla_exames")
+      .select("id, origem, inicio_em, vence_em")
+      .eq("unidade", unidade).is("saiu_em", null).is("ausente_em", null).is("assumido_em", null).is("silenciado_em", null)
+      .lte("inicio_em", agora.toISOString());
+    if (!exames?.length) { res.push({ unidade, exames: 0 }); continue; }
+    const { data: ja } = await admin.from("sla_alertas").select("exame_id, tipo").in("exame_id", exames.map((e: any) => e.id));
+    const feito = new Set((ja ?? []).map((a: any) => `${a.exame_id}:${a.tipo}`));
+    const { data: escala } = await admin.from("sla_plantao").select("id, papel, nome, telefone, email")
+      .eq("unidade", unidade).lte("inicio", agora.toISOString()).gt("fim", agora.toISOString());
+    const plantonistas = (escala ?? []).filter((p: any) => p.papel === "plantonista");
+    const coordenadores = (escala ?? []).filter((p: any) => p.papel === "coordenador");
+
+    for (const e of exames) {
+      const ini = new Date(e.inicio_em).getTime(), fim = new Date(e.vence_em).getTime();
+      const prazo = fim - ini, gasto = agora.getTime() - ini;
+      const tipo = gasto >= prazo ? "vencido" : gasto >= prazo * 0.8 ? "prazo" : null;
+      if (!tipo || feito.has(`${e.id}:${tipo}`)) continue;
+      const origem = ORIGEM[e.origem] ?? e.origem, hh = horaExame(e.inicio_em), un = NOME_UNIDADE[unidade] ?? unidade;
+      const tempo = tipo === "vencido" ? duracao((agora.getTime() - fim) / 60000) : duracao((fim - agora.getTime()) / 60000);
+      const modelo = tipo === "vencido" ? "gss_sla_laudo_vencido_v1" : "gss_sla_laudo_prazo_v1";
+      const destinos = tipo === "vencido" ? [...plantonistas, ...coordenadores] : plantonistas;
+      const linha = `${origem}, exame das ${hh}: ${tipo === "vencido" ? `vencido há ${tempo}` : `vence em ${tempo}`}`;
+
+      if (!destinos.length) {
+        // Sem ninguém na escala neste horário: registra e avisa por e-mail (uma vez por exame e tipo).
+        await admin.from("sla_alertas").insert({ exame_id: e.id, tipo, papel: "sem_escala", canal: "email", status: "enviado", destino_nome: "Coordenação (e-mail)" });
+        emails.push(`${linha}. Ninguém na escala de plantão agora.`);
+        res.push({ exame: e.id, tipo, sem_escala: true });
+        continue;
+      }
+      for (const d of destinos) {
+        const { data: al } = await admin.from("sla_alertas").insert({
+          exame_id: e.id, tipo, papel: d.papel, plantao_id: d.id, destino_nome: d.nome, destino: d.telefone, canal: "whatsapp",
+        }).select("id").single();
+        try {
+          const wamid = await enviarModelo(sender, d.telefone, modelo, [origem, un, hh, tempo], al.id);
+          await admin.from("sla_alertas").update({ status: "enviado", mensagem_id: wamid }).eq("id", al.id);
+          res.push({ exame: e.id, tipo, para: d.nome, ok: true });
+        } catch (err) {
+          const msg = String((err as Error).message || err).slice(0, 300);
+          await admin.from("sla_alertas").update({ status: "falhou", erro: msg }).eq("id", al.id);
+          emails.push(`${linha}. O WhatsApp para ${d.nome} falhou: ${msg}`);
+          res.push({ exame: e.id, tipo, para: d.nome, ok: false, erro: msg });
+        }
+      }
+      if (tipo === "vencido") emails.push(`${linha}. Ninguém assumiu; plantonista e coordenador avisados por WhatsApp.`);
+    }
+  }
+  if (emails.length) {
+    await emailar(`SLA de laudos: ${emails.length} aviso(s)`, emails.join("\n") + "\n\nAcompanhe em Sigma › Radiologia › SLA ao vivo.");
+  }
+  return res;
+}
+
+async function assumir(admin: any, telefone: string, payload: string) {
+  if (!payload.startsWith(PAYLOAD_ASSUMIR)) return { tratado: false };
+  const alertaId = payload.slice(PAYLOAD_ASSUMIR.length);
+  const { data: al } = await admin.from("sla_alertas").select("id, exame_id, destino, destino_nome").eq("id", alertaId).maybeSingle();
+  // o clique só vale do número para onde o alerta foi
+  if (!al || !al.destino || !mesmoNumero(al.destino, telefone)) return { tratado: false };
+  const sender = await remetente(admin);
+  const agora = new Date().toISOString();
+  await admin.from("sla_alertas").update({ status: "respondido", respondido_em: agora }).eq("id", al.id);
+  const { data: ex } = await admin.from("sla_exames").select("id, origem, inicio_em, assumido_em, assumido_por").eq("id", al.exame_id).maybeSingle();
+  if (!ex) return { tratado: true, exame: null };
+  const desc = `${ORIGEM[ex.origem] ?? ex.origem}, exame das ${horaExame(ex.inicio_em)}`;
+  if (ex.assumido_em) {
+    await enviarTexto(sender, dig(telefone), `Este exame (${desc}) ja tinha sido assumido${ex.assumido_por ? ` por ${ex.assumido_por}` : ""}. Os avisos dele ja estao parados.`);
+    return { tratado: true, repetido: true };
+  }
+  await admin.from("sla_exames").update({ assumido_em: agora, assumido_por: al.destino_nome, assumido_via: "whatsapp" }).eq("id", ex.id).is("assumido_em", null);
+  await enviarTexto(sender, dig(telefone), `Laudo assumido: ${desc}. Os avisos deste exame pararam. Obrigado!`);
+  return { tratado: true, assumido: true };
+}
+
 function ehServiceRole(auth: string) {
   try {
     const p = JSON.parse(atob(auth.replace(/^Bearer\s+/i, "").split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
@@ -191,6 +329,8 @@ Deno.serve(async (req) => {
   const body = await req.json().catch(() => ({}));
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   try {
+    if (body.acao === "exames") return json({ ok: true, exames: await checarExames(admin, !!body.forcar) });
+    if (body.acao === "assumir") return json({ ok: true, ...(await assumir(admin, String(body.telefone || ""), String(body.payload || ""))) });
     if (body.acao === "status_templates") return json({ ok: true, modelos: await statusTemplates(admin) });
     if (body.acao === "criar_templates") return json({ ok: true, modelos: await criarTemplates(admin, !!body.dry_run) });
     // body.unidades só para teste manual (ex.: ["teste"]); o cron não manda.
