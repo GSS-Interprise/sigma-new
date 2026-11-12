@@ -7,6 +7,7 @@
 //   ligar_teste { telefone } — ligação de teste com voz (Twilio), para conferir número de origem e áudio.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { chakraApi, unwrapChakraPayload } from "../_shared/chakra.ts";
+import { SLA_VOZ_URL, tokenAlerta } from "../_shared/sla.ts";
 
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { "Content-Type": "application/json" } });
 const UNIDADES = ["marieta"];
@@ -341,21 +342,26 @@ function comNove(t: string) {
   if (d.length === 10 && /^[6-9]$/.test(d[2])) d = d.slice(0, 2) + "9" + d.slice(2);
   return "55" + d;
 }
-async function ligar(admin: any, para: string, texto: string) {
+// O roteiro vem de sla-voz: detecção de máquina (caixa postal não conta) e "aperte 1 para assumir". O status final
+// da chamada volta por StatusCallback e fica no alerta (entregue, falhou com motivo, respondido).
+async function ligar(admin: any, para: string, alertaId: string) {
   const sid = Deno.env.get("TWILIO_ACCOUNT_SID") ?? "", tok = Deno.env.get("TWILIO_AUTH_TOKEN") ?? "";
   const de = await config(admin, "sla_twilio_from");
   if (!sid || !tok || !de) throw new Error("twilio_nao_configurado");
-  // Fala duas vezes: quem atende de madrugada costuma perder o começo.
-  const fala = `<Say language="pt-BR" voice="Polly.Camila">${esc(texto)}</Say><Pause length="1"/>`;
+  const base = `${SLA_VOZ_URL}?a=${alertaId}&t=${await tokenAlerta(alertaId)}`;
   const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Calls.json`, {
     method: "POST",
     headers: { Authorization: "Basic " + btoa(`${sid}:${tok}`), "Content-Type": "application/x-www-form-urlencoded" },
     // Celular antigo de 8 dígitos (como o WhatsApp guarda) não existe na rede de voz: ganha o 9. Em 12/11 a ligação
     // de teste para 55 54 8435-1512 falhou por isso.
-    body: new URLSearchParams({ To: `+${comNove(para)}`, From: de, Twiml: `<Response>${fala}${fala}</Response>`, Timeout: "30" }),
+    body: new URLSearchParams({
+      To: `+${comNove(para)}`, From: de, Timeout: "30", MachineDetection: "Enable",
+      Url: `${base}&p=inicio`, StatusCallback: `${base}&p=status`, StatusCallbackEvent: "completed",
+    }),
   });
   const b = await r.json();
   if (!r.ok) throw new Error(`twilio ${r.status}: ${b.message ?? JSON.stringify(b).slice(0, 200)}`);
+  await admin.from("sla_alertas").update({ status: "enviado", mensagem_id: b.sid }).eq("id", alertaId);
   return b.sid as string;
 }
 
@@ -386,9 +392,19 @@ Deno.serve(async (req) => {
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   try {
     if (body.acao === "ligar_teste") {
-      const callSid = await ligar(admin, String(body.telefone || ""),
-        "Atenção, plantão da radiologia. Este é um teste do alerta de prazo de laudos da G S S. Um exame do Pronto Socorro passou do prazo. Confira o PACS.");
-      return json({ ok: true, ligacao: callSid });
+      // Exame e alerta de teste na unidade "teste" (PS vencido há 15 min), para a ligação ter roteiro de verdade.
+      const agora = Date.now();
+      const { data: ex } = await admin.from("sla_exames").insert({
+        unidade: "teste", data_exame: new Date(agora).toISOString().slice(0, 10), hora_min: "00:00", ordem: Math.floor(Math.random() * 1e6),
+        origem: "ps", hora_exame: "00:00", inicio_em: new Date(agora - 135 * 60000).toISOString(), vence_em: new Date(agora - 15 * 60000).toISOString(),
+        visto_primeiro_em: new Date(agora).toISOString(), visto_ultimo_em: new Date(agora).toISOString(),
+      }).select("id").single();
+      if (!ex) throw new Error("exame de teste não criado");
+      const { data: al } = await admin.from("sla_alertas").insert({
+        exame_id: ex.id, tipo: "vencido", papel: "plantonista", destino_nome: String(body.nome || "Teste"), destino: dig(body.telefone), canal: "ligacao",
+      }).select("id").single();
+      if (!al) throw new Error("alerta de teste não criado");
+      return json({ ok: true, alerta: al.id, ligacao: await ligar(admin, String(body.telefone || ""), al.id) });
     }
     if (body.acao === "status_ligacao") return json({ ok: true, ...(await statusLigacao(String(body.sid || ""))) });
     if (body.acao === "exames") return json({ ok: true, exames: await checarExames(admin, !!body.forcar, Array.isArray(body.unidades) ? body.unidades.map(String) : UNIDADES) });
