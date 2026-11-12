@@ -129,3 +129,6 @@ verify_jwt = false
 
 [functions.chakra-diagnostico]
 verify_jwt = true
+
+[functions.whatsapp-monitor]
+verify_jwt = true
