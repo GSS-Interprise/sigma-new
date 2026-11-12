@@ -4,6 +4,7 @@
 //                          plantonista + coordenador (WhatsApp e e-mail). Só roda com config sla_alertas_ativo = "true".
 //   assumir              — clique no botão (chamado pelo chakra-webhook): marca o exame como assumido e para os avisos.
 //   criar_templates / status_templates — modelos na Meta.
+//   ligar_teste { telefone } — ligação de teste com voz (Twilio), para conferir número de origem e áudio.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { chakraApi, unwrapChakraPayload } from "../_shared/chakra.ts";
 
@@ -331,6 +332,41 @@ async function checarColetor(admin: any, unidades = UNIDADES) {
   return res;
 }
 
+// ── Ligação com voz (Twilio) ───────────────────────────────────────────────
+// Número de origem em config_lista_items.sla_twilio_from (12/11: +16592006031, EUA, enquanto o +55 não é aprovado;
+// cadastro regulatório BU647dee… em revisão). Credenciais: TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN (conta da GSS).
+const esc = (t: string) => t.replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&apos;" }[c]!));
+function comNove(t: string) {
+  let d = dig(t).replace(/^55/, "");
+  if (d.length === 10 && /^[6-9]$/.test(d[2])) d = d.slice(0, 2) + "9" + d.slice(2);
+  return "55" + d;
+}
+async function ligar(admin: any, para: string, texto: string) {
+  const sid = Deno.env.get("TWILIO_ACCOUNT_SID") ?? "", tok = Deno.env.get("TWILIO_AUTH_TOKEN") ?? "";
+  const de = await config(admin, "sla_twilio_from");
+  if (!sid || !tok || !de) throw new Error("twilio_nao_configurado");
+  // Fala duas vezes: quem atende de madrugada costuma perder o começo.
+  const fala = `<Say language="pt-BR" voice="Polly.Camila">${esc(texto)}</Say><Pause length="1"/>`;
+  const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Calls.json`, {
+    method: "POST",
+    headers: { Authorization: "Basic " + btoa(`${sid}:${tok}`), "Content-Type": "application/x-www-form-urlencoded" },
+    // Celular antigo de 8 dígitos (como o WhatsApp guarda) não existe na rede de voz: ganha o 9. Em 12/11 a ligação
+    // de teste para 55 54 8435-1512 falhou por isso.
+    body: new URLSearchParams({ To: `+${comNove(para)}`, From: de, Twiml: `<Response>${fala}${fala}</Response>`, Timeout: "30" }),
+  });
+  const b = await r.json();
+  if (!r.ok) throw new Error(`twilio ${r.status}: ${b.message ?? JSON.stringify(b).slice(0, 200)}`);
+  return b.sid as string;
+}
+
+async function statusLigacao(callSid: string) {
+  const sid = Deno.env.get("TWILIO_ACCOUNT_SID") ?? "", tok = Deno.env.get("TWILIO_AUTH_TOKEN") ?? "";
+  const b = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Calls/${callSid}.json`, {
+    headers: { Authorization: "Basic " + btoa(`${sid}:${tok}`) },
+  }).then((r) => r.json());
+  return { status: b.status, duracao: b.duration, de: b.from, para: b.to };
+}
+
 // Quem chama: o cron (JWT service_role do Vault) e o chakra-webhook (SUPABASE_SERVICE_ROLE_KEY, que não é JWT e o
 // gateway recusava com 401 — o clique em "Assumir laudo" falhou assim em 12/11). Por isso verify_jwt = false e a
 // checagem é aqui: chave igual à do ambiente, ou JWT service_role confirmado por uma leitura que só ele consegue.
@@ -349,6 +385,12 @@ Deno.serve(async (req) => {
   const body = await req.json().catch(() => ({}));
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   try {
+    if (body.acao === "ligar_teste") {
+      const callSid = await ligar(admin, String(body.telefone || ""),
+        "Atenção, plantão da radiologia. Este é um teste do alerta de prazo de laudos da G S S. Um exame do Pronto Socorro passou do prazo. Confira o PACS.");
+      return json({ ok: true, ligacao: callSid });
+    }
+    if (body.acao === "status_ligacao") return json({ ok: true, ...(await statusLigacao(String(body.sid || ""))) });
     if (body.acao === "exames") return json({ ok: true, exames: await checarExames(admin, !!body.forcar, Array.isArray(body.unidades) ? body.unidades.map(String) : UNIDADES) });
     if (body.acao === "assumir") return json({ ok: true, ...(await assumir(admin, String(body.telefone || ""), String(body.payload || ""))) });
     if (body.acao === "status_templates") return json({ ok: true, modelos: await statusTemplates(admin) });
