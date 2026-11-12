@@ -234,7 +234,11 @@ async function assumir(admin: any, telefone: string, payload: string) {
   if (!al || !al.destino || !mesmoNumero(al.destino, telefone)) return { tratado: false };
   const sender = await remetente(admin);
   const agora = new Date().toISOString();
-  await admin.from("sla_alertas").update({ status: "respondido", respondido_em: agora }).eq("id", al.id);
+  // O mesmo clique chega mais de uma vez (o número recebe webhook pelas duas contas Chakra; em 12/11 o médico
+  // recebeu "Laudo assumido" duas vezes). Só quem marca o alerta como respondido segue e confirma.
+  const { data: marcou } = await admin.from("sla_alertas").update({ status: "respondido", respondido_em: agora })
+    .eq("id", al.id).is("respondido_em", null).select("id");
+  if (!marcou?.length) return { tratado: true, repetido: true, duplicado: true };
   const { data: ex } = await admin.from("sla_exames").select("id, origem, inicio_em, assumido_em, assumido_por").eq("id", al.exame_id).maybeSingle();
   if (!ex) return { tratado: true, exame: null };
   const desc = `${ORIGEM[ex.origem] ?? ex.origem}, exame das ${horaExame(ex.inicio_em)}`;
