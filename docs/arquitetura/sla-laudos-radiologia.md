@@ -79,3 +79,24 @@ e avisa o radiologista de plantão antes do prazo vencer; se vencer, liga e sobe
 - AVC (30 min): como aparece na tela do PACS (pergunta ao Wagner).
 - Número Twilio com voz (Raul).
 - Coordenador da escada: definido na própria escala (papel `coordenador`).
+
+## Para entregar (mapa de 12/11, fim do dia)
+
+**Pronto e testado:** coletor do Marieta (fila inteira, ~100 exames, nome e estudo, VPN caída detectada), fila no
+banco com saída confiável, telas SLA ao vivo e Escala, motor de 80%/vencido, "Assumir laudo" pelo WhatsApp, ligação
+Twilio com detecção de caixa postal e "aperte 1", aviso de coletor parado, proposta (R$ 3.000, 4 PACS + 2 novos).
+
+**Falta (Marieta, para o piloto noturno):**
+1. Remetente do WhatsApp: escolher o número da GSS (não a Amni), criar os modelos v1 e v2 nele e esperar a Meta.
+2. Escada automática completa: ao vencer, ligar ao plantonista (2 tentativas) e, sem a tecla 1, ligar ao
+   coordenador; hoje o vencido manda WhatsApp e e-mail, e a ligação existe mas não está na escada.
+3. Escala do noturno preenchida (Wagner/Brenda) e avisos ligados na aba Escala.
+4. Reconexão automática da VPN (sccli do Sophos; falta usuário e senha da VPN).
+5. Estação 24 h: sem suspensão, no-break, teste depois de reiniciar (tarefa precisa da sessão do usuário aberta).
+6. Número +55 no Twilio: cadastro BU647dee… em revisão; comprar e trocar `sla_twilio_from` quando aprovar.
+7. AVC (30 min): como aparece na tela (Wagner).
+8. Indicadores do dia seguinte (tela ou e-mail às 7h).
+9. Acompanhar o primeiro plantão e medir acerto (horas, saídas, avisos).
+
+**Falta (outras unidades, já na proposta):** mapear Tijucas (Animati), CEPON e Mobilimed (web), e 2 PACS novos;
+cada um com acesso remoto à estação (túnel), VPN e a tela de pendências.
