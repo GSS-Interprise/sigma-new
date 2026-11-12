@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { LeadResumoRelacionamento } from "./LeadResumoRelacionamento";
 
 interface Props {
   leadId: string;
@@ -65,6 +66,7 @@ export function LeadTimelineUnificadoSection({ leadId, limit = 200 }: Props) {
   if (isLoading) {
     return (
       <div className="space-y-2">
+        <LeadResumoRelacionamento leadId={leadId} />
         {[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full" />)}
       </div>
     );
@@ -72,8 +74,9 @@ export function LeadTimelineUnificadoSection({ leadId, limit = 200 }: Props) {
 
   if (eventos.length === 0) {
     return (
-      <div className="text-center text-sm text-muted-foreground py-8">
-        Nenhum evento registrado para este lead ainda.
+      <div className="space-y-3">
+        <LeadResumoRelacionamento leadId={leadId} />
+        <div className="text-center text-sm text-muted-foreground py-6">Nenhum evento registrado para este lead ainda.</div>
       </div>
     );
   }
@@ -88,6 +91,7 @@ export function LeadTimelineUnificadoSection({ leadId, limit = 200 }: Props) {
 
   return (
     <div className="space-y-3">
+      <LeadResumoRelacionamento leadId={leadId} />
       <div className="flex items-center gap-1.5 flex-wrap">
         <FiltroChip ativo={filtro === "tudo"} onClick={() => setFiltro("tudo")}>
           Tudo <span className="opacity-60 ml-1">{counts.tudo}</span>
@@ -225,6 +229,11 @@ function getVisual(ev: TimelineRow) {
   if (tipo === "classificacao_alterada") return { Icon: Settings, color: "text-amber-600", bg: "bg-amber-50/50 border-amber-100", label: "Classificação alterada" };
   if (tipo === "cooldown_alterado") return { Icon: Settings, color: "text-amber-600", bg: "bg-amber-50/50 border-amber-100", label: "Cooldown alterado" };
   if (tipo === "perfil_extraido") return { Icon: Bot, color: "text-indigo-700", bg: "bg-indigo-50/30 border-indigo-100", label: "Perfil IA extraído" };
+  if (ev.metadados?.tipo === "telefone_situacao" || ev.metadados?.tipo === "telefone_principal") {
+    const ruim = ["errado", "saiu"].includes(ev.metadados?.situacao);
+    return { Icon: Phone, color: ruim ? "text-red-600" : "text-sky-700", bg: ruim ? "bg-red-50/50 border-red-100" : "bg-sky-50/50 border-sky-100", label: "Telefone" };
+  }
+  if (tipo === "campanha_status_change") return { Icon: GitBranch, color: "text-cyan-700", bg: "bg-cyan-50/30 border-cyan-100", label: "Status na campanha" };
   if (tipo === "contato_vinculado") return { Icon: Phone, color: "text-green-700", bg: "bg-green-50/50 border-green-100", label: "Contato vinculado" };
 
   // Fallback

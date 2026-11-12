@@ -53,6 +53,7 @@ import { maskCPF } from "@/lib/maskSensitiveData";
 import { toast } from "sonner";
 import { NovaCampanhaProspeccaoDialog } from "@/components/campanhas/NovaCampanhaProspeccaoDialog";
 import { LeadConversaUnificada } from "@/components/campanhas/acompanhamento/LeadConversaUnificada";
+import { LeadResumoRelacionamento } from "./LeadResumoRelacionamento";
 
 /**
  * F2.9 — Modal de perfil 360 do lead.
@@ -399,53 +400,13 @@ export function LeadProfile360Modal({ open, onOpenChange, leadId }: Props) {
 
                 <RegistroProfissionalCard leadId={leadId} />
 
-                {/* 3. Cross-campanha */}
+                {/* 3. Histórico com o médico: campanhas, respostas, objeções e telefones (contato inteligente, 12/11) */}
                 <Card className="p-4 space-y-3">
                   <h3 className="text-sm font-semibold flex items-center gap-2">
                     <Rocket className="h-4 w-4 text-muted-foreground" />
-                    Campanhas ({perfil.total_campanhas})
+                    Histórico com o médico
                   </h3>
-                  {campanhasLoading ? (
-                    <Skeleton className="h-20 w-full" />
-                  ) : !campanhas || campanhas.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">
-                      Nunca participou de campanhas
-                    </p>
-                  ) : (
-                    <ul className="divide-y -my-2">
-                      {campanhas.map((c) => (
-                        <li key={c.campanha_id + c.created_at} className="py-2 flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium truncate">
-                              {c.campanha_nome}
-                            </p>
-                            <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-                              <Badge
-                                variant="outline"
-                                className={`text-[10px] ${
-                                  c.campanha_status === "ativa"
-                                    ? "border-green-200 bg-green-50 text-green-700"
-                                    : c.campanha_status === "pausada"
-                                    ? "border-amber-200 bg-amber-50 text-amber-700"
-                                    : "border-slate-200 bg-slate-50 text-slate-600"
-                                }`}
-                              >
-                                {c.campanha_status}
-                              </Badge>
-                              {c.etapa_acompanhamento && (
-                                <Badge variant="secondary" className="text-[10px]">
-                                  {c.etapa_acompanhamento}
-                                </Badge>
-                              )}
-                              <span className="text-[10px] text-muted-foreground">
-                                Entrou {formatDistanceToNow(new Date(c.created_at), { addSuffix: true, locale: ptBR })}
-                              </span>
-                            </div>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+                  <LeadResumoRelacionamento leadId={leadId} semMoldura />
                 </Card>
 
                 {/* 4. Classificação LGPD editável */}
