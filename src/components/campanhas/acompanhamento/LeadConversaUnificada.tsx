@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo, Fragment } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, MessageSquare, ExternalLink, Send, Clock, RefreshCw, XCircle } from "lucide-react";
+import { Loader2, MessageSquare, ExternalLink, Send, Clock, RefreshCw, XCircle, FileText } from "lucide-react";
 import { format, isSameDay, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Badge } from "@/components/ui/badge";
@@ -28,6 +28,8 @@ interface SigzapMsg {
   message_text: string | null;
   message_type: string | null;
   media_url: string | null;
+  media_caption?: string | null;
+  media_filename?: string | null;
   media_mime_type: string | null;
   sent_at: string;
   message_status: string | null;
@@ -310,7 +312,7 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
     queryFn: async (): Promise<SigzapMsg[]> => {
       const { data } = await (supabase as any)
         .from("sigzap_messages")
-        .select("id, from_me, message_text, message_type, media_url, media_mime_type, sent_at, message_status")
+        .select("id, from_me, message_text, message_type, media_url, media_mime_type, media_caption, media_filename, sent_at, message_status")
         .eq("conversation_id", conv!.id)
         .order("sent_at", { ascending: true })
         .limit(500);
@@ -389,7 +391,7 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
     })();
   }, [conv?.id, qc]);
 
-  type TimelineMsg = { id: string; mine: boolean; text: string; ts: Date | null; source: "sigzap" | "historico" | "outbox"; status?: string | null; clientMessageId?: string; messageType?: string | null; mediaUrl?: string | null; mediaMimeType?: string | null };
+  type TimelineMsg = { id: string; mine: boolean; text: string; ts: Date | null; source: "sigzap" | "historico" | "outbox"; status?: string | null; clientMessageId?: string; messageType?: string | null; mediaUrl?: string | null; mediaMimeType?: string | null; mediaCaption?: string | null; mediaFilename?: string | null };
   const timeline: TimelineMsg[] = useMemo(() => {
     const items: TimelineMsg[] = [];
     for (const m of mensagens ?? []) {
@@ -406,6 +408,8 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
         messageType: m.message_type,
         mediaUrl: m.media_url,
         mediaMimeType: m.media_mime_type,
+        mediaCaption: m.media_caption ?? null,
+        mediaFilename: m.media_filename ?? null,
       });
     }
     for (const m of outbox) {
@@ -700,7 +704,7 @@ function OfficialTemplateSelect({
 
 // Bubble da timeline unificada (sigzap + histórico IA), estilo WhatsApp
 function BubbleTimeline({ msg, isOfficial, onRetry, retrying }: {
-  msg: { mine: boolean; text: string; ts: Date | null; source: string; status?: string | null; messageType?: string | null; mediaUrl?: string | null; mediaMimeType?: string | null };
+  msg: { mine: boolean; text: string; ts: Date | null; source: string; status?: string | null; messageType?: string | null; mediaUrl?: string | null; mediaMimeType?: string | null; mediaCaption?: string | null; mediaFilename?: string | null };
   isOfficial: boolean;
   onRetry?: () => void;
   retrying?: boolean;
@@ -732,13 +736,8 @@ function BubbleTimeline({ msg, isOfficial, onRetry, retrying }: {
                 : "bg-background border border-border rounded-bl-sm"
         )}
       >
-        {msg.messageType === "audio" && msg.mediaUrl ? (
-          <SigZapAudioPlayer
-            src={isOfficial && /^https:\/\/api\.twilio\.com\//i.test(msg.mediaUrl)
-              ? `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/proxy-whatsapp-media?url=${encodeURIComponent(msg.mediaUrl)}`
-              : msg.mediaUrl}
-            isFromMe={mine}
-          />
+        {msg.mediaUrl && ["audio", "image", "sticker", "video", "document"].includes(String(msg.messageType)) ? (
+          <MidiaDaMensagem msg={msg} mine={mine} isOfficial={isOfficial} />
         ) : (
           <p className="whitespace-pre-wrap break-words leading-snug">{msg.text}</p>
         )}
@@ -753,6 +752,58 @@ function BubbleTimeline({ msg, isOfficial, onRetry, retrying }: {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// Foto, figurinha, vídeo, documento e áudio dentro da bolha (pedido do Vinicius, 13/11: a foto aparecia só como
+// "[Imagem]"). A mídia já fica salva no storage pelo webhook; aqui só desenha. Texto "[Imagem]"/"[Documento: x]" é o
+// marcador gravado no lugar do texto: some quando a mídia aparece; legenda de verdade continua.
+const MARCADOR_MIDIA = /^\[(imagem|image|sticker|figurinha|v[ií]deo|video|documento|document|mensagem de voz|[aá]udio|audio)\b[^\]]*\]$/i;
+
+function MidiaDaMensagem({ msg, mine, isOfficial }: {
+  msg: { text: string; messageType?: string | null; mediaUrl?: string | null; mediaCaption?: string | null; mediaFilename?: string | null };
+  mine: boolean;
+  isOfficial: boolean;
+}) {
+  const url = isOfficial && /^https:\/\/api\.twilio\.com\//i.test(msg.mediaUrl!)
+    ? `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/proxy-whatsapp-media?url=${encodeURIComponent(msg.mediaUrl!)}`
+    : msg.mediaUrl!;
+  const [quebrou, setQuebrou] = useState(false);
+  const legenda = [msg.mediaCaption, msg.text].map((t) => (t || "").trim()).find((t) => t && !MARCADOR_MIDIA.test(t));
+  const tipo = msg.messageType;
+  if (tipo === "audio") return <SigZapAudioPlayer src={url} isFromMe={mine} />;
+  if (tipo === "document" || quebrou) {
+    const nome = msg.mediaFilename || (msg.text.match(/^\[Documento:\s*(.+)\]$/i)?.[1]) || (quebrou ? "Abrir arquivo" : "Documento");
+    return (
+      <div className="space-y-1">
+        <a href={url} target="_blank" rel="noopener noreferrer"
+          className="flex max-w-full items-center gap-2 rounded-lg bg-muted/60 px-2.5 py-2 text-foreground hover:bg-muted">
+          <FileText className="h-4 w-4 shrink-0" />
+          <span className="min-w-0 truncate" title={nome}>{nome}</span>
+          <ExternalLink className="h-3.5 w-3.5 shrink-0 opacity-60" />
+        </a>
+        {legenda && tipo === "document" && <p className="whitespace-pre-wrap break-words leading-snug">{legenda}</p>}
+      </div>
+    );
+  }
+  if (tipo === "video") {
+    return (
+      <div className="space-y-1">
+        <video src={url} controls preload="metadata" className="max-h-72 w-full max-w-[280px] rounded-lg bg-black" />
+        {legenda && <p className="whitespace-pre-wrap break-words leading-snug">{legenda}</p>}
+      </div>
+    );
+  }
+  // imagem e figurinha: clicar abre a foto inteira em outra aba
+  return (
+    <div className="space-y-1">
+      <a href={url} target="_blank" rel="noopener noreferrer" title="Abrir a foto inteira" className="block">
+        <img src={url} alt={legenda || (tipo === "sticker" ? "Figurinha" : "Foto enviada")} loading="lazy"
+          onError={() => setQuebrou(true)}
+          className={cn("rounded-lg object-cover", tipo === "sticker" ? "h-28 w-28 object-contain" : "max-h-72 w-full max-w-[280px]")} />
+      </a>
+      {legenda && <p className="whitespace-pre-wrap break-words leading-snug">{legenda}</p>}
     </div>
   );
 }

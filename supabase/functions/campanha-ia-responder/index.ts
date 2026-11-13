@@ -1254,7 +1254,7 @@ function isExplicitAutoReply(text: string): boolean {
   const sinaisConsultorio = [
     /secretari[ao]/, /consultorio/, /agendamento|agendar (sua |a )?consulta/, /convenio/, /digite (a opcao|o numero|apenas)/,
     /horario de atendimento|nosso horario/, /pronto (atendimento|socorro)|urgencia|emergencia/, /seja (muito )?bem[- ]?vind/,
-    /agradece (o |o seu |seu |o teu |teu )?contato/, /paciente|seu (pequeno|filho)|mamae/, /receitas?/,
+    /agradece (o |o seu |seu |o teu |teu )?contato/, /paciente|seu (pequeno|filho)|mamae/, /receitas?\b/,
   ].filter((pattern) => pattern.test(normalized)).length;
   if (sinaisConsultorio >= 2) return true;
   const hasHumanIntent = /\?/.test(normalized) ||
