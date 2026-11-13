@@ -2,6 +2,9 @@
 //   quente  { campanha_lead_id, resumo } — médico que quer fechar (ALERTA_LEAD da IA): WhatsApp na hora.
 //   resumo  (cron diário, 18h) — médicos classificados como "interessado" no dia: um WhatsApp com o total por campanha.
 //   criar_templates / status_templates — modelos na Meta (número 9713-2474).
+//   ia_falhas (cron 15 min) — Fase 8.1: 3+ respostas da IA falhando em 30 min = e-mail ao Raul com o motivo (no máximo
+//               1 a cada 6 h). Caso real: a OpenAI ficou sem crédito de 09 a 12/11 e 92 respostas falharam em silêncio.
+//               As conversas sem resposta já aparecem em Conversas › "Precisa de resposta".
 // Só WhatsApp oficial (pedido do Raul), pelo remetente de config alertas_equipe_sender_id. Antes, o aviso de lead
 // quente saía pelo chip Evolution, desligado desde 08/11: em 30 dias 1 lead quente e nenhum aviso entregue.
 // Começa em config alertas_equipe_inicio (2026-11-16). Destinatários: alertas_equipe_destinos = "Nome:55...; Nome:55...".
@@ -154,6 +157,36 @@ async function statusTemplates(admin: any) {
   return MODELOS.map((m) => { const t = todos.find((x) => x.name === m.nome); return { nome: m.nome, status: t?.status ?? "nao_encontrado", motivo: t?.rejected_reason ?? null }; });
 }
 
+async function iaFalhas(admin: any) {
+  const desde = new Date(Date.now() - 30 * 60_000).toISOString();
+  const { data } = await admin.from("campanha_ia_processed_messages").select("result, claimed_at")
+    .eq("status", "failed").gte("claimed_at", desde);
+  const falhas = (data ?? []).filter((r: any) => !String(r.result?.recovery || "").includes("retry"));
+  if (falhas.length < 3) return { falhas: falhas.length, alertou: false };
+  const ultimo = await config(admin, "ia_falhas_alerta_em");
+  if (ultimo && Date.now() - new Date(ultimo).getTime() < 6 * 3_600_000) return { falhas: falhas.length, alertou: false, motivo: "ja alertado" };
+  const motivos = new Map<string, number>();
+  for (const f of falhas) { const m = String(f.result?.error || "?").slice(0, 120); motivos.set(m, (motivos.get(m) ?? 0) + 1); }
+  const resend = Deno.env.get("RESEND_API_KEY");
+  const para = (Deno.env.get("MONITOR_WHATSAPP_EMAILS") || "").split(",").map((x) => x.trim()).filter(Boolean);
+  let enviado = false;
+  if (resend && para.length) {
+    const corpo = `A IA das campanhas falhou ${falhas.length} vezes nos últimos 30 minutos. Os médicos ficaram sem resposta e aparecem em Conversas › Precisa de resposta.\n\nMotivos:\n`
+      + [...motivos].map(([m, n]) => `${n}x ${m}`).join("\n");
+    const r = await fetch("https://api.resend.com/emails", {
+      method: "POST", headers: { Authorization: `Bearer ${resend}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ from: "Sigma GSS <avisos@gestaoservicosaude.com.br>", to: para, subject: `IA das campanhas falhando (${falhas.length} em 30 min)`,
+        html: `<div style="font-family:Arial,sans-serif;font-size:14px;white-space:pre-line">${corpo.replace(/[<>&]/g, "")}</div>` }),
+    }).catch(() => null);
+    enviado = !!r?.ok;
+  }
+  const agora = new Date().toISOString();
+  const { data: existe } = await admin.from("config_lista_items").select("id").eq("campo_nome", "ia_falhas_alerta_em").maybeSingle();
+  if (existe) await admin.from("config_lista_items").update({ valor: agora }).eq("id", existe.id);
+  else await admin.from("config_lista_items").insert({ campo_nome: "ia_falhas_alerta_em", valor: agora });
+  return { falhas: falhas.length, alertou: enviado, motivos: Object.fromEntries(motivos) };
+}
+
 async function autorizado(auth: string) {
   const chave = auth.replace(/^Bearer\s+/i, "").trim();
   if (!chave) return false;
@@ -169,6 +202,7 @@ Deno.serve(async (req) => {
   try {
     if (body.acao === "quente") return json({ ok: true, ...(await quente(admin, String(body.campanha_lead_id || ""), String(body.resumo || ""), !!body.forcar)) });
     if (body.acao === "resumo") return json({ ok: true, ...(await resumoDiario(admin, !!body.forcar)) });
+    if (body.acao === "ia_falhas") return json({ ok: true, ...(await iaFalhas(admin)) });
     if (body.acao === "criar_templates") return json({ ok: true, modelos: await criarTemplates(admin) });
     if (body.acao === "status_templates") return json({ ok: true, modelos: await statusTemplates(admin) });
     return json({ ok: false, error: "acao" }, 400);
