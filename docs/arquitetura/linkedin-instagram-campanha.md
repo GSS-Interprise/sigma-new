@@ -70,8 +70,12 @@ Decisões do Raul:
   `campanha_toques`, `linkedin_contas` — sem sessão.
 - **9.2 Conectar conta:** tela "Conectar meu LinkedIn" + edges `unipile-conectar` e `unipile-webhook`
   (conta conectada, situação, mensagem nova, nova conexão).
-- **9.3 Achar perfil:** para cada lead da campanha, busca por nome + especialidade + cidade, nota 0-100;
-  abaixo de 70 a pessoa confirma.
+- **9.3 Achar perfil (feito, 13/11):** edge `redes-sociais-buscar` ({lead_id} ou {campanha_id, limite}; lote roda em
+  segundo plano). Busca "nome + especialidade + cidade" para LinkedIn e Instagram na Serper (Google), na Brave ou no
+  SearXNG da VPS (`vps/sigma-searxng/`), nessa ordem; o Gemini escolhe só entre os resultados (não inventa URL) e dá
+  nota 0-100; com conta da Unipile conectada, lê o perfil e confere sobrenome/CRM. Grava `linkedin_url` /
+  `instagram_handle` com nota ≥ 70 e nunca sobrescreve o que a equipe cadastrou; abaixo disso fica em
+  `leads.redes_candidatos` para a pessoa confirmar. Teste 13/11: 9 pediatras em 20 s, 4 Instagram e 1 LinkedIn achados.
 - **9.4 Fila do dia e motor:** sugestões com texto pronto; com conta conectada, o Sigma envia convite e
   mensagem no ritmo da rampa (modo automático); sem conta, modo assistido.
 - **9.5 Kanban e Conversas:** card com o estado de cada canal; respostas do LinkedIn nas Conversas, e a IA
