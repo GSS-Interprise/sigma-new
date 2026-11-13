@@ -61,8 +61,8 @@ function cenario() {
 const rodada = (tabelas: Record<string, Linha[]>, phoneDigits = WHATS_SEM_9) =>
   rodadaCanceladaPorOptOut(bancoFalso(tabelas), { campanhaLeadId: "cl-1", leadId: "lead-1", phoneDigits });
 
-Deno.test("SAIR em qualquer caixa e com espaços nas pontas é descadastro", () => {
-  for (const texto of ["SAIR", "Sair", "sair", "  Sair  ", " SAIR! ", "Sair.", "\tsair\n"]) {
+Deno.test("SAIR em qualquer caixa, com acento e com espaços nas pontas é descadastro", () => {
+  for (const texto of ["SAIR", "Sair", "sair", "  Sair  ", " SAIR! ", "Sair.", "\tsair\n", "Saír", "Não quero receber mais mensagens"]) {
     assertEquals(isExplicitChakraOptOut(texto), true, texto);
   }
   for (const texto of ["Sir", "Quero sair mais cedo do plantão", "Pode enviar"]) {
