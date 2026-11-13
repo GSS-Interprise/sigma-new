@@ -29,7 +29,7 @@ respondeu e ninguém assumiu, a conversa sem resposta, a campanha parada.
 | Vagas | 6 | 8 | Sem cartões zerados; a vaga mais antiga primeiro; o vazio diz o que fazer |
 
 Nota de 0 a 10: pergunta da tela respondida no topo, ações que competem, informação por linha, estados e
-defeitos de layout medidos em 1440 e 1024 px. Antes: 15 falhas de corte e transbordo nas 6 telas. Depois:
+defeitos de layout medidos em 1440 e 1024 px. Antes: 28 falhas de corte e transbordo (somando 1440 e 1024) em 4 das telas, e 3 tabelas rolando de lado. Depois:
 0 falhas em todas as telas e larguras.
 
 ## O que fica igual
