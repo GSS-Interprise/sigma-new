@@ -20,6 +20,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ca, itensDe, listarTudo } from "../_shared/contaazul.ts";
+import { bloqueioDeEnvio, conferirLote, erroLegivel, lancarItens, type ItemLancar, type Lote, type PagLote, type ResultadoEnvio } from "../_shared/contaazul-lote.ts";
 import { CNPJ_GSS, CNPJS_GRUPO_GSS, dadosBancariosDoTexto, leituraAssistida, leituraFoto, lerNfse, textoPdf } from "../_shared/nfse.ts";
 
 const cors = {
@@ -392,7 +393,7 @@ async function montarPagar(svc: Svc, ids: string[], ajustes: Record<string, any>
     await svc.from("financeiro_pagamentos").update({ nf_link_token: tok }).eq("id", x.id).is("nf_link_token", null);
   }
   const { data: pags } = await svc.from("financeiro_pagamentos")
-    .select("id, profissional_nome, medico_id, unidade, mes_referencia, ano_referencia, valor_total, status, nf_status, nf_numero, nf_prestador_cnpj, nf_valor_bruto, nf_retencoes, nf_valor_liquido, nf_conferencia_status, nf_link_token, nf_dados_bancarios, ca_evento_id, ca_lancado_em")
+    .select("id, profissional_nome, medico_id, unidade, mes_referencia, ano_referencia, valor_total, status, nf_status, nf_numero, nf_prestador_cnpj, nf_valor_bruto, nf_retencoes, nf_valor_liquido, nf_conferencia_status, nf_link_token, nf_dados_bancarios, ca_evento_id, ca_lancado_em, ca_erro")
     .in("id", ids);
   const unidades = [...new Set((pags ?? []).map((p: any) => p.unidade).filter(Boolean))];
   const { data: mapa } = unidades.length
@@ -446,6 +447,10 @@ async function montarPagar(svc: Svc, ids: string[], ajustes: Record<string, any>
     const aj = ajustes?.[p.id] ?? {};
     const problemas: string[] = [], avisos: string[] = [];
     if (p.ca_evento_id) problemas.push("Já lançado no Conta Azul.");
+    // envio interrompido ou sem id de volta: a prévia dizia "Pronto" e o envio respondia "já lançado ou em envio"
+    const bloqueio = bloqueioDeEnvio(p);
+    if (bloqueio) problemas.push(bloqueio);
+    else if (p.ca_erro && !p.ca_evento_id) avisos.push(`Último envio deu erro: ${erroLegivel(String(p.ca_erro))}`);
     const semNf = !["recebida", "conferida"].includes(p.nf_status);
     if (semNf) avisos.push("Sem nota: vai como SEM NF, pelo valor do fechamento. A Thais não paga até a nota chegar.");
     else if (!["ok", "aceita"].includes(p.nf_conferencia_status ?? "")) {
@@ -519,6 +524,49 @@ async function montarPagar(svc: Svc, ids: string[], ajustes: Record<string, any>
     };
   });
   return { ref, itens };
+}
+
+/**
+ * Depois do envio, confere o fechamento inteiro da competência (não só o que foi selecionado): quem foi liberado
+ * com valor a pagar e não tem id do Conta Azul entra na lista, com o motivo. Fica gravado em
+ * financeiro_contaazul_lotes para auditoria. Falha aqui nunca derruba o lançamento, que já aconteceu.
+ */
+async function registrarLote(svc: Svc, itens: ItemLancar[], resultados: ResultadoEnvio[], usuario: string | null): Promise<Lote | null> {
+  try {
+    const { data: comps } = await svc.from("financeiro_pagamentos").select("mes_referencia, ano_referencia").in("id", itens.map((i) => i.id));
+    const meses = [...new Set<string>((comps ?? []).map((c: { ano_referencia: number; mes_referencia: number }) => `${c.ano_referencia}-${c.mes_referencia}`))]
+      .map((k) => k.split("-").map(Number));
+    const problemas = Object.fromEntries(itens.map((it) => [it.id, it.problemas]));
+    const geral: Lote = { esperados: 0, confirmados: 0, completo: true, pendentes: [] };
+    for (const [ano, mes] of meses) {
+      const pags: PagLote[] = [];
+      for (let de = 0; ; de += 1000) {
+        const { data, error } = await svc.from("financeiro_pagamentos")
+          .select("id, profissional_nome, unidade, arquivo_origem, valor_total, conferido_em, status, nf_status, ca_evento_id, ca_erro")
+          .eq("mes_referencia", mes).eq("ano_referencia", ano).order("id").range(de, de + 999);
+        if (error) throw error;
+        pags.push(...(data ?? []));
+        if (!data || data.length < 1000) break;
+      }
+      const lote = conferirLote(pags, problemas);
+      const { data: fech } = await svc.from("financeiro_fechamentos").select("id").eq("mes_referencia", mes).eq("ano_referencia", ano).maybeSingle();
+      const doMes = new Set(pags.map((p) => p.id));
+      const daqui = resultados.filter((r) => doMes.has(r.id));
+      const { error: eIns } = await svc.from("financeiro_contaazul_lotes").insert({
+        mes_referencia: mes, ano_referencia: ano, fechamento_id: fech?.id ?? null, criado_por: usuario,
+        enviados: daqui.length, lancados: daqui.filter((r) => r.ok).length, erros: daqui.filter((r) => !r.ok).length,
+        esperados: lote.esperados, confirmados: lote.confirmados, completo: lote.completo,
+        pendentes: lote.pendentes, resultados: daqui,
+      });
+      if (eIns) console.error("lote conta azul", eIns.message);
+      geral.esperados += lote.esperados; geral.confirmados += lote.confirmados;
+      geral.completo &&= lote.completo; geral.pendentes.push(...lote.pendentes);
+    }
+    return geral;
+  } catch (e) {
+    console.error("lote conta azul", String(e));
+    return null;
+  }
 }
 
 // ── contas a receber: nota emitida pela GSS ───────────────────────────────
@@ -785,18 +833,20 @@ serve(async (req) => {
 
       if (input.confirmar !== true) return json({ ok: false, error: "confirmacao_ausente" }, 400);
       if (!ref.escrita) return json({ ok: false, error: "escrita_desligada", detalhe: "O envio ao Conta Azul está desligado. A prévia mostra o que seria lançado." }, 409);
-      const resultados = [];
-      for (const it of itens) {
-        if (!it.payload || it.problemas.length) { resultados.push({ id: it.id, ok: false, erro: it.problemas.join(" ") || "lançamento incompleto" }); continue; }
+      const porId = new Map<string, (typeof itens)[number]>(itens.map((it) => [it.id, it]));
+      const resultados = await lancarItens(itens, {
         // trava: só um envio por pagamento, mesmo com dois cliques ou duas abas
-        const { data: trava } = await svc.from("financeiro_pagamentos").update({ ca_erro: "enviando" })
-          .eq("id", it.id).is("ca_evento_id", null).or("ca_erro.is.null,ca_erro.neq.enviando").select("id");
-        if (!trava?.length) { resultados.push({ id: it.id, ok: false, erro: "já lançado ou em envio" }); continue; }
-        try {
-          const criado = await ca(svc, "/v1/financeiro/contas-a-pagar", { method: "POST", body: JSON.stringify(it.payload) });
-          const parcela = criado?.condicao_pagamento?.parcelas?.[0];
+        travar: async (id) => {
+          const { data: trava } = await svc.from("financeiro_pagamentos").update({ ca_erro: "enviando" })
+            .eq("id", id).is("ca_evento_id", null).or("ca_erro.is.null,ca_erro.neq.enviando").select("id");
+          return !!trava?.length;
+        },
+        enviar: (payload) => ca(svc, "/v1/financeiro/contas-a-pagar", { method: "POST", body: JSON.stringify(payload) }),
+        confirmar: async (item, eventoId, criado) => {
+          const it = porId.get(item.id)!;
+          const parcela = (criado as { condicao_pagamento?: { parcelas?: { id?: unknown }[] } } | null)?.condicao_pagamento?.parcelas?.[0];
           await svc.from("financeiro_pagamentos").update({
-            ca_evento_id: String(criado?.id ?? ""), ca_parcela_id: parcela?.id ? String(parcela.id) : null,
+            ca_evento_id: eventoId, ca_parcela_id: parcela?.id ? String(parcela.id) : null,
             ca_lancado_em: new Date().toISOString(), ca_lancado_por: usuario, ca_vencimento: it.vencimento, ca_valor: it.valor,
             ca_payload: it.payload, ca_erro: null,
           }).eq("id", it.id);
@@ -804,14 +854,11 @@ serve(async (req) => {
           if (it.unidade && it.categoria) {
             await svc.from("contaazul_unidade_categoria").upsert({ unidade: it.unidade, categoria_id: it.categoria.id, categoria_nome: it.categoria.nome, origem: it.categoria.sugerida ? "sugestao" : "manual", definido_por: usuario, atualizado_em: new Date().toISOString() });
           }
-          resultados.push({ id: it.id, ok: true, ca_evento_id: criado?.id ?? null });
-        } catch (e: any) {
-          const msg = String(e?.message || e).slice(0, 300);
-          await svc.from("financeiro_pagamentos").update({ ca_erro: msg }).eq("id", it.id);
-          resultados.push({ id: it.id, ok: false, erro: msg });
-        }
-      }
-      return json({ ok: true, lancados: resultados.filter((r) => r.ok).length, erros: resultados.filter((r) => !r.ok).length, resultados });
+        },
+        falhar: async (id, msg) => { await svc.from("financeiro_pagamentos").update({ ca_erro: msg }).eq("id", id); },
+      });
+      const lote = await registrarLote(svc, itens, resultados, usuario);
+      return json({ ok: true, lancados: resultados.filter((r) => r.ok).length, erros: resultados.filter((r) => !r.ok).length, resultados, lote });
     }
 
     // ── baixa: pagamento já comprovado no Sigma vira baixa da parcela no Conta Azul ──
