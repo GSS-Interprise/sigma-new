@@ -1,0 +1,4 @@
+# Arquivos que vão para a VPS (Linux) ficam com LF: com core.autocrlf=true no Windows, um checkout
+# poria CRLF e o bash/python da VPS quebraria ao receber a cópia por scp.
+vps/** text eol=lf
+*.sh text eol=lf
