@@ -10,12 +10,15 @@ import { mil, pct, useRaioXGestao, type FiltroRaioX } from "./useRaioX";
 
 import { nomeProprio } from "@/lib/textoDono";
 
+const minutosTxt = (m: number | null) =>
+  m === null ? "—" : m < 1 ? "< 1 min" : m < 60 ? `${m} min` : `${Math.round(m / 60)} h`;
+
 export function ModoGestao({ filtro }: { filtro: FiltroRaioX }) {
   const { data: g, isLoading } = useRaioXGestao(filtro, true);
   if (isLoading || !g) return <Skeleton className="h-48 w-full" />;
 
   const tempo = g.mediana_primeira_resposta_min;
-  const tempoTxt = tempo === null ? "—" : tempo < 1 ? "< 1 min" : tempo < 60 ? `${tempo} min` : `${Math.round(tempo / 60)} h`;
+  const tempoTxt = minutosTxt(tempo);
 
   return (
     <div className="space-y-4">
@@ -50,30 +53,42 @@ export function ModoGestao({ filtro }: { filtro: FiltroRaioX }) {
       </div>
 
       <Card className="p-5">
-        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Por campanha</h3>
+        <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Por campanha</h3>
+          <p className="text-xs text-muted-foreground">% de interessados sobre quem respondeu</p>
+        </div>
         {g.por_campanha.length === 0 ? (
           <p className="text-sm text-muted-foreground">Nenhuma campanha com envio neste filtro.</p>
         ) : (
-          <table className="w-full table-fixed text-sm">
+          // Fase 8.4 (BI do Maikon): o funil da campanha em uma linha. Interessado = marcado quente pela IA ou pela equipe.
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[640px] table-fixed text-sm">
             <thead className="text-left text-xs text-muted-foreground">
               <tr>
-                <th className="w-[46%] pb-1.5 font-medium">Campanha</th>
+                <th className="w-[30%] pb-1.5 font-medium">Campanha</th>
                 <th className="pb-1.5 text-right font-medium">Alcançados</th>
                 <th className="pb-1.5 text-right font-medium">Responderam</th>
+                <th className="pb-1.5 text-right font-medium">Interessados</th>
+                <th className="pb-1.5 text-right font-medium">Fechados</th>
+                <th className="pb-1.5 text-right font-medium" title="Mediana do tempo até a 1ª resposta nossa (IA ou pessoa)">1ª resposta</th>
                 <th className="pb-1.5 text-right font-medium">Falharam</th>
               </tr>
             </thead>
             <tbody className="divide-y">
               {g.por_campanha.map((c) => (
                 <tr key={c.id}>
-                  <td className="truncate py-2 pr-3">{c.nome.trim()}</td>
+                  <td className="truncate py-2 pr-3" title={c.nome.trim()}>{c.nome.trim()}</td>
                   <td className="py-2 text-right tabular-nums">{mil(c.alcancados)}</td>
                   <td className="py-2 text-right tabular-nums">{mil(c.responderam)} <span className="text-xs text-muted-foreground">{pct(c.responderam, c.alcancados)}%</span></td>
+                  <td className="py-2 text-right tabular-nums">{mil(c.interessados)} <span className="text-xs text-muted-foreground">{pct(c.interessados, c.responderam)}%</span></td>
+                  <td className={`py-2 text-right tabular-nums ${c.convertidos > 0 ? "font-semibold text-emerald-700" : ""}`}>{mil(c.convertidos)}</td>
+                  <td className="py-2 text-right tabular-nums">{minutosTxt(c.resposta_min)}</td>
                   <td className={`py-2 text-right tabular-nums ${c.falharam > 0 ? "text-red-600" : ""}`}>{mil(c.falharam)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </Card>
     </div>

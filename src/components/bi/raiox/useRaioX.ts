@@ -25,7 +25,8 @@ export type Gestao = {
   esperando_resposta: number;
   esperando: { conversation_id: string; ultima_do_medico: string; nome: string; campanha: string | null }[];
   mediana_primeira_resposta_min: number | null; sem_resposta_nossa: number;
-  por_campanha: { id: string; nome: string; alcancados: number; responderam: number; falharam: number }[];
+  por_campanha: { id: string; nome: string; alcancados: number; responderam: number; falharam: number;
+    interessados: number; convertidos: number; resposta_min: number | null }[];
 };
 
 export type FiltroRaioX = { especialidadeId: string; uf: string | null; desde: string | null };
