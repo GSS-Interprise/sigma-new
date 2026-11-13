@@ -13,6 +13,7 @@ import { ApiTokensTab } from "@/components/configuracoes/ApiTokensTab";
 import { SetoresTab } from "@/components/configuracoes/SetoresTab";
 import { MatrizPermissoesTab } from "@/components/configuracoes/MatrizPermissoesTab";
 import { WebhookCentralTab } from "@/components/configuracoes/WebhookCentralTab";
+import { RedesSociaisTab } from "@/components/configuracoes/RedesSociaisTab";
 import { usePermissions } from "@/hooks/usePermissions";
 
 /**
@@ -36,10 +37,12 @@ const GRUPOS = {
   integracoes: {
     label: "Canais & Integrações",
     icon: Plug,
-    desc: "Números de WhatsApp, APIs externas e webhooks",
+    desc: "WhatsApp, LinkedIn, Instagram, APIs externas e webhooks",
     abas: [
       // Só API oficial (Chakra) desde 08/11: a aba de chips Evolution e o formulário antigo da Meta saíram.
       { value: "whatsapp", label: "WhatsApp", Component: NumerosOficiaisTab },
+      // Fase 9.2: LinkedIn e Instagram da equipe pela Unipile (Hosted Auth).
+      { value: "linkedin", label: "LinkedIn e Instagram", Component: RedesSociaisTab },
       { value: "tokens", label: "API Tokens", Component: ApiTokensTab },
       { value: "webhooks", label: "Webhooks", Component: WebhookCentralTab },
     ],
