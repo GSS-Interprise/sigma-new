@@ -56,7 +56,8 @@ Deno.serve(async (req) => {
       .select("id")
       .eq("status", "ativa")
       .eq("tipo_campanha", "prospeccao")
-      .neq("tipo_envio", "manual")
+      // Manual só dispara pela API oficial (o 1º contato da manual pelo Evolution é à mão). Ver campanha-disparo-processor.
+      .or("tipo_envio.neq.manual,whatsapp_provider.eq.chakra")
       .or(`next_batch_at.is.null,next_batch_at.lte.${now}`)
       .order("updated_at", { ascending: true })
       .limit(50);

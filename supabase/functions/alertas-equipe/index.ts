@@ -8,6 +8,9 @@
 // Só WhatsApp oficial (pedido do Raul), pelo remetente de config alertas_equipe_sender_id. Antes, o aviso de lead
 // quente saía pelo chip Evolution, desligado desde 08/11: em 30 dias 1 lead quente e nenhum aviso entregue.
 // Começa em config alertas_equipe_inicio (2026-11-16). Destinatários: alertas_equipe_destinos = "Nome:55...; Nome:55...".
+//   respondeu { campanha_lead_id, texto } — campanha MANUAL (a equipe conversa): o médico respondeu ao 1º contato.
+// Destinatários por campanha (13/11): campanhas.alerta_destinos [{nome, fone}], escolhidos na criação. Com lista própria
+// o aviso vale desde já (não espera alertas_equipe_inicio); sem lista, vão os destinatários gerais acima.
 // Só service_role chama.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 
@@ -29,6 +32,12 @@ const MODELOS = [
     corpo: "Resumo do dia - {{1}} medicos responderam com interesse nas campanhas: {{2}}. Veja quem precisa de resposta no Sigma pelo botao.",
     exemplo: ["12", "Pediatria Nova Prata 5, GO Braco do Norte 4, Anestesio SMO 3"],
     botao: { type: "URL", text: "Abrir Conversas", url: `${SIGMA}/conversas`, example: undefined },
+  },
+  {
+    nome: "gss_medico_respondeu_v1",
+    corpo: "Medico respondeu - {{1}} ({{2}}), campanha {{3}}: {{4}}. A conversa e da equipe: responda pelo Sigma pelo botao.",
+    exemplo: ["Dra. Maria Silva", "Pediatria", "Pediatria Nova Prata", "Tenho interesse, qual o valor do plantao?"],
+    botao: { type: "URL", text: "Abrir conversa", url: `${SIGMA}/conversas?conversa={{1}}`, example: [`${SIGMA}/conversas?conversa=3f2a9c1e`] },
   },
 ];
 
@@ -54,6 +63,13 @@ async function remetente(admin: any) {
   return data;
 }
 
+// Destinatários da campanha (se ela tiver lista própria) ou os gerais da equipe.
+async function destinosDaCampanha(admin: any, campanha: any) {
+  const proprios = (Array.isArray(campanha?.alerta_destinos) ? campanha.alerta_destinos : [])
+    .map((d: any) => ({ nome: String(d?.nome || ""), fone: dig(d?.fone) })).filter((d: any) => d.fone.length >= 12);
+  return proprios.length ? { lista: proprios, proprios: true } : { lista: await destinos(admin), proprios: false };
+}
+
 async function destinos(admin: any) {
   return (await config(admin, "alertas_equipe_destinos")).split(/[;\n]+/).map((x) => x.trim()).filter(Boolean).map((x) => {
     const i = x.lastIndexOf(":");
@@ -77,26 +93,34 @@ async function enviar(sender: any, para: string, modelo: string, corpo: string[]
   return JSON.stringify(r).match(/wamid\.[A-Za-z0-9=_-]+/)?.[0] ?? null;
 }
 
-async function quente(admin: any, campanhaLeadId: string, resumo: string, forcar: boolean) {
-  if (!forcar && !(await ativo(admin))) return { pulado: "antes de alertas_equipe_inicio" };
-  // um aviso por campanha_lead: o mesmo médico quente em rodadas seguidas não repete
+// Um aviso por campanha_lead e por tipo (marca em metadados): o mesmo médico em rodadas seguidas não repete.
+async function avisarMedico(admin: any, campanhaLeadId: string, texto: string, forcar: boolean,
+  tipo: { modelo: string; marca: string; padrao: string }) {
   const { data: cl } = await admin.from("campanha_leads")
-    .select("id, conversa_id, metadados, lead:lead_id(nome, especialidade), campanha:campanha_id(nome)").eq("id", campanhaLeadId).maybeSingle();
+    .select("id, conversa_id, metadados, lead:lead_id(nome, especialidade), campanha:campanha_id(nome, alerta_destinos)").eq("id", campanhaLeadId).maybeSingle();
   if (!cl) return { erro: "campanha_lead nao encontrado" };
-  if (!forcar && cl.metadados?.alerta_quente_em) return { pulado: "ja avisado" };
+  if (!forcar && cl.metadados?.[tipo.marca]) return { pulado: "ja avisado" };
+  const { lista, proprios } = await destinosDaCampanha(admin, cl.campanha);
+  if (!forcar && !proprios && !(await ativo(admin))) return { pulado: "antes de alertas_equipe_inicio" };
   const sender = await remetente(admin);
-  const lista = await destinos(admin);
   const nome = String(cl.lead?.nome || "Medico").replace(/\b\w+/g, (w: string) => w[0].toUpperCase() + w.slice(1).toLowerCase());
   const esp = String(cl.lead?.especialidade || "especialidade nao informada").replace(/^&/, "").split(/ - RQE| RQE|&/)[0].trim();
+  // Modelo da Meta não aceita quebra de linha nem 4+ espaços seguidos num parâmetro.
+  const trecho = (texto || tipo.padrao).replace(/\s+/g, " ").trim().slice(0, 180);
   const out = [];
   for (const d of lista) {
     try {
-      out.push({ para: d.nome, wamid: await enviar(sender, d.fone, "gss_medico_quente_v1", [nome, esp, String(cl.campanha?.nome || "").trim(), resumo || "demonstrou interesse em fechar"], String(cl.conversa_id || "")) });
+      out.push({ para: d.nome, wamid: await enviar(sender, d.fone, tipo.modelo, [nome, esp, String(cl.campanha?.nome || "").trim(), trecho], String(cl.conversa_id || "")) });
     } catch (e) { out.push({ para: d.nome, erro: String((e as Error).message).slice(0, 200) }); }
   }
-  await admin.from("campanha_leads").update({ metadados: { ...(cl.metadados || {}), alerta_quente_em: new Date().toISOString() } }).eq("id", cl.id);
+  await admin.from("campanha_leads").update({ metadados: { ...(cl.metadados || {}), [tipo.marca]: new Date().toISOString() } }).eq("id", cl.id);
   return { enviados: out };
 }
+
+const quente = (admin: any, id: string, resumo: string, forcar: boolean) =>
+  avisarMedico(admin, id, resumo, forcar, { modelo: "gss_medico_quente_v1", marca: "alerta_quente_em", padrao: "demonstrou interesse em fechar" });
+const respondeu = (admin: any, id: string, texto: string, forcar: boolean) =>
+  avisarMedico(admin, id, texto, forcar, { modelo: "gss_medico_respondeu_v1", marca: "alerta_resposta_em", padrao: "respondeu a mensagem" });
 
 async function resumoDiario(admin: any, forcar: boolean) {
   if (!forcar && !(await ativo(admin))) return { pulado: "antes de alertas_equipe_inicio" };
@@ -121,10 +145,10 @@ async function resumoDiario(admin: any, forcar: boolean) {
   return { total, enviados: out };
 }
 
-async function criarTemplates(admin: any) {
+async function criarTemplates(admin: any, nomes?: string[]) {
   const sender = await remetente(admin);
   const out = [];
-  for (const m of MODELOS) {
+  for (const m of MODELOS.filter((x) => !nomes?.length || nomes.includes(x.nome))) {
     const botao: any = { type: "URL", text: m.botao.text, url: m.botao.url };
     if (m.botao.example) botao.example = m.botao.example;
     try {
@@ -201,9 +225,10 @@ Deno.serve(async (req) => {
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   try {
     if (body.acao === "quente") return json({ ok: true, ...(await quente(admin, String(body.campanha_lead_id || ""), String(body.resumo || ""), !!body.forcar)) });
+    if (body.acao === "respondeu") return json({ ok: true, ...(await respondeu(admin, String(body.campanha_lead_id || ""), String(body.texto || ""), !!body.forcar)) });
     if (body.acao === "resumo") return json({ ok: true, ...(await resumoDiario(admin, !!body.forcar)) });
     if (body.acao === "ia_falhas") return json({ ok: true, ...(await iaFalhas(admin)) });
-    if (body.acao === "criar_templates") return json({ ok: true, modelos: await criarTemplates(admin) });
+    if (body.acao === "criar_templates") return json({ ok: true, modelos: await criarTemplates(admin, Array.isArray(body.nomes) ? body.nomes : undefined) });
     if (body.acao === "status_templates") return json({ ok: true, modelos: await statusTemplates(admin) });
     return json({ ok: false, error: "acao" }, 400);
   } catch (e) {

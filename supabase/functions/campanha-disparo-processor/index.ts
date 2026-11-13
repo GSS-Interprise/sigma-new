@@ -72,10 +72,10 @@ serve(async (req) => {
 
     if (campErr || !camp) throw new Error("Campanha não encontrada");
 
-    // Mudança 09/06: campanha MANUAL não tem disparo automático — o 1º contato é
-    // feito à mão pela equipe (Evolution). O motor só dispara campanhas IA.
-    // Guard antes de qualquer efeito (lock/janela/next_batch) pra não tocar a manual.
-    if (camp.tipo_envio === "manual")
+    // Campanha MANUAL (decisão do Raul, 13/11): o 1º contato sai pela API oficial como na de IA e a equipe conversa
+    // pelo Sigma (a IA não responde: campanha-ia-responder recusa tipo_envio manual). Manual pelo Evolution (regra de
+    // 09/06, 1º contato à mão) continua sem disparo automático. Guard antes de qualquer efeito (lock/janela/next_batch).
+    if (camp.tipo_envio === "manual" && String(camp.whatsapp_provider || "").toLowerCase() !== "chakra")
       return json({ ok: true, msg: "skipped:manual — 1o contato e manual, sem disparo automatico" });
 
     // Nunca fazer fallback silencioso para Evolution quando a operação escolheu

@@ -1291,6 +1291,15 @@ serve(async (req) => {
                       data_status: new Date().toISOString(),
                     })
                     .eq("id", campLeadCheck.id);
+                  // Primeira resposta na campanha manual: avisa no WhatsApp quem a campanha cadastrou (ou a equipe
+                  // geral), porque ninguém da IA vai responder. Um aviso por médico (alertas-equipe marca em metadados).
+                  const urlSigma = Deno.env.get("SUPABASE_URL") ?? "";
+                  const chaveServico = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+                  fetch(`${urlSigma}/functions/v1/alertas-equipe`, {
+                    method: "POST",
+                    headers: { Authorization: `Bearer ${chaveServico}`, "Content-Type": "application/json" },
+                    body: JSON.stringify({ acao: "respondeu", campanha_lead_id: campLeadCheck.id, texto: messageContent.text }),
+                  }).catch((e) => console.warn("[alerta respondeu] falhou:", e));
                 }
                 console.log(
                   "📋 Lead em campanha MANUAL respondeu — IA NÃO responde, encaminhado pra operadora:",

@@ -18,10 +18,11 @@ import {
   useEspecialidades, useExtracaoLifesHub, useListasProntas, useModelosAprovados, useNumerosOficiais, usePrevia, useUniversoCfm,
   type ExtracaoLifesHub, type ModeloAprovado, type NumeroOficial,
 } from "@/components/campanhas/assistente/useAssistenteCampanha";
+import { PassoConversa, type Destino, type ModoConversa } from "@/components/campanhas/assistente/PassoConversa";
 
 /**
  * Assistente de criação de campanha (plano GSS dono no comando, Fase 2).
- * Pergunta da tela: "que campanha vou soltar agora?" — o dono responde 6 perguntas curtas e confirma.
+ * Pergunta da tela: "que campanha vou soltar agora?" — o dono responde 6 perguntas curtas e confirma (a 6ª, de 13/11: quem conversa e quem recebe o aviso).
  * Conversa guiada por botões: funciona sem IA (OpenAI sem crédito desde 14/10). Só API oficial (Chakra).
  * A campanha é criada pela RPC campanha_assistente_criar, que também coloca os leads na estratégia principal.
  */
@@ -44,14 +45,15 @@ const VALOR_POR = [
 ];
 const LIMITE_PADRAO = 50;
 
-type Passo = "publico" | "lista" | "vaga" | "mensagem" | "numeros" | "resumo";
-const PASSOS: Passo[] = ["publico", "lista", "vaga", "mensagem", "numeros", "resumo"];
+type Passo = "publico" | "lista" | "vaga" | "mensagem" | "numeros" | "conversa" | "resumo";
+const PASSOS: Passo[] = ["publico", "lista", "vaga", "mensagem", "numeros", "conversa", "resumo"];
 const PERGUNTA: Record<Passo, string> = {
   publico: "Para qual especialidade e região é a campanha?",
   lista: "De onde vem a lista de médicos?",
   vaga: "Onde é a vaga e quanto paga?",
   mensagem: "Qual mensagem vai no primeiro contato?",
   numeros: "Por quais números vamos falar com eles?",
+  conversa: "Depois do primeiro contato, quem conversa com o médico?",
   resumo: "Confere e eu crio a campanha.",
 };
 
@@ -88,6 +90,8 @@ export default function NovaCampanhaAssistente() {
   const [numerosEscolhidos, setNumerosEscolhidos] = useState<string[]>([]);
   const [limitePorNumero, setLimitePorNumero] = useState(LIMITE_PADRAO);
   const [nome, setNome] = useState("");
+  const [modoConversa, setModoConversa] = useState<ModoConversa | null>(null);
+  const [destinos, setDestinos] = useState<Destino[]>([]);
 
   // Vindo de /vagas ("Criar campanha para esta vaga"): especialidade, UF e vaga já respondidas.
   const [params] = useSearchParams();
@@ -163,6 +167,7 @@ export default function NovaCampanhaAssistente() {
     vaga: vaga.cidade.trim().length >= 3,
     mensagem: !!modelo,
     numeros: numerosSel.length > 0 && limitePorNumero >= 1,
+    conversa: !!modoConversa,
     resumo: true,
   };
 
@@ -190,6 +195,8 @@ export default function NovaCampanhaAssistente() {
           template_name: modeloNome,
           template_variables: variaveis,
           sender_ids: numerosEscolhidos,
+          tipo_envio: modoConversa === "manual" ? "manual" : "ia",
+          alerta_destinos: destinos,
           limite_por_numero: limitePorNumero,
           comecar,
           briefing: {
@@ -234,6 +241,9 @@ export default function NovaCampanhaAssistente() {
     vaga: vaga.cidade ? `${TIPOS_VAGA.find((t) => t.value === vaga.tipo)?.label} em ${vaga.cidade}${vaga.hospital ? ` (${vaga.hospital})` : ""} · ${valorTexto}` : "",
     mensagem: modelo ? nomeModelo(modelo.friendly_name) : "",
     numeros: numerosSel.length ? `${numerosSel.length} número(s), até ${limitePorNumero} por número/dia` : "",
+    conversa: modoConversa
+      ? `${modoConversa === "ia" ? "A IA conversa" : "A equipe conversa pelo Sigma"} · aviso para ${destinos.length ? destinos.map((d) => d.nome.split(" ")[0]).join(", ") : "a equipe geral"}`
+      : "",
     resumo: "",
   };
 
@@ -244,7 +254,7 @@ export default function NovaCampanhaAssistente() {
       </Button>
       <div className="min-w-0">
         <h1 className="text-2xl font-bold">Nova campanha</h1>
-        <p className="text-sm text-muted-foreground">Cinco perguntas e a campanha está pronta.</p>
+        <p className="text-sm text-muted-foreground">Seis perguntas e a campanha está pronta.</p>
       </div>
     </div>
   );
@@ -475,12 +485,17 @@ export default function NovaCampanhaAssistente() {
                       </div>
                     )}
 
+                    {p === "conversa" && (
+                      <PassoConversa modo={modoConversa} onModo={setModoConversa} destinos={destinos} onDestinos={setDestinos} />
+                    )}
+
                     {p === "resumo" && (
                       <div className="space-y-4">
                         <dl className="grid gap-3 text-sm sm:grid-cols-2">
                           <ItemResumo rotulo="Médicos" valor={`${mil(previa?.entram)} de ${espTexto || "da lista"} · ${regiaoTexto}`} />
                           <ItemResumo rotulo="Vaga" valor={`${TIPOS_VAGA.find((t) => t.value === vaga.tipo)?.label} em ${vaga.cidade} · ${valorTexto}`} />
                           <ItemResumo rotulo="Números" valor={numerosSel.map((n) => fone(n.phone_e164)).join(", ")} />
+                          <ItemResumo rotulo="Conversa" valor={respostas.conversa} />
                           <ItemResumo rotulo="Ritmo" valor={`Até ${mil(porDia)} por dia, 7h às 17h, dias úteis${dias > 0 ? ` · termina em ~${dias} dias úteis` : ""}`} />
                         </dl>
                         <Campo label="Nome da campanha">
@@ -512,12 +527,12 @@ export default function NovaCampanhaAssistente() {
           <Card className="p-4">
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-sm font-semibold">Rascunho da campanha</h2>
-              <span className="text-xs text-muted-foreground tabular-nums">{Math.min(feitos.size, 5)} de 5</span>
+              <span className="text-xs text-muted-foreground tabular-nums">{Math.min(feitos.size, 6)} de 6</span>
             </div>
             <dl className="space-y-3 text-sm">
-              {(["publico", "lista", "vaga", "mensagem", "numeros"] as Passo[]).map((p) => (
+              {(["publico", "lista", "vaga", "mensagem", "numeros", "conversa"] as Passo[]).map((p) => (
                 <div key={p}>
-                  <dt className="text-xs text-muted-foreground">{{ publico: "Público", lista: "Lista", vaga: "Vaga", mensagem: "Mensagem", numeros: "Números", resumo: "" }[p]}</dt>
+                  <dt className="text-xs text-muted-foreground">{{ publico: "Público", lista: "Lista", vaga: "Vaga", mensagem: "Mensagem", numeros: "Números", conversa: "Conversa", resumo: "" }[p]}</dt>
                   <dd className={cn("break-words", !feitos.has(p) && "text-muted-foreground")}>{feitos.has(p) ? respostas[p] : "—"}</dd>
                 </div>
               ))}
