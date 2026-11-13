@@ -26,11 +26,24 @@ export function variantesTelefoneBloqueio(phoneDigits: string): string[] {
   ].map((d) => `+55${d}`);
 }
 
+// Só o pedaço do supabase-js que a revalidação usa; o teste passa um banco em memória com a mesma forma.
+export type Linha = Record<string, unknown>;
+export interface ConsultaLeitura extends PromiseLike<{ data: Linha[] | null }> {
+  select(colunas: string): ConsultaLeitura;
+  eq(coluna: string, valor: unknown): ConsultaLeitura;
+  in(coluna: string, valores: unknown[]): ConsultaLeitura;
+  limit(n: number): ConsultaLeitura;
+  maybeSingle(): PromiseLike<{ data: Linha | null }>;
+}
+export interface ClienteLeitura {
+  from(tabela: string): ConsultaLeitura;
+}
+
 // Revalida logo antes de enviar a resposta da IA: o "SAIR" pode ter chegado enquanto o modelo gerava texto
 // (~30 s). Cancela a rodada se a campanha do lead foi encerrada, se o telefone está na blacklist (qualquer
 // campanha) ou se o lead está com opt_out.
 export async function rodadaCanceladaPorOptOut(
-  supabase: any,
+  supabase: ClienteLeitura,
   { campanhaLeadId, leadId, phoneDigits }: { campanhaLeadId: string; leadId: string; phoneDigits: string },
 ): Promise<boolean> {
   const { data: latestLeadState } = await supabase

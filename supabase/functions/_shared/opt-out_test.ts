@@ -1,17 +1,24 @@
 import { assertEquals } from "jsr:@std/assert@1";
 import { isExplicitChakraOptOut } from "./chakra.ts";
-import { rodadaCanceladaPorOptOut, telefoneBloqueioE164, variantesTelefoneBloqueio } from "./opt-out.ts";
+import {
+  type ClienteLeitura,
+  type ConsultaLeitura,
+  type Linha,
+  rodadaCanceladaPorOptOut,
+  telefoneBloqueioE164,
+  variantesTelefoneBloqueio,
+} from "./opt-out.ts";
 
 // Telefones fictícios (DDD 48). O WhatsApp manda o celular antigo sem o 9; o lead está cadastrado com o 9.
 const WHATS_SEM_9 = "554881234567";
 const LEAD_COM_9 = "+5548981234567";
 
 // Banco em memória com o pedaço da API do supabase-js que o helper usa: select/eq/in/limit/maybeSingle.
-function bancoFalso(tabelas: Record<string, any[]>) {
+function bancoFalso(tabelas: Record<string, Linha[]>): ClienteLeitura {
   return {
     from(tabela: string) {
       let linhas = [...(tabelas[tabela] ?? [])];
-      const consulta: any = {
+      const consulta: ConsultaLeitura = {
         select: () => consulta,
         eq: (col: string, val: unknown) => {
           linhas = linhas.filter((l) => l[col] === val);
@@ -26,7 +33,9 @@ function bancoFalso(tabelas: Record<string, any[]>) {
           return consulta;
         },
         maybeSingle: () => Promise.resolve({ data: linhas[0] ?? null, error: null }),
-        then: (ok: any, erro: any) => Promise.resolve({ data: linhas, error: null }).then(ok, erro),
+        then(ok, erro) {
+          return Promise.resolve({ data: linhas }).then(ok, erro);
+        },
       };
       return consulta;
     },
@@ -35,7 +44,7 @@ function bancoFalso(tabelas: Record<string, any[]>) {
 
 // Reproduz o descadastro: o handler grava na blacklist o telefone normalizado e o gatilho do banco marca
 // leads.opt_out quando o telefone casa com o do lead.
-function descadastrar(tabelas: Record<string, any[]>, telefoneWhats: string) {
+function descadastrar(tabelas: Record<string, Linha[]>, telefoneWhats: string) {
   const phone = telefoneBloqueioE164(telefoneWhats);
   tabelas.blacklist.push({ id: crypto.randomUUID(), phone_e164: phone });
   for (const lead of tabelas.leads) if (lead.phone_e164 === phone) lead.opt_out = true;
@@ -45,11 +54,11 @@ function cenario() {
   return {
     leads: [{ id: "lead-1", phone_e164: LEAD_COM_9, opt_out: false }],
     campanha_leads: [{ id: "cl-1", lead_id: "lead-1", status: "em_conversa" }],
-    blacklist: [] as any[],
+    blacklist: [] as Linha[],
   };
 }
 
-const rodada = (tabelas: Record<string, any[]>, phoneDigits = WHATS_SEM_9) =>
+const rodada = (tabelas: Record<string, Linha[]>, phoneDigits = WHATS_SEM_9) =>
   rodadaCanceladaPorOptOut(bancoFalso(tabelas), { campanhaLeadId: "cl-1", leadId: "lead-1", phoneDigits });
 
 Deno.test("SAIR em qualquer caixa e com espaços nas pontas é descadastro", () => {
