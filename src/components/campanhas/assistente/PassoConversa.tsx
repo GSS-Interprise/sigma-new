@@ -59,15 +59,17 @@ function usePessoasComTelefone() {
   });
 }
 
-export function PassoConversa({ modo, onModo, destinos, onDestinos }: {
+export function PassoConversa({ modo, onModo, destinos, onDestinos, preencherGerais = true }: {
   modo: ModoConversa | null; onModo: (m: ModoConversa) => void; destinos: Destino[]; onDestinos: (d: Destino[]) => void;
+  /** Campanha nova: já marca os destinatários gerais. Campanha existente com lista vazia continua "gerais" (false). */
+  preencherGerais?: boolean;
 }) {
   const { data } = usePessoasComTelefone();
   const [extraNome, setExtraNome] = useState("");
   const [extraFone, setExtraFone] = useState("");
   // Primeira vez no passo: já vem marcado quem recebe os avisos gerais hoje (o dono só confere).
   useEffect(() => {
-    if (data && destinos.length === 0 && data.gerais.length) onDestinos(data.gerais);
+    if (preencherGerais && data && destinos.length === 0 && data.gerais.length) onDestinos(data.gerais);
   }, [data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const lista = useMemo(() => {

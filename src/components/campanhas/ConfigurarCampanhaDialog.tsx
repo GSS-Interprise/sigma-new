@@ -9,6 +9,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { PassoConversa, type Destino, type ModoConversa } from "@/components/campanhas/assistente/PassoConversa";
 import { CadenciaConfig } from "./CadenciaConfig";
 import type { CadenciaPasso } from "@/hooks/useCadencia";
 import { Button } from "@/components/ui/button";
@@ -70,6 +71,9 @@ function hasEncodingProblem(body: string | null) {
 export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Props) {
   const qc = useQueryClient();
   const [tab, setTab] = useState("disparo");
+  // Quem conversa depois do 1º contato e quem recebe o aviso no WhatsApp (mesma escolha do assistente, 13/11).
+  const [modoConversa, setModoConversa] = useState<ModoConversa | null>(null);
+  const [alertaDestinos, setAlertaDestinos] = useState<Destino[]>([]);
 
   // State editável
   const [chipIds, setChipIds] = useState<string[]>([]);
@@ -163,6 +167,8 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
     setOfficialSenderId(legacyTwilio ? null : officialConfig.official_sender_id || null);
     setOfficialTemplateVariables(legacyTwilio ? {} : officialConfig.official_template_variables || {});
     setResponsavelId(campanha.responsavel_id || null);
+    setModoConversa(campanha.tipo_envio === "manual" ? "manual" : "ia");
+    setAlertaDestinos(Array.isArray((campanha as any).alerta_destinos) ? (campanha as any).alerta_destinos : []);
     const briefing = (campanha.briefing_ia || {}) as Record<string, unknown>;
     setHandoffNome(String(briefing.handoff_nome || ""));
     setHandoffTelefone(String(briefing.handoff_telefone || ""));
@@ -371,6 +377,8 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
           official_sender_id: whatsappProvider !== "evolution" ? officialSenderId : null,
           official_template_variables: whatsappProvider !== "evolution" ? officialTemplateVariables : {},
           responsavel_id: responsavelId,
+          tipo_envio: modoConversa === "manual" ? "manual" : "ia",
+          alerta_destinos: alertaDestinos,
         } as never)
         .eq("id", campanhaId);
       if (error) throw error;
@@ -853,13 +861,16 @@ export function ConfigurarCampanhaDialog({ open, onOpenChange, campanhaId }: Pro
               </TabsContent>
 
               <TabsContent value="responsavel" className="m-0 space-y-4">
-                <NumerosEquipeCampanha value={numerosEquipe} onChange={setNumerosEquipe} />
+                <section className="space-y-2 rounded-lg border p-3" aria-label="Conversa e avisos">
+                  <h4 className="text-sm font-semibold">Conversa e avisos no WhatsApp</h4>
+                  <PassoConversa modo={modoConversa} onModo={setModoConversa} destinos={alertaDestinos} onDestinos={setAlertaDestinos} preencherGerais={false} />
+                  {modoConversa === "manual" && whatsappProvider === "evolution" && (
+                    <p className="text-xs text-amber-700">Campanha pelo chip (Evolution): o 1º contato continua à mão. Só pela API oficial ele sai sozinho.</p>
+                  )}
+                  <p className="text-xs text-muted-foreground">Vale a partir de Salvar, inclusive para quem já está em conversa: trocar para a equipe tira a IA de todas as conversas desta campanha.</p>
+                </section>
 
-                <div className="bg-amber-50 border border-amber-200 rounded p-3 text-xs text-amber-900">
-                  <strong>Importante:</strong> quando a IA detectar um lead quente, ela vai
-                  enviar um WhatsApp <strong>pra esse número</strong>. Confirme que é um
-                  número que vocês acompanham.
-                </div>
+                <NumerosEquipeCampanha value={numerosEquipe} onChange={setNumerosEquipe} />
 
                 <div className="space-y-1.5">
                   <Label className="text-sm">Responsável dentro do Sigma *</Label>
