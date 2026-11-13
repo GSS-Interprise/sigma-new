@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendWhatsAppText } from "../_shared/evo-sender.ts";
+import { rodadaCanceladaPorOptOut } from "../_shared/opt-out.ts";
 
 // Gemini: endpoint compatível com OpenAI (chat, visão) e nativo (áudio). Ver o comentário em "Processar multimodal".
 const GEMINI_CHAT = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
@@ -733,33 +734,21 @@ serve(async (req) => {
     // Revalida antes de qualquer envio para cancelar essa rodada obsoleta. Vale sempre: antes só rodava com
     // conversation_id, que o Chakra não manda — em 12/11 o médico mandou "Sir" e "Sair" 3 s depois, o descadastro
     // rodou e a IA respondeu ao "Sir" mesmo assim. Confere também o bloqueio (blacklist, com e sem o 9).
-    {
-      const { data: latestLeadState } = await supabase
-        .from("campanha_leads")
-        .select("status")
-        .eq("id", campLead.id)
-        .maybeSingle();
-      const semPais = phoneDigits.replace(/^55/, "");
-      const variantes = [semPais, semPais.length === 10 ? semPais.slice(0, 2) + "9" + semPais.slice(2) : semPais.length === 11 ? semPais.slice(0, 2) + semPais.slice(3) : semPais]
-        .map((d) => `+55${d}`);
-      const { data: bloqueado } = await supabase.from("blacklist").select("id").in("phone_e164", variantes).limit(1);
-      const { data: optOut } = await supabase.from("leads").select("opt_out").eq("id", lead.id).maybeSingle();
-      if (latestLeadState?.status === "descartado" || (bloqueado?.length ?? 0) > 0 || optOut?.opt_out === true) {
-        const cancelledResult = {
-          ok: true,
-          reason: "rodada_cancelada_lead_encerrado",
-          messages_sent: 0,
-        };
-        if (claimedMessageId) {
-          await supabase.from("campanha_ia_processed_messages").update({
-            status: "completed",
-            completed_at: new Date().toISOString(),
-            result: cancelledResult,
-            updated_at: new Date().toISOString(),
-          }).eq("msg_id", claimedMessageId);
-        }
-        return json(cancelledResult);
+    if (await rodadaCanceladaPorOptOut(supabase, { campanhaLeadId: campLead.id, leadId: lead.id, phoneDigits })) {
+      const cancelledResult = {
+        ok: true,
+        reason: "rodada_cancelada_lead_encerrado",
+        messages_sent: 0,
+      };
+      if (claimedMessageId) {
+        await supabase.from("campanha_ia_processed_messages").update({
+          status: "completed",
+          completed_at: new Date().toISOString(),
+          result: cancelledResult,
+          updated_at: new Date().toISOString(),
+        }).eq("msg_id", claimedMessageId);
       }
+      return json(cancelledResult);
     }
     const respostaRepetida = messages.length > 0 &&
       isNearDuplicate(messages[0], historico);
