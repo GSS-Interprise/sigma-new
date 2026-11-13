@@ -18,6 +18,8 @@ import { LancarContaAzulDialog } from "@/components/financeiro/LancarContaAzulDi
 import { BaixaContaAzulDialog } from "@/components/financeiro/BaixaContaAzulDialog";
 import { MarcarPagoDialog } from "@/components/financeiro/MarcarPagoDialog";
 import { BaixarNotasMesButton } from "@/components/financeiro/BaixarNotasMesButton";
+import { PendentesContaAzul } from "@/components/financeiro/PendentesContaAzul";
+import { conferirLote } from "../../supabase/functions/_shared/contaazul-lote.ts";
 
 // Fora do componente de propósito: definida dentro, era um componente novo a cada render, o React remontava a
 // lista inteira e a rolagem voltava ao topo depois de abrir uma conferência ou salvar um contato (Amni, 26/10).
@@ -50,6 +52,7 @@ type Linha = {
   nf_conferencia_status: "ok" | "divergente" | "manual" | "aceita" | null;
   nf_conferencia: { itens?: { chave: string; rotulo: string; ok: boolean | null; detalhe: string }[] } | null;
   nf_valor_liquido: number | null; nf_numero: string | null; ca_evento_id: string | null;
+  status: string | null; ca_erro: string | null;
 };
 
 const CONF: Record<string, { label: string; cls: string }> = {
@@ -125,7 +128,7 @@ export default function FinanceiroNotasFiscais(
     queryFn: async () => {
       const [pagRes, fechRes] = await Promise.all([
         (supabase as any).from("financeiro_pagamentos")
-          .select("id, profissional_nome, medico_id, unidade, valor_total, conferido_em, nf_status, nf_solicitada_em, nf_lembretes, nf_ultimo_lembrete_em, nf_recebida_em, nf_arquivo_path, arquivo_origem, nf_conferencia_status, nf_conferencia, nf_valor_liquido, nf_numero, ca_evento_id")
+          .select("id, profissional_nome, medico_id, unidade, valor_total, conferido_em, nf_status, nf_solicitada_em, nf_lembretes, nf_ultimo_lembrete_em, nf_recebida_em, nf_arquivo_path, arquivo_origem, nf_conferencia_status, nf_conferencia, nf_valor_liquido, nf_numero, ca_evento_id, status, ca_erro")
           .eq("mes_referencia", mes).eq("ano_referencia", ano).order("profissional_nome"),
         (supabase as any).from("financeiro_fechamentos")
           .select("status").eq("mes_referencia", mes).eq("ano_referencia", ano).maybeSingle(),
@@ -172,6 +175,14 @@ export default function FinanceiroNotasFiscais(
   const [fechSel, setFechSel] = useState("todos");
   const linhas = fechSel === "todos" ? linhasLib : linhasLib.filter((l) => nomeFech(l.arquivo_origem) === fechSel);
   const liberado = ["em_nf", "aguardando_aprovacao", "aprovado", "pago"].includes(String(data?.fechamentoStatus));
+  // Fechamento inteiro contra o Conta Azul, independente do filtro (o Arthur ficou de fora sem aviso, 13/11).
+  // Só aparece depois que o lançamento começou: antes disso todo mundo "falta" e o aviso seria ruído.
+  const loteCa = useMemo(() => conferirLote(data?.linhas ?? []), [data?.linhas]);
+  const loteIncompleto = loteCa.confirmados > 0 && !loteCa.completo;
+  const selecionarPendentesCa = () => {
+    setFiltro("todos"); setBusca(""); setFechSel("todos");
+    setSel(new Set(loteCa.pendentes.map((p) => p.pagamento_id)));
+  };
 
   const temContato = (l: Linha) => (canal === "email" ? !!l.email : !!l.telefone);
   // nota com divergência ou que precisa de conferência à mão (Amni, 26/10)
@@ -463,6 +474,10 @@ export default function FinanceiroNotasFiscais(
             <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
             <span>{naoLiberados} médico(s) de fechamentos ainda não liberados não aparecem aqui. Para pedir a nota deles, libere o fechamento na aba Fechamento.</span>
           </div>
+        )}
+
+        {loteIncompleto && (
+          <PendentesContaAzul lote={loteCa} acao={{ rotulo: "Selecionar para lançar", onClick: selecionarPendentesCa }} />
         )}
 
         <Card>

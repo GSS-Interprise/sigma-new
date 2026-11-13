@@ -6,6 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertTriangle, CheckCircle2, Loader2, Send } from "lucide-react";
 import { toast } from "sonner";
+import { PendentesContaAzul } from "./PendentesContaAzul";
+import type { Lote } from "../../../supabase/functions/_shared/contaazul-lote.ts";
 
 /**
  * Lançar no Conta Azul — a Maria Vitória seleciona as notas conferidas e vê, antes de enviar,
@@ -55,6 +57,8 @@ export function LancarContaAzulDialog({ pagamentoIds, open, onOpenChange, onLanc
   const [fornecedores, setFornecedores] = useState<{ id: string; nome: string; documento: string }[] | null>(null);
   const [buscaForn, setBuscaForn] = useState<Record<string, string>>({});
   const [catTodos, setCatTodos] = useState("");
+  // conferência do fechamento depois do envio: quem ficou de fora fica na tela, não só no toast
+  const [lote, setLote] = useState<Lote | null>(null);
 
   const carregar = async (aj: Record<string, Ajuste>) => {
     setCarregando(true);
@@ -68,6 +72,7 @@ export function LancarContaAzulDialog({ pagamentoIds, open, onOpenChange, onLanc
   useEffect(() => {
     if (!open) return;
     setAjustes({});
+    setLote(null);
     carregar({});
     chamar({ acao: "categorias" }).then((r) => setCategorias(r.categorias || [])).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -135,8 +140,21 @@ export function LancarContaAzulDialog({ pagamentoIds, open, onOpenChange, onLanc
     setEnviando(true);
     try {
       const r = await chamar({ acao: "lancar", pagamento_ids: prontos.map((i) => i.id), ajustes, confirmar: true });
-      if (r.erros) toast.warning(`${r.lancados} lançado(s), ${r.erros} com erro. Veja o detalhe em cada linha.`);
-      else toast.success(`${r.lancados} conta(s) a pagar lançada(s) no Conta Azul.`);
+      // sem a conferência do fechamento (falhou no servidor), vale ao menos a seleção: quem não voltou confirmado
+      const conferido: Lote = r.lote ?? (() => {
+        const res = (r.resultados || []) as { id: string; ok: boolean; erro?: string }[];
+        const ok = new Set(res.filter((x) => x.ok).map((x) => x.id));
+        const erro = new Map(res.filter((x) => !x.ok).map((x) => [x.id, x.erro]));
+        const fora = itens.filter((i) => !i.ja_lancado && !ok.has(i.id));
+        return {
+          esperados: itens.length, confirmados: itens.length - fora.length, completo: !fora.length,
+          pendentes: fora.map((i) => ({ pagamento_id: i.id, medico: i.medico, unidade: i.unidade, tipo: "nao_enviado" as const,
+            motivo: erro.get(i.id) ? `O Conta Azul recusou: ${erro.get(i.id)}` : `Não foi enviado: ${i.problemas.join(" ") || "fora da seleção."}` })),
+        };
+      })();
+      setLote(conferido);
+      if (!conferido.completo) toast.warning(`${r.lancados} lançado(s). ${conferido.pendentes.length} médico(s) do fechamento não estão no Conta Azul: veja quem no topo.`);
+      else toast.success(`${r.lancados} conta(s) a pagar lançada(s). Todos os médicos do fechamento estão no Conta Azul.`);
       onLancado();
       await carregar(ajustes);
     } catch (e: any) { toast.error(e.message); }
@@ -147,6 +165,8 @@ export function LancarContaAzulDialog({ pagamentoIds, open, onOpenChange, onLanc
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl max-h-[90dvh] overflow-y-auto">
         <DialogHeader><DialogTitle>Lançar no Conta Azul</DialogTitle></DialogHeader>
+
+        {lote && <PendentesContaAzul lote={lote} />}
 
         {!escrita && !carregando && (
           <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
