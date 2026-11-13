@@ -170,10 +170,10 @@ h1,h2,.sora{font-family:Sora,Manrope,sans-serif}
 """
 
 CAMPS = [
- dict(n='Ginecologia e obstetrícia', meta='IA · Brasil · desde 02/09', situ='Ativa', f=[640,310,38,9,3], trava=None, hoje=(22,35), sem=0, num='(11) 90000-0000', dono='Carla Menezes'),
- dict(n='Pediatria', meta='IA · Brasil · desde 18/08', situ='Ativa', f=[3851,2722,489,41,8], trava=3, hoje=(18,35), sem=21, num='(11) 90000-0001', dono='Bruno Teixeira'),
- dict(n='Anestesiologia · SMO', meta='IA · Santa Catarina · desde 10/10', situ='Ativa', f=[5319,1904,212,19,0], trava=3, hoje=(35,35), sem=7, num='(11) 90000-0002', dono='Carla Menezes'),
- dict(n='Ultrassom SC', meta='IA · Santa Catarina · desde 27/10', situ='Sem número', f=[1000,410,22,4,1], trava=None, hoje=(0,35), sem=2, num=None, dono='Elisa Moura'),
+ dict(n='Ginecologia e obstetrícia', meta='IA conversa · Brasil · desde 02/09', situ='Ativa', f=[640,310,38,9,3], trava=None, hoje=(22,35), sem=0, num='(11) 90000-0000', dono='Carla Menezes'),
+ dict(n='Pediatria', meta='IA conversa · Brasil · desde 18/08', situ='Ativa', f=[3851,2722,489,41,8], trava=3, hoje=(18,35), sem=21, num='(11) 90000-0001', dono='Bruno Teixeira'),
+ dict(n='Anestesiologia · SMO', meta='Equipe pelo CRM · Santa Catarina · desde 10/10', situ='Ativa', f=[5319,1904,212,19,0], trava=3, hoje=(35,35), sem=7, num='(11) 90000-0002', dono='Carla Menezes'),
+ dict(n='Ultrassom SC', meta='Equipe pelo CRM · Santa Catarina · desde 27/10', situ='Sem número', f=[1000,410,22,4,1], trava=None, hoje=(0,35), sem=2, num=None, dono='Elisa Moura'),
 ]
 ETAPAS = ['Novo','Contatado','Respondeu','Atendimento','Convertido']
 def fmt(n): return f'{n:,}'.replace(',', '.')

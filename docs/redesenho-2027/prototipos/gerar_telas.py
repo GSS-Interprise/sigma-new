@@ -172,7 +172,7 @@ def topo(titulo, abas=None, dir_html=''):
     return f'<div class="topo"><h1>{titulo}</h1>{a}<div class="dir">{dir_html}</div></div>'
 
 BUSCA = f'<div class="busca">{ic("search",15)}<span class=bt>Buscar</span><kbd>Ctrl K</kbd></div>'
-ABAS_P = lambda on: [("Campanhas", on=="c"), ('Quentes<span class="qt num">30</span>', on=="q"), ("LinkedIn", on=="l"), ("E-mail", False), ("Painel", False)]
+ABAS_P = lambda on: [("Campanhas", on=="c"), ('Quentes<span class="qt num">30</span>', on=="q"), ("LinkedIn", on=="l"), ("Instagram", False), ("E-mail", False), ("Painel", False)]
 MAQ = lambda s: f'<div class="maquina num">{s}</div>'
 def ini(n): return ''.join(p[0] for p in n.split()[:2])
 
@@ -190,7 +190,7 @@ cols = [
  ('Em atendimento', 41, '#3b8043', [kc('Fábio Lacerda','Pediatria · SC','Proposta enviada: 4 plantões de 12 h.','hoje', False, 'Carla M.'), kc('Isabela Rocha','Ginecologia · SP','Aguardando documentos.','ontem', False, 'Bruno T.')]),
  ('Convertido', 12, 'var(--verde)', [kc('Paulo Viana','Anestesiologia · SC','Contrato assinado em 10/11.','3 dias', False, 'Elisa M.'), kc('Olívia Campos','Pediatria · PR','Primeiro plantão em 20/11.','5 dias', False, 'Carla M.')]),
 ]
-kb = '<div class="kb"><div class="col"><div class="novo"><span class="leve">Novo</span><span class="n num">3.599</span><span class="leve">A IA faz o primeiro contato sozinha.</span></div></div>'
+kb = '<div class="kb"><div class="col"><div class="novo"><span class="leve">Novo</span><span class="n num">3.599</span><span class="leve">O 1º disparo sai pela API oficial.</span></div></div>'
 for nome, n, cor, cards in cols:
     kb += f'<div class="col"><div class="colh"><div class="t">{nome}<span class="num">{fmt(n)}</span></div><div class="b" style="background:{cor}"></div></div>{"".join(cards)}<div class="mais">Ver mais {fmt(n-len(cards))}</div></div>'
 kb += '</div>'
