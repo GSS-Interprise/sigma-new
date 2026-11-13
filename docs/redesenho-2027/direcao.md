@@ -18,9 +18,12 @@ do dado) saem do topo e só aparecem quando quebram ou quando alguém pede.
   - verde = feito, convertido;
   - cinza = neutro, a máquina.
 - **Sai o roxo da IA.** A IA vira um rótulo de texto pequeno e neutro ("IA respondeu"), sem cor própria.
-- **Menu mais leve:** fundo claro (grafite muito suave), item ativo com texto forte e barra verde fina. O
-  verde-escuro em bloco sai do menu e fica só na marca SIGMA. *(Decisão do Raul: a GSS pode querer manter o
-  menu verde como identidade; a alternativa é manter o verde e só reduzir os itens.)*
+- **Menu verde de hoje, mais enxuto (decisão do Raul, 13/11):** o verde-escuro fica, porque a equipe usa o
+  Sigma há muito tempo e um menu claro causaria estranheza. Muda o conteúdo: grupos recolhíveis, item ativo
+  com texto forte e barra verde-clara fina, contador âmbar só onde algo espera a pessoa.
+- **Padrão escolhido:** a variação A da tela Campanhas com o menu verde (protótipo
+  `prototipos/campanhas-A2.html`, Figma página "Depois", linha "Escolhida"). As outras telas seguem esse
+  padrão.
 
 ## Tipografia
 - Mantém o par que o Sigma já usa: **Sora** nos títulos e **Manrope** no texto. Ele tem personalidade e já

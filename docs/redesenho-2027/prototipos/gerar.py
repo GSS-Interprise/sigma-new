@@ -264,4 +264,8 @@ corpoC = f'''<div class="app">{trilho}<main class="main">{topo()}
 <div class="fl" style="justify-content:center;color:var(--verde);font-weight:700">Ver os 30</div></section>
 <section class="cps">{filtros()}{"".join(cpC(c) for c in CAMPS)}<div class="maquina num">9.792 leads em 4 campanhas ativas · 9 números oficiais, 8 enviando · leitura às 15:40</div></section></div></main></div>'''
 (OUT/'campanhas-C.html').write_text(pagina('Campanhas C', corpoC), encoding='utf-8')
+
+# ---------- Variação A2: a A com o menu verde de hoje (escolha do Raul, 13/11)
+corpoA2 = corpoA.replace(menu("claro"), menu("verde"), 1)
+(OUT/'campanhas-A2.html').write_text(pagina('Campanhas A2', corpoA2), encoding='utf-8')
 print('ok')
