@@ -25,7 +25,7 @@ respondeu e ninguém assumiu, a conversa sem resposta, a campanha parada.
 | Conversas | 6 | 8 | Painel do médico ao lado da conversa (etapa, campanha, cidade, próximo passo); mover etapa no cabeçalho |
 | Leads | 5 | 8 | Segmentos salvos e "Pôr em campanha" em lote; nomes em caixa normal |
 | Início | 4 | 8 | "Hoje para você": uma lista com quentes, tarefas, campanhas e conversas, cada uma com a sua ação |
-| BI · Raio-X | 7 | 9 | Abre com a frase do gargalo; o ponto que trava fica em destaque |
+| BI · Raio-X | 7 | 9 | Modo apresentação para o diretor do hospital: escassez na região, esforço semanal por canal, funil até o contrato, motivos de recusa, preço de mercado e a proposta |
 | Vagas | 6 | 8 | Sem cartões zerados; a vaga mais antiga primeiro; o vazio diz o que fazer |
 
 Nota de 0 a 10: pergunta da tela respondida no topo, ações que competem, informação por linha, estados e
