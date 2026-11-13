@@ -141,3 +141,6 @@ verify_jwt = false
 
 [functions.sla-voz]
 verify_jwt = false
+
+[functions.alertas-equipe]
+verify_jwt = false

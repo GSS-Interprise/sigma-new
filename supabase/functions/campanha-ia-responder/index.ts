@@ -1014,6 +1014,18 @@ serve(async (req) => {
 
       console.log(`[ia] 🔥 LEAD QUENTE: ${lead.nome} — ${resumo}`);
 
+      // Aviso à equipe pelo WhatsApp oficial (alertas-equipe; decisão do Raul, 12/11). O envio pela Evolution logo
+      // abaixo fica só para campanhas antigas com chip; desde 08/11 nenhum chip está aberto.
+      try {
+        await fetch(`${supabaseUrl}/functions/v1/alertas-equipe`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ acao: "quente", campanha_lead_id: campLead.id, resumo: String(resumo).slice(0, 180) }),
+        });
+      } catch (e) {
+        console.warn(`[ia] alertas-equipe: ${(e as Error).message}`);
+      }
+
       if (evoUrl && evoKey && instance_name && handoffTel && chipIaId) {
         const alertMsg = `🔥 *LEAD QUENTE — AÇÃO NECESSÁRIA* 🔥\n\n` +
           `*Médico:* ${lead.nome}\n` +
