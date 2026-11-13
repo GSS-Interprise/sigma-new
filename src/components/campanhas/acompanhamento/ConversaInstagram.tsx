@@ -8,6 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { JANELA_META_MS as JANELA_MS, janelaAberta } from "../../../../supabase/functions/_shared/redes";
 
 /**
  * Conversa do Instagram do médico, dentro do painel do lead (acima da do WhatsApp). Só existe quando o médico respondeu
@@ -16,7 +17,6 @@ import { cn } from "@/lib/utils";
  * A Meta só deixa responder até 24 h depois da última mensagem do médico; fora disso a caixa explica e fica travada.
  */
 
-const JANELA_MS = 24 * 3_600_000;
 
 type Conversa = { zernio_conversation_id: string; handle: string; ultima_do_medico_em: string | null };
 type Msg = { id: string; direcao: "recebida" | "enviada"; texto: string; tipo: string; enviado_em: string };
@@ -53,7 +53,7 @@ export function ConversaInstagram({ leadId }: { leadId: string }) {
   if (!data) return null;
   const { conv, msgs } = data;
   const fechaEm = conv.ultima_do_medico_em ? new Date(new Date(conv.ultima_do_medico_em).getTime() + JANELA_MS) : null;
-  const aberta = !!fechaEm && fechaEm.getTime() > Date.now();
+  const aberta = janelaAberta(conv.ultima_do_medico_em);
 
   return (
     <section className="mb-4 rounded-lg border bg-background" aria-label="Conversa no Instagram">

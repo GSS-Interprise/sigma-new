@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+// Mesmas regras de telefone que a edge alertas-equipe usa (testes em _shared/alertas_test.ts).
+import { foneValido, mostrarFone, normalizarFone, type Destino } from "../../../../supabase/functions/_shared/alertas";
 
 /**
  * Passo "conversa" do assistente de campanha (decisão do Raul, 13/11): quem conversa depois do 1º contato e quem recebe
@@ -17,20 +19,8 @@ import { cn } from "@/lib/utils";
  */
 
 export type ModoConversa = "ia" | "manual";
-export type Destino = { nome: string; fone: string };
+export type { Destino };
 
-const soDigitos = (v: string) => v.replace(/\D/g, "");
-// Aceita (48) 99999-9999, 48999999999 ou +55 48 99999-9999; guarda sempre com 55 na frente.
-export const normalizarFone = (v: string) => {
-  const d = soDigitos(v);
-  if (d.length === 10 || d.length === 11) return `55${d}`;
-  return d;
-};
-export const foneValido = (v: string) => /^55\d{10,11}$/.test(normalizarFone(v));
-const mostrarFone = (d: string) => {
-  const n = d.replace(/^55/, "");
-  return n.length === 11 ? `(${n.slice(0, 2)}) ${n.slice(2, 7)}-${n.slice(7)}` : n.length === 10 ? `(${n.slice(0, 2)}) ${n.slice(2, 6)}-${n.slice(6)}` : d;
-};
 
 // Equipe com telefone no cadastro + destinatários gerais (config alertas_equipe_destinos), sem repetir número.
 function usePessoasComTelefone() {

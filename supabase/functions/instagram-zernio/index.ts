@@ -7,12 +7,11 @@
 // Todo o resto da caixa é lido em memória para filtrar e descartado; nada dele vai para o banco nem para o log.
 // Por isso a integração é por consulta, não por webhook: o webhook da conta já é do CRM do Maikon e mandaria tudo.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { handleInstagram as handleDe, janelaAberta, mensagemDaEmpresa } from "../_shared/redes.ts";
 
 const BASE = "https://zernio.com/api/v1";
-const JANELA_MS = 24 * 3_600_000;
 const corsHeaders = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-const handleDe = (h: unknown) => String(h || "").trim().replace(/^@+/, "").toLowerCase();
 
 async function zernio(path: string, init: RequestInit = {}) {
   const r = await fetch(`${BASE}${path}`, {
@@ -102,7 +101,7 @@ async function trazerConversa(admin: any, c: any, medico: { lead_id: string; cam
   let novas = 0, ultimaDoMedico: string | null = null, ultima: string | null = null, recebeuNova = false;
   for (const m of msgs) {
     const id = m.id || m._id || m.messageId;
-    const daEmpresa = m.fromMe === true || m.direction === "outbound" || m.direction === "outgoing" || String(m.senderId || "") === String(c.accountId);
+    const daEmpresa = mensagemDaEmpresa(m, String(c.accountId));
     const em = m.createdTime || m.createdAt || m.timestamp;
     const quando = em ? new Date(em).toISOString() : new Date().toISOString();
     if (!ultima || quando > ultima) ultima = quando;
@@ -141,7 +140,7 @@ async function enviar(admin: any, userId: string, body: any) {
     .order("ultima_mensagem_em", { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
   if (!conv) return json({ ok: false, error: "Ainda não há conversa no Instagram com este médico. Ela aparece quando ele responde." }, 404);
   // A Meta recusa fora da janela; avisar antes poupa o erro cru.
-  if (!conv.ultima_do_medico_em || Date.now() - new Date(conv.ultima_do_medico_em).getTime() > JANELA_MS) {
+  if (!janelaAberta(conv.ultima_do_medico_em)) {
     return json({ ok: false, janela_fechada: true, error: "Passaram 24 h da última mensagem do médico: o Instagram só deixa responder depois que ele escrever de novo." });
   }
   const r = await zernio(`/inbox/conversations/${encodeURIComponent(conv.zernio_conversation_id)}/messages`, {

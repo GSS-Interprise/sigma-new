@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { nomeProprio } from "@/lib/textoDono";
+// Mesmo arquivo do motor automático (unipile-motor): o convite copiado aqui e o enviado sozinho são iguais.
+import { especialidadeCurta, textoConvite, type Canal } from "../../../../supabase/functions/_shared/redes";
 
 /**
  * Campanhas › LinkedIn / Instagram (Fase 9 do plano do Maikon) — pergunta da tela: "quem eu chamo hoje nesta rede, e
@@ -17,7 +19,6 @@ import { nomeProprio } from "@/lib/textoDono";
  * Ritmos e desenho: docs/arquitetura/linkedin-instagram-campanha.md.
  */
 
-export type Canal = "linkedin" | "instagram";
 
 const CONFIG: Record<Canal, {
   meta: number; titulo: string; contador: string; copiar: string; copiado: string; feito: string; vazio: string; aviso?: string;
@@ -44,26 +45,8 @@ type Fila = { feitos_hoje: number; meus_hoje: number; com_perfil: number; sem_bu
 
 const STATUS: Record<string, string> = { quente: "Quente", em_conversa: "Em conversa", contatado: "Sem resposta no WhatsApp" };
 
-function primeiroNome(nome: string) {
-  return nomeProprio(nome).split(/\s+/)[0] || "";
-}
 
-function especialidadeCurta(e: string | null) {
-  return String(e || "").replace(/^&/, "").split(/ - RQE|\(/)[0].trim().toLowerCase();
-}
 
-// LinkedIn: nota do convite até 300 caracteres (limite do LinkedIn). Instagram: mensagem curta, de pessoa para pessoa.
-export function textoConvite(i: Item, canal: Canal = "linkedin") {
-  const esp = especialidadeCurta(i.especialidade);
-  const onde = i.cidade_vaga?.trim() || "Santa Catarina";
-  if (canal === "instagram") {
-    return `Oi, Dr(a). ${primeiroNome(i.nome)}! Aqui é o Maikon Madeira, cirurgião cardiovascular e sócio da GSS Saúde. `
-      + `Estamos com plantões ${esp ? `de ${esp} ` : ""}em ${onde}. Posso te passar os detalhes por aqui?`;
-  }
-  const t = `Olá, Dr(a). ${primeiroNome(i.nome)}! Sou o Dr. Maikon Madeira, cirurgião cardiovascular e sócio da GSS Saúde. `
-    + `Temos plantões ${esp ? `de ${esp} ` : ""}em ${onde} e gostaria de me conectar para te passar os detalhes. Faz sentido para você?`;
-  return t.length > 300 ? t.slice(0, 297) + "..." : t;
-}
 
 export function FilaRedes({ canal }: { canal: Canal }) {
   const cfg = CONFIG[canal];

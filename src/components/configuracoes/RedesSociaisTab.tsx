@@ -12,6 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
+import { limiteDiaLinkedin } from "../../../supabase/functions/_shared/redes";
 
 /**
  * Configurações › LinkedIn (Fase 9.2) — pergunta da tela: "quem da GSS tem LinkedIn/Instagram ligado ao Sigma, e está
@@ -27,11 +28,8 @@ type Conta = {
   automatico?: boolean; rampa_inicio?: string | null; convites_dia_teto?: number | null; motor_motivo?: string | null;
 };
 
-// Mesma conta da edge unipile-motor: 5 convites/dia na 1ª semana, +3 por semana, até o teto da conta.
-function limiteHoje(c: Conta) {
-  const semanas = c.rampa_inicio ? Math.floor((Date.now() - new Date(c.rampa_inicio).getTime()) / (7 * 86_400_000)) : 0;
-  return Math.min(5 + 3 * semanas, c.convites_dia_teto ?? 20);
-}
+// Mesma conta da edge unipile-motor (_shared/redes.ts): 5 convites/dia na 1ª semana, +3 por semana, até o teto.
+const limiteHoje = (c: Conta) => limiteDiaLinkedin(c.rampa_inicio, c.convites_dia_teto);
 
 const SITUACAO: Record<string, { rotulo: string; classe: string }> = {
   conectada: { rotulo: "Conectada", classe: "bg-emerald-50 text-emerald-700 ring-emerald-600/20" },

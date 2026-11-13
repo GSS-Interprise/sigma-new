@@ -7,11 +7,9 @@
 //   POST /{account_id}/users/me/relation-requests  { user_id, message }    → convite com nota
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { unipile } from "../_shared/unipile.ts";
+import { identificadorLinkedin as identificador, limiteDiaLinkedin, podeConvidarSozinho, textoConvite } from "../_shared/redes.ts";
 
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { "Content-Type": "application/json" } });
-const BASE_DIA = 5, SOBE_POR_SEMANA = 3;
-// Só envia para perfil cadastrado à mão (sem nota) ou achado com confiança alta: convite para a pessoa errada queima a conta.
-const CONFIANCA_MIN = 85;
 
 async function ehServiceRole(token: string) {
   if (token && token === Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")) return true;
@@ -31,26 +29,13 @@ const inicioDoDiaSP = () => {
   return new Date(sp.getTime() + dif);
 };
 
-const primeiroNome = (n: string) => String(n || "").trim().split(/\s+/)[0]?.toLowerCase().replace(/^./, (c) => c.toUpperCase()) || "";
-const especialidadeCurta = (e: string | null) => String(e || "").replace(/^&/, "").split(/ - RQE|\(/)[0].trim().toLowerCase();
-
-// MESMO texto da fila assistida (src/components/campanhas/redes/FilaRedes.tsx, textoConvite): mudar um, mudar o outro.
-function textoConvite(i: any) {
-  const esp = especialidadeCurta(i.especialidade);
-  const onde = String(i.cidade_vaga || "").trim() || "Santa Catarina";
-  const t = `Olá, Dr(a). ${primeiroNome(i.nome)}! Sou o Dr. Maikon Madeira, cirurgião cardiovascular e sócio da GSS Saúde. `
-    + `Temos plantões ${esp ? `de ${esp} ` : ""}em ${onde} e gostaria de me conectar para te passar os detalhes. Faz sentido para você?`;
-  return t.length > 300 ? t.slice(0, 297) + "..." : t;
-}
-
-const identificador = (url: string) => String(url || "").match(/linkedin\.com\/in\/([^/?#]+)/i)?.[1] || null;
+// O texto do convite e a rampa vêm de _shared/redes.ts, o mesmo arquivo que a fila assistida usa na tela.
 
 async function rodarConta(admin: any, conta: any) {
   const agora = new Date();
   if (conta.proximo_envio_em && new Date(conta.proximo_envio_em) > agora) return { conta: conta.id, pulou: "intervalo" };
 
-  const semanas = conta.rampa_inicio ? Math.floor((agora.getTime() - new Date(conta.rampa_inicio).getTime()) / (7 * 86_400_000)) : 0;
-  const limiteDia = Math.min(BASE_DIA + SOBE_POR_SEMANA * semanas, conta.convites_dia_teto ?? 20);
+  const limiteDia = limiteDiaLinkedin(conta.rampa_inicio, conta.convites_dia_teto, agora);
   const { count: hoje } = await admin.from("campanha_toques").select("id", { count: "exact", head: true })
     .eq("linkedin_conta_id", conta.id).eq("canal", "linkedin").gte("executado_em", inicioDoDiaSP().toISOString());
   if ((hoje ?? 0) >= limiteDia) return { conta: conta.id, pulou: `limite do dia (${limiteDia})` };
@@ -60,7 +45,7 @@ async function rodarConta(admin: any, conta: any) {
 
   const { data: fila, error } = await admin.rpc("fila_redes_do_dia", { p_canal: "linkedin", p_limite: 20 });
   if (error) throw error;
-  const item = (fila?.itens || []).find((i: any) => (i.confianca == null || i.confianca >= CONFIANCA_MIN) && identificador(i.url_perfil));
+  const item = (fila?.itens || []).find((i: any) => podeConvidarSozinho(i.confianca) && identificador(i.url_perfil));
   if (!item) return { conta: conta.id, pulou: "fila vazia" };
 
   const acc = encodeURIComponent(conta.gateway_account_id);
@@ -88,7 +73,7 @@ async function rodarConta(admin: any, conta: any) {
   }
   if (!membro) { await registrar("pulado", { observacao: "perfil sem id de membro" }); return { conta: conta.id, pulou: "sem id" }; }
 
-  const texto = textoConvite(item);
+  const texto = textoConvite(item, "linkedin");
   try {
     await unipile(`/${acc}/users/me/relation-requests`, { method: "POST", body: JSON.stringify({ user_id: membro, message: texto }) });
   } catch (e: any) {

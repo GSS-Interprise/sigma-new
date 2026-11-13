@@ -1,0 +1,72 @@
+# O que falta — mapa geral (13/11/2026)
+
+Um lugar só para o que ainda não está entregue nas frentes da GSS no Sigma. Cada item diz **de quem é o próximo
+passo**: *nosso* (a Pulse faz sem depender de ninguém), *GSS* (alguém da GSS decide ou faz) ou *bloqueado* (espera
+algo de fora). O detalhe de cada frente fica no doc dela, linkado no título.
+
+## Como testar o que já está pronto
+
+| O quê | Comando | Cobre |
+|---|---|---|
+| Regras das redes e dos avisos | `cd supabase/functions/_shared && deno test --node-modules-dir=none` (41 testes) | convite (texto e 300 caracteres), rampa do LinkedIn, URL do perfil, confiança mínima, aceite/resposta pela Unipile, @ do Instagram, janela de 24 h, telefone (formatos, estrangeiro, DDD), destinos do aviso, trecho do modelo da Meta + os testes antigos (Chakra, cadência, NFS-e) |
+| Motor de IA na VPS | `python -m unittest vps/sigma-rotinas/test_motor_claude.py` | link do login, motivo do erro, teste só com "OK", token nunca aparece na saída, tipos da fila |
+| Banco: criação de campanha | `supabase/tests/campanha_modo_alertas.sql` (deixa nada gravado; espera `TESTE_OK`) | modo IA/equipe, destinos normalizados, padrão sem destinos, só admin pede rotina do motor |
+
+O texto do convite e as regras de telefone moram em `supabase/functions/_shared/redes.ts` e `alertas.ts` e são
+importados **pela tela e pelas edges**: o que a fila mostra e o que o motor envia não têm como divergir.
+
+## Prospecção do Maikon ([plano](plano-goal-gss-dono-no-comando.md) · [redes](linkedin-instagram-campanha.md))
+
+| Item | De quem | Situação |
+|---|---|---|
+| Aprovar as 6 simulações da IA e decidir, por campanha, se a IA informa valor (`ia_informa_valor`) | GSS (Maikon) | `output/ia-v11-simulacoes-maikon.md` |
+| Confirmar o Instagram respondido de dentro do Sigma, pela conta @maikonmadeira (quem envia a 1ª mensagem: ele ou a secretária) | GSS (Maikon) | fila e respostas prontas |
+| Escolher quem da GSS conecta o LinkedIn primeiro (conta antiga, com conexões) | GSS | tela e motor prontos, motor desligado |
+| Assinar a Unipile antes do fim do teste grátis (~20/11) | GSS/Raul | sem assinatura a API trava |
+| Aprovar o PDF das 36 respostas antes do reenvio | GSS (Vinicius) | — |
+| Primeiro teste real: médico respondendo no Instagram; motor do LinkedIn mandando o 1º convite | nosso, depois dos dois acima | regras testadas; caminho real não |
+| Mensagens do LinkedIn (texto) nas Conversas | bloqueado | precisa de conta conectada para ver o formato do evento da Unipile |
+| Foto automática do CFM | bloqueado | reCAPTCHA do CFM |
+| Kanban de acompanhamento pesado (~7 mil cards, 900+ requisições ao abrir) | nosso | o redesenho propõe a coluna "Novo" como número; esperando o Raul na sessão do redesenho |
+
+## Motor de IA — Hermes + Claude Max da GSS ([doc](motor-ia-hermes-claude.md))
+
+| Item | De quem | Situação |
+|---|---|---|
+| Login da conta Max pela tela (Configurações › Motor de IA) e desligar o "extra usage" | GSS | instalado e testado até o link |
+| Definir os processos que rodam no Claude | GSS + Raul | lista vazia de propósito |
+
+## Claude dos sócios — Heron ([doc](claude-socios-gss.md))
+
+| Item | De quem | Situação |
+|---|---|---|
+| T5 tela para o sócio gerar e revogar o próprio token | nosso | — |
+| T7 login OAuth no `sigma-mcp` (Claude.ai e celular) | nosso | — |
+| Conferir à mão os furos de um hospital num dia contra a tela do Dr. Escala | nosso | robô roda 06h/12h/18h |
+| LGPD: nome de médico (e na fase 2 conversas) passando pelo Claude de cada sócio; plano do Claude dos sócios | GSS (decisão) | — |
+| Lista de sócios que entram; envio pelo escalista sempre com confirmação? | GSS | — |
+| Usuário só de leitura no Dr. Escala para o robô (hoje usa a conta da diretoria, admin) | GSS | — |
+| Apagar `Downloads\login DR escala - Ramone.txt` (senha em texto puro) | Raul | — |
+| T8/T9 fase 2 e 3 (conversas dos escalistas, envio pelo número deles) | depois da T7 | — |
+
+## SLA de laudos — Marieta ([doc](sla-laudos-radiologia.md))
+
+| Item | De quem | Situação |
+|---|---|---|
+| Teste do fim de semana: lista de escalados e telefones; máquina logada na VPN e no Carestream | GSS (Wagner/Vini) | mensagem enviada no grupo em 13/11 |
+| Escada automática completa (vencido → liga ao plantonista 2x → sem tecla 1, coordenador) | nosso | ligação existe, fora da escada |
+| Indicadores do dia seguinte (tela ou e-mail às 7h) | nosso | — |
+| Reconexão automática da VPN (sccli do Sophos) | bloqueado | falta usuário e senha da VPN |
+| Estação 24 h (sem suspensão, no-break, teste após reiniciar) | GSS | — |
+| Número +55 no Twilio | bloqueado | cadastro em revisão no Twilio |
+| AVC (30 min): como aparece na tela | GSS (Wagner) | — |
+| Proposta ao Ramone (R$ 3.000, 4 PACS + 2 novos) | Raul | — |
+| Outras unidades: Tijucas (Animati), CEPON, Mobilimed e 2 PACS novos | depois do piloto | — |
+
+## Financeiro
+
+| Item | De quem | Situação |
+|---|---|---|
+| Usuário do Conta Azul com acesso ao Financeiro e aos cadastros | GSS | o atual não vê nada |
+| Planilha do Marieta de outubro | GSS (Mavi) | — |
+| De onde vêm os dados bancários dos médicos (hoje estão nas observações dos lançamentos antigos, que a Mavi clonava) | Raul | — |

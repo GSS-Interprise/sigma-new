@@ -4,18 +4,19 @@
 // Precisa responder 2xx em até 5 s, senão a Unipile reenvia.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { lerState, salvarConta, situacaoDe, webhookValido } from "../_shared/unipile.ts";
+import { eventoDoMedico, idsDeMembro } from "../_shared/redes.ts";
 
 // O formato de message.new/relation.new não está na doc da Unipile: em vez de ler um campo, procura no evento o id do
 // membro (ACo...) que o motor gravou em campanha_toques.destino_id ao mandar o convite.
 async function marcarResposta(admin: any, ev: any, tipo: string) {
   const texto = JSON.stringify(ev);
-  const ids = [...new Set(texto.match(/ACo[A-Za-z0-9_-]{10,}/g) || [])].slice(0, 20);
+  const ids = idsDeMembro(texto);
   if (!ids.length) return;
   const { data: toques } = await admin.from("campanha_toques").select("id, campanha_lead_id, destino_id, status, campanha_leads(lead_id)")
     .eq("canal", "linkedin").in("destino_id", ids).in("status", ["feito", "respondido"]);
   for (const t of toques || []) {
     // A primeira mensagem do chat aberto pelo convite aceito é a nossa nota: aceitar conta como resposta, a nota não.
-    const doMedico = tipo === "relation.new" || texto.includes(`"sender_id":"${t.destino_id}"`) || texto.includes(`"sender":{"id":"${t.destino_id}"`);
+    const doMedico = eventoDoMedico(tipo, texto, t.destino_id);
     if (!doMedico || t.status === "respondido") continue;
     await admin.from("campanha_toques").update({ status: "respondido" }).eq("id", t.id);
     const leadId = t.campanha_leads?.lead_id;

@@ -13,6 +13,7 @@
 // o aviso vale desde já (não espera alertas_equipe_inicio); sem lista, vão os destinatários gerais acima.
 // Só service_role chama.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
+import { destinosDaConfig, destinosValidos, trechoAviso } from "../_shared/alertas.ts";
 
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { "Content-Type": "application/json" } });
 const SIGMA = "https://sigma-gss.lovable.app";
@@ -65,16 +66,12 @@ async function remetente(admin: any) {
 
 // Destinatários da campanha (se ela tiver lista própria) ou os gerais da equipe.
 async function destinosDaCampanha(admin: any, campanha: any) {
-  const proprios = (Array.isArray(campanha?.alerta_destinos) ? campanha.alerta_destinos : [])
-    .map((d: any) => ({ nome: String(d?.nome || ""), fone: dig(d?.fone) })).filter((d: any) => d.fone.length >= 12);
+  const proprios = destinosValidos(campanha?.alerta_destinos);
   return proprios.length ? { lista: proprios, proprios: true } : { lista: await destinos(admin), proprios: false };
 }
 
 async function destinos(admin: any) {
-  return (await config(admin, "alertas_equipe_destinos")).split(/[;\n]+/).map((x) => x.trim()).filter(Boolean).map((x) => {
-    const i = x.lastIndexOf(":");
-    return { nome: i > 0 ? x.slice(0, i).trim() : "", fone: dig(i > 0 ? x.slice(i + 1) : x) };
-  }).filter((d) => d.fone.length >= 12);
+  return destinosDaConfig(await config(admin, "alertas_equipe_destinos"));
 }
 
 async function ativo(admin: any) {
@@ -106,7 +103,7 @@ async function avisarMedico(admin: any, campanhaLeadId: string, texto: string, f
   const nome = String(cl.lead?.nome || "Medico").replace(/\b\w+/g, (w: string) => w[0].toUpperCase() + w.slice(1).toLowerCase());
   const esp = String(cl.lead?.especialidade || "especialidade nao informada").replace(/^&/, "").split(/ - RQE| RQE|&/)[0].trim();
   // Modelo da Meta não aceita quebra de linha nem 4+ espaços seguidos num parâmetro.
-  const trecho = (texto || tipo.padrao).replace(/\s+/g, " ").trim().slice(0, 180);
+  const trecho = trechoAviso(texto, tipo.padrao);
   const out = [];
   for (const d of lista) {
     try {

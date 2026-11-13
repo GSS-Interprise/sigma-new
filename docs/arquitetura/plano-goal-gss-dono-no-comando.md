@@ -349,10 +349,10 @@ Memória de problema do médico (R12) · notificações dos hospitais (R10) · c
 - [x] 7.2 Classificação das conversas — passou para o Gemini (`7f7631b`, `2b8c286`); 812 conversas classificadas, rodando
 - [x] 7.3 Funções do Raio-X
 - [x] 7.4 Tela Raio-X + PDF
-- [ ] 8.1 IA nunca para em silêncio
-- [ ] 8.2 Persona do Maikon
-- [ ] 8.3 Roteiro por situação
-- [ ] 8.4 Medição da conversão
-- [ ] 9.1 Canais no modelo
-- [ ] 9.2 Kanban com canais
-- [ ] 9.3 Fila assistida LinkedIn/Instagram
+- [x] 8.1 IA nunca para em silêncio (monitor `ia_falhas` a cada 15 min, 12/11)
+- [x] 8.2 Persona do Maikon (prompt sigma-v11, 12/11) — simulações esperando o Maikon
+- [x] 8.3 Roteiro por situação (sigma-v11)
+- [x] 8.4 Medição da conversão (Raio-X por campanha: interessados, fechados, 1ª resposta)
+- [x] 9.1 Canais no modelo
+- [x] 9.2 Kanban com canais (`eb52261`)
+- [x] 9.3 Fila assistida LinkedIn/Instagram (`eb52261`, `74121d08`) + motor automático do LinkedIn desligado e respostas do Instagram pelo Zernio. O que falta: [o-que-falta.md](o-que-falta.md)

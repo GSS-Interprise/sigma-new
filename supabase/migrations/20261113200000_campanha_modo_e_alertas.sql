@@ -58,7 +58,8 @@ begin
                  case when length(d) in (10, 11) then '55' || d else d end as fone
             from jsonb_array_elements(coalesce(p -> 'alerta_destinos', '[]')) e,
                  lateral (select regexp_replace(coalesce(e ->> 'fone', ''), '\D', '', 'g') as d) n) x
-   where length(x.fone) between 12 and 13 and x.fone like '55%';
+   -- Mesma regra de _shared/alertas.ts (foneValido): celular 9+8 dígitos ou fixo 2-5+7, DDD 11-99.
+   where x.fone ~ '^55[1-9][1-9](9[0-9]{8}|[2-5][0-9]{7})$';
 
   select nome_completo into v_nome_user from profiles where id = v_user;
 

@@ -61,6 +61,20 @@ def _motivo(saida):
     return m.group(1) if m else None
 
 
+def ultima_linha_segura(saida):
+    """Só a última linha da saída, sem nada que pareça token, para o Sigma mostrar o motivo."""
+    return re.sub(r"sk-ant-\S+", "[token]", (saida.strip().splitlines() or ["sem saída"])[-1])[:200]
+
+
+def link_do_login(saida):
+    m = re.search(r"^LINK: (https://\S+)\s*$", saida, re.M)
+    return m.group(1) if m else None
+
+
+def respondeu_ok(codigo, saida):
+    return codigo == 0 and re.search(r"\bOK\b", saida) is not None
+
+
 def _versao(exe, args):
     if not exe.exists():
         return None
@@ -85,10 +99,10 @@ def situacao(_payload=None):
 
 def login_iniciar(_payload=None):
     _, saida = _como_usuario(["bash", str(ROTEIRO), "iniciar"], tempo=70)
-    m = re.search(r"^LINK: (https://\S+)\s*$", saida, re.M)
-    if not m:
+    link = link_do_login(saida)
+    if not link:
         raise RuntimeError(ERROS.get(_motivo(saida) or "", "Não consegui abrir o login do Claude. Tente de novo."))
-    return {"link": m.group(1)}
+    return {"link": link}
 
 
 def login_codigo(payload):
@@ -116,11 +130,9 @@ def teste(_payload=None):
     segundos = round((datetime.now(timezone.utc) - inicio).total_seconds(), 1)
     if cod is None:
         return {"ok": False, "frase": "O Claude não respondeu em 3 minutos. Tente de novo.", "segundos": segundos}
-    if cod == 0 and re.search(r"\bOK\b", saida):
+    if respondeu_ok(cod, saida):
         return {"ok": True, "frase": "A assinatura respondeu pelo Hermes.", "segundos": segundos}
-    # Só a última linha, sem nada que pareça token, para o Sigma mostrar o motivo.
-    ultima = re.sub(r"sk-ant-\S+", "[token]", (saida.strip().splitlines() or ["sem saída"])[-1])[:200]
-    return {"ok": False, "frase": f"O Claude não respondeu pelo Hermes: {ultima}", "segundos": segundos}
+    return {"ok": False, "frase": f"O Claude não respondeu pelo Hermes: {ultima_linha_segura(saida)}", "segundos": segundos}
 
 
 def sair(_payload=None):
