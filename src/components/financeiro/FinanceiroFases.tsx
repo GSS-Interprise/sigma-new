@@ -18,7 +18,7 @@ import { toast } from "sonner";
 import { FinanceiroDetalhe } from "./FinanceiroDetalhe";
 import { FinanceiroImportarFechamentoDialog } from "./FinanceiroImportarFechamentoDialog";
 import { FinanceiroFecharDialog } from "./FinanceiroFecharDialog";
-import { FinanceiroLiberarDialog, avisarLiberacao } from "./FinanceiroLiberarDialog";
+import { FinanceiroLiberarDialog, pedirNotasDoMes } from "./FinanceiroLiberarDialog";
 
 const brl = (v: number) => Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const BOM = String.fromCharCode(0xFEFF);      // Excel pt-BR precisa do BOM para ler UTF-8
@@ -47,6 +47,17 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
   const excluirFech = useExcluirFechamento();
   const [excluindoFech, setExcluindoFech] = useState(false);
   const [confirmaTexto, setConfirmaTexto] = useState("");
+  const [pedindo, setPedindo] = useState<string | null>(null);
+  const liberarEPedir = async (ids: string[]) => {
+    const r = await pedirNotasDoMes(mes, ano, (feitos, tot) => setPedindo(tot ? `Pedindo as notas: ${feitos} de ${tot}…` : null), ids);
+    setPedindo(null);
+    const partes = [`${r.enviados} pedido(s) de nota enviado(s)`];
+    if (r.semContato) partes.push(`${r.semContato} sem contato`);
+    if (r.erros) partes.push(`${r.erros} com erro`);
+    if (r.total === 0) toast.info("Liberado. Nenhum pedido de nota a enviar.");
+    else if (r.semContato || r.erros) toast.warning(partes.join(" · ") + ". Veja na aba Notas fiscais.");
+    else toast.success(partes.join(" · ") + ".");
+  };
 
   const { data, isLoading } = useQuery({
     queryKey: ["financeiro-fases", mes, ano],
@@ -450,18 +461,19 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
                   <p className="text-sm">
                     {porConferir} lançamento(s) ainda não liberados: {nomesNaoLiberados.join(", ")}.
                     <span className="block text-xs text-muted-foreground">
-                      Escolha o fechamento no filtro acima para liberar só ele. O pedido de nota segue pela aba Notas fiscais.
+                      Escolha o fechamento no filtro acima para liberar só ele. Liberar já pede as notas aos médicos.
                     </span>
                   </p>
-                  {/* liberar avisa o grupo de liberação com o nome do fechamento (a Mavi libera um setor por vez) */}
+                  {/* Sem a Amni (Mavi, 13/11): quem libera é quem pede a nota. Liberar já dispara os pedidos, sem
+                      aviso no grupo e sem passar pela aba Notas fiscais. */}
                   {(fonteSel === TODAS || naoLiberadosFonte.length > 0) && (
-                    <Button size="sm" variant="outline" disabled={conferirLote.isPending}
+                    <Button size="sm" variant="outline" disabled={conferirLote.isPending || !!pedindo}
                       onClick={() => {
                         const ids = (fonteSel === TODAS ? todos.filter((p) => !p.conferido_em) : naoLiberadosFonte).map((p) => p.id);
-                        conferirLote.mutate({ ids }, { onSuccess: () => { avisarLiberacao(mes, ano, ids); } });
+                        conferirLote.mutate({ ids }, { onSuccess: () => { liberarEPedir(ids); } });
                       }}>
-                      {conferirLote.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                      <span className="ml-1.5">{fonteSel === TODAS ? "Conferir e liberar todos" : `Liberar ${nomeFechamento(fonteSel)}`}</span>
+                      {conferirLote.isPending || pedindo ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                      <span className="ml-1.5">{pedindo ?? (fonteSel === TODAS ? "Liberar todos e pedir as notas" : `Liberar ${nomeFechamento(fonteSel)} e pedir as notas`)}</span>
                     </Button>
                   )}
                 </div>

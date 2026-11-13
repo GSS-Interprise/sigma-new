@@ -73,9 +73,12 @@ serve(async (req) => {
     const bin = Uint8Array.from(atob(arquivo_base64), (c) => c.charCodeAt(0));
     const wb = XLSX.read(bin, { type: "array" });
     // aba: fixa na config, ou resolvida pela competência quando a planilha tem uma aba por mês
-    const sheetName = cfg.aba && wb.Sheets[cfg.aba]
-      ? cfg.aba
-      : (cfg.aba === "@mes" && mes ? abaDoMes(wb.SheetNames, Number(mes)) : null) ?? wb.SheetNames[0];
+    // Sem a aba do mês, para: antes caía na primeira aba e importava janeiro como se fosse o mês pedido.
+    const abaMes = cfg.aba === "@mes" && mes ? abaDoMes(wb.SheetNames, Number(mes)) : null;
+    if (cfg.aba === "@mes" && mes && !abaMes && wb.SheetNames.length > 1) {
+      return json({ error: `a planilha não tem a aba do mês ${String(mes).padStart(2, "0")}. Abas do arquivo: ${wb.SheetNames.join(", ")}` }, 400);
+    }
+    const sheetName = cfg.aba && wb.Sheets[cfg.aba] ? cfg.aba : abaMes ?? wb.SheetNames[0];
     if (!wb.Sheets[sheetName]) return json({ error: `aba não encontrada. Abas do arquivo: ${wb.SheetNames.join(", ")}` }, 400);
     const grid: any[][] = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, blankrows: false, defval: null });
 

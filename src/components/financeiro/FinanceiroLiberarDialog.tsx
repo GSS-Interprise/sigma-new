@@ -15,70 +15,8 @@ import { toast } from "sonner";
  */
 const brl = (v: number) => Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-// A liberação vai para o grupo interno da Mavi com quem pede as notas (Amni), "Fechamentos — Aprovações",
-// e não para o de pagamentos (pedido da Mavi, 15/10). Sem a chave própria, cai no canal do financeiro.
-async function avisarCanalFinanceiro(mensagem: string) {
-  const { data: cfgs } = await (supabase as any)
-    .from("config_lista_items").select("campo_nome, valor")
-    .in("campo_nome", ["financeiro_canal_liberacao_id", "financeiro_canal_id"]);
-  const val = (n: string) => (cfgs ?? []).find((c: any) => c.campo_nome === n)?.valor as string | undefined;
-  const canalId = val("financeiro_canal_liberacao_id") || val("financeiro_canal_id");
-  if (!canalId) return false;
-
-  const { data: uRes } = await supabase.auth.getUser();
-  const uid = uRes?.user?.id;
-  const nome = (uRes?.user?.user_metadata as any)?.nome_completo
-    || (uRes?.user?.user_metadata as any)?.nome || "Financeiro";
-
-  const { data: m } = await (supabase as any)
-    .from("comunicacao_mensagens")
-    .insert({ canal_id: canalId, user_id: uid, user_nome: nome, mensagem })
-    .select("id").single();
-  if (!m) return false;
-
-  const { data: parts } = await (supabase as any)
-    .from("comunicacao_participantes").select("user_id").eq("canal_id", canalId);
-  const notifs = (parts ?? []).filter((p: any) => p.user_id !== uid)
-    .map((p: any) => ({ user_id: p.user_id, canal_id: canalId, mensagem_id: m.id }));
-  if (notifs.length) await (supabase as any).from("comunicacao_notificacoes").insert(notifs);
-  return true;
-}
-
-/**
- * Aviso de liberação com o nome de cada fechamento (o arquivo do setor, "Ibirama Clínicos"): a Mavi
- * reclamou em 15/10 que o aviso dizia só "Fechamento 08/2026" e quem pede as notas não sabia qual era.
- */
-export async function avisarLiberacao(mes: number, ano: number, ids?: string[]) {
-  let q = (supabase as any).from("financeiro_pagamentos").select("arquivo_origem, valor_total")
-    .eq("mes_referencia", mes).eq("ano_referencia", ano);
-  if (ids?.length) q = q.in("id", ids);
-  const [{ data: pags }, { data: cfgs }] = await Promise.all([
-    q, (supabase as any).from("financeiro_import_config").select("id, nome"),
-  ]);
-  const nome = (origem: string | null) => {
-    const m = String(origem || "").match(/^\[cfg:([0-9a-f-]+)\]\s*(.*)$/i);
-    if (!m) return origem ? String(origem) : "Lançamentos manuais";
-    const arquivo = (m[2] || "").replace(/\.(xlsx|xls|csv)$/i, "").trim();
-    return arquivo || (cfgs ?? []).find((c: any) => c.id === m[1])?.nome || "Fechamento";
-  };
-  const grupos = new Map<string, { n: number; v: number }>();
-  for (const p of (pags ?? []) as any[]) {
-    const g = grupos.get(nome(p.arquivo_origem)) ?? { n: 0, v: 0 };
-    g.n += 1; g.v += Number(p.valor_total || 0);
-    grupos.set(nome(p.arquivo_origem), g);
-  }
-  const lista = [...grupos.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  const total = lista.reduce((s, [, g]) => s + g.v, 0), medicos = lista.reduce((s, [, g]) => s + g.n, 0);
-  const linhas = lista.slice(0, 15).map(([k, g]) => `• ${k}: ${g.n} médico${g.n === 1 ? "" : "s"}, ${brl(g.v)}`);
-  if (lista.length > 15) linhas.push(`• e mais ${lista.length - 15} fechamento(s)`);
-  const comp = `${String(mes).padStart(2, "0")}/${ano}`;
-  const titulo = lista.length === 1
-    ? `✅ *Fechamento ${lista[0][0]} (${comp}) liberado*`
-    : `✅ *${lista.length} fechamentos de ${comp} liberados*`;
-  return avisarCanalFinanceiro(
-    `${titulo} — ${brl(total)}, ${medicos} médico${medicos === 1 ? "" : "s"}.\n${linhas.join("\n")}\nPode solicitar as notas fiscais.`,
-  );
-}
+// Sem aviso de liberação no canal desde 13/11: o grupo "Fechamentos — Aprovações" servia para a Mavi
+// liberar e a Amni pedir as notas. Sem a Amni, quem libera é quem pede; o aviso virou ruído (áudio da Mavi).
 
 /**
  * Pedido de nota junto com a liberação (13/10): liberar o fechamento já dispara o pedido para
@@ -170,14 +108,10 @@ export function FinanceiroLiberarDialog({
       const { error: errLink } = await qLink;
       if (errLink) throw errLink;
 
-      const avisou = await avisarLiberacao(mes, ano, ids);
-
       qc.invalidateQueries({ queryKey: ["financeiro-pagamentos"] });
       qc.invalidateQueries({ queryKey: ["financeiro-fechamentos"] });
       qc.invalidateQueries({ queryKey: ["financeiro-fases"] });
-      toast.success(avisou
-        ? "Fechamento conferido e liberado para as notas fiscais."
-        : "Fechamento conferido e liberado. (Canal Financeiro não configurado — config_lista_items.financeiro_canal_id)");
+      toast.success("Fechamento conferido e liberado.");
 
       if (pedirNotas) {
         const r = await pedirNotasDoMes(mes, ano, (feitos, tot) => setAndamento(tot ? `Pedindo as notas: ${feitos} de ${tot}…` : null), ids);

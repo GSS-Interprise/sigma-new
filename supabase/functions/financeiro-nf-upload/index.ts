@@ -83,15 +83,29 @@ serve(async (req) => {
     await svc.from("financeiro_nf_solicitacoes").update({ status: "recebida", recebida_em: agora })
       .eq("pagamento_id", pag.id).eq("status", "enviada");
     // conferência fiscal na hora em que a nota entra (tomador, valor, impostos, CNPJ)
-    await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/financeiro-conta-azul`, {
+    const respConf = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/financeiro-conta-azul`, {
       method: "POST",
       headers: { Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`, "Content-Type": "application/json" },
       body: JSON.stringify({ acao: "conferir", pagamento_ids: [pag.id] }),
-    }).catch((e) => console.warn("[nf] conferencia nao rodou:", e));
+    }).catch((e) => { console.warn("[nf] conferencia nao rodou:", e); return null; });
+    // Anexar não é aprovar: nota que a conferência não fechou (sem líquido, imposto fora do quadro, valor
+    // diferente) vai com o aviso no canal, como no WhatsApp. Antes entrava calada e o lançamento SEM NF
+    // era pago pelo bruto (Yuri, Santo Antônio do Pinhal, 13/11).
+    const conf = respConf?.ok ? (await respConf.json().catch(() => null))?.resultados?.[0] : null;
+    const itensConf: Array<{ chave?: string; ok?: boolean | null; detalhe?: string }> = conf?.itens ?? [];
+    let alertaConferencia: string | null = null;
+    if (!conf?.status) alertaConferencia = "a conferência automática não rodou";
+    else if (conf.status !== "ok" && conf.status !== "aceita") {
+      alertaConferencia = (itensConf.find((i) => i?.ok === false) ?? itensConf.find((i) => i?.ok === null && i?.chave !== "prestador"))?.detalhe
+        ?? "a conferência da nota não fechou";
+    }
 
     // avisa o financeiro no canal — é o "chegou nota" que hoje é uma mensagem no WhatsApp
-    const { data: cfg } = await svc.from("config_lista_items")
-      .select("valor").eq("campo_nome", "financeiro_canal_id").maybeSingle();
+    // Só quando a nota pede conferência: a nota limpa fica na tela de Notas fiscais, sem aviso na
+    // Comunicação (Mavi, 13/11).
+    const { data: cfg } = alertaConferencia
+      ? await svc.from("config_lista_items").select("valor").eq("campo_nome", "financeiro_canal_id").maybeSingle()
+      : { data: null };
     const canalId = cfg?.valor as string | undefined;
     if (canalId) {
       const { data: parts } = await svc.from("comunicacao_participantes").select("user_id").eq("canal_id", canalId);
@@ -101,7 +115,8 @@ serve(async (req) => {
       if (autor) {
         const { data: m, error: msgErr } = await svc.from("comunicacao_mensagens").insert({
           canal_id: canalId, user_id: autor, user_nome: "Notas fiscais",
-          mensagem: `📄 *NF recebida* — Dr(a). ${pag.profissional_nome}, competência ${compExt}, ${fmtBRL(Number(pag.valor_total))}.`,
+          mensagem: `📄 *NF recebida* — Dr(a). ${pag.profissional_nome}, competência ${compExt}, ${fmtBRL(Number(pag.valor_total))}.` +
+            (alertaConferencia ? `\n⚠️ *Conferir antes de pagar:* ${alertaConferencia}` : ""),
         }).select("id").single();
         if (msgErr) console.error("[nf-upload] falha ao avisar o canal", msgErr.message);
         if (m && parts?.length) {

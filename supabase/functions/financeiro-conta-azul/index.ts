@@ -21,6 +21,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ca, itensDe, listarTudo } from "../_shared/contaazul.ts";
 import { CNPJ_GSS, CNPJS_GRUPO_GSS, dadosBancariosDoTexto, leituraAssistida, leituraFoto, lerNfse, textoPdf } from "../_shared/nfse.ts";
+import { bloqueioLancamentoSemNf, type ItemConferencia, itensDaLeitura, type StatusConferencia, statusDosItens, sugestaoConfere } from "../_shared/nfse-conferencia.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -77,8 +78,8 @@ async function conferirPagamento(svc: Svc, pag: any) {
     if (nota.numero == null) nota.numero = sugestao.numero;
   }
 
-  const itens: Array<{ chave: string; rotulo: string; ok: boolean | null; detalhe: string }> = [];
-  let status: "ok" | "divergente" | "manual" = "ok";
+  const itens: ItemConferencia[] = [];
+  let status: StatusConferencia = "ok";
   if (porFoto && nota) {
     itens.push({ chave: "leitura", rotulo: "Leitura da nota", ok: null, detalhe: "Nota enviada como foto: os valores foram lidos pela IA. Confira número, CNPJ e valores e aceite." });
   }
@@ -86,49 +87,7 @@ async function conferirPagamento(svc: Svc, pag: any) {
     status = "manual";
     itens.push({ chave: "leitura", rotulo: "Leitura da nota", ok: null, detalhe: bytes ? "Arquivo sem texto (foto ou escaneado): conferir à mão." : "Arquivo não encontrado." });
   } else {
-    itens.push({ chave: "tomador", rotulo: "Tomador é a GSS", ok: nota.tomadorGss, detalhe: nota.tomadorGss ? "CNPJ da GSS no tomador." : "O tomador da nota não é a GSS." });
-    const aPagar = Number(pag.valor_total ?? 0);
-    const valorOk = nota.valor != null && Math.abs(nota.valor - aPagar) <= 0.01;
-    itens.push({
-      chave: "valor", rotulo: "Valor da nota", ok: nota.valor == null ? null : valorOk,
-      detalhe: nota.valor == null ? "Não consegui ler o valor do serviço." : valorOk ? `${brl(nota.valor)}, igual ao fechamento.` : `Nota ${brl(nota.valor)} · fechamento ${brl(aPagar)} · diferença ${brl(r2(nota.valor - aPagar))}.`,
-    });
-    itens.push({
-      chave: "impostos", rotulo: "Impostos retidos e valor líquido", ok: nota.impostosLidos ? true : null,
-      detalhe: nota.impostosLidos
-        ? (Number(nota.totalRetencoes) > 0
-          ? `Retido ${brl(nota.totalRetencoes)} (IRRF ${brl(nota.irrf)}, PIS/COFINS/CSLL ${brl(nota.contribSociais)}${Number(nota.inssRetido) > 0 ? `, INSS ${brl(nota.inssRetido)}` : ""}${Number(nota.issRetido) > 0 ? `, ISS ${brl(nota.issRetido)}` : ""}) · líquido ${brl(nota.valorLiquido)}.`
-          : `Sem retenção${nota.simplesNacional ? " (Simples Nacional)" : ""} · líquido ${brl(nota.valorLiquido)}.`)
-        : sugestao && nota.valor != null && Math.abs(sugestao.valor - nota.valor) <= 0.01
-          ? `Leitura assistida deste layout: ${Number(sugestao.totalRetencoes) > 0 ? `retido ${brl(sugestao.totalRetencoes)}` : "sem retenção"} · líquido ${brl(sugestao.valorLiquido)}. Confira na nota e aceite.`
-          : "Não consegui ler o quadro de impostos deste layout: informar o líquido à mão.",
-    });
-    // Alíquotas retidas (regra da Mavi, 14/10/2026): líquido = bruto → optante do Simples, ok.
-    // Senão confere PIS 0,65% + COFINS 3% + CSLL 1% (4,65%) e IR 1,5% sobre o bruto.
-    // Retenção abaixo de R$ 10 é dispensada por lei, então zero também vale nesse caso.
-    const fonte = nota.impostosLidos ? nota : (sugestao && nota.valor != null && Math.abs(sugestao.valor - nota.valor) <= 0.01 ? sugestao : null);
-    if (fonte && nota.valor != null) {
-      const bruto = Number(nota.valor);
-      const ret = Number(fonte.totalRetencoes ?? 0);
-      if (ret <= 0.01) {
-        itens.push({ chave: "aliquotas", rotulo: "Alíquotas retidas", ok: true, detalhe: "Líquido igual ao bruto: prestador optante do Simples Nacional." });
-      } else {
-        const confere = (lido: number, esperado: number) => Math.abs(lido - esperado) <= 0.02 || (esperado < 10 && lido <= 0.01);
-        const irEsp = r2(bruto * 0.015), csrfEsp = r2(bruto * 0.0465);
-        const ir = Number(fonte.irrf ?? 0), csrf = Number(fonte.contribSociais ?? 0);
-        const outros = Number(fonte.inssRetido ?? 0) + Number(fonte.issRetido ?? 0);
-        const irOk = confere(ir, irEsp), csrfOk = confere(csrf, csrfEsp);
-        const falhas = [
-          !irOk && `IR ${brl(ir)} (esperado ${brl(irEsp)}, 1,5%)`,
-          !csrfOk && `PIS/COFINS/CSLL ${brl(csrf)} (esperado ${brl(csrfEsp)}, 4,65%)`,
-          outros > 0.01 && `retenção de INSS/ISS ${brl(outros)} fora da regra`,
-        ].filter(Boolean);
-        itens.push({
-          chave: "aliquotas", rotulo: "Alíquotas retidas", ok: falhas.length === 0,
-          detalhe: falhas.length ? `Diferente do esperado: ${falhas.join("; ")}.` : `IR 1,5% e PIS/COFINS/CSLL 4,65% conferem · líquido esperado ${brl(r2(bruto - irEsp - csrfEsp))}.`,
-        });
-      }
-    }
+    itens.push(...itensDaLeitura(nota, Number(pag.valor_total ?? 0), sugestao));
     // CNPJ do prestador: bate com o que o financeiro já conhece deste médico?
     let prestOk: boolean | null = null, prestDet = "Nota sem CNPJ do prestador legível.";
     if (nota.prestadorCnpj) {
@@ -142,17 +101,21 @@ async function conferirPagamento(svc: Svc, pag: any) {
     }
     itens.push({ chave: "prestador", rotulo: "CNPJ do prestador", ok: prestOk, detalhe: prestDet });
 
-    if (itens.some((i) => i.ok === false)) status = "divergente";
-    else if (itens.some((i) => i.ok === null && i.chave !== "prestador")) status = "manual";
+    status = statusDosItens(itens);
   }
 
-  const sugestaoValida = !!sugestao && nota?.valor != null && Math.abs(sugestao.valor - nota.valor) <= 0.01;
+  const sugestaoValida = sugestaoConfere(nota, sugestao);
   const patch: Record<string, unknown> = {
     nf_numero: nota?.numero ?? null, nf_prestador_cnpj: nota?.prestadorCnpj ?? null,
     nf_valor_bruto: nota?.valor ?? null,
     nf_retencoes: nota?.impostosLidos ? nota.totalRetencoes : (sugestaoValida ? sugestao!.totalRetencoes : null),
     nf_valor_liquido: nota?.impostosLidos ? nota.valorLiquido : (sugestaoValida ? sugestao!.valorLiquido : null),
-    nf_conferencia: { itens, leitura_assistida: sugestaoValida, simples_nacional: nota?.simplesNacional ?? null, competencia: nota?.competencia ?? null, emissao: nota?.emissao ?? null },
+    nf_conferencia: {
+      itens, leitura_assistida: sugestaoValida, simples_nacional: nota?.simplesNacional ?? null, competencia: nota?.competencia ?? null, emissao: nota?.emissao ?? null,
+      // o que a nota diz fora do quadro padrão, para quem confere (e para a auditoria do que foi pago)
+      retencoes_citadas: nota?.retencoesCitadas ?? [], liquido_na_descricao: nota?.liquidoNaDescricao ?? null,
+      discriminacao: nota?.discriminacao ?? nota?.descricao ?? null,
+    },
     nf_conferida_em: agora,
   };
   // exceção já assumida por alguém continua valendo enquanto a nota for a mesma
@@ -317,32 +280,49 @@ async function garantirFornecedor(svc: Svc, pagamentoId: string, criar: boolean,
 /**
  * Lançamento feito SEM NF (Mavi, 26/10) e a nota chegou: troca a descrição da parcela no Conta Azul para o
  * número da nota. O valor NÃO é alterado aqui: o rateio da categoria fica no lançamento e a API só mexe na
- * parcela; se o líquido da nota diferir do valor lançado, a conferência da nota avisa para ajustar à mão.
- * Só roda com a escrita ligada e só em parcela que ainda diz "SEM NF" (idempotente).
+ * parcela. Só roda com a escrita ligada e só em parcela que ainda diz "SEM NF" (idempotente).
+ *
+ * Tirar o "SEM NF" é o que libera a Thais para pagar. Por isso só troca com a nota conferida (ou aceita por
+ * alguém) e com o líquido igual ao valor lançado; senão mantém o "SEM NF" e registra o motivo (13/11: nota
+ * da prefeitura sem o campo de líquido liberou o pagamento pelo bruto, ~R$ 800 a mais). Chamado de novo
+ * quando alguém aceita a nota.
  */
 async function atualizarLancamentoSemNf(svc: Svc, pagamentoId: string) {
   const { data: p } = await svc.from("financeiro_pagamentos")
-    .select("id, mes_referencia, nf_status, nf_numero, nf_valor_liquido, ca_parcela_id, ca_valor, nf_conferencia")
+    .select("id, mes_referencia, nf_status, nf_numero, nf_valor_liquido, nf_conferencia_status, ca_parcela_id, ca_valor, nf_conferencia")
     .eq("id", pagamentoId).maybeSingle();
   if (!p?.ca_parcela_id || !["recebida", "conferida"].includes(p.nf_status)) return null;
+  const liq = p.nf_valor_liquido != null ? Number(p.nf_valor_liquido) : null;
+  const bloqueio = bloqueioLancamentoSemNf({
+    conferencia: p.nf_conferencia_status ?? null, liquido: liq, valorLancado: p.ca_valor != null ? Number(p.ca_valor) : null,
+  });
+  const descricao = `REF. ${MESES[(p.mes_referencia ?? 1) - 1]} - NF ${String(p.nf_numero || "S/N").trim()}`;
+  const gravar = async (item: { chave: string; ok: boolean | null; rotulo: string; detalhe: string }, erro: string | null) => {
+    const conf = p.nf_conferencia ?? {};
+    conf.itens = [...(conf.itens ?? []).filter((i: ItemConferencia) => i?.chave !== "conta_azul"), item];
+    await svc.from("financeiro_pagamentos").update({ nf_conferencia: conf, ca_erro: erro }).eq("id", p.id);
+    return item;
+  };
+
   const { data: cfgEscrita } = await svc.from("config_lista_items").select("valor").eq("campo_nome", "financeiro_contaazul_escrita").maybeSingle();
   if (String(cfgEscrita?.valor || "").trim() !== "1") return null;
   const parcela = await ca(svc, `/v1/financeiro/parcelas/${p.ca_parcela_id}`);
-  if (!/SEM NF/i.test(String(parcela?.descricao || ""))) return null;
-  const descricao = `REF. ${MESES[(p.mes_referencia ?? 1) - 1]} - NF ${String(p.nf_numero || "S/N").trim()}`;
+  if (!/SEM NF/i.test(String(parcela?.descricao || ""))) {
+    // alguém tirou o "SEM NF" à mão no Conta Azul depois do aviso: a decisão foi de quem trocou, só registra
+    const anterior = (p.nf_conferencia?.itens ?? []).find((i: ItemConferencia) => i?.chave === "conta_azul");
+    if (anterior?.ok !== false) return null;
+    return await gravar({ chave: "conta_azul", ok: null, rotulo: "Lançamento no Conta Azul",
+      detalhe: `A descrição no Conta Azul já não diz SEM NF. Lançado por ${brl(Number(p.ca_valor))}: confira se é o líquido da nota.` }, null);
+  }
+  if (bloqueio) {
+    const detalhe = `Lançado SEM NF por ${brl(Number(p.ca_valor))}. Segue SEM NF (não será pago) porque ${bloqueio.motivo}. ` +
+      (bloqueio.codigo === "valor_diferente"
+        ? `Ajuste no Conta Azul o valor para ${brl(liq)} e a descrição para "${descricao}".`
+        : "Aceite informando o líquido: se for igual ao lançado, o Sigma libera sozinho.");
+    return await gravar({ chave: "conta_azul", ok: false, rotulo: "Lançamento no Conta Azul", detalhe }, detalhe.slice(0, 300));
+  }
   await ca(svc, `/v1/financeiro/parcelas/${p.ca_parcela_id}`, { method: "PATCH", body: JSON.stringify({ versao: parcela.versao, descricao }) });
-  const liq = p.nf_valor_liquido != null ? Number(p.nf_valor_liquido) : null;
-  const difere = liq != null && Math.abs(liq - Number(p.ca_valor ?? 0)) > 0.01;
-  const item = {
-    chave: "conta_azul", ok: difere ? null : true, rotulo: "Lançamento no Conta Azul",
-    detalhe: difere
-      ? `Lançado SEM NF por ${brl(Number(p.ca_valor))}; a nota veio com líquido de ${brl(liq)}. Descrição atualizada para "${descricao}", ajuste o valor no Conta Azul.`
-      : `Descrição atualizada de SEM NF para "${descricao}".`,
-  };
-  const conf = p.nf_conferencia ?? {};
-  conf.itens = [...(conf.itens ?? []).filter((i: any) => i?.chave !== "conta_azul"), item];
-  await svc.from("financeiro_pagamentos").update({ nf_conferencia: conf, ca_erro: difere ? item.detalhe : null }).eq("id", p.id);
-  return item;
+  return await gravar({ chave: "conta_azul", ok: true, rotulo: "Lançamento no Conta Azul", detalhe: `Descrição atualizada de SEM NF para "${descricao}".` }, null);
 }
 
 /** Guarda pessoas do Conta Azul na cópia local, no mesmo formato da sincronização (contaazul-oauth). */
@@ -408,6 +388,17 @@ async function montarPagar(svc: Svc, ids: string[], ajustes: Record<string, any>
   const bancoDoMedico = new Map<string, string>();
   // nome completo do cadastro: a planilha abrevia ("Mariana Violetita") e o Conta Azul tem o nome inteiro
   const nomeDoMedico = new Map<string, string>();
+  // fornecedor que já foi usado num lançamento deste médico: desempata CNPJ com 2 cadastros no Conta Azul
+  // (Arthur Blois, 13/11: Navegantes ficou de fora porque o CNPJ tem dois fornecedores e ninguém escolheu)
+  const fornecedorUsado = new Map<string, Set<string>>();
+  if (medIds.length) {
+    const { data: usados } = await svc.from("financeiro_pagamentos").select("medico_id, ca_payload")
+      .in("medico_id", medIds).not("ca_evento_id", "is", null).not("ca_payload", "is", null);
+    for (const u of usados ?? []) {
+      const f = u.ca_payload?.id_fornecedor;
+      if (f) fornecedorUsado.set(u.medico_id, (fornecedorUsado.get(u.medico_id) ?? new Set()).add(String(f)));
+    }
+  }
   if (medIds.length) {
     const [{ data: cads }, { data: antigos }, { data: meds }] = await Promise.all([
       svc.from("financeiro_medico_cnpj").select("medico_id, cnpj").in("medico_id", medIds),
@@ -442,6 +433,21 @@ async function montarPagar(svc: Svc, ids: string[], ajustes: Record<string, any>
     return achados.length === 1 ? achados : [];
   };
 
+  // Lançamento feito à mão no Conta Azul (Mavi lançou o Arthur de Navegantes direto lá, 11/11): o Sigma não
+  // sabe e lançaria de novo. Procura na cópia local do Conta Azul despesa do mesmo fornecedor com a mesma NF.
+  const desde = new Date(Date.now() - 200 * 86_400_000).toISOString().slice(0, 10);
+  // filtra pelos números de NF do lote: a cópia tem milhares de despesas e a consulta para em 1000 linhas
+  const numerosLote = [...new Set(Object.values(ajustes ?? {}).map((a: any) => a?.nf_numero)
+    .concat((pags ?? []).map((p: any) => p.nf_numero)).map((n) => String(n ?? "").trim()).filter((n) => /^\d{1,15}$/.test(n)))];
+  const { data: lancsCa } = numerosLote.length
+    ? await svc.from("contaazul_lancamentos").select("pessoa_id, descricao, total, data_vencimento")
+      .gte("data_vencimento", desde).not("pessoa_id", "is", null)
+      .or(numerosLote.map((n) => `descricao.ilike.%NF ${n}`).join(",")).limit(5000)
+    : { data: [] as any[] };
+  const nfNaDescricao = (d: string) => String(d || "").match(/NF\s*(?:N[º°o.]*\s*)?(\d{1,15})(?!\d)/i)?.[1];
+  const jaNoCa = (fornecedorId: string, numero: string) => (lancsCa ?? []).find((l: any) =>
+    l.pessoa_id === fornecedorId && nfNaDescricao(l.descricao) != null && Number(nfNaDescricao(l.descricao)) === Number(numero));
+
   const itens = (pags ?? []).map((p: any) => {
     const aj = ajustes?.[p.id] ?? {};
     const problemas: string[] = [], avisos: string[] = [];
@@ -459,7 +465,15 @@ async function montarPagar(svc: Svc, ids: string[], ajustes: Record<string, any>
     const forcado = aj.fornecedor_id
       ? (cands.find((c: any) => c.ca_id === aj.fornecedor_id) ?? ref.pessoas.find((c: any) => c.ca_id === aj.fornecedor_id) ?? null)
       : null;
-    const escolha = forcado ? { escolhido: forcado, ambiguo: false } : escolherFornecedor(cands, p.profissional_nome || "");
+    let escolha = forcado ? { escolhido: forcado, ambiguo: false } : escolherFornecedor(cands, p.profissional_nome || "");
+    if (!forcado && escolha.ambiguo && p.medico_id) {
+      const usados = fornecedorUsado.get(p.medico_id);
+      const jaUsado = usados?.size === 1 ? cands.find((c: any) => usados.has(c.ca_id)) : null;
+      if (jaUsado) {
+        escolha = { escolhido: jaUsado, ambiguo: false };
+        avisos.push(`Há ${cands.length} fornecedores com este CNPJ: usado o mesmo dos lançamentos anteriores deste médico.`);
+      }
+    }
     const fornecedor = escolha.escolhido;
     if (!fornecedor && !cands.length) {
       problemas.push(!cnpj
@@ -467,6 +481,13 @@ async function montarPagar(svc: Svc, ids: string[], ajustes: Record<string, any>
         : "Fornecedor não cadastrado no Conta Azul com este CNPJ. Busque pelo nome abaixo ou cadastre no Conta Azul.");
     }
     else if (!forcado && escolha.ambiguo) problemas.push(`Há ${cands.length} fornecedores com este CNPJ no Conta Azul: escolher o do médico.`);
+    // mesma NF já lançada à mão para este fornecedor (qualquer um dos cadastros do mesmo CNPJ)
+    const numNf = String(aj.nf_numero ?? p.nf_numero ?? "").trim();
+    if (!p.ca_evento_id && !semNf && /^\d+$/.test(numNf)) {
+      const dup = [...new Set([fornecedor?.ca_id, ...cands.map((c: any) => c.ca_id)].filter(Boolean))]
+        .map((f) => jaNoCa(String(f), numNf)).find(Boolean);
+      if (dup) problemas.push(`Já existe no Conta Azul "${dup.descricao}" deste fornecedor (${brl(Number(dup.total))}, vencimento ${String(dup.data_vencimento).split("-").reverse().join("/")}): lançado à mão? Não lance de novo.`);
+    }
 
     const definida = (mapa ?? []).find((m: any) => m.unidade === p.unidade);
     const escolhida = aj.categoria_id ? ref.categoriasMed.find((c: any) => c.ca_id === aj.categoria_id) : null;
@@ -723,7 +744,11 @@ serve(async (req) => {
         .update({ nf_conferencia_status: "aceita", nf_aceita_por: usuario, ...(input.valor_liquido != null ? { nf_valor_liquido: Number(input.valor_liquido) } : {}), ...(input.nf_numero ? { nf_numero: String(input.nf_numero) } : {}) })
         .eq("id", String(input.pagamento_id || ""));
       if (error) throw error;
-      return json({ ok: true });
+      // já lançado SEM NF: o aceite é a ação manual que pode tirar o "SEM NF" (se o líquido bater com o lançado)
+      let contaAzul = null;
+      try { contaAzul = await atualizarLancamentoSemNf(svc, String(input.pagamento_id || "")); }
+      catch (e) { console.error("sem nf aceite", String(e)); }
+      return json({ ok: true, conta_azul: contaAzul });
     }
 
     if (acao === "fornecedores") {
@@ -777,8 +802,28 @@ serve(async (req) => {
     if (acao === "previa" || acao === "lancar") {
       await atualizarCategorias(svc);
       const { ref, itens } = await montarPagar(svc, ids, input.ajustes ?? {});
+      // "De N médicos do fechamento, X não foram lançados" (Mavi, 13/11): mostra quem do mesmo fechamento
+      // (competência + planilha de origem) ficou fora da seleção e ainda não está no Conta Azul.
+      const { data: sel } = await svc.from("financeiro_pagamentos").select("mes_referencia, ano_referencia, arquivo_origem").in("id", ids);
+      const chaves = [...new Map((sel ?? []).map((x: any) => [`${x.ano_referencia}-${x.mes_referencia}-${x.arquivo_origem}`, x])).values()];
+      const foraDaSelecao: any[] = [];
+      for (const k of chaves.slice(0, 40)) {
+        let q = svc.from("financeiro_pagamentos")
+          .select("id, profissional_nome, unidade, valor_total, nf_status, nf_conferencia_status, ca_erro")
+          .eq("mes_referencia", k.mes_referencia).eq("ano_referencia", k.ano_referencia).is("ca_evento_id", null).gt("valor_total", 0);
+        q = k.arquivo_origem == null ? q.is("arquivo_origem", null) : q.eq("arquivo_origem", k.arquivo_origem);
+        const { data: irmaos } = await q;
+        for (const x of irmaos ?? []) {
+          if (ids.includes(x.id)) continue;
+          const motivo = x.ca_erro && x.ca_erro !== "enviando" ? `erro no último envio: ${x.ca_erro}`
+            : !["recebida", "conferida"].includes(x.nf_status) ? "não selecionado (sem nota: pode ir como SEM NF)"
+            : !["ok", "aceita"].includes(x.nf_conferencia_status ?? "") ? "não selecionado (nota com conferência pendente)"
+            : "não selecionado";
+          foraDaSelecao.push({ id: x.id, medico: x.profissional_nome, unidade: x.unidade, a_pagar: Number(x.valor_total ?? 0), motivo });
+        }
+      }
       const resposta = (extra: Record<string, unknown> = {}) => json({
-        ok: true, escrita_ligada: ref.escrita, ...extra,
+        ok: true, escrita_ligada: ref.escrita, fora_da_selecao: foraDaSelecao, ...extra,
         itens: itens.map(({ payload, ...resto }: any) => ({ ...resto, pronto: !!payload && !resto.problemas.length, ...(input.mostrar_payload ? { payload } : {}) })),
       });
       if (acao === "previa") return resposta();
@@ -811,7 +856,10 @@ serve(async (req) => {
           resultados.push({ id: it.id, ok: false, erro: msg });
         }
       }
-      return json({ ok: true, lancados: resultados.filter((r) => r.ok).length, erros: resultados.filter((r) => !r.ok).length, resultados });
+      // quem não foi lançado sai com nome e motivo, para a tela dizer "de N, X não foram" (Mavi, 13/11)
+      const nome = new Map(itens.map((i: any) => [i.id, i.medico]));
+      const naoLancados = resultados.filter((r) => !r.ok).map((r) => ({ id: r.id, medico: nome.get(r.id) ?? null, motivo: r.erro }));
+      return json({ ok: true, lancados: resultados.filter((r) => r.ok).length, erros: naoLancados.length, resultados, nao_lancados: naoLancados, fora_da_selecao: foraDaSelecao });
     }
 
     // ── baixa: pagamento já comprovado no Sigma vira baixa da parcela no Conta Azul ──

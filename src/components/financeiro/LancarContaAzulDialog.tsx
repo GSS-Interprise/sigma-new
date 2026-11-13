@@ -55,12 +55,14 @@ export function LancarContaAzulDialog({ pagamentoIds, open, onOpenChange, onLanc
   const [fornecedores, setFornecedores] = useState<{ id: string; nome: string; documento: string }[] | null>(null);
   const [buscaForn, setBuscaForn] = useState<Record<string, string>>({});
   const [catTodos, setCatTodos] = useState("");
+  // médicos do mesmo fechamento que não estão nesta seleção e ainda não foram ao Conta Azul (Mavi, 13/11)
+  const [foraSelecao, setForaSelecao] = useState<{ id: string; medico: string; unidade: string | null; motivo: string }[]>([]);
 
   const carregar = async (aj: Record<string, Ajuste>) => {
     setCarregando(true);
     try {
       const r = await chamar({ acao: "previa", pagamento_ids: pagamentoIds, ajustes: aj });
-      setItens(r.itens || []); setEscrita(!!r.escrita_ligada);
+      setItens(r.itens || []); setEscrita(!!r.escrita_ligada); setForaSelecao(r.fora_da_selecao || []);
     } catch (e: any) { toast.error("Não foi possível montar a prévia: " + e.message); }
     setCarregando(false);
   };
@@ -130,13 +132,27 @@ export function LancarContaAzulDialog({ pagamentoIds, open, onOpenChange, onLanc
 
   const prontos = itens.filter((i) => i.pronto);
   const total = prontos.reduce((s, i) => s + Number(i.valor || 0), 0);
+  // Arthur Blois (Navegantes, 13/11): ficou "Falta resolver" no meio da lista e o envio só disse "N lançados".
+  // Quem não vai junto aparece no topo, com o motivo, e o aviso final repete os nomes.
+  const ficam = [
+    ...pendentes.filter((i) => !i.pronto).map((i) => ({ id: i.id, medico: i.medico, motivo: i.problemas[0] || "falta resolver" })),
+    ...foraSelecao.map((f) => ({ id: f.id, medico: f.medico, motivo: f.motivo })),
+  ];
+  const doFechamento = pendentes.length + foraSelecao.length;
 
   const lancar = async () => {
     setEnviando(true);
     try {
       const r = await chamar({ acao: "lancar", pagamento_ids: prontos.map((i) => i.id), ajustes, confirmar: true });
-      if (r.erros) toast.warning(`${r.lancados} lançado(s), ${r.erros} com erro. Veja o detalhe em cada linha.`);
-      else toast.success(`${r.lancados} conta(s) a pagar lançada(s) no Conta Azul.`);
+      const fora = [
+        ...((r.nao_lancados || []) as { medico: string | null; motivo: string }[]).map((x) => `${x.medico ?? "?"} (${x.motivo})`),
+        ...ficam.filter((f) => !prontos.some((p) => p.id === f.id)).map((f) => `${f.medico} (${f.motivo})`),
+      ];
+      if (fora.length) {
+        toast.warning(`De ${r.lancados + fora.length} médicos, ${fora.length} não foram lançados no Conta Azul`, {
+          description: fora.slice(0, 8).join(" · ") + (fora.length > 8 ? ` · e mais ${fora.length - 8}` : ""), duration: 30000,
+        });
+      } else toast.success(`${r.lancados} conta(s) a pagar lançada(s) no Conta Azul. Todos os médicos foram.`);
       onLancado();
       await carregar(ajustes);
     } catch (e: any) { toast.error(e.message); }
@@ -152,6 +168,19 @@ export function LancarContaAzulDialog({ pagamentoIds, open, onOpenChange, onLanc
           <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
             <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
             <span><b>Modo simulação.</b> O envio ao Conta Azul está desligado: esta tela mostra exatamente o que seria lançado, mas nada é enviado.</span>
+          </div>
+        )}
+
+        {!carregando && ficam.length > 0 && (
+          <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+            <p className="flex items-center gap-1.5 font-medium">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              De {doFechamento} médicos do fechamento, {ficam.length} não {ficam.length === 1 ? "vai" : "vão"} ser lançado{ficam.length === 1 ? "" : "s"}
+            </p>
+            <ul className="mt-1.5 space-y-0.5 text-xs">
+              {ficam.slice(0, 10).map((f) => <li key={f.id} className="break-words"><b>{f.medico}</b>: {f.motivo}</li>)}
+              {ficam.length > 10 && <li>e mais {ficam.length - 10}</li>}
+            </ul>
           </div>
         )}
 
@@ -261,7 +290,7 @@ export function LancarContaAzulDialog({ pagamentoIds, open, onOpenChange, onLanc
           <Button variant="outline" onClick={() => onOpenChange(false)}>Fechar</Button>
           <Button disabled={!escrita || enviando || carregando || !prontos.length} onClick={lancar} className="gap-1.5">
             {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            {escrita ? `Lançar ${prontos.length} no Conta Azul` : "Envio desligado"}
+            {escrita ? (ficam.length ? `Lançar ${prontos.length} de ${doFechamento}` : `Lançar ${prontos.length} no Conta Azul`) : "Envio desligado"}
           </Button>
         </DialogFooter>
       </DialogContent>

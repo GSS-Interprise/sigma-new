@@ -57,6 +57,13 @@ function resumoProducao(pag: Pag, itens: Item[]): string {
       const ordem = ["consultas", "procedimentos", "colonoscopias"];
       for (const [t, n] of [...porTipo].sort((x, y) => ordem.indexOf(x[0]) - ordem.indexOf(y[0])))
         partes.push(`${n} ${n === 1 ? t.replace(/s$/, "") : t}`);
+    } else if (!consultas && qtd.every((i) => /^[A-Z0-9ÇÃÕÁÉÍÓÚÂÊÔ .\/-]{1,24}$/.test(i.descricao!.trim()))) {
+      // colunas da matriz de radiologia vêm em maiúsculas (TC, RX, USG, DOPPLER); texto livre fica no total
+      // Radiologia (Marieta, CEPON): a Mavi quer a produção separada por tipo de exame (13/11: "eles querem
+      // ver a produção completa, não total geral"). Mantém a ordem das colunas da planilha.
+      const porTipo = new Map<string, number>();
+      for (const i of qtd) { const k = i.descricao!.trim().toUpperCase(); porTipo.set(k, (porTipo.get(k) ?? 0) + Number(i.quantidade)); }
+      [...porTipo].forEach(([t, n], k) => partes.push(k === 0 ? `${n} ${n === 1 ? "exame" : "exames"} de ${t}` : `${n} de ${t}`));
     } else {
       // "realizadas" vem do texto da Mavi: exame de radiologia entra como "consultas/exames" para concordar
       partes.push(`${total} ${consultas ? (total === 1 ? "consulta" : "consultas") : "consultas/exames"}`);

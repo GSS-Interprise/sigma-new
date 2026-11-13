@@ -48,7 +48,7 @@ type Linha = {
   conferir: string | null;                    // por que a nota recebida pede conferência
   // conferência fiscal e lançamento no Conta Azul (financeiro-conta-azul)
   nf_conferencia_status: "ok" | "divergente" | "manual" | "aceita" | null;
-  nf_conferencia: { itens?: { chave: string; rotulo: string; ok: boolean | null; detalhe: string }[] } | null;
+  nf_conferencia: { itens?: { chave: string; rotulo: string; ok: boolean | null; detalhe: string }[]; liquido_na_descricao?: number | null } | null;
   nf_valor_liquido: number | null; nf_numero: string | null; ca_evento_id: string | null;
 };
 
@@ -117,6 +117,13 @@ export default function FinanceiroNotasFiscais(
   const [pagoOpen, setPagoOpen] = useState(false);
   const [alvoConf, setAlvoConf] = useState<Linha | null>(null);
   const [liquidoManual, setLiquidoManual] = useState("");
+  // nota sem campo de líquido (prefeitura): já abre com o líquido escrito na discriminação, para a
+  // pessoa conferir na nota e aceitar. O Sigma não aceita sozinho; quem confere confirma o valor.
+  const abrirConferencia = (l: Linha) => {
+    setAlvoConf(l);
+    const ld = l.nf_valor_liquido == null ? l.nf_conferencia?.liquido_na_descricao : null;
+    setLiquidoManual(ld != null ? Number(ld).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "");
+  };
   const [contatoNovo, setContatoNovo] = useState("");
   const [salvandoContato, setSalvandoContato] = useState(false);
 
@@ -149,9 +156,11 @@ export default function FinanceiroNotasFiscais(
         const m = (meds || []).find((x: any) => x.id === p.medico_id);
         const ult = (solics || []).find((x: any) => x.pagamento_id === p.id);
         const rec = (recebidas || []).find((x: any) => x.pagamento_id === p.id);
-        const conferir = rec?.motivo && /diferente|conferir/i.test(rec.motivo)
+        // o aviso da conferência na chegada (financeiro-nf-whatsapp-inbound) vem escrito no motivo
+        const aviso = rec?.motivo?.match(/conferir antes de pagar: (.+)$/i)?.[1] ?? null;
+        const conferir = aviso ?? (rec?.motivo && /diferente|conferir/i.test(rec.motivo)
           ? (/diferente/i.test(rec.motivo) ? "valor da nota diferente do a pagar" : "arquivo sem texto: conferir se é a nota")
-          : null;
+          : null);
         return {
           ...p, email: m?.email ?? null, telefone: m?.telefone ?? null,
           canal_pedido: ult?.canal ?? null, entrega: ult?.entrega_status ?? null, conferir,
@@ -177,9 +186,14 @@ export default function FinanceiroNotasFiscais(
   // nota com divergência ou que precisa de conferência à mão (Amni, 26/10)
   // O aviso da chegada (l.conferir: foto, valor diferente) só vale enquanto a conferência não
   // resolveu: nota aceita ou conferida ok sai da lista (Amni, 27/10: ficava presa em "Conferir").
-  const precisaConferir = (l: Linha) => !l.ca_evento_id && !!l.nf_arquivo_path
+  // Já lançado SEM NF no Conta Azul e a nota não fechou (sem líquido, valor diferente): o Sigma segurou o
+  // "SEM NF" para a Thais não pagar pelo bruto (13/11). Fica na lista até alguém resolver.
+  const semNfRetido = (l: Linha) => !!l.ca_evento_id
+    && (l.nf_conferencia?.itens ?? []).some((i) => i.chave === "conta_azul" && i.ok === false);
+  const podeAceitar = (l: Linha) => !!l.nf_arquivo_path
     && !["aceita", "ok"].includes(String(l.nf_conferencia_status))
-    && (["divergente", "manual"].includes(String(l.nf_conferencia_status)) || !!l.conferir);
+    && (l.ca_evento_id ? semNfRetido(l) : (["divergente", "manual"].includes(String(l.nf_conferencia_status)) || !!l.conferir));
+  const precisaConferir = (l: Linha) => podeAceitar(l) || semNfRetido(l);
   // outros lançamentos do mesmo médico na competência, ainda sem nota: destino para mover a nota
   const outrosLocais = (l: Linha) => todasLinhas.filter((x) => x.id !== l.id && !!l.medico_id
     && x.medico_id === l.medico_id && !x.nf_arquivo_path && !x.ca_evento_id);
@@ -291,12 +305,16 @@ export default function FinanceiroNotasFiscais(
     const liq = liquidoManual.trim() ? Number(liquidoManual.replace(/\./g, "").replace(",", ".")) : null;
     if (liquidoManual.trim() && !(Number.isFinite(liq) && (liq as number) > 0)) { toast.error("Valor líquido inválido."); return; }
     setEnviando(true);
-    const { error } = await supabase.functions.invoke("financeiro-conta-azul", {
+    const { data: resp, error } = await supabase.functions.invoke("financeiro-conta-azul", {
       body: { acao: "aceitar_nota", pagamento_id: l.id, ...(liq ? { valor_liquido: liq } : {}) },
     });
     setEnviando(false);
     if (error) { toast.error("Não foi possível registrar: " + error.message); return; }
-    toast.success("Nota aceita. Ficou registrado quem aceitou.");
+    // lançado SEM NF: o aceite só libera o pagamento se o líquido bater com o valor lançado
+    const ca = resp?.conta_azul as { ok: boolean | null; detalhe: string } | null | undefined;
+    if (ca?.ok === false) toast.warning("Nota aceita, mas o pagamento continua retido no Conta Azul.", { description: ca.detalhe, duration: 12000 });
+    else if (ca?.ok === true) toast.success("Nota aceita. O SEM NF saiu do Conta Azul: pagamento liberado.");
+    else toast.success("Nota aceita. Ficou registrado quem aceitou.");
     setAlvoConf(null);
     qc.invalidateQueries({ queryKey: ["financeiro-nf"] });
   };
@@ -498,10 +516,11 @@ export default function FinanceiroNotasFiscais(
                 </div>
               </div>
             )}
-            <div className="grid grid-cols-4 sm:grid-cols-8 gap-1.5">
+            {/* no celular, número e rótulo na mesma linha em 2 colunas: em 4 colunas "Aguardando nota" vazava do cartão */}
+            <div className="grid grid-cols-2 sm:grid-cols-8 gap-1.5">
               {CHIPS.map((c) => (
                 <button key={c.k} onClick={() => setFiltro(c.k)}
-                  className={`rounded-md border px-2.5 py-1.5 text-left transition-colors ${filtro === c.k ? "border-primary bg-primary/5" : "hover:bg-muted"}`}>
+                  className={`flex items-baseline gap-1.5 sm:block rounded-md border px-2.5 py-1.5 text-left transition-colors ${filtro === c.k ? "border-primary bg-primary/5" : "hover:bg-muted"}`}>
                   <span className={`block text-lg font-semibold tabular-nums leading-tight ${c.cls ?? ""}`}>{c.n}</span>
                   <span className="block text-[11px] text-muted-foreground leading-tight">{c.label}</span>
                 </button>
@@ -571,18 +590,24 @@ export default function FinanceiroNotasFiscais(
                           <TableCell className="text-right tabular-nums">{brl(Number(l.valor_total))}</TableCell>
                           <TableCell>
                             <span className={`rounded-full px-2 py-0.5 text-[11px] ${st.cls}`}>{st.label}</span>
-                            {l.ca_evento_id ? (
+                            {semNfRetido(l) ? (
+                              <button type="button" title="Lançado SEM NF: o Sigma não liberou o pagamento. Ver por quê"
+                                onClick={() => abrirConferencia(l)}
+                                className={`ml-1 rounded-full px-2 py-0.5 text-[11px] hover:underline ${CONF.manual.cls}`}>
+                                Conferir antes de pagar
+                              </button>
+                            ) : l.ca_evento_id ? (
                               <span className="ml-1 rounded-full bg-sky-100 px-2 py-0.5 text-[11px] text-sky-800">No Conta Azul</span>
                             ) : l.nf_conferencia_status ? (
                               <button type="button" title="Ver a conferência da nota"
-                                onClick={() => { setAlvoConf(l); setLiquidoManual(""); }}
+                                onClick={() => abrirConferencia(l)}
                                 className={`ml-1 rounded-full px-2 py-0.5 text-[11px] hover:underline ${CONF[l.nf_conferencia_status].cls}`}>
                                 {CONF[l.nf_conferencia_status].label}
                               </button>
                             ) : l.conferir && l.nf_arquivo_path ? (
                               // nota anexada sem conferência rodada (ex.: veio na importação): abre para conferir e aceitar
                               <button type="button" title={l.conferir}
-                                onClick={() => { setAlvoConf(l); setLiquidoManual(""); }}
+                                onClick={() => abrirConferencia(l)}
                                 className={`ml-1 rounded-full px-2 py-0.5 text-[11px] hover:underline ${CONF.manual.cls}`}>
                                 Conferir
                               </button>
@@ -739,7 +764,7 @@ export default function FinanceiroNotasFiscais(
               <p className="text-sm text-amber-700">Na chegada: {alvoConf.conferir}.</p>
             )}
           </div>
-          {alvoConf && precisaConferir(alvoConf) && (
+          {alvoConf && podeAceitar(alvoConf) && (
             <div className="rounded-md border bg-muted/30 p-3 space-y-2">
               <p className="text-xs text-muted-foreground">
                 Para seguir com esta nota mesmo assim, aceite a exceção. {alvoConf.nf_valor_liquido == null && "Informe o valor líquido a pagar, que a leitura não encontrou."}
@@ -751,7 +776,7 @@ export default function FinanceiroNotasFiscais(
           )}
           <DialogFooter>
             <Button variant="outline" disabled={enviando} onClick={() => alvoConf && conferirDeNovo(alvoConf)}>Conferir de novo</Button>
-            {alvoConf && precisaConferir(alvoConf) && (
+            {alvoConf && podeAceitar(alvoConf) && (
               <Button disabled={enviando} onClick={() => aceitarNota(alvoConf)}>
                 {enviando && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />} Aceitar esta nota
               </Button>

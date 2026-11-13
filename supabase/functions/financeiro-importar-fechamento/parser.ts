@@ -238,15 +238,30 @@ export function parseMatrizExames(grid: unknown[][], cfg: any) {
   }
   // com "Valor ..." no cabeçalho é a matriz completa (N quantidades + N valores); sem, são só quantidades
   const temValores = headers.slice(iNome + 1, iAcre).some((h) => norm(h).startsWith("valor "));
+  let tipos: { nome: string; iQtd: number; iVal: number }[];
   if (temValores && largura % 2 !== 0) {
-    return { erro: `esperava um nº par de colunas entre 'Nome' e 'Acréscimos' (achei ${largura})`, headers, blocos: [] };
+    // Coluna a mais no meio (Marieta, 13/11: "não leu, talvez pelo número de colunas"): em vez de recusar,
+    // separa quantidades (sem "Valor") e valores ("Valor ...") e ignora as colunas de total/soma. Só segue se
+    // sobrar o mesmo número dos dois lados, pareados na ordem; senão recusa dizendo quais colunas sobraram.
+    const faixa = headers.map((h, i) => ({ h, i })).slice(iNome + 1, iAcre);
+    const ehSoma = (h: string) => /^(?:total|soma|qtd total|quantidade total|geral)(?![a-z])/i.test(norm(h));
+    const qtds = faixa.filter((c) => !norm(c.h).startsWith("valor ") && !ehSoma(c.h));
+    const vals = faixa.filter((c) => norm(c.h).startsWith("valor ") && !ehSoma(norm(c.h).replace(/^valor /, "")));
+    if (!qtds.length || qtds.length !== vals.length) {
+      return {
+        erro: `as colunas de exame não fecham em pares: ${qtds.length} de quantidade (${qtds.map((c) => c.h || "sem nome").join(", ")}) e ${vals.length} de valor (${vals.map((c) => c.h).join(", ")})`,
+        headers, blocos: [],
+      };
+    }
+    tipos = qtds.map((c, k) => ({ nome: c.h || `Tipo ${k + 1}`, iQtd: c.i, iVal: vals[k].i }));
+  } else {
+    const n = temValores ? largura / 2 : largura;
+    tipos = Array.from({ length: n }, (_, i) => ({
+      nome: headers[iNome + 1 + i] || `Tipo ${i + 1}`,
+      iQtd: iNome + 1 + i,
+      iVal: temValores ? iNome + 1 + n + i : -1,
+    }));
   }
-  const n = temValores ? largura / 2 : largura;
-  const tipos = Array.from({ length: n }, (_, i) => ({
-    nome: headers[iNome + 1 + i] || `Tipo ${i + 1}`,
-    iQtd: iNome + 1 + i,
-    iVal: temValores ? iNome + 1 + n + i : -1,
-  }));
 
   const blocos: Bloco[] = [];
   for (const row of grid.slice(hRow)) {
