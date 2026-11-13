@@ -88,8 +88,8 @@ export type ResultadoEnvio = { id: string; medico: string | null; ok: boolean; e
 export type DepsEnvio = {
   /** UPDATE condicional: true só se este envio pegou a vez (ca_evento_id nulo e ninguém enviando). */
   travar: (id: string) => Promise<boolean>;
-  enviar: (payload: Record<string, unknown>) => Promise<any>;
-  confirmar: (it: ItemLancar, eventoId: string, criado: any) => Promise<void>;
+  enviar: (payload: Record<string, unknown>) => Promise<unknown>;
+  confirmar: (it: ItemLancar, eventoId: string, criado: unknown) => Promise<void>;
   falhar: (id: string, msg: string) => Promise<void>;
 };
 
@@ -102,7 +102,7 @@ export async function lancarItens(itens: ItemLancar[], deps: DepsEnvio): Promise
     if (!(await deps.travar(it.id))) { resultados.push({ id: it.id, medico, ok: false, erro: "já lançado ou em envio" }); continue; }
     try {
       const criado = await deps.enviar(it.payload);
-      const eventoId = String(criado?.id ?? "").trim();
+      const eventoId = String((criado as { id?: unknown } | null)?.id ?? "").trim();
       if (!eventoId) {
         // antes gravava ca_evento_id = "": não aparecia como lançado nem deixava lançar de novo, sem aviso
         const msg = `${SEM_CONFIRMACAO}: o Conta Azul não devolveu o id do lançamento`;
@@ -112,8 +112,8 @@ export async function lancarItens(itens: ItemLancar[], deps: DepsEnvio): Promise
       }
       await deps.confirmar(it, eventoId, criado);
       resultados.push({ id: it.id, medico, ok: true, ca_evento_id: eventoId });
-    } catch (e: any) {
-      const msg = String(e?.message || e).slice(0, 300);
+    } catch (e) {
+      const msg = String(e instanceof Error ? e.message : e).slice(0, 300);
       await deps.falhar(it.id, msg);
       resultados.push({ id: it.id, medico, ok: false, erro: msg });
     }

@@ -20,7 +20,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ca, itensDe, listarTudo } from "../_shared/contaazul.ts";
-import { bloqueioDeEnvio, conferirLote, erroLegivel, lancarItens, type Lote } from "../_shared/contaazul-lote.ts";
+import { bloqueioDeEnvio, conferirLote, erroLegivel, lancarItens, type ItemLancar, type Lote, type PagLote, type ResultadoEnvio } from "../_shared/contaazul-lote.ts";
 import { CNPJ_GSS, CNPJS_GRUPO_GSS, dadosBancariosDoTexto, leituraAssistida, leituraFoto, lerNfse, textoPdf } from "../_shared/nfse.ts";
 
 const cors = {
@@ -531,15 +531,15 @@ async function montarPagar(svc: Svc, ids: string[], ajustes: Record<string, any>
  * com valor a pagar e não tem id do Conta Azul entra na lista, com o motivo. Fica gravado em
  * financeiro_contaazul_lotes para auditoria. Falha aqui nunca derruba o lançamento, que já aconteceu.
  */
-async function registrarLote(svc: Svc, itens: any[], resultados: any[], usuario: string | null): Promise<Lote | null> {
+async function registrarLote(svc: Svc, itens: ItemLancar[], resultados: ResultadoEnvio[], usuario: string | null): Promise<Lote | null> {
   try {
     const { data: comps } = await svc.from("financeiro_pagamentos").select("mes_referencia, ano_referencia").in("id", itens.map((i) => i.id));
-    const meses = [...new Set((comps ?? []).map((c: any) => `${c.ano_referencia}-${c.mes_referencia}`))]
+    const meses = [...new Set((comps ?? []).map((c: { ano_referencia: number; mes_referencia: number }) => `${c.ano_referencia}-${c.mes_referencia}`))]
       .map((k) => k.split("-").map(Number));
     const problemas = Object.fromEntries(itens.map((it) => [it.id, it.problemas]));
     const geral: Lote = { esperados: 0, confirmados: 0, completo: true, pendentes: [] };
     for (const [ano, mes] of meses) {
-      const pags: any[] = [];
+      const pags: PagLote[] = [];
       for (let de = 0; ; de += 1000) {
         const { data, error } = await svc.from("financeiro_pagamentos")
           .select("id, profissional_nome, unidade, arquivo_origem, valor_total, conferido_em, status, nf_status, ca_evento_id, ca_erro")
@@ -833,7 +833,7 @@ serve(async (req) => {
 
       if (input.confirmar !== true) return json({ ok: false, error: "confirmacao_ausente" }, 400);
       if (!ref.escrita) return json({ ok: false, error: "escrita_desligada", detalhe: "O envio ao Conta Azul está desligado. A prévia mostra o que seria lançado." }, 409);
-      const porId = new Map(itens.map((it: any) => [it.id, it]));
+      const porId = new Map(itens.map((it) => [it.id, it]));
       const resultados = await lancarItens(itens, {
         // trava: só um envio por pagamento, mesmo com dois cliques ou duas abas
         travar: async (id) => {
@@ -843,7 +843,7 @@ serve(async (req) => {
         },
         enviar: (payload) => ca(svc, "/v1/financeiro/contas-a-pagar", { method: "POST", body: JSON.stringify(payload) }),
         confirmar: async (item, eventoId, criado) => {
-          const it: any = porId.get(item.id);
+          const it = porId.get(item.id)!;
           const parcela = criado?.condicao_pagamento?.parcelas?.[0];
           await svc.from("financeiro_pagamentos").update({
             ca_evento_id: eventoId, ca_parcela_id: parcela?.id ? String(parcela.id) : null,
