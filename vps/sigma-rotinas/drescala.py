@@ -113,8 +113,8 @@ def _plantao(p):
 def sincronizar(payload, enviar):
     """payload: {inicio?: "AAAA-MM-DD" (padrão: hoje-7), dias?: 38, local_ids?: [ids]}.
 
-    Cada setor custa uma chamada por mês do período. A fila devolve o pedido parado há mais de 10 min
-    (rotina_pegar), então o padrão é curto (hoje-7 a hoje+30, ~2 meses, ~3 min) e o máximo é 62 dias.
+    Cada setor custa uma chamada por mês do período. A fila devolve o pedido parado há mais de 20 min
+    (rotina_pegar), então o padrão é curto (hoje-7 a hoje+30, ~2 meses, ~7 min) e o máximo é 62 dias.
 
     enviar(action, corpo) fala com a edge rotinas-fila (drescala_abrir / drescala_gravar / drescala_fechar).
     Devolve um resumo para o resultado do pedido.

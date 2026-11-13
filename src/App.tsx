@@ -53,6 +53,7 @@ import NfUpload from "./pages/NfUpload";
 import EmailDescadastro from "./pages/EmailDescadastro";
 import FinanceiroAprovacaoRelatorio from "./pages/FinanceiroAprovacaoRelatorio";
 import ContaAzulConectar, { ContaAzulRetorno } from "./pages/ContaAzulConectar";
+import ConectarClaude from "./pages/ConectarClaude";
 import Patrimonio from "./pages/Patrimonio";
 import BI from "./pages/BI";
 import Configuracoes from "./pages/Configuracoes";
@@ -103,6 +104,8 @@ const App = () => (
             <Route path="/aprovacao/:token" element={<FinanceiroAprovacaoRelatorio />} />
             <Route path="/conta-azul/conectar/:convite" element={<ContaAzulConectar />} />
             <Route path="/conta-azul/retorno" element={<ContaAzulRetorno />} />
+            {/* Claude dos sócios: aprovação OAuth e conexões. Sem ProtectedRoute: a própria página guarda o pedido e manda ao login. */}
+            <Route path="/conectar-claude" element={<ConectarClaude />} />
             <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/comunicacao" element={<ProtectedRoute><PermissionRoute modulo="comunicacao"><Comunicacao /></PermissionRoute></ProtectedRoute>} />
             <Route path="/licitacoes" element={<ProtectedRoute><PermissionRoute modulo="licitacoes"><Licitacoes /></PermissionRoute></ProtectedRoute>} />

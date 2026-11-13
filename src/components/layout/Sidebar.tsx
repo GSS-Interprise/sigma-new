@@ -28,6 +28,7 @@ import {
   Stethoscope,
   Briefcase,
   type LucideIcon,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -53,6 +54,7 @@ type NavItem = {
   modulo?: Modulo; // módulo de permissão (vazio = sempre visível p/ autenticado)
   adminOnly?: boolean;
   adminOrLeader?: boolean;
+  diretoria?: boolean; // admin ou diretoria (os sócios da GSS)
   captacao?: CaptacaoPermission; // além do módulo, exige esta permissão de captação (admin passa)
 };
 
@@ -114,6 +116,8 @@ const navigationSistema: NavItem[] = [
   { name: "Comunicação", href: "/comunicacao", icon: MessageSquare },
   { name: "Suporte", href: "/suporte", icon: Headset },
   { name: "Auditoria", href: "/auditoria", icon: Shield, adminOrLeader: true },
+  // Claude dos sócios (docs/arquitetura/claude-socios-gss.md): conectar o Claude de cada sócio ao Sigma.
+  { name: "Conectar o Claude", href: "/conectar-claude", icon: Sparkles, diretoria: true },
   { name: "Configurações", href: "/configuracoes", icon: Settings, adminOnly: true },
 ];
 
@@ -130,6 +134,7 @@ export function Sidebar() {
   const canSee = (item: NavItem): boolean => {
     if (item.adminOnly) return isAdmin;
     if (item.adminOrLeader) return isAdmin || isLeader;
+    if (item.diretoria) return isAdmin || !!userRoles?.some((r) => r.role === "diretoria");
     if (item.captacao && !isAdmin && !hasCaptacaoPermission(item.captacao)) return false;
     const modulo = item.modulo;
     if (!modulo) return true;

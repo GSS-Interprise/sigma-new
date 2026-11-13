@@ -118,8 +118,22 @@ Dr. Escala ──(robô na VPS: login + API interna)──► rotinas-fila ─�
   `user_id`, hash SHA-256 do token, nome, criado, último uso, revogado). O token é mostrado uma vez e vai no
   header `Authorization: Bearer` do cliente MCP. A edge confere o hash, carrega os papéis do usuário e recusa quem
   não tiver papel liberado (`admin`, `diretoria`).
-- Segunda versão (se os sócios usarem Claude.ai ou o app Desktop pelo menu de conectores): OAuth 2.1, que é o
-  que esses clientes pedem para conector remoto com login. Depende da pergunta aberta "quais Claude".
+- **OAuth 2.1 (T7, no ar em 14/11)** para Claude.ai, celular e Desktop, que só conectam conector remoto com login.
+  A própria edge é o servidor de login (regras em `supabase/functions/_shared/mcp-oauth.ts`):
+  - sem token, o MCP responde 401 com `WWW-Authenticate: Bearer resource_metadata=".../.well-known/oauth-protected-resource"`;
+  - metadados em `<edge>/.well-known/oauth-protected-resource`, `/oauth-authorization-server` e `/openid-configuration`;
+  - `POST /register`: registro dinâmico (RFC 7591), cliente público. Só aceita redirect do Claude
+    (`https://claude.ai|claude.com/...` e `http://localhost`), para nenhum site de fora pedir acesso a um sócio;
+  - `GET /authorize` (PKCE S256 obrigatório) manda o sócio para `/conectar-claude` no Sigma, onde ele já está logado
+    e clica **Autorizar** (a tela chama `POST /oauth/aprovar` com o JWT do Sigma; código de uso único, 10 min);
+  - `POST /token`: código → acesso `sgm_` (1 h) + refresh `sgr_` (90 dias, rotaciona a cada uso). Código repetido
+    derruba a conexão criada com ele. `POST /revoke` (RFC 7009);
+  - a conexão OAuth é uma linha de `mcp_tokens` (`origem = 'oauth'`), como o token manual: desligar na tela corta
+    as duas chaves. Tabelas `mcp_oauth_clientes` e `mcp_oauth_codigos` são só da service role.
+- **Tela `/conectar-claude` (T5)**, no menu para admin e diretoria (Configurações só abre para admin): endereço do
+  conector para colar no Claude, conexões ativas com último uso e **Desligar**, e token para o Claude Code (mostrado
+  uma vez, já no comando `claude mcp add`). Com `client_id` na URL vira a tela de aprovação do OAuth. Se o sócio não
+  estiver logado, o pedido sobrevive ao login (`src/lib/voltaAposLogin.ts`).
 - Toda chamada grava em `mcp_chamadas` (quem, ferramenta, argumentos, duração, erro). É a trilha de auditoria.
 - Ferramentas da fase 1 (escala):
   - `escalas_hospitais(busca?)`: lista hospitais/unidades com quantos plantões e furos há nos próximos 7 dias.
@@ -177,6 +191,13 @@ Dr. Escala ──(robô na VPS: login + API interna)──► rotinas-fila ─�
 - **Custo Meta:** desde 01/10/2026 a resposta enviada pela API é cobrada depois de 1.000 grátis por número/mês.
 - **Token pessoal vaza = acesso aos dados.** Hash no banco, revogação por linha, último uso visível, papel
   conferido a cada chamada.
+- **Descoberta do OAuth pelo Claude.ai:** a edge mora em `/functions/v1/sigma-mcp`, e a raiz do domínio do
+  Supabase (`/.well-known/...` sem caminho) não é nossa. O Claude acha os metadados pelo `resource_metadata` do 401
+  e pelo issuer com caminho (inserido ou anexado). Testado ponta a ponta por script (`supabase/tests/sigma_mcp_oauth_e2e.py`),
+  ainda **não** com o Claude.ai de verdade. Se ele só procurar na raiz, a saída é um domínio próprio na VPS
+  (proxy reverso) com os `/.well-known` na raiz.
+- **A tela de aprovação vive no front do Lovable:** sem publicar o front, o `/authorize` manda para uma página que
+  ainda não existe no ar.
 - **Dependências externas:** login do Dr. Escala (Raul/GSS); números dos escalistas na Chakra (Vini).
 
 ## 6. Plano de execução (cada item ≈ 1 PR/commit)
@@ -189,9 +210,11 @@ Dr. Escala ──(robô na VPS: login + API interna)──► rotinas-fila ─�
 - [~] T3 — Agendamento `pg_cron` (06h, 12h, 18h; job `drescala-escalas`) feito. Falta o alerta quando a última
   sincronização tiver mais de 12 h.
 - [x] T4 — Edge `sigma-mcp` com token pessoal (`mcp_tokens`, `mcp_chamadas`) e as 4 ferramentas de escala.
-- [ ] T5 — Tela mínima em Configurações para o sócio gerar/revogar o token e copiar a configuração do cliente MCP.
-- [ ] T6 — Conectar o Claude do Heron e validar com ele as perguntas reais de escala.
-- [ ] T7 — (se Claude.ai/Desktop por conector) OAuth 2.1 no `sigma-mcp`.
+- [x] T5 — Tela `/conectar-claude` (no menu de admin e diretoria; Configurações só abre para admin): endereço do
+  conector, conexões com Desligar, token do Claude Code. Portão visual 0 falhas em 1440 e 1024 (14/11).
+- [ ] T6 — Conectar o Claude do Heron e validar com ele as perguntas reais de escala. Antes: publicar o front no
+  Lovable e conectar o Claude.ai do Raul pelo endereço (prova da descoberta do OAuth).
+- [x] T7 — OAuth 2.1 no `sigma-mcp` (registro dinâmico, PKCE, refresh com rotação, revogação). 14/11.
 - [ ] T8 — Fase 2: marcar números de escala na Chakra + ferramentas de leitura de conversas.
 - [ ] T9 — Fase 3: envio pelo número do escalista com confirmação em duas etapas e registro.
 
@@ -199,13 +222,22 @@ Dr. Escala ──(robô na VPS: login + API interna)──► rotinas-fila ─�
 
 - [x] `select count(*) from drescala_plantoes` > 0 com dado real do mês corrente, e `drescala_sincronizacoes`
   com a última execução `ok` há menos de 12 h.
-- [ ] `furo = true` bate com a contagem de plantões descobertos que o Dr. Escala mostra para um hospital e um dia
-  conferidos à mão.
+- [~] `furo = true` bate com o Dr. Escala para um hospital e um dia. **14/11, contra a API ao vivo:** CEPON em
+  18/11/2026, setores 21, 24, 25 e 26: 13 plantões dos dois lados, mesmos ids e mesmos médicos, 1 furo (plantão
+  92747, setor 26, "Sem Profissional Alocado", `furo=true`). Falta olhar a mesma escala na **tela** do Dr. Escala
+  (precisa do login da GSS no navegador).
 - [x] `POST /functions/v1/sigma-mcp` com `tools/call escalas_do_hospital {"hospital":"hro","data_inicio":"<hoje>"}`
   devolve os plantões do dia com nomes; sem token devolve 401; com token de usuário sem papel liberado, 403.
 - [ ] Um cliente MCP real (Claude Code ou Desktop) lista as ferramentas e responde "quais plantões estão
   descobertos esta semana?".
 - [x] Toda chamada aparece em `mcp_chamadas`.
+- [x] Testes automatizados (14/11):
+  - `supabase/functions/_shared/escalas_test.ts` (15) e `mcp-oauth_test.ts` (11): `cd supabase/functions/_shared && deno test --node-modules-dir=none`.
+    Pegaram 2 bugs: CRM digitado com ponto ("12.345/SC") virava busca por nome, e mês 13 estourava RangeError.
+  - `vps/sigma-rotinas/test_drescala.py` (14): `python -m unittest vps/sigma-rotinas/test_drescala.py`.
+  - `supabase/tests/drescala_mcp.sql`: carga, remoção do que sumiu, sync com erro não apaga, cron, RLS, token. Termina
+    em `TESTE_OK` e não grava nada.
+  - `supabase/tests/sigma_mcp_oauth_e2e.py`: OAuth inteiro contra a edge no ar (27 checagens; apaga o que criou).
 
 ## 8. Autonomia e direitos de decisão
 

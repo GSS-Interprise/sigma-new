@@ -3,6 +3,7 @@ import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { consumirVolta } from "@/lib/voltaAposLogin";
 
 interface AuthContextType {
   user: User | null;
@@ -193,7 +194,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (error) throw error;
 
       toast.success("Login realizado com sucesso!");
-      navigate("/");
+      navigate(consumirVolta() ?? "/");
     } catch (error: any) {
       toast.error(error.message || "Erro ao fazer login");
       throw error;

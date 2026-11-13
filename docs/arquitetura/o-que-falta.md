@@ -11,6 +11,10 @@ algo de fora). O detalhe de cada frente fica no doc dela, linkado no título.
 | Regras das redes e dos avisos | `cd supabase/functions/_shared && deno test --node-modules-dir=none` (41 testes) | convite (texto e 300 caracteres), rampa do LinkedIn, URL do perfil, confiança mínima, aceite/resposta pela Unipile, @ do Instagram, janela de 24 h, telefone (formatos, estrangeiro, DDD), destinos do aviso, trecho do modelo da Meta + os testes antigos (Chakra, cadência, NFS-e) |
 | Motor de IA na VPS | `python -m unittest vps/sigma-rotinas/test_motor_claude.py` | link do login, motivo do erro, teste só com "OK", token nunca aparece na saída, tipos da fila |
 | Banco: criação de campanha | `supabase/tests/campanha_modo_alertas.sql` (deixa nada gravado; espera `TESTE_OK`) | modo IA/equipe, destinos normalizados, padrão sem destinos, só admin pede rotina do motor |
+| Escalas e OAuth do MCP dos sócios | mesmo `deno test` acima (`escalas_test.ts` 15, `mcp-oauth_test.ts` 11) | datas do sócio ("amanhã", 5/12, 31/02 inválido), hospital por sigla/trecho/cidade, CRM com ponto, texto da resposta; redirect só do Claude, PKCE S256, registro dinâmico, erros que voltam ou não ao Claude |
+| Robô do Dr. Escala na VPS | `python -m unittest vps/sigma-rotinas/test_drescala.py` (14) | furo pela flag ou profissional 0, sem dinheiro no Sigma, janela e plantão repetido na grade, setor desligado não consultado, erro no meio fecha a sync com erro, 429 com espera |
+| Banco: escalas e MCP | `supabase/tests/drescala_mcp.sql` (deixa nada gravado; espera `TESTE_OK`) | dia do plantão noturno, local de teste fora da view, remove o que sumiu, sync com erro não apaga, cron 06/12/18h, RLS de quem não é diretoria, hash do token fora do alcance do front |
+| OAuth do `sigma-mcp` no ar | `python supabase/tests/sigma_mcp_oauth_e2e.py` (precisa do `SUPABASE_ACCESS_TOKEN` no `.env.local`; apaga o que cria) | 401 com metadados, registro, authorize, troca de código, refresh com rotação, vencido, revoke, código repetido derruba a conexão, auditoria |
 
 O texto do convite e as regras de telefone moram em `supabase/functions/_shared/redes.ts` e `alertas.ts` e são
 importados **pela tela e pelas edges**: o que a fila mostra e o que o motor envia não têm como divergir.
@@ -40,9 +44,12 @@ importados **pela tela e pelas edges**: o que a fila mostra e o que o motor envi
 
 | Item | De quem | Situação |
 |---|---|---|
-| T5 tela para o sócio gerar e revogar o próprio token | nosso | — |
-| T7 login OAuth no `sigma-mcp` (Claude.ai e celular) | nosso | — |
-| Conferir à mão os furos de um hospital num dia contra a tela do Dr. Escala | nosso | robô roda 06h/12h/18h |
+| T5 tela `/conectar-claude` (conexões, desligar, token do Claude Code), no menu de admin e diretoria | nosso | ✅ 14/11 (portão visual 0 falhas) |
+| T7 login OAuth no `sigma-mcp` (Claude.ai e celular) | nosso | ✅ 14/11, 27 checagens ponta a ponta por script |
+| Publicar o front no Lovable (a tela de aprovação do OAuth vive lá) | Raul | — |
+| Conectar o Claude.ai do Raul pelo endereço do conector: prova que o Claude.ai acha o login (risco: ele procurar só na raiz do domínio) | Raul (5 min) | depois de publicar |
+| Furos de um dia contra o Dr. Escala | nosso | ✅ API ao vivo: CEPON 18/11, 13 plantões e 1 furo iguais; falta só olhar na tela deles (login da GSS) |
+| Alerta se a sincronização passar de 12 h (T3) | nosso | cron rodou 13:44 e 18:06 de 13/11 |
 | LGPD: nome de médico (e na fase 2 conversas) passando pelo Claude de cada sócio; plano do Claude dos sócios | GSS (decisão) | — |
 | Lista de sócios que entram; envio pelo escalista sempre com confirmação? | GSS | — |
 | Usuário só de leitura no Dr. Escala para o robô (hoje usa a conta da diretoria, admin) | GSS | — |
