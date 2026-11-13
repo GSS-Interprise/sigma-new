@@ -294,20 +294,20 @@ serve(async (req) => {
     }
 
     const status = vincula && path ? "vinculada" : "pendente";
-    await svc.from("financeiro_nf_inbox").upsert({
+    const { data: linhaInbox } = await svc.from("financeiro_nf_inbox").upsert({
       origem: "whatsapp", remetente: msg.de, remetente_nome: msg.nomePerfil || null,
       arquivo_nome: msg.midia.nome, arquivo_path: path, mime,
       mensagem_id: msg.mensagemId || null, recebido_em: msg.quando || agora,
       status, pagamento_id: vincula ? pag?.id ?? null : null, vinculado_em: status === "vinculada" ? agora : null,
       eh_nfse: nota.legivel ? nota.ehNfse : null, tomador_gss: nota.legivel ? nota.tomadorGss : null,
       prestador_cnpj: nota.prestadorCnpj, prestador_nome: nota.prestadorNome, prestador_email: nota.prestadorEmail,
-      valor_nota: nota.valor, chave_acesso: nota.chave, descricao: nota.descricao,
+      valor_nota: nota.valor, chave_acesso: nota.chave, descricao: nota.descricao ?? nota.discriminacao ?? null,
       numero_nota: nota.numero, competencia: nota.competencia, emissao: nota.emissao,
       valor_liquido: nota.valorLiquido, irrf: nota.irrf, contrib_sociais: nota.contribSociais,
       inss_retido: nota.inssRetido, iss_retido: nota.issRetido, total_retencoes: nota.totalRetencoes,
       simples_nacional: nota.simplesNacional, impostos_lidos: nota.legivel ? nota.impostosLidos : null,
       medico_id: medicoId, confianca: quem.confianca, motivo,
-    }, { onConflict: "mensagem_id" });
+    }, { onConflict: "mensagem_id" }).select("id").maybeSingle();
 
     // aprende o CNPJ quando a identificação foi forte
     if (nota.prestadorCnpj && medicoId && quem.confianca === "forte") {
@@ -316,6 +316,7 @@ serve(async (req) => {
       }, { onConflict: "cnpj", ignoreDuplicates: true });
     }
 
+    let alertaConferencia: string | null = null;
     if (status === "vinculada" && pag && path) {
       await svc.from("financeiro_anexos").insert({
         pagamento_id: pag.id, tipo: "nf", arquivo_path: path, arquivo_nome: msg.midia.nome, mime, status: "recebido",
@@ -326,11 +327,24 @@ serve(async (req) => {
       await svc.from("financeiro_nf_solicitacoes").update({ status: "recebida", recebida_em: agora })
         .eq("pagamento_id", pag.id).eq("status", "enviada");
       // conferência fiscal na hora em que a nota entra (tomador, valor, impostos, CNPJ)
-      await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/financeiro-conta-azul`, {
+      const resp = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/financeiro-conta-azul`, {
         method: "POST",
         headers: { Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`, "Content-Type": "application/json" },
         body: JSON.stringify({ acao: "conferir", pagamento_ids: [pag.id] }),
-      }).catch((e) => console.warn("[nf] conferência não rodou:", e));
+      }).catch((e) => { console.warn("[nf] conferência não rodou:", e); return null; });
+      // Anexar não é aprovar: nota que a conferência não fechou (sem líquido, imposto sem quadro, valor
+      // diferente) é avisada na hora, em vez de entrar calada (13/11, nota pelo bruto paga a mais).
+      const conf = resp?.ok ? (await resp.json().catch(() => null))?.resultados?.[0] : null;
+      const itensConf: any[] = conf?.itens ?? [];
+      if (!conf?.status) alertaConferencia = "a conferência automática não rodou";
+      else if (conf.status !== "ok" && conf.status !== "aceita") {
+        alertaConferencia = (itensConf.find((i) => i?.ok === false) ?? itensConf.find((i) => i?.ok === null && i?.chave !== "prestador"))?.detalhe
+          ?? "a conferência da nota não fechou";
+      }
+      if (alertaConferencia && linhaInbox?.id) {
+        await svc.from("financeiro_nf_inbox").update({ motivo: `${motivo} · conferir antes de pagar: ${alertaConferencia}`.slice(0, 1000) })
+          .eq("id", linhaInbox.id);
+      }
     }
 
     if (!silencioso) {
@@ -357,7 +371,8 @@ serve(async (req) => {
         if (autor) {
           const comp = pag ? `${MESES[pag.mes_referencia - 1]}/${pag.ano_referencia}` : "";
           const texto = status === "vinculada"
-            ? `📄 *NF recebida* — Dr(a). ${pag!.profissional_nome}, ${comp}, ${fmtBRL(Number(nota.valor ?? pag!.valor_total))}. Anexada ao pagamento.`
+            ? `📄 *NF recebida* — Dr(a). ${pag!.profissional_nome}, ${comp}, ${fmtBRL(Number(nota.valor ?? pag!.valor_total))}. Anexada ao pagamento.` +
+              (alertaConferencia ? `\n⚠️ *Conferir antes de pagar:* ${alertaConferencia}` : "")
             : `📄 *NF para confirmar* — ${nota.prestadorNome || msg.nomePerfil || msg.de}` +
               `${nota.valor != null ? `, ${fmtBRL(nota.valor)}` : ""}. ${motivo}.`;
           const { data: m } = await svc.from("comunicacao_mensagens").insert({

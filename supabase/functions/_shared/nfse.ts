@@ -38,6 +38,12 @@ export type Nfse = {
   valorLiquido: number | null;
   simplesNacional: boolean | null;
   impostosLidos: boolean;        // a nota trouxe o quadro de retenções de forma legível
+  // ── sinais para a conferência quando o quadro não foi lido (13/11, Yuri, Santo Antônio do Pinhal) ──
+  // Nota da prefeitura sem o campo "valor líquido": os impostos vêm destacados e o líquido só aparece
+  // escrito na discriminação. Nada disso vira valor a pagar: só avisa que a nota precisa de conferência.
+  retencoesCitadas?: string[];          // impostos retidos citados com valor (IRRF, PIS, COFINS, CSLL, INSS, ISS retido)
+  liquidoNaDescricao?: number | null;   // "valor líquido ... R$ X" escrito fora do campo próprio
+  discriminacao?: string | null;        // texto da discriminação dos serviços (layout municipal), para quem confere
   dadosBancarios?: DadosBancarios | null; // só na leitura de foto; no PDF vem de dadosBancariosDoTexto
 };
 
@@ -258,6 +264,18 @@ export async function lerNfse(bytes: Uint8Array, cnpjsTomador: string[] = CNPJS_
   const issRetidoTxt = t.match(/Reten[cç][aã]o do ISSQN\s+(N[aã]o Retido|Retido[^R$]{0,40}?)\s+ISSQN Apurado\s+(?:R\$\s*)?(-(?!\d)|[\d.]+,\d{2})/i);
   const issRetido = issRetidoTxt ? (/^n[aã]o/i.test(issRetidoTxt[1]) ? 0 : (issRetidoTxt[2].startsWith("-") ? 0 : numero(issRetidoTxt[2]))) : undefined;
   const sn = t.match(/Simples Nacional na Data d[ea] Compet[eê]ncia\s+(N[aã]o optante|Optante)/i)?.[1];
+  // fora do quadro padrão: impostos citados com valor e líquido escrito por extenso (só sinais, sem conta)
+  const retencoesCitadas = ([
+    ["IRRF", /\b(?:IRRF|IR)\b/], ["PIS", /\bPIS\b/], ["COFINS", /\bCOFINS\b/], ["CSLL", /\bCSLL\b/],
+    ["INSS", /\bINSS\b/], ["ISS retido", /\bISS(?:QN)?\s+Retido\b/],
+  ] as const).filter(([, re]) => [...t.matchAll(new RegExp(re.source +
+    String.raw`\s*(?:\d{1,2}(?:,\d{1,4})?\s*%)?\s*[:=]?\s*(?:\(R\$\))?\s*(?:R\$)?\s*([\d.]+,\d{2})`, "gi"))]
+    .some((m) => (numero(m[1]) ?? 0) > 0)).map(([nome]) => nome);
+  const liquidoNaDescricao = valorLiquido == null
+    ? numero(t.match(/l[ií]quido(?!\s+da\s+NFS)[^\d]{0,40}?([\d.]+,\d{2})/i)?.[1])
+    : null;
+  const discriminacao = entre(t, /Discrimina[cç][aã]o d[oe]s? Servi[cç]os?/i,
+    /VALOR TOTAL|VALOR D[OA]S? SERVI[CÇ]O|Base de C[aá]lculo|C[aá]lculo do ISS|TRIBUTA[CÇ][AÃ]O|OUTRAS INFORMA[CÇ]|INFORMA[CÇ][OÕ]ES COMPLEMENTARES/i);
   // só confia nos impostos quando o líquido foi lido e a conta fecha com o valor do serviço
   const liq = valorLiquido ?? null, ret = totalRetencoes ?? null;
   const impostosLidos = valor != null && liq != null && ret != null && Math.abs(valor - ret - liq) <= 0.05;
@@ -270,8 +288,9 @@ export async function lerNfse(bytes: Uint8Array, cnpjsTomador: string[] = CNPJS_
     tomadorCnpj: cnpjTom ? digitos(cnpjTom[1]) : null, tomadorNome,
     irrf: irrf ?? null, contribSociais: contribSociais ?? null, inssRetido: inssRetido ?? null, issRetido: issRetido ?? null,
     totalRetencoes: ret, valorLiquido: liq,
-    simplesNacional: sn ? !/^n[aã]o/i.test(sn) : (/optante pelo Simples Nacional/i.test(t) ? true : null),
+    simplesNacional: sn ? !/^n[aã]o/i.test(sn) : (/N[ÃA]O optante pelo Simples Nacional/i.test(t) ? false : /optante pelo Simples Nacional/i.test(t) ? true : null),
     impostosLidos,
+    retencoesCitadas, liquidoNaDescricao, discriminacao: discriminacao ? discriminacao.slice(0, 500) : null,
   };
   // layout em grade (Itajaí): o que a posição leu vale mais que o texto corrido
   const posicoes = pdf ? await itensPosicionados(pdf).catch(() => [] as ItemPos[]) : [];
@@ -344,8 +363,9 @@ não calcule impostos por alíquota; "valor_servico" é o valor bruto; se não h
     const partes = [n(j.irrf) || 0, n(j.pis_cofins_csll_retidos) || 0, n(j.inss_retido) || 0, n(j.iss_retido) || 0];
     const ret = Number.isFinite(n(j.total_retencoes)) ? n(j.total_retencoes) : partes.reduce((a, b) => a + b, 0);
     const liqLido = n(j.valor_liquido);
-    // sem líquido escrito e sem retenção, o líquido é o próprio bruto; com retenção, a conta tem que fechar
-    const liq = liqLido > 0 ? liqLido : (ret <= 0.01 ? valor : NaN);
+    // sem líquido escrito não há o que provar: antes virava "líquido = bruto" quando o modelo não via
+    // retenção, e a nota da prefeitura sem o campo passava pelo bruto (13/11). Agora fica para informar.
+    const liq = liqLido > 0 ? liqLido : NaN;
     const contaFecha = Number.isFinite(liq) && Math.abs(valor - ret - liq) <= 0.05;
     const dig = (s: unknown) => (s ? String(s).replace(/\D/g, "") : "");
     const tomador = dig(j.tomador_cnpj), prestador = dig(j.prestador_cnpj);
