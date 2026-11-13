@@ -10,12 +10,16 @@ Configuração em /opt/sigma-rotinas/.env (chmod 600, fora do git):
   LIFESHUB_EMAIL=... / LIFESHUB_SENHA=...   (login do Life's Hub, rotina lifeshub_lista)
   DRESCALA_EMAIL=... / DRESCALA_SENHA=...   (login do Dr. Escala, rotina drescala_escalas)
 
+As rotinas ia_claude_* (motor_claude.py: login, situação e teste do Claude da GSS no Hermes) correm num laço
+próprio: quem está na tela esperando o link do login não pode ficar atrás dos ~7 min da carga do Dr. Escala.
+
 Rotina nova = função em ROTINAS + o tipo na lista de rotina_pedir (migração) .
 """
 import json
 import os
 import socket
 import sys
+import threading
 import time
 import traceback
 import urllib.error
@@ -106,6 +110,11 @@ ROTINAS = {
     "drescala_escalas": rotina_drescala_escalas,
 }
 
+import motor_claude  # noqa: E402 — só biblioteca padrão; o Hermes e o Claude rodam como o usuário sigma-ia
+
+ROTINAS_RAPIDAS = dict(motor_claude.ROTINAS)
+ROTINAS.update(ROTINAS_RAPIDAS)
+
 
 # ---- laço ------------------------------------------------------------------
 
@@ -122,25 +131,36 @@ def executar(pedido):
         log(f"erro {tipo} {pid}: {e}\n{traceback.format_exc()}")
 
 
-def main():
-    if not CHAVE or "functions/v1" not in URL or not URL.startswith("https://"):
-        log("faltam SIGMA_URL e ROTINAS_KEY no .env")
-        sys.exit(1)
-    log(f"worker {WORKER} ouvindo {sorted(ROTINAS)}")
+def laco(tipos, intervalo, rapido=None):
+    """rapido = (segundos, janela): depois de um pedido, consulta mais amiúde por `janela` segundos (login em dois
+    passos: o código chega logo depois do link). Fora disso, `intervalo` — cada consulta é uma chamada de edge."""
+    log(f"worker {WORKER} ouvindo {tipos}")
+    ultimo = 0.0
     while True:
         try:
-            r = fila({"action": "pegar", "worker": WORKER, "tipos": sorted(ROTINAS), "limite": 1})
+            r = fila({"action": "pegar", "worker": WORKER, "tipos": tipos, "limite": 1})
             pedidos = r.get("pedidos") or []
             for p in pedidos:
                 executar(p)
+                ultimo = time.time()
             if not pedidos:
-                time.sleep(INTERVALO_VAZIO)
+                quente = rapido and time.time() - ultimo < rapido[1]
+                time.sleep(rapido[0] if quente else intervalo)
         except urllib.error.HTTPError as e:
             log(f"fila respondeu {e.code}: {e.read()[:200]!r}")
             time.sleep(60)
         except Exception as e:  # noqa: BLE001 — rede caiu: espera e tenta de novo
             log(f"falha ao falar com a fila: {e}")
             time.sleep(30)
+
+
+def main():
+    if not CHAVE or "functions/v1" not in URL or not URL.startswith("https://"):
+        log("faltam SIGMA_URL e ROTINAS_KEY no .env")
+        sys.exit(1)
+    # Laço próprio para o motor de IA (gente esperando na tela): 8 s parado, 2 s nos 10 min depois de um pedido.
+    threading.Thread(target=laco, args=(sorted(ROTINAS_RAPIDAS), 8, (2, 600)), daemon=True).start()
+    laco(sorted(set(ROTINAS) - set(ROTINAS_RAPIDAS)), INTERVALO_VAZIO)
 
 
 if __name__ == "__main__":
