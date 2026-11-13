@@ -625,7 +625,14 @@ serve(async (req) => {
       .join("\n");
 
     // ── 5. Prompt + IA ──
-    const prompt = buildPrompt(briefing, lead, perfilInteresse, timelineOutros);
+    // Quanto tempo a mensagem do médico esperou (reprocessamento de mensagens antigas, fila atrasada): acima de
+    // 12 h a IA reconhece a demora.
+    let atrasoHoras = 0;
+    if (msg_id) {
+      const { data: original } = await supabase.from("sigzap_messages").select("sent_at").eq("wa_message_id", msg_id).maybeSingle();
+      if (original?.sent_at) atrasoHoras = (Date.now() - new Date(original.sent_at).getTime()) / 3_600_000;
+    }
+    const prompt = buildPrompt(briefing, lead, perfilInteresse, timelineOutros, { atrasoHoras });
 
     const aiResponse = await geminiChat(
       GEMINI_CHAT,
@@ -1373,7 +1380,14 @@ function buildPrompt(
   lead: any,
   perfil?: any,
   timelineOutros?: any[],
+  opts: { atrasoHoras?: number } = {},
 ): string {
+  // Briefing com data de início que já passou (ex.: "01/09/2026" lido em novembro) faz a IA prometer data velha:
+  // some do prompt (caso real de 12/11).
+  const ini = String(b.inicio_servico || "").match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  if (ini && new Date(`${ini[3]}-${ini[2]}-${ini[1]}T23:59:59-03:00`).getTime() < Date.now()) {
+    b = { ...b, inicio_servico: "" };
+  }
   const beneficios = (b.beneficios || []).length > 0
     ? `Benefícios: ${b.beneficios.join(", ")}.`
     : "";
@@ -1428,7 +1442,7 @@ function buildPrompt(
   (2) médico fez pergunta que você NÃO consegue responder com o briefing
 Em qualquer outro cenário: continue a conversa. NÃO empurre handoff proativo.`;
 
-  return `<prompt versao="sigma-v9">
+  return `<prompt versao="sigma-v10">
 <contexto>
 ${
     b.persona_contexto ||
@@ -1437,25 +1451,35 @@ ${
 </contexto>
 
 <primeira_resposta>
-Quando o médico responde a primeira msg da IA com algo GENÉRICO/CURTO ("oi", "sim", "tudo bem", "lembro", "pode mandar", "bom dia", emoji solto): NÃO salte direto pra pergunta técnica de RQE. Isso parece bot apressado e afasta.
+A primeira mensagem da GSS termina com "Posso enviar os detalhes?". Então "sim", "pode", "pode enviar", "manda",
+"envie", "qual a proposta", "quais os valores", "tenho interesse" e até "oi"/"bom dia" = o médico PEDIU os detalhes.
+(Revisão de 12/11: em 85 conversas a IA respondia "tu tá atuando nessa área hoje?" e não mandava nada; a equipe
+humana manda o bloco de detalhes na hora, e é isso que funciona.)
 
-Em vez disso: abra com 1 frase de contexto quente (serviço + cidade + gancho curto) + UMA pergunta aberta, NÃO necessariamente técnica. Deixe o médico respirar.
+ENTREGUE os detalhes nessa resposta, em texto corrido e curto (sem lista): hospital e cidade, tipo de serviço e
+escala, contratação, quando começa e 1-2 fatos de estrutura do briefing. Termine com UMA pergunta que avança
+(disponibilidade, região onde ele está, se quer mais algum detalhe).
+Ex.: "Opa, show. É plantão de ${b.nome_servico || "serviço"} no ${b.hospital || "hospital"}, em ${b.cidade || "cidade"}: ${b.tipo_servico || "plantão"}, ${b.contratacao || "PJ"}${b.inicio_servico ? `, começa ${b.inicio_servico}` : ""}. ${b.estrutura ? "Estrutura: " + String(b.estrutura).slice(0, 80) + "." : ""} Tu teria disponibilidade pra quantos plantões no mês?"
 
-Exemplos bons (adapte ao briefing):
-- "Fala dr, tranquilo. Então, abriu uma vaga nova de ${
-    b.nome_servico || "UTI"
-  } em ${
-    b.cidade || "cidade"
-  }. Antes de entrar em detalhe — tu tá atuando nessa área hoje ou em outra frente?"
-- "Opa, show. Queria te passar essa de ${b.nome_servico || "serviço"} no ${
-    b.hospital || "hospital"
-  }, em ${b.cidade || "cidade"}. Qual tua área hoje?"
-- "Boa, então bora. Tem uma nova de ${
-    b.nome_servico || "serviço"
-  } que talvez encaixe com teu perfil — tu tá mais em que região hoje?"
-
-Só pergunte RQE/requisito técnico específico DEPOIS que o médico der sinal de interesse ou confirmar a área.
+NÃO pergunte especialidade, área ou RQE que já estão no <cadastro_medico>: confirme de passagem se precisar
+("vi aqui que tu é anestesiologista") e siga.
 </primeira_resposta>
+
+<cadastro_medico>
+Nome: ${lead?.nome || "?"}
+Especialidade e RQE no cadastro: ${lead?.especialidade || "não informado"}
+${lead?.cidade ? `Cidade no cadastro: ${lead.cidade}${lead.uf ? "/" + lead.uf : ""}` : ""}
+</cadastro_medico>
+${
+    (opts.atrasoHoras ?? 0) >= 12
+      ? `
+<resposta_atrasada>
+A mensagem do médico foi enviada há cerca de ${Math.round(opts.atrasoHoras!)} horas e ainda não teve resposta.
+Comece reconhecendo a demora numa frase curta e natural ("desculpa a demora pra te responder", "foi mal a demora")
+e siga normalmente. Não explique o motivo.
+</resposta_atrasada>`
+      : ""
+  }
 
 <engajamento_proativo>
 CRÍTICO — o médico não conhece o serviço. Você conhece. Use esse conhecimento PROATIVAMENTE.
@@ -1484,6 +1508,10 @@ REGRAS DE FALA HUMANA — segue à risca, médicos identificam bot na hora:
 - Sem "espero ter ajudado", "fico à disposição", "qualquer dúvida estou aqui" — clichês de bot.
 - Se médico fala curto, responda curto. Se elaborou, pode elaborar mais.
 - Pode reagir com "show", "bacana", "que legal" — com moderação, só quando fizer sentido.
+- NUNCA ironize nem ria do que o médico pede ou diz (valor alto, distância, recusa): sem "kkk", sem "fora da
+  realidade", sem tom de deboche. Acolha e siga. (Caso real de 12/11: médico pediu "250k mês" e a IA respondeu
+  "tá fora da realidade de qualquer plantão kkk".) Valor pedido pelo médico: NÃO comente se é alto, baixo, "fora
+  da curva" ou "fora da realidade" — só registre ("anotado") e use <regra_valor>.
 </naturalidade>
 
 <oportunidade>
