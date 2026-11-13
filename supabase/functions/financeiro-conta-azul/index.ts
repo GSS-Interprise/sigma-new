@@ -534,7 +534,7 @@ async function montarPagar(svc: Svc, ids: string[], ajustes: Record<string, any>
 async function registrarLote(svc: Svc, itens: ItemLancar[], resultados: ResultadoEnvio[], usuario: string | null): Promise<Lote | null> {
   try {
     const { data: comps } = await svc.from("financeiro_pagamentos").select("mes_referencia, ano_referencia").in("id", itens.map((i) => i.id));
-    const meses = [...new Set((comps ?? []).map((c: { ano_referencia: number; mes_referencia: number }) => `${c.ano_referencia}-${c.mes_referencia}`))]
+    const meses = [...new Set<string>((comps ?? []).map((c: { ano_referencia: number; mes_referencia: number }) => `${c.ano_referencia}-${c.mes_referencia}`))]
       .map((k) => k.split("-").map(Number));
     const problemas = Object.fromEntries(itens.map((it) => [it.id, it.problemas]));
     const geral: Lote = { esperados: 0, confirmados: 0, completo: true, pendentes: [] };
@@ -833,7 +833,7 @@ serve(async (req) => {
 
       if (input.confirmar !== true) return json({ ok: false, error: "confirmacao_ausente" }, 400);
       if (!ref.escrita) return json({ ok: false, error: "escrita_desligada", detalhe: "O envio ao Conta Azul está desligado. A prévia mostra o que seria lançado." }, 409);
-      const porId = new Map(itens.map((it) => [it.id, it]));
+      const porId = new Map<string, (typeof itens)[number]>(itens.map((it) => [it.id, it]));
       const resultados = await lancarItens(itens, {
         // trava: só um envio por pagamento, mesmo com dois cliques ou duas abas
         travar: async (id) => {
@@ -844,7 +844,7 @@ serve(async (req) => {
         enviar: (payload) => ca(svc, "/v1/financeiro/contas-a-pagar", { method: "POST", body: JSON.stringify(payload) }),
         confirmar: async (item, eventoId, criado) => {
           const it = porId.get(item.id)!;
-          const parcela = criado?.condicao_pagamento?.parcelas?.[0];
+          const parcela = (criado as { condicao_pagamento?: { parcelas?: { id?: unknown }[] } } | null)?.condicao_pagamento?.parcelas?.[0];
           await svc.from("financeiro_pagamentos").update({
             ca_evento_id: eventoId, ca_parcela_id: parcela?.id ? String(parcela.id) : null,
             ca_lancado_em: new Date().toISOString(), ca_lancado_por: usuario, ca_vencimento: it.vencimento, ca_valor: it.valor,
