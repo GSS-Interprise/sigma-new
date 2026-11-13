@@ -335,7 +335,7 @@ serve(async (req) => {
       // Anexar não é aprovar: nota que a conferência não fechou (sem líquido, imposto sem quadro, valor
       // diferente) é avisada na hora, em vez de entrar calada (13/11, nota pelo bruto paga a mais).
       const conf = resp?.ok ? (await resp.json().catch(() => null))?.resultados?.[0] : null;
-      const itensConf: any[] = conf?.itens ?? [];
+      const itensConf: Array<{ chave?: string; ok?: boolean | null; detalhe?: string }> = conf?.itens ?? [];
       if (!conf?.status) alertaConferencia = "a conferência automática não rodou";
       else if (conf.status !== "ok" && conf.status !== "aceita") {
         alertaConferencia = (itensConf.find((i) => i?.ok === false) ?? itensConf.find((i) => i?.ok === null && i?.chave !== "prestador"))?.detalhe

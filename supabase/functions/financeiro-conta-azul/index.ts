@@ -299,7 +299,7 @@ async function atualizarLancamentoSemNf(svc: Svc, pagamentoId: string) {
   const descricao = `REF. ${MESES[(p.mes_referencia ?? 1) - 1]} - NF ${String(p.nf_numero || "S/N").trim()}`;
   const gravar = async (item: { chave: string; ok: boolean | null; rotulo: string; detalhe: string }, erro: string | null) => {
     const conf = p.nf_conferencia ?? {};
-    conf.itens = [...(conf.itens ?? []).filter((i: any) => i?.chave !== "conta_azul"), item];
+    conf.itens = [...(conf.itens ?? []).filter((i: ItemConferencia) => i?.chave !== "conta_azul"), item];
     await svc.from("financeiro_pagamentos").update({ nf_conferencia: conf, ca_erro: erro }).eq("id", p.id);
     return item;
   };
@@ -309,16 +309,16 @@ async function atualizarLancamentoSemNf(svc: Svc, pagamentoId: string) {
   const parcela = await ca(svc, `/v1/financeiro/parcelas/${p.ca_parcela_id}`);
   if (!/SEM NF/i.test(String(parcela?.descricao || ""))) {
     // alguém tirou o "SEM NF" à mão no Conta Azul depois do aviso: a decisão foi de quem trocou, só registra
-    const anterior = (p.nf_conferencia?.itens ?? []).find((i: any) => i?.chave === "conta_azul");
+    const anterior = (p.nf_conferencia?.itens ?? []).find((i: ItemConferencia) => i?.chave === "conta_azul");
     if (anterior?.ok !== false) return null;
     return await gravar({ chave: "conta_azul", ok: null, rotulo: "Lançamento no Conta Azul",
       detalhe: `A descrição no Conta Azul já não diz SEM NF. Lançado por ${brl(Number(p.ca_valor))}: confira se é o líquido da nota.` }, null);
   }
   if (bloqueio) {
-    const detalhe = `Lançado SEM NF por ${brl(Number(p.ca_valor))}. A descrição continua SEM NF, para não ser pago, porque ${bloqueio.motivo}. ` +
+    const detalhe = `Lançado SEM NF por ${brl(Number(p.ca_valor))}. Segue SEM NF (não será pago) porque ${bloqueio.motivo}. ` +
       (bloqueio.codigo === "valor_diferente"
-        ? `Ajuste o valor no Conta Azul para ${brl(liq)} e troque a descrição para "${descricao}".`
-        : "Confira a nota e aceite informando o líquido; se ele for igual ao valor lançado, o Sigma tira o SEM NF sozinho.");
+        ? `Ajuste no Conta Azul o valor para ${brl(liq)} e a descrição para "${descricao}".`
+        : "Aceite informando o líquido: se for igual ao lançado, o Sigma libera sozinho.");
     return await gravar({ chave: "conta_azul", ok: false, rotulo: "Lançamento no Conta Azul", detalhe }, detalhe.slice(0, 300));
   }
   await ca(svc, `/v1/financeiro/parcelas/${p.ca_parcela_id}`, { method: "PATCH", body: JSON.stringify({ versao: parcela.versao, descricao }) });
