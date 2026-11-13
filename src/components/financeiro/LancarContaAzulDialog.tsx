@@ -175,7 +175,7 @@ export function LancarContaAzulDialog({ pagamentoIds, open, onOpenChange, onLanc
           <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
             <p className="flex items-center gap-1.5 font-medium">
               <AlertTriangle className="h-4 w-4 shrink-0" />
-              De {doFechamento} médicos do fechamento, {ficam.length} não {ficam.length === 1 ? "vai" : "vão"} ser lançado{ficam.length === 1 ? "" : "s"}
+              De {doFechamento} {doFechamento === 1 ? "médico" : "médicos"} do fechamento, {ficam.length} não {ficam.length === 1 ? "vai" : "vão"} ser lançado{ficam.length === 1 ? "" : "s"}
             </p>
             <ul className="mt-1.5 space-y-0.5 text-xs">
               {ficam.slice(0, 10).map((f) => <li key={f.id} className="break-words"><b>{f.medico}</b>: {f.motivo}</li>)}
