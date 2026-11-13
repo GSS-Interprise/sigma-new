@@ -147,3 +147,6 @@ verify_jwt = false
 
 [functions.unipile-webhook]
 verify_jwt = false
+
+[functions.sigma-mcp]
+verify_jwt = false

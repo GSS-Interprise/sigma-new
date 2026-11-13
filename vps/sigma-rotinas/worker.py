@@ -8,6 +8,7 @@ Configuração em /opt/sigma-rotinas/.env (chmod 600, fora do git):
   SIGMA_URL=https://zupsbgtoeoixfokzkjro.supabase.co
   ROTINAS_KEY=<mesmo valor do secret ROTINAS_WORKER_KEY do Supabase>
   LIFESHUB_EMAIL=... / LIFESHUB_SENHA=...   (login do Life's Hub, rotina lifeshub_lista)
+  DRESCALA_EMAIL=... / DRESCALA_SENHA=...   (login do Dr. Escala, rotina drescala_escalas)
 
 Rotina nova = função em ROTINAS + o tipo na lista de rotina_pedir (migração) .
 """
@@ -80,12 +81,29 @@ def rotina_lifeshub_lista(payload, pedido_id):
     return {**r, "lista": nome, "import_job_id": imp.get("job_id")}
 
 
+def rotina_drescala_escalas(payload, pedido_id):
+    """Escalas do Dr. Escala (hospitais, setores, plantões e furos) para as tabelas drescala_* do Sigma."""
+    import drescala
+
+    def enviar(action, corpo):
+        corpo = {"action": action, **corpo}
+        if action == "drescala_abrir":
+            corpo["pedido_id"] = pedido_id
+        r = fila(corpo)
+        if not r.get("ok"):
+            raise RuntimeError(f"Sigma recusou {action}: {r.get('error')}")
+        return r
+
+    return drescala.sincronizar(payload, enviar)
+
+
 # Rotinas que recebem o id do pedido (precisam falar com a fila no meio da execução).
-COM_PEDIDO = {"lifeshub_lista"}
+COM_PEDIDO = {"lifeshub_lista", "drescala_escalas"}
 
 ROTINAS = {
     "ping": rotina_ping,
     "lifeshub_lista": rotina_lifeshub_lista,
+    "drescala_escalas": rotina_drescala_escalas,
 }
 
 

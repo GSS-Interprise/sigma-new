@@ -3,6 +3,7 @@
 //   { action: "pegar", worker, tipos: ["ping"], limite }        → pedidos para executar
 //   { action: "concluir", id, ok, resultado, erro }              → grava o resultado
 //   { action: "importar_lista", pedido_id, xlsx_b64, nome_lista, especialidade } → importa a planilha como lista
+//   { action: "drescala_abrir" | "drescala_gravar" | "drescala_fechar", ... } → escalas do Dr. Escala (drescala.py)
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
@@ -80,6 +81,35 @@ serve(async (req) => {
       const txt = await resp.text();
       if (!resp.ok) return json({ ok: false, error: `importacao ${resp.status}: ${txt.slice(0, 300)}` }, 502);
       return json({ ok: true, job_id: job.id });
+    }
+    // Rotina drescala_escalas (docs/arquitetura/claude-socios-gss.md): abre a sincronização, grava em lotes e fecha.
+    // Só aceita pedido drescala_escalas em execução, para a chave do worker não virar escrita livre nas tabelas.
+    if (body.action === "drescala_abrir" || body.action === "drescala_gravar" || body.action === "drescala_fechar") {
+      if (body.action === "drescala_abrir") {
+        const { data: pedido } = await svc.from("rotina_pedidos").select("id, tipo, status").eq("id", body.pedido_id).maybeSingle();
+        if (!pedido || pedido.tipo !== "drescala_escalas" || pedido.status !== "executando") {
+          return json({ ok: false, error: "pedido_invalido" }, 400);
+        }
+        const { data, error } = await svc.rpc("drescala_abrir_sync", {
+          p_pedido: pedido.id, p_inicio: body.inicio, p_fim: body.fim,
+          p_local_ids: Array.isArray(body.local_ids) ? body.local_ids.map(Number) : [],
+        });
+        if (error) throw error;
+        return json({ ok: true, sync_id: data });
+      }
+      if (!body.sync_id) return json({ ok: false, error: "sync_id" }, 400);
+      if (body.action === "drescala_gravar") {
+        const { data, error } = await svc.rpc("drescala_gravar_lote", {
+          p_sync: body.sync_id, p_locais: body.locais ?? [], p_setores: body.setores ?? [], p_plantoes: body.plantoes ?? [],
+        });
+        if (error) throw error;
+        return json({ ok: true, ...data });
+      }
+      const { data, error } = await svc.rpc("drescala_fechar_sync", {
+        p_sync: body.sync_id, p_ok: !!body.ok, p_erro: body.erro ? String(body.erro).slice(0, 1000) : null,
+      });
+      if (error) throw error;
+      return json({ ok: true, ...data });
     }
     return json({ ok: false, error: "action" }, 400);
   } catch (e) {
