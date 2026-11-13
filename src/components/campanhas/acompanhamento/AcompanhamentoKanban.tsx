@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { AcompanhamentoCard } from "./AcompanhamentoCard";
+import { CanaisProvider } from "./canaisDoLead";
 import {
   useAcompanhamentoLeads,
   useAprovarLead,
@@ -160,6 +161,7 @@ export function AcompanhamentoKanban({ filtro, onLeadClick }: Props) {
         <span>Contato, resposta e assunção movem o card automaticamente.</span>
       </div>
 
+      <CanaisProvider leads={todosLeads}>
       <div className="overflow-x-auto pb-3">
         <div className="flex min-w-max gap-3">
           {COLUNAS.map((coluna) => (
@@ -186,6 +188,7 @@ export function AcompanhamentoKanban({ filtro, onLeadClick }: Props) {
           ))}
         </div>
       </div>
+      </CanaisProvider>
 
       {selectedIds.size > 0 && (
         <div className="fixed inset-x-3 bottom-3 z-50 mx-auto flex max-w-2xl flex-wrap items-center justify-center gap-2 rounded-lg border bg-background p-3 shadow-lg sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2">

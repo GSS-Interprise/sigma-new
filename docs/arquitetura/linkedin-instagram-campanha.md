@@ -68,8 +68,9 @@ Decisões do Raul:
 
 - **9.1 Modelo (feito, 12/11):** `leads.linkedin_url`, `leads.instagram_handle`, `campanhas.canais`,
   `campanha_toques`, `linkedin_contas` — sem sessão.
-- **9.2 Conectar conta:** tela "Conectar meu LinkedIn" + edges `unipile-conectar` e `unipile-webhook`
-  (conta conectada, situação, mensagem nova, nova conexão).
+- **9.2 Conectar conta (feito, 13/11):** Configurações › Canais & Integrações › "LinkedIn e Instagram" (Hosted Auth
+  da Unipile, proxy BR) + edges `unipile-conectar` e `unipile-webhook` (conta conectada, situação, mensagem nova,
+  nova conexão). Nenhuma conta da GSS conectada ainda.
 - **9.3 Achar perfil (feito, 13/11):** edge `redes-sociais-buscar` ({lead_id} ou {campanha_id, limite}; lote roda em
   segundo plano). Busca "nome + especialidade + cidade" para LinkedIn e Instagram na Serper (Google), na Brave ou no
   SearXNG da VPS (`vps/sigma-searxng/`), nessa ordem; o Gemini escolhe só entre os resultados (não inventa URL) e dá
@@ -78,8 +79,14 @@ Decisões do Raul:
   `leads.redes_candidatos` para a pessoa confirmar. Teste 13/11: 9 pediatras em 20 s, 4 Instagram e 1 LinkedIn achados.
 - **9.4 Fila do dia e motor:** sugestões com texto pronto; com conta conectada, o Sigma envia convite e
   mensagem no ritmo da rampa (modo automático); sem conta, modo assistido.
+  **Assistido feito (13/11):** aba Campanhas › LinkedIn (`FilaLinkedin.tsx`, RPCs `fila_redes_do_dia` e
+  `fila_redes_registrar`): leads quentes/em conversa com perfil, convite pronto (até 300 caracteres), meta de 15 por
+  dia, "Feito" grava o toque e a linha do tempo. Motor automático: depois da primeira conta conectada.
 - **9.5 Kanban e Conversas:** card com o estado de cada canal; respostas do LinkedIn nas Conversas, e a IA
   pode responder com a mesma persona do Maikon.
+  **Card feito (13/11):** faixa de canais no card do Kanban (`canaisDoLead.tsx`; cinza não tentado, azul enviado,
+  verde respondeu, vermelho falhou), só quando há perfil achado. Respostas do LinkedIn nas Conversas: pendente.
+- **Instagram:** fila e envio em aberto até o Maikon definir o uso (Zernio ou Unipile; só responder dentro do Sigma?).
 
 ## Ordem
 

@@ -43,6 +43,7 @@ import {
   Sparkles,
   RotateCcw,
   Mail,
+  Linkedin,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -57,6 +58,7 @@ import { CampanhaResumoIaDialog } from "@/components/campanhas/CampanhaResumoIaD
 import { ConfigurarCampanhaDialog } from "@/components/campanhas/ConfigurarCampanhaDialog";
 import { CampanhaProspeccaoKanban } from "@/components/campanhas/CampanhaProspeccaoKanban";
 import { AcompanhamentoView } from "@/components/campanhas/acompanhamento/AcompanhamentoView";
+import { FilaLinkedin } from "@/components/campanhas/redes/FilaLinkedin";
 import { DashboardCampanhas } from "@/components/campanhas/DashboardCampanhas";
 import { StatusOperacionalPanel } from "@/components/campanhas/StatusOperacionalPanel";
 import { AdicionarMedicosCampanhaDialog } from "@/components/campanhas/AdicionarMedicosCampanhaDialog";
@@ -157,8 +159,9 @@ export default function CampanhasProspeccao() {
     | "acompanhamento"
     | "dashboard"
     | "status"
-    | "email";
-  const setView = (next: "campanhas" | "acompanhamento" | "dashboard" | "status" | "email") => {
+    | "email"
+    | "linkedin";
+  const setView = (next: "campanhas" | "acompanhamento" | "dashboard" | "status" | "email" | "linkedin") => {
     const sp = new URLSearchParams(searchParams);
     if (next === "campanhas") sp.delete("view");
     else sp.set("view", next);
@@ -605,7 +608,7 @@ export default function CampanhasProspeccao() {
     <CaptacaoProtectedRoute permission="disparos_zap">
       <AppLayout headerActions={headerActions}>
         <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-4">
-          <div className="flex items-center gap-1 border-b">
+          <div className="flex items-center gap-1 overflow-x-auto overflow-y-hidden border-b">
             <ToggleTab active={view === "campanhas"} onClick={() => setView("campanhas")}>
               <Rocket className="h-3.5 w-3.5" />
               Campanhas
@@ -618,6 +621,11 @@ export default function CampanhasProspeccao() {
                   {quentesSemDono}
                 </Badge>
               )}
+            </ToggleTab>
+            {/* Fase 9.3: fila do dia do LinkedIn (modo assistido). Instagram fica para quando o Maikon definir o uso. */}
+            <ToggleTab active={view === "linkedin"} onClick={() => setView("linkedin")}>
+              <Linkedin className="h-3.5 w-3.5" />
+              LinkedIn
             </ToggleTab>
             <ToggleTab active={view === "dashboard"} onClick={() => setView("dashboard")}>
               <BarChart3 className="h-3.5 w-3.5" />
@@ -827,6 +835,10 @@ export default function CampanhasProspeccao() {
             <ErrorBoundary label="AcompanhamentoView">
               <AcompanhamentoView />
             </ErrorBoundary>
+          ) : view === "linkedin" ? (
+            <ErrorBoundary label="FilaLinkedin">
+              <FilaLinkedin />
+            </ErrorBoundary>
           ) : view === "dashboard" ? (
             <ErrorBoundary label="DashboardCampanhas">
               <DashboardCampanhas />
@@ -910,7 +922,7 @@ function ToggleTab({
     <button
       type="button"
       onClick={onClick}
-      className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
+      className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
         active
           ? "text-primary border-primary"
           : "text-muted-foreground border-transparent hover:text-foreground hover:border-muted"

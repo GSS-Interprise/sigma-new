@@ -6,6 +6,7 @@ import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { AcompanhamentoLead } from "@/hooks/useAcompanhamentoLeads";
 import { CardActionsMenu } from "@/components/demandas/CardActionsMenu";
+import { FaixaCanais } from "./canaisDoLead";
 
 interface Props {
   lead: AcompanhamentoLead;
@@ -108,6 +109,8 @@ export function AcompanhamentoCard({
           />
         </div>
       </div>
+
+      <FaixaCanais campanhaLeadId={lead.campanha_lead_id} />
 
       {(lead.lead_cidade || lead.lead_uf) && (
         <p className="text-xs text-muted-foreground flex items-center gap-1 mb-2">
