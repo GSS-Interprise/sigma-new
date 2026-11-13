@@ -265,7 +265,8 @@ export function LancarContaAzulDialog({ pagamentoIds, open, onOpenChange, onLanc
                   </div>
                 )}
 
-                {i.problemas.map((p) => <p key={p} className="mt-1.5 text-xs text-red-600">• {p}</p>)}
+                {/* já lançado: o selo "No Conta Azul" basta; em vermelho parecia erro depois do envio */}
+                {!i.ja_lancado && i.problemas.map((p) => <p key={p} className="mt-1.5 text-xs text-red-600">• {p}</p>)}
                 {!i.ja_lancado && i.avisos.map((a) => <p key={a} className="mt-1 text-xs text-amber-700">• {a}</p>)}
               </div>
             ))}
