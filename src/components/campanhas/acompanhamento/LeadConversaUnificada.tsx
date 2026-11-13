@@ -11,6 +11,7 @@ import { Smartphone } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { SigZapAudioPlayer } from "@/components/sigzap/SigZapMediaPlayer";
+import { ConversaInstagram } from "./ConversaInstagram";
 
 interface Props {
   leadId: string;
@@ -479,6 +480,8 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
 
   return (
     <>
+      {/* Instagram (Zernio) aparece só quando o médico respondeu à mensagem da fila do Instagram. */}
+      <ConversaInstagram leadId={leadId} />
       {temConversa && (
         <div className="mb-3 flex items-center justify-between flex-wrap gap-2">
           <Badge variant="outline" className="gap-1.5 text-xs">

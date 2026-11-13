@@ -44,6 +44,7 @@ import {
   RotateCcw,
   Mail,
   Linkedin,
+  Instagram,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -58,7 +59,7 @@ import { CampanhaResumoIaDialog } from "@/components/campanhas/CampanhaResumoIaD
 import { ConfigurarCampanhaDialog } from "@/components/campanhas/ConfigurarCampanhaDialog";
 import { CampanhaProspeccaoKanban } from "@/components/campanhas/CampanhaProspeccaoKanban";
 import { AcompanhamentoView } from "@/components/campanhas/acompanhamento/AcompanhamentoView";
-import { FilaLinkedin } from "@/components/campanhas/redes/FilaLinkedin";
+import { FilaRedes } from "@/components/campanhas/redes/FilaRedes";
 import { DashboardCampanhas } from "@/components/campanhas/DashboardCampanhas";
 import { StatusOperacionalPanel } from "@/components/campanhas/StatusOperacionalPanel";
 import { AdicionarMedicosCampanhaDialog } from "@/components/campanhas/AdicionarMedicosCampanhaDialog";
@@ -160,8 +161,9 @@ export default function CampanhasProspeccao() {
     | "dashboard"
     | "status"
     | "email"
-    | "linkedin";
-  const setView = (next: "campanhas" | "acompanhamento" | "dashboard" | "status" | "email" | "linkedin") => {
+    | "linkedin"
+    | "instagram";
+  const setView = (next: "campanhas" | "acompanhamento" | "dashboard" | "status" | "email" | "linkedin" | "instagram") => {
     const sp = new URLSearchParams(searchParams);
     if (next === "campanhas") sp.delete("view");
     else sp.set("view", next);
@@ -622,10 +624,14 @@ export default function CampanhasProspeccao() {
                 </Badge>
               )}
             </ToggleTab>
-            {/* Fase 9.3: fila do dia do LinkedIn (modo assistido). Instagram fica para quando o Maikon definir o uso. */}
+            {/* Fase 9: filas do dia do LinkedIn e do Instagram (a primeira mensagem do Instagram é sempre à mão). */}
             <ToggleTab active={view === "linkedin"} onClick={() => setView("linkedin")}>
               <Linkedin className="h-3.5 w-3.5" />
               LinkedIn
+            </ToggleTab>
+            <ToggleTab active={view === "instagram"} onClick={() => setView("instagram")}>
+              <Instagram className="h-3.5 w-3.5" />
+              Instagram
             </ToggleTab>
             <ToggleTab active={view === "dashboard"} onClick={() => setView("dashboard")}>
               <BarChart3 className="h-3.5 w-3.5" />
@@ -835,9 +841,9 @@ export default function CampanhasProspeccao() {
             <ErrorBoundary label="AcompanhamentoView">
               <AcompanhamentoView />
             </ErrorBoundary>
-          ) : view === "linkedin" ? (
-            <ErrorBoundary label="FilaLinkedin">
-              <FilaLinkedin />
+          ) : view === "linkedin" || view === "instagram" ? (
+            <ErrorBoundary label="FilaRedes">
+              <FilaRedes key={view} canal={view} />
             </ErrorBoundary>
           ) : view === "dashboard" ? (
             <ErrorBoundary label="DashboardCampanhas">

@@ -86,7 +86,24 @@ Decisões do Raul:
   pode responder com a mesma persona do Maikon.
   **Card feito (13/11):** faixa de canais no card do Kanban (`canaisDoLead.tsx`; cinza não tentado, azul enviado,
   verde respondeu, vermelho falhou), só quando há perfil achado. Respostas do LinkedIn nas Conversas: pendente.
-- **Instagram:** fila e envio em aberto até o Maikon definir o uso (Zernio ou Unipile; só responder dentro do Sigma?).
+- **9.4 motor automático do LinkedIn (feito, 13/11, desligado):** edge `unipile-motor` (pg_cron `linkedin-motor`, a cada
+  10 min em dia útil, 8h-18h de Brasília). Liga por conta em Configurações › LinkedIn e Instagram (só admin,
+  `linkedin_motor_ligar`). Ritmo: 5 convites/dia na 1ª semana, +3 por semana até `convites_dia_teto` (20), no máximo
+  `convites_semana_max` (80), um por vez com intervalo aleatório de 12 a 35 min; só perfil cadastrado à mão ou com
+  confiança ≥ 85; pula quem já é conexão ou tem convite pendente. Erro de limite ou restrição desliga o motor da conta
+  sozinho (`motor_motivo`). Unipile v2: `GET /{account}/users/{public_id}?variant=linkedin_classic` e
+  `POST /{account}/users/me/relation-requests {user_id, message}`. O webhook marca o toque como respondido em
+  `relation.new` / `message.new` do médico, casando pelo id do membro (`campanha_toques.destino_id`), porque o formato
+  desses eventos não está na doc. Nada disso foi testado com conta real: falta a primeira conta da GSS conectada.
+- **Instagram (feito, 13/11):** decisão do Raul: primeira mensagem **assistida** (a API da Meta não deixa a empresa
+  escrever primeiro) e resposta **dentro do Sigma pelo Zernio**. Aba Campanhas › Instagram (mesma fila da LinkedIn,
+  `FilaRedes.tsx`, meta 20/dia, texto curto do Maikon). Conta do Zernio: Instagram **@maikonmadeira** (a mesma do
+  CRM do Maikon), então a mensagem tem de sair dessa conta. Edge `instagram-zernio` (pg_cron a cada 3 min) consulta a
+  caixa e **só grava conversa de médico com toque de Instagram feito pela fila** (a conta também fala com pacientes:
+  o resto é descartado em memória; sem webhook, que já é do CRM do Maikon). Tabelas `instagram_conversas`,
+  `instagram_mensagens`, `instagram_sync`. Resposta do médico: toque "respondido", linha do tempo, lead "em_conversa"
+  e a conversa aparece no painel do lead (`ConversaInstagram.tsx`) com caixa de resposta enquanto a janela de 24 h
+  da Meta está aberta. Falta o Maikon confirmar o uso da conta dele e testar com o primeiro médico real.
 
 ## Ordem
 

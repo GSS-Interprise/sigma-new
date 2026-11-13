@@ -9,14 +9,32 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { nomeProprio } from "@/lib/textoDono";
 
 /**
- * Campanhas › LinkedIn (Fase 9.3 do plano do Maikon) — pergunta da tela: "quem eu chamo hoje no LinkedIn, e com que
- * texto?". Decisão por linha: abrir o perfil, colar o convite e marcar "Feito" (ou pular).
- * Modo assistido: a pessoa envia pela própria conta. Com conta conectada pela Unipile, o mesmo toque passa a ser
- * automático (motor da 9.4). Instagram fica fora até o Maikon definir o uso (decisão do Raul, 13/11).
- * Ritmo seguro de convites com nota: 15 por dia por pessoa (docs/arquitetura/linkedin-instagram-campanha.md).
+ * Campanhas › LinkedIn / Instagram (Fase 9 do plano do Maikon) — pergunta da tela: "quem eu chamo hoje nesta rede, e
+ * com que texto?". Decisão por linha: abrir o perfil, colar o texto e marcar "Feito" (ou pular).
+ * Modo assistido: a pessoa envia pela conta dela. LinkedIn: com conta conectada pela Unipile o envio fica automático
+ * (unipile-motor). Instagram: a primeira mensagem é sempre à mão (a Meta não deixa a empresa escrever primeiro), pela
+ * conta @maikonmadeira, que é a ligada ao Zernio; a resposta do médico chega ao Sigma pela edge instagram-zernio.
+ * Ritmos e desenho: docs/arquitetura/linkedin-instagram-campanha.md.
  */
 
-const META_DIA = 15;
+export type Canal = "linkedin" | "instagram";
+
+const CONFIG: Record<Canal, {
+  meta: number; titulo: string; contador: string; copiar: string; copiado: string; feito: string; vazio: string; aviso?: string;
+}> = {
+  linkedin: {
+    meta: 15, titulo: "Para chamar no LinkedIn", contador: "Seus convites hoje", copiar: "Copiar convite",
+    copiado: "Convite copiado. Cole na nota do convite no LinkedIn.", feito: "Convite registrado",
+    vazio: 'Ninguém na fila agora. Clique em "Buscar perfis dos leads" para achar o LinkedIn de quem está nas campanhas ativas.',
+  },
+  instagram: {
+    meta: 20, titulo: "Para chamar no Instagram", contador: "Mensagens no Instagram hoje", copiar: "Copiar mensagem",
+    copiado: "Mensagem copiada. Cole na conversa do Instagram.", feito: "Mensagem registrada",
+    vazio: 'Ninguém na fila agora. Clique em "Buscar perfis dos leads" para achar o Instagram de quem está nas campanhas ativas.',
+    // A resposta só chega ao Sigma se a mensagem sair da conta ligada ao Zernio.
+    aviso: "Envie pela conta @maikonmadeira: é nela que a resposta do médico chega ao Sigma.",
+  },
+};
 
 type Item = {
   campanha_lead_id: string; campanha: string; status: string; lead_id: string; nome: string; especialidade: string | null;
@@ -34,22 +52,27 @@ function especialidadeCurta(e: string | null) {
   return String(e || "").replace(/^&/, "").split(/ - RQE|\(/)[0].trim().toLowerCase();
 }
 
-// Nota do convite: até 300 caracteres (limite do LinkedIn para conta paga; conta grátis tem poucas notas por mês).
-export function textoConvite(i: Item) {
+// LinkedIn: nota do convite até 300 caracteres (limite do LinkedIn). Instagram: mensagem curta, de pessoa para pessoa.
+export function textoConvite(i: Item, canal: Canal = "linkedin") {
   const esp = especialidadeCurta(i.especialidade);
   const onde = i.cidade_vaga?.trim() || "Santa Catarina";
+  if (canal === "instagram") {
+    return `Oi, Dr(a). ${primeiroNome(i.nome)}! Aqui é o Maikon Madeira, cirurgião cardiovascular e sócio da GSS Saúde. `
+      + `Estamos com plantões ${esp ? `de ${esp} ` : ""}em ${onde}. Posso te passar os detalhes por aqui?`;
+  }
   const t = `Olá, Dr(a). ${primeiroNome(i.nome)}! Sou o Dr. Maikon Madeira, cirurgião cardiovascular e sócio da GSS Saúde. `
     + `Temos plantões ${esp ? `de ${esp} ` : ""}em ${onde} e gostaria de me conectar para te passar os detalhes. Faz sentido para você?`;
   return t.length > 300 ? t.slice(0, 297) + "..." : t;
 }
 
-export function FilaLinkedin() {
+export function FilaRedes({ canal }: { canal: Canal }) {
+  const cfg = CONFIG[canal];
   const qc = useQueryClient();
   const [buscando, setBuscando] = useState(false);
   const { data, isLoading, error } = useQuery({
-    queryKey: ["fila-redes", "linkedin"],
+    queryKey: ["fila-redes", canal],
     queryFn: async () => {
-      const { data, error } = await (supabase as any).rpc("fila_redes_do_dia", { p_canal: "linkedin", p_limite: 30 });
+      const { data, error } = await (supabase as any).rpc("fila_redes_do_dia", { p_canal: canal, p_limite: 30 });
       if (error) throw error;
       return data as Fila;
     },
@@ -58,14 +81,14 @@ export function FilaLinkedin() {
   const registrar = useMutation({
     mutationFn: async (v: { item: Item; status: "feito" | "pulado" }) => {
       const { error } = await (supabase as any).rpc("fila_redes_registrar", {
-        p_campanha_lead_id: v.item.campanha_lead_id, p_canal: "linkedin", p_status: v.status,
-        p_texto: v.status === "feito" ? textoConvite(v.item) : null, p_url: v.item.url_perfil,
+        p_campanha_lead_id: v.item.campanha_lead_id, p_canal: canal, p_status: v.status,
+        p_texto: v.status === "feito" ? textoConvite(v.item, canal) : null, p_url: v.item.url_perfil,
       });
       if (error) throw error;
     },
     onSuccess: (_r, v) => {
-      toast.success(v.status === "feito" ? `Convite para ${nomeProprio(v.item.nome)} registrado. Fica na linha do tempo do lead.` : "Pulado. Não volta para a fila.");
-      qc.invalidateQueries({ queryKey: ["fila-redes", "linkedin"] });
+      toast.success(v.status === "feito" ? `${cfg.feito} para ${nomeProprio(v.item.nome)}. Fica na linha do tempo do lead.` : "Pulado. Não volta para a fila.");
+      qc.invalidateQueries({ queryKey: ["fila-redes", canal] });
     },
     onError: (e: Error) => toast.error(`Não deu para registrar: ${e.message}`),
   });
@@ -78,7 +101,7 @@ export function FilaLinkedin() {
       const ids = (camps ?? []).map((c: any) => c.id);
       await Promise.all(ids.map((id: string) => supabase.functions.invoke("redes-sociais-buscar", { body: { campanha_id: id, limite: 20 } })));
       toast.success("Busca de perfis iniciada. Os achados aparecem aqui em alguns minutos.");
-      setTimeout(() => qc.invalidateQueries({ queryKey: ["fila-redes", "linkedin"] }), 60_000);
+      setTimeout(() => qc.invalidateQueries({ queryKey: ["fila-redes"] }), 60_000);
     } catch (e: any) {
       toast.error(`A busca não começou: ${e.message}`);
     } finally {
@@ -87,7 +110,7 @@ export function FilaLinkedin() {
   };
 
   const meus = data?.meus_hoje ?? 0;
-  const restante = Math.max(META_DIA - meus, 0);
+  const restante = Math.max(cfg.meta - meus, 0);
   const itens = useMemo(() => data?.itens ?? [], [data]);
 
   if (isLoading) return <Skeleton className="h-64 w-full" />;
@@ -97,11 +120,12 @@ export function FilaLinkedin() {
     <div className="space-y-4">
       <Card className="flex flex-wrap items-center justify-between gap-4 p-5">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Seus convites hoje</p>
-          <p className="mt-1 text-3xl font-semibold tabular-nums">{meus} <span className="text-base font-normal text-muted-foreground">de {META_DIA}</span></p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{cfg.contador}</p>
+          <p className="mt-1 text-3xl font-semibold tabular-nums">{meus} <span className="text-base font-normal text-muted-foreground">de {cfg.meta}</span></p>
           <p className="mt-1 text-sm text-muted-foreground">
             {restante > 0 ? `Faltam ${restante} para o ritmo seguro do dia.` : "Ritmo do dia cumprido. Mais que isso arrisca a conta."}
           </p>
+          {cfg.aviso && <p className="mt-1 text-sm font-medium text-foreground">{cfg.aviso}</p>}
         </div>
         <div className="text-right">
           <Button variant="outline" className="h-9" onClick={buscarPerfis} disabled={buscando}>
@@ -115,15 +139,15 @@ export function FilaLinkedin() {
       </Card>
 
       <Card className="p-5">
-        <h3 className="mb-3 text-base font-semibold">Para chamar no LinkedIn</h3>
+        <h3 className="mb-3 text-base font-semibold">{cfg.titulo}</h3>
         {itens.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            Ninguém na fila agora. Clique em "Buscar perfis dos leads" para achar o LinkedIn de quem está nas campanhas ativas.
+            {cfg.vazio}
           </p>
         ) : (
           <ul className="divide-y">
             {itens.map((i) => (
-              <LinhaFila key={i.campanha_lead_id} item={i} bloqueado={registrar.isPending}
+              <LinhaFila key={i.campanha_lead_id} item={i} canal={canal} bloqueado={registrar.isPending}
                 onFeito={() => registrar.mutate({ item: i, status: "feito" })}
                 onPular={() => registrar.mutate({ item: i, status: "pulado" })} />
             ))}
@@ -134,10 +158,11 @@ export function FilaLinkedin() {
   );
 }
 
-function LinhaFila({ item, bloqueado, onFeito, onPular }: { item: Item; bloqueado: boolean; onFeito: () => void; onPular: () => void }) {
-  const texto = textoConvite(item);
+function LinhaFila({ item, canal, bloqueado, onFeito, onPular }: { item: Item; canal: Canal; bloqueado: boolean; onFeito: () => void; onPular: () => void }) {
+  const cfg = CONFIG[canal];
+  const texto = textoConvite(item, canal);
   const copiar = async () => {
-    try { await navigator.clipboard.writeText(texto); toast.success("Convite copiado. Cole na nota do convite no LinkedIn."); }
+    try { await navigator.clipboard.writeText(texto); toast.success(cfg.copiado); }
     catch { toast.error("Não deu para copiar. Selecione o texto e copie à mão."); }
   };
   return (
@@ -154,7 +179,7 @@ function LinhaFila({ item, bloqueado, onFeito, onPular }: { item: Item; bloquead
         <Button asChild size="sm" variant="outline" className="h-8">
           <a href={item.url_perfil} target="_blank" rel="noopener noreferrer"><ExternalLink className="mr-1.5 h-3.5 w-3.5" />Abrir perfil</a>
         </Button>
-        <Button size="sm" variant="outline" className="h-8" onClick={copiar}><Copy className="mr-1.5 h-3.5 w-3.5" />Copiar convite</Button>
+        <Button size="sm" variant="outline" className="h-8" onClick={copiar}><Copy className="mr-1.5 h-3.5 w-3.5" />{cfg.copiar}</Button>
         <Button size="sm" className="h-8" disabled={bloqueado} onClick={onFeito}><Check className="mr-1.5 h-3.5 w-3.5" />Feito</Button>
         <Button size="sm" variant="ghost" className="h-8 text-muted-foreground" disabled={bloqueado} onClick={onPular} title="Não é a pessoa certa ou não vale chamar">
           <SkipForward className="mr-1.5 h-3.5 w-3.5" />Pular

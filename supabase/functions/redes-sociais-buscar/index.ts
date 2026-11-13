@@ -143,7 +143,8 @@ async function conferir(admin: any, rede: "linkedin" | "instagram", achado: Acha
   const ident = rede === "linkedin" ? achado.url.match(/linkedin\.com\/in\/([^/?#]+)/i)?.[1] : achado.handle;
   if (!ident) return achado;
   try {
-    const p = await unipile(`/accounts/${encodeURIComponent(conta.gateway_account_id)}/users/${encodeURIComponent(ident)}`);
+    // v2: /{account_id}/users/{public_identifier} (doc "LinkedIn fetch users profiles").
+    const p = await unipile(`/${encodeURIComponent(conta.gateway_account_id)}/users/${encodeURIComponent(ident)}${rede === "linkedin" ? "?variant=linkedin_classic" : ""}`);
     const texto = JSON.stringify(p).toLowerCase();
     const sobrenome = String(lead.nome || "").trim().split(/\s+/).pop()?.toLowerCase() ?? "";
     const crm = String(lead.crm || "").replace(/\D/g, "");

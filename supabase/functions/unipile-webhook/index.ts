@@ -1,8 +1,31 @@
 // Webhook da Unipile (Fase 9.2). Confere a assinatura, grava o evento bruto em unipile_eventos (idempotente pelo id)
-// e atualiza a situação da conta. Mensagem nova e nova conexão ficam só no log até a 9.5 (Conversas e funil).
+// e atualiza a situação da conta. Mensagem nova / nova conexão de médico que recebeu convite do motor (9.4) marcam o
+// toque como respondido; o texto das mensagens do LinkedIn nas Conversas ainda é a 9.5.
 // Precisa responder 2xx em até 5 s, senão a Unipile reenvia.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { lerState, salvarConta, situacaoDe, webhookValido } from "../_shared/unipile.ts";
+
+// O formato de message.new/relation.new não está na doc da Unipile: em vez de ler um campo, procura no evento o id do
+// membro (ACo...) que o motor gravou em campanha_toques.destino_id ao mandar o convite.
+async function marcarResposta(admin: any, ev: any, tipo: string) {
+  const texto = JSON.stringify(ev);
+  const ids = [...new Set(texto.match(/ACo[A-Za-z0-9_-]{10,}/g) || [])].slice(0, 20);
+  if (!ids.length) return;
+  const { data: toques } = await admin.from("campanha_toques").select("id, campanha_lead_id, destino_id, status, campanha_leads(lead_id)")
+    .eq("canal", "linkedin").in("destino_id", ids).in("status", ["feito", "respondido"]);
+  for (const t of toques || []) {
+    // A primeira mensagem do chat aberto pelo convite aceito é a nossa nota: aceitar conta como resposta, a nota não.
+    const doMedico = tipo === "relation.new" || texto.includes(`"sender_id":"${t.destino_id}"`) || texto.includes(`"sender":{"id":"${t.destino_id}"`);
+    if (!doMedico || t.status === "respondido") continue;
+    await admin.from("campanha_toques").update({ status: "respondido" }).eq("id", t.id);
+    const leadId = t.campanha_leads?.lead_id;
+    if (leadId) await admin.from("lead_historico").insert({ lead_id: leadId, tipo_evento: "outro",
+      descricao_resumida: tipo === "relation.new" ? "Aceitou o convite no LinkedIn" : "Respondeu no LinkedIn",
+      metadados: { tipo: "toque_rede", canal: "linkedin", campanha_lead_id: t.campanha_lead_id, evento: ev.id } });
+    if (tipo === "message.new") await admin.from("campanha_leads").update({ status: "em_conversa" })
+      .eq("id", t.campanha_lead_id).in("status", ["contatado", "sem_resposta", "frio", "aquecido"]);
+  }
+}
 
 const ok = (b: unknown = { received: true }) => new Response(JSON.stringify(b), { headers: { "Content-Type": "application/json" } });
 
@@ -42,6 +65,8 @@ Deno.serve(async (req) => {
     } else if (tipo === "account.remove") {
       await admin.from("linkedin_contas").update({ situacao: "desconectada", status_unipile: "removed", motivo: "removida na Unipile",
         atualizado_em: agora, ultimo_evento_em: agora }).eq("gateway_account_id", ev.account_id);
+    } else if (tipo === "message.new" || tipo === "relation.new") {
+      await marcarResposta(admin, ev, tipo);
     } else if (tipo === "account.locked") {
       await admin.from("linkedin_contas").update({ situacao: "pausada", motivo: "Unipile sem assinatura ativa",
         atualizado_em: agora, ultimo_evento_em: agora }).eq("gateway_account_id", ev.account_id);

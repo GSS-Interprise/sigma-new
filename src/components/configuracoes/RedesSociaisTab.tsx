@@ -11,6 +11,7 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { Switch } from "@/components/ui/switch";
 
 /**
  * Configurações › LinkedIn (Fase 9.2) — pergunta da tela: "quem da GSS tem LinkedIn/Instagram ligado ao Sigma, e está
@@ -23,7 +24,14 @@ type Conta = {
   id: string; usuario_id: string; pessoa: string | null; provedor: "linkedin" | "instagram";
   gateway_account_id: string | null; nome_perfil: string | null; situacao: string; motivo: string | null;
   conectada_em: string | null; atualizado_em: string;
+  automatico?: boolean; rampa_inicio?: string | null; convites_dia_teto?: number | null; motor_motivo?: string | null;
 };
+
+// Mesma conta da edge unipile-motor: 5 convites/dia na 1ª semana, +3 por semana, até o teto da conta.
+function limiteHoje(c: Conta) {
+  const semanas = c.rampa_inicio ? Math.floor((Date.now() - new Date(c.rampa_inicio).getTime()) / (7 * 86_400_000)) : 0;
+  return Math.min(5 + 3 * semanas, c.convites_dia_teto ?? 20);
+}
 
 const SITUACAO: Record<string, { rotulo: string; classe: string }> = {
   conectada: { rotulo: "Conectada", classe: "bg-emerald-50 text-emerald-700 ring-emerald-600/20" },
@@ -103,6 +111,19 @@ export function RedesSociaisTab() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const motor = useMutation({
+    mutationFn: async (v: { id: string; ligar: boolean }) => {
+      const { error } = await (supabase as any).rpc("linkedin_motor_ligar", { p_conta_id: v.id, p_ligar: v.ligar });
+      if (error) throw new Error(error.message.includes("so_administrador") ? "Só administrador liga o envio automático."
+        : error.message.includes("conta_nao_conectada") ? "A conta precisa estar conectada." : error.message);
+    },
+    onSuccess: (_r, v) => {
+      toast.success(v.ligar ? "Envio automático ligado: começa com 5 convites por dia, em dia útil, das 8h às 18h." : "Envio automático desligado.");
+      qc.invalidateQueries({ queryKey: ["redes-contas"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const contas = (lista?.contas ?? []).filter((c) => c.situacao !== "desconectada");
   const ehOutraPessoa = !!pessoa && pessoa !== eu;
 
@@ -170,6 +191,19 @@ export function RedesSociaisTab() {
                     <p className="mt-1 truncate text-xs text-muted-foreground" title={c.motivo ?? ""}>
                       {caiu && c.motivo ? c.motivo : c.conectada_em ? `desde ${formatDistanceToNow(new Date(c.conectada_em), { locale: ptBR })}` : ""}
                     </p>
+                    {/* Motor da 9.4: liga por conta, só admin, só LinkedIn conectado. */}
+                    {c.provedor === "linkedin" && c.situacao === "conectada" && lista?.admin && (
+                      <label className="mt-2 flex items-center gap-2 text-xs">
+                        <Switch checked={!!c.automatico} disabled={motor.isPending}
+                          onCheckedChange={(v) => {
+                            if (v && !window.confirm(`Ligar o envio automático de convites pela conta de ${c.pessoa ?? c.nome_perfil}? O risco de restrição é dessa conta. Começa com 5 por dia.`)) return;
+                            motor.mutate({ id: c.id, ligar: v });
+                          }} />
+                        <span className={cn(c.automatico ? "font-medium text-foreground" : "text-muted-foreground")}>
+                          {c.automatico ? `Envio automático · até ${limiteHoje(c)} convites hoje` : c.motor_motivo?.startsWith("pausado") ? `Automático pausado: ${c.motor_motivo.replace(/^pausado sozinho: /, "")}` : "Envio automático desligado"}
+                        </span>
+                      </label>
+                    )}
                   </div>
                   <div className="flex gap-2 md:justify-end">
                     {caiu && c.gateway_account_id && (
