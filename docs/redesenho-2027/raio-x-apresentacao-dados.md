@@ -22,6 +22,36 @@ contagem antes de virar tela.
 | 6. O que propomos | **novo** | campos para o Maikon preencher por hospital |
 | (sugestão) 7. Seu contrato hoje | **pronto para montar** | plantões cobertos e furos do hospital, vindos do Dr. Escala |
 
+## Conferência com a produção (14/11/2026)
+
+Os números do protótipo são fictícios, como manda a regra do Figma. Em 14/11 conferi na produção, só com leitura,
+quanto dado real existe para cada bloco. Usei contagens agregadas e as próprias RPCs `bi_raiox_*` chamadas pelo
+PostgREST.
+
+| Bloco | O que a produção tem hoje | Dá para apresentar? |
+|---|---|---|
+| Capa e funil | Anestesiologia: 8.688 alcançados (2.526 WhatsApp, 7.260 e-mail), 437 responderam, 254 interessados, 12 campanhas desde 14/05. **Pediatria: `bi_raiox_funil` estoura o tempo (erro 57014, statement timeout)** | Anestesiologia sim; Pediatria, a maior especialidade (3.572 contatados), não abre |
+| Contratados | 1 em Anestesiologia. `campanha_leads` tem 42 `convertido` no total; `contratos` tem 109 linhas, mas **`medico_id` está vazio em todas** | Não. O cruzamento com `contratos` que o doc propõe não existe hoje |
+| 2. Esforço | WhatsApp: 12.226 leads com 1º contato desde 29/04 e 6.902 mensagens nossas ligadas a campanha. E-mail: 35.766 entregues desde 14/10. **LinkedIn e Instagram: 0 toques** em `campanha_lead_touches` (só `whatsapp` e `email`) | Sim, para WhatsApp e e-mail. LinkedIn e Instagram ficam fora até a fila nova rodar em produção |
+| 4. Por que dizem não | 969 conversas classificadas, **só desde 09/11**. Motivo preenchido em 91. Por especialidade: 24 em Pediatria, 35 em Anestesiologia | Com ressalva: amostra de 5 dias e 24 a 35 respostas. Dizer o tamanho da amostra na tela |
+| 5. Quanto o médico pede | `valor_pedido` em **3 de 969** classificações (2 em Anestesiologia, 0 em Pediatria) | Não |
+| 5. Quanto a GSS oferece | `vagas` tem **2 linhas** | Não |
+| 5. Setor público | 159 itens de licitação, 189 concorrentes, 121 resultados, sem filtro por especialidade | Não, por enquanto |
+| 1. Mercado | CFM: 751.800 médicos; `mercado_brasil` sai (25.379 anestesiologistas). Cidade preenchida em 312.626 de 833.019 leads (38%) | Brasil e UF sim; região por raio só "na base da GSS" e com 38% de cidade |
+| 7. Seu contrato hoje | `drescala_plantoes`: 2.025 plantões de 06/11 a 14/12, 46 furos | Sim, para os próximos dias, depois do de-para local × contrato |
+| RPC do esforço | `bi_raiox_esforco` ainda **não existe** na produção (migration no branch, não aplicada) | Depende do OK do Raul |
+
+### O que isso muda na ordem
+1. **Consertar o tempo do `bi_raiox_funil` em Pediatria** antes de qualquer apresentação. A RPC roda dentro do limite
+   do PostgREST em Anestesiologia e estoura em Pediatria. O mais provável é `_raiox_contatos` sobre
+   `sigzap_messages` sem índice no recorte. Medir com `explain analyze` numa cópia, sem mexer na produção.
+2. **Contratados:** preencher `contratos.medico_id` (ou ligar contrato ao lead) e pedir à equipe que marque
+   `convertido`. Sem isso, a frase "para cada contratado, abordamos N" sai com N = 8.688.
+3. **Valor pedido:** a classificação raramente acha valor na conversa. Para o bloco 5, ou a equipe registra o valor
+   pedido no fechamento, ou o bloco sai da primeira versão.
+4. **Motivos de recusa:** a classificação começou em 09/11; em 2 a 3 semanas a amostra fica apresentável.
+5. LinkedIn e Instagram entram no esforço só quando houver toques registrados.
+
 ## Bloco a bloco
 
 ### Capa: médicos abordados, semanas, campanhas, contratados
