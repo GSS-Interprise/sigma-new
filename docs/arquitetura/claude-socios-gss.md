@@ -12,6 +12,8 @@ repo: sigma-new
 
 > Pedido do Heron (sócio da GSS). Conceito no Vault: `Projetos/GSS-Claude-dos-Socios.md`.
 > Este doc é a fonte do status: a checklist da §6 diz o que está feito.
+> A plataforma por baixo (guia do agente, domínios, permissão, consistência entre sócios) está em
+> `docs/arquitetura/protocolo-agente-sigma.md`.
 
 ## 1. O que precisa funcionar (a capacidade)
 

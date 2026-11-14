@@ -1,15 +1,15 @@
 // Servidor MCP remoto do Sigma para o Claude dos sócios da GSS (docs/arquitetura/claude-socios-gss.md §3c).
 // Transporte: MCP Streamable HTTP sem sessão (JSON-RPC 2.0 em POST, resposta JSON). Só leitura nesta fase.
+// Ferramentas, guia e prompts: registro de domínios em _shared/agente/ (docs/arquitetura/protocolo-agente-sigma.md).
 // Login, dois jeitos, os dois na tabela mcp_tokens (só o hash sha256) e cada chamada auditada em mcp_chamadas:
 //   - token pessoal "sgm_..." gerado na tela /conectar-claude (T5), colado no Claude Code;
 //   - OAuth 2.1 (T7) para Claude.ai, celular e Desktop: esta mesma edge serve os metadados, o registro dinâmico,
 //     /authorize (manda para a tela de aprovação do Sigma), /token e /revoke. Regras em _shared/mcp-oauth.ts.
 // Deploy com verify_jwt = false (o token não é JWT do Supabase; a checagem é feita aqui).
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import {
-  acharHospitais, agrupar, diaBR, filtroProfissional, hojeBR, lerData, lerMomento, linhaPlantao, type Local, momentoBR,
-  periodoValido, type Plantao, resolverBusca, resumoPorHospital, somaDias,
-} from "../_shared/escalas.ts";
+import { constituicao, guiaTexto, hashResultado, PROTOCOLO_VERSAO, renderizar } from "../_shared/agente/protocolo.ts";
+import { acessosDoUsuario, DOMINIOS, dominioBloqueado, exposto, validarRegistro as validarDominios } from "../_shared/agente/registro.ts";
+import { ErroFerramenta } from "../_shared/agente/tipos.ts";
 import {
   cabecalho401, comParametros, ehErro, lerCorpoToken, metadadosRecurso, metadadosServidor, novoSegredo,
   pkceConfere, rota, sha256Hex, validarAutorizacao, validarRegistro, VIDA_ACESSO_S, VIDA_CODIGO_S, VIDA_REFRESH_DIAS,
@@ -30,186 +30,16 @@ const cors = {
 const resp = (b: unknown, s = 200, extra: Record<string, string> = {}) =>
   new Response(b === null ? null : JSON.stringify(b), { status: s, headers: { ...cors, "Content-Type": "application/json; charset=utf-8", ...extra } });
 
-// ---- ferramentas ---------------------------------------------------------------------------------------
+// ---- protocolo do agente ------------------------------------------------------------------------------
+// As ferramentas, o guia e os prompts vêm do registro de domínios (_shared/agente/, docs/arquitetura/
+// protocolo-agente-sigma.md). Esta edge só cuida de transporte, login, permissão e auditoria.
 
-const COLS = "id,data,inicio,fim,local_id,hospital,setor,profissional_nome,profissional_crm,situacao,tipo,furo";
-const LIMITE_LINHAS = 400;
+// Registro quebrado não sobe: melhor a edge falhar no deploy do que um sócio receber resposta de domínio errado.
+validarDominios(DOMINIOS);
 
-async function ultimaSync(svc: SupabaseClient): Promise<string> {
-  const { data } = await svc.from("drescala_sincronizacoes").select("concluido_em")
-    .eq("status", "ok").order("concluido_em", { ascending: false }).limit(1).maybeSingle();
-  if (!data?.concluido_em) return "Dado do Dr. Escala ainda não sincronizado.";
-  return `Dado do Dr. Escala sincronizado em ${momentoBR(new Date(data.concluido_em))}.`;
-}
-
-async function locais(svc: SupabaseClient): Promise<Local[]> {
-  const { data, error } = await svc.from("drescala_locais").select("id,nome,cidade")
-    .not("nome", "ilike", "%local teste%").order("nome");
-  if (error) throw error;
-  return data || [];
-}
-
-async function resolverHospital(svc: SupabaseClient, busca: unknown): Promise<{ ids: number[] | null; aviso?: string }> {
-  if (!String(busca ?? "").trim()) return { ids: null };
-  return resolverBusca(await locais(svc), busca);
-}
-
-const FERRAMENTAS = [
-  {
-    name: "escalas_hospitais",
-    title: "Hospitais com escala no Dr. Escala",
-    description: "Lista os hospitais/unidades que a GSS escala pelo Dr. Escala, com quantos plantões e quantos plantões descobertos (furos) há nos próximos 7 dias. Use para descobrir o nome certo de um hospital.",
-    inputSchema: { type: "object", properties: { busca: { type: "string", description: "Parte do nome ou da cidade (opcional)" } } },
-  },
-  {
-    name: "escalas_do_hospital",
-    title: "Escala de um hospital",
-    description: "Plantões de um hospital num dia ou período, por setor, com quem está escalado e os plantões descobertos. Aceita parte do nome ou sigla do hospital (ex.: 'hro', 'gaspar', 'cepon').",
-    inputSchema: {
-      type: "object",
-      properties: {
-        hospital: { type: "string", description: "Nome, parte do nome, cidade ou sigla do hospital" },
-        data_inicio: { type: "string", description: "AAAA-MM-DD, DD/MM/AAAA, 'hoje' ou 'amanhã'" },
-        data_fim: { type: "string", description: "Último dia (opcional; padrão = data_inicio; máx. 31 dias)" },
-      },
-      required: ["hospital", "data_inicio"],
-    },
-  },
-  {
-    name: "plantoes_descobertos",
-    title: "Plantões descobertos (furos)",
-    description: "Plantões sem médico escalado num período, agrupados por dia e hospital. Padrão: de hoje a 7 dias.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        data_inicio: { type: "string", description: "Padrão: hoje" },
-        data_fim: { type: "string", description: "Padrão: data_inicio + 7 dias (máx. 62 dias)" },
-        hospital: { type: "string", description: "Filtra um hospital (opcional)" },
-      },
-    },
-  },
-  {
-    name: "quem_esta_escalado",
-    title: "Quem está escalado",
-    description: "Sem 'profissional': quem está de plantão num momento (padrão: agora), opcionalmente num hospital. Com 'profissional': os plantões desse médico no período.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        quando: { type: "string", description: "Data e hora AAAA-MM-DDTHH:MM em hora de Brasília (padrão: agora)" },
-        hospital: { type: "string" },
-        profissional: { type: "string", description: "Nome (ou parte) ou CRM do médico" },
-        data_inicio: { type: "string", description: "Com profissional: início do período (padrão: hoje)" },
-        data_fim: { type: "string", description: "Com profissional: fim do período (padrão: +30 dias)" },
-      },
-    },
-  },
-];
-
-async function executar(svc: SupabaseClient, nome: string, a: Record<string, unknown>): Promise<string> {
-  const rodape = "\n\n_" + (await ultimaSync(svc)) + "_";
-
-  if (nome === "escalas_hospitais") {
-    let ls = await locais(svc);
-    if (a.busca) {
-      const ids = new Set(acharHospitais(ls, String(a.busca)).map((l) => l.id));
-      ls = ls.filter((l) => ids.has(l.id));
-    }
-    const hoje = hojeBR();
-    const { data, error } = await svc.from("drescala_plantoes").select("local_id,furo")
-      .gte("data", hoje).lte("data", somaDias(hoje, 6)).limit(20000);
-    if (error) throw error;
-    const cont = new Map<number, { t: number; f: number }>();
-    for (const r of data || []) {
-      const c = cont.get(r.local_id) || { t: 0, f: 0 };
-      c.t++; if (r.furo) c.f++;
-      cont.set(r.local_id, c);
-    }
-    const linhas = ls.map((l) => ({ l, c: cont.get(l.id) || { t: 0, f: 0 } }))
-      .filter((x) => a.busca || x.c.t > 0)
-      .sort((x, y) => y.c.f - x.c.f || y.c.t - x.c.t)
-      .map((x) => `- ${x.l.nome}${x.l.cidade ? ` (${x.l.cidade})` : ""}: ${x.c.t} plantões, ${x.c.f} descobertos`);
-    if (!linhas.length) return "Nenhum hospital encontrado." + rodape;
-    return `Hospitais com plantão de ${diaBR(hoje)} a ${diaBR(somaDias(hoje, 6))}:\n${linhas.join("\n")}` + rodape;
-  }
-
-  if (nome === "escalas_do_hospital") {
-    const ini = lerData(a.data_inicio);
-    const fim = lerData(a.data_fim, ini);
-    if (!periodoValido(ini, fim, 31)) throw new Error("período inválido (data_fim antes do início ou mais de 31 dias)");
-    const h = await resolverHospital(svc, a.hospital);
-    if (!h.ids) throw new Error("informe o hospital");
-    if (h.aviso) return h.aviso + rodape;
-    const { data, error } = await svc.from("drescala_escala_v").select(COLS).in("local_id", h.ids)
-      .gte("data", ini).lte("data", fim).order("data").order("hospital").order("inicio").order("setor").limit(LIMITE_LINHAS);
-    if (error) throw error;
-    const rows = (data || []) as Plantao[];
-    if (!rows.length) return `Nenhum plantão no Dr. Escala para esse hospital entre ${diaBR(ini)} e ${diaBR(fim)}.` + rodape;
-    const furos = rows.filter((r) => r.furo).length;
-    const nomes = [...new Set(rows.map((r) => r.hospital))].join("; ");
-    const corte = rows.length >= LIMITE_LINHAS ? `\n\n(Lista cortada em ${LIMITE_LINHAS} plantões: peça um período menor.)` : "";
-    return `**${nomes}** — ${ini === fim ? diaBR(ini) : `${diaBR(ini)} a ${diaBR(fim)}`}: ${rows.length} plantões, ${furos} descobertos.` +
-      agrupar(rows, h.ids.length > 1) + corte + rodape;
-  }
-
-  if (nome === "plantoes_descobertos") {
-    const ini = lerData(a.data_inicio, hojeBR());
-    const fim = lerData(a.data_fim, somaDias(ini, 7));
-    if (!periodoValido(ini, fim, 62)) throw new Error("período inválido (máx. 62 dias)");
-    const h = await resolverHospital(svc, a.hospital);
-    if (h.aviso) return h.aviso + rodape;
-    let q = svc.from("drescala_escala_v").select(COLS).eq("furo", true).gte("data", ini).lte("data", fim);
-    if (h.ids) q = q.in("local_id", h.ids);
-    const { data, error } = await q.order("data").order("hospital").order("inicio").limit(LIMITE_LINHAS);
-    if (error) throw error;
-    const rows = (data || []) as Plantao[];
-    if (!rows.length) return `Nenhum plantão descoberto entre ${diaBR(ini)} e ${diaBR(fim)}.` + rodape;
-    const resumo = resumoPorHospital(rows);
-    const corte = rows.length >= LIMITE_LINHAS ? `\n\n(Lista cortada em ${LIMITE_LINHAS}: peça um período menor.)` : "";
-    return `**${rows.length} plantões descobertos** de ${diaBR(ini)} a ${diaBR(fim)}. Por hospital: ${resumo}.` +
-      agrupar(rows, true) + corte + rodape;
-  }
-
-  if (nome === "quem_esta_escalado") {
-    const h = await resolverHospital(svc, a.hospital);
-    if (h.aviso) return h.aviso + rodape;
-    if (a.profissional) {
-      const p = String(a.profissional).trim();
-      const ini = lerData(a.data_inicio, hojeBR());
-      const fim = lerData(a.data_fim, somaDias(ini, 30));
-      let q = svc.from("drescala_escala_v").select(COLS).gte("data", ini).lte("data", fim);
-      const f = filtroProfissional(p);
-      q = q.ilike(f.coluna, f.padrao);
-      if (h.ids) q = q.in("local_id", h.ids);
-      const { data, error } = await q.order("data").order("inicio").limit(LIMITE_LINHAS);
-      if (error) throw error;
-      const rows = (data || []) as Plantao[];
-      if (!rows.length) return `Nenhum plantão de "${p}" entre ${diaBR(ini)} e ${diaBR(fim)}.` + rodape;
-      const nomes = [...new Set(rows.map((r) => r.profissional_nome))];
-      return `**${nomes.join("; ")}** — ${rows.length} plantões de ${diaBR(ini)} a ${diaBR(fim)}:` + agrupar(rows, true) + rodape;
-    }
-    const quando = lerMomento(a.quando);
-    const iso = quando.toISOString();
-    const diaQ = hojeBR(quando);
-    // Plantão que começou até 1 dia antes e ainda não acabou.
-    let q = svc.from("drescala_escala_v").select(COLS).gte("data", somaDias(diaQ, -1)).lte("data", diaQ)
-      .lte("inicio", iso).gt("fim", iso);
-    if (h.ids) q = q.in("local_id", h.ids);
-    const { data, error } = await q.order("hospital").order("setor").limit(LIMITE_LINHAS);
-    if (error) throw error;
-    const rows = (data || []) as Plantao[];
-    const momento = momentoBR(quando);
-    if (!rows.length) return `Ninguém de plantão em ${momento}${h.ids ? " nesse hospital" : ""} segundo o Dr. Escala.` + rodape;
-    const furos = rows.filter((r) => r.furo).length;
-    let atual = "";
-    const out: string[] = [];
-    for (const r of rows) {
-      if (r.hospital !== atual) { atual = r.hospital ?? ""; out.push(`\n### ${atual}`); }
-      out.push(linhaPlantao(r));
-    }
-    return `De plantão em ${momento}: ${rows.length - furos} médicos${furos ? `, ${furos} plantões descobertos` : ""}.` + out.join("\n") + rodape;
-  }
-
-  throw new Error(`ferramenta desconhecida: ${nome}`);
+/** T1: quem passa no login (admin ou diretoria) vê todos os domínios ativos. T3 troca por agente_dominio_acessos. */
+function acessos(_s: Sessao) {
+  return acessosDoUsuario(DOMINIOS, "todos");
 }
 
 // ---- autenticação --------------------------------------------------------------------------------------
@@ -386,34 +216,84 @@ async function tratar(svc: SupabaseClient, s: Sessao, m: Msg): Promise<unknown |
   const falha = (code: number, message: string) => ({ jsonrpc: "2.0", id: m.id ?? null, error: { code, message } });
   if (m.id === undefined || m.id === null) return null; // notificação (ex.: notifications/initialized): sem resposta
 
+  const ac = acessos(s);
+  const exp = exposto(ac);
+
   switch (m.method) {
     case "initialize": {
       const pedida = String(m.params?.protocolVersion || "");
       return ok({
         protocolVersion: VERSOES.includes(pedida) ? pedida : VERSOES[0],
-        capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: "sigma-gss", title: "Sigma GSS", version: "0.2.0" },
-        instructions: "Dados da operação da GSS vindos do Sigma. Escalas e plantões vêm do Dr. Escala, sincronizados algumas vezes ao dia; cite a hora da sincronização quando ela for relevante. Nomes de médicos são dado pessoal: não repita fora do contexto da pergunta.",
+        capabilities: { tools: { listChanged: false }, prompts: { listChanged: false }, resources: { listChanged: false } },
+        serverInfo: { name: "sigma-gss", title: "Sigma GSS", version: PROTOCOLO_VERSAO },
+        // O guia mínimo que todo cliente lê sem pedir; o detalhe de cada domínio vem do sigma_guia.
+        instructions: constituicao(ac),
       });
     }
     case "ping":
       return ok({});
     case "tools/list":
-      return ok({ tools: FERRAMENTAS.map((f) => ({ ...f, annotations: { readOnlyHint: true, openWorldHint: false } })) });
+      return ok({
+        tools: exp.ferramentas.map((f) => ({
+          name: f.nome, title: f.titulo, description: f.descricao, inputSchema: f.inputSchema,
+          annotations: { readOnlyHint: true, openWorldHint: false },
+        })),
+      });
     case "tools/call": {
       const nome = String(m.params?.name || "");
       const args = (m.params?.arguments || {}) as Record<string, unknown>;
       const t0 = Date.now();
+      const registrar = (extra: Record<string, unknown>) =>
+        svc.from("mcp_chamadas").insert({ user_id: s.userId, token_id: s.tokenId, metodo: "tools/call", ferramenta: nome, argumentos: args, duracao_ms: Date.now() - t0, ...extra });
       try {
-        const texto = await executar(svc, nome, args);
-        await svc.from("mcp_chamadas").insert({ user_id: s.userId, token_id: s.tokenId, metodo: "tools/call", ferramenta: nome, argumentos: args, ok: true, duracao_ms: Date.now() - t0 });
-        return ok({ content: [{ type: "text", text: texto }] });
+        const f = exp.ferramentas.find((x) => x.nome === nome);
+        if (!f) {
+          const bloq = dominioBloqueado(ac, nome);
+          throw new ErroFerramenta(bloq ? `seu usuário não tem acesso a ${bloq.titulo}; peça ao administrador do Sigma` : `ferramenta desconhecida: ${nome}`);
+        }
+        const r = await f.executar({ svc, userId: s.userId, agora: new Date() }, args);
+        const hash = await hashResultado(nome, r.dados);
+        await registrar({ ok: true });
+        // structuredContent pequeno de propósito: há cliente que mostra só ele ao modelo, então leva o resumo e os
+        // totais; a lista completa vai no texto. O hash prova que dois sócios receberam o mesmo fato.
+        return ok({
+          content: [{ type: "text", text: renderizar(r) }],
+          structuredContent: {
+            resumo: r.resumo, totais: r.totais ?? {}, fonte: r.fonte, cortado: r.cortado ?? null,
+            protocolo: PROTOCOLO_VERSAO, dominio: exp.dominioDe.get(nome), hash,
+          },
+        });
       } catch (e) {
         const msg = e instanceof Error ? e.message : String((e as { message?: string })?.message ?? e);
-        await svc.from("mcp_chamadas").insert({ user_id: s.userId, token_id: s.tokenId, metodo: "tools/call", ferramenta: nome, argumentos: args, ok: false, erro: msg, duracao_ms: Date.now() - t0 });
+        await registrar({ ok: false, erro: msg });
         // Erro de ferramenta volta como resultado com isError, para o Claude ler e corrigir o argumento.
         return ok({ content: [{ type: "text", text: `Erro: ${msg}` }], isError: true });
       }
+    }
+    case "prompts/list":
+      return ok({ prompts: exp.prompts.map((p) => ({ name: p.nome, title: p.titulo, description: p.descricao, arguments: p.argumentos ?? [] })) });
+    case "prompts/get": {
+      const p = exp.prompts.find((x) => x.nome === String(m.params?.name || ""));
+      if (!p) return falha(-32602, `prompt desconhecido: ${m.params?.name}`);
+      const args = (m.params?.arguments || {}) as Record<string, string>;
+      const falta = (p.argumentos ?? []).filter((x) => x.required && !String(args[x.name] ?? "").trim()).map((x) => x.name);
+      if (falta.length) return falha(-32602, `faltam argumentos: ${falta.join(", ")}`);
+      return ok({ description: p.descricao, messages: [{ role: "user", content: { type: "text", text: p.texto(args) } }] });
+    }
+    case "resources/list":
+      return ok({
+        resources: ac.filter((a) => a.liberado || a.dominio.status === "em_breve").map((a) => ({
+          uri: `sigma://guia/${a.dominio.id}`, name: `guia-${a.dominio.id}`, title: `Guia: ${a.dominio.titulo}`,
+          description: a.dominio.resumo, mimeType: "text/markdown",
+        })),
+      });
+    case "resources/templates/list":
+      return ok({ resourceTemplates: [] });
+    case "resources/read": {
+      const uri = String(m.params?.uri || "");
+      const a = ac.find((x) => `sigma://guia/${x.dominio.id}` === uri && (x.liberado || x.dominio.status === "em_breve"));
+      if (!a) return falha(-32002, `recurso não encontrado: ${uri}`);
+      return ok({ contents: [{ uri, mimeType: "text/markdown", text: guiaTexto(a.dominio) }] });
     }
     default:
       return falha(-32601, `método não suportado: ${m.method}`);
