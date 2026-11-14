@@ -15,7 +15,6 @@ CSS4 = CSS2 + """
 .faixa{display:flex;align-items:center;gap:12px;background:#fff;border-radius:12px;padding:12px 18px;border-left:4px solid var(--ambar)}
 .faixa b{white-space:nowrap}
 .faixa .nomes{color:var(--sub);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-.kb.cheio{grid-template-columns:170px repeat(4,minmax(0,1fr))}
 /* nova campanha */
 .nc{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:20px;align-items:start}
 .sec2{background:#fff;border-radius:12px;padding:20px 22px;display:flex;flex-direction:column;gap:14px}
@@ -65,7 +64,6 @@ CSS4 = CSS2 + """
  .sub{display:flex;flex-wrap:wrap}
  .et{grid-template-columns:20px 14px minmax(0,1fr) 120px 40px}
  .et .col-ex{display:none}
- .kb.cheio{grid-template-columns:120px repeat(4,minmax(0,1fr))}
  .faixa .nomes{display:none}
  .topo{flex-wrap:wrap;row-gap:10px}
 }
@@ -75,7 +73,6 @@ def pg(t, c): return pag(t, c).replace(CSS2, CSS4)
 # ---------- 1. Quentes: botão Recolher no estado aberto + estado recolhido
 q = (OUT/'t-quentes.html').read_text(encoding='utf-8')
 corpo_q = q.split('<body>')[1].split('</body>')[0]
-corpo_q = corpo_q.replace('<span class="aba">LinkedIn</span>', '<span class="aba">LinkedIn</span><span class="aba">Instagram</span>', 1)
 corpo_q = corpo_q.replace('A IA faz o primeiro contato sozinha.', 'O 1º disparo sai pela API oficial.')
 aberto = corpo_q.replace('<div class="cab"><h2>Quentes esperando dono · 30</h2>',
     f'<div class="cab"><div class="linha"><h2>Quentes esperando dono · 30</h2><span class="recolher">Recolher {ic("chev",14)}</span></div>', 1)

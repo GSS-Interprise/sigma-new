@@ -9,8 +9,10 @@ configurações (13/11)".
 | IA conversa sozinha | API oficial (Chakra) | a IA responde, qualifica e marca quente; a equipe assume o quente | `campanhas.tipo_envio = 'ia'` |
 | Equipe conversa pelo CRM | API oficial (Chakra) | quem responde cai em Conversas e no Kanban; a equipe conduz até o contrato | `campanhas.tipo_envio = 'manual'` |
 
-O cartão da campanha mostra o modo na primeira linha ("IA conversa" ou "Equipe pelo CRM"). A coluna "Novo" do
-Kanban passou a dizer "O 1º disparo sai pela API oficial", que vale para os dois modos.
+O cartão da campanha mostra o modo na primeira linha ("IA conversa" ou "Equipe pelo CRM"). Os leads que ainda não
+receberam o 1º disparo saem do Kanban e viram uma faixa acima dele: "Aguardando o 1º disparo · 3.599 · Saem 35 por
+dia pela API oficial · Ver a lista" (pedido do Raul em 14/11: a coluna "Novo" ao lado tomava largura do Kanban). Vale
+para os dois modos.
 
 ## Alertas por campanha
 - **Hoje:** os avisos à equipe são globais. Ficam na edge `alertas-equipe` (médico quente na hora e resumo das 18h),

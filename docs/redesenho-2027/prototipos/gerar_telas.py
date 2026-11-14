@@ -15,7 +15,7 @@ h2.s{font-family:Sora;font-size:16px;font-weight:600}
 .sel{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 12px;border:1px solid var(--fio);border-radius:8px;background:var(--papel);font-weight:600;white-space:nowrap}
 /* kanban */
 .kq{display:grid;grid-template-columns:340px minmax(0,1fr);gap:20px;align-items:start}
-.kb{display:grid;grid-template-columns:150px repeat(4,minmax(0,1fr));gap:12px;align-items:start}
+.kb{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;align-items:start}
 .col{display:flex;flex-direction:column;gap:8px;min-width:0}
 .colh{display:flex;flex-direction:column;gap:6px;padding:4px 2px 6px}
 .colh .t{display:flex;justify-content:space-between;font-weight:700}
@@ -27,8 +27,10 @@ h2.s{font-family:Sora;font-size:16px;font-weight:600}
 .kc .q{font-size:13px;color:var(--tinta);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .kc .r{display:flex;justify-content:space-between;font-size:12px;color:var(--sub)}
 .kc.am{box-shadow:inset 3px 0 0 var(--ambar)}
-.novo{background:var(--papel);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:6px}
-.novo .n{font-family:Sora;font-size:22px;font-weight:600}
+.aguarda{display:flex;align-items:center;gap:14px;background:var(--papel);border-radius:10px;padding:10px 16px;min-width:0}
+.aguarda .n{font-family:Sora;font-size:18px;font-weight:600}
+.aguarda .leve{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.aguarda .lk2{margin-left:auto;font-size:13px;font-weight:700;color:var(--verde);white-space:nowrap}
 .mais{font-size:13px;font-weight:700;color:var(--verde);padding:6px 2px}
 /* linkedin */
 .lk{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:20px;align-items:start}
@@ -132,7 +134,6 @@ h2.s{font-family:Sora;font-size:16px;font-weight:600}
 .vg .ab.am{color:var(--ambar)}
 @media (max-width:1100px){
  .kq{grid-template-columns:1fr}
- .kb{grid-template-columns:120px repeat(4,minmax(0,1fr))}
  .lk{grid-template-columns:1fr}
  .cv{grid-template-columns:280px minmax(0,1fr)}
  .cvp{display:none}
@@ -190,14 +191,15 @@ cols = [
  ('Em atendimento', 41, '#3b8043', [kc('Fábio Lacerda','Pediatria · SC','Proposta enviada: 4 plantões de 12 h.','hoje', False, 'Carla M.'), kc('Isabela Rocha','Ginecologia · SP','Aguardando documentos.','ontem', False, 'Bruno T.')]),
  ('Convertido', 12, 'var(--verde)', [kc('Paulo Viana','Anestesiologia · SC','Contrato assinado em 10/11.','3 dias', False, 'Elisa M.'), kc('Olívia Campos','Pediatria · PR','Primeiro plantão em 20/11.','5 dias', False, 'Carla M.')]),
 ]
-kb = '<div class="kb"><div class="col"><div class="novo"><span class="leve">Novo</span><span class="n num">3.599</span><span class="leve">O 1º disparo sai pela API oficial.</span></div></div>'
+aguarda = '<div class="aguarda"><b style="white-space:nowrap">Aguardando o 1º disparo</b><span class="n num">3.599</span><span class="leve">Saem 35 por dia pela API oficial</span><span class="lk2">Ver a lista</span></div>'
+kb = '<div class="kb">'
 for nome, n, cor, cards in cols:
     kb += f'<div class="col"><div class="colh"><div class="t">{nome}<span class="num">{fmt(n)}</span></div><div class="b" style="background:{cor}"></div></div>{"".join(cards)}<div class="mais">Ver mais {fmt(n-len(cards))}</div></div>'
 kb += '</div>'
 filt = '<div class="filtros"><span class="chip on">Todos</span><span class="chip">Minha fila<i class="num">2</i></span><span class="chip">Sem dono<i class="num">30</i></span><span class="sep"></span><span class="sel">Todas as campanhas ' + ic("chev",14) + '</span></div>'
 corpo = f'''<div class="app">{menu("Campanhas")}<main class="main">{topo("Campanhas", ABAS_P("q"), BUSCA)}
 <div class="kq"><section class="fila"><div class="cab"><h2>Quentes esperando dono · 30</h2><p>O mais antigo primeiro. Assumir abre a conversa.</p></div>{fila}<div class="fl" style="justify-content:center;color:var(--verde);font-weight:700">Ver os 30</div></section>
-<section style="display:flex;flex-direction:column;gap:12px;min-width:0">{filt}{kb}</section></div>
+<section style="display:flex;flex-direction:column;gap:12px;min-width:0">{filt}{aguarda}{kb}</section></div>
 {MAQ("9.482 leads nas campanhas ativas · cada coluna carrega 50 por vez · leitura às 15:40")}</main></div>'''
 (OUT/'t-quentes.html').write_text(pag('Quentes', corpo), encoding='utf-8')
 
