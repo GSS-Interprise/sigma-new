@@ -6,6 +6,7 @@
 //   - OAuth 2.1 (T7) para Claude.ai, celular e Desktop: esta mesma edge serve os metadados, o registro dinâmico,
 //     /authorize (manda para a tela de aprovação do Sigma), /token e /revoke. Regras em _shared/mcp-oauth.ts.
 // Deploy com verify_jwt = false (o token não é JWT do Supabase; a checagem é feita aqui).
+// Depois de todo deploy: `deno run -A scripts/agente-consistencia.ts` (bateria de consistência; CLAUDE.md do repo).
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { constituicao, guiaTexto, hashResultado, PROTOCOLO_VERSAO, renderizar } from "../_shared/agente/protocolo.ts";
 import { acessosDoUsuario, DOMINIOS, dominioBloqueado, exposto, validarRegistro as validarDominios } from "../_shared/agente/registro.ts";

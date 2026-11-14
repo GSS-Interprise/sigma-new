@@ -1,0 +1,66 @@
+{
+  "dominio": "escalas",
+  "nota": "Casos da bateria de consistência (scripts/agente-consistencia.ts). {hoje} e {amanha} viram datas de Brasília (AAAA-MM-DD) no argumento e no SQL. 'paridade': cada total da resposta tem que bater com o SQL independente sobre a view da tela (drescala_escala_v). Casos novos: perguntas reais do Heron (T6).",
+  "casos": [
+    {
+      "nome": "hospitais_semana",
+      "pergunta": "Quais hospitais têm plantão nos próximos 7 dias e quantos furos?",
+      "ferramenta": "escalas_hospitais",
+      "argumentos": {},
+      "paridade": {
+        "plantoes": "select count(*) from drescala_escala_v where data between '{hoje}' and '{hoje}'::date + 6",
+        "descobertos": "select count(*) from drescala_escala_v where furo and data between '{hoje}' and '{hoje}'::date + 6"
+      }
+    },
+    {
+      "nome": "furos_semana",
+      "pergunta": "Quais plantões estão descobertos esta semana?",
+      "ferramenta": "plantoes_descobertos",
+      "argumentos": {},
+      "paridade": {
+        "descobertos": "select count(*) from drescala_escala_v where furo and data between '{hoje}' and '{hoje}'::date + 7"
+      }
+    },
+    {
+      "nome": "hospital_amanha",
+      "pergunta": "Como está a escala do CEPON amanhã?",
+      "ferramenta": "escalas_do_hospital",
+      "argumentos": { "hospital": "cepon", "data_inicio": "{amanha}" },
+      "paridade": {
+        "plantoes": "select count(*) from drescala_escala_v where data = '{amanha}' and local_id in (select id from drescala_locais where nome ilike '%cepon%')",
+        "descobertos": "select count(*) from drescala_escala_v where furo and data = '{amanha}' and local_id in (select id from drescala_locais where nome ilike '%cepon%')"
+      }
+    },
+    {
+      "nome": "medico_amanha",
+      "pergunta": "Quais plantões dos médicos com 'Silva' no nome amanhã?",
+      "ferramenta": "quem_esta_escalado",
+      "argumentos": { "profissional": "silva", "data_inicio": "{amanha}", "data_fim": "{amanha}" },
+      "paridade": {
+        "plantoes": "select count(*) from drescala_escala_v where data = '{amanha}' and profissional_nome ilike '%silva%'"
+      }
+    },
+    {
+      "nome": "de_plantao_10h",
+      "pergunta": "Quem está de plantão hoje às 10h?",
+      "ferramenta": "quem_esta_escalado",
+      "argumentos": { "quando": "{hoje}T10:00" },
+      "paridade": {
+        "medicos": "select count(*) from drescala_escala_v where not furo and data between '{hoje}'::date - 1 and '{hoje}' and inicio <= '{hoje}T10:00-03:00' and fim > '{hoje}T10:00-03:00'",
+        "descobertos": "select count(*) from drescala_escala_v where furo and data between '{hoje}'::date - 1 and '{hoje}' and inicio <= '{hoje}T10:00-03:00' and fim > '{hoje}T10:00-03:00'"
+      }
+    },
+    {
+      "nome": "hospital_ambiguo",
+      "pergunta": "Escala do hospital 'hospital' amanhã (nome ambíguo: tem que pedir para escolher, sempre igual).",
+      "ferramenta": "escalas_do_hospital",
+      "argumentos": { "hospital": "hospital", "data_inicio": "{amanha}" }
+    },
+    {
+      "nome": "guia",
+      "pergunta": "Guia do domínio (o texto que o agente lê tem que ser o mesmo para todos).",
+      "ferramenta": "sigma_guia",
+      "argumentos": { "dominio": "escalas" }
+    }
+  ]
+}

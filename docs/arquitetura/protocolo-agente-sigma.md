@@ -260,7 +260,8 @@ Só admin (Configurações já é só admin). A `/conectar-claude` continua para
   `GET sigma-mcp/admin/protocolo`, o mesmo `guiaTexto` que o agente lê. Portão visual 0 falhas em 1440 e 1024, com
   comparação e guias abertos; as sub-abas de Configurações quebram linha abaixo de 1280 px.) Conectar (link, convite), quem acessa, conexões e revogar,
   protocolo e guia, perguntas e comparação. Portão visual e de UX.
-- [ ] **T5 — Bateria de consistência.** `scripts/agente-consistencia.ts` + `casos/escalas.json`; instrução no
+- [x] **T5 — Bateria de consistência.** (14/11: 7 casos de escalas, 7 de 7 ok contra a produção; testada com um
+  SQL errado de propósito, que ela acusa. Token MCP temporário de 30 min, revogado no fim. Regra no `CLAUDE.md`.) `scripts/agente-consistencia.ts` + `casos/escalas.json`; instrução no
   `CLAUDE.md` do repo: rodar depois de deploy do `sigma-mcp`.
 - [ ] **T6 — Validar escalas com o Heron** (= T6 de `claude-socios-gss.md`): conectar o Claude dele, 10 perguntas
   reais, ajustar glossário e rotas, virar `casos`.
