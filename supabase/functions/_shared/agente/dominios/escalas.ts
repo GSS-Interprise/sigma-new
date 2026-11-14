@@ -10,6 +10,8 @@ import { ErroFerramenta } from "../tipos.ts";
 
 const COLS = "id,data,inicio,fim,local_id,hospital,setor,profissional_nome,profissional_crm,situacao,tipo,furo";
 const LIMITE_LINHAS = 400;
+// Toda consulta termina em .order("id"): sem desempate, dois plantões no mesmo horário saíam em ordem diferente a cada
+// sincronização, e o mesmo fato virava outro texto e outro hash (achado na T2, 14/11).
 const FONTE = "Dr. Escala";
 
 async function frescor(ctx: Ctx): Promise<Fonte> {
@@ -81,7 +83,7 @@ async function escalasDoHospital(ctx: Ctx, a: Record<string, unknown>): Promise<
   if (!h.ids) throw new ErroFerramenta("informe o hospital");
   if (h.aviso) return aviso(h.aviso, fonte);
   const { data, error } = await ctx.svc.from("drescala_escala_v").select(COLS).in("local_id", h.ids)
-    .gte("data", ini).lte("data", fim).order("data").order("hospital").order("inicio").order("setor").limit(LIMITE_LINHAS);
+    .gte("data", ini).lte("data", fim).order("data").order("hospital").order("inicio").order("setor").order("id").limit(LIMITE_LINHAS);
   if (error) throw error;
   const rows = (data || []) as Plantao[];
   if (!rows.length) {
@@ -109,7 +111,7 @@ async function plantoesDescobertos(ctx: Ctx, a: Record<string, unknown>): Promis
   if (h.aviso) return aviso(h.aviso, fonte);
   let q = ctx.svc.from("drescala_escala_v").select(COLS).eq("furo", true).gte("data", ini).lte("data", fim);
   if (h.ids) q = q.in("local_id", h.ids);
-  const { data, error } = await q.order("data").order("hospital").order("inicio").limit(LIMITE_LINHAS);
+  const { data, error } = await q.order("data").order("hospital").order("inicio").order("setor").order("id").limit(LIMITE_LINHAS);
   if (error) throw error;
   const rows = (data || []) as Plantao[];
   if (!rows.length) return { resumo: `Nenhum plantão descoberto entre ${diaBR(ini)} e ${diaBR(fim)}.`, dados: { ini, fim, locais: h.ids, plantoes: [] }, totais: { descobertos: 0 }, fonte };
@@ -136,7 +138,7 @@ async function quemEstaEscalado(ctx: Ctx, a: Record<string, unknown>): Promise<R
     const f = filtroProfissional(p);
     q = q.ilike(f.coluna, f.padrao);
     if (h.ids) q = q.in("local_id", h.ids);
-    const { data, error } = await q.order("data").order("inicio").limit(LIMITE_LINHAS);
+    const { data, error } = await q.order("data").order("inicio").order("hospital").order("setor").order("id").limit(LIMITE_LINHAS);
     if (error) throw error;
     const rows = (data || []) as Plantao[];
     if (!rows.length) return { resumo: `Nenhum plantão de "${p}" entre ${diaBR(ini)} e ${diaBR(fim)}.`, dados: { p, ini, fim, plantoes: [] }, totais: { plantoes: 0 }, fonte };
@@ -157,7 +159,7 @@ async function quemEstaEscalado(ctx: Ctx, a: Record<string, unknown>): Promise<R
   let q = ctx.svc.from("drescala_escala_v").select(COLS).gte("data", somaDias(diaQ, -1)).lte("data", diaQ)
     .lte("inicio", iso).gt("fim", iso);
   if (h.ids) q = q.in("local_id", h.ids);
-  const { data, error } = await q.order("hospital").order("setor").limit(LIMITE_LINHAS);
+  const { data, error } = await q.order("hospital").order("setor").order("inicio").order("id").limit(LIMITE_LINHAS);
   if (error) throw error;
   const rows = (data || []) as Plantao[];
   const momento = momentoBR(quando);

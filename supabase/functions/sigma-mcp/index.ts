@@ -37,9 +37,14 @@ const resp = (b: unknown, s = 200, extra: Record<string, string> = {}) =>
 // Registro quebrado não sobe: melhor a edge falhar no deploy do que um sócio receber resposta de domínio errado.
 validarDominios(DOMINIOS);
 
-/** T1: quem passa no login (admin ou diretoria) vê todos os domínios ativos. T3 troca por agente_dominio_acessos. */
-function acessos(_s: Sessao) {
-  return acessosDoUsuario(DOMINIOS, "todos");
+/**
+ * Domínios que o usuário vê: união dos papéis dele em agente_dominio_acessos (T3). Lido a cada requisição, para a
+ * chave da aba de admin valer na hora. Falha de leitura = nenhum domínio (nunca abrir tudo por erro).
+ */
+async function acessos(svc: SupabaseClient, s: Sessao) {
+  const { data, error } = await svc.rpc("agente_dominios_do_usuario", { p_user: s.userId });
+  if (error) console.error("agente_dominios_do_usuario", error.message);
+  return acessosDoUsuario(DOMINIOS, new Set<string>(error ? [] : (data as string[] | null) ?? []));
 }
 
 // ---- autenticação --------------------------------------------------------------------------------------
@@ -216,8 +221,11 @@ async function tratar(svc: SupabaseClient, s: Sessao, m: Msg): Promise<unknown |
   const falha = (code: number, message: string) => ({ jsonrpc: "2.0", id: m.id ?? null, error: { code, message } });
   if (m.id === undefined || m.id === null) return null; // notificação (ex.: notifications/initialized): sem resposta
 
-  const ac = acessos(s);
+  const ac = await acessos(svc, s);
   const exp = exposto(ac);
+  // Auditoria (§3f): toda leitura de guia ou dado fica em mcp_chamadas com a versão do protocolo.
+  const auditar = (linha: Record<string, unknown>) =>
+    svc.from("mcp_chamadas").insert({ user_id: s.userId, token_id: s.tokenId, protocolo_versao: PROTOCOLO_VERSAO, ...linha });
 
   switch (m.method) {
     case "initialize": {
@@ -243,17 +251,21 @@ async function tratar(svc: SupabaseClient, s: Sessao, m: Msg): Promise<unknown |
       const nome = String(m.params?.name || "");
       const args = (m.params?.arguments || {}) as Record<string, unknown>;
       const t0 = Date.now();
+      const bloq = dominioBloqueado(ac, nome);
       const registrar = (extra: Record<string, unknown>) =>
-        svc.from("mcp_chamadas").insert({ user_id: s.userId, token_id: s.tokenId, metodo: "tools/call", ferramenta: nome, argumentos: args, duracao_ms: Date.now() - t0, ...extra });
+        auditar({ metodo: "tools/call", ferramenta: nome, argumentos: args, duracao_ms: Date.now() - t0,
+          dominio: exp.dominioDe.get(nome) ?? bloq?.id ?? null, ...extra });
       try {
         const f = exp.ferramentas.find((x) => x.nome === nome);
         if (!f) {
-          const bloq = dominioBloqueado(ac, nome);
           throw new ErroFerramenta(bloq ? `seu usuário não tem acesso a ${bloq.titulo}; peça ao administrador do Sigma` : `ferramenta desconhecida: ${nome}`);
         }
         const r = await f.executar({ svc, userId: s.userId, agora: new Date() }, args);
         const hash = await hashResultado(nome, r.dados);
-        await registrar({ ok: true });
+        // sigma_guia grava o domínio pedido (mostra o que as pessoas procuram, inclusive o "em breve").
+        const dominioGuia = nome === "sigma_guia" ? String(args.dominio ?? "").trim().toLowerCase() || null : null;
+        await registrar({ ok: true, resultado_hash: hash, fonte_atualizada_em: r.fonte.atualizado_em,
+          ...(dominioGuia ? { dominio: dominioGuia } : {}) });
         // structuredContent pequeno de propósito: há cliente que mostra só ele ao modelo, então leva o resumo e os
         // totais; a lista completa vai no texto. O hash prova que dois sócios receberam o mesmo fato.
         return ok({
@@ -278,6 +290,7 @@ async function tratar(svc: SupabaseClient, s: Sessao, m: Msg): Promise<unknown |
       const args = (m.params?.arguments || {}) as Record<string, string>;
       const falta = (p.argumentos ?? []).filter((x) => x.required && !String(args[x.name] ?? "").trim()).map((x) => x.name);
       if (falta.length) return falha(-32602, `faltam argumentos: ${falta.join(", ")}`);
+      await auditar({ metodo: "prompts/get", ferramenta: p.nome, argumentos: args, dominio: p.nome.split("_")[0] });
       return ok({ description: p.descricao, messages: [{ role: "user", content: { type: "text", text: p.texto(args) } }] });
     }
     case "resources/list":
@@ -293,6 +306,7 @@ async function tratar(svc: SupabaseClient, s: Sessao, m: Msg): Promise<unknown |
       const uri = String(m.params?.uri || "");
       const a = ac.find((x) => `sigma://guia/${x.dominio.id}` === uri && (x.liberado || x.dominio.status === "em_breve"));
       if (!a) return falha(-32002, `recurso não encontrado: ${uri}`);
+      await auditar({ metodo: "resources/read", ferramenta: uri, dominio: a.dominio.id });
       return ok({ contents: [{ uri, mimeType: "text/markdown", text: guiaTexto(a.dominio) }] });
     }
     default:

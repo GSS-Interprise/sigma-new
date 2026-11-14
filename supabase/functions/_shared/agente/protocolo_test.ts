@@ -88,7 +88,13 @@ Deno.test("exposto: transversais sempre; domínio bloqueado some e é reconhecid
   assertEquals(dominioBloqueado(sem, "nao_existe"), null);
 });
 
-const ctx: Ctx = { svc: null, userId: "u", agora: new Date("2026-11-14T12:00:00Z") };
+Deno.test("acessos: só o que a tabela libera; em_breve nunca, mesmo com a linha", () => {
+  const ac = acessosDoUsuario(DOMINIOS, new Set(["escalas", "contratos", "inexistente"]));
+  assertEquals(ac.filter((a) => a.liberado).map((a) => a.dominio.id), ["escalas"]);
+  assertEquals(acessosDoUsuario(DOMINIOS, new Set(["contratos"])).filter((a) => a.liberado).length, 0);
+});
+
+const ctx: Ctx ={ svc: null, userId: "u", agora: new Date("2026-11-14T12:00:00Z") };
 
 Deno.test("sigma_guia: devolve o guia, nega sem acesso e recusa assunto desconhecido", async () => {
   const guia = (ac: ReturnType<typeof acessosDoUsuario>) => exposto(ac).ferramentas.find((f) => f.nome === "sigma_guia")!;

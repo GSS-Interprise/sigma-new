@@ -244,10 +244,16 @@ Só admin (Configurações já é só admin). A `/conectar-claude` continua para
   `dominios/escalas.ts`), `sigma-mcp` passa a montar `tools/list`/`tools/call` pelo registro, `instructions` =
   constituição, `sigma_dominios` e `sigma_guia`, `structuredContent` + `outputSchema`. Testes de `renderizar`,
   registro e tempo. As 4 ferramentas de escala respondem o mesmo de antes.
-- [ ] **T2 — Resources, prompts e auditoria.** `capabilities.resources`/`prompts`, `sigma://guia/<id>`, prompts
+- [x] **T2 — Resources, prompts e auditoria.** (14/11: resources e prompts entraram na T1; migration
+  `20261114120000_agente_auditoria_acessos.sql` grava domínio, versão, hash e hora do dado em toda chamada de
+  ferramenta, prompt e guia. Achado no caminho: `quem_esta_escalado` não tinha desempate na ordem e o mesmo dado saía
+  em outra ordem a cada sincronização; toda consulta de escala agora termina em `order("id")`.) `capabilities.resources`/`prompts`, `sigma://guia/<id>`, prompts
   padrão de escalas; migration de `mcp_chamadas` (+ `dominio`, `protocolo_versao`, `resultado_hash`,
   `fonte_atualizada_em`).
-- [ ] **T3 — Permissão por domínio.** Migration `agente_dominio_acessos` + RPC de admin para liberar/bloquear, filtro
+- [x] **T3 — Permissão por domínio.** (14/11: `agente_dominio_acessos` semeada com admin e diretoria em escalas,
+  `agente_dominios_do_usuario` só para a edge, `agente_definir_acesso` só para admin; `tests/agente_acessos.sql`
+  TESTE_OK; na produção, admin sem escalas viu só `sigma_dominios`/`sigma_guia`, erro claro na ferramenta e a
+  constituição listando "sem acesso".) Migration `agente_dominio_acessos` + RPC de admin para liberar/bloquear, filtro
   na edge, teste SQL (`supabase/tests/agente_acessos.sql`) e teste da edge (usuário sem domínio).
 - [ ] **T4 — Aba Configurações › Agente do Sigma.** Conectar (link, convite), quem acessa, conexões e revogar,
   protocolo e guia, perguntas e comparação. Portão visual e de UX.

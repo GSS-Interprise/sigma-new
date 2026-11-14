@@ -51,8 +51,8 @@ export function validarRegistro(dominios: Dominio[]): void {
 }
 
 /**
- * Quais domínios o usuário vê. T1: quem passa pela autenticação do sigma-mcp (admin ou diretoria) vê todos os
- * ativos. T3 troca `liberados` pela tabela agente_dominio_acessos (papel × domínio).
+ * Quais domínios o usuário vê. O sigma-mcp passa em `liberados` o que a tabela agente_dominio_acessos (papel × domínio)
+ * dá para os papéis dele; "todos" fica para teste. Domínio em_breve nunca é liberado, mesmo se a tabela tiver a linha.
  */
 export function acessosDoUsuario(dominios: Dominio[], liberados: Set<string> | "todos"): AcessoDominio[] {
   return dominios.map((d) => ({ dominio: d, liberado: d.status === "ativo" && (liberados === "todos" || liberados.has(d.id)) }));
