@@ -15,6 +15,7 @@ import { MatrizPermissoesTab } from "@/components/configuracoes/MatrizPermissoes
 import { WebhookCentralTab } from "@/components/configuracoes/WebhookCentralTab";
 import { RedesSociaisTab } from "@/components/configuracoes/RedesSociaisTab";
 import { MotorIaTab } from "@/components/configuracoes/MotorIaTab";
+import { AgenteSigmaTab } from "@/components/configuracoes/AgenteSigmaTab";
 import { usePermissions } from "@/hooks/usePermissions";
 
 /**
@@ -45,7 +46,9 @@ const GRUPOS = {
       // Fase 9.2: LinkedIn e Instagram da equipe pela Unipile (Hosted Auth).
       { value: "linkedin", label: "LinkedIn e Instagram", Component: RedesSociaisTab },
       // Hermes na VPS da GSS pela assinatura Max do Claude (docs/arquitetura/motor-ia-hermes-claude.md).
-      { value: "motor-ia", label: "Motor de IA (Claude)", Component: MotorIaTab },
+      { value: "motor-ia", label: "Motor de IA", Component: MotorIaTab },
+      // Claude dos sócios: quem conecta, o que cada papel vê, perguntas e o guia (docs/arquitetura/protocolo-agente-sigma.md).
+      { value: "agente", label: "Agente do Sigma", Component: AgenteSigmaTab },
       { value: "tokens", label: "API Tokens", Component: ApiTokensTab },
       { value: "webhooks", label: "Webhooks", Component: WebhookCentralTab },
     ],
@@ -137,10 +140,11 @@ export default function Configuracoes() {
 
         {/* Sub-abas do grupo ativo */}
         <Tabs value={abaAtiva} onValueChange={setAbaAtiva}>
-          {/* no celular as sub-abas rolam de lado em vez de espremer o texto */}
+          {/* Abaixo de 1280 px as sub-abas quebram linha: com 6 em 1024 px a grade cortava o texto ou escondia a
+              última aba atrás de rolagem lateral (14/11). Em telas largas, grade de colunas iguais. */}
           <TabsList
-            className="flex w-full justify-start overflow-x-auto sm:grid"
-            style={{ gridTemplateColumns: `repeat(${grupo.abas.length}, minmax(0, 1fr))` }}
+            className="flex h-auto w-full flex-wrap justify-start xl:grid"
+            style={{ gridTemplateColumns: `repeat(${grupo.abas.length}, minmax(max-content, 1fr))` }}
           >
             {grupo.abas.map((aba) => (
               <TabsTrigger key={aba.value} value={aba.value} className="shrink-0 sm:shrink">

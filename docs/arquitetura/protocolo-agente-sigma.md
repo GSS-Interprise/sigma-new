@@ -255,7 +255,10 @@ Só admin (Configurações já é só admin). A `/conectar-claude` continua para
   TESTE_OK; na produção, admin sem escalas viu só `sigma_dominios`/`sigma_guia`, erro claro na ferramenta e a
   constituição listando "sem acesso".) Migration `agente_dominio_acessos` + RPC de admin para liberar/bloquear, filtro
   na edge, teste SQL (`supabase/tests/agente_acessos.sql`) e teste da edge (usuário sem domínio).
-- [ ] **T4 — Aba Configurações › Agente do Sigma.** Conectar (link, convite), quem acessa, conexões e revogar,
+- [x] **T4 — Aba Configurações › Agente do Sigma.** (14/11: `AgenteSigmaTab.tsx` em Canais & Integrações;
+  dados por `agente_admin_painel`/`agente_admin_revogar` (migration 20261114130000) e guia por
+  `GET sigma-mcp/admin/protocolo`, o mesmo `guiaTexto` que o agente lê. Portão visual 0 falhas em 1440 e 1024, com
+  comparação e guias abertos; as sub-abas de Configurações quebram linha abaixo de 1280 px.) Conectar (link, convite), quem acessa, conexões e revogar,
   protocolo e guia, perguntas e comparação. Portão visual e de UX.
 - [ ] **T5 — Bateria de consistência.** `scripts/agente-consistencia.ts` + `casos/escalas.json`; instrução no
   `CLAUDE.md` do repo: rodar depois de deploy do `sigma-mcp`.

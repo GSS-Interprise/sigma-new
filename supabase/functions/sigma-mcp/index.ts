@@ -212,6 +212,26 @@ async function revogar(svc: SupabaseClient, req: Request): Promise<Response> {
   return new Response(null, { status: 200, headers: cors });
 }
 
+// ---- aba de admin (T4) ---------------------------------------------------------------------------------
+// Configurações › Agente do Sigma mostra o protocolo pelo MESMO código que o agente lê (constituicao, guiaTexto):
+// o admin vê exatamente o texto que chega ao Claude. Login do Sigma (JWT do Supabase), só admin.
+
+async function protocoloAdmin(svc: SupabaseClient, req: Request): Promise<Response> {
+  const jwt = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
+  const { data: u } = await svc.auth.getUser(jwt);
+  if (!u?.user) return resp({ error: "login_required" }, 401);
+  const { data: admin } = await svc.rpc("is_admin", { _user_id: u.user.id });
+  if (!admin) return resp({ error: "sem_permissao" }, 403);
+  const ctx = { svc, userId: u.user.id, agora: new Date() };
+  const ac = acessosDoUsuario(DOMINIOS, "todos");
+  const dominios = await Promise.all(DOMINIOS.map(async (d) => ({
+    id: d.id, titulo: d.titulo, status: d.status, versao: d.versao, resumo: d.resumo,
+    ferramentas: d.ferramentas.map((f) => f.nome), guia: guiaTexto(d),
+    fonte: d.status === "ativo" && d.frescor ? await d.frescor(ctx).catch(() => null) : null,
+  })));
+  return resp({ protocolo: PROTOCOLO_VERSAO, endereco: BASE, constituicao: constituicao(ac), dominios });
+}
+
 // ---- JSON-RPC ------------------------------------------------------------------------------------------
 
 type Msg = { jsonrpc: "2.0"; id?: string | number | null; method?: string; params?: Record<string, unknown> };
@@ -331,6 +351,7 @@ Deno.serve(async (req) => {
   if (req.method === "POST" && r === "/oauth/aprovar") return aprovar(svc, req);
   if (req.method === "POST" && r === "/token") return token(svc, req);
   if (req.method === "POST" && r === "/revoke") return revogar(svc, req);
+  if (req.method === "GET" && r === "/admin/protocolo") return protocoloAdmin(svc, req);
   if (r !== "/") return resp({ error: "not_found" }, 404);
 
   // Sem stream SSE do servidor: GET responde 405, como a especificação permite.

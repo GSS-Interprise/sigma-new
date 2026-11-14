@@ -74,5 +74,41 @@ begin
     raise exception 'FALHOU: auditoria não gravou as colunas novas';
   end if;
 
+  -- 6) Painel da aba (migration 20261114130000): só admin; traz as 5 partes; revogar exige conexão existente.
+  perform set_config('request.jwt.claims', json_build_object('sub', v_comum, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  begin
+    perform agente_admin_painel(7);
+    raise exception 'FALHOU: usuário comum abriu o painel do agente';
+  exception when others then
+    if sqlerrm not like '%sem_permissao%' then raise; end if;
+  end;
+  begin
+    perform agente_admin_revogar(gen_random_uuid());
+    raise exception 'FALHOU: usuário comum revogou conexão';
+  exception when others then
+    if sqlerrm not like '%sem_permissao%' then raise; end if;
+  end;
+  reset role;
+  perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  declare p jsonb;
+  begin
+    p := agente_admin_painel(7);
+    if not (p ? 'papeis' and p ? 'acessos' and p ? 'conexoes' and p ? 'chamadas' and p ? 'totais') then
+      raise exception 'FALHOU: painel sem alguma parte: %', (select jsonb_object_keys(p) limit 1);
+    end if;
+    if not exists (select 1 from jsonb_array_elements(p -> 'chamadas') c where c ->> 'ferramenta' = 'teste_sql') then
+      raise exception 'FALHOU: painel não trouxe a chamada de teste';
+    end if;
+    begin
+      perform agente_admin_revogar(gen_random_uuid());
+      raise exception 'FALHOU: revogou conexão inexistente';
+    exception when others then
+      if sqlerrm not like '%conexao_inexistente%' then raise; end if;
+    end;
+  end;
+  reset role;
+
   raise exception 'TESTE_OK';
 end $$;
