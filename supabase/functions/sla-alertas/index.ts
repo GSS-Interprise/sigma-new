@@ -464,7 +464,11 @@ async function ligar(admin: any, para: string, alertaId: string) {
     // Celular antigo de 8 dígitos (como o WhatsApp guarda) não existe na rede de voz: ganha o 9. Em 12/11 a ligação
     // de teste para 55 54 8435-1512 falhou por isso.
     body: new URLSearchParams({
-      To: `+${comNove(para)}`, From: de, Timeout: "30", MachineDetection: "Enable",
+      // AsyncAmd: a voz começa assim que atende e a detecção de caixa postal roda em paralelo (sla-voz p=amd derruba
+      // a ligação se for máquina). Sem isso o Twilio ficava segundos em silêncio analisando e quem atendia desligava
+      // achando que era engano: teste com o Raul em 13/11, iPhone, "recebi a ligação mas não falou nada".
+      To: `+${comNove(para)}`, From: de, Timeout: "30", MachineDetection: "Enable", AsyncAmd: "true",
+      AsyncAmdStatusCallback: `${base}&p=amd`, AsyncAmdStatusCallbackMethod: "POST",
       Url: `${base}&p=inicio`, StatusCallback: `${base}&p=status`, StatusCallbackEvent: "completed",
     }),
   });

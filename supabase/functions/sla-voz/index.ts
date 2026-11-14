@@ -1,7 +1,8 @@
 // Roteiro da ligação de alerta de SLA de laudos (Twilio Voice chama esta função; não há usuário logado).
 // Fluxo (cada chamada do Twilio traz ?a=<alerta_id>&t=<token>&p=<passo>):
-//   p=inicio  — Twilio já fez a detecção de máquina (MachineDetection=Enable). Máquina/caixa postal: desliga e
-//               registra como não atendida. Pessoa: fala o alerta e pede "aperte 1" (Gather).
+//   p=inicio  — atendeu: fala o alerta na hora e pede "aperte 1" (Gather). A detecção de máquina roda em paralelo
+//               (AsyncAmd, desde 13/11: com a detecção antes da fala, quem atendia ouvia segundos de silêncio).
+//   p=amd     — resultado da detecção: caixa postal/máquina derruba a ligação e fica registrada como não atendida.
 //   p=tecla   — Digits=1: marca o exame como assumido e agradece. Outra tecla ou nada: repete uma vez.
 //   p=status  — StatusCallback no fim da chamada: completed/no-answer/busy/failed vão para o alerta.
 // Atender e desligar não conta: só a tecla 1 para os avisos (decisão de 12/11, após teste que caiu na caixa postal).
@@ -39,10 +40,27 @@ Deno.serve(async (req) => {
     : "Atenção, plantão da radiologia. Alerta de prazo de laudo da G S S. Confira o PACS.";
   const qs = (p: string) => esc(`${BASE}?a=${alertaId}&t=${u.searchParams.get("t")}&p=${p}`);
 
+  if (passo === "amd") {
+    const quem = campo("AnsweredBy");
+    if (quem.startsWith("machine") || quem === "fax") {
+      await admin.from("sla_alertas").update({ status: "falhou", erro: `caixa postal (${quem})` }).eq("id", alertaId).neq("status", "respondido");
+      // Derruba a ligação: o recado não deve ficar gravado na caixa postal (e a escada segue para o próximo).
+      const sid = Deno.env.get("TWILIO_ACCOUNT_SID") ?? "", tok = Deno.env.get("TWILIO_AUTH_TOKEN") ?? "", call = campo("CallSid");
+      if (sid && tok && call) {
+        await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Calls/${call}.json`, {
+          method: "POST", headers: { Authorization: "Basic " + btoa(`${sid}:${tok}`), "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ Status: "completed" }),
+        }).catch(() => null);
+      }
+    }
+    return new Response("ok");
+  }
+
   if (passo === "status") {
     const st = campo("CallStatus"), quem = campo("AnsweredBy");
-    // respondido (tecla 1) não é rebaixado pelo status final da chamada
-    if (al.status !== "respondido") {
+    // respondido (tecla 1) não é rebaixado pelo status final; caixa postal já registrada pelo p=amd também não.
+    const { data: atual } = await admin.from("sla_alertas").select("erro").eq("id", alertaId).maybeSingle();
+    if (al.status !== "respondido" && !String(atual?.erro || "").startsWith("caixa postal")) {
       // "unknown": o Twilio não soube dizer se foi pessoa ou caixa postal (teste de 13/11 caiu assim). Conta como
       // atendida sem a tecla 1; para a escada não muda nada (só a tecla 1 para), muda só o que a tela mostra.
       const atendeu = st === "completed" && (quem === "human" || quem === "" || quem === "unknown");
@@ -70,11 +88,6 @@ Deno.serve(async (req) => {
     return xml(`<Say ${VOZ}>Nenhuma tecla recebida. Vamos avisar o próximo da escala.</Say><Hangup/>`);
   }
 
-  // inicio: a detecção de máquina já rodou antes de o Twilio chamar esta URL
-  const quem = campo("AnsweredBy");
-  if (quem.startsWith("machine") || quem === "fax") {
-    await admin.from("sla_alertas").update({ status: "falhou", erro: `caixa postal (${quem})` }).eq("id", alertaId).neq("status", "respondido");
-    return xml(`<Hangup/>`);
-  }
+  // inicio: fala na hora (a detecção de caixa postal chega depois, em p=amd)
   return xml(`<Gather numDigits="1" timeout="8" action="${qs("tecla")}"><Say ${VOZ}>${esc(texto)} Aperte 1 para assumir o laudo.</Say></Gather><Redirect method="POST">${qs("tecla")}</Redirect>`);
 });
