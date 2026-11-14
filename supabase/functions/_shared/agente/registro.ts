@@ -5,6 +5,7 @@ import type { Ctx, Dominio, Ferramenta, Fonte, PromptPadrao, Resultado } from ".
 import { ErroFerramenta } from "./tipos.ts";
 import { type AcessoDominio, guiaTexto, PROTOCOLO_VERSAO } from "./protocolo.ts";
 import { escalas } from "./dominios/escalas.ts";
+import { campanhas } from "./dominios/campanhas.ts";
 
 /** Domínio anunciado mas sem ferramenta: o agente sabe que existe e diz "ainda não disponível". */
 function emBreve(id: string, titulo: string, resumo: string): Dominio {
@@ -17,7 +18,7 @@ function emBreve(id: string, titulo: string, resumo: string): Dominio {
 /** Ordem do roteiro (§3i). Campanhas, contratos, licitações e CRM entram pelo mesmo molde do de escalas. */
 export const DOMINIOS: Dominio[] = [
   escalas,
-  emBreve("campanhas", "Campanhas de prospecção", "campanhas ativas, funil, respostas e disparos por campanha."),
+  campanhas,
   emBreve("contratos", "Contratos", "contratos vigentes, vencimentos, aditivos e itens."),
   emBreve("licitacoes", "Licitações", "licitações em disputa, prazos, resultados e concorrentes."),
   emBreve("crm", "CRM geral", "ficha de médicos e hospitais, vagas abertas e histórico do lead."),

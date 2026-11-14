@@ -110,5 +110,23 @@ begin
   end;
   reset role;
 
+  -- 7) Domínio campanhas (migration 20261114140000): as RPCs do agente são só da edge (service_role).
+  perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  begin
+    perform * from agente_campanhas_disparos_dia(current_date);
+    raise exception 'FALHOU: authenticated chamou agente_campanhas_disparos_dia';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    perform * from agente_campanhas_etapas(null);
+    raise exception 'FALHOU: authenticated chamou agente_campanhas_etapas';
+  exception when insufficient_privilege then null;
+  end;
+  reset role;
+  if (select coalesce(sum(medicos), 0) from agente_campanhas_etapas(null)) <> (select count(*) from vw_acompanhamento_kanban) then
+    raise exception 'FALHOU: etapas do agente não somam o Kanban';
+  end if;
+
   raise exception 'TESTE_OK';
 end $$;

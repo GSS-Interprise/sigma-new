@@ -265,7 +265,11 @@ Só admin (Configurações já é só admin). A `/conectar-claude` continua para
   `CLAUDE.md` do repo: rodar depois de deploy do `sigma-mcp`.
 - [ ] **T6 — Validar escalas com o Heron** (= T6 de `claude-socios-gss.md`): conectar o Claude dele, 10 perguntas
   reais, ajustar glossário e rotas, virar `casos`.
-- [ ] **T7 — Domínio Campanhas** pelo molde da §3i.
+- [x] **T7 — Domínio Campanhas** pelo molde da §3i. (14/11: `dominios/campanhas.ts`, protocolo v1.1.0;
+  `campanhas_ativas`, `campanhas_funil`, `campanhas_disparos_dia`, `campanhas_acompanhamento` e 2 prompts. Números
+  da mesma RPC do Resumo da campanha (`campanha_painel_dono`); disparos do dia e etapas do Kanban na migration
+  `20261114140000_agente_campanhas.sql`. Motivo de falha traduzido pela cópia de `motivoLegivel` (teste compara com
+  a tela). 7 casos em `casos/campanhas.json`, 14 de 14 na bateria. Liberado só para admin; a diretoria liga na aba.)
 - [ ] **T8 — Domínio Contratos** pelo molde.
 - [ ] **T9 — Domínio Licitações** pelo molde (com aviso de frescor do `pncp_mirror`).
 - [ ] **T10 — Domínio CRM** pelo molde, depois da decisão LGPD.
@@ -296,7 +300,8 @@ Só admin (Configurações já é só admin). A `/conectar-claude` continua para
 
 1. Os 4 conectados são todos do papel `diretoria`? Alguém de outro papel (ex.: `coordenador_escalas` só com
    escalas) vai conectar?
-2. "Campanha ativa" = status `ativa` com disparo nos últimos 7 dias, ou só o status? E "convertido", que hoje está
-   quase vazio no banco: o agente mostra com o aviso ou esconde até o conserto?
+2. ~~"Campanha ativa" e "convertido"~~ — **decidido 14/11:** ativa = prospecção com status `ativa` (pausadas,
+   finalizadas e e-mail marketing só se pedirem); convertido = marcado à mão pela equipe ou encaminhado para
+   Contratos (etapa `na_escala`, que grava o mesmo status `convertido`). 42 hoje.
 3. Contratos: o agente mostra valor (mensal, global, por item) ou só vigência, objeto e situação?
 4. CRM: o que sai sobre o médico (nome e CRM sim; telefone e e-mail não?) — depende da decisão LGPD do Heron.

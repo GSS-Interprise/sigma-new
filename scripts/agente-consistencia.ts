@@ -30,14 +30,22 @@ if (!sbp) {
 }
 
 async function sql<T = Record<string, unknown>>(q: string): Promise<T[]> {
-  const r = await fetch(`https://api.supabase.com/v1/projects/${REF}/database/query`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${sbp}`, "Content-Type": "application/json; charset=utf-8" },
-    body: JSON.stringify({ query: q }),
-  });
-  const corpo = await r.json();
-  if (!r.ok || !Array.isArray(corpo)) throw new Error(`SQL falhou: ${JSON.stringify(corpo).slice(0, 300)}`);
-  return corpo as T[];
+  // A Management API às vezes responde "Failed to retrieve project" ou 429 em rajada: 3 tentativas antes de falhar.
+  let ultimo = "";
+  for (let i = 0; i < 3; i++) {
+    if (i) await new Promise((r) => setTimeout(r, 2000 * i));
+    const r = await fetch(`https://api.supabase.com/v1/projects/${REF}/database/query`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${sbp}`, "Content-Type": "application/json; charset=utf-8" },
+      body: JSON.stringify({ query: q }),
+    });
+    const corpo = await r.json().catch(() => null);
+    if (r.ok && Array.isArray(corpo)) return corpo as T[];
+    ultimo = JSON.stringify(corpo).slice(0, 300);
+    // Erro do próprio SQL (sintaxe, permissão) não melhora tentando de novo.
+    if (r.status === 400 && /ERROR:/.test(ultimo)) break;
+  }
+  throw new Error(`SQL falhou: ${ultimo}`);
 }
 
 const lit = (s: string) => `'${s.replace(/'/g, "''")}'`;
@@ -51,8 +59,9 @@ const somaDias = (iso: string, n: number) => {
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
 };
-const datas = { hoje: hojeBR(), amanha: somaDias(hojeBR(), 1) };
-const trocar = (s: string) => s.replaceAll("{hoje}", datas.hoje).replaceAll("{amanha}", datas.amanha);
+const datas = { hoje: hojeBR(), amanha: somaDias(hojeBR(), 1), ontem: somaDias(hojeBR(), -1) };
+const trocar = (s: string) =>
+  s.replaceAll("{hoje}", datas.hoje).replaceAll("{amanha}", datas.amanha).replaceAll("{ontem}", datas.ontem);
 const trocarArgs = (a: Record<string, unknown>) =>
   Object.fromEntries(Object.entries(a).map(([k, v]) => [k, typeof v === "string" ? trocar(v) : v]));
 

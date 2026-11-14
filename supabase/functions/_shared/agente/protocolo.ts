@@ -8,7 +8,7 @@ import { momentoBR } from "./tempo.ts";
  * Versão do protocolo. Sobe a cada domínio novo (minor), definição que muda número (minor) ou formato de resposta
  * (major). Vai no rodapé de toda resposta e no serverInfo: dois sócios com números diferentes comparam o rodapé.
  */
-export const PROTOCOLO_VERSAO = "1.0.0";
+export const PROTOCOLO_VERSAO = "1.1.0";
 
 export type AcessoDominio = { dominio: Dominio; liberado: boolean };
 

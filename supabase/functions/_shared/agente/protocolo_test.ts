@@ -4,6 +4,9 @@ import { canonico, constituicao, guiaTexto, hashResultado, PROTOCOLO_VERSAO, ren
 import { acessosDoUsuario, DOMINIOS, dominioBloqueado, exposto, validarRegistro } from "./registro.ts";
 import type { Ctx, Dominio } from "./tipos.ts";
 import { escalas } from "./dominios/escalas.ts";
+import { acharCampanhas, campanhas, linhaFunil } from "./dominios/campanhas.ts";
+import { agruparMotivos, motivoLegivel } from "./motivos.ts";
+import { motivoLegivel as motivoTela } from "../../../../src/lib/textoDono.ts";
 import { hojeBR, lerData } from "./tempo.ts";
 
 const fonte = { nome: "Dr. Escala", atualizado_em: "2026-11-14T09:06:00Z" };
@@ -36,7 +39,8 @@ Deno.test("constituição: curta, lista disponíveis, sem acesso e em breve", ()
   const c = constituicao(ac);
   assert(c.length < 2500, `constituição com ${c.length} caracteres`);
   assertMatch(c, /- escalas: /);
-  assertMatch(c, /Ainda não disponíveis: campanhas/);
+  assertMatch(c, /- campanhas: /);
+  assertMatch(c, /Ainda não disponíveis: contratos/);
   assert(!c.includes("Sem acesso"));
   const sem = constituicao(acessosDoUsuario(DOMINIOS, new Set()));
   assertMatch(sem, /Sem acesso para o seu usuário .*: escalas/);
@@ -78,7 +82,7 @@ Deno.test("exposto: transversais sempre; domínio bloqueado some e é reconhecid
   assertEquals(nomes.slice(0, 2), ["sigma_dominios", "sigma_guia"]);
   assert(nomes.includes("plantoes_descobertos"));
   assertEquals(todos.dominioDe.get("quem_esta_escalado"), "escalas");
-  assertEquals(todos.prompts.length, escalas.prompts.length);
+  assertEquals(todos.prompts.length, escalas.prompts.length + campanhas.prompts.length);
 
   const sem = acessosDoUsuario(DOMINIOS, new Set());
   const exp = exposto(sem);
@@ -116,4 +120,30 @@ Deno.test("tempo: 'hoje' é o dia de Brasília, não o do UTC", () => {
   // 01:30 UTC de 15/11 ainda é 14/11 em Brasília.
   assertEquals(hojeBR(new Date("2026-11-15T01:30:00Z")), "2026-11-14");
   assertEquals(lerData("amanhã", undefined, "2026-11-14"), "2026-11-15");
+});
+
+Deno.test("campanhas: nome pelo jeito que o sócio fala; exato vence trecho; vários = perguntar", () => {
+  const cs = [{ nome: "PEDIATRIA " }, { nome: "Pediatria UTI Chapecó" }, { nome: "Ginecologia e Obstetricia" }, { nome: "ANESTESIO - SMO " }];
+  assertEquals(acharCampanhas(cs, "pediatria").map((c) => c.nome), ["PEDIATRIA "]);
+  assertEquals(acharCampanhas(cs, "chapeco").length, 1);
+  assertEquals(acharCampanhas(cs, "obstetrícia").length, 1);
+  assertEquals(acharCampanhas(cs, "smo anestesio").length, 1);
+  assertEquals(acharCampanhas(cs, "ped").length, 2);
+  assertEquals(acharCampanhas(cs, "cardio").length, 0);
+});
+
+Deno.test("campanhas: linha do funil usa as palavras do glossário", () => {
+  const l = linhaFunil({ universo_cfm: null, na_lista: 10, enviados: 8, entregues: 7, responderam: 3, interessados: 2, convertidos: 1, falharam: 1, sem_whatsapp: 0, aguardando_envio: 2, ultimo_envio: null });
+  assertEquals(l, "na lista 10 · enviados 8 · responderam 3 · interessados 2 · convertidos 1");
+  for (const t of ["Enviado", "Respondeu", "Interessado", "Convertido"]) assert(campanhas.guia.glossario.some((g) => g.termo === t), t);
+  for (const p of campanhas.prompts) assertMatch(p.texto({ campanha: "x" }), /^Use o Sigma\. Chame sigma_guia com dominio=campanhas/);
+});
+
+Deno.test("motivos: a cópia da edge traduz igual à tela e a soma não muda", () => {
+  for (const m of ["Business Account locked", "131049 healthy ecosystem engagement", "Message undeliverable", "re-engagement 24 hours", "User's number is part of an experiment", "sem detalhe"]) {
+    assertEquals(motivoLegivel(m), motivoTela(m), m);
+  }
+  const g = agruparMotivos([{ motivo: "Message undeliverable", n: 5 }, { motivo: "Business Account locked", n: 5 }, { motivo: "x", n: 2 }]);
+  assertEquals(g.map((x) => x.motivo), ["Conta da Meta bloqueada (pagamento)", "Número sem WhatsApp ou inválido", "Outros motivos"]);
+  assertEquals(g.reduce((s, x) => s + x.n, 0), 12);
 });

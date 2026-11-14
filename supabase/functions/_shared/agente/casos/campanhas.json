@@ -1,0 +1,67 @@
+{
+  "dominio": "campanhas",
+  "nota": "Casos da bateria de consistência (scripts/agente-consistencia.ts). A paridade usa SQL direto em campanha_leads e sigzap_messages, sem passar pelas RPCs que as ferramentas usam. Disparos usam {ontem}: o dia de hoje ainda está mudando enquanto a bateria roda.",
+  "casos": [
+    {
+      "nome": "ativas",
+      "pergunta": "Quais campanhas de prospecção estão ativas e como estão?",
+      "ferramenta": "campanhas_ativas",
+      "argumentos": {},
+      "paridade": {
+        "campanhas": "select count(*) from campanhas where tipo_campanha = 'prospeccao' and status = 'ativa'",
+        "na_lista": "select count(*) from campanha_leads cl join campanhas c on c.id = cl.campanha_id where c.tipo_campanha = 'prospeccao' and c.status = 'ativa'",
+        "convertidos": "select count(*) from campanha_leads cl join campanhas c on c.id = cl.campanha_id where c.tipo_campanha = 'prospeccao' and c.status = 'ativa' and cl.status = 'convertido'"
+      }
+    },
+    {
+      "nome": "pausadas",
+      "pergunta": "E as pausadas?",
+      "ferramenta": "campanhas_ativas",
+      "argumentos": { "situacao": "pausadas" },
+      "paridade": {
+        "campanhas": "select count(*) from campanhas where tipo_campanha = 'prospeccao' and status = 'pausada'"
+      }
+    },
+    {
+      "nome": "funil_pediatria",
+      "pergunta": "Como está a campanha de Pediatria?",
+      "ferramenta": "campanhas_funil",
+      "argumentos": { "campanha": "pediatria" },
+      "paridade": {
+        "na_lista": "select count(*) from campanha_leads cl join campanhas c on c.id = cl.campanha_id where c.tipo_campanha = 'prospeccao' and lower(trim(c.nome)) = 'pediatria'",
+        "convertidos": "select count(*) from campanha_leads cl join campanhas c on c.id = cl.campanha_id where c.tipo_campanha = 'prospeccao' and lower(trim(c.nome)) = 'pediatria' and cl.status = 'convertido'"
+      }
+    },
+    {
+      "nome": "disparos_ontem",
+      "pergunta": "Quantos médicos receberam a primeira mensagem ontem?",
+      "ferramenta": "campanhas_disparos_dia",
+      "argumentos": { "data": "{ontem}" },
+      "paridade": {
+        "enviados": "select count(*) from (select campanha_lead_id, min(sent_at) primeiro, bool_and(message_status = 'failed') so_falhou from sigzap_messages where from_me and campanha_lead_id is not null group by 1) x where not so_falhou and (primeiro at time zone 'America/Sao_Paulo')::date = '{ontem}'",
+        "falharam": "select count(*) from (select campanha_lead_id, min(sent_at) primeiro, bool_and(message_status = 'failed') so_falhou from sigzap_messages where from_me and campanha_lead_id is not null group by 1) x where so_falhou and (primeiro at time zone 'America/Sao_Paulo')::date = '{ontem}'"
+      }
+    },
+    {
+      "nome": "kanban_todas",
+      "pergunta": "Quantos médicos convertidos e em atendimento no total?",
+      "ferramenta": "campanhas_acompanhamento",
+      "argumentos": {},
+      "paridade": {
+        "convertido": "select count(*) from campanha_leads where status = 'convertido' or etapa_acompanhamento = 'na_escala'"
+      }
+    },
+    {
+      "nome": "campanha_ambigua",
+      "pergunta": "Como está a campanha 'ped'? (casa com várias: tem que pedir para escolher)",
+      "ferramenta": "campanhas_funil",
+      "argumentos": { "campanha": "ped" }
+    },
+    {
+      "nome": "guia",
+      "pergunta": "Guia do domínio campanhas.",
+      "ferramenta": "sigma_guia",
+      "argumentos": { "dominio": "campanhas" }
+    }
+  ]
+}
