@@ -113,8 +113,18 @@ export function AbaEscalaPlantao() {
     onError: (e) => toast.error(`Não mudou: ${(e as Error).message}`),
   });
 
+  const ligarEscada = useMutation({
+    mutationFn: async (v: boolean) => { const { error } = await db.rpc("sla_escada_ligar", { p_ativo: v }); if (error) throw error; return v; },
+    onSuccess: (v) => {
+      toast.success(v ? "Ligações ligadas: laudo vencido sem dono liga para o plantonista, depois o coordenador." : "Ligações desligadas. O vencido continua avisando por WhatsApp.");
+      qc.invalidateQueries({ queryKey: ["sla-coletor"] });
+    },
+    onError: (e) => toast.error(`Não mudou: ${(e as Error).message}`),
+  });
+
   const plantonistaAgora = deAgora.filter((p) => p.papel === "plantonista");
   const ativo = !!coletor.data?.alertasAtivos;
+  const escadaAtiva = !!coletor.data?.escadaAtiva;
 
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
@@ -139,6 +149,18 @@ export function AbaEscalaPlantao() {
                 <p className="text-xs text-muted-foreground">{ativo ? "Ligados: WhatsApp aos 80% do prazo e quando vence." : "Desligados: ninguém é avisado."}</p>
               </div>
               <Switch checked={ativo} disabled={coletor.isLoading || ligar.isPending} onCheckedChange={(v) => ligar.mutate(v)} aria-label="Avisos automáticos ao médico" />
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="font-medium">Ligar quando vencer</p>
+                <p className="text-xs text-muted-foreground">
+                  {!ativo ? "Só funciona com os avisos ligados."
+                    : escadaAtiva ? "Ligado: plantonista 2 vezes, depois coordenador e diretoria. Só a tecla 1 para."
+                    : "Desligado: o vencido avisa só por WhatsApp e e-mail."}
+                </p>
+              </div>
+              <Switch checked={escadaAtiva} disabled={coletor.isLoading || ligarEscada.isPending || (!ativo && !escadaAtiva)}
+                onCheckedChange={(v) => ligarEscada.mutate(v)} aria-label="Ligar quando o laudo vencer" />
             </div>
           </CardContent>
         </Card>

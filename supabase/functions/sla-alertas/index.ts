@@ -3,11 +3,15 @@
 //   exames  (cron 2 min) — 80% do prazo: WhatsApp ao plantonista com "Assumir laudo"; 100% sem assumir: de novo ao
 //                          plantonista + coordenador (WhatsApp e e-mail). Só roda com config sla_alertas_ativo = "true".
 //   assumir              — clique no botão (chamado pelo chakra-webhook): marca o exame como assumido e para os avisos.
+//   (escada)             — vencido sem assumir: liga plantonista, plantonista, coordenador, diretoria (sla-voz, tecla 1).
+//                          Só com config sla_escada_ligacao = "true". Regras e testes: _shared/slaEscada.ts.
+//   indicadores (cron 7h) — e-mail com o período das 7h de ontem às 7h de hoje.
 //   criar_templates / status_templates — modelos na Meta.
 //   ligar_teste { telefone } — ligação de teste com voz (Twilio), para conferir número de origem e áudio.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { chakraApi, unwrapChakraPayload } from "../_shared/chakra.ts";
 import { SLA_VOZ_URL, tokenAlerta } from "../_shared/sla.ts";
+import { calcularIndicadores, ESCADA, proximoPassoEscada, saidaConfiavel, textoIndicadores, type Papel } from "../_shared/slaEscada.ts";
 
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { "Content-Type": "application/json" } });
 const UNIDADES = ["marieta"];
@@ -185,6 +189,7 @@ async function checarExames(admin: any, forcar = false, unidades = UNIDADES) {
   const { data: v2 } = await admin.from("whatsapp_official_templates").select("friendly_name")
     .in("friendly_name", ["gss_sla_laudo_prazo_v2", "gss_sla_laudo_vencido_v2"]).eq("approval_status", "approved");
   const v2Aprovado = (v2 ?? []).length === 2;
+  const escadaLigada = (await config(admin, "sla_escada_ligacao")) === "true";
   for (const unidade of unidades) {
     // Coletor parado = fila velha: o exame pode já ter sido laudado. Não alerta médico com dado velho
     // (a queda já tem o aviso próprio).
@@ -196,17 +201,27 @@ async function checarExames(admin: any, forcar = false, unidades = UNIDADES) {
       .eq("unidade", unidade).is("saiu_em", null).is("ausente_em", null).is("assumido_em", null).is("silenciado_em", null)
       .lte("inicio_em", agora.toISOString());
     if (!exames?.length) { res.push({ unidade, exames: 0 }); continue; }
-    const { data: ja } = await admin.from("sla_alertas").select("exame_id, tipo").in("exame_id", exames.map((e: any) => e.id));
-    const feito = new Set((ja ?? []).map((a: any) => `${a.exame_id}:${a.tipo}`));
+    const { data: ja } = await admin.from("sla_alertas").select("exame_id, tipo, canal, escada_passo, status, criado_em, papel")
+      .in("exame_id", exames.map((e: any) => e.id));
+    // WhatsApp/e-mail de 80% e de vencido saem uma vez; as ligações da escada têm a conta delas (escada_passo).
+    const feito = new Set((ja ?? []).filter((a: any) => a.canal !== "ligacao").map((a: any) => `${a.exame_id}:${a.tipo}`));
     const { data: escala } = await admin.from("sla_plantao").select("id, papel, nome, telefone, email")
       .eq("unidade", unidade).lte("inicio", agora.toISOString()).gt("fim", agora.toISOString());
     const plantonistas = (escala ?? []).filter((p: any) => p.papel === "plantonista");
     const coordenadores = (escala ?? []).filter((p: any) => p.papel === "coordenador");
+    const porPapel: Record<Papel, any[]> = { plantonista: plantonistas, coordenador: coordenadores,
+      diretoria: (escala ?? []).filter((p: any) => p.papel === "diretoria") };
 
     for (const e of exames) {
       const ini = new Date(e.inicio_em).getTime(), fim = new Date(e.vence_em).getTime();
       const prazo = fim - ini, gasto = agora.getTime() - ini;
       const tipo = gasto >= prazo ? "vencido" : gasto >= prazo * 0.8 ? "prazo" : null;
+      if (tipo === "vencido" && escadaLigada) {
+        const ligacoes = (ja ?? []).filter((a: any) => a.exame_id === e.id && a.escada_passo)
+          .map((a: any) => ({ passo: a.escada_passo, status: a.status, criado_em: a.criado_em }));
+        const jaFim = (ja ?? []).some((a: any) => a.exame_id === e.id && a.papel === "escada_fim");
+        res.push(await passoEscada(admin, e, ligacoes, porPapel, jaFim, emails, agora));
+      }
       if (!tipo || feito.has(`${e.id}:${tipo}`)) continue;
       const origem = ORIGEM[e.origem] ?? e.origem, hh = horaExame(e.inicio_em), un = NOME_UNIDADE[unidade] ?? unidade;
       const tempo = tipo === "vencido" ? duracao((agora.getTime() - fim) / 60000) : duracao((fim - agora.getTime()) / 60000);
@@ -247,6 +262,72 @@ async function checarExames(admin: any, forcar = false, unidades = UNIDADES) {
     await emailar(`SLA de laudos: ${emails.length} aviso(s)`, emails.join("\n") + "\n\nAcompanhe em Sigma › Radiologia › SLA ao vivo.");
   }
   return res;
+}
+
+// Um passo da escada de ligação para um exame vencido. A regra (quem, quando) está em _shared/slaEscada.ts.
+async function passoEscada(admin: any, e: any, ligacoes: any[], porPapel: Record<Papel, any[]>, jaFim: boolean,
+  emails: string[], agora: Date) {
+  const temPapel = Object.fromEntries(ESCADA.map((p) => [p, porPapel[p].length > 0])) as Record<Papel, boolean>;
+  const prox = proximoPassoEscada(ligacoes, temPapel, agora);
+  const desc = `${ORIGEM[e.origem] ?? e.origem}, exame das ${horaExame(e.inicio_em)}`;
+  if (prox.acao === "fim") {
+    if (jaFim) return { exame: e.id, escada: "fim" };
+    await admin.from("sla_alertas").insert({ exame_id: e.id, tipo: "vencido", papel: "escada_fim", canal: "email", status: "enviado",
+      destino_nome: "Coordenação (e-mail)" });
+    emails.push(`${desc}: a escada de ligação terminou e ninguém apertou 1. O laudo continua sem dono.`);
+    return { exame: e.id, escada: "fim" };
+  }
+  if (prox.acao !== "ligar") return { exame: e.id, escada: prox.acao };
+  const out = [];
+  for (const d of porPapel[prox.papel]) {
+    const { data: al } = await admin.from("sla_alertas").insert({
+      exame_id: e.id, tipo: "vencido", papel: d.papel, plantao_id: d.id, destino_nome: d.nome, destino: d.telefone,
+      canal: "ligacao", escada_passo: prox.passo,
+    }).select("id").single();
+    try {
+      await ligar(admin, d.telefone, al.id);
+      out.push({ para: d.nome, passo: prox.passo, ok: true });
+    } catch (err) {
+      const msg = String((err as Error).message || err).slice(0, 300);
+      await admin.from("sla_alertas").update({ status: "falhou", erro: msg }).eq("id", al.id);
+      out.push({ para: d.nome, passo: prox.passo, ok: false, erro: msg });
+    }
+  }
+  return { exame: e.id, escada: "ligou", passo: prox.passo, papel: prox.papel, ligacoes: out };
+}
+
+// Indicadores do dia: das 7h de ontem às 7h de hoje (Brasília), por unidade, num e-mail à coordenação.
+async function indicadores(admin: any, unidades = UNIDADES, agora = new Date(), enviar = true) {
+  const hojeSP = new Date(agora.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+  const deslocamento = agora.getTime() - hojeSP.getTime();
+  const fimSP = new Date(hojeSP); fimSP.setHours(7, 0, 0, 0);
+  if (hojeSP < fimSP) fimSP.setDate(fimSP.getDate() - 1); // rodou antes das 7h: fecha no 7h anterior
+  const fim = new Date(fimSP.getTime() + deslocamento), ini = new Date(fim.getTime() - 86_400_000);
+  const dia = (d: Date) => d.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit" });
+  const periodo = `${dia(ini)} 7h a ${dia(fim)} 7h`;
+  const textos: string[] = [];
+  const res: any[] = [];
+  for (const unidade of unidades) {
+    const { data: ex, error: erroEx } = await admin.from("sla_exames")
+      .select("id, origem, inicio_em, vence_em, saiu_em, visto_completo_em, assumido_em, silenciado_em")
+      .eq("unidade", unidade).gte("inicio_em", ini.toISOString()).lt("inicio_em", fim.toISOString()).limit(5000);
+    if (erroEx) throw new Error(`indicadores ${unidade}: ${erroEx.message}`);
+    const exames = (ex ?? []).map((x: any) => ({ ...x, saida_confiavel: saidaConfiavel(x.saiu_em, x.visto_completo_em) }));
+    const assumido = new Map(exames.map((x: any) => [x.id, x.assumido_em]));
+    const ids = exames.map((x: any) => x.id);
+    const alertas: any[] = [];
+    for (let i = 0; i < ids.length; i += 200) {
+      const { data } = await admin.from("sla_alertas").select("exame_id, criado_em").in("exame_id", ids.slice(i, i + 200))
+        .in("canal", ["whatsapp", "ligacao"]);
+      for (const a of data ?? []) alertas.push({ exame_id: a.exame_id, criado_em: a.criado_em, assumido_em: assumido.get(a.exame_id) ?? null });
+    }
+    const ind = calcularIndicadores(exames, alertas, agora);
+    textos.push(textoIndicadores(ind, NOME_UNIDADE[unidade] ?? unidade, periodo));
+    res.push({ unidade, ...ind });
+  }
+  // enviar = false: só calcula (conferência manual sem mandar e-mail à coordenação).
+  const email = enviar && await emailar(`SLA de laudos: indicadores de ${periodo}`, textos.join("\n\n") + "\n\nDetalhe em Sigma › Radiologia › SLA ao vivo.");
+  return { periodo, email, texto: textos.join("\n\n"), unidades: res };
 }
 
 async function assumir(admin: any, telefone: string, payload: string) {
@@ -427,6 +508,7 @@ Deno.serve(async (req) => {
       if (!al) throw new Error("alerta de teste não criado");
       return json({ ok: true, alerta: al.id, ligacao: await ligar(admin, String(body.telefone || ""), al.id) });
     }
+    if (body.acao === "indicadores") return json({ ok: true, ...(await indicadores(admin, Array.isArray(body.unidades) ? body.unidades.map(String) : UNIDADES, new Date(), body.enviar !== false)) });
     if (body.acao === "status_ligacao") return json({ ok: true, ...(await statusLigacao(String(body.sid || ""))) });
     if (body.acao === "exames") return json({ ok: true, exames: await checarExames(admin, !!body.forcar, Array.isArray(body.unidades) ? body.unidades.map(String) : UNIDADES) });
     if (body.acao === "assumir") return json({ ok: true, ...(await assumir(admin, String(body.telefone || ""), String(body.payload || ""))) });

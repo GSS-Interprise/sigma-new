@@ -79,17 +79,20 @@ export function useColetor() {
     queryKey: ["sla-coletor"],
     refetchInterval: 30_000,
     queryFn: async () => {
-      const [{ data: ok }, { data: queda }, { data: ativo }] = await Promise.all([
+      const [{ data: ok }, { data: queda }, { data: ativo }, { data: escada }] = await Promise.all([
         db.from("sla_leituras").select("lida_em, detalhe").eq("unidade", UNIDADE).eq("status", "ok")
           .order("lida_em", { ascending: false }).limit(1).maybeSingle(),
         db.from("sla_coletor_quedas").select("aberta_em, motivo, ultima_ok_em").eq("unidade", UNIDADE)
           .is("fechada_em", null).maybeSingle(),
         db.from("config_lista_items").select("valor").eq("campo_nome", "sla_alertas_ativo").maybeSingle(),
+        db.from("config_lista_items").select("valor").eq("campo_nome", "sla_escada_ligacao").maybeSingle(),
       ]);
       return {
         ultimaOk: (ok?.lida_em as string | undefined) ?? null,
         queda: queda as { aberta_em: string; motivo: string | null; ultima_ok_em: string | null } | null,
         alertasAtivos: ativo?.valor === "true",
+        // Escada de ligação depois do vencido (sla-alertas + _shared/slaEscada.ts), só vale com os avisos ligados.
+        escadaAtiva: escada?.valor === "true",
       };
     },
   });

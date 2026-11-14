@@ -88,14 +88,18 @@ Twilio com detecção de caixa postal e "aperte 1", aviso de coletor parado, pro
 
 **Falta (Marieta, para o piloto noturno):**
 1. Remetente do WhatsApp: escolher o número da GSS (não a Amni), criar os modelos v1 e v2 nele e esperar a Meta.
-2. Escada automática completa: ao vencer, ligar ao plantonista (2 tentativas) e, sem a tecla 1, ligar ao
-   coordenador; hoje o vencido manda WhatsApp e e-mail, e a ligação existe mas não está na escada.
+2. ~~Escada automática completa~~ **feita (13/11)**: vencido sem dono liga ao plantonista, de novo ao plantonista,
+   ao coordenador e à diretoria (só quem está na escala), 3 min entre um e outro; só a tecla 1, o "Assumir laudo" ou a
+   tela param; fim da escada vira e-mail. Regras e testes em `_shared/slaEscada.ts`. **Desligada** até alguém ligar
+   "Ligar quando vencer" na aba Escala (precisa dos avisos ligados). Não testada com ligação real.
 3. Escala do noturno preenchida (Wagner/Brenda) e avisos ligados na aba Escala.
 4. Reconexão automática da VPN (sccli do Sophos; falta usuário e senha da VPN).
 5. Estação 24 h: sem suspensão, no-break, teste depois de reiniciar (tarefa precisa da sessão do usuário aberta).
 6. Número +55 no Twilio: cadastro BU647dee… em revisão; comprar e trocar `sla_twilio_from` quando aprovar.
 7. AVC (30 min): como aparece na tela (Wagner).
-8. Indicadores do dia seguinte (tela ou e-mail às 7h).
+8. ~~Indicadores do dia seguinte~~ **feito (13/11)**: e-mail às 7h (cron `sla-indicadores-7h`) com o período das 7h de
+   ontem às 7h de hoje: % no prazo por origem (só saída confiável), vencidos sem dono, aviso até assumir, horas com mais
+   atraso. Conferido com os dados reais de 12/11: 192 exames, 92% no prazo, 14 vencidos sem dono.
 9. Acompanhar o primeiro plantão e medir acerto (horas, saídas, avisos).
 
 **Falta (outras unidades, já na proposta):** mapear Tijucas (Animati), CEPON e Mobilimed (web), e 2 PACS novos;

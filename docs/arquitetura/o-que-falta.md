@@ -8,9 +8,10 @@ algo de fora). O detalhe de cada frente fica no doc dela, linkado no título.
 
 | O quê | Comando | Cobre |
 |---|---|---|
-| Regras das redes e dos avisos | `cd supabase/functions/_shared && deno test --node-modules-dir=none` (41 testes) | convite (texto e 300 caracteres), rampa do LinkedIn, URL do perfil, confiança mínima, aceite/resposta pela Unipile, @ do Instagram, janela de 24 h, telefone (formatos, estrangeiro, DDD), destinos do aviso, trecho do modelo da Meta + os testes antigos (Chakra, cadência, NFS-e) |
+| Regras das redes e dos avisos | `cd supabase/functions/_shared && deno test --node-modules-dir=none` (80 testes em 13/11, com os do Heron) | convite (texto e 300 caracteres), rampa do LinkedIn, URL do perfil, confiança mínima, aceite/resposta pela Unipile, @ do Instagram, janela de 24 h, telefone (formatos, estrangeiro, DDD), destinos do aviso, trecho do modelo da Meta, escada do SLA, indicadores das 7h + os testes antigos (Chakra, cadência, NFS-e) |
 | Motor de IA na VPS | `python -m unittest vps/sigma-rotinas/test_motor_claude.py` | link do login, motivo do erro, teste só com "OK", token nunca aparece na saída, tipos da fila |
 | Banco: criação de campanha | `supabase/tests/campanha_modo_alertas.sql` (deixa nada gravado; espera `TESTE_OK`) | modo IA/equipe, destinos normalizados, padrão sem destinos, só admin pede rotina do motor |
+| Banco: escada do SLA | `supabase/tests/sla_escada.sql` (idem) | chave nasce desligada, só quem opera liga, passo 1-4, cron das 7h |
 | Escalas e OAuth do MCP dos sócios | mesmo `deno test` acima (`escalas_test.ts` 15, `mcp-oauth_test.ts` 11) | datas do sócio ("amanhã", 5/12, 31/02 inválido), hospital por sigla/trecho/cidade, CRM com ponto, texto da resposta; redirect só do Claude, PKCE S256, registro dinâmico, erros que voltam ou não ao Claude |
 | Robô do Dr. Escala na VPS | `python -m unittest vps/sigma-rotinas/test_drescala.py` (14) | furo pela flag ou profissional 0, sem dinheiro no Sigma, janela e plantão repetido na grade, setor desligado não consultado, erro no meio fecha a sync com erro, 429 com espera |
 | Banco: escalas e MCP | `supabase/tests/drescala_mcp.sql` (deixa nada gravado; espera `TESTE_OK`) | dia do plantão noturno, local de teste fora da view, remove o que sumiu, sync com erro não apaga, cron 06/12/18h, RLS de quem não é diretoria, hash do token fora do alcance do front |
@@ -61,8 +62,8 @@ importados **pela tela e pelas edges**: o que a fila mostra e o que o motor envi
 | Item | De quem | Situação |
 |---|---|---|
 | Teste do fim de semana: lista de escalados e telefones; máquina logada na VPN e no Carestream | GSS (Wagner/Vini) | mensagem enviada no grupo em 13/11 |
-| Escada automática completa (vencido → liga ao plantonista 2x → sem tecla 1, coordenador) | nosso | ligação existe, fora da escada |
-| Indicadores do dia seguinte (tela ou e-mail às 7h) | nosso | — |
+| Ligar a escada de ligação ("Ligar quando vencer", aba Escala) e fazer a 1ª ligação real com um número da equipe | GSS + Raul | escada feita e testada nas regras (13/11), desligada |
+| Escala do plantão preenchida no Sigma (hoje vazia: sem escala, ninguém recebe aviso, só e-mail) | GSS (Wagner/Brenda) | indicadores das 7h no ar desde 13/11 |
 | Reconexão automática da VPN (sccli do Sophos) | bloqueado | falta usuário e senha da VPN |
 | Estação 24 h (sem suspensão, no-break, teste após reiniciar) | GSS | — |
 | Número +55 no Twilio | bloqueado | cadastro em revisão no Twilio |
