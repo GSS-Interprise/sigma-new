@@ -42,9 +42,11 @@ PostgREST.
 | RPC do esforço | `bi_raiox_esforco` ainda **não existe** na produção (migration no branch, não aplicada) | Depende do OK do Raul |
 
 ### O que isso muda na ordem
-1. **Consertar o tempo do `bi_raiox_funil` em Pediatria** antes de qualquer apresentação. A RPC roda dentro do limite
-   do PostgREST em Anestesiologia e estoura em Pediatria. O mais provável é `_raiox_contatos` sobre
-   `sigzap_messages` sem índice no recorte. Medir com `explain analyze` numa cópia, sem mexer na produção.
+1. **Tempo do `bi_raiox_funil`.** Investigado em 14/11: com cache quente, Pediatria abre em 2,8 s (3,5 s com as 4
+   RPCs da tela em paralelo, 5,5 s com 3 especialidades); a 1ª chamada, com cache frio, passou dos 8 s. A causa é
+   `_raiox_leads`: o OR impede índice e cada chamada varre os ~833 mil leads, 3 vezes por funil. Correção em
+   `supabase/migrations/20261114100000_raiox_leads_sem_seq_scan.sql` (UNION com índice, 171 ms contra 526 ms, mesmo
+   resultado). Não aplicada: espera o OK do Raul.
 2. **Contratados:** preencher `contratos.medico_id` (ou ligar contrato ao lead) e pedir à equipe que marque
    `convertido`. Sem isso, a frase "para cada contratado, abordamos N" sai com N = 8.688.
 3. **Valor pedido:** a classificação raramente acha valor na conversa. Para o bloco 5, ou a equipe registra o valor
