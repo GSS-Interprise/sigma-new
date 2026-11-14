@@ -11,7 +11,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { chakraApi, unwrapChakraPayload } from "../_shared/chakra.ts";
 import { SLA_VOZ_URL, tokenAlerta } from "../_shared/sla.ts";
-import { calcularIndicadores, ESCADA, proximoPassoEscada, saidaConfiavel, textoIndicadores, type Papel } from "../_shared/slaEscada.ts";
+import { calcularIndicadores, destinoDoAviso, ESCADA, proximoPassoEscada, saidaConfiavel, textoIndicadores, type Papel } from "../_shared/slaEscada.ts";
 
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { "Content-Type": "application/json" } });
 const UNIDADES = ["marieta"];
@@ -180,7 +180,9 @@ async function config(admin: any, nome: string) {
   return String(data?.valor ?? "").trim();
 }
 
-async function checarExames(admin: any, forcar = false, unidades = UNIDADES) {
+// teste: só para a unidade "teste" (chamada manual) — liga a escada sem mexer na config e não manda e-mail à coordenação.
+async function checarExames(admin: any, forcar = false, unidades = UNIDADES, teste = false) {
+  if (teste && unidades.some((u) => u !== "teste")) throw new Error("modo teste só na unidade teste");
   if (!forcar && (await config(admin, "sla_alertas_ativo")) !== "true") return { pulado: "sla_alertas_ativo desligado" };
   const sender = await remetente(admin);
   const agora = new Date();
@@ -189,7 +191,9 @@ async function checarExames(admin: any, forcar = false, unidades = UNIDADES) {
   const { data: v2 } = await admin.from("whatsapp_official_templates").select("friendly_name")
     .in("friendly_name", ["gss_sla_laudo_prazo_v2", "gss_sla_laudo_vencido_v2"]).eq("approval_status", "approved");
   const v2Aprovado = (v2 ?? []).length === 2;
-  const escadaLigada = (await config(admin, "sla_escada_ligacao")) === "true";
+  const testeDestino = await config(admin, "sla_teste_destino");
+  // Com o teste interno ligado ninguém recebe ligação (só WhatsApp para o número de teste).
+  const escadaLigada = teste || (!testeDestino && (await config(admin, "sla_escada_ligacao")) === "true");
   for (const unidade of unidades) {
     // Coletor parado = fila velha: o exame pode já ter sido laudado. Não alerta médico com dado velho
     // (a queda já tem o aviso próprio).
@@ -240,7 +244,10 @@ async function checarExames(admin: any, forcar = false, unidades = UNIDADES) {
         res.push({ exame: e.id, tipo, sem_escala: true });
         continue;
       }
-      for (const d of destinos) {
+      for (const pessoa of destinos) {
+        // Modo de teste interno: vai para sla_teste_destino, registrado como "<nome> (teste interno)".
+        const alvo = destinoDoAviso(pessoa, testeDestino);
+        const d = { ...pessoa, nome: alvo.nome, telefone: alvo.telefone };
         const { data: al } = await admin.from("sla_alertas").insert({
           exame_id: e.id, tipo, papel: d.papel, plantao_id: d.id, destino_nome: d.nome, destino: d.telefone, canal: "whatsapp",
         }).select("id").single();
@@ -258,7 +265,7 @@ async function checarExames(admin: any, forcar = false, unidades = UNIDADES) {
       if (tipo === "vencido") emails.push(`${linha}. Ninguém assumiu; plantonista e coordenador avisados por WhatsApp.`);
     }
   }
-  if (emails.length) {
+  if (emails.length && !teste) {
     await emailar(`SLA de laudos: ${emails.length} aviso(s)`, emails.join("\n") + "\n\nAcompanhe em Sigma › Radiologia › SLA ao vivo.");
   }
   return res;
@@ -510,7 +517,7 @@ Deno.serve(async (req) => {
     }
     if (body.acao === "indicadores") return json({ ok: true, ...(await indicadores(admin, Array.isArray(body.unidades) ? body.unidades.map(String) : UNIDADES, new Date(), body.enviar !== false)) });
     if (body.acao === "status_ligacao") return json({ ok: true, ...(await statusLigacao(String(body.sid || ""))) });
-    if (body.acao === "exames") return json({ ok: true, exames: await checarExames(admin, !!body.forcar, Array.isArray(body.unidades) ? body.unidades.map(String) : UNIDADES) });
+    if (body.acao === "exames") return json({ ok: true, exames: await checarExames(admin, !!body.forcar, Array.isArray(body.unidades) ? body.unidades.map(String) : UNIDADES, body.teste === true) });
     if (body.acao === "assumir") return json({ ok: true, ...(await assumir(admin, String(body.telefone || ""), String(body.payload || ""))) });
     if (body.acao === "status_templates") return json({ ok: true, modelos: await statusTemplates(admin) });
     if (body.acao === "criar_templates") return json({ ok: true, modelos: await criarTemplates(admin, !!body.dry_run, Array.isArray(body.nomes) ? body.nomes.map(String) : undefined) });

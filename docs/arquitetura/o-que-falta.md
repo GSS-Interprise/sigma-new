@@ -61,7 +61,8 @@ importados **pela tela e pelas edges**: o que a fila mostra e o que o motor envi
 
 | Item | De quem | Situação |
 |---|---|---|
-| Teste do fim de semana: lista de escalados e telefones; máquina logada na VPN e no Carestream | GSS (Wagner/Vini) | mensagem enviada no grupo em 13/11 |
+| Teste do fim de semana (14-16/11) | ligado em 13/11 22h30 | **teste interno**: avisos reais do Marieta por WhatsApp só para o Raul (`sla_teste_destino`), sem ligação, escala "Teste interno Pulse" até seg 7h. Para desligar o teste e avisar os médicos: apagar `sla_teste_destino` e cadastrar a escala real. A máquina precisa seguir logada na VPN e no Carestream |
+| Teste da ligação (escada) com o Raul | Raul | 1ª ligação feita em 13/11 (atendida, Twilio respondeu "unknown"); repetir a 2ª com tecla 1 em outro dia |
 | Ligar a escada de ligação ("Ligar quando vencer", aba Escala) e fazer a 1ª ligação real com um número da equipe | GSS + Raul | escada feita e testada nas regras (13/11), desligada |
 | Escala do plantão preenchida no Sigma (hoje vazia: sem escala, ninguém recebe aviso, só e-mail) | GSS (Wagner/Brenda) | indicadores das 7h no ar desde 13/11 |
 | Reconexão automática da VPN (sccli do Sophos) | bloqueado | falta usuário e senha da VPN |

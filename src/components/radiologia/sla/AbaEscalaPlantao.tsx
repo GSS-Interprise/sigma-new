@@ -125,6 +125,7 @@ export function AbaEscalaPlantao() {
   const plantonistaAgora = deAgora.filter((p) => p.papel === "plantonista");
   const ativo = !!coletor.data?.alertasAtivos;
   const escadaAtiva = !!coletor.data?.escadaAtiva;
+  const testeDestino = coletor.data?.testeDestino ?? null;
 
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
@@ -143,6 +144,11 @@ export function AbaEscalaPlantao() {
                 <span className="text-muted-foreground">{telefoneBonito(p.telefone)} · até {hm(p.fim)}</span>
               </div>
             ))}
+            {testeDestino && (
+              <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                Teste interno ligado: os avisos vão para {telefoneBonito(testeDestino)}, não para os médicos da escala, e ninguém recebe ligação.
+              </p>
+            )}
             <div className="flex items-center justify-between gap-3 border-t pt-3">
               <div>
                 <p className="font-medium">Avisos automáticos ao médico</p>

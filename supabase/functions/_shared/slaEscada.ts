@@ -41,6 +41,16 @@ export function proximoPassoEscada(ligacoes: LigacaoFeita[], temPapel: Record<Pa
   return { acao: "fim" };
 }
 
+// ---- Modo de teste interno ------------------------------------------------------------------------------------
+// Config sla_teste_destino (telefone com 55): todo aviso vai para esse número em vez do escalado, e a escada não liga
+// (fim de semana de validação, 14-15/11: "alertas internos para a equipe só para validarmos"). O registro guarda para
+// quem iria, para conferir na tela se a escala estava certa. O "Assumir laudo" vale do número de teste.
+export function destinoDoAviso(pessoa: { nome: string; telefone: string }, testeDestino: string | null | undefined) {
+  const t = String(testeDestino || "").replace(/\D/g, "");
+  if (!/^55\d{10,11}$/.test(t)) return { nome: pessoa.nome, telefone: pessoa.telefone, teste: false };
+  return { nome: `${pessoa.nome} (teste interno)`, telefone: t, teste: true };
+}
+
 // ---- Indicadores do dia -------------------------------------------------------------------------------------------
 export type ExameDia = {
   origem: string; inicio_em: string; vence_em: string; saiu_em: string | null; saida_confiavel: boolean | null;

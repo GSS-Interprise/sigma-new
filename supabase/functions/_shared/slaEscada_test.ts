@@ -1,5 +1,5 @@
 import { assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import { calcularIndicadores, proximoPassoEscada, saidaConfiavel, textoIndicadores, type ExameDia } from "./slaEscada.ts";
+import { calcularIndicadores, destinoDoAviso, proximoPassoEscada, saidaConfiavel, textoIndicadores, type ExameDia } from "./slaEscada.ts";
 
 const todos = { plantonista: true, coordenador: true, diretoria: true };
 const agora = new Date("2026-11-14T03:00:00Z");
@@ -100,4 +100,11 @@ Deno.test("saída confiável: vista até 10 min depois da última leitura comple
   assertEquals(saidaConfiavel("2026-11-14T02:11:00Z", "2026-11-14T02:00:00Z"), false);
   assertEquals(saidaConfiavel(null, "2026-11-14T02:00:00Z"), false);
   assertEquals(saidaConfiavel("2026-11-14T02:05:00Z", null), false);
+});
+
+Deno.test("teste interno: aviso vai para o número de teste e guarda para quem iria", () => {
+  const dr = { nome: "Dr. Fulano", telefone: "5547999990000" };
+  assertEquals(destinoDoAviso(dr, ""), { nome: "Dr. Fulano", telefone: "5547999990000", teste: false });
+  assertEquals(destinoDoAviso(dr, "55 54 98435-1512"), { nome: "Dr. Fulano (teste interno)", telefone: "5554984351512", teste: true });
+  assertEquals(destinoDoAviso(dr, "123"), { nome: "Dr. Fulano", telefone: "5547999990000", teste: false });
 });

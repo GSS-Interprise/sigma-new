@@ -43,7 +43,9 @@ Deno.serve(async (req) => {
     const st = campo("CallStatus"), quem = campo("AnsweredBy");
     // respondido (tecla 1) não é rebaixado pelo status final da chamada
     if (al.status !== "respondido") {
-      const atendeu = st === "completed" && (quem === "human" || quem === "");
+      // "unknown": o Twilio não soube dizer se foi pessoa ou caixa postal (teste de 13/11 caiu assim). Conta como
+      // atendida sem a tecla 1; para a escada não muda nada (só a tecla 1 para), muda só o que a tela mostra.
+      const atendeu = st === "completed" && (quem === "human" || quem === "" || quem === "unknown");
       await admin.from("sla_alertas").update({
         status: atendeu ? "entregue" : "falhou",
         erro: atendeu ? "atendeu sem apertar 1" : `ligacao ${st}${quem ? ` (${quem})` : ""}`,
