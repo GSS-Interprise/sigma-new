@@ -224,21 +224,36 @@ export function useAcompanhamentoLeads(filtro: FiltroAcompanhamento = "todos") {
 
 // ── Mutações (RPCs) ──────────────────────────────────────────
 
+/**
+ * Assumir lead: marca o dono e pausa a IA (prospeccao_assumir). Desde 16/11/2026 (decisão do Raul) o lead quente
+ * também passa a "em_analise" (Em qualificação) no mesmo clique; antes ficava em "quente" até alguém clicar em
+ * "Iniciar qualificação". As duas etapas caem na coluna Qualificado do Kanban (vw_acompanhamento_kanban), então
+ * o card não muda de coluna. Só move a partir de "quente": um lead já mais adiante não volta de etapa.
+ */
 export function useAssumirLead() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (campanha_lead_id: string) => {
+    mutationFn: async ({ campanha_lead_id, etapa }: { campanha_lead_id: string; etapa?: EtapaAcompanhamento | null }) => {
       const { data, error } = await (supabase as any).rpc("prospeccao_assumir", {
         p_campanha_lead_id: campanha_lead_id,
         p_force: false,
       });
       if (error) throw error;
       if (data?.ok === false) throw new Error(data.error || "Falha ao assumir");
-      return data;
+      if (etapa !== "quente") return { movido: false, erroMover: null as string | null };
+      const { data: mov, error: errMov } = await (supabase as any).rpc("prospeccao_mover_etapa", {
+        p_campanha_lead_id: campanha_lead_id,
+        p_etapa: "em_analise",
+      });
+      // O assumir já valeu; se mover falhar, avisa e o lead fica em quente, com o botão Iniciar qualificação à mão.
+      const erroMover = errMov ? errMov.message : mov?.ok === false ? String(mov.error) : null;
+      return { movido: !erroMover, erroMover };
     },
-    onSuccess: () => {
+    onSuccess: (r) => {
       qc.invalidateQueries({ queryKey: ["acompanhamento-leads"] });
-      toast.success("Lead assumido");
+      if (r.movido) toast.success("Lead assumido. A qualificação começou.");
+      else if (r.erroMover) toast.warning(`Lead assumido, mas a qualificação não começou (${r.erroMover}). Use Iniciar qualificação.`);
+      else toast.success("Lead assumido");
     },
     onError: (e: any) => toast.error("Erro: " + e.message),
   });

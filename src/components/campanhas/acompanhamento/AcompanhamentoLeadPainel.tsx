@@ -426,7 +426,7 @@ export function AcompanhamentoLeadPainel({ lead, onClose }: Props) {
             {semDono ? (
               <Button
                 size="sm"
-                onClick={() => assumir.mutate(lead.campanha_lead_id)}
+                onClick={() => assumir.mutate({ campanha_lead_id: lead.campanha_lead_id, etapa: lead.etapa_acompanhamento })}
                 disabled={assumir.isPending || ehTerminal}
               >
                 <UserPlus className="h-4 w-4 mr-1.5" />
@@ -443,7 +443,9 @@ export function AcompanhamentoLeadPainel({ lead, onClose }: Props) {
               </Button>
             )}
 
-            {lead.etapa_acompanhamento === "quente" && (
+            {/* Assumir lead já inicia a qualificação do quente (16/11/2026). O botão fica para o quente que já tinha
+                dono antes dessa mudança ou quando o mover falhou depois do assumir. */}
+            {lead.etapa_acompanhamento === "quente" && !semDono && (
               <Button
                 size="sm"
                 variant="outline"

@@ -41,12 +41,14 @@ O vídeo replica o card e o painel de hoje. Implementado este desenho, refazer e
 - card quente sem dono: borda vermelha e chama viram borda âmbar e "Sem dono";
 - os botões Assumir lead, Encaminhar para oportunidade e Confirmar envio a Contratos saem do rodapé e vão para o
   topo do painel (mesmos nomes);
-- "Perdido" vira "Marcar perdido"; "Iniciar qualificação" só deixa de ser botão se o Raul aprovar a decisão 1;
+- "Perdido" vira "Marcar perdido"; "Iniciar qualificação" deixa de aparecer depois de Assumir lead (decisão 1, aprovada);
 - a conversa perde o título "Conversa unificada".
 Ficam iguais: nomes das abas, os 4 itens da validação, as etapas e as colunas.
 
 ## Decisões para o Raul
 1. Hoje Assumir lead (`prospeccao_assumir`) só marca o dono e pausa a IA; a etapa continua "quente" até alguém
-   clicar em "Iniciar qualificação". Proposta: Assumir lead também move para Em atendimento, e o botão sai.
-   Isso muda regra de negócio, então só com o seu ok; sem ele, o botão fica no menu "…".
+   clicar em "Iniciar qualificação". Proposta: Assumir lead também inicia a qualificação, e o botão sai.
+   **Aprovado pelo Raul em 16/11 e no ar:** o quente vai de "quente" (Qualificado) para "em_analise" (Em
+   qualificação) no mesmo clique. As duas etapas ficam na coluna Qualificado do Kanban, então o card não muda de
+   coluna. O botão fica só para o quente que já tinha dono antes da mudança.
 2. Etiquetas: no card, só as 2 primeiras visíveis e o editor dentro do painel. Serve para a equipe?
