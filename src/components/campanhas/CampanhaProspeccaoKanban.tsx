@@ -79,6 +79,7 @@ export function CampanhaProspeccaoKanban({ campanhaId }: Props) {
       const el = quadroRef.current;
       if (!el) return;
       const topoNaJanela = el.getBoundingClientRect().top + (el.closest("main")?.scrollTop ?? 0);
+      // A variável vai no quadro (o ScrollArea do Radix descarta o style que recebe) e as colunas herdam.
       // 96px = cabeçalho da coluna (~80) + barra de rolagem lateral e respiro (16).
       const h = Math.max(240, Math.floor(window.innerHeight - topoNaJanela - 96 - 24));
       setAlturaColuna({ ["--kanban-coluna-h" as string]: `${h}px` });
@@ -298,7 +299,7 @@ export function CampanhaProspeccaoKanban({ campanhaId }: Props) {
         </Badge>
       </div>
 
-      <div ref={quadroRef} className="flex gap-3 overflow-x-auto pb-4">
+      <div ref={quadroRef} className="flex gap-3 overflow-x-auto pb-4" style={alturaColuna}>
         {colunas.map((col) => {
           const colLeads = filteredByStatus(col.id);
           const Icon = col.icon;
@@ -315,7 +316,7 @@ export function CampanhaProspeccaoKanban({ campanhaId }: Props) {
                 </div>
                 <p className="text-xs text-muted-foreground mt-0.5">{col.description}</p>
               </div>
-              <ScrollArea className="h-auto p-2 md:h-[var(--kanban-coluna-h,calc(100dvh-360px))]" style={alturaColuna}>
+              <ScrollArea className="h-auto p-2 md:h-[var(--kanban-coluna-h,calc(100dvh_-_360px))]">
                 <div className="space-y-2">
                   {colLeads.map((cl) => (
                     <LeadCard
