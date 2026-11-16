@@ -16,6 +16,11 @@ import { calcularIndicadores, destinoDoAviso, ESCADA, proximoPassoEscada, saidaC
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { "Content-Type": "application/json" } });
 const UNIDADES = ["marieta"];
 const LIMITE_MIN = 15;
+// Travas do motor depois da enxurrada de 16/11 (104 avisos de exames de sexta): ver checarExames.
+const MAX_ATRASO_MIN = 120;
+const MAX_POR_RODADA = 10;
+const chaveExame = (e: { origem: string; inicio_em: string; paciente?: string | null; estudo?: string | null }) =>
+  [e.origem, new Date(e.inicio_em).getTime(), (e.paciente ?? "").trim().toLowerCase(), (e.estudo ?? "").trim().toLowerCase()].join("|");
 
 // Modelos de alerta. Sem acento: os modelos acentuados desta conta foram recusados pela Meta (financeiro, 10/2026).
 // Sem nome de paciente (decisão do Raul, 12/11): o médico acha o exame no PACS pela origem e pela hora.
@@ -199,16 +204,37 @@ async function checarExames(admin: any, forcar = false, unidades = UNIDADES, tes
     // (a queda já tem o aviso próprio).
     const { data: queda } = await admin.from("sla_coletor_quedas").select("id").eq("unidade", unidade).is("fechada_em", null).maybeSingle();
     if (queda) { res.push({ unidade, pulado: "coletor_parado" }); continue; }
+    // Fila só vale se uma leitura "ok" (com linhas) acabou de passar: é a única que marca a saída dos exames.
+    // Sem ela, a fila pode ser a de dias atrás. Em 16/11 duas leituras "lista vazia" fecharam a queda do fim de
+    // semana e o motor avisou 104 exames de sexta, já laudados, como vencidos há 31 h.
+    const { data: ultOk } = await admin.from("sla_leituras").select("lida_em").eq("unidade", unidade).eq("status", "ok")
+      .order("lida_em", { ascending: false }).limit(1).maybeSingle();
+    if (!ultOk || agora.getTime() - new Date(ultOk.lida_em).getTime() > LIMITE_MIN * 60_000) {
+      res.push({ unidade, pulado: "fila_desatualizada", ultima_ok: ultOk?.lida_em ?? null }); continue;
+    }
 
-    const { data: exames } = await admin.from("sla_exames")
+    const { data: todos } = await admin.from("sla_exames")
       .select("id, origem, inicio_em, vence_em, paciente, estudo")
       .eq("unidade", unidade).is("saiu_em", null).is("ausente_em", null).is("assumido_em", null).is("silenciado_em", null)
-      .lte("inicio_em", agora.toISOString());
-    if (!exames?.length) { res.push({ unidade, exames: 0 }); continue; }
-    const { data: ja } = await admin.from("sla_alertas").select("exame_id, tipo, canal, escada_passo, status, criado_em, papel")
-      .in("exame_id", exames.map((e: any) => e.id));
+      .lte("inicio_em", agora.toISOString()).order("vence_em").order("id");
+    // O PACS mostra o mesmo exame em 2 ou 3 linhas (externos, 13/11): um aviso por paciente + estudo + hora + origem.
+    // Vencido há mais de MAX_ATRASO_MIN não gera aviso nem ligação: fica para o resumo das 7h.
+    const grupos = new Map<string, any>();
+    for (const e of todos ?? []) {
+      if (agora.getTime() - new Date(e.vence_em).getTime() > MAX_ATRASO_MIN * 60_000) continue;
+      const k = chaveExame(e);
+      if (!grupos.has(k)) grupos.set(k, { ...e, irmaos: [e.id] }); else grupos.get(k).irmaos.push(e.id);
+    }
+    const exames = [...grupos.values()];
+    if (!exames.length) { res.push({ unidade, exames: 0 }); continue; }
+    const { data: jaBruto } = await admin.from("sla_alertas").select("exame_id, tipo, canal, escada_passo, status, criado_em, papel")
+      .in("exame_id", exames.flatMap((e: any) => e.irmaos));
+    // Alerta de uma cópia vale para o grupo: tudo passa a contar no id do primeiro do grupo.
+    const doGrupo = new Map<string, string>(exames.flatMap((e: any) => e.irmaos.map((id: string) => [id, e.id] as [string, string])));
+    const ja = (jaBruto ?? []).map((a: any) => ({ ...a, exame_id: doGrupo.get(a.exame_id) ?? a.exame_id }));
     // WhatsApp/e-mail de 80% e de vencido saem uma vez; as ligações da escada têm a conta delas (escada_passo).
-    const feito = new Set((ja ?? []).filter((a: any) => a.canal !== "ligacao").map((a: any) => `${a.exame_id}:${a.tipo}`));
+    const feito = new Set(ja.filter((a: any) => a.canal !== "ligacao").map((a: any) => `${a.exame_id}:${a.tipo}`));
+    let enviados = 0;
     const { data: escala } = await admin.from("sla_plantao").select("id, papel, nome, telefone, email")
       .eq("unidade", unidade).lte("inicio", agora.toISOString()).gt("fim", agora.toISOString());
     const plantonistas = (escala ?? []).filter((p: any) => p.papel === "plantonista");
@@ -227,6 +253,10 @@ async function checarExames(admin: any, forcar = false, unidades = UNIDADES, tes
         res.push(await passoEscada(admin, e, ligacoes, porPapel, jaFim, emails, agora));
       }
       if (!tipo || feito.has(`${e.id}:${tipo}`)) continue;
+      // Teto por rodada: se algo escapar das travas acima, sai no máximo isto a cada 2 min (o resto fica para a
+      // próxima rodada, mais urgente primeiro), e não 100 mensagens de uma vez no número da Meta.
+      if (enviados >= MAX_POR_RODADA) { res.push({ unidade, adiados: true }); break; }
+      enviados++;
       const origem = ORIGEM[e.origem] ?? e.origem, hh = horaExame(e.inicio_em), un = NOME_UNIDADE[unidade] ?? unidade;
       const tempo = tipo === "vencido" ? duracao((agora.getTime() - fim) / 60000) : duracao((fim - agora.getTime()) / 60000);
       const comNome = v2Aprovado && e.paciente;
@@ -350,14 +380,18 @@ async function assumir(admin: any, telefone: string, payload: string) {
   const { data: marcou } = await admin.from("sla_alertas").update({ status: "respondido", respondido_em: agora })
     .eq("id", al.id).is("respondido_em", null).select("id");
   if (!marcou?.length) return { tratado: true, repetido: true, duplicado: true };
-  const { data: ex } = await admin.from("sla_exames").select("id, origem, inicio_em, assumido_em, assumido_por").eq("id", al.exame_id).maybeSingle();
+  const { data: ex } = await admin.from("sla_exames").select("id, unidade, origem, inicio_em, paciente, estudo, assumido_em, assumido_por").eq("id", al.exame_id).maybeSingle();
   if (!ex) return { tratado: true, exame: null };
   const desc = `${ORIGEM[ex.origem] ?? ex.origem}, exame das ${horaExame(ex.inicio_em)}`;
   if (ex.assumido_em) {
     await enviarTexto(sender, dig(telefone), `Este exame (${desc}) ja tinha sido assumido${ex.assumido_por ? ` por ${ex.assumido_por}` : ""}. Os avisos dele ja estao parados.`);
     return { tratado: true, repetido: true };
   }
-  await admin.from("sla_exames").update({ assumido_em: agora, assumido_por: al.destino_nome, assumido_via: "whatsapp" }).eq("id", ex.id).is("assumido_em", null);
+  // Assume também as cópias do mesmo exame (mesmo paciente, estudo, hora e origem; ver chaveExame).
+  const { data: abertos } = await admin.from("sla_exames").select("id, origem, inicio_em, paciente, estudo")
+    .eq("unidade", ex.unidade).eq("origem", ex.origem).eq("inicio_em", ex.inicio_em).is("assumido_em", null).is("saiu_em", null);
+  const ids = [ex.id, ...(abertos ?? []).filter((x: any) => x.id !== ex.id && chaveExame(x) === chaveExame(ex)).map((x: any) => x.id)];
+  await admin.from("sla_exames").update({ assumido_em: agora, assumido_por: al.destino_nome, assumido_via: "whatsapp" }).in("id", ids).is("assumido_em", null);
   await enviarTexto(sender, dig(telefone), `Laudo assumido: ${desc}. Os avisos deste exame pararam. Obrigado!`);
   return { tratado: true, assumido: true };
 }
@@ -419,7 +453,16 @@ async function checarColetor(admin: any, unidades = UNIDADES) {
     const { data: aberta } = await admin.from("sla_coletor_quedas").select("id, aberta_em").eq("unidade", unidade)
       .is("fechada_em", null).maybeSingle();
 
-    const minOk = ok ? (Date.now() - new Date(ok.lida_em).getTime()) / 60000 : null;
+    // Para FECHAR uma queda, lista vazia não basta: precisa de uma leitura "ok" com linhas depois que a queda abriu
+    // (é ela que atualiza a fila). Em 16/11 o PACS abriu por 3 min sem a lista, duas leituras "lista vazia" fecharam
+    // a queda do fim de semana e o motor avisou a fila velha. Sem queda aberta, lista vazia segue contando (madrugada).
+    let vivo = ok;
+    if (aberta) {
+      const { data: okReal } = await admin.from("sla_leituras").select("lida_em").eq("unidade", unidade).eq("status", "ok")
+        .gt("lida_em", aberta.aberta_em).order("lida_em", { ascending: false }).limit(1).maybeSingle();
+      vivo = okReal;
+    }
+    const minOk = vivo ? (Date.now() - new Date(vivo.lida_em).getTime()) / 60000 : null;
     const minNada = ultima ? (Date.now() - new Date(ultima.lida_em).getTime()) / 60000 : null;
     const parado = minOk === null || minOk > LIMITE_MIN;
 
@@ -433,7 +476,7 @@ async function checarColetor(admin: any, unidades = UNIDADES) {
       await admin.from("sla_coletor_quedas").update({ fechada_em: new Date().toISOString() }).eq("id", aberta.id);
       const min = Math.round((Date.now() - new Date(aberta.aberta_em).getTime()) / 60000);
       const email = await emailar(`SLA de laudos: coletor voltou (${unidade})`,
-        `A leitura da fila voltou às ${hora(ok!.lida_em)}. Ficou parada cerca de ${min + LIMITE_MIN} min.`);
+        `A leitura da fila voltou às ${hora(vivo!.lida_em)}. Ficou parada cerca de ${min + LIMITE_MIN} min.`);
       res.push({ unidade, evento: "voltou", email });
     } else {
       res.push({ unidade, parado, min_desde_ok: minOk === null ? null : Math.round(minOk) });
