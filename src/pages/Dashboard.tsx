@@ -17,6 +17,7 @@ import { KanbanTarefas } from "@/components/demandas/KanbanTarefas";
 import { useUserSetor } from "@/hooks/useUserSetor";
 import { usePermissions } from "@/hooks/usePermissions";
 import { toast } from "sonner";
+import { DisparosHojeFaixa } from "@/components/campanhas/DisparosHojeFaixa";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -26,7 +27,8 @@ export default function Dashboard() {
   const [novaDemandaOpen, setNovaDemandaOpen] = useState(false);
   const [tarefaAbertaId, setTarefaAbertaId] = useState<string | null>(null);
   const { setorNome } = useUserSetor();
-  const { isAdmin } = usePermissions();
+  const { isAdmin, hasPermission, userRoles: papeis } = usePermissions();
+  const veDisparos = isAdmin || !!papeis?.some((r) => r.role === "diretoria") || hasPermission("disparos", "visualizar");
 
   const abrirDetalheTarefa = (id: string) => {
     if (!UUID_RE.test(id)) {
@@ -127,7 +129,14 @@ export default function Dashboard() {
       <div className="p-3 min-h-[calc(100vh-4rem)] flex flex-col">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex-1 flex flex-col">
           <TabsContent value="home" className="flex-1 mt-0">
-            <div className="grid grid-cols-1 md:grid-cols-[1.15fr_1.15fr_0.7fr] gap-3 h-auto md:h-[calc(100vh-10rem)]">
+            {/* Disparos de hoje para quem acompanha a prospecção (sócios e captação); a faixa tem altura fixa
+                no desktop (112px + 12px de espaço), descontada da altura das colunas abaixo. */}
+            {veDisparos && <DisparosHojeFaixa className="mb-3" />}
+            <div
+              className={`grid grid-cols-1 md:grid-cols-[1.15fr_1.15fr_0.7fr] gap-3 h-auto ${
+                veDisparos ? "md:h-[calc(100vh-10rem-124px)]" : "md:h-[calc(100vh-10rem)]"
+              }`}
+            >
               <div className="min-h-0">
                 <ColunaAgenda onTarefaClick={abrirDetalheTarefa} />
               </div>

@@ -84,20 +84,22 @@ export function ColunaPendenciasSetor() {
 
   return (
     <Card className="flex flex-col h-full rounded-2xl border-border/70 shadow-sm overflow-hidden">
-      <div className="px-4 py-3 border-b flex items-center gap-2">
+      <div className="px-4 py-3 border-b flex flex-wrap items-center gap-2">
         <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-orange-500/10">
           <AlertCircle className="h-4 w-4 text-orange-500" />
         </div>
-        <h3 className="font-bold text-sm tracking-tight">Pendências do setor</h3>
+        <h3 className="shrink-0 whitespace-nowrap font-bold text-sm tracking-tight">Pendências do setor</h3>
         {!isAdmin && (
           <span className="text-[11px] text-muted-foreground">
             {setorNome ? `· ${setorNome}` : ""}
           </span>
         )}
         {isAdmin && (
-          <div className="ml-auto">
+          <div className="ml-auto flex min-w-[120px] flex-1 justify-end">
             <Select value={adminSetorFiltro} onValueChange={setAdminSetorFiltro}>
-              <SelectTrigger className="h-7 text-[11px] w-[180px]">
+              {/* A 3ª coluna da Home é a mais estreita: o seletor encolhe até 120px e, se nem isso cabe ao lado do
+                  título (1024px), desce para a linha de baixo. Largura fixa de 180px vazava da coluna. */}
+              <SelectTrigger className="h-7 w-full min-w-0 max-w-[180px] px-2 text-[11px]">
                 <SelectValue placeholder="Setor" />
               </SelectTrigger>
               <SelectContent>

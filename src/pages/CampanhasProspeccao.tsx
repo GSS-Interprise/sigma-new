@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { AppLayout } from "@/components/layout/AppLayout";
+import { DisparosHojeFaixa } from "@/components/campanhas/DisparosHojeFaixa";
 import { CaptacaoProtectedRoute } from "@/components/auth/CaptacaoProtectedRoute";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -649,6 +650,7 @@ export default function CampanhasProspeccao() {
 
           {view === "campanhas" ? (
             <>
+              <DisparosHojeFaixa />
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <DashboardCard
                   icon={Rocket}
@@ -1086,26 +1088,27 @@ function CampanhaCard({
               )}
               {campanha.especialidades_nomes && campanha.especialidades_nomes.length > 0 ? (
                 campanha.especialidades_nomes.length === 1 ? (
-                  <Badge variant="outline" className="text-xs">
-                    <Stethoscope className="h-3 w-3 mr-1" />
-                    {campanha.especialidades_nomes[0]}
+                  // Nome de especialidade longo (RADIOLOGIA E DIAGNÓSTICO POR IMAGEM) vazava do card em 1024: corta com "…".
+                  <Badge variant="outline" className="text-xs max-w-full min-w-0" title={campanha.especialidades_nomes[0]}>
+                    <Stethoscope className="h-3 w-3 mr-1 shrink-0" />
+                    <span className="truncate">{campanha.especialidades_nomes[0]}</span>
                   </Badge>
                 ) : (
                   <Badge
                     variant="outline"
-                    className="text-xs"
+                    className="text-xs max-w-full min-w-0"
                     title={campanha.especialidades_nomes.join(", ")}
                   >
-                    <Stethoscope className="h-3 w-3 mr-1" />
-                    {campanha.especialidades_nomes[0]} +
-                    {campanha.especialidades_nomes.length - 1}
+                    <Stethoscope className="h-3 w-3 mr-1 shrink-0" />
+                    <span className="truncate">{campanha.especialidades_nomes[0]}</span>
+                    <span className="shrink-0">&nbsp;+{campanha.especialidades_nomes.length - 1}</span>
                   </Badge>
                 )
               ) : (
                 campanha.especialidade && (
-                  <Badge variant="outline" className="text-xs">
-                    <Stethoscope className="h-3 w-3 mr-1" />
-                    {campanha.especialidade?.nome}
+                  <Badge variant="outline" className="text-xs max-w-full min-w-0" title={campanha.especialidade?.nome}>
+                    <Stethoscope className="h-3 w-3 mr-1 shrink-0" />
+                    <span className="truncate">{campanha.especialidade?.nome}</span>
                   </Badge>
                 )
               )}
