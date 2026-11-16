@@ -13,6 +13,10 @@ export default {
       },
     },
     extend: {
+      // Títulos das telas do redesenho 2027 (Sora já vem do index.html). Só a classe nova; a fonte padrão não muda.
+      fontFamily: {
+        display: ["Sora", "Manrope", "system-ui", "sans-serif"],
+      },
       screens: {
         xs: "480px",
       },

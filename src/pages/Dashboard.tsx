@@ -4,20 +4,23 @@ import { WorkspaceArea } from "@/components/workspace/WorkspaceArea";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { LayoutDashboard, Briefcase, Plus, Sparkles, Kanban } from "lucide-react";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
+import { Plus } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { ColunaAgenda } from "@/components/demandas/ColunaAgenda";
-import { ColunaMinhasTarefas } from "@/components/demandas/ColunaMinhasTarefas";
-import { ColunaPendenciasSetor } from "@/components/demandas/ColunaPendenciasSetor";
+import { HojeParaVoce } from "@/components/home/HojeParaVoce";
+import { SuaSemana } from "@/components/home/SuaSemana";
+import { PendenciasAgrupadas } from "@/components/home/PendenciasAgrupadas";
 import { NovaDemandaDialog } from "@/components/demandas/NovaDemandaDialog";
 import { KanbanTarefas } from "@/components/demandas/KanbanTarefas";
-import { useUserSetor } from "@/hooks/useUserSetor";
 import { usePermissions } from "@/hooks/usePermissions";
 import { toast } from "sonner";
 import { DisparosHojeFaixa } from "@/components/campanhas/DisparosHojeFaixa";
+
+function saudacao() {
+  const h = new Date().getHours();
+  return h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite";
+}
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -26,9 +29,20 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState("home");
   const [novaDemandaOpen, setNovaDemandaOpen] = useState(false);
   const [tarefaAbertaId, setTarefaAbertaId] = useState<string | null>(null);
-  const { setorNome } = useUserSetor();
   const { isAdmin, hasPermission, userRoles: papeis } = usePermissions();
   const veDisparos = isAdmin || !!papeis?.some((r) => r.role === "diretoria") || hasPermission("disparos", "visualizar");
+
+  const { data: primeiroNome } = useQuery({
+    queryKey: ["home-primeiro-nome", user?.id],
+    enabled: !!user?.id,
+    staleTime: 1000 * 60 * 30,
+    queryFn: async () => {
+      const { data } = await supabase.from("profiles").select("nome_completo").eq("id", user!.id).maybeSingle();
+      const n = (data?.nome_completo ?? "").trim().split(/\s+/)[0] ?? "";
+      // nome em caixa normal ("Carla", não "CARLA"), como no resto do redesenho
+      return n ? n.charAt(0).toUpperCase() + n.slice(1).toLowerCase() : "";
+    },
+  });
 
   const abrirDetalheTarefa = (id: string) => {
     if (!UUID_RE.test(id)) {
@@ -74,77 +88,57 @@ export default function Dashboard() {
     );
   }
 
+  // Cabeçalho do redesenho 2027: uma linha, saudação à esquerda; à direita a troca de vista e a ação principal.
+  // As vistas (Hoje, Kanban, Minha área) são as mesmas abas de antes; só mudaram de lugar e de nome.
+  const VISTAS = [
+    { v: "home", rotulo: "Hoje" },
+    { v: "kanban", rotulo: "Kanban" },
+    { v: "minha-area", rotulo: "Minha área" },
+  ];
   const headerToolbar = (
-    <div className="flex items-center justify-between gap-2 flex-wrap w-full">
-      <div className="flex items-center gap-2 flex-wrap min-w-0">
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="h-9 sm:h-10 gap-1 rounded-2xl border border-border/60 bg-card/80 p-1 shadow-sm backdrop-blur shrink-0">
-                <TabsTrigger
-                  value="home"
-              className="gap-1.5 rounded-xl px-2.5 sm:px-3 py-1.5 text-sm font-semibold text-muted-foreground transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg data-[state=active]:shadow-primary/25"
-                >
-                  <LayoutDashboard className="h-4 w-4" />
-                  <span className="hidden xs:inline">Home</span>
-                </TabsTrigger>
-                <TabsTrigger
-                  value="minha-area"
-              className="gap-1.5 rounded-xl px-2.5 sm:px-3 py-1.5 text-sm font-semibold text-muted-foreground transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg data-[state=active]:shadow-primary/25"
-                >
-                  <Briefcase className="h-4 w-4" />
-                  <span className="hidden xs:inline">Minha Área</span>
-                </TabsTrigger>
-                <TabsTrigger
-                  value="kanban"
-              className="gap-1.5 rounded-xl px-2.5 sm:px-3 py-1.5 text-sm font-semibold text-muted-foreground transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg data-[state=active]:shadow-primary/25"
-                >
-                  <Kanban className="h-4 w-4" />
-                  <span className="hidden xs:inline">Kanban</span>
-                </TabsTrigger>
-              </TabsList>
-        </Tabs>
-        {activeTab === "home" && (
-          <div className="flex items-center gap-2 min-w-0">
-            <h1 className="text-base sm:text-lg font-bold flex items-center gap-1.5 truncate">
-              Demandas
-              <Sparkles className="h-4 w-4 text-primary shrink-0" />
-            </h1>
-            {(setorNome || isAdmin) && (
-              <Badge variant="outline" className="text-[11px] shrink-0 hidden sm:inline-flex">
-                {isAdmin ? "Admin · todos os setores" : setorNome}
-              </Badge>
-            )}
-          </div>
-        )}
-      </div>
-      {activeTab === "home" && (
-        <Button onClick={() => setNovaDemandaOpen(true)} size="sm" className="gap-1 shrink-0 ml-auto">
-          <Plus className="h-4 w-4" /> <span className="hidden xs:inline">Nova demanda</span>
+    <div className="flex w-full flex-wrap items-center gap-x-4 gap-y-2">
+      <h1 className="min-w-0 truncate font-display text-lg font-semibold">
+        {saudacao()}
+        {primeiroNome ? `, ${primeiroNome}` : ""}
+      </h1>
+      <div className="ml-auto flex items-center gap-2">
+        <div role="tablist" aria-label="Vista da Home" className="flex rounded-lg border bg-muted/40 p-0.5">
+          {VISTAS.map(({ v, rotulo }) => (
+            <button
+              key={v}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === v}
+              onClick={() => setActiveTab(v)}
+              className={`h-8 rounded-md px-3 text-sm font-medium transition-colors ${
+                activeTab === v ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {rotulo}
+            </button>
+          ))}
+        </div>
+        <Button onClick={() => setNovaDemandaOpen(true)} size="sm" className="h-9 gap-1">
+          <Plus className="h-4 w-4" /> Nova demanda
         </Button>
-      )}
+      </div>
     </div>
   );
 
   return (
     <AppLayout headerActions={headerToolbar}>
-      <div className="p-3 min-h-[calc(100vh-4rem)] flex flex-col">
+      <div className="p-4 md:p-6 min-h-[calc(100vh-4rem)] flex flex-col">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex-1 flex flex-col">
           <TabsContent value="home" className="flex-1 mt-0">
-            {/* Disparos de hoje para quem acompanha a prospecção (sócios e captação); a faixa tem altura fixa
-                no desktop (112px + 12px de espaço), descontada da altura das colunas abaixo. */}
-            {veDisparos && <DisparosHojeFaixa className="mb-3" />}
-            <div
-              className={`grid grid-cols-1 md:grid-cols-[1.15fr_1.15fr_0.7fr] gap-3 h-auto ${
-                veDisparos ? "md:h-[calc(100vh-10rem-124px)]" : "md:h-[calc(100vh-10rem)]"
-              }`}
-            >
-              <div className="min-h-0">
-                <ColunaAgenda onTarefaClick={abrirDetalheTarefa} />
-              </div>
-              <div className="min-h-0">
-                <ColunaMinhasTarefas onTarefaClick={abrirDetalheTarefa} />
-              </div>
-              <div className="min-h-0">
-                <ColunaPendenciasSetor />
+            {/* Disparos de hoje para quem acompanha a prospecção (sócios e captação). */}
+            {veDisparos && <DisparosHojeFaixa className="mb-4" />}
+            {/* 1280+ px: lista à esquerda, semana e pendências à direita. Abaixo disso a lista ocupa a largura toda
+                (em 1024 os títulos cortavam) e semana e pendências ficam lado a lado embaixo. */}
+            <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+              <HojeParaVoce onAbrir={abrirDetalheTarefa} onVerTodas={() => setActiveTab("kanban")} />
+              <div className="grid min-w-0 grid-cols-1 items-start gap-4 md:grid-cols-2 xl:grid-cols-1">
+                <SuaSemana onAbrirTarefa={abrirDetalheTarefa} />
+                <PendenciasAgrupadas onAbrirTarefa={abrirDetalheTarefa} />
               </div>
             </div>
           </TabsContent>
