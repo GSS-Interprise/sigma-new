@@ -105,12 +105,19 @@ export function CampanhaProspeccaoKanban({ campanhaId }: Props) {
   useEffect(() => {
     const medir = () => {
       const el = quadroRef.current;
-      if (!el) return;
-      const topoNaJanela = el.getBoundingClientRect().top + (el.closest("main")?.scrollTop ?? 0);
+      const main = el?.closest("main");
+      if (!el || !main) return;
+      // Tudo medido, nada de número mágico: o fim da área rolável (o rodapé "Sistema Integrado..." fica fora dela),
+      // o respiro de baixo da página, o cabeçalho da coluna, o pb-4 e a barra de rolagem lateral do quadro.
+      const mainRect = main.getBoundingClientRect();
+      const topo = el.getBoundingClientRect().top + main.scrollTop;
+      const conteudo = el.parentElement?.closest("[class*='p-4']") as HTMLElement | null;
+      const respiro = conteudo ? parseFloat(getComputedStyle(conteudo).paddingBottom) || 24 : 24;
+      const cabecalho = (el.firstElementChild?.firstElementChild as HTMLElement | null)?.offsetHeight ?? 70;
+      const barra = el.offsetHeight - el.clientHeight; // barra horizontal (0 quando não há rolagem lateral)
+      const pb = parseFloat(getComputedStyle(el).paddingBottom) || 16;
+      const h = Math.max(240, Math.floor(mainRect.bottom - topo - respiro - cabecalho - barra - pb - 4));
       // A variável vai no quadro (o ScrollArea do Radix descarta o style que recebe) e as colunas herdam.
-      // 168px = cabeçalho da coluna (~65) + barra de rolagem lateral do quadro (pb-4 + barra) + padding de baixo da
-      // página. Conferido no monitor do Raul (1536x695 úteis): página sem rolagem e a barra lateral à vista.
-      const h = Math.max(240, Math.floor(window.innerHeight - topoNaJanela - 168));
       setAlturaColuna({ ["--kanban-coluna-h" as string]: `${h}px` });
     };
     medir();
