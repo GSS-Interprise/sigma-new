@@ -19,6 +19,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { CA_AUTORIZAR, CA_ESCOPO, conectar, credencial, lerTokens, listarTudo } from "../_shared/contaazul.ts";
+import { appUrl as appUrlPadrao } from "../_shared/app-url.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -44,7 +45,7 @@ serve(async (req) => {
 
   try {
     const { data: cfg } = await svc.from("config_lista_items").select("valor").eq("campo_nome", "financeiro_nf_link_base").maybeSingle();
-    const appUrl = String(cfg?.valor || "https://sigma-gss.lovable.app").replace(/\/+$/, "");
+    const appUrl = String(cfg?.valor || appUrlPadrao()).replace(/\/+$/, "");
     const retornoApp = `${appUrl}/conta-azul/retorno`;
     const redirectUri = (Deno.env.get("CONTAAZUL_REDIRECT_URI") || "").trim() || retornoApp;
     const retornoDireto = redirectUri === retornoApp;

@@ -8,6 +8,7 @@
 // Só service_role chama.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { chakraApi, ChakraApiError } from "../_shared/chakra.ts";
+import { appUrl } from "../_shared/app-url.ts";
 
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { "Content-Type": "application/json" } });
 
@@ -170,7 +171,7 @@ async function alertar(admin: any, titulo: string, corpo: string) {
         from: "Sigma GSS <avisos@gestaoservicosaude.com.br>", to: para, subject: titulo.replace(/^\S+\s/, ""),
         html: `<div style="font-family:Arial,sans-serif;font-size:14px;color:#1f2937;max-width:600px"><p><b>${esc(titulo)}</b></p>`
           + `<p style="white-space:pre-line">${esc(corpo)}</p>`
-          + `<p><a href="https://sigma-gss.lovable.app/configuracoes?tab=whatsapp">Abrir Configurações › WhatsApp</a></p>`
+          + `<p><a href="${appUrl()}/configuracoes?tab=whatsapp">Abrir Configurações › WhatsApp</a></p>`
           + `<p style="color:#9ca3af;font-size:12px">Monitor dos números oficiais (docs/arquitetura/monitor-numeros-whatsapp.md). O aviso só sai quando um número muda de estado.</p></div>`,
         tags: [{ name: "origem", value: "whatsapp_monitor" }],
       }),

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { appUrl } from "../_shared/app-url.ts";
 
 // Avisos das tarefas do edital (T5 de docs/arquitetura/licitacoes-contratos-gss.md).
 // Roda a cada 10 min pelo pg_cron. Para cada tarefa aberta que vence nos próximos 7 dias, avisa o
@@ -107,7 +108,7 @@ serve(async (req) => {
     // domínio principal da GSS, verificado no Resend (o financeiro envia por ele). Os secrets
     // RESEND_FROM* deste projeto não trazem um endereço utilizável.
     const de = "Sigma GSS <avisos@gestaoservicosaude.com.br>";
-    const site = "https://sigma-gss.lovable.app";
+    const site = appUrl();
     const relatorio: any[] = [];
 
     for (const t of (tarefas ?? []) as any[]) {

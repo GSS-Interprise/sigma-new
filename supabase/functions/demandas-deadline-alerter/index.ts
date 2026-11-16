@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { appUrl } from "../_shared/app-url.ts";
 
 /**
  * Cron diário (8h America/Sao_Paulo).
@@ -172,7 +173,7 @@ serve(async (req) => {
       profById.set(p.id, { email: p.email, nome_completo: p.nome_completo }),
     );
 
-    const APP_URL = Deno.env.get("APP_URL") ?? "https://sigma-gss.lovable.app";
+    const APP_URL = appUrl();
     let emailsEnviados = 0;
     let emailsFalha = 0;
 

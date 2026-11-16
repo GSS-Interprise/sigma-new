@@ -15,12 +15,13 @@ import {
   cabecalho401, comParametros, ehErro, lerCorpoToken, metadadosRecurso, metadadosServidor, novoSegredo,
   pkceConfere, rota, sha256Hex, validarAutorizacao, validarRegistro, VIDA_ACESSO_S, VIDA_CODIGO_S, VIDA_REFRESH_DIAS,
 } from "../_shared/mcp-oauth.ts";
+import { appUrl } from "../_shared/app-url.ts";
 
 const PAPEIS_LIBERADOS = ["admin", "diretoria"];
 const VERSOES = ["2025-06-18", "2025-03-26", "2024-11-05"];
 const BASE = `${Deno.env.get("SUPABASE_URL")}/functions/v1/sigma-mcp`;
-// Tela de aprovação do OAuth (src/pages/ConectarClaude.tsx), no front publicado pelo Lovable.
-const APP = (Deno.env.get("APP_URL") || "https://sigma-gss.lovable.app").replace(/\/+$/, "");
+// Tela de aprovação do OAuth (src/pages/ConectarClaude.tsx), no front publicado (segredo APP_URL).
+const APP = appUrl();
 
 const cors = {
   "Access-Control-Allow-Origin": "*",

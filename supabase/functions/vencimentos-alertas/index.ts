@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { appUrl } from "../_shared/app-url.ts";
 
 // Vencimento de documentos (T10 e T13 de docs/arquitetura/licitacoes-contratos-gss.md).
 // Roda 1x por dia (08:00 de Brasília) pelo pg_cron. Certidões da empresa (empresa_documentos,
@@ -11,7 +12,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-internal-sync-key" };
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...cors, "Content-Type": "application/json" } });
 const esc = (s: string) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
-const SITE = "https://sigma-gss.lovable.app";
+const SITE = appUrl();
 const DE = "Sigma GSS <avisos@gestaoservicosaude.com.br>";
 
 // data de hoje em Brasília (YYYY-MM-DD) e diferença em dias entre datas sem hora

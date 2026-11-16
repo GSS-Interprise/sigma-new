@@ -14,9 +14,10 @@
 // Só service_role chama.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { destinosDaConfig, destinosValidos, trechoAviso } from "../_shared/alertas.ts";
+import { appUrl } from "../_shared/app-url.ts";
 
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { "Content-Type": "application/json" } });
-const SIGMA = "https://sigma-gss.lovable.app";
+const SIGMA = appUrl();
 const PLUGIN_GSS = "d9a6180c-4ae4-4ed4-9c16-401b781e1ee7"; // conta Chakra GSS (BM GSS), a mesma do SLA
 const dig = (v: unknown) => String(v ?? "").replace(/\D/g, "");
 

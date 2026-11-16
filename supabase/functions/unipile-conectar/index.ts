@@ -4,12 +4,13 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { corsHeaders } from "../_shared/cors.ts";
 import { criarState, lerState, salvarConta, unipile } from "../_shared/unipile.ts";
+import { appUrl, APP_URL_LOVABLE } from "../_shared/app-url.ts";
 
 const json = (b: unknown, status = 200) =>
   new Response(JSON.stringify(b), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
 // Para onde a Unipile devolve a pessoa. Só origens conhecidas (senão viraria redirecionador aberto).
-const ORIGENS = ["https://sigma-gss.lovable.app", "http://localhost:8090", "http://localhost:8080",
+const ORIGENS = [appUrl(), APP_URL_LOVABLE, "http://localhost:8090", "http://localhost:8080",
   ...(Deno.env.get("UNIPILE_REDIRECT_ORIGENS") || "").split(",").map((s) => s.trim()).filter(Boolean)];
 
 // Link copiado para a pessoa abrir no computador dela: vale 6 h (a Unipile derruba todos os links no reinício diário).

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { appUrl } from "../_shared/app-url.ts";
 
 // Avisos de contrato (T9 de docs/arquitetura/licitacoes-contratos-gss.md): contrato assinado e
 // início do serviço (hora de faturar). O gatilho do banco põe o evento em contrato_avisos; este
@@ -11,7 +12,7 @@ const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...cors, "Content-Type": "application/json" } });
 const esc = (s: string) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
 const brl = (v: number | null) => v == null ? "—" : Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-const SITE = "https://sigma-gss.lovable.app";
+const SITE = appUrl();
 const DE = "Sigma GSS <avisos@gestaoservicosaude.com.br>";
 
 serve(async (req) => {

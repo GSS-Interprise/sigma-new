@@ -22,6 +22,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ca, itensDe, listarTudo } from "../_shared/contaazul.ts";
 import { CNPJ_GSS, CNPJS_GRUPO_GSS, dadosBancariosDoTexto, leituraAssistida, leituraFoto, lerNfse, textoPdf } from "../_shared/nfse.ts";
 import { bloqueioLancamentoSemNf, type ItemConferencia, itensDaLeitura, type StatusConferencia, statusDosItens, sugestaoConfere } from "../_shared/nfse-conferencia.ts";
+import { appUrl } from "../_shared/app-url.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -210,7 +211,7 @@ async function referencias(svc: Svc) {
     pessoasPorDoc, pessoas: todas.filter((x) => x.tipo === "pessoa"),
     categoriasMed, categorias: todas.filter((x) => x.tipo === "categoria"), centros, conta, centroMed,
     escrita: cfg("financeiro_contaazul_escrita") === "1",
-    linkBase: (cfg("financeiro_nf_link_base") || "https://sigma-gss.lovable.app").replace(/\/+$/, ""),
+    linkBase: (cfg("financeiro_nf_link_base") || appUrl()).replace(/\/+$/, ""),
   };
 }
 

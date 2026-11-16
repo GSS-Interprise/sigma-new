@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.4'
 import { corsHeaders } from '../_shared/cors.ts'
+import { appUrl as appUrlPadrao } from "../_shared/app-url.ts";
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -55,7 +56,7 @@ Deno.serve(async (req) => {
     }
 
     // Send password reset email - redirect to reset password page
-    const appUrl = req.headers.get('origin') || 'https://sigmagss.lovable.app'
+    const appUrl = req.headers.get('origin') || appUrlPadrao()
     const { error: resetError } = await supabaseAdmin.auth.resetPasswordForEmail(email, {
       redirectTo: `${appUrl}/reset-password`,
     })

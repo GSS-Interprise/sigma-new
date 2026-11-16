@@ -12,6 +12,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { chakraApi, digits, unwrapChakraPayload } from "../_shared/chakra.ts";
+import { appUrl } from "../_shared/app-url.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -203,7 +204,7 @@ serve(async (req) => {
       ]);
     const cfg = (nome: string) => cfgRows?.find((c: any) => c.campo_nome === nome)?.valor || "";
     const replyDomain = cfg("financeiro_nf_reply_domain") || "nf.gestaoservicosaude.com.br";
-    const linkBase = (cfg("financeiro_nf_link_base") || Deno.env.get("APP_URL") || "https://sigma-gss.lovable.app").replace(/\/+$/, "");
+    const linkBase = (cfg("financeiro_nf_link_base") || appUrl()).replace(/\/+$/, "");
     const fromFin = "GSS Saúde Financeiro <financeiro@gestaoservicosaude.com.br>";
     const comBotaoUrl = cfg("financeiro_nf_whatsapp_botao_url") === "1";
 

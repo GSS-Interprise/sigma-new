@@ -9,6 +9,7 @@
 // App OAuth "Interno" do Google Cloud da GSS: só contas @gestaoservicosaude.com.br conseguem autorizar.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { appUrl as appUrlPadrao, APP_URL_LOVABLE } from "../_shared/app-url.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -26,8 +27,10 @@ function voltaSegura(volta: string | null | undefined, appUrl: string) {
   try {
     const u = new URL(String(volta || ""));
     const host = u.hostname;
-    const permitido = host === new URL(appUrl).hostname || host.endsWith(".lovable.app") ||
-      host.endsWith(".lovableproject.com") || host === "localhost" || host === "127.0.0.1";
+    // Endereço do app e, durante a troca para a Vercel, o do Lovable. Antes aceitava qualquer *.lovable.app
+    // (site de qualquer pessoa no Lovable), o que deixava esta rota mandar alguém para fora do Sigma.
+    const permitido = host === new URL(appUrl).hostname || host === new URL(APP_URL_LOVABLE).hostname ||
+      host === "localhost" || host === "127.0.0.1";
     if (permitido) return u.toString();
   } catch { /* volta inválida */ }
   return appUrl;
@@ -59,7 +62,7 @@ serve(async (req) => {
   const clientId = Deno.env.get("GOOGLE_GMAIL_CLIENT_ID") || "";
   const clientSecret = Deno.env.get("GOOGLE_GMAIL_CLIENT_SECRET") || "";
   const { data: cfg } = await svc.from("config_lista_items").select("valor").eq("campo_nome", "financeiro_nf_link_base").maybeSingle();
-  const appUrl = String(cfg?.valor || Deno.env.get("APP_URL") || "https://sigma-gss.lovable.app").replace(/\/+$/, "");
+  const appUrl = String(cfg?.valor || appUrlPadrao()).replace(/\/+$/, "");
 
   // ---------- volta do Google ----------
   if (req.method === "GET") {

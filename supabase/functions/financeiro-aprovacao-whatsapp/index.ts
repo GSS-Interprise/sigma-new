@@ -16,6 +16,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { chakraApi, chakraTextMessage, unwrapChakraPayload } from "../_shared/chakra.ts";
+import { appUrl } from "../_shared/app-url.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -56,7 +57,7 @@ async function config(svc: Svc) {
   }).filter((a) => a.fone.length >= 12);
   return {
     senderId: cfg("financeiro_whatsapp_sender_id"),
-    linkBase: (cfg("financeiro_nf_link_base") || "https://sigma-gss.lovable.app").replace(/\/+$/, ""),
+    linkBase: (cfg("financeiro_nf_link_base") || appUrl()).replace(/\/+$/, ""),
     aprovadores, canalAprovacao: cfg("financeiro_canal_aprovacao_id"), canalComprovantes: cfg("financeiro_canal_comprovantes_id"),
   };
 }

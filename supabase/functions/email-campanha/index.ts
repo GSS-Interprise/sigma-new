@@ -16,6 +16,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { renderEmail, aplicarVariaveis, type EmailConteudo, conteudoPronto } from "../_shared/email-marketing.ts";
 import { GmailErro, gmailAccessToken, gmailEnviar, gmailMensagemRaw } from "../_shared/gmail.ts";
+import { appUrl } from "../_shared/app-url.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -38,7 +39,7 @@ async function contexto(svc: any, supabaseUrl: string): Promise<Ctx> {
   const cfg = (n: string) => data?.find((c: any) => c.campo_nome === n)?.valor || "";
   return {
     svc, supabaseUrl,
-    appUrl: (cfg("financeiro_nf_link_base") || Deno.env.get("APP_URL") || "https://sigma-gss.lovable.app").replace(/\/+$/, ""),
+    appUrl: (cfg("financeiro_nf_link_base") || appUrl()).replace(/\/+$/, ""),
     // Remetente de marketing vem do SUBDOMÍNIO próprio. Sem ele configurado, campanha real
     // não sai: mandar volume pelo domínio principal arrisca a reputação do e-mail do
     // financeiro e dos contratos. Teste pode sair pelo domínio principal.

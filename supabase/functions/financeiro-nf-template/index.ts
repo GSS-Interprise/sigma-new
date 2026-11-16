@@ -12,6 +12,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { chakraApi, unwrapChakraPayload } from "../_shared/chakra.ts";
+import { appUrl } from "../_shared/app-url.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -45,7 +46,7 @@ serve(async (req) => {
       .select("campo_nome, valor")
       .in("campo_nome", ["financeiro_whatsapp_sender_id", "financeiro_nf_link_base"]);
     const cfg = (n: string) => cfgRows?.find((c: any) => c.campo_nome === n)?.valor || "";
-    const linkBase = String(input.link_base || cfg("financeiro_nf_link_base") || Deno.env.get("APP_URL") || "https://sigma-gss.lovable.app").replace(/\/+$/, "");
+    const linkBase = String(input.link_base || cfg("financeiro_nf_link_base") || appUrl()).replace(/\/+$/, "");
 
     const senderId = cfg("financeiro_whatsapp_sender_id");
     if (!senderId) return json({ ok: false, error: "financeiro_whatsapp_sender_id nao configurado" }, 409);
