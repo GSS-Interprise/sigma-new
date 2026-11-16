@@ -44,3 +44,7 @@ plan/
 # Playwright MCP output (screenshots, snapshots, logs)
 .playwright-mcp/
 *.playwright-mcp.jpeg
+
+# Vercel CLI (projeto ligado e token OIDC local). O .env versionado só tem as chaves públicas do Vite.
+.vercel
+.env*
