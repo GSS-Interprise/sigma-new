@@ -74,21 +74,6 @@ export function CampanhaProspeccaoKanban({ campanhaId }: Props) {
   // barra de rolagem lateral ficavam cortados (Raul, 16/11, monitor com escala de 125%).
   const quadroRef = useRef<HTMLDivElement>(null);
   const [alturaColuna, setAlturaColuna] = useState<React.CSSProperties>();
-  useEffect(() => {
-    const medir = () => {
-      const el = quadroRef.current;
-      if (!el) return;
-      const topoNaJanela = el.getBoundingClientRect().top + (el.closest("main")?.scrollTop ?? 0);
-      // A variável vai no quadro (o ScrollArea do Radix descarta o style que recebe) e as colunas herdam.
-      // 96px = cabeçalho da coluna (~80) + barra de rolagem lateral e respiro (16).
-      const h = Math.max(240, Math.floor(window.innerHeight - topoNaJanela - 96 - 24));
-      setAlturaColuna({ ["--kanban-coluna-h" as string]: `${h}px` });
-    };
-    medir();
-    window.addEventListener("resize", medir);
-    const t = setTimeout(medir, 400); // depois que os filtros e as faixas acima terminam de carregar
-    return () => { window.removeEventListener("resize", medir); clearTimeout(t); };
-  }, []);
   const [searchTerm, setSearchTerm] = useState("");
   const [filtroUf, setFiltroUf] = useState("__all");
   const [filtroEsp, setFiltroEsp] = useState("__all");
@@ -116,6 +101,23 @@ export function CampanhaProspeccaoKanban({ campanhaId }: Props) {
   });
 
   const { byStatus, leads, isLoading } = useCampanhaLeadsByStatus(campanhaId);
+  const quadroVisivel = !isLoading;
+  useEffect(() => {
+    const medir = () => {
+      const el = quadroRef.current;
+      if (!el) return;
+      const topoNaJanela = el.getBoundingClientRect().top + (el.closest("main")?.scrollTop ?? 0);
+      // A variável vai no quadro (o ScrollArea do Radix descarta o style que recebe) e as colunas herdam.
+      // 96px = cabeçalho da coluna (~80) + barra de rolagem lateral e respiro (16).
+      const h = Math.max(240, Math.floor(window.innerHeight - topoNaJanela - 96 - 24));
+      setAlturaColuna({ ["--kanban-coluna-h" as string]: `${h}px` });
+    };
+    medir();
+    window.addEventListener("resize", medir);
+    const t = setTimeout(medir, 400); // depois que os filtros e as faixas acima terminam de carregar
+    return () => { window.removeEventListener("resize", medir); clearTimeout(t); };
+    // Mede de novo quando o quadro aparece: no primeiro render a tela ainda mostra "Carregando pipeline" e não há quadro.
+  }, [quadroVisivel]);
   const atualizarStatus = useAtualizarStatusLead();
   const classificarSaida = useClassificarSaidaCampanha();
   const updateTags = useUpdateLeadTags(campanhaId);
