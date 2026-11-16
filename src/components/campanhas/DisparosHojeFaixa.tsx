@@ -198,7 +198,7 @@ export function DisparosHojeFaixa({ className = "" }: { className?: string }) {
  */
 export function DisparosCampanhaHoje({ campanhaId, className = "" }: { campanhaId: string; className?: string }) {
   const { data, isLoading } = usePainelDisparos();
-  if (isLoading) return <Skeleton className={`h-[68px] w-full rounded-xl ${className}`} />;
+  if (isLoading) return <Skeleton className={`h-[52px] w-full rounded-xl ${className}`} />;
   const c = data?.campanhas.find((x) => x.id === campanhaId);
   if (!c) {
     return (
@@ -211,27 +211,25 @@ export function DisparosCampanhaHoje({ campanhaId, className = "" }: { campanhaI
   const pct = c.estimativa > 0 ? Math.min(100, Math.round((c.hoje / c.estimativa) * 100)) : 0;
   const projecao = projecaoDia(c.hoje, c.estimativa);
   const dias = c.estimativa > 0 ? Math.ceil(c.fila / c.estimativa) : null;
+  // Uma linha só (~52px): dentro da campanha ela fica acima do Kanban, e cada pixel aqui sai da altura das colunas.
   return (
-    <div className={`grid grid-cols-1 items-center gap-3 rounded-xl border bg-card px-5 py-3 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:gap-6 ${className}`}>
-      <div className="min-w-0">
-        <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-          <Send className="h-3.5 w-3.5 shrink-0 text-primary" />
-          Disparos por dia (estimativa)
-        </p>
-        <p className="mt-0.5 text-3xl font-bold leading-none tabular-nums">~{fmt(c.estimativa)}</p>
-      </div>
-      <div className="min-w-0">
-        <p className="truncate text-sm">
-          Hoje <strong className="font-semibold tabular-nums">{fmt(c.hoje)}</strong>
-          <span className="text-muted-foreground"> de ~{fmt(c.estimativa)}</span>
-          {projecao !== null && <span className="text-muted-foreground"> · fecha perto de <strong className="font-semibold text-foreground tabular-nums">{fmt(projecao)}</strong></span>}
-        </p>
-        <div className="mt-1.5 h-1.5 w-full max-w-[420px] overflow-hidden rounded-full bg-muted" aria-hidden>
+    <div className={`flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl border bg-card px-4 py-2.5 ${className}`}>
+      <p className="flex shrink-0 items-baseline gap-2">
+        <Send className="h-3.5 w-3.5 shrink-0 self-center text-primary" />
+        <span className="text-xs font-medium text-muted-foreground">Disparos por dia</span>
+        <span className="text-2xl font-bold leading-none tabular-nums">~{fmt(c.estimativa)}</span>
+      </p>
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        <div className="h-1.5 w-full max-w-[220px] shrink-0 overflow-hidden rounded-full bg-muted" aria-hidden>
           <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${pct}%` }} />
         </div>
+        <p className="min-w-0 truncate text-sm">
+          Hoje <strong className="font-semibold tabular-nums">{fmt(c.hoje)}</strong>
+          {projecao !== null && <span className="text-muted-foreground"> · fecha perto de <strong className="font-semibold text-foreground tabular-nums">{fmt(projecao)}</strong></span>}
+        </p>
       </div>
       {dias !== null && c.fila > 0 && (
-        <p className="whitespace-nowrap text-xs text-muted-foreground">
+        <p className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
           Fila de <strong className="font-semibold text-foreground tabular-nums">{fmt(c.fila)}</strong> ≈ {dias} {dias === 1 ? "dia útil" : "dias úteis"}
         </p>
       )}

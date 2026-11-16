@@ -80,7 +80,7 @@ export function CampanhaProspeccaoKanban({ campanhaId }: Props) {
       if (!el) return;
       const topoNaJanela = el.getBoundingClientRect().top + (el.closest("main")?.scrollTop ?? 0);
       // 96px = cabeçalho da coluna (~80) + barra de rolagem lateral e respiro (16).
-      const h = Math.max(320, Math.floor(window.innerHeight - topoNaJanela - 96 - 24));
+      const h = Math.max(240, Math.floor(window.innerHeight - topoNaJanela - 96 - 24));
       setAlturaColuna({ ["--kanban-coluna-h" as string]: `${h}px` });
     };
     medir();

@@ -521,15 +521,8 @@ export default function CampanhasProspeccao() {
                 <RotateCcw className="mr-1 h-4 w-4" />
                 Reaproveitar perdidos
               </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="min-h-11"
-                onClick={() => setAddDoctorsOpen(true)}
-              >
-                <UserPlus className="mr-1 h-4 w-4" />
-                Adicionar médicos
-              </Button>
+              {/* "Adicionar médicos" saiu (16/11): abria a mesma janela de "Selecionar leads e estratégia" e empurrava
+                  o E-mail para uma segunda linha, roubando altura do Kanban. */}
               {/* e-mail marketing (Sigma envia) e e-mail nominal (equipe envia e sobe a planilha) */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
