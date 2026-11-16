@@ -42,6 +42,7 @@ begin
   -- Estimativa e disparos de hoje por campanha ativa, para o sócio ver de onde vem o número.
   with est as (
     select c.id, trim(c.nome) as nome,
+           (select count(*) from campanha_leads cl where cl.campanha_id = c.id and cl.status = 'frio')::int as fila,
            least(
              coalesce(nullif(c.limite_diario_campanha, 0), 250),
              floor((coalesce(c.horario_fim_brt, 17) - coalesce(c.horario_inicio_brt, 7)) * 60.0
@@ -54,7 +55,7 @@ begin
   ),
   hoje as (select x.campanha_id, (x.enviados + x.falharam)::int as n from agente_campanhas_disparos_dia(v_hoje) x)
   select coalesce(sum(e.estimativa), 0)::int,
-         coalesce(jsonb_agg(jsonb_build_object('campanha', e.nome, 'hoje', coalesce(h.n, 0), 'estimativa', e.estimativa)
+         coalesce(jsonb_agg(jsonb_build_object('id', e.id, 'campanha', e.nome, 'hoje', coalesce(h.n, 0), 'estimativa', e.estimativa, 'fila', e.fila)
                             order by e.estimativa desc, e.nome, e.id) filter (where e.id is not null), '[]'::jsonb)
     into v_teto, v_campanhas
     from est e left join hoje h on h.campanha_id = e.id;

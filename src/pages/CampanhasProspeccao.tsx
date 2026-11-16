@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { AppLayout } from "@/components/layout/AppLayout";
-import { DisparosHojeFaixa } from "@/components/campanhas/DisparosHojeFaixa";
+import { DisparosHojeFaixa, DisparosCampanhaHoje } from "@/components/campanhas/DisparosHojeFaixa";
 import { CaptacaoProtectedRoute } from "@/components/auth/CaptacaoProtectedRoute";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -34,6 +34,7 @@ import {
   ClipboardList,
   Settings,
   BarChart3,
+  Columns3,
   MoreVertical,
   Copy,
   Smartphone,
@@ -151,6 +152,14 @@ export default function CampanhasProspeccao() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [configurarId, setConfigurarId] = useState<string | null>(null);
   const [selecionada, setSelecionada] = useState<string | null>(null);
+  // Resumo ou Kanban dentro da campanha; lembra a última escolha neste navegador (pode falhar em aba anônima).
+  const [visao, setVisao] = useState<"resumo" | "kanban">(() => {
+    try { return localStorage.getItem("campanha-visao") === "kanban" ? "kanban" : "resumo"; } catch { return "resumo"; }
+  });
+  const trocarVisao = (v: "resumo" | "kanban") => {
+    setVisao(v);
+    try { localStorage.setItem("campanha-visao", v); } catch { /* sem armazenamento: vale só nesta visita */ }
+  };
   const [strategyToAdd, setStrategyToAdd] = useState("");
   const [addDoctorsOpen, setAddDoctorsOpen] = useState(false);
   const [emailOpen, setEmailOpen] = useState(false);
@@ -441,7 +450,37 @@ export default function CampanhasProspeccao() {
               </div>
             )}
 
+            {/* Estimativa do dia desta campanha (mesma conta da faixa da Home), pedido do Raul em 16/11. */}
+            <DisparosCampanhaHoje campanhaId={selecionada} />
+
             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+              {/* Alternador Resumo/Kanban à vista (antes eram abas pequenas embaixo dos botões e o Kanban passava
+                  despercebido). Fica à esquerda, maior que as ações; a escolha fica guardada neste navegador. */}
+              <div role="tablist" aria-label="Visão da campanha" className="inline-flex shrink-0 rounded-xl border bg-muted/60 p-1 sm:mr-auto">
+                {([
+                  { id: "resumo", rotulo: "Resumo", Icone: BarChart3 },
+                  { id: "kanban", rotulo: "Kanban", Icone: Columns3 },
+                ] as const).map(({ id, rotulo, Icone }) => (
+                  <button
+                    key={id}
+                    type="button"
+                    role="tab"
+                    aria-selected={visao === id}
+                    onClick={() => trocarVisao(id)}
+                    className={`inline-flex min-h-10 items-center gap-2 rounded-lg px-5 text-sm font-semibold transition-colors ${
+                      visao === id ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-background hover:text-foreground"
+                    }`}
+                  >
+                    <Icone className="h-4 w-4" />
+                    {rotulo}
+                    {id === "kanban" && campanhaSelecionada.total_quente > 0 && (
+                      <span className={`rounded-full px-1.5 text-xs tabular-nums ${visao === id ? "bg-primary-foreground/20" : "bg-red-100 text-red-700"}`} title="Médicos quentes">
+                        {campanhaSelecionada.total_quente}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
               {addStrategies.length > 0 && (
                 <select
                   className="min-h-11 w-full rounded-md border bg-background px-3 text-sm sm:max-w-64"
@@ -510,15 +549,11 @@ export default function CampanhasProspeccao() {
               </DropdownMenu>
             </div>
 
-            <Tabs defaultValue="resumo">
-              <TabsList>
-                <TabsTrigger value="resumo">Resumo</TabsTrigger>
-                <TabsTrigger value="kanban">Kanban</TabsTrigger>
-              </TabsList>
-              <TabsContent value="resumo" className="mt-4">
+            <Tabs value={visao} onValueChange={(v) => trocarVisao(v as "resumo" | "kanban")}>
+              <TabsContent value="resumo" className="mt-0">
                 <PainelDonoCampanha campanhaId={selecionada} />
               </TabsContent>
-              <TabsContent value="kanban" className="mt-4 space-y-4">
+              <TabsContent value="kanban" className="mt-0 space-y-4">
                 {/* Manual: a equipe conduz; em_conversa significa que o médico respondeu. */}
                 <div className={`grid grid-cols-2 gap-3 ${campanhaSelecionada.tipo_envio === "manual" ? "md:grid-cols-5" : "md:grid-cols-6"}`}>
                   <MetricCard
