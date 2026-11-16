@@ -108,8 +108,9 @@ export function CampanhaProspeccaoKanban({ campanhaId }: Props) {
       if (!el) return;
       const topoNaJanela = el.getBoundingClientRect().top + (el.closest("main")?.scrollTop ?? 0);
       // A variável vai no quadro (o ScrollArea do Radix descarta o style que recebe) e as colunas herdam.
-      // 96px = cabeçalho da coluna (~80) + barra de rolagem lateral e respiro (16).
-      const h = Math.max(240, Math.floor(window.innerHeight - topoNaJanela - 96 - 24));
+      // 168px = cabeçalho da coluna (~65) + barra de rolagem lateral do quadro (pb-4 + barra) + padding de baixo da
+      // página. Conferido no monitor do Raul (1536x695 úteis): página sem rolagem e a barra lateral à vista.
+      const h = Math.max(240, Math.floor(window.innerHeight - topoNaJanela - 168));
       setAlturaColuna({ ["--kanban-coluna-h" as string]: `${h}px` });
     };
     medir();
