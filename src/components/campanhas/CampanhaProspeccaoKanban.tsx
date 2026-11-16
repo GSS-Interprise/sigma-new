@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -69,6 +69,25 @@ interface Props {
 }
 
 export function CampanhaProspeccaoKanban({ campanhaId }: Props) {
+  // Altura das colunas = o que sobra da janela abaixo do quadro (medido), não um número fixo. Com o valor fixo
+  // (100dvh-360px) o que vinha acima do Kanban passava de 360px, a página ganhava rolagem e o fim das colunas e a
+  // barra de rolagem lateral ficavam cortados (Raul, 16/11, monitor com escala de 125%).
+  const quadroRef = useRef<HTMLDivElement>(null);
+  const [alturaColuna, setAlturaColuna] = useState<React.CSSProperties>();
+  useEffect(() => {
+    const medir = () => {
+      const el = quadroRef.current;
+      if (!el) return;
+      const topoNaJanela = el.getBoundingClientRect().top + (el.closest("main")?.scrollTop ?? 0);
+      // 96px = cabeçalho da coluna (~80) + barra de rolagem lateral e respiro (16).
+      const h = Math.max(320, Math.floor(window.innerHeight - topoNaJanela - 96 - 24));
+      setAlturaColuna({ ["--kanban-coluna-h" as string]: `${h}px` });
+    };
+    medir();
+    window.addEventListener("resize", medir);
+    const t = setTimeout(medir, 400); // depois que os filtros e as faixas acima terminam de carregar
+    return () => { window.removeEventListener("resize", medir); clearTimeout(t); };
+  }, []);
   const [searchTerm, setSearchTerm] = useState("");
   const [filtroUf, setFiltroUf] = useState("__all");
   const [filtroEsp, setFiltroEsp] = useState("__all");
@@ -279,7 +298,7 @@ export function CampanhaProspeccaoKanban({ campanhaId }: Props) {
         </Badge>
       </div>
 
-      <div className="flex gap-3 overflow-x-auto pb-4">
+      <div ref={quadroRef} className="flex gap-3 overflow-x-auto pb-4">
         {colunas.map((col) => {
           const colLeads = filteredByStatus(col.id);
           const Icon = col.icon;
@@ -296,7 +315,7 @@ export function CampanhaProspeccaoKanban({ campanhaId }: Props) {
                 </div>
                 <p className="text-xs text-muted-foreground mt-0.5">{col.description}</p>
               </div>
-              <ScrollArea className="h-auto md:h-[calc(100dvh-360px)] p-2">
+              <ScrollArea className="h-auto p-2 md:h-[var(--kanban-coluna-h,calc(100dvh-360px))]" style={alturaColuna}>
                 <div className="space-y-2">
                   {colLeads.map((cl) => (
                     <LeadCard

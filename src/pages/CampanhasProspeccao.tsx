@@ -554,49 +554,8 @@ export default function CampanhasProspeccao() {
                 <PainelDonoCampanha campanhaId={selecionada} />
               </TabsContent>
               <TabsContent value="kanban" className="mt-0 space-y-4">
-                {/* Manual: a equipe conduz; em_conversa significa que o médico respondeu. */}
-                <div className={`grid grid-cols-2 gap-3 ${campanhaSelecionada.tipo_envio === "manual" ? "md:grid-cols-5" : "md:grid-cols-6"}`}>
-                  <MetricCard
-                    label="Pendentes"
-                    value={campanhaSelecionada.total_frio}
-                    color="text-slate-600"
-                  />
-                  <MetricCard
-                    label="Aguardando"
-                    value={campanhaSelecionada.total_contatado}
-                    color="text-blue-600"
-                  />
-                  {campanhaSelecionada.tipo_envio === "manual" ? (
-                    <MetricCard
-                      label="Respondeu"
-                      value={campanhaSelecionada.total_em_conversa}
-                      color="text-orange-600"
-                    />
-                  ) : (
-                    <>
-                      <MetricCard
-                        label="IA Conversando"
-                        value={campanhaSelecionada.total_em_conversa}
-                        color="text-cyan-600"
-                      />
-                      <MetricCard
-                        label="Aquecidos"
-                        value={campanhaSelecionada.total_aquecido}
-                        color="text-amber-600"
-                      />
-                    </>
-                  )}
-                  <MetricCard
-                    label="Quentes"
-                    value={campanhaSelecionada.total_quente}
-                    color="text-red-600"
-                  />
-                  <MetricCard
-                    label="Convertidos"
-                    value={campanhaSelecionada.total_convertido}
-                    color="text-green-600"
-                  />
-                </div>
+                {/* Sem a fileira de números (Pendentes, Aguardando...): repetia a contagem do topo de cada coluna e
+                    empurrava o quadro para baixo, cortando o fim das colunas (16/11). */}
                 <CampanhaProspeccaoKanban campanhaId={selecionada} />
               </TabsContent>
             </Tabs>
@@ -997,25 +956,6 @@ function DashboardCard({
           <p className="text-3xl font-bold tabular-nums leading-none text-slate-900">{value}</p>
           <p className="mt-1.5 text-[11px] font-medium uppercase tracking-wide text-slate-400">{label}</p>
         </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function MetricCard({
-  label,
-  value,
-  color,
-}: {
-  label: string;
-  value: number;
-  color: string;
-}) {
-  return (
-    <Card>
-      <CardContent className="p-3 text-center">
-        <p className={`text-xl font-bold ${color}`}>{value}</p>
-        <p className="text-xs text-muted-foreground">{label}</p>
       </CardContent>
     </Card>
   );
