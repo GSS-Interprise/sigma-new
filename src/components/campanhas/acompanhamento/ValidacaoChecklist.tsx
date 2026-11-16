@@ -12,6 +12,7 @@ import {
   type AcompanhamentoLead,
   type ValidacaoItem,
 } from "@/hooks/useAcompanhamentoLeads";
+import { ComprovanteCfm } from "./ComprovanteCfm";
 
 interface Props {
   lead: AcompanhamentoLead;
@@ -33,15 +34,18 @@ export function ValidacaoChecklist({ lead, profilesMap }: Props) {
         {VALIDACAO_ITEMS.map((item) => {
           const v = lead.validacoes?.[item.key] as ValidacaoItem | undefined;
           return (
-            <ValidacaoItemRow
-              key={item.key}
-              campanhaLeadId={lead.campanha_lead_id}
-              itemKey={item.key}
-              label={item.label}
-              desc={item.desc}
-              valor={v}
-              profilesMap={profilesMap}
-            />
+            <div key={item.key} className="space-y-1.5">
+              <ValidacaoItemRow
+                campanhaLeadId={lead.campanha_lead_id}
+                itemKey={item.key}
+                label={item.label}
+                desc={item.desc}
+                valor={v}
+                profilesMap={profilesMap}
+              />
+              {/* Evidência do CFM junto da validação de processos (substitui o print que a equipe tirava). */}
+              {item.key === "validacao_equipe" && <ComprovanteCfm leadId={lead.lead_id} />}
+            </div>
           );
         })}
       </div>
