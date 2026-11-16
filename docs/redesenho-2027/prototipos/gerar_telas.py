@@ -1,7 +1,7 @@
 # As outras 7 telas no padrão escolhido (variação A com o menu verde). Dados fictícios.
 import pathlib, sys
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
-from gerar import CSS, ic, regua, fmt, ETAPAS, pagina, CAMPS
+from gerar import disparos, CSS, ic, regua, fmt, ETAPAS, pagina, CAMPS
 OUT = pathlib.Path(__file__).parent
 
 CSS2 = CSS + """
@@ -257,6 +257,7 @@ hl = ''.join(f'<div class="it"><span class="tp">{tp}</span><div class="tx"><b>{t
 SEM = [('Seg','10',[]),('Ter','11',[]),('Qua','12',[('09:00','Reunião de captação')]),('Qui','13',[('16:00','Ligar para Bruno Teixeira'),('17:30','Revisão das campanhas')]),('Sex','14',[('10:00','Treino do assistente de IA')])]
 sem = ''.join(f'<div class="dia{" hoje" if d=="13" else ""}"><div class="d"><b class="num">{d}</b><span>{w}</span></div><div style="display:flex;flex-direction:column;gap:4px;min-width:0">{"".join(f"<div class=ev><span class=num>{h}</span> {e}</div>" for h,e in evs) or "<div class=ev><span>Livre</span></div>"}</div></div>' for w,d,evs in SEM)
 corpo = f'''<div class="app">{menu("Início")}<main class="main">{topo("Bom dia, Carla", None, BUSCA + '<span class="btn pri">' + ic("plus",16) + 'Nova demanda</span>')}
+{disparos()}
 <div class="hm"><section class="card hl"><div class="pad" style="padding-bottom:6px"><h2 class="s">Hoje para você · 5</h2></div>{hl}</section>
 <div style="display:flex;flex-direction:column;gap:16px"><section class="card pad"><div class="linha" style="margin-bottom:6px"><h2 class="s">Sua semana</h2><span class="leve ml">Google Agenda</span></div>{sem}</section>
 <section class="card pad"><h2 class="s" style="margin-bottom:6px">Pendências do seu setor</h2><div class="grp"><span>Editais para captar</span><b class="num">18</b></div><div class="grp"><span>Contratos para revisar</span><b class="num">3</b></div><div class="grp"><span>Documentos de médico vencendo</span><b class="num am">5</b></div></section></div></div></main></div>'''

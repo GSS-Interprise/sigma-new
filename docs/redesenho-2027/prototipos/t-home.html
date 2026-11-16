@@ -111,6 +111,27 @@ h1,h2,.sora{font-family:Sora,Manrope,sans-serif}
 .aviso{display:flex;align-items:center;gap:12px;background:var(--ambar-bg);border-radius:10px;padding:12px 16px;color:#7a3a05}
 .aviso b{color:#5c2b03}
 .aviso .btn{margin-left:auto}
+/* disparos de hoje (mesma faixa que a sessão principal pôs em /prospeccao e na Home, 16/11) */
+.dsp{background:var(--papel);border-radius:12px;padding:16px 20px;display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) minmax(0,1fr) auto;gap:28px;align-items:center}
+.dsp .r{font-size:12px;font-weight:600;color:var(--sub);white-space:nowrap}
+.dsp .big{display:flex;align-items:baseline;gap:8px;margin-top:4px;white-space:nowrap}
+.dsp .big b{font-family:Sora;font-size:34px;font-weight:600;line-height:1}
+.dsp .big span{color:var(--sub);font-size:14px}
+.dsp .pb{height:6px;border-radius:3px;background:#e7ebe6;overflow:hidden;margin-top:8px;max-width:280px}
+.dsp .pb i{display:block;height:100%;background:var(--verde)}
+.dsp .proj{font-size:13px;color:var(--sub);margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dsp .proj b{color:var(--tinta)}
+.dsp .sem{display:flex;align-items:flex-end;gap:6px;height:56px;margin-top:6px}
+.dsp .sem div{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:3px;height:100%;min-width:0}
+.dsp .sem i{display:block;width:100%;max-width:18px;border-radius:3px 3px 0 0;background:#b9d3bb}
+.dsp .sem .h i{background:var(--verde)}
+.dsp .sem span{font-size:12px;color:var(--sub);line-height:1}
+.dsp .sem .h span{color:var(--tinta);font-weight:700}
+.dsp ul{list-style:none;margin-top:4px;display:flex;flex-direction:column;gap:3px}
+.dsp li{display:flex;justify-content:space-between;gap:12px;font-size:13px;white-space:nowrap}
+.dsp li span{overflow:hidden;text-overflow:ellipsis;min-width:0}
+.dsp .fim{display:flex;align-items:center;gap:10px;color:var(--sub)}
+.dsp .parou{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--ambar);background:var(--ambar-bg);border-radius:8px;padding:5px 10px;white-space:nowrap}
 /* cockpit */
 .split{display:grid;grid-template-columns:380px minmax(0,1fr);gap:24px;align-items:start}
 .fila{background:var(--papel);border-radius:12px;overflow:hidden}
@@ -142,6 +163,8 @@ h1,h2,.sora{font-family:Sora,Manrope,sans-serif}
  .split{grid-template-columns:320px minmax(0,1fr)}
  .cp{grid-template-columns:1fr;gap:12px}
  .menu{width:208px}
+ .dsp{grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) auto;gap:20px}
+ .dsp .camps{display:none}
 }
 
 .menu.verde{position:relative}
@@ -291,6 +314,10 @@ h2.s{font-family:Sora;font-size:16px;font-weight:600}
 <div class="grupo fechado"><span>Gestão</span><span>›</span></div>
 <div class="grupo fechado"><span>Sistema</span><span>›</span></div>
 <div class="rod"><b>Carla Menezes</b>Captação</div></nav><main class="main"><div class="topo"><h1>Bom dia, Carla</h1><div class="dir"><div class="busca"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><span class=bt>Buscar</span><kbd>Ctrl K</kbd></div><span class="btn pri"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>Nova demanda</span></div></div>
+<section class="dsp"><div><div class="r">Médicos abordados hoje</div><div class="big"><b class="num">75</b><span class="num">de 140 possíveis</span></div><div class="pb"><i style="width:54%"></i></div><div class="proj">No ritmo de agora, o dia fecha perto de <b class="num">87</b></div></div>
+<div><div class="r">Últimos 7 dias</div><div class="sem"><div class="" title="Ter: 98"><i style="height:29px"></i><span>Ter</span></div><div class="" title="Qua: 112"><i style="height:34px"></i><span>Qua</span></div><div class="" title="Qui: 104"><i style="height:31px"></i><span>Qui</span></div><div class="" title="Sex: 120"><i style="height:36px"></i><span>Sex</span></div><div class="" title="Sáb: 0"><i style="height:3px"></i><span>Sáb</span></div><div class="" title="Dom: 0"><i style="height:3px"></i><span>Dom</span></div><div class="h" title="Hoje: 75"><i style="height:22px"></i><span>Hoje</span></div></div></div>
+<div class="camps"><div class="r">Por campanha hoje</div><ul><li><span>Anestesiologia · SMO</span><b class="num">35</b></li><li><span>Ginecologia e obstetrícia</span><b class="num">22</b></li><li><span>Pediatria</span><b class="num">18</b></li></ul></div>
+<div class="fim"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></div></section>
 <div class="hm"><section class="card hl"><div class="pad" style="padding-bottom:6px"><h2 class="s">Hoje para você · 5</h2></div><div class="it"><span class="tp">Quente</span><div class="tx"><b>Ana Ribeiro respondeu e espera dono há 6 dias</b><span>Pediatria · "Tenho interesse, qual o valor?"</span></div><span class="btn amb sm">Assumir</span></div><div class="it"><span class="tp">Tarefa</span><div class="tx"><b>Ligar para Bruno Teixeira às 16h</b><span>Pediatria · ele pediu ligação à tarde</span></div><span class="btn sec sm">Concluir</span></div><div class="it"><span class="tp">Campanha</span><div class="tx"><b>Ultrassom SC está sem número de envio</b><span>Parou hoje às 9h · 1.000 leads esperando</span></div><span class="btn ver sm">Escolher número</span></div><div class="it"><span class="tp">Tarefa</span><div class="tx"><b>Enviar proposta para Fábio Lacerda</b><span>Pediatria · 4 plantões de 12 h em Lages</span></div><span class="btn sec sm">Concluir</span></div><div class="it"><span class="tp">Conversa</span><div class="tx"><b>7 conversas esperam sua resposta</b><span>A mais antiga há 3 h</span></div><span class="btn sec sm">Abrir conversas</span></div></section>
 <div style="display:flex;flex-direction:column;gap:16px"><section class="card pad"><div class="linha" style="margin-bottom:6px"><h2 class="s">Sua semana</h2><span class="leve ml">Google Agenda</span></div><div class="dia"><div class="d"><b class="num">10</b><span>Seg</span></div><div style="display:flex;flex-direction:column;gap:4px;min-width:0"><div class=ev><span>Livre</span></div></div></div><div class="dia"><div class="d"><b class="num">11</b><span>Ter</span></div><div style="display:flex;flex-direction:column;gap:4px;min-width:0"><div class=ev><span>Livre</span></div></div></div><div class="dia"><div class="d"><b class="num">12</b><span>Qua</span></div><div style="display:flex;flex-direction:column;gap:4px;min-width:0"><div class=ev><span class=num>09:00</span> Reunião de captação</div></div></div><div class="dia hoje"><div class="d"><b class="num">13</b><span>Qui</span></div><div style="display:flex;flex-direction:column;gap:4px;min-width:0"><div class=ev><span class=num>16:00</span> Ligar para Bruno Teixeira</div><div class=ev><span class=num>17:30</span> Revisão das campanhas</div></div></div><div class="dia"><div class="d"><b class="num">14</b><span>Sex</span></div><div style="display:flex;flex-direction:column;gap:4px;min-width:0"><div class=ev><span class=num>10:00</span> Treino do assistente de IA</div></div></div></section>
 <section class="card pad"><h2 class="s" style="margin-bottom:6px">Pendências do seu setor</h2><div class="grp"><span>Editais para captar</span><b class="num">18</b></div><div class="grp"><span>Contratos para revisar</span><b class="num">3</b></div><div class="grp"><span>Documentos de médico vencendo</span><b class="num am">5</b></div></section></div></div></main></div></body></html>

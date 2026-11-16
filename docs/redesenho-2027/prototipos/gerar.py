@@ -135,6 +135,27 @@ h1,h2,.sora{font-family:Sora,Manrope,sans-serif}
 .aviso{display:flex;align-items:center;gap:12px;background:var(--ambar-bg);border-radius:10px;padding:12px 16px;color:#7a3a05}
 .aviso b{color:#5c2b03}
 .aviso .btn{margin-left:auto}
+/* disparos de hoje (mesma faixa que a sessão principal pôs em /prospeccao e na Home, 16/11) */
+.dsp{background:var(--papel);border-radius:12px;padding:16px 20px;display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) minmax(0,1fr) auto;gap:28px;align-items:center}
+.dsp .r{font-size:12px;font-weight:600;color:var(--sub);white-space:nowrap}
+.dsp .big{display:flex;align-items:baseline;gap:8px;margin-top:4px;white-space:nowrap}
+.dsp .big b{font-family:Sora;font-size:34px;font-weight:600;line-height:1}
+.dsp .big span{color:var(--sub);font-size:14px}
+.dsp .pb{height:6px;border-radius:3px;background:#e7ebe6;overflow:hidden;margin-top:8px;max-width:280px}
+.dsp .pb i{display:block;height:100%;background:var(--verde)}
+.dsp .proj{font-size:13px;color:var(--sub);margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dsp .proj b{color:var(--tinta)}
+.dsp .sem{display:flex;align-items:flex-end;gap:6px;height:56px;margin-top:6px}
+.dsp .sem div{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:3px;height:100%;min-width:0}
+.dsp .sem i{display:block;width:100%;max-width:18px;border-radius:3px 3px 0 0;background:#b9d3bb}
+.dsp .sem .h i{background:var(--verde)}
+.dsp .sem span{font-size:12px;color:var(--sub);line-height:1}
+.dsp .sem .h span{color:var(--tinta);font-weight:700}
+.dsp ul{list-style:none;margin-top:4px;display:flex;flex-direction:column;gap:3px}
+.dsp li{display:flex;justify-content:space-between;gap:12px;font-size:13px;white-space:nowrap}
+.dsp li span{overflow:hidden;text-overflow:ellipsis;min-width:0}
+.dsp .fim{display:flex;align-items:center;gap:10px;color:var(--sub)}
+.dsp .parou{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--ambar);background:var(--ambar-bg);border-radius:8px;padding:5px 10px;white-space:nowrap}
 /* cockpit */
 .split{display:grid;grid-template-columns:380px minmax(0,1fr);gap:24px;align-items:start}
 .fila{background:var(--papel);border-radius:12px;overflow:hidden}
@@ -166,6 +187,8 @@ h1,h2,.sora{font-family:Sora,Manrope,sans-serif}
  .split{grid-template-columns:320px minmax(0,1fr)}
  .cp{grid-template-columns:1fr;gap:12px}
  .menu{width:208px}
+ .dsp{grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) auto;gap:20px}
+ .dsp .camps{display:none}
 }
 """
 
@@ -265,7 +288,25 @@ corpoC = f'''<div class="app">{trilho}<main class="main">{topo()}
 <section class="cps">{filtros()}{"".join(cpC(c) for c in CAMPS)}<div class="maquina num">9.792 leads em 4 campanhas ativas · 9 números oficiais, 8 enviando · leitura às 15:40</div></section></div></main></div>'''
 (OUT/'campanhas-C.html').write_text(pagina('Campanhas C', corpoC), encoding='utf-8')
 
+
+# ---------- Faixa "disparos de hoje" (pedido do Raul em 16/11; mesmos blocos da DisparosHojeFaixa da sessão principal)
+# Fictício e coerente com CAMPS: hoje = 22+18+35+0 = 75; possível = 4 campanhas x 35 = 140; leitura 15:40.
+# "Fecha perto de" = projeção pelo ritmo da janela 7h-17h (75 em 8h40 -> ~87). Proposta minha: a faixa da sessão
+# principal ainda não tem essa linha.
+def disparos(parado=False):
+    serie=[('Ter',98),('Qua',112),('Qui',104),('Sex',120),('Sáb',0),('Dom',0),('Hoje',75)]
+    mx=max(v for _,v in serie)
+    bars=''.join(f'<div class="{"h" if d=="Hoje" else ""}" title="{d}: {v}"><i style="height:{max(3 if v==0 else 6, round(v/mx*36))}px"></i><span>{d}</span></div>' for d,v in serie)
+    camps=''.join(f'<li><span>{n}</span><b class="num">{v}</b></li>' for n,v in [('Anestesiologia · SMO',35),('Ginecologia e obstetrícia',22),('Pediatria',18)])
+    fim=(f'<span class="parou">{ic("alert",14)}Nada saiu há 40 min</span>' if parado else '')+ic("chev",18)
+    proj='<b>Nada saiu desde as 15:00.</b> Ver os números de envio' if parado else 'No ritmo de agora, o dia fecha perto de <b class="num">87</b>'
+    return f'''<section class="dsp"><div><div class="r">Médicos abordados hoje</div><div class="big"><b class="num">75</b><span class="num">de 140 possíveis</span></div><div class="pb"><i style="width:54%"></i></div><div class="proj">{proj}</div></div>
+<div><div class="r">Últimos 7 dias</div><div class="sem">{bars}</div></div>
+<div class="camps"><div class="r">Por campanha hoje</div><ul>{camps}</ul></div>
+<div class="fim">{fim}</div></section>'''
+
 # ---------- Variação A2: a A com o menu verde de hoje (escolha do Raul, 13/11)
-corpoA2 = corpoA.replace(menu("claro"), menu("verde"), 1)
+corpoA2 = corpoA.replace(menu("claro"), menu("verde"), 1).replace(espA, disparos()+espA, 1)
+(OUT/'x-campanhas-parado.html').write_text(pagina('Campanhas parado', corpoA.replace(menu("claro"), menu("verde"), 1).replace(espA, disparos(True)+espA, 1)), encoding='utf-8')
 (OUT/'campanhas-A2.html').write_text(pagina('Campanhas A2', corpoA2), encoding='utf-8')
 print('ok')

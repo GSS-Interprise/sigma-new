@@ -27,3 +27,17 @@ para os dois modos.
     `vw_leads_quentes_esperando`; o segundo, o `whatsapp-monitor` e o ritmo do dia de `chip_send_log`.
   - O envio continua pelo número oficial de avisos, nunca pelo número da campanha, para não gastar o ritmo nem a
     qualidade do número de prospecção.
+
+## Disparos de hoje no topo de Campanhas e da Home (16/11/2026)
+Pedido do Raul para os sócios verem de longe se a máquina está rodando. Protótipos: `campanhas-A2.html`,
+`x-campanhas-parado.html` e `t-home.html`; no Figma, a linha "Escolhida" da página Depois e a Home em "Depois · as 7
+telas".
+
+- É a mesma faixa que a sessão principal está construindo no código (`src/components/campanhas/DisparosHojeFaixa.tsx` e
+  a RPC `campanhas_disparos_painel`, ainda sem commit em 16/11). Os números vêm de `agente_campanhas_disparos_dia`, os
+  mesmos do Claude dos sócios.
+- Quatro blocos: médicos abordados hoje contra o possível (soma do limite diário das campanhas ativas pelo número
+  oficial), os últimos 7 dias, as 3 campanhas que mais enviaram hoje e o aviso âmbar "Nada saiu há N min", que só
+  aparece em dia útil, das 8h às 17h, depois de 20 min sem envio.
+- **A mais no protótipo:** a linha "No ritmo de agora, o dia fecha perto de N". É uma projeção pela janela 7h–17h:
+  enviados até agora ÷ horas decorridas × 10. A faixa da sessão principal ainda não tem essa linha.

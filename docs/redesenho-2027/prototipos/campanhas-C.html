@@ -111,6 +111,27 @@ h1,h2,.sora{font-family:Sora,Manrope,sans-serif}
 .aviso{display:flex;align-items:center;gap:12px;background:var(--ambar-bg);border-radius:10px;padding:12px 16px;color:#7a3a05}
 .aviso b{color:#5c2b03}
 .aviso .btn{margin-left:auto}
+/* disparos de hoje (mesma faixa que a sessão principal pôs em /prospeccao e na Home, 16/11) */
+.dsp{background:var(--papel);border-radius:12px;padding:16px 20px;display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) minmax(0,1fr) auto;gap:28px;align-items:center}
+.dsp .r{font-size:12px;font-weight:600;color:var(--sub);white-space:nowrap}
+.dsp .big{display:flex;align-items:baseline;gap:8px;margin-top:4px;white-space:nowrap}
+.dsp .big b{font-family:Sora;font-size:34px;font-weight:600;line-height:1}
+.dsp .big span{color:var(--sub);font-size:14px}
+.dsp .pb{height:6px;border-radius:3px;background:#e7ebe6;overflow:hidden;margin-top:8px;max-width:280px}
+.dsp .pb i{display:block;height:100%;background:var(--verde)}
+.dsp .proj{font-size:13px;color:var(--sub);margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dsp .proj b{color:var(--tinta)}
+.dsp .sem{display:flex;align-items:flex-end;gap:6px;height:56px;margin-top:6px}
+.dsp .sem div{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:3px;height:100%;min-width:0}
+.dsp .sem i{display:block;width:100%;max-width:18px;border-radius:3px 3px 0 0;background:#b9d3bb}
+.dsp .sem .h i{background:var(--verde)}
+.dsp .sem span{font-size:12px;color:var(--sub);line-height:1}
+.dsp .sem .h span{color:var(--tinta);font-weight:700}
+.dsp ul{list-style:none;margin-top:4px;display:flex;flex-direction:column;gap:3px}
+.dsp li{display:flex;justify-content:space-between;gap:12px;font-size:13px;white-space:nowrap}
+.dsp li span{overflow:hidden;text-overflow:ellipsis;min-width:0}
+.dsp .fim{display:flex;align-items:center;gap:10px;color:var(--sub)}
+.dsp .parou{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--ambar);background:var(--ambar-bg);border-radius:8px;padding:5px 10px;white-space:nowrap}
 /* cockpit */
 .split{display:grid;grid-template-columns:380px minmax(0,1fr);gap:24px;align-items:start}
 .fila{background:var(--papel);border-radius:12px;overflow:hidden}
@@ -142,6 +163,8 @@ h1,h2,.sora{font-family:Sora,Manrope,sans-serif}
  .split{grid-template-columns:320px minmax(0,1fr)}
  .cp{grid-template-columns:1fr;gap:12px}
  .menu{width:208px}
+ .dsp{grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) auto;gap:20px}
+ .dsp .camps{display:none}
 }
 </style></head><body><div class="app"><nav class="trilho"><div class="m">S</div><div class="t"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></div><div class="t on"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/></svg></div><div class="t"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg><span class=dot></span></div><div class="t"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div><div class="t"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M3 12h18M3 18h12"/></svg></div><div class="t"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/></svg></div><div class="t"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg></div><div class="t"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-3"/></svg></div><div class="t" style="margin-top:auto"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></div></nav><main class="main"><div class="topo"><h1>Campanhas</h1>
 <div class="abas"><span class="aba on">Campanhas</span><span class="aba">Quentes<span class="qt num">30</span></span><span class="aba">LinkedIn</span><span class="aba">E-mail</span><span class="aba">Painel</span></div>
