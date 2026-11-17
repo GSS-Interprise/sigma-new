@@ -38,6 +38,7 @@ import { LeadLinksExternosSection } from "./LeadLinksExternosSection";
 import { LeadAtividadesPanel } from "./LeadAtividadesPanel";
 import { LeadChannelsSidebar } from "./LeadChannelsSidebar";
 import { atualizarStatusLead, registrarConversaoMedico, registrarEdicaoLead, registrarCriacaoLead, registrarDesconversaoParaLead, registrarReprocessamentoKanban } from "@/lib/leadHistoryLogger";
+import { CadastroIncompletoError, conferirCrmLivre, criarCardKanbanMedico, criarMedicoDoLeadNovo, mensagemFalhaMedico, primeiraColunaMedicos } from "@/lib/cadastroMedico";
 import { EspecialidadesRqeEditor } from "./EspecialidadesRqeEditor";
 import { useEspecialidades } from "@/hooks/useEspecialidades";
 import { EspecialidadeRqe, formatarEspecialidade, lerRqeDoTexto, linhaIncompleta, rqeSoNumero } from "@/lib/especialidades";
@@ -521,6 +522,18 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
 
         const { data: { user } } = await supabase.auth.getUser();
 
+        // Check if we're on medicos page (Kanban context) - should auto-create medico and kanban card
+        const shouldAutoCreateMedicoAndKanban = isOnMedicosPage && !createAsCorpoClinico;
+        const criaMedico = createAsCorpoClinico || shouldAutoCreateMedicoAndKanban;
+
+        // O que faria o médico ou o card falhar é conferido antes de gravar o lead, para não sobrar
+        // lead sem médico (caso Suzana, 16/11/2026).
+        let colunaKanban: string | null = null;
+        if (criaMedico) {
+          await conferirCrmLivre(supabase, sanitizedData.crm);
+          if (shouldAutoCreateMedicoAndKanban) colunaKanban = await primeiraColunaMedicos(supabase);
+        }
+
         const insertPayload = {
           nome: sanitizedData.nome,
           phone_e164: sanitizedData.phone_e164,
@@ -571,11 +584,8 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
         // Registrar criação do lead no histórico
         await registrarCriacaoLead(newLead.id, insertPayload);
 
-        // Check if we're on medicos page (Kanban context) - should auto-create medico and kanban card
-        const shouldAutoCreateMedicoAndKanban = isOnMedicosPage && !createAsCorpoClinico;
-
         // If creating as Corpo Clínico OR from medicos page (Kanban), also create médico
-        if (createAsCorpoClinico || shouldAutoCreateMedicoAndKanban) {
+        if (criaMedico) {
           const medicoPayload = {
             nome_completo: sanitizedData.nome,
             especialidade: sanitizedData.especialidades?.length > 0 
@@ -583,10 +593,8 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
               : (sanitizedData.especialidade ? [sanitizedData.especialidade] : []),
             phone_e164: sanitizedData.phone_e164,
             estado: sanitizedData.uf,
-            lead_id: newLead.id,
             email: sanitizedData.email || `temp_${sanitizedData.phone_e164}@example.com`,
             telefone: sanitizedData.phone_e164,
-            crm: sanitizedData.crm || 'PENDENTE',
             cpf: sanitizedData.cpf,
             data_nascimento: sanitizedData.data_nascimento,
             // Approval fields for corpo clínico (only if creating as corpo clínico)
@@ -598,51 +606,28 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
             status_medico: 'Ativo',
           };
 
-          const { data: newMedico, error: medicoError } = await supabase
-            .from('medicos')
-            .insert(medicoPayload as any)
-            .select('id')
-            .single();
-
-          if (medicoError) {
-            console.error('Erro ao criar médico:', medicoError);
-            // Não bloquear, lead já foi criado
-          } else if (newMedico && shouldAutoCreateMedicoAndKanban) {
-            // Create Kanban card for the new medico
-            const { data: primeiraColuna } = await supabase
-              .from('kanban_status_config')
-              .select('status_id')
-              .eq('modulo', 'medicos')
-              .order('ordem', { ascending: true })
-              .limit(1)
-              .single();
-
-            if (primeiraColuna) {
-              await supabase
-                .from('medico_kanban_cards')
-                .insert({
-                  nome: sanitizedData.nome,
-                  cpf: sanitizedData.cpf,
-                  data_nascimento: sanitizedData.data_nascimento,
-                  crm: sanitizedData.crm,
-                  telefone: sanitizedData.phone_e164,
-                  email: sanitizedData.email,
-                  observacoes: sanitizedData.observacoes,
-                  status: primeiraColuna.status_id,
-                  medico_id: newMedico.id,
-                });
-            }
-
-            // Update lead to Convertido status
-            await supabase
-              .from('leads')
-              .update({ 
-                status: 'Convertido',
-                data_conversao: new Date().toISOString(),
-                convertido_por: user?.id
-              })
-              .eq('id', newLead.id);
-          }
+          // Falha aqui interrompe o salvar com o motivo real (antes só ia para o console e a tela
+          // confirmava "Médico criado e adicionado ao Kanban!" sem médico nem card).
+          await criarMedicoDoLeadNovo(supabase, {
+            leadId: newLead.id,
+            medico: medicoPayload,
+            crm: sanitizedData.crm,
+            kanban: shouldAutoCreateMedicoAndKanban && colunaKanban
+              ? {
+                  statusId: colunaKanban,
+                  userId: user?.id,
+                  card: {
+                    nome: sanitizedData.nome,
+                    cpf: sanitizedData.cpf,
+                    data_nascimento: sanitizedData.data_nascimento,
+                    crm: sanitizedData.crm,
+                    telefone: sanitizedData.phone_e164,
+                    email: sanitizedData.email,
+                    observacoes: sanitizedData.observacoes,
+                  },
+                }
+              : null,
+          });
         }
 
         if (espRqe.length > 0) await salvarEspRqe(newLead.id);
@@ -738,6 +723,15 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
       }
     },
     onError: (error: any) => {
+      if (error instanceof CadastroIncompletoError) {
+        // Parte já foi gravada: fecha para não salvar de novo e duplicar o lead.
+        queryClient.invalidateQueries({ queryKey: ['leads-paginated'] });
+        queryClient.invalidateQueries({ queryKey: ['medicos-kanban-cards'] });
+        toast.error(error.message, { duration: 15000 });
+        setHasChanges(false);
+        onOpenChange(false);
+        return;
+      }
       toast.error(error.message || 'Erro ao salvar alterações');
     },
   });
@@ -801,12 +795,7 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
           .select('id')
           .single();
         
-        if (insertError) {
-          if (insertError.message?.includes('medicos_crm_key')) {
-            throw new Error(`Já existe um médico cadastrado com o CRM "${lead.crm}". Verifique os dados.`);
-          }
-          throw insertError;
-        }
+        if (insertError) throw new Error(mensagemFalhaMedico(insertError, lead.crm));
         medicoId = newMedico.id;
       }
 
@@ -817,30 +806,23 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
         .eq('medico_id', medicoId)
         .maybeSingle();
 
-      // Criar card no Kanban se não existir
+      // Criar card no Kanban se não existir. Falha para a conversão antes de marcar o lead como
+      // Convertido; converter de novo acha o médico pelo telefone e só cria o card que faltou.
       if (!existingKanbanCard) {
-        const { data: primeiraColuna } = await supabase
-          .from('kanban_status_config')
-          .select('status_id')
-          .eq('modulo', 'medicos')
-          .order('ordem', { ascending: true })
-          .limit(1)
-          .single();
-
-        if (primeiraColuna) {
-          await supabase
-            .from('medico_kanban_cards')
-            .insert({
-              nome: lead.nome,
-              cpf: lead.cpf,
-              data_nascimento: lead.data_nascimento,
-              crm: lead.crm,
-              telefone: lead.phone_e164,
-              email: lead.email,
-              observacoes: lead.observacoes,
-              status: primeiraColuna.status_id,
-              medico_id: medicoId,
-            });
+        try {
+          const statusId = await primeiraColunaMedicos(supabase);
+          await criarCardKanbanMedico(supabase, {
+            nome: lead.nome,
+            cpf: lead.cpf,
+            data_nascimento: lead.data_nascimento,
+            crm: lead.crm,
+            telefone: lead.phone_e164,
+            email: lead.email,
+            observacoes: lead.observacoes,
+          }, medicoId, statusId);
+        } catch (e) {
+          const motivo = (e as Error).message;
+          throw new Error(`O médico foi vinculado, mas ${motivo.charAt(0).toLowerCase()}${motivo.slice(1)}. Tente converter de novo.`);
         }
       }
 
