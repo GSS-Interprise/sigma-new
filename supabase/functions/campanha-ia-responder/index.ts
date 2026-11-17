@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendWhatsAppText } from "../_shared/evo-sender.ts";
+import { briefingPublico, regrasDaCampanha } from "../_shared/sigilo.ts";
 
 // Gemini: endpoint compatível com OpenAI (chat, visão) e nativo (áudio). Ver o comentário em "Processar multimodal".
 const GEMINI_CHAT = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
@@ -632,7 +633,8 @@ serve(async (req) => {
       const { data: original } = await supabase.from("sigzap_messages").select("sent_at").eq("wa_message_id", msg_id).maybeSingle();
       if (original?.sent_at) atrasoHoras = (Date.now() - new Date(original.sent_at).getTime()) / 3_600_000;
     }
-    const prompt = buildPrompt(briefing, lead, perfilInteresse, timelineOutros, { atrasoHoras });
+    // Campanha com local em sigilo (17/11): a IA recebe o briefing sem hospital/cidade; não tem como vazar.
+    const prompt = buildPrompt(briefingPublico(briefing), lead, perfilInteresse, timelineOutros, { atrasoHoras });
 
     const aiResponse = await geminiChat(
       GEMINI_CHAT,
@@ -1560,7 +1562,7 @@ REGRAS DE FALA HUMANA — segue à risca, médicos identificam bot na hora:
 
 <oportunidade>
   Serviço: ${b.nome_servico || "?"} | Hospital: ${
-    b.hospital || "?"
+    b.sigilo_local?.hospital ? "(reservado: não citar)" : b.hospital || "?"
   } | Cidade: ${b.cidade || "?"}
   ${
     Array.isArray(b.locais) && b.locais.length > 1
@@ -1582,6 +1584,8 @@ REGRAS DE FALA HUMANA — segue à risca, médicos identificam bot na hora:
   ${beneficios}
   Handoff: ${handoffNome}
 </oportunidade>
+
+${regrasDaCampanha(b, handoffNome)}
 
 ${b.cidade_info ? `<cidade_info>\n${b.cidade_info}\n</cidade_info>` : ""}
 

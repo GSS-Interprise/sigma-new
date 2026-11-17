@@ -20,6 +20,7 @@ import {
   type ExtracaoLifesHub, type ModeloAprovado, type NumeroOficial,
 } from "@/components/campanhas/assistente/useAssistenteCampanha";
 import { PassoConversa, SeletorPessoas, type Destino, type ModoConversa } from "@/components/campanhas/assistente/PassoConversa";
+import { ParticularidadesIA, type Particularidades } from "@/components/campanhas/assistente/ParticularidadesIA";
 
 /**
  * Assistente de criação de campanha (plano GSS dono no comando, Fase 2).
@@ -111,6 +112,10 @@ export default function NovaCampanhaAssistente() {
   const [primeiroContato, setPrimeiroContato] = useState<PrimeiroContato | null>(null);
   const [textoCelular, setTextoCelular] = useState("");
   const [celulares, setCelulares] = useState<Destino[]>([]);
+  // Regras especiais desta campanha, interpretadas pela IA a partir do pedido do dono (17/11: "não citar hospital nem
+  // cidade, só região Sul"). null = campanha normal.
+  const [especial, setEspecial] = useState<(Particularidades & { pedido: string }) | null>(null);
+  const localPublico = especial?.ocultar_cidade ? especial.como_falar_local || "região da vaga" : null;
   const celular = primeiroContato === "celular";
   const PASSOS = celular ? PASSOS_CELULAR : PASSOS_SIGMA;
   const perguntas = PASSOS.filter((p) => p !== "resumo");
@@ -178,7 +183,8 @@ export default function NovaCampanhaAssistente() {
   // Modelos com até 3 variáveis: {{1}} nome do médico, {{2}} especialidade, {{3}} cidade da vaga.
   const modelosUsaveis = modelos.filter((m) => Object.keys(m.variables || {}).length <= 3);
   const modelo = modelosUsaveis.find((m) => m.friendly_name === modeloNome);
-  const variaveis: Record<string, string> = { "1": "{{lead.nome}}", "2": espNomes[0] || "", "3": vaga.cidade.trim() };
+  // {{3}} é o local no modelo da Meta: com o local em sigilo, vai a região ("região Sul"), nunca a cidade.
+  const variaveis: Record<string, string> = { "1": "{{lead.nome}}", "2": espNomes[0] || "", "3": localPublico || vaga.cidade.trim() };
   const previaTexto = preencherModelo(modelo, { ...variaveis, "1": "Maria Clara Souza" });
   const numerosComModelo = numeros.filter((n) => modeloNome && n.templates.includes(modeloNome));
   const numerosSel = numeros.filter((n) => numerosEscolhidos.includes(n.sender_id));
@@ -190,7 +196,7 @@ export default function NovaCampanhaAssistente() {
     : "a combinar";
 
   // Texto inicial da campanha de celular ({nome} vira o nome do médico no "Abrir no WhatsApp"). O dono ajusta à vontade.
-  const textoSugerido = `Olá, Dr(a). {nome}! Aqui é da GSS Saúde. Temos uma vaga de ${(TIPOS_VAGA.find((t) => t.value === vaga.tipo)?.label || "plantão").toLowerCase()}${espNomes[0] ? ` de ${espNomes[0]}` : ""} em ${vaga.cidade.trim() || "sua região"}${vaga.valorMin ? `, ${valorTexto}` : ""}. Posso te passar os detalhes?`;
+  const textoSugerido = `Olá, Dr(a). {nome}! Aqui é da GSS Saúde. Temos uma vaga de ${(TIPOS_VAGA.find((t) => t.value === vaga.tipo)?.label || "plantão").toLowerCase()}${espNomes[0] ? ` de ${espNomes[0]}` : ""} em ${localPublico || vaga.cidade.trim() || "sua região"}${vaga.valorMin ? `, ${valorTexto}` : ""}. Posso te passar os detalhes?`;
 
   const podeSeguir: Record<Passo, boolean> = {
     publico: especialidadeIds.length > 0,
@@ -244,6 +250,14 @@ export default function NovaCampanhaAssistente() {
             valor_max: vaga.valorMax,
             valor_por: VALOR_POR.find((v) => v.value === vaga.valorPor)?.label || "",
             contratacao: "PJ",
+            ...(especial
+              ? {
+                  sigilo_local: { hospital: especial.ocultar_hospital, cidade: especial.ocultar_cidade, como_falar: localPublico },
+                  instrucoes_especiais: especial.instrucoes_ia || "",
+                  pedido_especial: especial.pedido,
+                  ...(especial.ia_informa_valor !== null ? { ia_informa_valor: especial.ia_informa_valor } : {}),
+                }
+              : {}),
           },
         },
       });
@@ -279,7 +293,7 @@ export default function NovaCampanhaAssistente() {
   const respostas: Record<Passo, string> = {
     publico: espTexto ? `${espTexto} · ${regiaoTexto}` : "",
     lista: origem === "crm" ? `Montar agora do CRM: ${mil(previa?.entram)} médicos` : origem === "lista" && lista ? `Lista “${lista.nome}”: ${mil(previa?.entram)} médicos` : "",
-    vaga: vaga.cidade ? `${TIPOS_VAGA.find((t) => t.value === vaga.tipo)?.label} em ${vaga.cidade}${vaga.hospital ? ` (${vaga.hospital})` : ""} · ${valorTexto}` : "",
+    vaga: vaga.cidade ? `${TIPOS_VAGA.find((t) => t.value === vaga.tipo)?.label} em ${vaga.cidade}${vaga.hospital ? ` (${vaga.hospital})` : ""} · ${valorTexto}${localPublico ? ` · para o médico: “${localPublico}”` : especial ? " · com regra especial" : ""}` : "",
     contato: primeiroContato ? (celular ? "Pela equipe, no celular" : "Pelo Sigma, sozinho") : "",
     mensagem: celular
       ? (textoCelular.trim() ? `Texto sugerido: “${textoCelular.trim().slice(0, 60)}${textoCelular.trim().length > 60 ? "…" : ""}”` : "")
@@ -459,6 +473,13 @@ export default function NovaCampanhaAssistente() {
                           </p>
                         )}
                         <p className="text-xs text-muted-foreground md:col-span-2">A IA usa isso quando o médico pergunta valor e local.</p>
+                        <div className="md:col-span-2">
+                          <ParticularidadesIA
+                            aplicado={especial}
+                            onAplicar={setEspecial}
+                            rascunho={{ especialidade: espNomes[0] || null, estados: ufs, cidade: vaga.cidade, hospital: vaga.hospital, tipo: vaga.tipo, valor: valorTexto }}
+                          />
+                        </div>
                       </div>
                     )}
 
@@ -562,6 +583,7 @@ export default function NovaCampanhaAssistente() {
                         <dl className="grid gap-3 text-sm sm:grid-cols-2">
                           <ItemResumo rotulo="Médicos" valor={`${mil(previa?.entram)} de ${espTexto || "da lista"} · ${regiaoTexto}`} />
                           <ItemResumo rotulo="Vaga" valor={`${TIPOS_VAGA.find((t) => t.value === vaga.tipo)?.label} em ${vaga.cidade} · ${valorTexto}`} />
+                          {especial && <ItemResumo rotulo="Regra especial" valor={especial.entendi} />}
                           {celular ? (
                             <>
                               <ItemResumo rotulo="1º contato" valor="Pela equipe, no celular. O Sigma não envia nada." />

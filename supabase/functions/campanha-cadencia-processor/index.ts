@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendWhatsAppText } from "../_shared/evo-sender.ts";
+import { briefingPublico, sigiloAtivo } from "../_shared/sigilo.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -192,7 +193,8 @@ async function executarWhatsApp(supabase: any, cl: any, lead: any, campanha: any
   const { data: chip } = await supabase.from("chips").select("id, instance_name, nome, status").eq("id", chipId).maybeSingle();
   if (!chip || chip.status !== "ativo") return { ok: false, erro: "chip_inativo", msg: "" };
 
-  const briefing = campanha.briefing_ia || {};
+  // Local em sigilo (17/11): o follow-up usa o briefing sem hospital/cidade, como a IA da conversa.
+  const briefing = briefingPublico(campanha.briefing_ia || {});
   const msgFinal = resolveTemplate(passo.mensagem_template || "Oi {{nome}}!", {
     nome: stripDoctorPrefix(lead.nome) || "Dr(a)",
     cidade: briefing.cidade || lead.cidade || "",
@@ -202,7 +204,7 @@ async function executarWhatsApp(supabase: any, cl: any, lead: any, campanha: any
     nome_remetente: campanha.nome_remetente || "Equipe GSS",
     whatsapp_remetente: campanha.whatsapp_remetente || "",
     descricao_oportunidade: campanha.descricao_oportunidade || "uma oportunidade na sua área",
-    cidade_oportunidade: campanha.regiao_estado || briefing.cidade || "",
+    cidade_oportunidade: (sigiloAtivo(briefing) ? briefing.cidade : campanha.regiao_estado || briefing.cidade) || "",
   });
 
   const phone = normalizeBrazilPhone(lead.phone_e164 || "");
@@ -240,7 +242,7 @@ async function executarEmail(supabase: any, cl: any, lead: any, campanha: any, p
   }
   if (!emailTo) return { ok: false, erro: "sem_email", msg: "", subject: "" };
 
-  const briefing = campanha.briefing_ia || {};
+  const briefing = briefingPublico(campanha.briefing_ia || {});
   const vars = {
     nome: stripDoctorPrefix(lead.nome) || "Dr(a)",
     cidade: briefing.cidade || lead.cidade || "",
@@ -250,7 +252,7 @@ async function executarEmail(supabase: any, cl: any, lead: any, campanha: any, p
     nome_remetente: campanha.nome_remetente || "Equipe GSS",
     whatsapp_remetente: campanha.whatsapp_remetente || "",
     descricao_oportunidade: campanha.descricao_oportunidade || "uma oportunidade na sua área",
-    cidade_oportunidade: campanha.regiao_estado || briefing.cidade || "",
+    cidade_oportunidade: (sigiloAtivo(briefing) ? briefing.cidade : campanha.regiao_estado || briefing.cidade) || "",
   };
   const subject = resolveTemplate(passo.subject_template || `Sobre a oportunidade em ${vars.cidade}`, vars);
   const text = resolveTemplate(passo.mensagem_template || "", vars);
