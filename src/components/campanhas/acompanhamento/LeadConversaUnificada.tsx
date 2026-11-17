@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useMemo, Fragment } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { PrimeiroContatoCelular } from "./PrimeiroContatoCelular";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2, MessageSquare, ExternalLink, Send, Clock, RefreshCw, XCircle, FileText } from "lucide-react";
 import { format, isSameDay, isToday, isYesterday } from "date-fns";
@@ -122,11 +123,14 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("campanhas")
-        .select("whatsapp_provider, official_template_id, official_sender_id")
+        .select("whatsapp_provider, official_template_id, official_sender_id, primeiro_contato, mensagem_inicial, celulares_equipe")
         .eq("id", campanhaId)
         .single();
       if (error) throw error;
-      return data as { whatsapp_provider: "evolution" | "twilio" | "chakra"; official_template_id: string | null; official_sender_id: string | null };
+      return data as {
+        whatsapp_provider: "evolution" | "twilio" | "chakra"; official_template_id: string | null; official_sender_id: string | null;
+        primeiro_contato: "sigma" | "celular"; mensagem_inicial: string | null; celulares_equipe: { nome: string; fone: string }[] | null;
+      };
     },
   });
   const isOfficialCampaign = campanhaCanal?.whatsapp_provider !== "evolution" && !!campanhaCanal?.whatsapp_provider;
@@ -613,6 +617,10 @@ export function LeadConversaUnificada({ leadId, historicoCampanhaFallback, campa
           </Button>
           </div>}
         </div>
+      ) : campanhaId && campanhaCanal?.primeiro_contato === "celular" ? (
+        // Campanha de celular: o Sigma não envia; a equipe chama do próprio WhatsApp e marca "Chamei".
+        <PrimeiroContatoCelular campanhaLeadId={campanhaLeadId} leadId={leadId} leadPhone={leadPhone}
+          texto={campanhaCanal.mensagem_inicial} celulares={campanhaCanal.celulares_equipe ?? []} />
       ) : campanhaId ? (
         <div className="mt-4 border-t pt-3">
           <div className="text-xs font-medium text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-2.5 py-1.5 mb-2 flex items-center gap-1.5">

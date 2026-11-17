@@ -54,28 +54,6 @@ export function PassoConversa({ modo, onModo, destinos, onDestinos, preencherGer
   /** Campanha nova: já marca os destinatários gerais. Campanha existente com lista vazia continua "gerais" (false). */
   preencherGerais?: boolean;
 }) {
-  const { data } = usePessoasComTelefone();
-  const [extraNome, setExtraNome] = useState("");
-  const [extraFone, setExtraFone] = useState("");
-  // Primeira vez no passo: já vem marcado quem recebe os avisos gerais hoje (o dono só confere).
-  useEffect(() => {
-    if (preencherGerais && data && destinos.length === 0 && data.gerais.length) onDestinos(data.gerais);
-  }, [data]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const lista = useMemo(() => {
-    const base = data?.pessoas ?? [];
-    const extras = destinos.filter((d) => !base.some((b) => b.fone === d.fone));
-    return [...base, ...extras];
-  }, [data, destinos]);
-  const marcado = (fone: string) => destinos.some((d) => d.fone === fone);
-  const alternar = (d: Destino, on: boolean) => onDestinos(on ? [...destinos, d] : destinos.filter((x) => x.fone !== d.fone));
-  const adicionar = () => {
-    const fone = normalizarFone(extraFone);
-    if (!foneValido(fone) || !extraNome.trim()) return;
-    if (!marcado(fone)) onDestinos([...destinos, { nome: extraNome.trim(), fone }]);
-    setExtraNome(""); setExtraFone("");
-  };
-
   const OPCOES: Array<{ valor: ModoConversa; titulo: string; texto: string; Icone: typeof Bot }> = [
     { valor: "ia", titulo: "A IA, como o Maikon", texto: "Responde sozinha e avisa quando o médico quer fechar.", Icone: Bot },
     { valor: "manual", titulo: "A equipe, pelo Sigma", texto: "A IA fica de fora. Quando o médico responde, quem estiver abaixo recebe o aviso.", Icone: Users },
@@ -100,25 +78,7 @@ export function PassoConversa({ modo, onModo, destinos, onDestinos, preencherGer
           <p className="text-sm font-medium">
             {modo === "ia" ? "Quem recebe no WhatsApp o aviso de médico querendo fechar?" : "Quem recebe no WhatsApp o aviso de médico que respondeu?"}
           </p>
-          <ul className="max-h-56 divide-y overflow-y-auto rounded-lg border">
-            {lista.map((d) => (
-              <li key={d.fone}>
-                <label className="flex cursor-pointer items-center gap-3 px-3 py-2 text-sm">
-                  <Checkbox checked={marcado(d.fone)} onCheckedChange={(v) => alternar(d, v === true)} />
-                  <span className="min-w-0 flex-1 truncate">{d.nome || "Sem nome"}</span>
-                  <span className="shrink-0 tabular-nums text-muted-foreground">{mostrarFone(d.fone)}</span>
-                </label>
-              </li>
-            ))}
-            {lista.length === 0 && <li className="px-3 py-2 text-sm text-muted-foreground">Ninguém da equipe tem telefone no cadastro. Adicione abaixo.</li>}
-          </ul>
-          <form className="flex flex-wrap gap-2" onSubmit={(e) => { e.preventDefault(); adicionar(); }}>
-            <Input value={extraNome} onChange={(e) => setExtraNome(e.target.value)} placeholder="Nome" className="h-9 w-40" />
-            <Input value={extraFone} onChange={(e) => setExtraFone(e.target.value)} placeholder="WhatsApp com DDD" inputMode="tel" className="h-9 w-48" />
-            <Button type="submit" variant="outline" className="h-9" disabled={!extraNome.trim() || !foneValido(extraFone)}>
-              <Plus className="mr-1.5 h-4 w-4" />Adicionar
-            </Button>
-          </form>
+          <SeletorPessoas destinos={destinos} onDestinos={onDestinos} preencherGerais={preencherGerais} />
           {destinos.length === 0 && (
             <p className="flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-300">
               <X className="h-3.5 w-3.5" />Ninguém marcado: o aviso vai para os destinatários gerais da equipe.
@@ -126,6 +86,61 @@ export function PassoConversa({ modo, onModo, destinos, onDestinos, preencherGer
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Lista da equipe com telefone (cadastro + destinatários gerais) com caixa de marcar e "Adicionar" para quem não está
+ * no Sigma. Serve ao aviso da campanha e aos celulares que chamam na campanha de 1º contato pelo celular.
+ */
+export function SeletorPessoas({ destinos, onDestinos, preencherGerais = false }: {
+  destinos: Destino[]; onDestinos: (d: Destino[]) => void;
+  /** Primeira vez: já marca os destinatários gerais (o dono só confere). */
+  preencherGerais?: boolean;
+}) {
+  const { data } = usePessoasComTelefone();
+  const [extraNome, setExtraNome] = useState("");
+  const [extraFone, setExtraFone] = useState("");
+  useEffect(() => {
+    if (preencherGerais && data && destinos.length === 0 && data.gerais.length) onDestinos(data.gerais);
+  }, [data]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const lista = useMemo(() => {
+    const base = data?.pessoas ?? [];
+    const extras = destinos.filter((d) => !base.some((b) => b.fone === d.fone));
+    return [...base, ...extras];
+  }, [data, destinos]);
+  const marcado = (fone: string) => destinos.some((d) => d.fone === fone);
+  const alternar = (d: Destino, on: boolean) => onDestinos(on ? [...destinos, d] : destinos.filter((x) => x.fone !== d.fone));
+  const adicionar = () => {
+    const fone = normalizarFone(extraFone);
+    if (!foneValido(fone) || !extraNome.trim()) return;
+    if (!marcado(fone)) onDestinos([...destinos, { nome: extraNome.trim(), fone }]);
+    setExtraNome(""); setExtraFone("");
+  };
+
+  return (
+    <div className="space-y-2">
+      <ul className="max-h-56 divide-y overflow-y-auto rounded-lg border">
+        {lista.map((d) => (
+          <li key={d.fone}>
+            <label className="flex cursor-pointer items-center gap-3 px-3 py-2 text-sm">
+              <Checkbox checked={marcado(d.fone)} onCheckedChange={(v) => alternar(d, v === true)} />
+              <span className="min-w-0 flex-1 truncate">{d.nome || "Sem nome"}</span>
+              <span className="shrink-0 tabular-nums text-muted-foreground">{mostrarFone(d.fone)}</span>
+            </label>
+          </li>
+        ))}
+        {lista.length === 0 && <li className="px-3 py-2 text-sm text-muted-foreground">Ninguém da equipe tem telefone no cadastro. Adicione abaixo.</li>}
+      </ul>
+      <form className="flex flex-wrap gap-2" onSubmit={(e) => { e.preventDefault(); adicionar(); }}>
+        <Input value={extraNome} onChange={(e) => setExtraNome(e.target.value)} placeholder="Nome" className="h-9 w-40" />
+        <Input value={extraFone} onChange={(e) => setExtraFone(e.target.value)} placeholder="WhatsApp com DDD" inputMode="tel" className="h-9 w-48" />
+        <Button type="submit" variant="outline" className="h-9" disabled={!extraNome.trim() || !foneValido(extraFone)}>
+          <Plus className="mr-1.5 h-4 w-4" />Adicionar
+        </Button>
+      </form>
     </div>
   );
 }

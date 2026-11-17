@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Bot, Check, Loader2, Pencil, Sparkles } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { AppLayout } from "@/components/layout/AppLayout";
@@ -18,12 +19,16 @@ import {
   useEspecialidades, useExtracaoLifesHub, useListasProntas, useModelosAprovados, useNumerosOficiais, usePrevia, useUniversoCfm,
   type ExtracaoLifesHub, type ModeloAprovado, type NumeroOficial,
 } from "@/components/campanhas/assistente/useAssistenteCampanha";
-import { PassoConversa, type Destino, type ModoConversa } from "@/components/campanhas/assistente/PassoConversa";
+import { PassoConversa, SeletorPessoas, type Destino, type ModoConversa } from "@/components/campanhas/assistente/PassoConversa";
 
 /**
  * Assistente de criação de campanha (plano GSS dono no comando, Fase 2).
- * Pergunta da tela: "que campanha vou soltar agora?" — o dono responde 6 perguntas curtas e confirma (a 6ª, de 13/11: quem conversa e quem recebe o aviso).
- * Conversa guiada por botões: funciona sem IA (OpenAI sem crédito desde 14/10). Só API oficial (Chakra).
+ * Pergunta da tela: "que campanha vou soltar agora?" — o dono responde perguntas curtas e confirma (13/11: quem conversa e
+ * quem recebe o aviso; 17/11: como sai o 1º contato).
+ * Conversa guiada por botões: funciona sem IA (OpenAI sem crédito desde 14/10).
+ * 1º contato pelo Sigma: só API oficial (Chakra). 1º contato pelo celular (17/11): o Sigma não envia nada; a mensagem vira
+ * texto sugerido, os "números" viram os celulares da equipe que chamam, e o passo "conversa" some (a resposta chega no
+ * celular, não no Sigma).
  * A campanha é criada pela RPC campanha_assistente_criar, que também coloca os leads na estratégia principal.
  */
 
@@ -45,16 +50,27 @@ const VALOR_POR = [
 ];
 const LIMITE_PADRAO = 50;
 
-type Passo = "publico" | "lista" | "vaga" | "mensagem" | "numeros" | "conversa" | "resumo";
-const PASSOS: Passo[] = ["publico", "lista", "vaga", "mensagem", "numeros", "conversa", "resumo"];
+type Passo = "publico" | "lista" | "vaga" | "contato" | "mensagem" | "numeros" | "conversa" | "resumo";
+type PrimeiroContato = "sigma" | "celular";
+const PASSOS_SIGMA: Passo[] = ["publico", "lista", "vaga", "contato", "mensagem", "numeros", "conversa", "resumo"];
+const PASSOS_CELULAR: Passo[] = ["publico", "lista", "vaga", "contato", "mensagem", "numeros", "resumo"];
 const PERGUNTA: Record<Passo, string> = {
   publico: "Para qual especialidade e região é a campanha?",
   lista: "De onde vem a lista de médicos?",
   vaga: "Onde é a vaga e quanto paga?",
+  contato: "Como sai o primeiro contato?",
   mensagem: "Qual mensagem vai no primeiro contato?",
   numeros: "Por quais números vamos falar com eles?",
   conversa: "Depois do primeiro contato, quem conversa com o médico?",
   resumo: "Confere e eu crio a campanha.",
+};
+const PERGUNTA_CELULAR: Partial<Record<Passo, string>> = {
+  mensagem: "Qual texto a equipe manda? Cada pessoa pode ajustar antes de enviar.",
+  numeros: "Quais celulares da equipe vão chamar esses médicos?",
+};
+const ROTULO: Record<Passo, string> = {
+  publico: "Público", lista: "Lista", vaga: "Vaga", contato: "1º contato", mensagem: "Mensagem", numeros: "Números",
+  conversa: "Conversa", resumo: "",
 };
 
 const mil = (n: number | null | undefined) => (n ?? 0).toLocaleString("pt-BR");
@@ -92,6 +108,18 @@ export default function NovaCampanhaAssistente() {
   const [nome, setNome] = useState("");
   const [modoConversa, setModoConversa] = useState<ModoConversa | null>(null);
   const [destinos, setDestinos] = useState<Destino[]>([]);
+  const [primeiroContato, setPrimeiroContato] = useState<PrimeiroContato | null>(null);
+  const [textoCelular, setTextoCelular] = useState("");
+  const [celulares, setCelulares] = useState<Destino[]>([]);
+  const celular = primeiroContato === "celular";
+  const PASSOS = celular ? PASSOS_CELULAR : PASSOS_SIGMA;
+  const perguntas = PASSOS.filter((p) => p !== "resumo");
+  // Trocar o modo do 1º contato muda o que mensagem, números e conversa significam: essas respostas valem de novo.
+  const escolherContato = (m: PrimeiroContato) => {
+    if (m === primeiroContato) return;
+    setPrimeiroContato(m);
+    setFeitos((atual) => new Set([...atual].filter((p) => !["mensagem", "numeros", "conversa"].includes(p))));
+  };
 
   // Vindo de /vagas ("Criar campanha para esta vaga"): especialidade, UF e vaga já respondidas.
   const [params] = useSearchParams();
@@ -161,12 +189,16 @@ export default function NovaCampanhaAssistente() {
     ? `R$ ${vaga.valorMin}${vaga.valorMax ? ` a R$ ${vaga.valorMax}` : ""} ${VALOR_POR.find((v) => v.value === vaga.valorPor)?.label || ""}`
     : "a combinar";
 
+  // Texto inicial da campanha de celular ({nome} vira o nome do médico no "Abrir no WhatsApp"). O dono ajusta à vontade.
+  const textoSugerido = `Olá, Dr(a). {nome}! Aqui é da GSS Saúde. Temos uma vaga de ${(TIPOS_VAGA.find((t) => t.value === vaga.tipo)?.label || "plantão").toLowerCase()}${espNomes[0] ? ` de ${espNomes[0]}` : ""} em ${vaga.cidade.trim() || "sua região"}${vaga.valorMin ? `, ${valorTexto}` : ""}. Posso te passar os detalhes?`;
+
   const podeSeguir: Record<Passo, boolean> = {
     publico: especialidadeIds.length > 0,
     lista: origem === "crm" ? (previa?.entram ?? 0) > 0 : origem === "lista" ? !!listaId && (previa?.entram ?? 0) > 0 : false,
     vaga: vaga.cidade.trim().length >= 3,
-    mensagem: !!modelo,
-    numeros: numerosSel.length > 0 && limitePorNumero >= 1,
+    contato: !!primeiroContato,
+    mensagem: celular ? textoCelular.trim().length >= 10 : !!modelo,
+    numeros: celular ? celulares.length > 0 : numerosSel.length > 0 && limitePorNumero >= 1,
     conversa: !!modoConversa,
     resumo: true,
   };
@@ -175,8 +207,9 @@ export default function NovaCampanhaAssistente() {
   const concluir = (p: Passo) => {
     setFeitos((atual) => new Set(atual).add(p));
     const proximo = PASSOS[PASSOS.indexOf(p) + 1];
-    if (proximo === "mensagem" && !modeloNome && modelosUsaveis[0]) setModeloNome(modelosUsaveis[0].friendly_name);
-    if (proximo === "numeros" && numerosEscolhidos.length === 0) {
+    if (proximo === "mensagem" && celular && !textoCelular.trim()) setTextoCelular(textoSugerido);
+    if (proximo === "mensagem" && !celular && !modeloNome && modelosUsaveis[0]) setModeloNome(modelosUsaveis[0].friendly_name);
+    if (proximo === "numeros" && !celular && numerosEscolhidos.length === 0) {
       // Sugestão: os números prontos que têm o modelo; sem nenhum pronto, nada marcado (o dono decide).
       setNumerosEscolhidos(numerosComModelo.filter((n) => n.disponibilidade === "disponivel").map((n) => n.sender_id));
     }
@@ -195,7 +228,9 @@ export default function NovaCampanhaAssistente() {
           template_name: modeloNome,
           template_variables: variaveis,
           sender_ids: numerosEscolhidos,
-          tipo_envio: modoConversa === "manual" ? "manual" : "ia",
+          tipo_envio: celular || modoConversa === "manual" ? "manual" : "ia",
+          primeiro_contato: celular ? "celular" : "sigma",
+          texto_celular: celular ? textoCelular.trim() : null,
           alerta_destinos: destinos,
           limite_por_numero: limitePorNumero,
           comecar,
@@ -214,13 +249,19 @@ export default function NovaCampanhaAssistente() {
       });
       if (error) throw error;
       const r = data as { campanha_id: string; leads: number; status: string };
+      if (celular) {
+        const { error: eCel } = await (supabase as any).rpc("campanha_definir_celulares", { p_campanha_id: r.campanha_id, p_celulares: celulares });
+        if (eCel) throw new Error(`a campanha foi criada, mas os celulares não foram gravados (${eCel.message}). Abra a campanha e confira.`);
+      }
       if (vagaId) await (supabase as any).from("vagas").update({ campanha_id: r.campanha_id }).eq("id", vagaId);
       return r;
     },
     onSuccess: (r) => {
       qc.invalidateQueries({ queryKey: ["campanhas-prospeccao"] });
       toast.success(
-        r.status === "ativa"
+        celular
+          ? `Campanha criada com ${mil(r.leads)} médicos. A equipe abre cada médico e chama pelo celular: “Abrir no WhatsApp” e depois “Chamei”.`
+          : r.status === "ativa"
           ? `Campanha criada com ${mil(r.leads)} médicos. O primeiro contato sai no próximo horário (7h às 17h, dias úteis).`
           : `Campanha criada pausada com ${mil(r.leads)} médicos. Ligue quando quiser.`,
       );
@@ -239,8 +280,13 @@ export default function NovaCampanhaAssistente() {
     publico: espTexto ? `${espTexto} · ${regiaoTexto}` : "",
     lista: origem === "crm" ? `Montar agora do CRM: ${mil(previa?.entram)} médicos` : origem === "lista" && lista ? `Lista “${lista.nome}”: ${mil(previa?.entram)} médicos` : "",
     vaga: vaga.cidade ? `${TIPOS_VAGA.find((t) => t.value === vaga.tipo)?.label} em ${vaga.cidade}${vaga.hospital ? ` (${vaga.hospital})` : ""} · ${valorTexto}` : "",
-    mensagem: modelo ? nomeModelo(modelo.friendly_name) : "",
-    numeros: numerosSel.length ? `${numerosSel.length} número(s), até ${limitePorNumero} por número/dia` : "",
+    contato: primeiroContato ? (celular ? "Pela equipe, no celular" : "Pelo Sigma, sozinho") : "",
+    mensagem: celular
+      ? (textoCelular.trim() ? `Texto sugerido: “${textoCelular.trim().slice(0, 60)}${textoCelular.trim().length > 60 ? "…" : ""}”` : "")
+      : modelo ? nomeModelo(modelo.friendly_name) : "",
+    numeros: celular
+      ? celulares.map((c) => c.nome.split(" ")[0] || fone(c.fone)).join(", ")
+      : numerosSel.length ? `${numerosSel.length} número(s), até ${limitePorNumero} por número/dia` : "",
     conversa: modoConversa
       ? `${modoConversa === "ia" ? "A IA conversa" : "A equipe conversa pelo Sigma"} · aviso para ${destinos.length ? destinos.map((d) => d.nome.split(" ")[0]).join(", ") : "a equipe geral"}`
       : "",
@@ -254,7 +300,7 @@ export default function NovaCampanhaAssistente() {
       </Button>
       <div className="min-w-0">
         <h1 className="text-2xl font-bold">Nova campanha</h1>
-        <p className="text-sm text-muted-foreground">Seis perguntas e a campanha está pronta.</p>
+        <p className="text-sm text-muted-foreground">{perguntas.length} perguntas e a campanha está pronta.</p>
       </div>
     </div>
   );
@@ -274,7 +320,7 @@ export default function NovaCampanhaAssistente() {
                     <Bot className="h-4 w-4" />
                   </span>
                   <p className={cn("rounded-2xl rounded-tl-sm bg-muted px-4 py-2 text-sm", atual && "font-medium")}>
-                    {PERGUNTA[p]}
+                    {(celular && PERGUNTA_CELULAR[p]) || PERGUNTA[p]}
                   </p>
                 </div>
                 {feito && (
@@ -416,7 +462,29 @@ export default function NovaCampanhaAssistente() {
                       </div>
                     )}
 
-                    {p === "mensagem" && (
+                    {p === "contato" && (
+                      <div className="grid gap-3 md:grid-cols-2" role="radiogroup" aria-label="Como sai o primeiro contato">
+                        <OpcaoCard ativo={primeiroContato === "sigma"} onClick={() => escolherContato("sigma")}
+                          titulo="Pelo Sigma, sozinho" detalhe="Modelo aprovado pela API oficial, das 7h às 17h em dias úteis." />
+                        <OpcaoCard ativo={primeiroContato === "celular"} onClick={() => escolherContato("celular")}
+                          titulo="Pela equipe, no celular" detalhe="O Sigma não envia nada: monta a lista e o texto, e cada pessoa chama do próprio WhatsApp." />
+                      </div>
+                    )}
+
+                    {p === "mensagem" && celular && (
+                      <div className="space-y-2">
+                        <Textarea value={textoCelular} onChange={(e) => setTextoCelular(e.target.value)} rows={5} aria-label="Texto sugerido para o primeiro contato" />
+                        <p className="text-xs text-muted-foreground">
+                          Escreva <code className="rounded bg-muted px-1">{"{nome}"}</code> onde entra o nome do médico. O botão “Abrir no WhatsApp” já leva o texto pronto.
+                        </p>
+                      </div>
+                    )}
+
+                    {p === "numeros" && celular && (
+                      <SeletorPessoas destinos={celulares} onDestinos={setCelulares} />
+                    )}
+
+                    {p === "mensagem" && !celular && (
                       <div className="space-y-3">
                         {carregandoModelos ? (
                           <span className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Buscando modelos aprovados…</span>
@@ -449,7 +517,7 @@ export default function NovaCampanhaAssistente() {
                       </div>
                     )}
 
-                    {p === "numeros" && (
+                    {p === "numeros" && !celular && (
                       <div className="space-y-3">
                         {carregandoNumeros ? (
                           <span className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Buscando números…</span>
@@ -494,9 +562,18 @@ export default function NovaCampanhaAssistente() {
                         <dl className="grid gap-3 text-sm sm:grid-cols-2">
                           <ItemResumo rotulo="Médicos" valor={`${mil(previa?.entram)} de ${espTexto || "da lista"} · ${regiaoTexto}`} />
                           <ItemResumo rotulo="Vaga" valor={`${TIPOS_VAGA.find((t) => t.value === vaga.tipo)?.label} em ${vaga.cidade} · ${valorTexto}`} />
-                          <ItemResumo rotulo="Números" valor={numerosSel.map((n) => fone(n.phone_e164)).join(", ")} />
-                          <ItemResumo rotulo="Conversa" valor={respostas.conversa} />
-                          <ItemResumo rotulo="Ritmo" valor={`Até ${mil(porDia)} por dia, 7h às 17h, dias úteis${dias > 0 ? ` · termina em ~${dias} dias úteis` : ""}`} />
+                          {celular ? (
+                            <>
+                              <ItemResumo rotulo="1º contato" valor="Pela equipe, no celular. O Sigma não envia nada." />
+                              <ItemResumo rotulo="Quem chama" valor={celulares.map((c) => `${c.nome || "Sem nome"} (${fone(c.fone)})`).join(", ")} />
+                            </>
+                          ) : (
+                            <>
+                              <ItemResumo rotulo="Números" valor={numerosSel.map((n) => fone(n.phone_e164)).join(", ")} />
+                              <ItemResumo rotulo="Conversa" valor={respostas.conversa} />
+                              <ItemResumo rotulo="Ritmo" valor={`Até ${mil(porDia)} por dia, 7h às 17h, dias úteis${dias > 0 ? ` · termina em ~${dias} dias úteis` : ""}`} />
+                            </>
+                          )}
                         </dl>
                         <Campo label="Nome da campanha">
                           <Input value={nome} onChange={(e) => setNome(e.target.value)} />
@@ -504,7 +581,7 @@ export default function NovaCampanhaAssistente() {
                         <div className="flex flex-wrap gap-2">
                           <Button onClick={() => criar.mutate(true)} disabled={criar.isPending}>
                             {criar.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
-                            Criar e começar
+                            {celular ? "Criar e liberar para a equipe" : "Criar e começar"}
                           </Button>
                           <Button variant="outline" onClick={() => criar.mutate(false)} disabled={criar.isPending}>Criar pausada</Button>
                         </div>
@@ -527,18 +604,18 @@ export default function NovaCampanhaAssistente() {
           <Card className="p-4">
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-sm font-semibold">Rascunho da campanha</h2>
-              <span className="text-xs text-muted-foreground tabular-nums">{Math.min(feitos.size, 6)} de 6</span>
+              <span className="text-xs text-muted-foreground tabular-nums">{perguntas.filter((p) => feitos.has(p)).length} de {perguntas.length}</span>
             </div>
             <dl className="space-y-3 text-sm">
-              {(["publico", "lista", "vaga", "mensagem", "numeros", "conversa"] as Passo[]).map((p) => (
+              {perguntas.map((p) => (
                 <div key={p}>
-                  <dt className="text-xs text-muted-foreground">{{ publico: "Público", lista: "Lista", vaga: "Vaga", mensagem: "Mensagem", numeros: "Números", conversa: "Conversa", resumo: "" }[p]}</dt>
+                  <dt className="text-xs text-muted-foreground">{celular && p === "numeros" ? "Quem chama" : ROTULO[p]}</dt>
                   <dd className={cn("break-words", !feitos.has(p) && "text-muted-foreground")}>{feitos.has(p) ? respostas[p] : "—"}</dd>
                 </div>
               ))}
             </dl>
             <p className="mt-4 flex items-center gap-1.5 border-t pt-3 text-xs text-muted-foreground">
-              <Sparkles className="h-3.5 w-3.5" /> Só WhatsApp oficial. Nada é enviado antes do seu “Criar”.
+              <Sparkles className="h-3.5 w-3.5" /> {celular ? "Nesta campanha o Sigma não envia nada." : "Só WhatsApp oficial. Nada é enviado antes do seu “Criar”."}
             </p>
           </Card>
           <p className="mt-3 text-center text-xs text-muted-foreground">
