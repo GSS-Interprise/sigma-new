@@ -20,6 +20,7 @@ import { ExpandableChart } from "./escalas/ExpandableChart";
 import { ExpandableProfessionalChart } from "./escalas/ExpandableProfessionalChart";
 import { ExpandableLoadDistribution } from "./escalas/ExpandableLoadDistribution";
 import { AbaDrEscala } from "./AbaDrEscala";
+import { FurosDrEscala } from "./escalas/FurosDrEscala";
 
 const formatPercent = (value: number) => `${value.toFixed(1)}%`;
 
@@ -172,6 +173,8 @@ export function AbaEscalas() {
   return (
     <TooltipProvider>
       <div className="space-y-6">
+        {/* Furos do Dr. Escala no topo: é a pergunta da diretoria nesta aba (onde falta médico). */}
+        <FurosDrEscala />
         {/* Filtros Globais */}
         <Card>
           <CardContent className="p-4">
