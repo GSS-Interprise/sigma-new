@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { format, subDays, subMonths } from "date-fns";
-import { Download, Maximize2, Minimize2 } from "lucide-react";
+import { Presentation } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -9,9 +9,10 @@ import { BiCombobox } from "@/components/bi/BiCombobox";
 import { useEspecialidades } from "@/hooks/useEspecialidades";
 import { usePermissions } from "@/hooks/usePermissions";
 import { cn } from "@/lib/utils";
-import { BlocoDestrava, BlocoEsforco, BlocoFunil, BlocoMercado, BlocoObjecoes } from "./Blocos";
+import { Apresentacao } from "./Apresentacao";
+import { BlocoFalas, BlocoGargalo, BlocoObjecoes, Fonte } from "./Blocos";
 import { ModoGestao } from "./ModoGestao";
-import { mil, useRaioXDestrava, useRaioXFunil, useRaioXObjecoes, type FiltroRaioX } from "./useRaioX";
+import { mil, useRaioXDestrava, useRaioXEsforco, useRaioXFunil, useRaioXObjecoes, type FiltroRaioX } from "./useRaioX";
 
 /**
  * Raio-X do mercado médico (plano GSS dono no comando, Fase 7).
@@ -33,12 +34,13 @@ const PAPEIS_GESTAO = ["admin", "diretoria", "gestor_captacao", "lideres"];
 const MINUSCULAS = new Set(["de", "da", "do", "das", "dos", "e", "em", "por"]);
 const titulo = (s: string) => s.toLowerCase().split(" ").map((p, i) => (i > 0 && MINUSCULAS.has(p) ? p : p.charAt(0).toUpperCase() + p.slice(1))).join(" ");
 
-// Imprime só o modo apresentação (Baixar PDF = imprimir e salvar como PDF).
+// Baixar PDF imprime só o modo apresentação. Ele é uma camada fixa com rolagem própria: na impressão vira bloco
+// normal, senão sai só a primeira tela.
 const CSS_IMPRESSAO = `@media print {
   @page { size: A4; margin: 12mm; }
   body * { visibility: hidden !important; }
   #raiox-apresentacao, #raiox-apresentacao * { visibility: visible !important; }
-  #raiox-apresentacao { position: absolute; left: 0; top: 0; width: 100%; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  #raiox-apresentacao { position: absolute !important; inset: 0 auto auto 0 !important; width: 100%; height: auto !important; overflow: visible !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }`;
 
 export function RaioXMercado() {
@@ -46,8 +48,6 @@ export function RaioXMercado() {
   const { data: especialidades } = useEspecialidades();
   const { userRoles } = usePermissions();
   const podeGestao = userRoles.some((r: any) => PAPEIS_GESTAO.includes(r.role));
-  const ref = useRef<HTMLDivElement>(null);
-  const [telaCheia, setTelaCheia] = useState(false);
 
   const espPadrao = useMemo(() => (especialidades?.find((e) => e.nome === "PEDIATRIA") ?? especialidades?.[0])?.id ?? "", [especialidades]);
   const espId = sp.get("esp") || espPadrao;
@@ -68,15 +68,10 @@ export function RaioXMercado() {
   const objecoes = useRaioXObjecoes(filtro);
   const destrava = useRaioXDestrava(filtro);
   const f = funil.data;
-
-  useEffect(() => {
-    const aoMudar = () => setTelaCheia(document.fullscreenElement === ref.current);
-    document.addEventListener("fullscreenchange", aoMudar);
-    return () => document.removeEventListener("fullscreenchange", aoMudar);
-  }, []);
-  const apresentar = () => (document.fullscreenElement ? document.exitFullscreen() : ref.current?.requestFullscreen());
-
-  const subtitulo = [espNome, uf || "Brasil", PERIODOS[periodo].rotulo.toLowerCase()].join(" · ");
+  // ?apresentar=1 abre a camada do hospital; fica na URL para recarregar e para mandar o link.
+  const apresentando = modo === "apresentacao" && sp.get("apresentar") === "1";
+  const esforco = useRaioXEsforco(filtro, apresentando);
+  const hospital = sp.get("hosp") || "";
 
   return (
     <div className="space-y-4">
@@ -122,51 +117,40 @@ export function RaioXMercado() {
             </div>
           )}
           {modo === "apresentacao" && (
-            <>
-              <Button variant="outline" size="sm" className="h-9" onClick={apresentar}><Maximize2 className="mr-1.5 h-4 w-4" />Apresentar</Button>
-              <Button variant="outline" size="sm" className="h-9" onClick={() => window.print()}><Download className="mr-1.5 h-4 w-4" />Baixar PDF</Button>
-            </>
+            <Button size="sm" className="h-9" onClick={() => set("apresentar", "1")}>
+              <Presentation className="mr-1.5 h-4 w-4" />Apresentar
+            </Button>
           )}
         </div>
       </div>
 
       {modo === "gestao" ? (
         <ModoGestao filtro={filtro} />
+      ) : funil.isError ? (
+        <Card className="p-6 text-sm text-red-600">Não consegui montar o Raio-X. Recarregue a página.</Card>
+      ) : f && f.alcancados === 0 ? (
+        <Card className="p-6">
+          <p className="font-medium">Ainda não prospectamos {espNome}{uf ? ` em ${uf}` : ""}{periodo !== "tudo" ? " neste período" : ""}.</p>
+          <p className="mt-1 text-sm text-muted-foreground">{mil(f.base_crm)} especialistas na base da GSS prontos para a primeira campanha.</p>
+        </Card>
       ) : (
-        <div ref={ref} id="raiox-apresentacao" className={cn("space-y-4 bg-background", telaCheia && "overflow-auto p-10")}>
-          <div className="flex items-baseline justify-between gap-4">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-primary">GSS · Gestão Serviço Saúde</p>
-              <h2 className="text-xl font-semibold">Raio-X do mercado: {subtitulo}</h2>
-            </div>
-            {telaCheia && (
-              <Button variant="ghost" size="sm" onClick={apresentar}><Minimize2 className="mr-1.5 h-4 w-4" />Sair</Button>
-            )}
+        <div className="space-y-4">
+          <BlocoGargalo f={f} esp={espNome} uf={uf} kicker={`Raio-X do mercado · ${[espNome, uf].filter(Boolean).join(" · ")}`} />
+          <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+            <BlocoObjecoes o={objecoes.data} />
+            <BlocoFalas o={objecoes.data} d={destrava.data} esp={espNome} uf={uf} />
           </div>
-
-          {funil.isError ? (
-            <Card className="p-6 text-sm text-red-600">Não consegui montar o Raio-X. Recarregue a página.</Card>
-          ) : (
-            <>
-              <BlocoMercado f={f} esp={espNome} uf={uf} />
-              {f && (f.alcancados === 0 ? (
-                <Card className="p-5">
-                  <p className="font-medium">Ainda não prospectamos {espNome}{uf ? ` em ${uf}` : ""}{periodo !== "tudo" ? " neste período" : ""}.</p>
-                  <p className="mt-1 text-sm text-muted-foreground">{mil(f.base_crm)} especialistas na base da GSS prontos para a primeira campanha.</p>
-                </Card>
-              ) : (
-                <>
-                  <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-4">
-                    <BlocoEsforco f={f} />
-                    <BlocoFunil f={f} />
-                  </div>
-                  <BlocoObjecoes o={objecoes.data} />
-                  <BlocoDestrava d={destrava.data} o={objecoes.data} esp={espNome} uf={uf} />
-                </>
-              ))}
-            </>
-          )}
+          {f && <Fonte f={f} esp={espNome} uf={uf} />}
         </div>
+      )}
+
+      {apresentando && (
+        <Apresentacao
+          f={f} o={objecoes.data} d={destrava.data} e={esforco.data}
+          carregando={funil.isLoading || objecoes.isLoading || destrava.isLoading || esforco.isLoading}
+          esp={espNome} uf={uf} periodo={PERIODOS[periodo].rotulo.toLowerCase()}
+          hospital={hospital} onHospital={(v) => set("hosp", v || null)} onSair={() => set("apresentar", null)}
+        />
       )}
     </div>
   );

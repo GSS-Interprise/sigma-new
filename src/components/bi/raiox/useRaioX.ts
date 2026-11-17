@@ -29,7 +29,17 @@ export type Gestao = {
     interessados: number; convertidos: number; resposta_min: number | null }[];
 };
 
-export type FiltroRaioX = { especialidadeId: string; uf: string | null; desde: string | null };
+// bi_raiox_esforco (20261113200000): série por semana (segunda-feira, horário de Brasília) e por canal.
+export type SemanaEsforco = {
+  semana: string; whatsapp_medicos: number; whatsapp_mensagens: number; email: number; linkedin: number; instagram: number;
+};
+export type Esforco = {
+  semanas: SemanaEsforco[];
+  totais: { whatsapp_medicos: number; whatsapp_mensagens: number; email: number; linkedin: number; instagram: number };
+  desde: string | null;
+};
+
+export type FiltroRaioX ={ especialidadeId: string; uf: string | null; desde: string | null };
 
 function useRpc<T>(nome: string, f: FiltroRaioX, enabled = true) {
   return useQuery({
@@ -49,7 +59,8 @@ function useRpc<T>(nome: string, f: FiltroRaioX, enabled = true) {
 export const useRaioXFunil = (f: FiltroRaioX) => useRpc<Funil>("bi_raiox_funil", f);
 export const useRaioXObjecoes = (f: FiltroRaioX) => useRpc<Objecoes>("bi_raiox_objecoes", f);
 export const useRaioXDestrava = (f: FiltroRaioX) => useRpc<Destrava>("bi_raiox_destrava", f);
-export const useRaioXGestao = (f: FiltroRaioX, enabled: boolean) => useRpc<Gestao>("bi_raiox_gestao", f, enabled);
+export const useRaioXEsforco = (f: FiltroRaioX, enabled: boolean) => useRpc<Esforco>("bi_raiox_esforco", f, enabled);
+export const useRaioXGestao =(f: FiltroRaioX, enabled: boolean) => useRpc<Gestao>("bi_raiox_gestao", f, enabled);
 
 export const mil = (n: number | null | undefined) => (n ?? 0).toLocaleString("pt-BR");
 export const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 100) : 0);
