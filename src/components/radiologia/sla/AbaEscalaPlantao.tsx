@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { UNIDADE, type Plantao, normalizarTelefone, telefoneBonito, useColetor, useEscala } from "./useSla";
+import { CopiarSemana } from "./CopiarSemana";
 
 const db = supabase as any;
 const PAPEL: Record<Plantao["papel"], { nome: string; selo: string }> = {
@@ -172,7 +173,10 @@ export function AbaEscalaPlantao() {
         </Card>
 
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-base">Próximos 14 dias</CardTitle></CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0 pb-2">
+            <CardTitle className="text-base">Próximos 14 dias</CardTitle>
+            <CopiarSemana />
+          </CardHeader>
           <CardContent className="space-y-4 text-sm">
             {escala.isLoading && <Skeleton className="h-16 w-full" />}
             {escala.error && <p className="text-red-700">Não deu para carregar a escala: {(escala.error as Error).message}</p>}
