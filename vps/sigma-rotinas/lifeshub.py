@@ -123,7 +123,7 @@ def _planilha_sigma(xlsx_bytes, especialidade):
 
 
 def extrair(payload):
-    """payload: {especialidade: "GINECOLOGIA E OBSTETRÍCIA", ufs: ["GO"], limite?: 50}.
+    """payload: {especialidade: "GINECOLOGIA E OBSTETRÍCIA", ufs: ["GO"] (vazio = Brasil todo), limite?: 50}.
 
     Devolve {especialidade, especialidade_id, ufs, exportados, com_telefone, xlsx_b64}.
     """
@@ -134,7 +134,9 @@ def extrair(payload):
     if not especialidade:
         raise RuntimeError("informe a especialidade")
     if not ufs:
-        raise RuntimeError("informe ao menos uma UF")
+        # Sem estado = Brasil todo (Raul, 17/11/2026). Manda as 27 UFs no filtro crmUfs, que é o formato que o
+        # Life's Hub já aceita; não contamos com o export sem filtro de UF, que nunca foi testado.
+        ufs = sorted(UFS)
     limite = int(payload.get("limite") or 0)
 
     with sync_playwright() as p:

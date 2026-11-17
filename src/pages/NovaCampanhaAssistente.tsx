@@ -119,7 +119,7 @@ export default function NovaCampanhaAssistente() {
   const semCrm = origem === "lista" || origem === "lifeshub";
   const { data: previa, isFetching: carregandoPrevia } = usePrevia(semCrm ? [] : especialidadeIds, semCrm ? [] : ufs, listaUsada);
 
-  // Life's Hub: um pedido por especialidade, sempre com estado (o robô filtra pela UF do CRM).
+  // Life's Hub: um pedido por especialidade. Sem estado = Brasil todo (o robô manda as 27 UFs no filtro do CRM).
   const { data: extracao } = useExtracaoLifesHub(pedidoLifesHub);
   const pedirLifesHub = useMutation({
     mutationFn: async () => {
@@ -572,10 +572,10 @@ function PainelLifesHub({ espNome, ufs, pedindo, extracao, onPedir, onNovaTentat
   espNome: string | null; ufs: string[]; pedindo: boolean; extracao: ExtracaoLifesHub | null;
   onPedir: () => void; onNovaTentativa: () => void;
 }) {
-  if (!espNome || ufs.length === 0) {
+  if (!espNome) {
     return (
       <p className="rounded-lg border bg-muted/30 p-3 text-sm text-muted-foreground">
-        Para extrair do Life's Hub, volte à primeira pergunta e escolha <strong>uma</strong> especialidade e os estados.
+        Para extrair do Life's Hub, volte à primeira pergunta e escolha <strong>uma</strong> especialidade.
       </p>
     );
   }
@@ -602,7 +602,7 @@ function PainelLifesHub({ espNome, ufs, pedindo, extracao, onPedir, onNovaTentat
   }
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/30 p-3 text-sm">
-      <p className="min-w-0">{espNome} com CRM em {ufs.join(", ")}. Só entra quem tem telefone.</p>
+      <p className="min-w-0">{espNome} com CRM {ufs.length ? `em ${ufs.join(", ")}` : "no Brasil todo"}. Só entra quem tem telefone.</p>
       <Button size="sm" onClick={onPedir} disabled={pedindo}>
         {pedindo && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Extrair agora
       </Button>
