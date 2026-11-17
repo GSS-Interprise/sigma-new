@@ -41,6 +41,7 @@ Sigma (tela ou edge)                VPS da GSS 147.93.71.48
   | `ia_claude_codigo` | entrega o código, grava o token e roda o teste |
   | `ia_claude_teste` | `hermes chat -Q --provider <plugin> -m sonnet -q "Responda apenas a palavra OK."` |
   | `ia_claude_sair` | apaga o token |
+  | `ia_claude_assistente_campanha` | 1º processo (17/11): interpreta a "regra especial" do assistente de campanha e devolve JSON. Pedida pela edge `campanha-assistente-ia` (service_role), que espera até 60 s e cai no Gemini se não houver login, der erro ou demorar. Vê só o rascunho da campanha, sem dado de médico; sem ferramentas |
 
 - **Segredo:** nenhum resultado leva token, código ou a tela crua. O código do login sai do `payload` quando o pedido
   termina (`rotina_concluir`), porque a fila é legível por qualquer usuário logado.
@@ -68,4 +69,4 @@ Sigma (tela ou edge)                VPS da GSS 147.93.71.48
 - [x] Hermes, Claude Code e plugin instalados na VPS da GSS, usuário `sigma-ia`
 - [x] Rotinas `ia_claude_*`, migration `20261113170000_motor_ia_claude.sql`, tela Motor de IA
 - [ ] Login com a conta Max da GSS (Raul, pela tela) e teste respondendo
-- [ ] Primeiro processo definido com a GSS
+- [x] Primeiro processo: assistente de campanha (Raul, 17/11), com o Gemini de reserva até a GSS conectar

@@ -135,6 +135,46 @@ def teste(_payload=None):
     return {"ok": False, "frase": f"O Claude não respondeu pelo Hermes: {ultima_linha_segura(saida)}", "segundos": segundos}
 
 
+def json_da_resposta(saida):
+    """O Claude às vezes cerca o JSON de texto ou de ```json; vale o primeiro objeto { ... } inteiro da saída."""
+    import json
+    inicio = saida.find("{")
+    while inicio != -1:
+        try:
+            obj, _ = json.JSONDecoder().raw_decode(saida[inicio:])
+            if isinstance(obj, dict):
+                return obj
+        except ValueError:
+            pass
+        inicio = saida.find("{", inicio + 1)
+    return None
+
+
+def assistente_campanha(payload):
+    """Primeiro processo do Claude da GSS (Raul, 17/11/2026): o assistente de campanha lê a "regra especial" que o dono
+    escreveu e devolve os campos em JSON. As instruções vêm da edge campanha-assistente-ia (o mesmo texto que o Gemini
+    de reserva usa), então mudar o pedido é mudar só a edge. Sem ferramenta nenhuma: só texto entra e sai."""
+    token = _token()
+    if not token:
+        raise RuntimeError("sem-login")
+    instrucoes = str((payload or {}).get("instrucoes") or "").strip()
+    pedido = str((payload or {}).get("pedido") or "").strip()
+    if not instrucoes or not pedido:
+        raise RuntimeError("pedido vazio")
+    pergunta = f"{instrucoes}\n\n{pedido[:4000]}\n\nResponda só com o JSON, sem texto antes ou depois."
+    # A pergunta vai pela entrada padrão (como no login): como argumento ficaria na lista de processos da VPS.
+    cod, saida = _como_usuario(
+        ["bash", "-c", f'exec "{HERMES}" chat -Q --provider {PROVEDOR} -m sonnet -q "$(cat)"'],
+        entrada=pergunta, tempo=90, env_extra={"CLAUDE_CODE_OAUTH_TOKEN": token},
+    )
+    if cod is None:
+        raise RuntimeError("o Claude não respondeu em 90 s")
+    obj = json_da_resposta(saida) if cod == 0 else None
+    if obj is None:
+        raise RuntimeError(f"resposta sem JSON: {ultima_linha_segura(saida)}")
+    return {"particularidades": obj}
+
+
 def sair(_payload=None):
     try:
         TOKEN.unlink()
@@ -149,4 +189,5 @@ ROTINAS = {
     "ia_claude_codigo": login_codigo,
     "ia_claude_teste": teste,
     "ia_claude_sair": sair,
+    "ia_claude_assistente_campanha": assistente_campanha,
 }

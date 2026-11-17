@@ -169,9 +169,12 @@ export function MotorIaTab() {
 
       <Card className="p-5">
         <h3 className="text-base font-semibold">Processos que usam o Claude</h3>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Nenhum ainda. Cada processo entra aqui só depois de definido com a GSS: o que faz, quais dados vê e quanto da cota usa.
-        </p>
+        <ul className="mt-2 space-y-1 text-sm">
+          <li>
+            <span className="font-medium">Assistente de campanha</span>
+            <span className="text-muted-foreground"> · lê a regra especial que o dono escreve. Vê só o rascunho da campanha, sem dado de médico. Sem login, usa o Gemini.</span>
+          </li>
+        </ul>
       </Card>
 
       {s && (

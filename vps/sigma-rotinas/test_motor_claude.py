@@ -41,7 +41,23 @@ class TestMotorClaude(unittest.TestCase):
     def test_rotinas_registradas_batem_com_a_fila(self):
         # Os mesmos tipos que a migration 20261113170000 aceita em rotina_pedir.
         self.assertEqual(sorted(m.ROTINAS), sorted([
-            "ia_claude_situacao", "ia_claude_login", "ia_claude_codigo", "ia_claude_teste", "ia_claude_sair"]))
+            "ia_claude_situacao", "ia_claude_login", "ia_claude_codigo", "ia_claude_teste", "ia_claude_sair",
+            "ia_claude_assistente_campanha"]))
+
+    def test_json_da_resposta_tira_o_texto_em_volta(self):
+        self.assertEqual(m.json_da_resposta('{"a": 1}'), {"a": 1})
+        self.assertEqual(m.json_da_resposta('Claro!\n```json\n{"a": {"b": 2}}\n```\n'), {"a": {"b": 2}})
+        self.assertEqual(m.json_da_resposta('use {chaves} assim: {"ok": true}'), {"ok": True})
+        self.assertIsNone(m.json_da_resposta("não sei"))
+        self.assertIsNone(m.json_da_resposta("[1, 2]"))
+
+    def test_assistente_sem_login_falha_logo(self):
+        token, m._token = m._token, lambda: None
+        try:
+            with self.assertRaisesRegex(RuntimeError, "sem-login"):
+                m.assistente_campanha({"instrucoes": "x", "pedido": "y"})
+        finally:
+            m._token = token
 
     def test_codigo_invalido_nem_chega_na_vps(self):
         with self.assertRaises(RuntimeError):
