@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { Calendar, CalendarClock, DollarSign, User, MapPin, AlertTriangle, Paperclip, CheckCircle2, Clock, Copy, ArchiveRestore } from "lucide-react";
+import { Calendar, CalendarClock, DollarSign, User, MapPin, AlertTriangle, Paperclip, CheckCircle2, Clock, Copy, ArchiveRestore, ArrowUp, ArrowDown } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { useUserSetor } from "@/hooks/useUserSetor";
@@ -710,20 +710,24 @@ export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filt
   };
 
   // Ordenação simples: apenas por data_disputa (mais próximas primeiro)
-  const sortByDataDisputa = (a: LicitacaoWithResponsavel, b: LicitacaoWithResponsavel) => {
-    const dateA = a.data_disputa ? new Date(a.data_disputa).getTime() : Infinity;
-    const dateB = b.data_disputa ? new Date(b.data_disputa).getTime() : Infinity;
-    return dateA - dateB; // Datas mais próximas primeiro
+  // Cada coluna tem o seu botão "Disputa": asc = mais antiga primeiro (padrão), desc = mais distante primeiro.
+  // Só reordena os cards já carregados na coluna (a busca traz 400 por vez, pela disputa mais antiga).
+  const [ordemColuna, setOrdemColuna] = useState<Record<string, 'asc' | 'desc'>>({});
+  const sortByDataDisputa = (desc: boolean) => (a: LicitacaoWithResponsavel, b: LicitacaoWithResponsavel) => {
+    // sem data fica sempre no fim, nas duas ordens
+    if (!a.data_disputa || !b.data_disputa) return (a.data_disputa ? 0 : 1) - (b.data_disputa ? 0 : 1);
+    const diff = new Date(a.data_disputa).getTime() - new Date(b.data_disputa).getTime();
+    return desc ? -diff : diff;
   };
 
   const getLicitacoesByStatus = (status: string) => {
     // Descartadas são carregadas sob demanda, não vêm da query principal
+    const sortFn = sortByDataDisputa(ordemColuna[status] === 'desc');
     if (status === 'descarte_edital') {
-      return descartadasData.sort(sortByDataDisputa);
+      return descartadasData.sort(sortFn);
     }
     const filtered = licitacoes?.filter(lic => lic.status === status) || [];
-    // Todas as colunas: ordenação apenas por data_disputa (mais próximas primeiro)
-    return filtered.sort(sortByDataDisputa);
+    return filtered.sort(sortFn);
   };
 
   const handleDuplicarCard = async (licitacao: LicitacaoWithResponsavel) => {
@@ -1066,6 +1070,16 @@ export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filt
                 onArrastoFim={() => setColunaArrastandoId(null)}
               />
             </CardTitle>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="mt-1 h-6 w-fit gap-1 px-1.5 text-xs font-normal text-muted-foreground hover:text-foreground"
+              title={ordemColuna[column.id] === 'desc' ? 'Disputa mais distante primeiro. Clique para inverter' : 'Disputa mais antiga primeiro. Clique para inverter'}
+              onClick={() => setOrdemColuna((o) => ({ ...o, [column.id]: o[column.id] === 'desc' ? 'asc' : 'desc' }))}
+            >
+              {ordemColuna[column.id] === 'desc' ? <ArrowDown className="h-3 w-3" /> : <ArrowUp className="h-3 w-3" />}
+              Disputa
+            </Button>
           </CardHeader>
           <CardContent className="flex-1 overflow-hidden px-2 pt-0 pb-2">
             <ScrollArea className="h-full">
