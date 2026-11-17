@@ -71,7 +71,9 @@ export function FiltroLicitacoes({ onFilterChange, compact = false }: FiltroLici
       responsavel: responsavel || undefined,
       tipoLicitacao: tipoLicitacao || "GSS",
       dataInicio,
-      dataFim,
+      // O calendário devolve o dia às 00:00; os filtros usam `<= dataFim`, então sem isso
+      // uma disputa às 14:59 do próprio dia "fim" ficava de fora.
+      dataFim: dataFim ? new Date(new Date(dataFim).setHours(23, 59, 59, 999)) : undefined,
       prazoDias: prazoDias || undefined,
       prazoTipo: prazoTipo || undefined,
     });
