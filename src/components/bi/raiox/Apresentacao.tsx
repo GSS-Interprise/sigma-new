@@ -279,7 +279,8 @@ export function Apresentacao({ f, o, d, e, carregando, esp, uf, periodo, hospita
             <h3 className="font-display text-2xl font-semibold">O que propomos</h3>
             <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
               {propostas.slice(0, 3).map((p) => (
-                <div key={p.regra} className="rounded-xl border-t-4 border-primary bg-card p-6">
+                <div key={p.regra} className="rounded-xl bg-card p-6">
+                  <div className="mb-3 h-1 w-10 rounded-full bg-primary" aria-hidden />
                   <p className="font-display text-lg font-semibold">{p.titulo}</p>
                   <p className="mt-2 text-muted-foreground">{p.texto}</p>
                 </div>
