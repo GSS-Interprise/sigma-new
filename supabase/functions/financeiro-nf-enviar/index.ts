@@ -13,6 +13,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { chakraApi, digits, unwrapChakraPayload } from "../_shared/chakra.ts";
 import { appUrl } from "../_shared/app-url.ts";
+import { COLUNAS_PAGAMENTO, localDoServico, resumoProducao, type Pag, type Item } from "./texto.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -22,68 +23,6 @@ const cors = {
 const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
 const fmtBRL = (v: number) => (Number(v) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const SENDERS_ATIVOS = ["approved", "online", "active", "activated", "connected"];
-
-type Pag = {
-  id: string; profissional_nome: string; medico_id: string | null;
-  mes_referencia: number; ano_referencia: number; unidade: string | null; setor: string | null;
-  total_plantoes: number | null; total_horas_minutos: number | null; valor_total: number | null;
-  arquivo_origem: string | null;
-  nf_lembretes: number | null;
-};
-
-// Resumo do que o médico fez no mês, para o pedido de nota (a Mavi pediu em 15/10 que a mensagem traga
-// as horas ou a quantidade de consultas, no texto dela: "referente a xx horas ou xx consultas realizadas
-// no local xx"). Plantão vem com horas; consulta e exame vêm como item com quantidade e sem data.
-// Texto sem acento, como o resto do template.
-type Item = { pagamento_id: string; data_plantao: string | null; descricao: string | null; quantidade: number | null; carga_horaria_minutos: number | null };
-function resumoProducao(pag: Pag, itens: Item[]): string {
-  const partes: string[] = [];
-  const min = Number(pag.total_horas_minutos || 0);
-  if (min > 0) {
-    const h = Math.floor(min / 60), m = min % 60;
-    partes.push(m ? `${h}h${String(m).padStart(2, "0")}` : `${h} hora${h === 1 ? "" : "s"}`);
-  }
-  // o relatório consolidado resume os plantões numa linha com quantidade ("18 plantão(ões)"): isso já está nas horas
-  const qtd = itens.filter((i) => !i.data_plantao && i.descricao && Number(i.quantidade) > 0
-    && !Number(i.carga_horaria_minutos) && !/plant/i.test(i.descricao));
-  if (qtd.length) {
-    const total = qtd.reduce((s, i) => s + Number(i.quantidade), 0);
-    const consultas = qtd.every((i) => /consult/i.test(i.descricao || ""));
-    // planilha separada por tipo (CIS Navegantes): a Mavi quer que o médico veja quantas consultas,
-    // procedimentos e colonoscopias fez, cada um com seu número
-    const TIPOS = /^(consultas|procedimentos|colonoscopias)$/i;
-    if (qtd.every((i) => TIPOS.test(i.descricao || ""))) {
-      const porTipo = new Map<string, number>();
-      for (const i of qtd) porTipo.set(i.descricao!.toLowerCase(), (porTipo.get(i.descricao!.toLowerCase()) ?? 0) + Number(i.quantidade));
-      const ordem = ["consultas", "procedimentos", "colonoscopias"];
-      for (const [t, n] of [...porTipo].sort((x, y) => ordem.indexOf(x[0]) - ordem.indexOf(y[0])))
-        partes.push(`${n} ${n === 1 ? t.replace(/s$/, "") : t}`);
-    } else if (!consultas && qtd.every((i) => /^[A-Z0-9ÇÃÕÁÉÍÓÚÂÊÔ .\/-]{1,24}$/.test(i.descricao!.trim()))) {
-      // colunas da matriz de radiologia vêm em maiúsculas (TC, RX, USG, DOPPLER); texto livre fica no total
-      // Radiologia (Marieta, CEPON): a Mavi quer a produção separada por tipo de exame (13/11: "eles querem
-      // ver a produção completa, não total geral"). Mantém a ordem das colunas da planilha.
-      const porTipo = new Map<string, number>();
-      for (const i of qtd) { const k = i.descricao!.trim().toUpperCase(); porTipo.set(k, (porTipo.get(k) ?? 0) + Number(i.quantidade)); }
-      [...porTipo].forEach(([t, n], k) => partes.push(k === 0 ? `${n} ${n === 1 ? "exame" : "exames"} de ${t}` : `${n} de ${t}`));
-    } else {
-      // "realizadas" vem do texto da Mavi: exame de radiologia entra como "consultas/exames" para concordar
-      partes.push(`${total} ${consultas ? (total === 1 ? "consulta" : "consultas") : "consultas/exames"}`);
-    }
-  }
-  const lista = partes.length > 1 ? `${partes.slice(0, -1).join(", ")} e ${partes[partes.length - 1]}` : partes[0];
-  return semAcento(lista || "atividades");
-}
-// O local é o nome que a Mavi dá ao arquivo do Dr. Escala antes de importar ("Ibirama", "Nova Prata"):
-// é a cidade, que o médico reconhece. Sem arquivo, usa a unidade da escala.
-function localDoServico(pag: Pag): string {
-  const arquivo = String(pag.arquivo_origem || "").replace(/^\[cfg:[^\]]+\]\s*/, "").replace(/\.(xlsx|xls|csv)$/i, "").trim();
-  // o nome do arquivo costuma levar o mês ("Ibirama - agosto"): o local é só a cidade
-  const cidade = arquivo
-    .replace(/[\s_\-–(]*(janeiro|fevereiro|mar[cç]o|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro|\d{1,2}[\/.\-]\d{2,4}|20\d{2})[a-z]*[)\s_\-–\/.]*/gi, " ")
-    .replace(/[\s_\-–]+$/, "").trim();
-  return semAcento(cidade || arquivo || pag.unidade || pag.setor || "indicado na escala");
-}
-const semAcento = (t: string) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim().slice(0, 200);
 
 function corpoEmail(pag: Pag, compExt: string, valor: string, link: string) {
   const localTxt = [pag.unidade, pag.setor].filter(Boolean).join(" · ");
@@ -243,7 +182,7 @@ serve(async (req) => {
     }
 
     const { data: pags, error: pErr } = await svc.from("financeiro_pagamentos")
-      .select("id, profissional_nome, medico_id, mes_referencia, ano_referencia, unidade, setor, total_plantoes, total_horas_minutos, valor_total, nf_lembretes, arquivo_origem")
+      .select(COLUNAS_PAGAMENTO)
       .in("id", ids);
     if (pErr) throw pErr;
     const { data: itensRows } = await svc.from("financeiro_pagamento_itens")
