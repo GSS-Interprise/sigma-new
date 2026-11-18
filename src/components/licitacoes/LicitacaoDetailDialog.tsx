@@ -55,7 +55,7 @@ import { LicitacaoDescarteDialog } from "./LicitacaoDescarteDialog";
 import { LicitacaoItensTab } from "./LicitacaoItensTab";
 import { LicitacaoHistoricoTab } from "./LicitacaoHistoricoTab";
 import { LicitacaoObjetoTab } from "./LicitacaoObjetoTab";
-import { Package, Activity, AlignLeft } from "lucide-react";
+import { Package, Activity, AlignLeft, Users } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { supabase } from "@/integrations/supabase/client";
@@ -522,6 +522,7 @@ export function LicitacaoDetailDialog({
         orgao: licitacao.orgao || '',
         objeto: safeObjeto,
         decorrencia_analise: (licitacao as any).decorrencia_analise || '',
+        deliberacao: (licitacao as any).deliberacao || '',
         status: licitacao.status || 'captacao_edital',
         responsavel_id: licitacao.responsavel_id || '',
         data_disputa: licitacao.data_disputa ? toLocalTime(licitacao.data_disputa) : undefined,
@@ -555,6 +556,7 @@ export function LicitacaoDetailDialog({
         orgao: '',
         objeto: '',
         decorrencia_analise: '',
+        deliberacao: '',
         status: 'captacao_edital',
         responsavel_id: '',
         data_disputa: undefined,
@@ -1190,6 +1192,7 @@ export function LicitacaoDetailDialog({
       tipo_licitacao: formData.tipo_licitacao || 'GSS',
       prioridade: formData.prioridade || null,
       decorrencia_analise: formData.decorrencia_analise || null,
+      deliberacao: formData.deliberacao || null,
       dados_customizados: Object.keys(dadosCustomizados).length > 0 ? dadosCustomizados : null,
     };
     
@@ -1925,6 +1928,53 @@ export function LicitacaoDetailDialog({
                                   }
                                 }}
                                 dangerouslySetInnerHTML={{ __html: sanitizeHtml(linkifyHtml((licitacao as any)?.decorrencia_analise || "—")) }}
+                              />
+                            )}
+                          </div>
+                        </DraggableItem>
+
+                        {/* Deliberação (18/11): o que o Luiz registra da reunião de deliberação, separado da análise */}
+                        <DraggableItem
+                          id="deliberacao"
+                          layoutMode={layoutMode}
+                          config={getItemConfig("deliberacao")}
+                          onConfigChange={handleConfigChange}
+                          onDragStart={handleDragStart}
+                          onDragEnd={handleDragEnd}
+                        >
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-1.5">
+                              <Users className="h-3.5 w-3.5 text-primary" />
+                              <span className="text-xs font-semibold text-primary uppercase tracking-wide">
+                                Deliberação
+                              </span>
+                              <span className="text-[10px] font-normal text-muted-foreground normal-case tracking-normal">
+                                — o que foi combinado na reunião de deliberação
+                              </span>
+                            </div>
+                            {editando ? (
+                              <RichTextEditor
+                                value={formData.deliberacao || ""}
+                                onChange={(value) =>
+                                  setFormDataSafe((prev: any) => ({ ...prev, deliberacao: value }))
+                                }
+                                minHeight="160px"
+                                placeholder="Participar ou não, valor, condições, quem faz o quê e até quando..."
+                                onImagePaste={handleImagePasteUpload}
+                              />
+                            ) : (
+                              <div
+                                className="text-sm prose prose-sm max-w-none bg-muted/30 rounded-md p-3 min-h-[80px] relative overflow-hidden [&_a]:text-blue-600 [&_a]:underline [&_a]:break-all [&_table]:w-full [&_table]:border-collapse [&_table]:my-2 [&_td]:border [&_td]:border-border [&_td]:p-1.5 [&_td]:text-xs [&_th]:border [&_th]:border-border [&_th]:p-1.5 [&_th]:text-xs [&_th]:font-semibold [&_th]:bg-muted/50"
+                                onClick={(e) => {
+                                  const target = e.target as HTMLElement;
+                                  if (target.tagName === 'A') {
+                                    e.stopPropagation();
+                                    e.preventDefault();
+                                    const href = (target as HTMLAnchorElement).href;
+                                    if (href) window.open(href, '_blank', 'noopener,noreferrer');
+                                  }
+                                }}
+                                dangerouslySetInnerHTML={{ __html: sanitizeHtml(linkifyHtml((licitacao as any)?.deliberacao || "Nada registrado ainda. Clique em Editar para anotar o que a reunião decidiu.")) }}
                               />
                             )}
                           </div>
