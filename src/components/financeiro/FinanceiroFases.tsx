@@ -406,7 +406,7 @@ export function FinanceiroFases({ mes, ano }: { mes: number; ano: number }) {
                           <span className="flex items-center gap-1.5">
                             {p.profissional_nome}
                             {!p.medico_id && (
-                              <span title="Médico não encontrado no cadastro"
+                              <span title="Não achei no cadastro. Cadastre em Médicos › Corpo Clínico com o mesmo nome (quem não é médico: marque 'Prestador de serviço'); o lançamento liga sozinho."
                                 className="text-[10px] text-amber-700 border border-amber-400 rounded px-1">sem cadastro</span>
                             )}
                           </span>

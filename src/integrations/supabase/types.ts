@@ -11667,7 +11667,8 @@ export type Database = {
           cliente_vinculado_id: string | null
           cpf: string | null
           created_at: string | null
-          crm: string
+          crm: string | null
+          prestador_nao_medico: boolean
           data_aprovacao_corpo_medico: string | null
           data_nascimento: string | null
           documentos_url: string[] | null
@@ -11700,7 +11701,8 @@ export type Database = {
           cliente_vinculado_id?: string | null
           cpf?: string | null
           created_at?: string | null
-          crm: string
+          crm?: string | null
+          prestador_nao_medico?: boolean
           data_aprovacao_corpo_medico?: string | null
           data_nascimento?: string | null
           documentos_url?: string[] | null
@@ -11733,7 +11735,8 @@ export type Database = {
           cliente_vinculado_id?: string | null
           cpf?: string | null
           created_at?: string | null
-          crm?: string
+          crm?: string | null
+          prestador_nao_medico?: boolean
           data_aprovacao_corpo_medico?: string | null
           data_nascimento?: string | null
           documentos_url?: string[] | null

@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
@@ -34,8 +35,10 @@ const ESTADOS_BRASIL = [
 
 const formSchema = z.object({
   nome_completo: z.string().min(3, "Nome deve ter no mínimo 3 caracteres"),
-  crm: z.string().min(4, "CRM inválido"),
-  especialidade: z.array(z.string()).min(1, "Selecione pelo menos uma especialidade"),
+  // prestador que não é médico (Mavi, 18/11): sem CRM nem especialidade; o banco aceita só com o marcador
+  prestador_nao_medico: z.boolean(),
+  crm: z.string(),
+  especialidade: z.array(z.string()),
   rqe_numeros: z.string().optional(),
   email: z.string().email("Email inválido"),
   telefone: z.string().min(10, "Telefone inválido"),
@@ -48,6 +51,10 @@ const formSchema = z.object({
   status_medico: z.enum(['Ativo', 'Inativo', 'Suspenso']),
   status_contrato: z.enum(['ativo', 'inativo', 'pendente', 'cancelado']).optional(),
   unidades_vinculadas: z.array(z.string()).optional(),
+}).superRefine((v, ctx) => {
+  if (v.prestador_nao_medico) return;
+  if (v.crm.trim().length < 4) ctx.addIssue({ code: "custom", path: ["crm"], message: "CRM inválido" });
+  if (!v.especialidade.length) ctx.addIssue({ code: "custom", path: ["especialidade"], message: "Selecione pelo menos uma especialidade" });
 });
 
 interface MedicoDialogProps {
@@ -69,6 +76,7 @@ export function MedicoDialog({ open, onOpenChange, medico, onOpenProntuario }: M
     resolver: zodResolver(formSchema),
     defaultValues: {
       nome_completo: '',
+      prestador_nao_medico: false,
       crm: '',
       especialidade: [],
       rqe_numeros: '',
@@ -82,6 +90,8 @@ export function MedicoDialog({ open, onOpenChange, medico, onOpenProntuario }: M
       unidades_vinculadas: [],
     },
   });
+
+  const ehPrestador = form.watch("prestador_nao_medico");
 
   const { data: vinculosExistentes } = useQuery({
     queryKey: ['medico-vinculos', medico?.id],
@@ -113,6 +123,7 @@ export function MedicoDialog({ open, onOpenChange, medico, onOpenProntuario }: M
       
       form.reset({
         nome_completo: medico.nome_completo || '',
+        prestador_nao_medico: !!medico.prestador_nao_medico,
         crm: medico.crm || '',
         especialidade: especialidadesArray,
         rqe_numeros: rqeString,
@@ -128,6 +139,7 @@ export function MedicoDialog({ open, onOpenChange, medico, onOpenProntuario }: M
     } else {
       form.reset({
         nome_completo: '',
+        prestador_nao_medico: false,
         crm: '',
         especialidade: [],
         rqe_numeros: '',
@@ -154,8 +166,10 @@ export function MedicoDialog({ open, onOpenChange, medico, onOpenProntuario }: M
       
       const payload = {
         nome_completo: values.nome_completo,
-        crm: values.crm,
-        especialidade: values.especialidade,
+        prestador_nao_medico: values.prestador_nao_medico,
+        crm: values.crm.trim() || null,
+        // o banco recusa lista vazia: sem especialidade (prestador) vai nulo
+        especialidade: values.especialidade.length ? values.especialidade : null,
         rqe_numeros: rqeArray,
         email: values.email,
         telefone: values.telefone,
@@ -349,6 +363,23 @@ export function MedicoDialog({ open, onOpenChange, medico, onOpenProntuario }: M
 
             <FormField
               control={form.control}
+              name="prestador_nao_medico"
+              render={({ field }) => (
+                <FormItem className="flex items-start gap-2 space-y-0 rounded-md border p-3">
+                  <FormControl>
+                    <Checkbox checked={field.value} onCheckedChange={(v) => field.onChange(v === true)} className="mt-0.5" />
+                  </FormControl>
+                  <div>
+                    <FormLabel className="cursor-pointer">Prestador de serviço (não é médico)</FormLabel>
+                    <FormDescription>Dispensa CRM e especialidade. Entra no fechamento e recebe o pedido de nota.</FormDescription>
+                  </div>
+                </FormItem>
+              )}
+            />
+
+            {!ehPrestador && (
+            <FormField
+              control={form.control}
               name="crm"
               render={({ field }) => (
                 <FormItem>
@@ -360,7 +391,9 @@ export function MedicoDialog({ open, onOpenChange, medico, onOpenProntuario }: M
                 </FormItem>
               )}
             />
+            )}
 
+            {!ehPrestador && (
             <FormField
               control={form.control}
               name="especialidade"
@@ -378,7 +411,9 @@ export function MedicoDialog({ open, onOpenChange, medico, onOpenProntuario }: M
                 </FormItem>
               )}
             />
+            )}
 
+            {!ehPrestador && (
             <FormField
               control={form.control}
               name="rqe_numeros"
@@ -398,6 +433,7 @@ export function MedicoDialog({ open, onOpenChange, medico, onOpenProntuario }: M
                 </FormItem>
               )}
             />
+            )}
 
             <FormField
               control={form.control}
