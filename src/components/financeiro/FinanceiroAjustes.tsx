@@ -11,6 +11,7 @@ import {
   useFinanceiroAjustes, useFinanceiroAjusteCategorias, useSalvarAjuste,
   useRemoverAjuste, useCriarAjusteCategoria, FinanceiroAjuste,
 } from "@/hooks/useFinanceiroData";
+import { exigeHoras, fmtHoras, lerValor, minutosPrevistos as preverMinutos, validarAjuste } from "./ajusteHoras";
 
 const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -21,20 +22,6 @@ const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", curren
  * O valor_total do pagamento é recalculado por trigger; não some nada na tela.
  */
 const NOVA_CATEGORIA = "__nova_categoria__";
-
-// "2", "2:30", "2h30", "2,5" → minutos. Vazio = 0 (ajuste só de valor). Inválido = null.
-const lerHoras = (t: string): number | null => {
-  const v = t.trim().toLowerCase().replace(/\s+/g, "");
-  if (!v) return 0;
-  const hm = v.match(/^(\d+)(?::|h)(\d{1,2})?m?$/);
-  if (hm) return Number(hm[1]) * 60 + Number(hm[2] || 0);
-  if (!/^\d+(?:[.,]\d+)?h?$/.test(v)) return null;
-  return Math.round(parseFloat(v.replace(",", ".")) * 60);
-};
-const fmtHoras = (min: number) => {
-  const a = Math.abs(min), h = Math.floor(a / 60), m = a % 60;
-  return `${min < 0 ? "−" : ""}${h}h${m ? String(m).padStart(2, "0") : ""}`;
-};
 
 export function FinanceiroAjustes({ pagamentoId, bloqueado, base = 0, minutosAtuais = 0 }: { pagamentoId: string; bloqueado?: boolean; base?: number; minutosAtuais?: number }) {
   const { data: ajustes = [], isLoading } = useFinanceiroAjustes(pagamentoId);
@@ -49,18 +36,22 @@ export function FinanceiroAjustes({ pagamentoId, bloqueado, base = 0, minutosAtu
 
   const total = ajustes.reduce((s, a) => s + Number(a.valor), 0);
   // prévia do resultado enquanto ela digita — o valor a pagar não pode ser surpresa
-  const brutoForm = parseFloat((form?.valor || "").replace(/\./g, "").replace(",", "."));
+  const nomeCat = (id: string) => categorias.find((c) => c.id === id)?.nome ?? "—";
+  const validacao = form ? validarAjuste({ ...form, categoria_nome: nomeCat(form.categoria_id) }) : null;
+  const formValido = !!validacao?.ok;
+  const brutoForm = lerValor(form?.valor || "");
   const deltaForm = isFinite(brutoForm)
     ? (form?.sinal === "menos" ? -Math.abs(brutoForm) : Math.abs(brutoForm))
     : 0;
   const jaLancado = form?.id ? Number(ajustes.find((a) => a.id === form.id)?.valor ?? 0) : 0;
   const totalPrevisto = base + total - jaLancado + deltaForm;
-  const minForm = lerHoras(form?.horas || "");
-  const deltaMin = minForm == null ? 0 : (form?.sinal === "menos" ? -minForm : minForm);
+  const deltaMin = validacao?.minutos ?? 0;
   const minJaLancado = form?.id ? Number(ajustes.find((a) => a.id === form.id)?.minutos ?? 0) : 0;
-  const minutosPrevistos = minutosAtuais - minJaLancado + deltaMin;
-  const temHoras = ajustes.some((a) => Number(a.minutos ?? 0) !== 0);
-  const nomeCat = (id: string) => categorias.find((c) => c.id === id)?.nome ?? "—";
+  const minutosPrevistos = preverMinutos(minutosAtuais, minJaLancado, deltaMin);
+  const horasObrigatorias = exigeHoras(form ? nomeCat(form.categoria_id) : "");
+  // correção de escala lançada sem horas (as de 18/11, antes desta trava) aparece marcada para a equipe completar
+  const semHoras = (a: FinanceiroAjuste) => exigeHoras(nomeCat(a.categoria_id)) && !Number(a.minutos ?? 0);
+  const temHoras = ajustes.some((a) => Number(a.minutos ?? 0) !== 0 || semHoras(a));
 
   const abrirNovo = () => setForm({ categoria_id: "", sinal: "mais", valor: "", horas: "", justificativa: "" });
   const abrirEdicao = (a: FinanceiroAjuste) =>
@@ -72,18 +63,11 @@ export function FinanceiroAjustes({ pagamentoId, bloqueado, base = 0, minutosAtu
       justificativa: a.justificativa,
     });
 
-  // vale ajuste só de valor, só de horas ou dos dois; vazio nos dois não
-  const valorForm = (form?.valor || "").trim() ? parseFloat((form?.valor || "").replace(/\./g, "").replace(",", ".")) : 0;
-  const formValido =
-    !!form?.categoria_id && !!form.justificativa.trim() &&
-    isFinite(valorForm) && minForm != null && (valorForm !== 0 || minForm !== 0);
-
   const confirmar = async () => {
-    if (!form || !formValido || minForm == null) return;
-    const s = form.sinal === "menos" ? -1 : 1;
+    if (!form || !validacao?.ok) return;
     await salvar.mutateAsync({
       id: form.id, pagamento_id: pagamentoId, categoria_id: form.categoria_id,
-      valor: s * Math.abs(valorForm), minutos: s * minForm,
+      valor: validacao.valor, minutos: validacao.minutos,
       justificativa: form.justificativa,
     });
     setForm(null);
@@ -138,7 +122,11 @@ export function FinanceiroAjustes({ pagamentoId, bloqueado, base = 0, minutosAtu
                     </TableCell>
                     {temHoras && (
                       <TableCell className="text-right whitespace-nowrap tabular-nums">
-                        {Number(a.minutos ?? 0) ? `${Number(a.minutos) > 0 ? "+" : ""}${fmtHoras(Number(a.minutos))}` : "—"}
+                        {semHoras(a) ? (
+                          <span className="text-amber-700 font-medium" title="Edite e informe as horas: sem elas o pedido de NF sai com a carga antiga.">
+                            sem horas
+                          </span>
+                        ) : Number(a.minutos ?? 0) ? `${Number(a.minutos) > 0 ? "+" : ""}${fmtHoras(Number(a.minutos))}` : "—"}
                       </TableCell>
                     )}
                     <TableCell className={`text-right font-semibold whitespace-nowrap ${Number(a.valor) < 0 ? "text-red-600" : "text-emerald-700"}`}>
@@ -221,15 +209,18 @@ export function FinanceiroAjustes({ pagamentoId, bloqueado, base = 0, minutosAtu
               </div>
               <div>
                 <Label>Horas</Label>
-                <Input placeholder="2 ou 2:30" value={form?.horas ?? ""} aria-invalid={minForm == null}
+                <Input placeholder="2 ou 2:30" value={form?.horas ?? ""} aria-invalid={!!validacao?.horasInvalidas}
+                  aria-required={horasObrigatorias}
                   onChange={(e) => setForm((f) => (f ? { ...f, horas: e.target.value } : f))} />
-                {minForm == null && <p className="text-[11px] text-red-600 mt-1">Use 2, 2:30 ou 2h30.</p>}
+                {validacao?.horasInvalidas
+                  ? <p className="text-[11px] text-red-600 mt-1">Use 2, 2:30 ou 2h30.</p>
+                  : horasObrigatorias && <p className="text-[11px] text-amber-700 mt-1">Obrigatório (0 se não mudou).</p>}
               </div>
             </div>
             <div className="rounded-md border bg-muted/40 p-2.5 text-xs space-y-1">
               <div className="flex justify-between"><span className="text-muted-foreground">Produção (menos o já pago à vista)</span><span>{fmt(base)}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Ajustes com este lançamento</span><span>{fmt(total - jaLancado + deltaForm)}</span></div>
-              {(deltaMin !== 0 || minJaLancado !== 0) && (
+              {(deltaMin !== 0 || minJaLancado !== 0 || horasObrigatorias) && (
                 <div className="flex justify-between"><span className="text-muted-foreground">Horas no pedido de NF</span><span className="tabular-nums">{fmtHoras(minutosAtuais)} → {fmtHoras(minutosPrevistos)}</span></div>
               )}
               <div className="flex justify-between font-semibold border-t pt-1">
