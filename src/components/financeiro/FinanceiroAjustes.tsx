@@ -166,7 +166,7 @@ export function FinanceiroAjustes({ pagamentoId, bloqueado, base = 0, minutosAtu
       </CardContent>
 
       <Dialog open={!!form} onOpenChange={(o) => !o && setForm(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle>{form?.id ? "Editar ajuste" : "Lançar ajuste"}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div>
@@ -191,7 +191,7 @@ export function FinanceiroAjustes({ pagamentoId, bloqueado, base = 0, minutosAtu
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-[10.5rem_1fr_1fr] gap-3">
               <div>
                 <Label>Tipo</Label>
                 <Select value={form?.sinal} onValueChange={(v) => setForm((f) => (f ? { ...f, sinal: v as "mais" | "menos" } : f))}>
@@ -214,7 +214,7 @@ export function FinanceiroAjustes({ pagamentoId, bloqueado, base = 0, minutosAtu
                   onChange={(e) => setForm((f) => (f ? { ...f, horas: e.target.value } : f))} />
                 {validacao?.horasInvalidas
                   ? <p className="text-[11px] text-red-600 mt-1">Use 2, 2:30 ou 2h30.</p>
-                  : horasObrigatorias && <p className="text-[11px] text-amber-700 mt-1">Obrigatório (0 se não mudou).</p>}
+                  : validacao?.faltaHoras && <p className="text-[11px] text-amber-700 mt-1">Obrigatório (0 se não mudou).</p>}
               </div>
             </div>
             <div className="rounded-md border bg-muted/40 p-2.5 text-xs space-y-1">
