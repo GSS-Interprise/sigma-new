@@ -1,12 +1,12 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { Loader2, Sparkles, ArrowDownToLine, AlertTriangle, ChevronDown, ChevronUp, Pencil } from "lucide-react";
+import { Loader2, Sparkles, ArrowDownToLine, AlertTriangle, ChevronDown, ChevronUp, Pencil, Undo2, Redo2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { sanitizeHtml } from "@/lib/sanitizeHtml";
-import { EditorComGrifo, GRIFO_EQUIPE } from "./EditorComGrifo";
+import { EditorComGrifo, GRIFO_EQUIPE, type EditorComGrifoRef } from "./EditorComGrifo";
 
 /**
  * Análise de edital pelo modelo do Gem da Bianca (T6; modelo dela aplicado em 15/10). A IA lê os PDFs do
@@ -32,6 +32,8 @@ export function LicitacaoAnaliseEdital({ licitacaoId, onInserir }: { licitacaoId
   const [rascunho, setRascunho] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [verOriginal, setVerOriginal] = useState(false);
+  const editorRef = useRef<EditorComGrifoRef>(null);
+  const [historico, setHistorico] = useState({ podeDesfazer: false, podeRefazer: false });
   const chave = ["licitacao-analises", licitacaoId];
 
   const { data: analises = [] } = useQuery({
@@ -62,13 +64,14 @@ export function LicitacaoAnaliseEdital({ licitacaoId, onInserir }: { licitacaoId
   // o que vale para a equipe: a versão corrigida, quando existe
   const htmlVigente = atual?.html_editado || atual?.html || "";
 
-  const salvarCorrecao = async () => {
+  // html vazio = volta para o texto da IA (a correção salva é descartada; o original nunca foi alterado)
+  const salvarCorrecao = async (html = rascunho) => {
     if (!atual) return;
     setSalvando(true);
     try {
-      const { error } = await (supabase as any).rpc("licitacao_analise_salvar_edicao", { p_analise_id: atual.id, p_html: rascunho });
+      const { error } = await (supabase as any).rpc("licitacao_analise_salvar_edicao", { p_analise_id: atual.id, p_html: html });
       if (error) throw error;
-      toast.success("Correção salva. O que a equipe escreveu aparece grifado em amarelo.");
+      toast.success(html ? "Correção salva. O que a equipe escreveu aparece grifado em amarelo." : "Voltou para o texto original da IA.");
       setCorrigindo(false);
       setVerOriginal(false);
       qc.invalidateQueries({ queryKey: chave });
@@ -93,6 +96,16 @@ export function LicitacaoAnaliseEdital({ licitacaoId, onInserir }: { licitacaoId
     }
   };
 
+  const cancelarCorrecao = () => {
+    if (historico.podeDesfazer && !window.confirm("Descartar as mudanças que você fez? O texto volta a ficar como estava.")) return;
+    setCorrigindo(false);
+  };
+
+  const voltarAoOriginal = () => {
+    if (!window.confirm("Voltar para o texto original da IA? A correção da equipe será apagada.")) return;
+    salvarCorrecao("");
+  };
+
   const inserir = async () => {
     if (!htmlVigente || !atual) return;
     const cab = `<p><b>Análise do edital (IA, modelo GSS${atual.html_editado ? ", corrigida pela equipe" : ""}) · ${format(new Date(atual.concluido_em || atual.criado_em), "dd/MM/yyyy HH:mm")}</b></p>`;
@@ -109,7 +122,7 @@ export function LicitacaoAnaliseEdital({ licitacaoId, onInserir }: { licitacaoId
         <div className="ml-auto flex items-center gap-1.5">
           {atual?.status === "pronta" && !corrigindo && (
             <Button size="sm" variant="outline" className="h-7 text-xs"
-              onClick={() => { setRascunho(htmlVigente); setCorrigindo(true); setAberta(true); setVerOriginal(false); }}>
+              onClick={() => { setRascunho(htmlVigente); setHistorico({ podeDesfazer: false, podeRefazer: false }); setCorrigindo(true); setAberta(true); setVerOriginal(false); }}>
               <Pencil className="h-3.5 w-3.5 mr-1" /> Corrigir texto
             </Button>
           )}
@@ -150,13 +163,24 @@ export function LicitacaoAnaliseEdital({ licitacaoId, onInserir }: { licitacaoId
                 Clique no texto e corrija. O que você escrever fica <mark className="bg-amber-200 dark:bg-amber-500/40 text-foreground rounded-sm px-0.5">grifado em amarelo</mark>.
               </p>
               <EditorComGrifo
+                ref={editorRef}
                 htmlInicial={sanitizeHtml(rascunho)}
                 onChange={setRascunho}
+                onHistorico={setHistorico}
                 className={`${CAIXA_DO_TEXTO} ${GRIFO_EQUIPE} outline-none ring-2 ring-amber-300 focus:ring-amber-400`}
               />
-              <div className="flex justify-end gap-1.5">
-                <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setCorrigindo(false)} disabled={salvando}>Cancelar</Button>
-                <Button size="sm" className="h-7 text-xs" onClick={salvarCorrecao} disabled={salvando}>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Button size="sm" variant="outline" className="h-7 text-xs" title="Desfazer (Ctrl+Z)"
+                  onClick={() => editorRef.current?.desfazer()} disabled={!historico.podeDesfazer || salvando}>
+                  <Undo2 className="h-3.5 w-3.5 mr-1" /> Desfazer
+                </Button>
+                <Button size="sm" variant="outline" className="h-7 text-xs" title="Refazer (Ctrl+Y)"
+                  onClick={() => editorRef.current?.refazer()} disabled={!historico.podeRefazer || salvando}>
+                  <Redo2 className="h-3.5 w-3.5 mr-1" /> Refazer
+                </Button>
+                <span className="ml-auto" />
+                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={cancelarCorrecao} disabled={salvando}>Cancelar</Button>
+                <Button size="sm" className="h-7 text-xs" onClick={() => salvarCorrecao()} disabled={salvando}>
                   {salvando && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />} Salvar correção
                 </Button>
               </div>
@@ -172,6 +196,10 @@ export function LicitacaoAnaliseEdital({ licitacaoId, onInserir }: { licitacaoId
                   </span>
                   <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={() => setVerOriginal((v) => !v)}>
                     {verOriginal ? "Ver a versão corrigida" : "Ver o original da IA"}
+                  </button>
+                  <span aria-hidden>·</span>
+                  <button type="button" className="underline underline-offset-2 hover:text-foreground disabled:opacity-50" onClick={voltarAoOriginal} disabled={salvando}>
+                    Voltar ao texto da IA
                   </button>
                 </p>
               )}
