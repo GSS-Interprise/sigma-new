@@ -62,10 +62,12 @@ interface MedicoDialogProps {
   onOpenChange: (open: boolean) => void;
   medico?: any;
   onOpenProntuario?: (leadId: string) => void;
+  /** Cadastro novo já marcado como prestador (botão "Novo prestador" do Corpo Clínico). */
+  prestadorInicial?: boolean;
 }
 
 
-export function MedicoDialog({ open, onOpenChange, medico, onOpenProntuario }: MedicoDialogProps) {
+export function MedicoDialog({ open, onOpenChange, medico, onOpenProntuario, prestadorInicial }: MedicoDialogProps) {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("dados");
   
@@ -139,7 +141,7 @@ export function MedicoDialog({ open, onOpenChange, medico, onOpenProntuario }: M
     } else {
       form.reset({
         nome_completo: '',
-        prestador_nao_medico: false,
+        prestador_nao_medico: !!prestadorInicial,
         crm: '',
         especialidade: [],
         rqe_numeros: '',
@@ -153,7 +155,7 @@ export function MedicoDialog({ open, onOpenChange, medico, onOpenProntuario }: M
         unidades_vinculadas: [],
       });
     }
-  }, [medico, form, vinculosExistentes]);
+  }, [medico, form, vinculosExistentes, prestadorInicial, open]);
 
   const mutation = useMutation({
     mutationFn: async (values: z.infer<typeof formSchema>) => {
@@ -298,7 +300,7 @@ export function MedicoDialog({ open, onOpenChange, medico, onOpenProntuario }: M
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            {isMigrated ? 'Visualizar Médico (Somente Leitura)' : medico ? 'Editar Médico' : 'Novo Médico'}
+            {isMigrated ? 'Visualizar Médico (Somente Leitura)' : medico ? 'Editar Médico' : ehPrestador ? 'Novo prestador de serviço' : 'Novo Médico'}
           </DialogTitle>
         </DialogHeader>
         

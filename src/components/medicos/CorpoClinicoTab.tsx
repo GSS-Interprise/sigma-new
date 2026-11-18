@@ -52,6 +52,9 @@ export function CorpoClinicoTab() {
   const [selectedEspecialidades, setSelectedEspecialidades] = useState<string[]>([]);
   const [pendenciaEsp, setPendenciaEsp] = useState<PendenciaEspecialidade | null>(null);
   const [medicoDialogOpen, setMedicoDialogOpen] = useState(false);
+  // "Novo prestador" abre o cadastro antigo (MedicoDialog), o único que aceita sem CRM.
+  // O "Novo Médico" abre o prontuário do lead, que exige CRM.
+  const [novoPrestador, setNovoPrestador] = useState(false);
   const [prontuarioDialogOpen, setProntuarioDialogOpen] = useState(false);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
@@ -469,6 +472,18 @@ export function CorpoClinicoTab() {
             <Plus className="mr-2 h-4 w-4" />
             Novo Médico
           </Button>
+          <Button
+            variant="outline"
+            title="Quem presta serviço e não é médico: sem CRM nem especialidade"
+            onClick={() => {
+              setSelectedMedico(null);
+              setNovoPrestador(true);
+              setMedicoDialogOpen(true);
+            }}
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Novo prestador
+          </Button>
         </div>
       </div>
 
@@ -654,8 +669,12 @@ export function CorpoClinicoTab() {
 
       <MedicoDialog
         open={medicoDialogOpen}
-        onOpenChange={setMedicoDialogOpen}
+        onOpenChange={(aberto) => {
+          setMedicoDialogOpen(aberto);
+          if (!aberto) setNovoPrestador(false);
+        }}
         medico={selectedMedico}
+        prestadorInicial={novoPrestador}
         onOpenProntuario={(leadId) => {
           setSelectedLeadId(leadId);
           setProntuarioDialogOpen(true);
