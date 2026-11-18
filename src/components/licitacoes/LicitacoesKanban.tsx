@@ -197,6 +197,9 @@ export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filt
   const { isSetorAges } = useUserSetor();
   const { userRoles } = usePermissions();
   const [page, setPage] = useState(0);
+  // Quantos cards cada coluna desenha. O quadro agora traz todos (Captação passa de 1.000) e desenhar tudo de uma vez trava a tela.
+  const POR_COLUNA = 100;
+  const [mostrarAte, setMostrarAte] = useState<Record<string, number>>({});
   
   // Estados para controle do diálogo de resultado
   const [resultadoDialogOpen, setResultadoDialogOpen] = useState(false);
@@ -287,9 +290,6 @@ export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filt
   // Combinar verificações de setor e role
   const shouldFilterAgesOnly = isSetorAges || isGestorAgesOnly;
 
-  // Paginação incremental (mantém acesso ao histórico via "Carregar mais")
-  const PAGE_SIZE = 400;
-  const pageEnd = (page + 1) * PAGE_SIZE; // carregamos acumulado
 
   // Buscar IDs das licitações AGES para filtrar (apenas para gestor_ages)
   const { data: agesLicitacaoIds } = useQuery({
@@ -310,19 +310,22 @@ export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filt
     // board na tela do outro ao alternar entre as rotas.
     queryKey: ['licitacoes-kanban', board, filters, shouldFilterAgesOnly, agesLicitacaoIds, page],
     queryFn: async () => {
+      if (isGestorAgesOnly && agesLicitacaoIds && agesLicitacaoIds.length === 0) {
+        return { items: [], hasMore: false }; // Nenhuma licitação AGES vinculada
+      }
+      const prazo = await filtroPrazo(filters);
+      const montar = () => {
       let query = supabase
         .from('licitacoes')
         .select(LICITACOES_KANBAN_SELECT)
         .eq('board', board)
         // Ordenação única: data_disputa (mais próximas primeiro)
         .order('data_disputa', { ascending: true, nullsFirst: false })
-        .order('created_at', { ascending: false }); // fallback para licitações sem data_disputa
+        .order('created_at', { ascending: false }) // fallback para licitações sem data_disputa
+        .order('id'); // desempate fixo: sem ele a leitura em lotes pode pular ou repetir card
 
       // Filtro para gestor_ages exclusivo: apenas licitações vinculadas em ages_licitacoes
       if (isGestorAgesOnly && agesLicitacaoIds) {
-        if (agesLicitacaoIds.length === 0) {
-          return { items: [], hasMore: false }; // Nenhuma licitação AGES vinculada
-        }
         query = query.in('id', agesLicitacaoIds);
       } else if (isSetorAges) {
         query = query.eq('empresa', 'AGES');
@@ -333,7 +336,6 @@ export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filt
       // arquivado (30 dias após a última data, descarte, não ganhamos) fica fora do quadro;
       // a busca acha também os arquivados — o mesmo edital pode voltar meses depois
       if (!filters?.search) query = query.is('arquivado_em', null);
-      const prazo = await filtroPrazo(filters);
       if (prazo) query = prazo(query);
 
       // Apply filters
@@ -353,32 +355,34 @@ export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filt
         query = query.lte('data_disputa', filters.dataFim.toISOString());
       }
 
-      // Excluir descartadas da query principal — carregadas sob demanda
-      query = query.neq('status', 'descarte_edital');
-
-      // Buscar 1 item extra para detectar se existe mais histórico
-      query = query.range(0, pageEnd);
-
-      const { data, error } = await query;
-      if (error) throw error;
-
-      const raw = (data || []) as unknown as LicitacaoWithResponsavel[];
-      const hasMore = raw.length > pageEnd;
-      const sliced = hasMore ? raw.slice(0, pageEnd) : raw;
-
-      // Filter by etiquetas in memory (since it's an array field)
-      let filteredData: any[] = sliced;
+      // etiqueta no banco: filtrada na memória ela só olhava os cards já carregados
       if (filters?.etiquetas && filters.etiquetas.length > 0) {
-        filteredData = filteredData.filter(lic => 
-          lic.etiquetas && filters.etiquetas?.some((tag: string) => lic.etiquetas?.includes(tag))
-        );
+        query = query.overlaps('etiquetas', filters.etiquetas);
       }
+
+      // Excluir descartadas da query principal — carregadas sob demanda
+      return query.neq('status', 'descarte_edital');
+      };
+
+      // 18/11 (Gustavo, licitações GSS): o quadro carregava só os 400 primeiros cards, em ordem de disputa, e o
+      // "Carregar mais" ficava escondido num ícone. Com 1.169 cards (1.102 em Captação), quase 800 só apareciam
+      // pela busca, e os filtros pareciam não funcionar. Agora carrega tudo, em lotes de 1.000 (limite do servidor).
+      const LOTE = 1000;
+      const sliced: LicitacaoWithResponsavel[] = [];
+      for (let de = 0; ; de += LOTE) {
+        const { data, error } = await montar().range(de, de + LOTE - 1);
+        if (error) throw error;
+        sliced.push(...((data || []) as unknown as LicitacaoWithResponsavel[]));
+        if (!data || data.length < LOTE || de > 20 * LOTE) break;
+      }
+      const hasMore = false;
+      const filteredData: any[] = sliced;
 
       // Fetch responsavel data separately
       if (filteredData.length > 0) {
-        const responsaveisIds = filteredData
+        const responsaveisIds = [...new Set(filteredData
           .map(l => l.responsavel_id)
-          .filter((id): id is string => id !== null);
+          .filter((id): id is string => id !== null))]; // sem repetir: com o quadro inteiro a URL estourava
         
         if (responsaveisIds.length > 0) {
           const { data: profiles } = await supabase
@@ -1084,7 +1088,7 @@ export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filt
           <CardContent className="flex-1 overflow-hidden px-2 pt-0 pb-2">
             <ScrollArea className="h-full">
               <div className="space-y-1.5 pr-2">
-                {getLicitacoesByStatus(column.id).map((licitacao) => {
+                {getLicitacoesByStatus(column.id).slice(0, mostrarAte[column.id] ?? POR_COLUNA).map((licitacao) => {
                   const diasAteDisputa = getDiasAteDisputa(licitacao.data_disputa);
                   const isUrgente = diasAteDisputa !== null && diasAteDisputa <= 10 && diasAteDisputa >= 0;
                   const isPrioridadeAltaUsuario = licitacao.prioridade === 'alta';
@@ -1333,6 +1337,18 @@ export function LicitacoesKanban({ columns, onCardClick, onCardDoubleClick, filt
                       )}
                     </Button>
                   </div>
+                )}
+
+                {getLicitacoesByStatus(column.id).length > (mostrarAte[column.id] ?? POR_COLUNA) && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full text-xs"
+                    onClick={() => setMostrarAte((m) => ({ ...m, [column.id]: (m[column.id] ?? POR_COLUNA) + POR_COLUNA }))}
+                  >
+                    Mostrar mais {Math.min(POR_COLUNA, getLicitacoesByStatus(column.id).length - (mostrarAte[column.id] ?? POR_COLUNA))}
+                    {" "}(faltam {getLicitacoesByStatus(column.id).length - (mostrarAte[column.id] ?? POR_COLUNA)})
+                  </Button>
                 )}
 
                 {/* Estado vazio para colunas normais ou descartadas já carregadas */}
