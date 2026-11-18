@@ -317,16 +317,18 @@ export function MedicoDialog({ open, onOpenChange, medico, onOpenProntuario, pre
         
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full grid-cols-3">
+            {/* no celular as 3 abas não cabem com ícone e "Dados Cadastrais" inteiro */}
             <TabsTrigger value="dados" className="gap-2">
-              <User className="h-4 w-4" />
-              Dados Cadastrais
+              <User className="hidden h-4 w-4 sm:block" />
+              <span className="sm:hidden">Dados</span>
+              <span className="hidden sm:inline">Dados Cadastrais</span>
             </TabsTrigger>
             <TabsTrigger value="documentacao" className="gap-2" disabled={!medico}>
-              <Upload className="h-4 w-4" />
+              <Upload className="hidden h-4 w-4 sm:block" />
               Documentação
             </TabsTrigger>
             <TabsTrigger value="prontuario" className="gap-2" disabled={!medico}>
-              <FileText className="h-4 w-4" />
+              <FileText className="hidden h-4 w-4 sm:block" />
               Prontuário
             </TabsTrigger>
           </TabsList>
