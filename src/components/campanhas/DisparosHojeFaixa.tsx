@@ -17,7 +17,8 @@ type Painel = {
   estimativa_dia: number;
   fila: number;
   ultimo_envio: string | null;
-  serie: { dia: string; medicos: number }[];
+  // medicos = 1º contato enviado (o mesmo número do BI e do Claude dos sócios); falharam = não chegou (18/11).
+  serie: { dia: string; medicos: number; falharam?: number }[];
   campanhas: { id: string; campanha: string; hoje: number; estimativa: number; fila: number }[];
 };
 
@@ -140,7 +141,7 @@ export function DisparosHojeFaixa({ className = "" }: { className?: string }) {
             const hoje = i === data.serie.length - 1;
             const dt = new Date(`${d.dia}T12:00:00`);
             return (
-              <div key={d.dia} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-0.5" title={`${DIA[dt.getDay()]} ${dt.getDate()}: ${fmt(d.medicos)} disparos`}>
+              <div key={d.dia} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-0.5" title={`${DIA[dt.getDay()]} ${dt.getDate()}: ${fmt(d.medicos)} disparos${d.falharam ? ` (+${fmt(d.falharam)} não entregues)` : ""}`}>
                 <div
                   className={`w-full max-w-[18px] rounded-t ${hoje ? "bg-primary" : "bg-primary/30"}`}
                   style={{ height: `${Math.max(d.medicos > 0 ? 4 : 2, Math.round((d.medicos / maxSerie) * 34))}px` }}
