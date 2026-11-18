@@ -107,7 +107,7 @@ export function AlertaDemandasAtrasadasModal() {
             <AlertTriangle className="h-6 w-6 shrink-0" />
             <div>
               <h2 className="text-lg font-bold uppercase tracking-wide">
-                {total} Item{total > 1 ? "ns" : ""} Atrasado{total > 1 ? "s" : ""}
+                {total} {total > 1 ? "Itens Atrasados" : "Item Atrasado"}
               </h2>
               <p className="text-xs opacity-90">
                 {atrasadas.length} demanda{atrasadas.length === 1 ? "" : "s"} ·{" "}
