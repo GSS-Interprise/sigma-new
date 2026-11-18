@@ -25,7 +25,8 @@ type Campanha = {
   disparos_hoje: number; disparos_7d: number; disparos_total: number; ultimo_disparo: string | null;
   leads: number; frio: number; contatados: number; em_conversa: number; quente: number; convertido: number;
   chips_total: number; chips_online: number;
-  whatsapp_provider?: "evolution" | "twilio" | "chakra" | null;
+  // "zenvia": linha que o BI junta com os disparos feitos na Zenvia (sem chip nem leads no Sigma), desde 18/11.
+  whatsapp_provider?: "evolution" | "twilio" | "chakra" | "zenvia" | null;
   canal_configurado?: boolean;
 };
 type Dados = {
@@ -48,6 +49,11 @@ function desdeFrom(key: string): string | null {
 type Saude = { key: string; label: string; cor: string };
 function saudeDe(c: Campanha): Saude {
   if (c.status === "pausada") return { key: "pausada", label: "Pausada", cor: C.soft };
+  if (c.whatsapp_provider === "zenvia") {
+    return c.disparos_hoje > 0
+      ? { key: "rodando", label: "Disparando hoje", cor: C.green }
+      : { key: "externa", label: "Disparos pela Zenvia", cor: C.soft };
+  }
   if (c.whatsapp_provider !== "evolution" && c.whatsapp_provider) {
     if (!c.canal_configurado) return { key: "configurando", label: "Canal oficial incompleto", cor: C.red };
   } else if (c.chips_online === 0) {
@@ -104,7 +110,8 @@ export function AbaAcompanhamentoCampanhas() {
   const r = data.resumo;
   const ativasBase = Math.max(r.ativas, 1);
   const lentas = Math.max(r.ativas - r.rodando_hoje - r.paradas, 0);
-  const precisamAtencao = (data.campanhas ?? []).filter((c) => c.status === "ativa" && (
+  // A Zenvia dispara fora do Sigma, em dias soltos: dia sem disparo lá não é problema para resolver aqui.
+  const precisamAtencao = (data.campanhas ?? []).filter((c) => c.status === "ativa" && c.whatsapp_provider !== "zenvia" && (
     (c.whatsapp_provider !== "evolution" && c.whatsapp_provider && !c.canal_configurado) ||
     (c.whatsapp_provider === "evolution" && c.chips_online === 0) ||
     (c.ultimo_disparo === null || new Date(c.ultimo_disparo).getTime() < Date.now() - 2 * 86400000)
@@ -269,7 +276,7 @@ export function AbaAcompanhamentoCampanhas() {
                       <td className="py-2.5 px-2 text-center">
                         <span className={`inline-flex items-center gap-1 text-xs tabular-nums ${c.whatsapp_provider !== "evolution" && c.whatsapp_provider ? "text-blue-700 font-medium" : c.chips_online === 0 ? "text-red-600 font-medium" : "text-slate-600"}`}>
                           <Smartphone className="h-3.5 w-3.5" />
-                          {c.whatsapp_provider === "chakra" ? "API oficial · Chakra" : c.whatsapp_provider === "twilio" ? "API oficial" : `${c.chips_online}/${c.chips_total}`}
+                          {c.whatsapp_provider === "chakra" ? "API oficial · Chakra" : c.whatsapp_provider === "zenvia" ? "Zenvia" : c.whatsapp_provider === "twilio" ? "API oficial" : `${c.chips_online}/${c.chips_total}`}
                         </span>
                       </td>
                     </tr>
