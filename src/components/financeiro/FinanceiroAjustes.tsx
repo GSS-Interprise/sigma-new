@@ -11,7 +11,7 @@ import {
   useFinanceiroAjustes, useFinanceiroAjusteCategorias, useSalvarAjuste,
   useRemoverAjuste, useCriarAjusteCategoria, FinanceiroAjuste,
 } from "@/hooks/useFinanceiroData";
-import { exigeHoras, fmtHoras, lerValor, minutosPrevistos as preverMinutos, validarAjuste } from "./ajusteHoras";
+import { exigeHoras, fmtHoras, lerValor, minutosPrevistos as preverMinutos, pendenteDeHoras, validarAjuste } from "./ajusteHoras";
 
 const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -50,7 +50,7 @@ export function FinanceiroAjustes({ pagamentoId, bloqueado, base = 0, minutosAtu
   const minutosPrevistos = preverMinutos(minutosAtuais, minJaLancado, deltaMin);
   const horasObrigatorias = exigeHoras(form ? nomeCat(form.categoria_id) : "");
   // correção de escala lançada sem horas (as de 18/11, antes desta trava) aparece marcada para a equipe completar
-  const semHoras = (a: FinanceiroAjuste) => exigeHoras(nomeCat(a.categoria_id)) && !Number(a.minutos ?? 0);
+  const semHoras = (a: FinanceiroAjuste) => pendenteDeHoras(nomeCat(a.categoria_id), a.minutos, !!bloqueado);
   const temHoras = ajustes.some((a) => Number(a.minutos ?? 0) !== 0 || semHoras(a));
 
   const abrirNovo = () => setForm({ categoria_id: "", sinal: "mais", valor: "", horas: "", justificativa: "" });
@@ -214,7 +214,7 @@ export function FinanceiroAjustes({ pagamentoId, bloqueado, base = 0, minutosAtu
                   onChange={(e) => setForm((f) => (f ? { ...f, horas: e.target.value } : f))} />
                 {validacao?.horasInvalidas
                   ? <p className="text-[11px] text-red-600 mt-1">Use 2, 2:30 ou 2h30.</p>
-                  : validacao?.faltaHoras && <p className="text-[11px] text-amber-700 mt-1">Obrigatório (0 se não mudou).</p>}
+                  : validacao?.faltaHoras && <p className="text-[11px] text-amber-700 mt-1">Obrigatório (diferente de 0).</p>}
               </div>
             </div>
             <div className="rounded-md border bg-muted/40 p-2.5 text-xs space-y-1">

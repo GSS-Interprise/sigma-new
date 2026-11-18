@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { exigeHoras, fmtHoras, lerHoras, minutosPrevistos, validarAjuste, type FormAjuste } from "./ajusteHoras";
+import { exigeHoras, fmtHoras, lerHoras, minutosPrevistos, pendenteDeHoras, validarAjuste, type FormAjuste } from "./ajusteHoras";
 import { COLUNAS_PAGAMENTO, resumoProducao, type Pag } from "../../../supabase/functions/financeiro-nf-enviar/texto";
 
 const H = 60;
@@ -42,9 +42,33 @@ test("correção de escala com +2h grava +120 minutos; com −2h grava −120", 
   assert.deepEqual([menos.ok, menos.valor, menos.minutos], [true, -322, -120]);
 });
 
-test("correção de escala aceita 0 h dito de propósito (carga igual, valor diferente)", () => {
-  const v = validarAjuste(form({ valor: "150,00", horas: "0" }));
-  assert.deepEqual([v.ok, v.minutos, v.valor], [true, 0, 150]);
+// QA do PR #14: com "0" aceito, o ajuste salvo certo ficava marcado "sem horas" para sempre. Correção de escala
+// passa a exigir horas diferentes de 0; correção só de valor vai em outra categoria.
+test("correção de escala com 0 h não salva (correção só de valor vai em outra categoria)", () => {
+  for (const horas of ["0", "0:00", "0h"]) {
+    const v = validarAjuste(form({ valor: "150,00", horas }));
+    assert.deepEqual([v.ok, v.faltaHoras], [false, true], horas);
+  }
+  assert.equal(validarAjuste(form({ categoria_nome: "Gestão", valor: "150,00", horas: "0" })).ok, true);
+});
+
+test("o que a correção de escala deixa salvar nunca fica marcado como pendente", () => {
+  const tentativas = ["", "0", "0:00", "2", "2:30", "1h", "0,5"].flatMap((horas) =>
+    (["mais", "menos"] as const).map((sinal) => validarAjuste(form({ sinal, valor: "322,00", horas }))));
+  const salvas = tentativas.filter((v) => v.ok);
+  assert.ok(salvas.length > 0);
+  for (const v of salvas) assert.equal(pendenteDeHoras("Correção de escala", v.minutos, false), false);
+});
+
+test("'sem horas' só aparece em correção de escala antiga com 0 e pagamento ainda editável", () => {
+  // lançada antes da trava (18/11), com minutos = 0: falta completar
+  assert.equal(pendenteDeHoras("Correção de escala", 0, false), true);
+  assert.equal(pendenteDeHoras("Correção de escala", undefined, false), true);
+  // aprovado ou pago não tem botão de editar: não cobra o que não dá para fazer
+  assert.equal(pendenteDeHoras("Correção de escala", 0, true), false);
+  assert.equal(pendenteDeHoras("Correção de escala", 120, false), false);
+  assert.equal(pendenteDeHoras("Correção de escala", -120, false), false);
+  assert.equal(pendenteDeHoras("Gestão", 0, false), false);
 });
 
 test("ajuste só de valor (outras categorias) continua valendo e não mexe nas horas", () => {
@@ -55,7 +79,6 @@ test("ajuste só de valor (outras categorias) continua valendo e não mexe nas h
 
 test("ajuste vazio continua inválido, em qualquer categoria", () => {
   assert.equal(validarAjuste(form({ categoria_nome: "Gestão" })).ok, false);
-  assert.equal(validarAjuste(form({ horas: "0" })).ok, false);
   assert.equal(validarAjuste(form({ horas: "2", justificativa: "  " })).ok, false);
   assert.equal(validarAjuste(form({ horas: "duas" })).horasInvalidas, true);
 });

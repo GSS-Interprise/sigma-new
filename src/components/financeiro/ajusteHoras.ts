@@ -26,8 +26,9 @@ export const lerValor = (t: string): number => {
 const semAcento = (t: string) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 // Correção de escala é mudança de carga: sem as horas, o pedido de NF sai com a carga antiga (Mavi, 18/11: "Corrigi,
-// mas para os médicos só mudou o valor e não as horas"). Nessa categoria o campo Horas é obrigatório; "0" vale quando
-// a carga de fato não mudou (troca de plantão de mesmo tamanho), mas tem de ser dito.
+// mas para os médicos só mudou o valor e não as horas"). Nessa categoria as horas são obrigatórias e diferentes de 0;
+// correção só de valor vai em outra categoria. Sem "0" válido, correção de escala com 0 minutos só pode ser lançamento
+// de antes desta trava, e é isso que a lista marca como "sem horas" (QA do PR #14).
 export const exigeHoras = (nomeCategoria: string | null | undefined) =>
   /correcao de escala/.test(semAcento(nomeCategoria || ""));
 
@@ -52,7 +53,7 @@ export function validarAjuste(f: FormAjuste): Validacao {
   const s = f.sinal === "menos" ? -1 : 1;
   const bruto = lerValor(f.valor);
   const min = lerHoras(f.horas);
-  const faltaHoras = exigeHoras(f.categoria_nome) && !f.horas.trim();
+  const faltaHoras = exigeHoras(f.categoria_nome) && min === 0;
   const ok = !!f.categoria_id && !!f.justificativa.trim() && isFinite(bruto) && min != null && !faltaHoras
     // vale ajuste só de valor, só de horas ou dos dois; vazio nos dois não (o check do banco também recusa)
     && (bruto !== 0 || min !== 0);
@@ -69,3 +70,8 @@ export function validarAjuste(f: FormAjuste): Validacao {
 // entrar o novo (o banco soma os ajustes de novo, não acumula), e a carga nunca fica negativa (greatest(0, …)).
 export const minutosPrevistos = (minutosAtuais: number, minutosJaLancados: number, minutosNovos: number) =>
   Math.max(0, minutosAtuais - minutosJaLancados + minutosNovos);
+
+// Correção de escala gravada com 0 minutos (antes da trava) que ainda dá para editar: a lista marca "sem horas".
+// Pagamento aprovado ou pago não tem botão de editar, então não se cobra o que não dá para fazer.
+export const pendenteDeHoras = (nomeCategoria: string | null | undefined, minutos: number | null | undefined, bloqueado: boolean) =>
+  !bloqueado && exigeHoras(nomeCategoria) && !Number(minutos ?? 0);
