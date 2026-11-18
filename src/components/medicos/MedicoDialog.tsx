@@ -266,8 +266,8 @@ export function MedicoDialog({ open, onOpenChange, medico, onOpenProntuario, pre
       const userMessage = error.code === '42501' 
         ? 'Você não tem permissão para esta ação'
         : error.code === '23505'
-        ? 'Já existe um médico com estes dados'
-        : 'Erro ao salvar médico. Tente novamente ou contate o suporte.';
+        ? 'Já existe um cadastro com estes dados'
+        : 'Erro ao salvar o cadastro. Tente novamente ou contate o suporte.';
       toast.error(userMessage);
     },
   });
