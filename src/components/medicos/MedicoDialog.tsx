@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import * as z from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -19,43 +18,19 @@ import { CalendarIcon, FileText, User, Upload, AlertTriangle, ExternalLink } fro
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
-import { validateCPF } from "@/lib/validators";
 import { normalizeToE164 } from "@/lib/phoneUtils";
 import { EspecialidadeMultiSelect } from "./EspecialidadeMultiSelect";
 import { UnidadeMultiSelect } from "./UnidadeMultiSelect";
 import { ProntuarioTab } from "./ProntuarioTab";
 import { DocumentacaoTab } from "./DocumentacaoTab";
 import { MedicoCondicoesCard } from "./MedicoCondicoesCard";
+import { medicoFormSchema, registroProfissional, type MedicoFormValues } from "./medicoFormSchema";
 
 const ESTADOS_BRASIL = [
   'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 
   'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 
   'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'
 ];
-
-const formSchema = z.object({
-  nome_completo: z.string().min(3, "Nome deve ter no mínimo 3 caracteres"),
-  // prestador que não é médico (Mavi, 18/11): sem CRM nem especialidade; o banco aceita só com o marcador
-  prestador_nao_medico: z.boolean(),
-  crm: z.string(),
-  especialidade: z.array(z.string()),
-  rqe_numeros: z.string().optional(),
-  email: z.string().email("Email inválido"),
-  telefone: z.string().min(10, "Telefone inválido"),
-  cpf: z.string().optional().refine(
-    (val) => !val || val.length === 0 || validateCPF(val),
-    { message: "CPF inválido" }
-  ),
-  data_nascimento: z.date().optional(),
-  estado: z.string().length(2, "Estado deve ter 2 letras (UF)").regex(/^[A-Z]{2}$/, "Use apenas siglas maiúsculas (ex: SP, RJ)").optional(),
-  status_medico: z.enum(['Ativo', 'Inativo', 'Suspenso']),
-  status_contrato: z.enum(['ativo', 'inativo', 'pendente', 'cancelado']).optional(),
-  unidades_vinculadas: z.array(z.string()).optional(),
-}).superRefine((v, ctx) => {
-  if (v.prestador_nao_medico) return;
-  if (v.crm.trim().length < 4) ctx.addIssue({ code: "custom", path: ["crm"], message: "CRM inválido" });
-  if (!v.especialidade.length) ctx.addIssue({ code: "custom", path: ["especialidade"], message: "Selecione pelo menos uma especialidade" });
-});
 
 interface MedicoDialogProps {
   open: boolean;
@@ -74,8 +49,8 @@ export function MedicoDialog({ open, onOpenChange, medico, onOpenProntuario, pre
   // Check if this medico has been migrated to a lead (read-only mode)
   const isMigrated = !!medico?.lead_id;
   
-  const form = useForm<z.infer<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
+  const form = useForm<MedicoFormValues>({
+    resolver: zodResolver(medicoFormSchema),
     defaultValues: {
       nome_completo: '',
       prestador_nao_medico: false,
@@ -158,21 +133,12 @@ export function MedicoDialog({ open, onOpenChange, medico, onOpenProntuario, pre
   }, [medico, form, vinculosExistentes, prestadorInicial, open]);
 
   const mutation = useMutation({
-    mutationFn: async (values: z.infer<typeof formSchema>) => {
+    mutationFn: async (values: MedicoFormValues) => {
       const phoneE164 = values.telefone ? normalizeToE164(values.telefone) : null;
-      
-      // Processar RQEs (separar por vírgula e limpar espaços)
-      const rqeArray = values.rqe_numeros
-        ? values.rqe_numeros.split(',').map(rqe => rqe.trim()).filter(rqe => rqe)
-        : null;
       
       const payload = {
         nome_completo: values.nome_completo,
-        prestador_nao_medico: values.prestador_nao_medico,
-        crm: values.crm.trim() || null,
-        // o banco recusa lista vazia: sem especialidade (prestador) vai nulo
-        especialidade: values.especialidade.length ? values.especialidade : null,
-        rqe_numeros: rqeArray,
+        ...registroProfissional(values),
         email: values.email,
         telefone: values.telefone,
         phone_e164: phoneE164,
@@ -262,14 +228,36 @@ export function MedicoDialog({ open, onOpenChange, medico, onOpenProntuario, pre
             .eq('id', vinculo.id);
         }
       }
+
+      // O gatilho trg_financeiro_vincular_medico já ligou ao cadastro novo os lançamentos "sem cadastro"
+      // do fechamento com o mesmo primeiro e último nome. Conta para dizer isso a quem cadastrou.
+      let ligados = 0;
+      if (!medico && medicoId) {
+        const { count } = await supabase
+          .from('financeiro_pagamentos')
+          .select('id', { count: 'exact', head: true })
+          .eq('medico_id', medicoId);
+        ligados = count ?? 0;
+      }
+      return { ligados, prestador: values.prestador_nao_medico };
     },
-    onSuccess: () => {
+    onSuccess: ({ ligados, prestador }) => {
       queryClient.invalidateQueries({ queryKey: ['corpo-clinico'] });
       queryClient.invalidateQueries({ queryKey: ['medicos'] });
       queryClient.invalidateQueries({ queryKey: ['medicos-aniversarios'] });
       queryClient.invalidateQueries({ queryKey: ['relacionamentos-home'] });
       queryClient.invalidateQueries({ queryKey: ['medico-vinculos'] });
-      toast.success(medico ? 'Médico atualizado' : 'Médico criado');
+      // O cache vale 5 min (App.tsx): sem isso, quem volta ao Financeiro ainda vê o selo "sem cadastro"
+      // e o "Pedir NF" sai sem contato, embora o lançamento já esteja ligado no banco.
+      queryClient.invalidateQueries({ queryKey: ['financeiro-fases'] });
+      queryClient.invalidateQueries({ queryKey: ['financeiro-nf'] });
+      queryClient.invalidateQueries({ queryKey: ['financeiro-pagamentos'] });
+      const quem = prestador ? 'Prestador' : 'Médico';
+      toast.success(medico ? `${quem} atualizado` : `${quem} cadastrado`, ligados ? {
+        description: ligados === 1
+          ? '1 lançamento do fechamento ligado ao cadastro. Já dá para pedir a NF.'
+          : `${ligados} lançamentos do fechamento ligados ao cadastro. Já dá para pedir a NF.`,
+      } : undefined);
       onOpenChange(false);
       form.reset();
     },
@@ -284,7 +272,7 @@ export function MedicoDialog({ open, onOpenChange, medico, onOpenProntuario, pre
     },
   });
 
-  const onSubmit = (values: z.infer<typeof formSchema>) => {
+  const onSubmit = (values: MedicoFormValues) => {
     mutation.mutate(values);
   };
 
@@ -356,8 +344,12 @@ export function MedicoDialog({ open, onOpenChange, medico, onOpenProntuario, pre
                 <FormItem>
                   <FormLabel>Nome Completo</FormLabel>
                   <FormControl>
-                    <Input placeholder="Dr. João Silva" {...field} />
+                    <Input placeholder={ehPrestador ? "João da Silva" : "Dr. João Silva"} {...field} />
                   </FormControl>
+                  {/* o lançamento do fechamento liga pelo primeiro e último nome (trg_financeiro_vincular_medico) */}
+                  {ehPrestador && !medico && (
+                    <FormDescription>Escreva como está no fechamento: o lançamento liga pelo nome.</FormDescription>
+                  )}
                   <FormMessage />
                 </FormItem>
               )}
@@ -574,7 +566,7 @@ export function MedicoDialog({ open, onOpenChange, medico, onOpenProntuario, pre
                 name="status_medico"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Status do Médico</FormLabel>
+                    <FormLabel>{ehPrestador ? 'Status' : 'Status do Médico'}</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger>
@@ -630,7 +622,7 @@ export function MedicoDialog({ open, onOpenChange, medico, onOpenProntuario, pre
                       disabled={mutation.isPending}
                     />
                   </FormControl>
-                  <FormDescription>Selecione as unidades onde o médico atende</FormDescription>
+                  <FormDescription>{ehPrestador ? 'Selecione as unidades onde presta serviço' : 'Selecione as unidades onde o médico atende'}</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
