@@ -68,7 +68,23 @@ export function usePermissions() {
     },
   });
 
+  // Módulo bloqueado só para esta pessoa (usuario_modulos_bloqueados), acima do que o perfil dá: a permissão é por
+  // perfil e o perfil é dividido com outras pessoas (caso da Bianca e Licitações, 18/11).
+  const { data: bloqueados = [] } = useQuery({
+    queryKey: ['user-modulos-bloqueados', user?.id],
+    enabled: !!user?.id,
+    staleTime: 1000 * 60 * 5,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('usuario_modulos_bloqueados' as never)
+        .select('modulo')
+        .eq('user_id', user!.id);
+      return ((data || []) as { modulo: string }[]).map((b) => b.modulo);
+    },
+  });
+
   const hasPermission = (modulo: Modulo, acao: Acao): boolean => {
+    if (bloqueados.includes(modulo)) return false;
     if (isAdmin) return true;
     if (!permissions) return false;
     
