@@ -121,7 +121,9 @@ export function CorpoClinicoTab() {
                           medico.aprovacao_cadastro_unidade === true;
         const createdAt = new Date(medico.created_at);
         const isLegacy = createdAt < DATA_CORTE && !medicosNoKanban.has(medico.id);
-        return isApproved || isLegacy;
+        // Prestador que não é médico não passa pelas aprovações de médico (contrato, documentação e
+        // cadastro na unidade): sem isso, o cadastrado pelo "Novo prestador" sumia da lista ao salvar.
+        return isApproved || isLegacy || medico.prestador_nao_medico === true;
       });
       
       // 3. Coletar todos os lead_ids e medico_ids para buscar em batch
@@ -253,7 +255,8 @@ export function CorpoClinicoTab() {
   }, [medicos]);
 
   const contagemPendencias = useMemo(() => ({
-    sem_especialidade: (medicos || []).filter(m => (m.especialidade || []).length === 0).length,
+    // prestador não tem especialidade por definição: não é pendência
+    sem_especialidade: (medicos || []).filter(m => !m.prestador_nao_medico && (m.especialidade || []).length === 0).length,
     falta_rqe: (medicos || []).filter(m => m.falta_rqe).length,
   }), [medicos]);
 
@@ -313,7 +316,7 @@ export function CorpoClinicoTab() {
       const matchesEspecialidade = (selectedEspecialidades.length === 0 ||
         medicoEspecialidades.some(esp => selectedEspecialidades.includes(esp))) &&
         (pendenciaEsp === null ||
-          (pendenciaEsp === 'sem_especialidade' && medicoEspecialidades.length === 0) ||
+          (pendenciaEsp === 'sem_especialidade' && !medico.prestador_nao_medico && medicoEspecialidades.length === 0) ||
           (pendenciaEsp === 'falta_rqe' && medico.falta_rqe));
       
       // Filtro por cliente vinculado
@@ -448,7 +451,7 @@ export function CorpoClinicoTab() {
       />
 
       <div className="flex items-center justify-end">
-        <div className="flex gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
           <Button
             variant="outline"
             onClick={() => exportMedicosToPDF(filteredMedicos, filteredMedicos.length)}
@@ -561,6 +564,8 @@ export function CorpoClinicoTab() {
                   <TableCell>
                     {Array.isArray(medico.especialidade) && medico.especialidade.length > 0
                       ? medico.especialidade.map(formatarEspecialidade).join(', ')
+                      : medico.prestador_nao_medico
+                      ? <span className="text-muted-foreground">Prestador de serviço</span>
                       : <span className="text-muted-foreground">Sem especialidade</span>}
                   </TableCell>
                   <TableCell>
