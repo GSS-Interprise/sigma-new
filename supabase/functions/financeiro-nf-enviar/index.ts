@@ -79,7 +79,7 @@ function localDoServico(pag: Pag): string {
   const arquivo = String(pag.arquivo_origem || "").replace(/^\[cfg:[^\]]+\]\s*/, "").replace(/\.(xlsx|xls|csv)$/i, "").trim();
   // o nome do arquivo costuma levar o mês ("Ibirama - agosto"): o local é só a cidade
   const cidade = arquivo
-    .replace(/[\s_\-–(]*(janeiro|fevereiro|mar[cç]o|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro|\d{1,2}[\/.\-]\d{2,4}|20\d{2})[)\s_\-–\/.]*/gi, " ")
+    .replace(/[\s_\-–(]*(janeiro|fevereiro|mar[cç]o|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro|\d{1,2}[\/.\-]\d{2,4}|20\d{2})[a-z]*[)\s_\-–\/.]*/gi, " ")
     .replace(/[\s_\-–]+$/, "").trim();
   return semAcento(cidade || arquivo || pag.unidade || pag.setor || "indicado na escala");
 }

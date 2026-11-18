@@ -69,6 +69,8 @@ export interface FinanceiroAjuste {
   pagamento_id: string;
   categoria_id: string;
   valor: number;
+  // horas a mais (+) ou a menos (−) do ajuste de escala, em minutos; mudam as horas do pedido de NF
+  minutos?: number;
   justificativa: string;
   criado_por: string | null;
   created_at: string;
@@ -197,11 +199,11 @@ export function useSalvarAjuste() {
     qc.invalidateQueries({ queryKey: ["financeiro-fases"] });
   };
   return useMutation({
-    mutationFn: async (a: { id?: string; pagamento_id: string; categoria_id: string; valor: number; justificativa: string }) => {
+    mutationFn: async (a: { id?: string; pagamento_id: string; categoria_id: string; valor: number; minutos?: number; justificativa: string }) => {
       const { data: u } = await supabase.auth.getUser();
       const payload = {
         pagamento_id: a.pagamento_id, categoria_id: a.categoria_id,
-        valor: a.valor, justificativa: a.justificativa.trim(),
+        valor: a.valor, minutos: a.minutos ?? 0, justificativa: a.justificativa.trim(),
       };
       const { error } = a.id
         ? await (supabase as any).from("financeiro_pagamento_ajustes").update(payload).eq("id", a.id)
@@ -492,6 +494,7 @@ export function useGerarPagamentos() {
             unidade: group.unidade,
             total_plantoes: group.shifts.length,
             total_horas_minutos: totalMinutos,
+            minutos_produzidos: totalMinutos,
             // valor_produzido é a BASE do cálculo; sem ela o primeiro ajuste vira o
             // total inteiro (incidente 06/08). Todo write-path precisa preencher.
             valor_produzido: Math.round(valorTotal * 100) / 100,

@@ -309,7 +309,7 @@ serve(async (req) => {
     if (antigos?.length) {
       // só o que a equipe lançou na mão volta; o que veio da planilha é regerado do arquivo
       const { data: aj } = await svc.from("financeiro_pagamento_ajustes")
-        .select("pagamento_id, categoria_id, valor, justificativa, criado_por, created_at")
+        .select("pagamento_id, categoria_id, valor, minutos, justificativa, criado_por, created_at")
         .eq("origem", "manual")
         .in("pagamento_id", antigos.map((p: any) => p.id));
       const chave = new Map(antigos.map((p: any) => [p.id, p.medico_id || norm(p.profissional_nome)]));
@@ -344,6 +344,8 @@ serve(async (req) => {
         unidade: b.unidade || cfg.nome,
         total_plantoes: b.plantoes ?? (b.itens.filter((i) => i.data).length || b.itens.length),
         total_horas_minutos: minutos, horas_a_vista_minutos: minutosAVista,
+        // base das horas: o ajuste de escala soma ou tira minutos daqui (financeiro_ajuste_horas.sql)
+        minutos_produzidos: minutos, minutos_ajustes: 0,
         valor_produzido: produzido, valor_a_vista: aVista, valor_ajustes: 0,
         valor_total: produzido - aVista,
         status: "pendente", fonte: "import",
@@ -389,7 +391,7 @@ serve(async (req) => {
       const destino = novasChaves.get(a._chave);
       if (!destino) { ajustesPerdidos++; continue; }
       const { error } = await svc.from("financeiro_pagamento_ajustes").insert({
-        pagamento_id: destino, categoria_id: a.categoria_id, valor: a.valor,
+        pagamento_id: destino, categoria_id: a.categoria_id, valor: a.valor, minutos: a.minutos ?? 0,
         justificativa: a.justificativa, criado_por: a.criado_por, created_at: a.created_at,
       });
       if (error) ajustesPerdidos++; else ajustesRestaurados++;

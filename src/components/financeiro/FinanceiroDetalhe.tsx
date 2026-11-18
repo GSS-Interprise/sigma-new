@@ -292,7 +292,8 @@ export function FinanceiroDetalhe({ pagamento, onVoltar }: Props) {
         </CardContent>
       </Card>
 
-      <FinanceiroAjustes pagamentoId={pagamento.id} bloqueado={bloqueado} base={produzido - aVista} />
+      <FinanceiroAjustes pagamentoId={pagamento.id} bloqueado={bloqueado} base={produzido - aVista}
+        minutosAtuais={Number(pagamento.total_horas_minutos ?? 0)} />
 
       <FinanceiroAnexos pagamentoId={pagamento.id} />
     </div>

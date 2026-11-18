@@ -22,14 +22,29 @@ const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", curren
  */
 const NOVA_CATEGORIA = "__nova_categoria__";
 
-export function FinanceiroAjustes({ pagamentoId, bloqueado, base = 0 }: { pagamentoId: string; bloqueado?: boolean; base?: number }) {
+// "2", "2:30", "2h30", "2,5" → minutos. Vazio = 0 (ajuste só de valor). Inválido = null.
+const lerHoras = (t: string): number | null => {
+  const v = t.trim().toLowerCase().replace(/\s+/g, "");
+  if (!v) return 0;
+  const hm = v.match(/^(\d+)(?::|h)(\d{1,2})?m?$/);
+  if (hm) return Number(hm[1]) * 60 + Number(hm[2] || 0);
+  if (!/^\d+(?:[.,]\d+)?h?$/.test(v)) return null;
+  return Math.round(parseFloat(v.replace(",", ".")) * 60);
+};
+const fmtHoras = (min: number) => {
+  const a = Math.abs(min), h = Math.floor(a / 60), m = a % 60;
+  return `${min < 0 ? "−" : ""}${h}h${m ? String(m).padStart(2, "0") : ""}`;
+};
+
+export function FinanceiroAjustes({ pagamentoId, bloqueado, base = 0, minutosAtuais = 0 }: { pagamentoId: string; bloqueado?: boolean; base?: number; minutosAtuais?: number }) {
   const { data: ajustes = [], isLoading } = useFinanceiroAjustes(pagamentoId);
   const { data: categorias = [] } = useFinanceiroAjusteCategorias();
   const salvar = useSalvarAjuste();
   const remover = useRemoverAjuste();
   const criarCategoria = useCriarAjusteCategoria();
 
-  const [form, setForm] = useState<{ id?: string; categoria_id: string; sinal: "mais" | "menos"; valor: string; justificativa: string } | null>(null);
+  // horas: correção de escala (Mavi, 18/11: lançado 72 h, fez 74 h). Mesmo sinal do valor; vão no pedido de NF.
+  const [form, setForm] = useState<{ id?: string; categoria_id: string; sinal: "mais" | "menos"; valor: string; horas: string; justificativa: string } | null>(null);
   const [novaCat, setNovaCat] = useState<{ nome: string; sinal: string } | null>(null);
 
   const total = ajustes.reduce((s, a) => s + Number(a.valor), 0);
@@ -40,22 +55,35 @@ export function FinanceiroAjustes({ pagamentoId, bloqueado, base = 0 }: { pagame
     : 0;
   const jaLancado = form?.id ? Number(ajustes.find((a) => a.id === form.id)?.valor ?? 0) : 0;
   const totalPrevisto = base + total - jaLancado + deltaForm;
+  const minForm = lerHoras(form?.horas || "");
+  const deltaMin = minForm == null ? 0 : (form?.sinal === "menos" ? -minForm : minForm);
+  const minJaLancado = form?.id ? Number(ajustes.find((a) => a.id === form.id)?.minutos ?? 0) : 0;
+  const minutosPrevistos = minutosAtuais - minJaLancado + deltaMin;
+  const temHoras = ajustes.some((a) => Number(a.minutos ?? 0) !== 0);
   const nomeCat = (id: string) => categorias.find((c) => c.id === id)?.nome ?? "—";
 
-  const abrirNovo = () => setForm({ categoria_id: "", sinal: "mais", valor: "", justificativa: "" });
+  const abrirNovo = () => setForm({ categoria_id: "", sinal: "mais", valor: "", horas: "", justificativa: "" });
   const abrirEdicao = (a: FinanceiroAjuste) =>
     setForm({
-      id: a.id, categoria_id: a.categoria_id, sinal: Number(a.valor) < 0 ? "menos" : "mais",
-      valor: String(Math.abs(Number(a.valor))).replace(".", ","), justificativa: a.justificativa,
+      id: a.id, categoria_id: a.categoria_id,
+      sinal: (Number(a.valor) || Number(a.minutos ?? 0)) < 0 ? "menos" : "mais",
+      valor: Number(a.valor) ? String(Math.abs(Number(a.valor))).replace(".", ",") : "",
+      horas: Number(a.minutos ?? 0) ? fmtHoras(Math.abs(Number(a.minutos))) : "",
+      justificativa: a.justificativa,
     });
 
+  // vale ajuste só de valor, só de horas ou dos dois; vazio nos dois não
+  const valorForm = (form?.valor || "").trim() ? parseFloat((form?.valor || "").replace(/\./g, "").replace(",", ".")) : 0;
+  const formValido =
+    !!form?.categoria_id && !!form.justificativa.trim() &&
+    isFinite(valorForm) && minForm != null && (valorForm !== 0 || minForm !== 0);
+
   const confirmar = async () => {
-    if (!form) return;
-    const bruto = parseFloat(form.valor.replace(/\./g, "").replace(",", "."));
-    if (!form.categoria_id || !isFinite(bruto) || bruto === 0 || !form.justificativa.trim()) return;
+    if (!form || !formValido || minForm == null) return;
+    const s = form.sinal === "menos" ? -1 : 1;
     await salvar.mutateAsync({
       id: form.id, pagamento_id: pagamentoId, categoria_id: form.categoria_id,
-      valor: form.sinal === "menos" ? -Math.abs(bruto) : Math.abs(bruto),
+      valor: s * Math.abs(valorForm), minutos: s * minForm,
       justificativa: form.justificativa,
     });
     setForm(null);
@@ -68,10 +96,6 @@ export function FinanceiroAjustes({ pagamentoId, bloqueado, base = 0 }: { pagame
     setNovaCat(null);
   };
 
-  const formValido =
-    !!form?.categoria_id && !!form.justificativa.trim() &&
-    isFinite(parseFloat((form?.valor || "").replace(/\./g, "").replace(",", "."))) &&
-    parseFloat((form?.valor || "0").replace(/\./g, "").replace(",", ".")) !== 0;
 
   return (
     <Card>
@@ -79,7 +103,7 @@ export function FinanceiroAjustes({ pagamentoId, bloqueado, base = 0 }: { pagame
         <div className="min-w-0">
           <CardTitle className="text-base">Ajustes</CardTitle>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Valores a mais ou a menos deste médico no mês (gestão, desconto, bônus…).
+            Valores e horas a mais ou a menos deste médico no mês (gestão, desconto, correção de escala…).
           </p>
         </div>
         {!bloqueado && (
@@ -100,6 +124,7 @@ export function FinanceiroAjustes({ pagamentoId, bloqueado, base = 0 }: { pagame
                 <TableRow>
                   <TableHead>Categoria</TableHead>
                   <TableHead>Justificativa</TableHead>
+                  {temHoras && <TableHead className="text-right">Horas</TableHead>}
                   <TableHead className="text-right">Valor</TableHead>
                   {!bloqueado && <TableHead className="w-20" />}
                 </TableRow>
@@ -111,8 +136,13 @@ export function FinanceiroAjustes({ pagamentoId, bloqueado, base = 0 }: { pagame
                     <TableCell className="text-muted-foreground text-sm max-w-[18rem] truncate" title={a.justificativa}>
                       {a.justificativa}
                     </TableCell>
+                    {temHoras && (
+                      <TableCell className="text-right whitespace-nowrap tabular-nums">
+                        {Number(a.minutos ?? 0) ? `${Number(a.minutos) > 0 ? "+" : ""}${fmtHoras(Number(a.minutos))}` : "—"}
+                      </TableCell>
+                    )}
                     <TableCell className={`text-right font-semibold whitespace-nowrap ${Number(a.valor) < 0 ? "text-red-600" : "text-emerald-700"}`}>
-                      {Number(a.valor) > 0 ? "+" : ""}{fmt(Number(a.valor))}
+                      {Number(a.valor) ? `${Number(a.valor) > 0 ? "+" : ""}${fmt(Number(a.valor))}` : "—"}
                     </TableCell>
                     {!bloqueado && (
                       <TableCell className="text-right">
@@ -131,6 +161,11 @@ export function FinanceiroAjustes({ pagamentoId, bloqueado, base = 0 }: { pagame
                 ))}
                 <TableRow className="bg-muted/50 font-bold">
                   <TableCell colSpan={2}>Total de ajustes</TableCell>
+                  {temHoras && (
+                    <TableCell className="text-right whitespace-nowrap tabular-nums">
+                      {(() => { const m = ajustes.reduce((x, a) => x + Number(a.minutos ?? 0), 0); return m ? `${m > 0 ? "+" : ""}${fmtHoras(m)}` : "—"; })()}
+                    </TableCell>
+                  )}
                   <TableCell className={`text-right whitespace-nowrap ${total < 0 ? "text-red-600" : "text-emerald-700"}`}>
                     {total > 0 ? "+" : ""}{fmt(total)}
                   </TableCell>
@@ -168,7 +203,7 @@ export function FinanceiroAjustes({ pagamentoId, bloqueado, base = 0 }: { pagame
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <Label>Tipo</Label>
                 <Select value={form?.sinal} onValueChange={(v) => setForm((f) => (f ? { ...f, sinal: v as "mais" | "menos" } : f))}>
@@ -184,10 +219,19 @@ export function FinanceiroAjustes({ pagamentoId, bloqueado, base = 0 }: { pagame
                 <Input inputMode="decimal" placeholder="200,00" value={form?.valor ?? ""}
                   onChange={(e) => setForm((f) => (f ? { ...f, valor: e.target.value } : f))} />
               </div>
+              <div>
+                <Label>Horas</Label>
+                <Input placeholder="2 ou 2:30" value={form?.horas ?? ""} aria-invalid={minForm == null}
+                  onChange={(e) => setForm((f) => (f ? { ...f, horas: e.target.value } : f))} />
+                {minForm == null && <p className="text-[11px] text-red-600 mt-1">Use 2, 2:30 ou 2h30.</p>}
+              </div>
             </div>
             <div className="rounded-md border bg-muted/40 p-2.5 text-xs space-y-1">
               <div className="flex justify-between"><span className="text-muted-foreground">Produção (menos o já pago à vista)</span><span>{fmt(base)}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Ajustes com este lançamento</span><span>{fmt(total - jaLancado + deltaForm)}</span></div>
+              {(deltaMin !== 0 || minJaLancado !== 0) && (
+                <div className="flex justify-between"><span className="text-muted-foreground">Horas no pedido de NF</span><span className="tabular-nums">{fmtHoras(minutosAtuais)} → {fmtHoras(minutosPrevistos)}</span></div>
+              )}
               <div className="flex justify-between font-semibold border-t pt-1">
                 <span>A pagar ficará</span>
                 <span className={totalPrevisto < 0 ? "text-red-600" : ""}>{fmt(totalPrevisto)}</span>
