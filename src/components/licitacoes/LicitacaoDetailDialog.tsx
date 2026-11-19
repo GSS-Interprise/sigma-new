@@ -64,7 +64,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useLicitacoesProfiles } from "@/hooks/useLicitacoesProfiles";
-import { useLicitacaoAutoSave } from "@/hooks/useLicitacaoAutoSave";
+import { TOAST_ERRO_SALVAR, useLicitacaoAutoSave } from "@/hooks/useLicitacaoAutoSave";
 import { useLicitacaoRealtimeSync } from "@/hooks/useLicitacaoRealtimeSync";
 import { useLicitacaoEditLock } from "@/hooks/useLicitacaoEditLock";
 import { LicitacaoLockBadge } from "./LicitacaoLockBadge";
@@ -400,12 +400,15 @@ export function LicitacaoDetailDialog({
       if (nomesCampos.length) await gravarCamposAoFechar(campos);
       const partes = [...(analisePendente ? ["a correção da análise"] : []), ...nomesCampos];
       const lista = partes.length > 1 ? `${partes.slice(0, -1).join(", ")} e ${partes[partes.length - 1]}` : partes[0];
+      toast.dismiss(TOAST_ERRO_SALVAR); // erro de uma tentativa anterior já não vale
       toast.success(`Salvo ao fechar: ${lista}.`, { id: aviso });
       onOpenChange(false);
       return true;
     } catch (e) {
+      // um aviso só: o do hook ("tentando novamente") não vale aqui, o card fica aberto esperando a pessoa
+      toast.dismiss(aviso);
       toast.error("Não consegui salvar o que você escreveu, por isso o card continua aberto. Tente fechar de novo ou clique em Salvar.", {
-        id: aviso,
+        id: TOAST_ERRO_SALVAR,
         description: e instanceof Error ? e.message : (e as { message?: string })?.message,
         duration: 10000,
       });

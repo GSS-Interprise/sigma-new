@@ -14,6 +14,9 @@ interface AutoSavePayload {
   expectedUpdatedAt: string | null;
 }
 
+/** id do aviso de erro: quem chama (ex.: fechar o card) troca este aviso pelo seu, em vez de empilhar dois */
+export const TOAST_ERRO_SALVAR = "licitacao-erro-salvar";
+
 const DEBOUNCE_MS = 200;
 const MAX_RETRIES = 3;
 
@@ -190,7 +193,7 @@ export function useLicitacaoAutoSave(licitacaoId: string | null, onSuccess?: () 
     },
     onError: (error: any) => {
       console.error("Erro ao salvar:", error);
-      toast.error("Erro ao salvar. Tentando novamente...");
+      toast.error("Erro ao salvar. Tentando novamente...", { id: TOAST_ERRO_SALVAR });
     },
   });
 
