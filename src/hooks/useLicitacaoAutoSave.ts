@@ -141,6 +141,7 @@ export function useLicitacaoAutoSave(licitacaoId: string | null, onSuccess?: () 
         prioridade: "Prioridade",
         tipo_licitacao: "Tipo",
         decorrencia_analise: "Decorrência de Análise",
+        deliberacao: "Deliberação",
       };
 
       const camposAlterados = changedFields
@@ -275,6 +276,8 @@ export function useLicitacaoAutoSave(licitacaoId: string | null, onSuccess?: () 
       checkAndAdd('tipo_licitacao', formData.tipo_licitacao);
       checkAndAdd('prioridade', formData.prioridade);
       checkAndAdd('decorrencia_analise', formData.decorrencia_analise);
+      // Deliberação (18/11) ficou fora do delta e o Salvar não a gravava: o texto do Luiz sumia ao reabrir o card
+      checkAndAdd('deliberacao', formData.deliberacao);
 
       // Campos customizados
       const dadosCustomizados: Record<string, any> = {};

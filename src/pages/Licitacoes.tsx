@@ -157,7 +157,7 @@ export default function Licitacoes({ board = 'effecti' }: LicitacoesProps = {}) 
           try {
             const { data: heavy } = await supabase
               .from("licitacoes")
-              .select("objeto,decorrencia_analise,objeto_contrato,observacoes")
+              .select("objeto,decorrencia_analise,deliberacao,objeto_contrato,observacoes")
               .eq("id", openLicitacaoId)
               .single();
             setSelectedLicitacao({ ...licitacaoToOpen, ...(heavy || {}) } as any);
