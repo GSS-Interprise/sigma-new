@@ -20,6 +20,7 @@ import {
 import { cn } from "@/lib/utils";
 import { UNIDADE, type Plantao, normalizarTelefone, telefoneBonito, useColetor, useEscala } from "./useSla";
 import { CopiarSemana } from "./CopiarSemana";
+import { RegrasAvisos, useRegras } from "./RegrasAvisos";
 
 const db = supabase as any;
 const PAPEL: Record<Plantao["papel"], { nome: string; selo: string }> = {
@@ -53,9 +54,10 @@ function intervalo(data: string, ini: string, fim: string, somaDias: number) {
 
 export function AbaEscalaPlantao() {
   const escala = useEscala(14);
+  const pctAviso = useRegras().data?.aviso_pct ?? 80;
   const coletor = useColetor();
   const qc = useQueryClient();
-  const [papel, setPapel] = useState<Plantao["papel"]>("plantonista");
+  const [papel, setPapel] = useState<Plantao["papel"]>("coordenador");
   const [nome, setNome] = useState("");
   const [telefone, setTelefone] = useState("");
   const [data, setData] = useState(hojeISO());
@@ -153,7 +155,7 @@ export function AbaEscalaPlantao() {
             <div className="flex items-center justify-between gap-3 border-t pt-3">
               <div>
                 <p className="font-medium">Avisos automáticos ao médico</p>
-                <p className="text-xs text-muted-foreground">{ativo ? "Ligados: WhatsApp aos 80% do prazo e quando vence." : "Desligados: ninguém é avisado."}</p>
+                <p className="text-xs text-muted-foreground">{ativo ? `Ligados: WhatsApp aos ${pctAviso}% do prazo e quando vence.` : "Desligados: ninguém é avisado."}</p>
               </div>
               <Switch checked={ativo} disabled={coletor.isLoading || ligar.isPending} onCheckedChange={(v) => ligar.mutate(v)} aria-label="Avisos automáticos ao médico" />
             </div>
@@ -216,15 +218,20 @@ export function AbaEscalaPlantao() {
         </Card>
       </div>
 
+      <div className="space-y-4">
+      <RegrasAvisos />
       <Card className="h-fit">
-        <CardHeader className="pb-2"><CardTitle className="text-base">Adicionar plantão</CardTitle></CardHeader>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Adicionar coordenação ou plantão extra</CardTitle>
+          <p className="text-xs text-muted-foreground">Plantonista de TC e US já vem do Dr. Escala.</p>
+        </CardHeader>
         <CardContent className="space-y-3 text-sm">
           <div className="space-y-1">
             <Label>Papel</Label>
             <Select value={papel} onValueChange={(v) => setPapel(v as Plantao["papel"])}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="plantonista">Plantonista (recebe aos 80%)</SelectItem>
+                <SelectItem value="plantonista">Plantonista (recebe aos {pctAviso}%)</SelectItem>
                 <SelectItem value="coordenador">Coordenador (recebe quando vence)</SelectItem>
                 <SelectItem value="diretoria">Diretoria</SelectItem>
               </SelectContent>
@@ -273,6 +280,7 @@ export function AbaEscalaPlantao() {
           {erroForm && (nome || telefone) && <p className="text-xs text-muted-foreground">{erroForm}</p>}
         </CardContent>
       </Card>
+      </div>
 
       <AlertDialog open={!!remover} onOpenChange={(o) => !o && setRemover(null)}>
         <AlertDialogContent>

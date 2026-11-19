@@ -24,7 +24,9 @@ const minutos = (de: string, agora: Date) => (agora.getTime() - new Date(de).get
  * @param ligacoes ligações já feitas para este exame (passo 1..4; várias por passo se houver 2 plantonistas)
  * @param temPapel quem está escalado agora
  */
-export function proximoPassoEscada(ligacoes: LigacaoFeita[], temPapel: Record<Papel, boolean>, agora = new Date()): Proximo {
+// intervaloMin: config sla_escada_intervalo_min, editável na aba Escala (19/11).
+export function proximoPassoEscada(ligacoes: LigacaoFeita[], temPapel: Record<Papel, boolean>, agora = new Date(),
+  intervaloMin = ESPERA_ENTRE_PASSOS_MIN): Proximo {
   if (ligacoes.some((l) => l.status === "respondido")) return { acao: "parar" };
   const ultimoPasso = ligacoes.reduce((m, l) => Math.max(m, l.passo), 0);
   if (ultimoPasso > 0) {
@@ -32,7 +34,7 @@ export function proximoPassoEscada(ligacoes: LigacaoFeita[], temPapel: Record<Pa
     const emCurso = doPasso.some((l) => (l.status === "pendente" || l.status === "enviado") && minutos(l.criado_em, agora) < LIGACAO_PRESA_MIN);
     if (emCurso) return { acao: "esperar", motivo: "ligação em curso" };
     const maisRecente = doPasso.reduce((m, l) => (l.criado_em > m ? l.criado_em : m), doPasso[0].criado_em);
-    if (minutos(maisRecente, agora) < ESPERA_ENTRE_PASSOS_MIN) return { acao: "esperar", motivo: "intervalo entre ligações" };
+    if (minutos(maisRecente, agora) < intervaloMin) return { acao: "esperar", motivo: "intervalo entre ligações" };
   }
   for (let p = ultimoPasso + 1; p <= ESCADA.length; p++) {
     const papel = ESCADA[p - 1];

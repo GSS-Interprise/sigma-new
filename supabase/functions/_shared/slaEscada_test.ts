@@ -122,3 +122,13 @@ Deno.test("plantonista da modalidade; sem ninguém dela, todos", () => {
   assertEquals(daModalidade(p, "US").map((x) => x.nome), ["b", "c"]);
   assertEquals(daModalidade([{ nome: "a", modalidade: "TC" }], "US").map((x) => x.nome), ["a"]);
 });
+
+Deno.test("intervalo entre ligações configurável (sla_escada_intervalo_min)", () => {
+  const agora = new Date("2026-11-19T12:00:00Z");
+  const ha = (m: number) => new Date(agora.getTime() - m * 60000).toISOString();
+  const todos = { plantonista: true, coordenador: true, diretoria: true };
+  const feita = [{ passo: 1, status: "completed", criado_em: ha(6) }];
+  // 6 min depois: com intervalo de 3 liga; com intervalo de 10 espera
+  assertEquals(proximoPassoEscada(feita, todos, agora, 3).acao, "ligar");
+  assertEquals(proximoPassoEscada(feita, todos, agora, 10).acao, "esperar");
+});

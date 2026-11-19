@@ -11,7 +11,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { chakraApi, unwrapChakraPayload } from "../_shared/chakra.ts";
 import { SLA_VOZ_URL, tokenAlerta } from "../_shared/sla.ts";
-import { calcularIndicadores, daModalidade, destinoDoAviso, ESCADA, modalidadeDoExame, proximoPassoEscada, saidaConfiavel, textoIndicadores, type Papel } from "../_shared/slaEscada.ts";
+import { calcularIndicadores, daModalidade, destinoDoAviso, ESCADA, ESPERA_ENTRE_PASSOS_MIN, modalidadeDoExame, proximoPassoEscada, saidaConfiavel, textoIndicadores, type Papel } from "../_shared/slaEscada.ts";
 
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { "Content-Type": "application/json" } });
 const UNIDADES = ["marieta"];
@@ -199,6 +199,12 @@ async function checarExames(admin: any, forcar = false, unidades = UNIDADES, tes
   const testeDestino = await config(admin, "sla_teste_destino");
   // Com o teste interno ligado ninguém recebe ligação (só WhatsApp para o número de teste).
   const escadaLigada = teste || (!testeDestino && (await config(admin, "sla_escada_ligacao")) === "true");
+  // Regras editáveis na aba Escala (19/11). Valor fora da faixa ou vazio volta ao padrão: aviso errado é pior que
+  // aviso no momento de sempre.
+  const pct = Number(await config(admin, "sla_aviso_pct"));
+  const avisoFracao = pct >= 30 && pct <= 95 ? pct / 100 : 0.8;
+  const intv = Number(await config(admin, "sla_escada_intervalo_min"));
+  const intervaloMin = intv >= 1 && intv <= 60 ? intv : ESPERA_ENTRE_PASSOS_MIN;
   for (const unidade of unidades) {
     // Coletor parado = fila velha: o exame pode já ter sido laudado. Não alerta médico com dado velho
     // (a queda já tem o aviso próprio).
@@ -248,12 +254,12 @@ async function checarExames(admin: any, forcar = false, unidades = UNIDADES, tes
       const plantonistasDoExame = daModalidade(plantonistas, modalidadeDoExame(e.estudo));
       const ini = new Date(e.inicio_em).getTime(), fim = new Date(e.vence_em).getTime();
       const prazo = fim - ini, gasto = agora.getTime() - ini;
-      const tipo = gasto >= prazo ? "vencido" : gasto >= prazo * 0.8 ? "prazo" : null;
+      const tipo = gasto >= prazo ? "vencido" : gasto >= prazo * avisoFracao ? "prazo" : null;
       if (tipo === "vencido" && escadaLigada) {
         const ligacoes = (ja ?? []).filter((a: any) => a.exame_id === e.id && a.escada_passo)
           .map((a: any) => ({ passo: a.escada_passo, status: a.status, criado_em: a.criado_em }));
         const jaFim = (ja ?? []).some((a: any) => a.exame_id === e.id && a.papel === "escada_fim");
-        res.push(await passoEscada(admin, e, ligacoes, { ...porPapel, plantonista: plantonistasDoExame }, jaFim, emails, agora));
+        res.push(await passoEscada(admin, e, ligacoes, { ...porPapel, plantonista: plantonistasDoExame }, jaFim, emails, agora, intervaloMin));
       }
       if (!tipo || feito.has(`${e.id}:${tipo}`)) continue;
       // Teto por rodada: se algo escapar das travas acima, sai no máximo isto a cada 2 min (o resto fica para a
@@ -306,9 +312,9 @@ async function checarExames(admin: any, forcar = false, unidades = UNIDADES, tes
 
 // Um passo da escada de ligação para um exame vencido. A regra (quem, quando) está em _shared/slaEscada.ts.
 async function passoEscada(admin: any, e: any, ligacoes: any[], porPapel: Record<Papel, any[]>, jaFim: boolean,
-  emails: string[], agora: Date) {
+  emails: string[], agora: Date, intervaloMin = ESPERA_ENTRE_PASSOS_MIN) {
   const temPapel = Object.fromEntries(ESCADA.map((p) => [p, porPapel[p].length > 0])) as Record<Papel, boolean>;
-  const prox = proximoPassoEscada(ligacoes, temPapel, agora);
+  const prox = proximoPassoEscada(ligacoes, temPapel, agora, intervaloMin);
   const desc = `${ORIGEM[e.origem] ?? e.origem}, exame das ${horaExame(e.inicio_em)}`;
   if (prox.acao === "fim") {
     if (jaFim) return { exame: e.id, escada: "fim" };
