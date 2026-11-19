@@ -529,7 +529,26 @@ async function statusLigacao(callSid: string) {
   const b = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Calls/${callSid}.json`, {
     headers: { Authorization: "Basic " + btoa(`${sid}:${tok}`) },
   }).then((r) => r.json());
-  return { status: b.status, duracao: b.duration, de: b.from, para: b.to };
+  // Ligação "failed" com 0 s não diz o porquê na própria chamada: o código vem nas notificações (ex.: 21215
+  // permissão geográfica, 13227 sem saldo). Saldo junto porque é a causa mais comum.
+  const auth = { headers: { Authorization: "Basic " + btoa(`${sid}:${tok}`) } };
+  const notas = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Calls/${callSid}/Notifications.json`, auth)
+    .then((r) => r.json()).catch(() => ({}));
+  const saldo = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Balance.json`, auth).then((r) => r.json()).catch(() => ({}));
+  const erros = (notas.notifications ?? []).map((n: { error_code?: string; message_text?: string }) =>
+    `${n.error_code ?? ""} ${decodeURIComponent((n.message_text ?? "").replace(/\+/g, " ")).slice(0, 200)}`.trim());
+  // Erro de origem/regulatório às vezes só aparece no Monitor (alertas da conta), não na chamada.
+  const mon = await fetch(`https://monitor.twilio.com/v1/Alerts?PageSize=5`, auth).then((r) => r.json()).catch(() => ({}));
+  const alertas = (mon.alerts ?? []).map((a: { error_code?: string; date_created?: string; alert_text?: string; resource_sid?: string }) =>
+    `${a.date_created} ${a.error_code} ${a.resource_sid === callSid ? "(esta)" : ""} ${decodeURIComponent((a.alert_text ?? "").replace(/\+/g, " ")).slice(0, 160)}`);
+  // Números da conta: a origem precisa estar aqui (comprado) ou em caller ids verificados, com voz.
+  const nums = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/IncomingPhoneNumbers.json`, auth).then((r) => r.json()).catch(() => ({}));
+  const numeros = (nums.incoming_phone_numbers ?? []).map((n: { phone_number?: string; status?: string; capabilities?: { voice?: boolean } }) =>
+    `${n.phone_number} ${n.status ?? ""} voz=${n.capabilities?.voice}`);
+  const ult = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Calls.json?PageSize=5`, auth).then((r) => r.json()).catch(() => ({}));
+  const ultimas = (ult.calls ?? []).map((c: { date_created?: string; from?: string; status?: string; duration?: string }) =>
+    `${c.date_created} de ${c.from} ${c.status} ${c.duration}s`);
+  return { status: b.status, duracao: b.duration, de: b.from, para: b.to, erros, alertas, numeros, ultimas, saldo: saldo.balance, moeda: saldo.currency };
 }
 
 // Quem chama: o cron (JWT service_role do Vault) e o chakra-webhook (SUPABASE_SERVICE_ROLE_KEY, que não é JWT e o
