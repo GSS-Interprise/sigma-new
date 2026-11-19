@@ -92,8 +92,11 @@ export function RegrasAvisos() {
 
         {regras.data && !editando && (
           <dl className="space-y-1.5">
-            <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Prazo do laudo</dt>
-              <dd className="text-right font-medium">{ORIGENS.map((o) => `${o.id === "ps" ? "PS" : o.nome} ${horas(regras.data.prazos[o.id] ?? 0)}`).join(" · ")}</dd></div>
+            {/* rótulo em cima e cada prazo inteiro: na coluna de 380px a linha única quebrava no meio ("48 / h") */}
+            <div><dt className="text-muted-foreground">Prazo do laudo</dt>
+              <dd className="flex flex-wrap gap-x-3 font-medium">
+                {ORIGENS.map((o) => <span key={o.id} className="whitespace-nowrap">{o.id === "ps" ? "PS" : o.nome} {horas(regras.data.prazos[o.id] ?? 0)}</span>)}
+              </dd></div>
             <div className="flex justify-between gap-3"><dt className="text-muted-foreground">WhatsApp ao plantonista</dt>
               <dd className="font-medium">aos {regras.data.aviso_pct}% do prazo</dd></div>
             <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Venceu sem dono</dt>
