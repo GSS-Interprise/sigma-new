@@ -14,7 +14,7 @@ import {
 import { ExameSlaDialog } from "./ExameSlaDialog";
 import { OrigemSelo, textoPrazo } from "./pecas";
 
-const TIPO_ALERTA: Record<Alerta["tipo"], string> = { prazo: "80% do prazo", vencido: "Prazo vencido", sem_escala: "Sem escala" };
+const TIPO_ALERTA: Record<Alerta["tipo"], string> = { prazo: "Perto do prazo", vencido: "Prazo vencido", sem_escala: "Sem escala" };
 
 function situacao(e: Exame, alertas: Alerta[]) {
   if (e.silenciado_em) return { texto: "Não precisa de laudo", tom: "text-muted-foreground" };
@@ -76,7 +76,7 @@ export function AbaSlaAoVivo() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-wrap gap-3">
           <Contador valor={vencidos} rotulo="Vencidos" tom={vencidos ? "text-red-700" : undefined} carregando={fila.isLoading} />
-          <Contador valor={perto} rotulo="Perto do prazo (80%)" tom={perto ? "text-amber-700" : undefined} carregando={fila.isLoading} />
+          <Contador valor={perto} rotulo="Perto do prazo" tom={perto ? "text-amber-700" : undefined} carregando={fila.isLoading} />
           <Contador valor={noPrazo} rotulo="No prazo" carregando={fila.isLoading} />
         </div>
         <div className="flex items-center gap-3">

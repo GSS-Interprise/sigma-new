@@ -1,5 +1,5 @@
 // Escala de plantão do SLA de laudos. Pergunta da tela: "Quem o robô vai avisar agora e nos próximos dias?"
-// Quem usa: Wagner e Brenda. O robô só aciona quem está escalado no horário: plantonista aos 80% do prazo;
+// Quem usa: Wagner e Brenda. O robô só aciona quem está escalado no horário: plantonista aos X% do prazo (Regras dos avisos);
 // plantonista + coordenador quando vence sem ninguém assumir.
 import { useMemo, useState } from "react";
 import { toast } from "sonner";

@@ -36,9 +36,9 @@ export function ExameSlaDialog({ exame, alertas, onClose, agora }: { exame: Exam
     ...alertas.map((a) => ({
       id: a.id, em: a.criado_em,
       texto: a.status === "falhou"
-        ? `Aviso (${a.tipo === "vencido" ? "prazo vencido" : "80% do prazo"}) para ${a.destino_nome ?? "—"} falhou${a.erro ? `: ${a.erro}` : ""}`
+        ? `Aviso (${a.tipo === "vencido" ? "prazo vencido" : "perto do prazo"}) para ${a.destino_nome ?? "—"} falhou${a.erro ? `: ${a.erro}` : ""}`
         : a.papel === "sem_escala" ? "Ninguém na escala: aviso só por e-mail"
-          : `Robô avisou ${a.destino_nome ?? "—"} por ${a.canal === "whatsapp" ? "WhatsApp" : a.canal} (${a.tipo === "vencido" ? "prazo vencido" : "80% do prazo"})${a.respondido_em ? ` · assumiu às ${horaCurta(a.respondido_em)}` : ""}`,
+          : `Robô avisou ${a.destino_nome ?? "—"} por ${a.canal === "whatsapp" ? "WhatsApp" : a.canal} (${a.tipo === "vencido" ? "prazo vencido" : "perto do prazo"})${a.respondido_em ? ` · assumiu às ${horaCurta(a.respondido_em)}` : ""}`,
     })),
     ...(notas.data ?? []).map((n) => ({ id: n.id, em: n.criado_em, texto: `${n.autor_nome ?? "Alguém"}: ${NOTA_TXT[n.tipo]}${n.texto ? ` — ${n.texto}` : ""}` })),
   ].sort((a, b) => b.em.localeCompare(a.em));
