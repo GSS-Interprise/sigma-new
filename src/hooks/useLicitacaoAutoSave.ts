@@ -14,6 +14,9 @@ interface AutoSavePayload {
   expectedUpdatedAt: string | null;
 }
 
+/** id do aviso de erro: quem chama (ex.: fechar o card) troca este aviso pelo seu, em vez de empilhar dois */
+export const TOAST_ERRO_SALVAR = "licitacao-erro-salvar";
+
 const DEBOUNCE_MS = 200;
 const MAX_RETRIES = 3;
 
@@ -141,6 +144,7 @@ export function useLicitacaoAutoSave(licitacaoId: string | null, onSuccess?: () 
         prioridade: "Prioridade",
         tipo_licitacao: "Tipo",
         decorrencia_analise: "Decorrência de Análise",
+        deliberacao: "Deliberação",
       };
 
       const camposAlterados = changedFields
@@ -189,7 +193,7 @@ export function useLicitacaoAutoSave(licitacaoId: string | null, onSuccess?: () 
     },
     onError: (error: any) => {
       console.error("Erro ao salvar:", error);
-      toast.error("Erro ao salvar. Tentando novamente...");
+      toast.error("Erro ao salvar. Tentando novamente...", { id: TOAST_ERRO_SALVAR });
     },
   });
 
@@ -275,6 +279,8 @@ export function useLicitacaoAutoSave(licitacaoId: string | null, onSuccess?: () 
       checkAndAdd('tipo_licitacao', formData.tipo_licitacao);
       checkAndAdd('prioridade', formData.prioridade);
       checkAndAdd('decorrencia_analise', formData.decorrencia_analise);
+      // Deliberação (18/11) ficou fora do delta e o Salvar não a gravava: o texto do Luiz sumia ao reabrir o card
+      checkAndAdd('deliberacao', formData.deliberacao);
 
       // Campos customizados
       const dadosCustomizados: Record<string, any> = {};
