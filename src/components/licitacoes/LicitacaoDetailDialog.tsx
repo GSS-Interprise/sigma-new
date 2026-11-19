@@ -45,7 +45,8 @@ import { LicitacaoComentarioAvancadoInput } from "./LicitacaoComentarioAvancadoI
 import { LicitacaoAtividadeItem } from "./LicitacaoAtividadeItem";
 import { useOpcoesStatusLicitacao } from "./ColunaKanbanEditavel";
 import { LicitacaoTarefasPanel } from "./LicitacaoTarefasPanel";
-import { LicitacaoAnaliseEdital } from "./LicitacaoAnaliseEdital";
+import { LicitacaoAnaliseEdital, type LicitacaoAnaliseEditalRef } from "./LicitacaoAnaliseEdital";
+import { CAMPOS_SALVOS_AO_FECHAR, pendenciasAoFechar, type CampoSalvoAoFechar } from "./pendenciasAoFechar";
 import { LicitacaoResultadoResumo } from "./LicitacaoResultadoDialog";
 import { BLOQUEAR_DUPLICADO, DuplicadoAviso, DuplicadoConfirmar, useDuplicadosLicitacao } from "./LicitacaoDuplicadoAviso";
 import { LicitacaoRiscoIndicator } from "./LicitacaoRiscoIndicator";
@@ -240,6 +241,10 @@ export function LicitacaoDetailDialog({
   const isInitialLoadRef = useRef(true);
   const previousDataRef = useRef<any>(null);
   const formDataRef = useRef<any>({}); // Ref para acessar formData no flush sem causar loop
+  // colunas de texto que vieram do banco ao abrir o card (ver pendenciasAoFechar)
+  const colunasCarregadasRef = useRef<Set<string>>(new Set());
+  const analiseRef = useRef<LicitacaoAnaliseEditalRef>(null);
+  const fechandoRef = useRef(false);
 
   // Wrapper: mantém o formDataRef sincronizado no MESMO tick do setState
   // (evita salvar "texto cortado" ao fechar o dialog ou clicar em Salvar logo após digitar/colar)
@@ -350,6 +355,65 @@ export function LicitacaoDetailDialog({
 
   // Determinar se pode editar (tem lock ou é novo)
   const canEdit = isNew || hasLock;
+
+  const NOMES_AO_FECHAR: Record<CampoSalvoAoFechar, string> = {
+    decorrencia_analise: "a Decorrência de Análise",
+    deliberacao: "a Deliberação",
+  };
+
+  const pendenciasDoCard = () => {
+    if (isNew || !licitacao?.id || !editando || !hasLock || lastLoadedIdRef.current !== licitacao.id) return {};
+    return pendenciasAoFechar(formDataRef.current, previousDataRef.current, colunasCarregadasRef.current);
+  };
+
+  const gravarCamposAoFechar = async (pendentes: Partial<Record<CampoSalvoAoFechar, string>>) => {
+    const gravado = previousDataRef.current;
+    // o resto do formulário vai igual ao gravado: o delta do hook leva só os textos (status, datas etc. seguem no Salvar)
+    const semCustom = Object.fromEntries(Object.entries(gravado).filter(([k]) => !k.startsWith("custom_")));
+    const result = await saveNow({ ...semCustom, ...pendentes }, gravado);
+    if (result && result.updated_at) {
+      previousDataRef.current = { ...gravado, ...pendentes, updated_at: result.updated_at };
+      markAsSavedByMe(result.updated_at);
+    }
+  };
+
+  // Fechar o card (X, Esc, clique fora) grava antes o texto em andamento (Luiz, GSS, 19/11: as correções da análise
+  // sumiam ao fechar sem clicar em Salvar). Grava ANTES de avisar o pai, que limpa `licitacao` ao fechar: o id e o
+  // formulário ainda são deste card. Se der erro, o card continua aberto com o texto na tela.
+  const handleOpenChange = async (aberto: boolean): Promise<boolean> => {
+    if (aberto) {
+      onOpenChange(true);
+      return true;
+    }
+    if (fechandoRef.current) return false;
+    const analisePendente = !isNew && !!analiseRef.current?.temPendente();
+    const campos = pendenciasDoCard();
+    const nomesCampos = (Object.keys(campos) as CampoSalvoAoFechar[]).map((c) => NOMES_AO_FECHAR[c]);
+    if (!analisePendente && nomesCampos.length === 0) {
+      onOpenChange(false);
+      return true;
+    }
+    fechandoRef.current = true;
+    const aviso = toast.loading("Salvando o que você escreveu antes de fechar…");
+    try {
+      if (analisePendente) await analiseRef.current!.salvarPendente();
+      if (nomesCampos.length) await gravarCamposAoFechar(campos);
+      const partes = [...(analisePendente ? ["a correção da análise"] : []), ...nomesCampos];
+      const lista = partes.length > 1 ? `${partes.slice(0, -1).join(", ")} e ${partes[partes.length - 1]}` : partes[0];
+      toast.success(`Salvo ao fechar: ${lista}.`, { id: aviso });
+      onOpenChange(false);
+      return true;
+    } catch (e) {
+      toast.error("Não consegui salvar o que você escreveu, por isso o card continua aberto. Tente fechar de novo ou clique em Salvar.", {
+        id: aviso,
+        description: e instanceof Error ? e.message : (e as { message?: string })?.message,
+        duration: 10000,
+      });
+      return false;
+    } finally {
+      fechandoRef.current = false;
+    }
+  };
 
   // Carregar dados de conversão quando a licitação muda
   useEffect(() => {
@@ -539,6 +603,9 @@ export function LicitacaoDetailDialog({
       };
       
       setFormData(initialData);
+      colunasCarregadasRef.current = new Set(
+        CAMPOS_SALVOS_AO_FECHAR.filter((c) => (licitacao as Record<string, unknown>)[c] !== undefined),
+      );
       // Guarda o updated_at do registro para o auto-save conseguir fazer controle de concorrência
       previousDataRef.current = { ...initialData, updated_at: licitacao.updated_at ?? null };
       // Atualizar o ID carregado APÓS popular as refs (evita vazamento entre licitações)
@@ -1352,7 +1419,7 @@ export function LicitacaoDetailDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="w-[90vw] max-w-[1800px] h-[90vh] p-0 gap-0 overflow-hidden flex flex-col">
         <DialogHeader className="sr-only">
           <DialogTitle>{isNew ? 'Novo Edital' : 'Detalhes da Licitação'}</DialogTitle>
@@ -1608,10 +1675,9 @@ export function LicitacaoDetailDialog({
                           onClick={() => {
                             const gemeoId = licitacao.card_gemeo_id;
                             if (!gemeoId) return;
-                            onOpenChange?.(false);
-                            setTimeout(() => {
-                              navigate(`/licitacoes?open=${gemeoId}`);
-                            }, 100);
+                            void handleOpenChange(false).then((fechou) => {
+                              if (fechou) setTimeout(() => navigate(`/licitacoes?open=${gemeoId}`), 100);
+                            });
                           }}
                         >
                           <Link2 className="h-3 w-3" />
@@ -1669,7 +1735,8 @@ export function LicitacaoDetailDialog({
               </TabsList>
 
               {/* Aba Detalhes */}
-              <TabsContent value="detalhes" className="flex-1 min-h-0 overflow-hidden m-0">
+              {/* forceMount: trocar de aba não desmonta a correção da análise nem o desfazer dos editores */}
+              <TabsContent value="detalhes" forceMount className="flex-1 min-h-0 overflow-hidden m-0 data-[state=inactive]:hidden">
                 <ScrollArea className="h-full px-3 py-2">
                   <div className="space-y-1.5">
                     
@@ -1884,7 +1951,7 @@ export function LicitacaoDetailDialog({
                     >
                       <div className="space-y-2">
                         {licitacao?.id && (
-                          <LicitacaoAnaliseEdital licitacaoId={licitacao.id} onInserir={inserirAnaliseNaDecorrencia} />
+                          <LicitacaoAnaliseEdital ref={analiseRef} licitacaoId={licitacao.id} onInserir={inserirAnaliseNaDecorrencia} />
                         )}
                         {/* Decorrência de Análise - editor rico para registros da equipe */}
                         <DraggableItem

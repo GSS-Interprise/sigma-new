@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { forwardRef, useImperativeHandle, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { Loader2, Sparkles, ArrowDownToLine, AlertTriangle, ChevronDown, ChevronUp, Pencil, Undo2, Redo2 } from "lucide-react";
@@ -7,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { sanitizeHtml } from "@/lib/sanitizeHtml";
 import { EditorComGrifo, GRIFO_EQUIPE, type EditorComGrifoRef } from "./EditorComGrifo";
+import { temConteudo } from "./pendenciasAoFechar";
 
 /**
  * Análise de edital pelo modelo do Gem da Bianca (T6; modelo dela aplicado em 15/10). A IA lê os PDFs do
@@ -24,12 +25,33 @@ type Analise = {
 const CAIXA_DO_TEXTO =
   "text-sm prose prose-sm max-w-none bg-background rounded-md p-3 [&_h3]:text-sm [&_h3]:font-bold [&_h3]:mt-3 [&_h3]:mb-1 [&_.fonte]:text-[11px] [&_.fonte]:text-muted-foreground [&_table]:w-full [&_table]:border-collapse [&_table]:my-2 [&_td]:border [&_td]:border-border [&_td]:p-1.5 [&_td]:text-xs [&_th]:border [&_th]:border-border [&_th]:p-1.5 [&_th]:text-xs [&_th]:font-semibold [&_th]:bg-muted/50";
 
-export function LicitacaoAnaliseEdital({ licitacaoId, onInserir }: { licitacaoId: string; onInserir: (html: string) => Promise<void> | void }) {
+/** HTML como o navegador o escreve de volta: o editor devolve `innerHTML`, que pode diferir do texto salvo só na forma. */
+function comoNoEditor(html: string): string {
+  const caixa = document.createElement("div");
+  caixa.innerHTML = sanitizeHtml(html);
+  return caixa.innerHTML;
+}
+
+/**
+ * Usado pelo card antes de fechar (Luiz, 19/11: a correção sumia ao fechar o card sem clicar em Salvar).
+ * `temPendente` diz se há correção em andamento com mudança; `salvarPendente` grava (erro sobe para o card não fechar).
+ */
+export type LicitacaoAnaliseEditalRef = {
+  temPendente: () => boolean;
+  salvarPendente: () => Promise<boolean>;
+};
+
+export const LicitacaoAnaliseEdital = forwardRef<LicitacaoAnaliseEditalRef, {
+  licitacaoId: string;
+  onInserir: (html: string) => Promise<void> | void;
+}>(function LicitacaoAnaliseEdital({ licitacaoId, onInserir }, refExterno) {
   const qc = useQueryClient();
   const [pedindo, setPedindo] = useState(false);
   const [aberta, setAberta] = useState(true);
   const [corrigindo, setCorrigindo] = useState(false);
   const [rascunho, setRascunho] = useState("");
+  // texto ao clicar em Corrigir: base para saber se há mudança a gravar ao fechar o card
+  const [baseCorrecao, setBaseCorrecao] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [verOriginal, setVerOriginal] = useState(false);
   const editorRef = useRef<EditorComGrifoRef>(null);
@@ -65,22 +87,44 @@ export function LicitacaoAnaliseEdital({ licitacaoId, onInserir }: { licitacaoId
   const htmlVigente = atual?.html_editado || atual?.html || "";
 
   // html vazio = volta para o texto da IA (a correção salva é descartada; o original nunca foi alterado)
-  const salvarCorrecao = async (html = rascunho) => {
-    if (!atual) return;
+  const gravarCorrecao = async (analiseId: string, html: string) => {
     setSalvando(true);
     try {
-      const { error } = await (supabase as any).rpc("licitacao_analise_salvar_edicao", { p_analise_id: atual.id, p_html: html });
+      const { error } = await (supabase as any).rpc("licitacao_analise_salvar_edicao", { p_analise_id: analiseId, p_html: html });
       if (error) throw error;
-      toast.success(html ? "Correção salva. O que a equipe escreveu aparece grifado em amarelo." : "Voltou para o texto original da IA.");
       setCorrigindo(false);
       setVerOriginal(false);
-      qc.invalidateQueries({ queryKey: chave });
-    } catch (e: any) {
-      toast.error(`Não salvei a correção: ${e.message}`);
+      // a reabertura do card lê do banco, não do cache antigo
+      await qc.invalidateQueries({ queryKey: chave });
     } finally {
       setSalvando(false);
     }
   };
+
+  const salvarCorrecao = async (html = rascunho) => {
+    if (!atual) return;
+    try {
+      await gravarCorrecao(atual.id, html);
+      toast.success(html ? "Correção salva. O que a equipe escreveu aparece grifado em amarelo." : "Voltou para o texto original da IA.");
+    } catch (e: any) {
+      toast.error(`Não salvei a correção: ${e.message}`);
+    }
+  };
+
+  const temPendente = () =>
+    corrigindo && atual?.status === "pronta" && !salvando &&
+    // apagar tudo e fechar não pode virar "voltar ao texto da IA": isso só pelo botão, com confirmação
+    temConteudo(rascunho) &&
+    comoNoEditor(rascunho) !== comoNoEditor(baseCorrecao);
+
+  useImperativeHandle(refExterno, () => ({
+    temPendente,
+    salvarPendente: async () => {
+      if (!atual || !temPendente()) return false;
+      await gravarCorrecao(atual.id, rascunho);
+      return true;
+    },
+  }));
 
   const pedir = async () => {
     setPedindo(true);
@@ -122,7 +166,7 @@ export function LicitacaoAnaliseEdital({ licitacaoId, onInserir }: { licitacaoId
         <div className="ml-auto flex items-center gap-1.5">
           {atual?.status === "pronta" && !corrigindo && (
             <Button size="sm" variant="outline" className="h-7 text-xs"
-              onClick={() => { setRascunho(htmlVigente); setHistorico({ podeDesfazer: false, podeRefazer: false }); setCorrigindo(true); setAberta(true); setVerOriginal(false); }}>
+              onClick={() => { setRascunho(htmlVigente); setBaseCorrecao(htmlVigente); setHistorico({ podeDesfazer: false, podeRefazer: false }); setCorrigindo(true); setAberta(true); setVerOriginal(false); }}>
               <Pencil className="h-3.5 w-3.5 mr-1" /> Corrigir texto
             </Button>
           )}
@@ -218,4 +262,4 @@ export function LicitacaoAnaliseEdital({ licitacaoId, onInserir }: { licitacaoId
       )}
     </div>
   );
-}
+});
