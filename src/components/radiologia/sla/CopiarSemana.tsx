@@ -52,7 +52,7 @@ export function CopiarSemana() {
     queryKey: ["sla-escala-copiar", origem.toISOString()],
     enabled: aberto,
     queryFn: async () => {
-      const { data, error } = await db.from("sla_plantao").select("id, papel, inicio, fim, nome, telefone, email")
+      const { data, error } = await db.from("sla_plantao").select("id, papel, inicio, fim, nome, telefone, email, drescala_plantao_id")
         .eq("unidade", UNIDADE).gte("inicio", origem.toISOString()).lt("inicio", somaDias(destino, 7).toISOString())
         .order("inicio").order("id");
       if (error) throw error;
@@ -62,7 +62,8 @@ export function CopiarSemana() {
 
   const plano = useMemo(() => {
     const todos = semanas.data ?? [];
-    const daOrigem = todos.filter((p) => new Date(p.inicio) < destino);
+    // Plantão do Dr. Escala não se copia: a próxima semana chega sozinha de lá; copiar duplicaria o aviso.
+    const daOrigem = todos.filter((p) => new Date(p.inicio) < destino && p.drescala_plantao_id == null);
     const jaTem = new Set(todos.filter((p) => new Date(p.inicio) >= destino).map(chave));
     const agora = Date.now();
     let repetidos = 0, passados = 0;

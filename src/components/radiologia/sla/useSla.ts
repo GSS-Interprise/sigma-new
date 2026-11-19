@@ -56,6 +56,9 @@ export type Plantao = {
   nome: string;
   telefone: string;
   email: string | null;
+  // Plantões do Dr. Escala (19/11): vêm sozinhos a cada 30 min. 'TC' | 'US' | null (qualquer exame).
+  modalidade?: string | null;
+  drescala_plantao_id?: number | null;
 };
 
 const db = supabase as any;
@@ -150,7 +153,7 @@ export function useEscala(diasAFrente = 14) {
     refetchInterval: 60_000,
     queryFn: async () => {
       const ate = new Date(Date.now() + diasAFrente * 86_400_000).toISOString();
-      const { data, error } = await db.from("sla_plantao").select("id, papel, inicio, fim, nome, telefone, email")
+      const { data, error } = await db.from("sla_plantao").select("id, papel, inicio, fim, nome, telefone, email, modalidade, drescala_plantao_id")
         .eq("unidade", UNIDADE).gt("fim", new Date().toISOString()).lt("inicio", ate).order("inicio");
       if (error) throw error;
       return (data ?? []) as Plantao[];

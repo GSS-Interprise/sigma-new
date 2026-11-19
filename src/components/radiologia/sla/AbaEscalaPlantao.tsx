@@ -140,7 +140,7 @@ export function AbaEscalaPlantao() {
             )}
             {deAgora.map((p) => (
               <div key={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                <span className={cn("rounded px-2 py-0.5 text-xs font-semibold", PAPEL[p.papel].selo)}>{PAPEL[p.papel].nome}</span>
+                <span className={cn("rounded px-2 py-0.5 text-xs font-semibold", PAPEL[p.papel].selo)}>{PAPEL[p.papel].nome}{p.modalidade ? ` ${p.modalidade}` : ""}</span>
                 <span className="font-medium">{p.nome}</span>
                 <span className="text-muted-foreground">{telefoneBonito(p.telefone)} · até {hm(p.fim)}</span>
               </div>
@@ -174,7 +174,10 @@ export function AbaEscalaPlantao() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0 pb-2">
-            <CardTitle className="text-base">Próximos 14 dias</CardTitle>
+            <div>
+              <CardTitle className="text-base">Próximos 14 dias</CardTitle>
+              <p className="text-xs text-muted-foreground">Sobreaviso de TC e US vem do Dr. Escala a cada 30 min. Troca de plantão se faz lá.</p>
+            </div>
             <CopiarSemana />
           </CardHeader>
           <CardContent className="space-y-4 text-sm">
@@ -188,17 +191,22 @@ export function AbaEscalaPlantao() {
                 <p className="mb-1 font-medium capitalize">{diaSemana(lista[0].inicio)}</p>
                 <div className="divide-y rounded-md border">
                   {lista.map((p) => (
-                    <div key={p.id} className="grid grid-cols-[110px_110px_minmax(0,1fr)_auto] items-center gap-3 px-3 py-2">
+                    <div key={p.id} className="grid grid-cols-[110px_130px_minmax(0,1fr)_auto] items-center gap-3 px-3 py-2">
                       <span className="tabular-nums">{hm(p.inicio)} às {hm(p.fim)}</span>
-                      <span className={cn("w-fit rounded px-2 py-0.5 text-xs font-semibold", PAPEL[p.papel].selo)}>{PAPEL[p.papel].nome}</span>
+                      <span className={cn("w-fit rounded px-2 py-0.5 text-xs font-semibold", PAPEL[p.papel].selo)}>{PAPEL[p.papel].nome}{p.modalidade ? ` ${p.modalidade}` : ""}</span>
                       {/* nome longo corta com reticências; o telefone nunca some */}
                       <span className="flex min-w-0 items-baseline gap-1" title={`${p.nome} · ${telefoneBonito(p.telefone)}`}>
                         <span className="truncate font-medium">{p.nome}</span>
-                        <span className="shrink-0 text-muted-foreground">· {telefoneBonito(p.telefone)}</span>
+                        <span className="shrink-0 text-muted-foreground">· {p.telefone ? telefoneBonito(p.telefone) : "sem telefone no cadastro"}</span>
                       </span>
-                      <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={`Remover plantão de ${p.nome}`} onClick={() => setRemover(p)}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      {/* Remover plantão do Dr. Escala não adianta: a sincronização o traz de volta em 30 min. */}
+                      {p.drescala_plantao_id != null ? (
+                        <span className="w-8 text-center text-[11px] text-muted-foreground" title="Vem do Dr. Escala. Para trocar, mude no Dr. Escala.">DrE</span>
+                      ) : (
+                        <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={`Remover plantão de ${p.nome}`} onClick={() => setRemover(p)}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
                     </div>
                   ))}
                 </div>
