@@ -11,7 +11,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { chakraApi, unwrapChakraPayload } from "../_shared/chakra.ts";
 import { SLA_VOZ_URL, tokenAlerta } from "../_shared/sla.ts";
-import { calcularIndicadores, destinoDoAviso, ESCADA, proximoPassoEscada, saidaConfiavel, textoIndicadores, type Papel } from "../_shared/slaEscada.ts";
+import { calcularIndicadores, daModalidade, destinoDoAviso, ESCADA, modalidadeDoExame, proximoPassoEscada, saidaConfiavel, textoIndicadores, type Papel } from "../_shared/slaEscada.ts";
 
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { "Content-Type": "application/json" } });
 const UNIDADES = ["marieta"];
@@ -235,7 +235,7 @@ async function checarExames(admin: any, forcar = false, unidades = UNIDADES, tes
     // WhatsApp/e-mail de 80% e de vencido saem uma vez; as ligações da escada têm a conta delas (escada_passo).
     const feito = new Set(ja.filter((a: any) => a.canal !== "ligacao").map((a: any) => `${a.exame_id}:${a.tipo}`));
     let enviados = 0;
-    const { data: escala } = await admin.from("sla_plantao").select("id, papel, nome, telefone, email")
+    const { data: escala } = await admin.from("sla_plantao").select("id, papel, nome, telefone, email, modalidade")
       .eq("unidade", unidade).lte("inicio", agora.toISOString()).gt("fim", agora.toISOString());
     const plantonistas = (escala ?? []).filter((p: any) => p.papel === "plantonista");
     const coordenadores = (escala ?? []).filter((p: any) => p.papel === "coordenador");
@@ -243,6 +243,9 @@ async function checarExames(admin: any, forcar = false, unidades = UNIDADES, tes
       diretoria: (escala ?? []).filter((p: any) => p.papel === "diretoria") };
 
     for (const e of exames) {
+      // Escala do Dr. Escala (19/11): sobreaviso de TC e de US ao mesmo tempo. O exame avisa quem é da modalidade
+      // dele; sem ninguém da modalidade, avisa todos os plantonistas (melhor sobrar aviso que ninguém ver).
+      const plantonistasDoExame = daModalidade(plantonistas, modalidadeDoExame(e.estudo));
       const ini = new Date(e.inicio_em).getTime(), fim = new Date(e.vence_em).getTime();
       const prazo = fim - ini, gasto = agora.getTime() - ini;
       const tipo = gasto >= prazo ? "vencido" : gasto >= prazo * 0.8 ? "prazo" : null;
@@ -250,7 +253,7 @@ async function checarExames(admin: any, forcar = false, unidades = UNIDADES, tes
         const ligacoes = (ja ?? []).filter((a: any) => a.exame_id === e.id && a.escada_passo)
           .map((a: any) => ({ passo: a.escada_passo, status: a.status, criado_em: a.criado_em }));
         const jaFim = (ja ?? []).some((a: any) => a.exame_id === e.id && a.papel === "escada_fim");
-        res.push(await passoEscada(admin, e, ligacoes, porPapel, jaFim, emails, agora));
+        res.push(await passoEscada(admin, e, ligacoes, { ...porPapel, plantonista: plantonistasDoExame }, jaFim, emails, agora));
       }
       if (!tipo || feito.has(`${e.id}:${tipo}`)) continue;
       // Teto por rodada: se algo escapar das travas acima, sai no máximo isto a cada 2 min (o resto fica para a
@@ -264,7 +267,7 @@ async function checarExames(admin: any, forcar = false, unidades = UNIDADES, tes
       const params = comNome
         ? [origem, un, String(e.paciente).slice(0, 60), String(e.estudo || "exame").slice(0, 60), hh, tempo]
         : [origem, un, hh, tempo];
-      const destinos = tipo === "vencido" ? [...plantonistas, ...coordenadores] : plantonistas;
+      const destinos = tipo === "vencido" ? [...plantonistasDoExame, ...coordenadores] : plantonistasDoExame;
       const linha = `${origem}${e.paciente ? `, ${e.paciente}${e.estudo ? ` (${e.estudo})` : ""}` : ""}, exame das ${hh}: ${tipo === "vencido" ? `vencido há ${tempo}` : `vence em ${tempo}`}`;
 
       if (!destinos.length) {

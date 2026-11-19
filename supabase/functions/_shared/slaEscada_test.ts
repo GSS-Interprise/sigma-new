@@ -1,5 +1,5 @@
 import { assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import { calcularIndicadores, destinoDoAviso, proximoPassoEscada, saidaConfiavel, textoIndicadores, type ExameDia } from "./slaEscada.ts";
+import { calcularIndicadores, daModalidade, destinoDoAviso, modalidadeDoExame, proximoPassoEscada, saidaConfiavel, textoIndicadores, type ExameDia } from "./slaEscada.ts";
 
 const todos = { plantonista: true, coordenador: true, diretoria: true };
 const agora = new Date("2026-11-14T03:00:00Z");
@@ -107,4 +107,18 @@ Deno.test("teste interno: aviso vai para o número de teste e guarda para quem i
   assertEquals(destinoDoAviso(dr, ""), { nome: "Dr. Fulano", telefone: "5547999990000", teste: false });
   assertEquals(destinoDoAviso(dr, "55 54 98435-1512"), { nome: "Dr. Fulano (teste interno)", telefone: "5554984351512", teste: true });
   assertEquals(destinoDoAviso(dr, "123"), { nome: "Dr. Fulano", telefone: "5547999990000", teste: false });
+});
+
+Deno.test("modalidade do exame: ultrassom pelo nome, o resto é TC", () => {
+  assertEquals(modalidadeDoExame("TC Torax"), "TC");
+  assertEquals(modalidadeDoExame("US Abdome total"), "US");
+  assertEquals(modalidadeDoExame("Doppler venoso"), "US");
+  assertEquals(modalidadeDoExame(null), "TC");
+  assertEquals(modalidadeDoExame("TORAX SC(AduIt)"), "TC");
+});
+
+Deno.test("plantonista da modalidade; sem ninguém dela, todos", () => {
+  const p = [{ nome: "a", modalidade: "TC" }, { nome: "b", modalidade: "US" }, { nome: "c", modalidade: null }];
+  assertEquals(daModalidade(p, "US").map((x) => x.nome), ["b", "c"]);
+  assertEquals(daModalidade([{ nome: "a", modalidade: "TC" }], "US").map((x) => x.nome), ["a"]);
 });

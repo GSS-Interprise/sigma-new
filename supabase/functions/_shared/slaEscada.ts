@@ -141,3 +141,14 @@ export function textoIndicadores(i: Indicadores, unidade: string, periodo: strin
   if (i.horasComAtraso.length) linhas.push(`Horas com mais atraso: ${i.horasComAtraso.map((h) => `${h.hora} (${h.vencidos})`).join(", ")}.`);
   return linhas.join("\n");
 }
+
+// Modalidade pelo nome do estudo que o PACS mostra ("TC Torax", "US Abdome", "Doppler..."). A fila do Marieta é
+// quase toda tomografia, então o que não for ultrassom conta como TC.
+export function modalidadeDoExame(estudo: string | null | undefined): "TC" | "US" {
+  return /\b(US|USG|ULTRA|ULTRASS|DOPPLER|ECOGRAF)/i.test(estudo ?? "") ? "US" : "TC";
+}
+
+export function daModalidade<T extends { modalidade?: string | null }>(pessoas: T[], m: string): T[] {
+  const certas = pessoas.filter((p) => !p.modalidade || p.modalidade === m);
+  return certas.length ? certas : pessoas;
+}
