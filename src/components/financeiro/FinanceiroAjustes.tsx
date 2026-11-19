@@ -224,6 +224,10 @@ export function FinanceiroAjustes({ pagamentoId, bloqueado, base = 0, minutosAtu
                 <Input placeholder="2 ou 2:30" value={form?.horas ?? ""} aria-invalid={minForm == null}
                   onChange={(e) => setForm((f) => (f ? { ...f, horas: e.target.value } : f))} />
                 {minForm == null && <p className="text-[11px] text-red-600 mt-1">Use 2, 2:30 ou 2h30.</p>}
+                {/* 18/11: a Mavi escreveu "+2h" só na justificativa e o pedido de NF seguiu com as horas antigas */}
+                {minForm === 0 && /escala/i.test(nomeCat(form?.categoria_id ?? "")) && (
+                  <p className="text-[11px] text-amber-700 mt-1">Mudou a carga? Preencha as horas aqui, senão o pedido de NF sai com as horas antigas.</p>
+                )}
               </div>
             </div>
             <div className="rounded-md border bg-muted/40 p-2.5 text-xs space-y-1">

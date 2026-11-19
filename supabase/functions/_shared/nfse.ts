@@ -45,6 +45,7 @@ export type Nfse = {
   liquidoNaDescricao?: number | null;   // "valor líquido ... R$ X" escrito fora do campo próprio
   discriminacao?: string | null;        // texto da discriminação dos serviços (layout municipal), para quem confere
   retencoesCampos?: number | null;      // soma das retenções em colunas (Prefeitura de SP), só referência
+  tipoDocumento?: string | null;        // leitura de foto: o que a imagem é quando NÃO é nota (ex.: relatório de plantões)
   dadosBancarios?: DadosBancarios | null; // só na leitura de foto; no PDF vem de dadosBancariosDoTexto
 };
 
@@ -349,8 +350,14 @@ export async function leituraFoto(bytes: Uint8Array, mime: string, cnpjsTomador:
   let bin = "";
   for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   const dataUrl = `data:${mime};base64,${btoa(bin)}`;
-  const pedido = `Esta imagem é uma nota fiscal de serviço brasileira (NFS-e). Devolva SOMENTE um JSON:
-{"numero_nota": string ou null, "prestador_cnpj": string ou null, "tomador_cnpj": string ou null, "valor_servico": número,
+  // Antes o pedido partia do princípio de que a imagem era nota: o print do relatório de plantões da Erica
+  // (Vacaria, 18/11, "Valor Total R$ 52.600") virou nota recebida. Agora o modelo diz primeiro o que é.
+  const pedido = `Primeiro decida se esta imagem é uma NOTA FISCAL DE SERVIÇO brasileira (NFS-e, DANFSe, nota da prefeitura):
+ela tem número da nota, prestador e tomador do serviço. Relatório ou print de aplicativo de plantões, escala, planilha,
+comprovante de pagamento, boleto, conversa ou foto qualquer NÃO é nota fiscal.
+Devolva SOMENTE um JSON:
+{"e_nota_fiscal": true/false, "tipo_documento": string curta dizendo o que a imagem é,
+"numero_nota": string ou null, "prestador_cnpj": string ou null, "tomador_cnpj": string ou null, "valor_servico": número,
 "irrf": número, "pis_cofins_csll_retidos": número, "inss_retido": número, "iss_retido": número, "total_retencoes": número,
 "valor_liquido": número, "simples_nacional": true/false/null, "competencia": "AAAA-MM-DD" ou null, "emissao": "AAAA-MM-DD" ou null,
 "dados_bancarios": {"banco": string ou null, "agencia": string ou null, "conta": string ou null, "pix": string ou null}}
@@ -373,6 +380,16 @@ não calcule impostos por alíquota; "valor_servico" é o valor bruto; se não h
     const txt = String(corpo?.choices?.[0]?.message?.content ?? "");
     const j = JSON.parse(txt.slice(txt.indexOf("{"), txt.lastIndexOf("}") + 1));
     const n = (x: unknown) => (typeof x === "number" && Number.isFinite(x) ? x : Number(x));
+    if (j.e_nota_fiscal === false) {
+      // legível, mas não é nota: quem chama não vincula nem confirma recebimento
+      return {
+        legivel: true, ehNfse: false, tomadorGss: false, prestadorCnpj: null, prestadorNome: null, prestadorEmail: null,
+        valor: null, chave: null, descricao: null, numero: null, competencia: null, emissao: null, tomadorCnpj: null,
+        tomadorNome: null, irrf: null, contribSociais: null, inssRetido: null, issRetido: null, totalRetencoes: null,
+        valorLiquido: null, simplesNacional: null, impostosLidos: false,
+        tipoDocumento: j.tipo_documento ? String(j.tipo_documento).slice(0, 80) : "imagem que não é nota fiscal",
+      } as Nfse;
+    }
     const valor = n(j.valor_servico);
     if (!(valor > 0)) return null;
     const partes = [n(j.irrf) || 0, n(j.pis_cofins_csll_retidos) || 0, n(j.inss_retido) || 0, n(j.iss_retido) || 0];

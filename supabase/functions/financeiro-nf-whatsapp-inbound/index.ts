@@ -14,7 +14,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { baixarMidiaChakra, chakraApi } from "../_shared/chakra.ts";
-import { CNPJS_GRUPO_GSS, lerNfse, textoPdf, type Nfse } from "../_shared/nfse.ts";
+import { CNPJS_GRUPO_GSS, leituraFoto, lerNfse, textoPdf, type Nfse } from "../_shared/nfse.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -212,6 +212,72 @@ serve(async (req) => {
       : { legivel: false, ehNfse: false, tomadorGss: false, prestadorCnpj: null, prestadorNome: null, prestadorEmail: null, valor: null, chave: null, descricao: null,
         numero: null, competencia: null, emissao: null, tomadorCnpj: null, tomadorNome: null, irrf: null, contribSociais: null, inssRetido: null,
         issRetido: null, totalRetencoes: null, valorLiquido: null, simplesNacional: null, impostosLidos: false };
+
+    // IMAGEM: a IA diz primeiro se é nota. Print de relatório de plantões (Erica, Vacaria, 18/11) entrava como
+    // "Nota fiscal recebida", vinculado ao pedido, e a Mavi tinha que descartar à mão. Imagem que não é nota não
+    // vincula nem confirma recebimento: o médico recebe uma resposta honesta e o financeiro um aviso, porque quase
+    // sempre é o médico contestando horas ou valor. Leitura indisponível (sem chave, erro): segue o caminho antigo.
+    if (arquivo && !ehPdf && /^image\//i.test(mime)) {
+      const foto = await leituraFoto(arquivo.bytes, mime, cnpjsTomador).catch(() => null);
+      if (foto && !foto.ehNfse) {
+        const oQue = foto.tipoDocumento || "imagem que não é nota fiscal";
+        const pagAlvo = pedido.pagamentoId
+          ? (await svc.from("financeiro_pagamentos").select("id, profissional_nome, mes_referencia, ano_referencia, valor_total, total_horas_minutos").eq("id", pedido.pagamentoId).maybeSingle()).data
+          : null;
+        let pathImg: string | null = null;
+        const { data: jaImg } = msg.mensagemId
+          ? await svc.from("financeiro_nf_inbox").select("arquivo_path").eq("mensagem_id", msg.mensagemId).maybeSingle()
+          : { data: null as any };
+        if (jaImg?.arquivo_path) pathImg = jaImg.arquivo_path;
+        else {
+          pathImg = `nf/entrada/${agora.slice(0, 7)}/${Date.now()}_${sanitize(msg.midia.nome)}`;
+          const { error: upErr } = await svc.storage.from("financeiro-anexos").upload(pathImg, arquivo.bytes, { contentType: mime, upsert: false });
+          if (upErr) pathImg = null;
+        }
+        await svc.from("financeiro_nf_inbox").upsert({
+          origem: "whatsapp", remetente: msg.de, remetente_nome: msg.nomePerfil || null,
+          arquivo_nome: msg.midia.nome, arquivo_path: pathImg, mime, mensagem_id: msg.mensagemId || null,
+          recebido_em: msg.quando || agora, status: "descartada", pagamento_id: null, eh_nfse: false,
+          confianca: "fraca", motivo: `não é nota fiscal: ${oQue}`.slice(0, 1000),
+        }, { onConflict: "mensagem_id" });
+        if (!silencioso) {
+          try {
+            await chakraApi(
+              `/v1/ext/plugin/whatsapp/${sender.chakra_plugin_id}/api/v24.0/${sender.chakra_phone_number_id}/messages`,
+              {
+                method: "POST",
+                body: JSON.stringify({
+                  messaging_product: "whatsapp", recipient_type: "individual", to: msg.de, type: "text",
+                  text: { body: "Recebemos a sua imagem, mas ela não é a nota fiscal. O financeiro da GSS vai olhar e te retorna por aqui. A nota pode ser enviada em PDF ou foto da NFS-e." },
+                }),
+              },
+            );
+          } catch (e) { console.warn("[nf-whatsapp] falha ao responder imagem que não é nota", e); }
+          const canalId = cfg("financeiro_canal_id");
+          if (canalId) {
+            const { data: parts } = await svc.from("comunicacao_participantes").select("user_id").eq("canal_id", canalId);
+            const autor = parts?.[0]?.user_id;
+            if (autor) {
+              const quemTxt = pagAlvo?.profissional_nome || msg.nomePerfil || msg.de;
+              const pedidoTxt = pagAlvo
+                ? ` Pedido de ${MESES[pagAlvo.mes_referencia - 1]}/${pagAlvo.ano_referencia}: ${fmtBRL(Number(pagAlvo.valor_total))}` +
+                  (Number(pagAlvo.total_horas_minutos) ? `, ${Math.round(Number(pagAlvo.total_horas_minutos) / 60)} h` : "") + "."
+                : "";
+              const { data: m } = await svc.from("comunicacao_mensagens").insert({
+                canal_id: canalId, user_id: autor, user_nome: "Notas fiscais",
+                mensagem: `🖼️ *Imagem que não é nota* — ${quemTxt} mandou ${oQue}. Pode ser contestação de horas ou valor: confira e responda.${pedidoTxt}`,
+              }).select("id").single();
+              if (m && parts?.length) {
+                await svc.from("comunicacao_notificacoes").insert(
+                  parts.filter((p: any) => p.user_id !== autor).map((p: any) => ({ user_id: p.user_id, canal_id: canalId, mensagem_id: m.id })),
+                );
+              }
+            }
+          }
+        }
+        return json({ ok: true, ignorado: "imagem_nao_e_nota", tipo: oQue });
+      }
+    }
 
     // CRITÉRIO 1 — o que o arquivo é
     if (nota.legivel && !(nota.ehNfse && nota.tomadorGss)) {

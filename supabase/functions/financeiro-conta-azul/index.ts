@@ -81,10 +81,15 @@ async function conferirPagamento(svc: Svc, pag: any) {
 
   const itens: ItemConferencia[] = [];
   let status: StatusConferencia = "ok";
-  if (porFoto && nota) {
+  const fotoNaoENota = porFoto && !!nota && !nota.ehNfse;
+  if (porFoto && nota && !fotoNaoENota) {
     itens.push({ chave: "leitura", rotulo: "Leitura da nota", ok: null, detalhe: "Nota enviada como foto: os valores foram lidos pela IA. Confira número, CNPJ e valores e aceite." });
   }
-  if (!nota || !nota.legivel) {
+  if (fotoNaoENota) {
+    // foto que não é nota (relatório de plantões, comprovante): não há o que conferir, é para trocar o arquivo
+    status = "divergente";
+    itens.push({ chave: "leitura", rotulo: "Leitura da nota", ok: false, detalhe: `O arquivo não é uma nota fiscal (${nota!.tipoDocumento ?? "imagem"}). Peça a nota ao médico.` });
+  } else if (!nota || !nota.legivel) {
     status = "manual";
     itens.push({ chave: "leitura", rotulo: "Leitura da nota", ok: null, detalhe: bytes ? "Arquivo sem texto (foto ou escaneado): conferir à mão." : "Arquivo não encontrado." });
   } else {
