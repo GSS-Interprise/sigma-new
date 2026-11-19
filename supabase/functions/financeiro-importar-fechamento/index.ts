@@ -85,6 +85,8 @@ serve(async (req) => {
     let blocos: Bloco[] = [];
     let mesRef = Number(mes), anoRef = Number(ano);
     let avisos: any[] = [];
+    // quem trabalhou mas veio com valor 0 no relatório (entra com 0, a equipe lança o valor no ajuste)
+    let semValor: string[] = [];
 
     if (cfg.parser === "dr_escala_consolidado") {
       // segunda leitura formatada só para as durações (ver parser)
@@ -94,7 +96,7 @@ serve(async (req) => {
       if (!p.mes || !p.ano) return json({ error: "não achei o período no arquivo (esperado 'dd/mm/aaaa - dd/mm/aaaa' nas primeiras linhas)" }, 400);
       const per = periodoDoArquivo(p, mes, ano, confirmar_periodo);
       if (per.conflito) return json(per.conflito, 409);
-      mesRef = per.mes; anoRef = per.ano; blocos = p.blocos;
+      mesRef = per.mes; anoRef = per.ano; blocos = p.blocos; semValor = p.semValor ?? [];
     } else if (cfg.parser === "carestream_resumo") {
       if (!mesRef || !anoRef) return json({ error: "faltam campos: mes, ano" }, 400);
       const p: any = parseCarestreamResumo(grid);
@@ -405,7 +407,7 @@ serve(async (req) => {
         parser: cfg.parser, casados, nao_casados: naoCasados.length, aba: sheetName,
         mes: mesRef, ano: anoRef, total_produzido: totalGeral, total_a_vista: totalAVista,
         ajustes_restaurados: ajustesRestaurados, ajustes_perdidos: ajustesPerdidos,
-        avisos,
+        avisos, sem_valor: semValor,
       },
       criado_por: u.user.id,
     });
@@ -426,7 +428,7 @@ serve(async (req) => {
       total_produzido: totalGeral, total_a_vista: totalAVista, total: totalGeral - totalAVista,
       plantoes: blocos.reduce((s, b) => s + b.itens.filter((i) => i.data).length, 0),
       ajustes_restaurados: ajustesRestaurados, ajustes_perdidos: ajustesPerdidos,
-      aba: sheetName, avisos,
+      aba: sheetName, avisos, sem_valor: semValor,
     });
   } catch (e: any) {
     return json({ ok: false, error: String(e?.message || e) }, 500);

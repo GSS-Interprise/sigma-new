@@ -430,13 +430,13 @@ export function parseDrEscalaConsolidado(grid: unknown[][], gridFmt?: unknown[][
   const unidade = cell((grid[Math.max(0, hRow - 1)] || [])[0]);
 
   const blocos: Bloco[] = [];
+  const semValor: string[] = [];
   for (const row of grid.slice(hRow + 1)) {
     const nome = cell(row[iNome]);
     if (!nome || /^total/i.test(nome)) continue;
     const valor = iTotal >= 0 ? num(row[iTotal]) : 0;
     const aVista = iAVista >= 0 ? num(row[iAVista]) : 0;
     const coord = iCoord >= 0 ? num(row[iCoord]) : 0;
-    if (!valor && !aVista && !coord) continue;
 
     // Horas: duração do Excel chega como número em DIAS no grid cru (6,7 = 160h59).
     // O grid formatado traz "160:59:00", que é inequívoco — mas nele o dinheiro vem
@@ -446,6 +446,13 @@ export function parseDrEscalaConsolidado(grid: unknown[][], gridFmt?: unknown[][
       ? horasEmMinutos(linhaFmt?.[iHoras] ?? row[iHoras])
       : 0;
     const plantoes = iPlantoes >= 0 ? Math.round(num(row[iPlantoes])) : 0;
+    // Sem valor nenhum: antes a linha sumia. Pomerode/outubro (19/11): Arthur Blois com 4 plantões e 11h12
+    // e "Valor Total" 0 no Dr. Escala ficou fora do fechamento sem aviso. Quem trabalhou (plantão ou horas)
+    // entra com valor 0 e vai na lista semValor, para a Mavi lançar o valor no ajuste; linha vazia continua fora.
+    if (!valor && !aVista && !coord) {
+      if (!plantoes && !minutos) continue;
+      semValor.push(nome);
+    }
     const qtds = colsQtd
       .map(({ h, i }) => ({ h, n: Math.round(num(row[i])) }))
       .filter((q) => q.n > 0);
@@ -477,7 +484,7 @@ export function parseDrEscalaConsolidado(grid: unknown[][], gridFmt?: unknown[][
       plantoes,
     } as Bloco);
   }
-  return { mes, ano, mesFim, anoFim, blocos, divergencias: [] };
+  return { mes, ano, mesFim, anoFim, blocos, divergencias: [], semValor };
 }
 
 /**

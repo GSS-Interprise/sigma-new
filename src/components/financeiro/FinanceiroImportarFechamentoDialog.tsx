@@ -186,6 +186,17 @@ export function FinanceiroImportarFechamentoDialog({ mesDefault, anoDefault }: {
                   <div className="text-amber-700">{resultado.ajustes_perdidos} ajuste(s) não puderam ser reaplicados — médico saiu do relatório.</div>
                 )}
               </div>
+              {resultado.sem_valor?.length > 0 && (
+                <div className="text-amber-800 border-t pt-1.5">
+                  <p className="flex items-center gap-1.5 text-xs font-medium">
+                    <AlertTriangle className="h-3.5 w-3.5" /> {resultado.sem_valor.length} médico(s) com plantões mas sem valor no relatório:
+                  </p>
+                  <ul className="ml-5 list-disc text-[11px] mt-0.5">
+                    {resultado.sem_valor.map((n: string, i: number) => <li key={i}>{n}</li>)}
+                  </ul>
+                  <p className="text-[11px] mt-1">Entraram com R$ 0 e sem pedido de nota. Lance o valor como ajuste no médico; o pedido de nota libera sozinho.</p>
+                </div>
+              )}
               {resultado.avisos?.length > 0 && (
                 <div className="text-amber-800 border-t pt-1.5">
                   <p className="flex items-center gap-1.5 text-xs font-medium">
