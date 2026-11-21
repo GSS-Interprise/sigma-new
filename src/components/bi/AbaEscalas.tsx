@@ -80,9 +80,10 @@ function KPICard({
   const content = (
     <Card className={`shadow-md hover:shadow-lg transition-shadow ${bgClass}`}>
       <CardContent className="p-4">
-        <div className="flex items-center justify-between mb-1">
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{title}</span>
-          <Icon className={`h-4 w-4 ${iconClass}`} />
+        {/* Em 1024 px, com 6 cards por linha, o rótulo em caixa alta ("PROFISSIONAIS") vazava: 6 por linha só a partir de xl. */}
+        <div className="flex items-start justify-between gap-2 mb-1">
+          <span className="min-w-0 text-xs font-medium text-muted-foreground uppercase tracking-wide">{title}</span>
+          <Icon className={`h-4 w-4 shrink-0 ${iconClass}`} />
         </div>
         <div className="text-xl font-bold tracking-tight">{value}</div>
         {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
@@ -284,7 +285,7 @@ export function AbaEscalas() {
             <BarChart3 className="h-5 w-5 text-primary" />
             Visão Executiva
           </h3>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
             <KPICard
               title="Total Plantões"
               value={metricas.totalPlantoes.toLocaleString("pt-BR")}
