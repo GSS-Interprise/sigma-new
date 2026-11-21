@@ -1,51 +1,36 @@
 import { assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import { calcularIndicadores, daModalidade, destinoDoAviso, modalidadeDoExame, proximoPassoEscada, saidaConfiavel, textoIndicadores, type ExameDia } from "./slaEscada.ts";
+import { calcularIndicadores, daModalidade, destinoDoAviso, modalidadeDoExame, passosAgora, saidaConfiavel, textoIndicadores, type ExameDia } from "./slaEscada.ts";
 
-const todos = { plantonista: true, coordenador: true, diretoria: true };
-const agora = new Date("2026-11-14T03:00:00Z");
-const ha = (min: number) => new Date(agora.getTime() - min * 60000).toISOString();
+const P = (id: string, destino: "plantonista" | "contato", minutos: number, ativo = true) =>
+  ({ id, destino, minutos, canal: "whatsapp" as const, ativo });
+const seq = [P("w1", "plantonista", -25), P("w2", "plantonista", 0), P("l1", "plantonista", 5), P("c1", "contato", 10), P("c2", "contato", 10)];
+const ids = (x: { id: string }[]) => x.map((p) => p.id);
 
-Deno.test("escada começa ligando ao plantonista", () => {
-  assertEquals(proximoPassoEscada([], todos, agora), { acao: "ligar", passo: 1, papel: "plantonista" });
+Deno.test("avisos: nada antes do 1º passo; 1º passo na hora dele", () => {
+  assertEquals(ids(passosAgora(seq, new Set(), -30)), []);
+  assertEquals(ids(passosAgora(seq, new Set(), -25)), ["w1"]);
 });
 
-Deno.test("espera a ligação em curso terminar", () => {
-  assertEquals(proximoPassoEscada([{ passo: 1, status: "enviado", criado_em: ha(1) }], todos, agora).acao, "esperar");
+Deno.test("avisos: passo que já foi não repete; o seguinte vai quando chega", () => {
+  assertEquals(ids(passosAgora(seq, new Set(["w1"]), -10)), []);
+  assertEquals(ids(passosAgora(seq, new Set(["w1"]), 1)), ["w2"]);
 });
 
-Deno.test("ligação que o Twilio não fechou em 5 min conta como terminada", () => {
-  assertEquals(proximoPassoEscada([{ passo: 1, status: "enviado", criado_em: ha(6) }], todos, agora),
-    { acao: "ligar", passo: 2, papel: "plantonista" });
+Deno.test("avisos: exame que aparece atrasado recebe só o passo mais adiantado do plantonista", () => {
+  assertEquals(ids(passosAgora(seq, new Set(), 6)), ["l1"]);
+  // e passo anterior a um que já foi não volta
+  assertEquals(ids(passosAgora(seq, new Set(["l1"]), 7)), []);
 });
 
-Deno.test("dá 3 min entre uma ligação e a próxima", () => {
-  assertEquals(proximoPassoEscada([{ passo: 1, status: "falhou", criado_em: ha(2) }], todos, agora).acao, "esperar");
-  assertEquals(proximoPassoEscada([{ passo: 1, status: "falhou", criado_em: ha(4) }], todos, agora).acao, "ligar");
+Deno.test("avisos: contatos vão todos quando chegam, junto com o plantonista", () => {
+  assertEquals(ids(passosAgora(seq, new Set(["w1", "w2", "l1"]), 10)), ["c1", "c2"]);
+  assertEquals(ids(passosAgora(seq, new Set(["w1", "w2", "l1", "c1"]), 12)), ["c2"]);
 });
 
-Deno.test("atender e desligar sem a tecla 1 segue a escada (2ª tentativa, depois coordenador)", () => {
-  const l1 = { passo: 1, status: "entregue", criado_em: ha(10) };
-  assertEquals(proximoPassoEscada([l1], todos, agora), { acao: "ligar", passo: 2, papel: "plantonista" });
-  const l2 = { passo: 2, status: "falhou", criado_em: ha(4) };
-  assertEquals(proximoPassoEscada([l1, l2], todos, agora), { acao: "ligar", passo: 3, papel: "coordenador" });
-});
-
-Deno.test("tecla 1 para a escada", () => {
-  assertEquals(proximoPassoEscada([{ passo: 1, status: "respondido", criado_em: ha(4) }], todos, agora), { acao: "parar" });
-});
-
-Deno.test("papel sem ninguém escalado é pulado; escada acaba em fim", () => {
-  const semCoord = { plantonista: true, coordenador: false, diretoria: true };
-  const feitas = [{ passo: 1, status: "falhou", criado_em: ha(20) }, { passo: 2, status: "falhou", criado_em: ha(10) }];
-  assertEquals(proximoPassoEscada(feitas, semCoord, agora), { acao: "ligar", passo: 4, papel: "diretoria" });
-  const ate4 = [...feitas, { passo: 4, status: "falhou", criado_em: ha(5) }];
-  assertEquals(proximoPassoEscada(ate4, semCoord, agora), { acao: "fim" });
-  assertEquals(proximoPassoEscada([], { plantonista: false, coordenador: false, diretoria: false }, agora), { acao: "fim" });
-});
-
-Deno.test("dois plantonistas no mesmo passo: espera os dois terminarem", () => {
-  const p1 = [{ passo: 1, status: "falhou", criado_em: ha(8) }, { passo: 1, status: "enviado", criado_em: ha(2) }];
-  assertEquals(proximoPassoEscada(p1, todos, agora).acao, "esperar");
+Deno.test("avisos: passo desligado não vai e não bloqueia o seguinte", () => {
+  const s2 = [P("w1", "plantonista", -25), P("w2", "plantonista", 0, false), P("l1", "plantonista", 5)];
+  assertEquals(ids(passosAgora(s2, new Set(["w1"]), 2)), []);
+  assertEquals(ids(passosAgora(s2, new Set(["w1"]), 5)), ["l1"]);
 });
 
 const ex = (o: Partial<ExameDia>): ExameDia => ({
@@ -121,14 +106,4 @@ Deno.test("plantonista da modalidade; sem ninguém dela, todos", () => {
   const p = [{ nome: "a", modalidade: "TC" }, { nome: "b", modalidade: "US" }, { nome: "c", modalidade: null }];
   assertEquals(daModalidade(p, "US").map((x) => x.nome), ["b", "c"]);
   assertEquals(daModalidade([{ nome: "a", modalidade: "TC" }], "US").map((x) => x.nome), ["a"]);
-});
-
-Deno.test("intervalo entre ligações configurável (sla_escada_intervalo_min)", () => {
-  const agora = new Date("2026-11-19T12:00:00Z");
-  const ha = (m: number) => new Date(agora.getTime() - m * 60000).toISOString();
-  const todos = { plantonista: true, coordenador: true, diretoria: true };
-  const feita = [{ passo: 1, status: "completed", criado_em: ha(6) }];
-  // 6 min depois: com intervalo de 3 liga; com intervalo de 10 espera
-  assertEquals(proximoPassoEscada(feita, todos, agora, 3).acao, "ligar");
-  assertEquals(proximoPassoEscada(feita, todos, agora, 10).acao, "esperar");
 });

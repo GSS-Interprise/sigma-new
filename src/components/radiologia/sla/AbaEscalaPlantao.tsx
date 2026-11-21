@@ -1,6 +1,6 @@
 // Escala de plantão do SLA de laudos. Pergunta da tela: "Quem o robô vai avisar agora e nos próximos dias?"
-// Quem usa: Wagner e Brenda. O robô só aciona quem está escalado no horário: plantonista aos X% do prazo (Regras dos avisos);
-// plantonista + coordenador quando vence sem ninguém assumir.
+// Quem usa: Wagner e Brenda. O robô só aciona quem está escalado no horário, na sequência da aba Avisos; quem mais
+// avisar se ninguém assumir fica na aba Coordenação (21/11). Aqui só a escala: Dr. Escala + plantão extra.
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -11,7 +11,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
@@ -20,7 +19,6 @@ import {
 import { cn } from "@/lib/utils";
 import { UNIDADE, type Plantao, normalizarTelefone, telefoneBonito, useColetor, useEscala } from "./useSla";
 import { CopiarSemana } from "./CopiarSemana";
-import { RegrasAvisos, useRegras } from "./RegrasAvisos";
 
 const db = supabase as any;
 const PAPEL: Record<Plantao["papel"], { nome: string; selo: string }> = {
@@ -54,10 +52,9 @@ function intervalo(data: string, ini: string, fim: string, somaDias: number) {
 
 export function AbaEscalaPlantao() {
   const escala = useEscala(14);
-  const pctAviso = useRegras().data?.aviso_pct ?? 80;
   const coletor = useColetor();
   const qc = useQueryClient();
-  const [papel, setPapel] = useState<Plantao["papel"]>("coordenador");
+  const papel: Plantao["papel"] = "plantonista";
   const [nome, setNome] = useState("");
   const [telefone, setTelefone] = useState("");
   const [data, setData] = useState(hojeISO());
@@ -107,34 +104,17 @@ export function AbaEscalaPlantao() {
     onError: (e) => toast.error(`Não removeu: ${(e as Error).message}`),
   });
 
-  const ligar = useMutation({
-    mutationFn: async (ativo: boolean) => { const { error } = await db.rpc("sla_alertas_ligar", { p_ativo: ativo }); if (error) throw error; return ativo; },
-    onSuccess: (ativo) => {
-      toast.success(ativo ? "Avisos ligados. O robô passa a avisar quem está na escala." : "Avisos desligados. Nenhum médico será avisado.");
-      qc.invalidateQueries({ queryKey: ["sla-coletor"] });
-    },
-    onError: (e) => toast.error(`Não mudou: ${(e as Error).message}`),
-  });
-
-  const ligarEscada = useMutation({
-    mutationFn: async (v: boolean) => { const { error } = await db.rpc("sla_escada_ligar", { p_ativo: v }); if (error) throw error; return v; },
-    onSuccess: (v) => {
-      toast.success(v ? "Ligações ligadas: laudo vencido sem dono liga para o plantonista, depois o coordenador." : "Ligações desligadas. O vencido continua avisando por WhatsApp.");
-      qc.invalidateQueries({ queryKey: ["sla-coletor"] });
-    },
-    onError: (e) => toast.error(`Não mudou: ${(e as Error).message}`),
-  });
-
   const plantonistaAgora = deAgora.filter((p) => p.papel === "plantonista");
   const ativo = !!coletor.data?.alertasAtivos;
-  const escadaAtiva = !!coletor.data?.escadaAtiva;
-  const testeDestino = coletor.data?.testeDestino ?? null;
 
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
       <div className="space-y-4">
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-base">De plantão agora</CardTitle></CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0 pb-2">
+            <CardTitle className="text-base">De plantão agora</CardTitle>
+            {!coletor.isLoading && !ativo && <span className="text-xs font-medium text-amber-800">Avisos desligados (aba Avisos)</span>}
+          </CardHeader>
           <CardContent className="space-y-2 text-sm">
             {escala.isLoading && <Skeleton className="h-8 w-full" />}
             {!escala.isLoading && plantonistaAgora.length === 0 && (
@@ -147,30 +127,6 @@ export function AbaEscalaPlantao() {
                 <span className="text-muted-foreground">{telefoneBonito(p.telefone)} · até {hm(p.fim)}</span>
               </div>
             ))}
-            {testeDestino && (
-              <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                Teste interno ligado: os avisos vão para {telefoneBonito(testeDestino)}, não para os médicos da escala, e ninguém recebe ligação.
-              </p>
-            )}
-            <div className="flex items-center justify-between gap-3 border-t pt-3">
-              <div>
-                <p className="font-medium">Avisos automáticos ao médico</p>
-                <p className="text-xs text-muted-foreground">{ativo ? `Ligados: WhatsApp aos ${pctAviso}% do prazo e quando vence.` : "Desligados: ninguém é avisado."}</p>
-              </div>
-              <Switch checked={ativo} disabled={coletor.isLoading || ligar.isPending} onCheckedChange={(v) => ligar.mutate(v)} aria-label="Avisos automáticos ao médico" />
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="font-medium">Ligar quando vencer</p>
-                <p className="text-xs text-muted-foreground">
-                  {!ativo ? "Só funciona com os avisos ligados."
-                    : escadaAtiva ? "Ligado: plantonista 2 vezes, depois coordenador e diretoria. Só a tecla 1 para."
-                    : "Desligado: o vencido avisa só por WhatsApp e e-mail."}
-                </p>
-              </div>
-              <Switch checked={escadaAtiva} disabled={coletor.isLoading || ligarEscada.isPending || (!ativo && !escadaAtiva)}
-                onCheckedChange={(v) => ligarEscada.mutate(v)} aria-label="Ligar quando o laudo vencer" />
-            </div>
           </CardContent>
         </Card>
 
@@ -219,24 +175,12 @@ export function AbaEscalaPlantao() {
       </div>
 
       <div className="space-y-4">
-      <RegrasAvisos />
       <Card className="h-fit">
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Adicionar coordenação ou plantão extra</CardTitle>
-          <p className="text-xs text-muted-foreground">Plantonista de TC e US já vem do Dr. Escala.</p>
+          <CardTitle className="text-base">Adicionar plantão extra</CardTitle>
+          <p className="text-xs text-muted-foreground">TC e US já vêm do Dr. Escala. Coordenação fica na aba Coordenação.</p>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
-          <div className="space-y-1">
-            <Label>Papel</Label>
-            <Select value={papel} onValueChange={(v) => setPapel(v as Plantao["papel"])}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="plantonista">Plantonista (recebe aos {pctAviso}%)</SelectItem>
-                <SelectItem value="coordenador">Coordenador (recebe quando vence)</SelectItem>
-                <SelectItem value="diretoria">Diretoria</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
           <div className="space-y-1">
             <Label htmlFor="sla-nome">Nome</Label>
             <Input id="sla-nome" value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Dr. Paulo Souza" maxLength={80} />

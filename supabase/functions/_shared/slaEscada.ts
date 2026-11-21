@@ -1,46 +1,29 @@
 // Regras puras do SLA de laudos: escada de ligação depois do vencido e indicadores do dia (sla-alertas).
 // Sem import: testes em slaEscada_test.ts (deno test). Plano: docs/arquitetura/sla-laudos-radiologia.md.
 
-// ---- Escada de ligação -----------------------------------------------------------------------------------------
-// Exame vencido e ninguém assumiu: liga ao plantonista, de novo ao plantonista, depois ao coordenador, por fim à
-// diretoria. Só a tecla 1 (ou o "Assumir laudo" no WhatsApp, ou a tela) para a escada: atender e desligar não conta
-// (decisão do Raul, 12/11). Papel sem ninguém escalado no horário é pulado.
-export const ESCADA = ["plantonista", "plantonista", "coordenador", "diretoria"] as const;
-export type Papel = (typeof ESCADA)[number];
-export const ESPERA_ENTRE_PASSOS_MIN = 3;   // depois que a ligação anterior terminou sem a tecla 1
-export const LIGACAO_PRESA_MIN = 5;         // Twilio não devolveu o status: considera terminada
-
-export type LigacaoFeita = { passo: number; status: string; criado_em: string };
-export type Proximo =
-  | { acao: "ligar"; passo: number; papel: Papel }
-  | { acao: "esperar"; motivo: string }
-  | { acao: "fim" }       // escada acabou e ninguém assumiu
-  | { acao: "parar" };    // alguém apertou 1
-
-const minutos = (de: string, agora: Date) => (agora.getTime() - new Date(de).getTime()) / 60000;
+// ---- Sequência de avisos (21/11) ---------------------------------------------------------------------------------
+// Configurada na tela (tabela sla_aviso_passos): aba Avisos = 1º, 2º, 3º aviso ao plantonista; aba Coordenação = quem
+// mais avisar se ninguém assumir. minutos é relativo ao vencimento do laudo (negativo = antes). Cada passo vai uma vez
+// por exame; o motor só chama isto para exame que ninguém assumiu.
+export type PassoAviso = {
+  id: string; destino: "plantonista" | "contato"; minutos: number; canal: "whatsapp" | "ligacao" | "email"; ativo: boolean;
+};
 
 /**
- * Próximo passo da escada de um exame vencido.
- * @param ligacoes ligações já feitas para este exame (passo 1..4; várias por passo se houver 2 plantonistas)
- * @param temPapel quem está escalado agora
+ * Passos a disparar agora para um exame.
+ * @param feitos ids dos passos que já foram para este exame
+ * @param desdeVencimentoMin minutos desde o vencimento (negativo = ainda falta)
+ * Plantonista: só o passo mais adiantado que já chegou. Exame que entra na fila atrasado (coletor voltou, prazo mudou)
+ * não recebe o 1º e o 2º aviso juntos; e passo anterior a um que já foi não volta. Contatos: cada um é uma pessoa,
+ * todos os que chegaram vão.
  */
-// intervaloMin: config sla_escada_intervalo_min, editável na aba Escala (19/11).
-export function proximoPassoEscada(ligacoes: LigacaoFeita[], temPapel: Record<Papel, boolean>, agora = new Date(),
-  intervaloMin = ESPERA_ENTRE_PASSOS_MIN): Proximo {
-  if (ligacoes.some((l) => l.status === "respondido")) return { acao: "parar" };
-  const ultimoPasso = ligacoes.reduce((m, l) => Math.max(m, l.passo), 0);
-  if (ultimoPasso > 0) {
-    const doPasso = ligacoes.filter((l) => l.passo === ultimoPasso);
-    const emCurso = doPasso.some((l) => (l.status === "pendente" || l.status === "enviado") && minutos(l.criado_em, agora) < LIGACAO_PRESA_MIN);
-    if (emCurso) return { acao: "esperar", motivo: "ligação em curso" };
-    const maisRecente = doPasso.reduce((m, l) => (l.criado_em > m ? l.criado_em : m), doPasso[0].criado_em);
-    if (minutos(maisRecente, agora) < intervaloMin) return { acao: "esperar", motivo: "intervalo entre ligações" };
-  }
-  for (let p = ultimoPasso + 1; p <= ESCADA.length; p++) {
-    const papel = ESCADA[p - 1];
-    if (temPapel[papel]) return { acao: "ligar", passo: p, papel };
-  }
-  return { acao: "fim" };
+export function passosAgora(passos: PassoAviso[], feitos: Set<string>, desdeVencimentoMin: number): PassoAviso[] {
+  const chegaram = passos.filter((p) => p.ativo && p.minutos <= desdeVencimentoMin && !feitos.has(p.id));
+  const doPlantonista = passos.filter((p) => p.destino === "plantonista");
+  const ultimoFeito = Math.max(-Infinity, ...doPlantonista.filter((p) => feitos.has(p.id)).map((p) => p.minutos));
+  const plantonista = chegaram.filter((p) => p.destino === "plantonista" && p.minutos > ultimoFeito)
+    .sort((a, b) => b.minutos - a.minutos)[0];
+  return [...(plantonista ? [plantonista] : []), ...chegaram.filter((p) => p.destino === "contato")];
 }
 
 // ---- Modo de teste interno ------------------------------------------------------------------------------------

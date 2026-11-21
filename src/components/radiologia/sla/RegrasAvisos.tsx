@@ -1,6 +1,6 @@
-// Regras dos avisos do SLA (19/11). Pergunta do cartão: "Quando o robô avisa?" Quem usa: Wagner e Brenda, raramente.
-// Fechado mostra a regra em vigor numa linha; "Mudar regras" abre os campos. Prazo novo vale também para a fila que
-// já está esperando laudo (a função recalcula o vencimento).
+// Prazo do laudo por origem (19/11; desde 21/11 só o prazo: a sequência de avisos está na aba Avisos, usePassos.ts).
+// Fechado mostra o prazo em vigor; "Mudar prazos" abre os campos. Prazo novo vale também para a fila que já está
+// esperando laudo (a função recalcula o vencimento). aviso_pct e intervalo_min seguem no RPC só por compatibilidade.
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -40,14 +40,9 @@ export function RegrasAvisos() {
   const qc = useQueryClient();
   const [editando, setEditando] = useState(false);
   const [prazoH, setPrazoH] = useState<Record<string, string>>({});
-  const [pct, setPct] = useState("80");
-  const [intervalo, setIntervalo] = useState("3");
-
   useEffect(() => {
     if (!regras.data || editando) return;
     setPrazoH(Object.fromEntries(ORIGENS.map((o) => [o.id, String((regras.data.prazos[o.id] ?? 0) / 60)])));
-    setPct(String(regras.data.aviso_pct));
-    setIntervalo(String(regras.data.intervalo_min));
   }, [regras.data, editando]);
 
   // Postel: aceita "2", "2,5" ou "2.5" horas.
@@ -55,22 +50,20 @@ export function RegrasAvisos() {
   const erro = ORIGENS.map((o) => {
     const m = minutos(prazoH[o.id] ?? "");
     return !Number.isFinite(m) || m < 15 || m > 10080 ? `${o.nome}: prazo entre 0,25 e 168 horas.` : null;
-  }).find(Boolean)
-    ?? (!(Number(pct) >= 30 && Number(pct) <= 95) ? "Aviso entre 30% e 95% do prazo." : null)
-    ?? (!(Number(intervalo) >= 1 && Number(intervalo) <= 60) ? "Intervalo entre 1 e 60 minutos." : null);
+  }).find(Boolean) ?? null;
 
   const salvar = useMutation({
     mutationFn: async () => {
       const { data, error } = await db.rpc("sla_regras_salvar", {
         p_prazos: Object.fromEntries(ORIGENS.map((o) => [o.id, minutos(prazoH[o.id])])),
-        p_aviso_pct: Number(pct), p_intervalo_min: Number(intervalo),
+        p_aviso_pct: regras.data?.aviso_pct ?? 80, p_intervalo_min: regras.data?.intervalo_min ?? 3,
       });
       if (error) throw error;
       return data as Regras & { exames_recalculados: number };
     },
     onSuccess: (d) => {
       const n = d.exames_recalculados;
-      toast.success(n > 0 ? `Regras salvas. ${n} ${n === 1 ? "exame da fila ganhou" : "exames da fila ganharam"} o prazo novo.` : "Regras salvas.");
+      toast.success(n > 0 ? `Prazos salvos. ${n} ${n === 1 ? "exame da fila ganhou" : "exames da fila ganharam"} o prazo novo.` : "Prazos salvos.");
       setEditando(false);
       qc.invalidateQueries({ queryKey: ["sla-regras"] });
       qc.invalidateQueries({ queryKey: ["sla-fila"] });
@@ -81,9 +74,9 @@ export function RegrasAvisos() {
   return (
     <Card className="h-fit">
       <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0 pb-2">
-        <CardTitle className="text-base">Regras dos avisos</CardTitle>
+        <CardTitle className="text-base">Prazo do laudo</CardTitle>
         {!editando && regras.data && (
-          <Button variant="outline" size="sm" className="h-8" onClick={() => setEditando(true)}>Mudar regras</Button>
+          <Button variant="outline" size="sm" className="h-8" onClick={() => setEditando(true)}>Mudar prazos</Button>
         )}
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
@@ -93,21 +86,17 @@ export function RegrasAvisos() {
         {regras.data && !editando && (
           <dl className="space-y-1.5">
             {/* rótulo em cima e cada prazo inteiro: na coluna de 380px a linha única quebrava no meio ("48 / h") */}
-            <div><dt className="text-muted-foreground">Prazo do laudo</dt>
+            <div><dt className="sr-only">Prazo por origem</dt>
               <dd className="flex flex-wrap gap-x-3 font-medium">
                 {ORIGENS.map((o) => <span key={o.id} className="whitespace-nowrap">{o.id === "ps" ? "PS" : o.nome} {horas(regras.data.prazos[o.id] ?? 0)}</span>)}
               </dd></div>
-            <div className="flex justify-between gap-3"><dt className="text-muted-foreground">WhatsApp ao plantonista</dt>
-              <dd className="font-medium">aos {regras.data.aviso_pct}% do prazo</dd></div>
-            <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Venceu sem dono</dt>
-              <dd className="font-medium">liga a cada {regras.data.intervalo_min} min</dd></div>
           </dl>
         )}
 
         {regras.data && editando && (
           <div className="space-y-3">
             <div className="space-y-1">
-              <Label>Prazo do laudo (horas)</Label>
+              <Label>Horas até o laudo vencer</Label>
               <div className="grid grid-cols-3 gap-2">
                 {ORIGENS.map((o) => (
                   <div key={o.id} className="space-y-1">
@@ -118,22 +107,12 @@ export function RegrasAvisos() {
                 ))}
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1">
-                <Label htmlFor="sla-pct">Avisar aos (% do prazo)</Label>
-                <Input id="sla-pct" type="number" min={30} max={95} step={5} value={pct} onChange={(e) => setPct(e.target.value)} />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="sla-int">Entre ligações (min)</Label>
-                <Input id="sla-int" type="number" min={1} max={60} value={intervalo} onChange={(e) => setIntervalo(e.target.value)} />
-              </div>
-            </div>
             {erro && <p className="text-xs text-red-700">{erro}</p>}
             <p className="text-xs text-muted-foreground">O prazo novo vale também para os exames que já estão esperando laudo.</p>
             <div className="flex gap-2">
               <Button variant="outline" className="h-9 flex-1" onClick={() => setEditando(false)} disabled={salvar.isPending}>Cancelar</Button>
               <Button className="h-9 flex-1" disabled={!!erro || salvar.isPending} onClick={() => salvar.mutate()}>
-                {salvar.isPending ? "Salvando…" : "Salvar regras"}
+                {salvar.isPending ? "Salvando…" : "Salvar prazos"}
               </Button>
             </div>
           </div>

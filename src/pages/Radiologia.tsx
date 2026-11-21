@@ -2,10 +2,12 @@ import { useState, useMemo } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Calendar, ClipboardList, AlertCircle, FileEdit, Activity, Building2, CalendarDays, ArrowUpDown, ArrowUp, ArrowDown, History, Timer, UserCheck } from "lucide-react";
+import { Calendar, ClipboardList, AlertCircle, FileEdit, Activity, Building2, CalendarDays, ArrowUpDown, ArrowUp, ArrowDown, History, Timer, UserCheck, BellRing, Users } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { AbaSlaAoVivo } from "@/components/radiologia/sla/AbaSlaAoVivo";
 import { AbaEscalaPlantao } from "@/components/radiologia/sla/AbaEscalaPlantao";
+import { AbaAvisos } from "@/components/radiologia/sla/AbaAvisos";
+import { AbaCoordenacao } from "@/components/radiologia/sla/AbaCoordenacao";
 import { AbaAgendasAtualizada } from "@/components/radiologia/AbaAgendasAtualizada";
 import { AbaProducaoExamesAtualizada } from "@/components/radiologia/AbaProducaoExamesAtualizada";
 import { AbaPendenciasAtrasos } from "@/components/radiologia/AbaPendenciasAtrasos";
@@ -226,6 +228,14 @@ export default function Radiologia() {
               <UserCheck className="h-4 w-4" />
               Escala de plantão
             </TabsTrigger>
+            <TabsTrigger value="avisos-sla" className="gap-2">
+              <BellRing className="h-4 w-4" />
+              Avisos
+            </TabsTrigger>
+            <TabsTrigger value="coordenacao-sla" className="gap-2">
+              <Users className="h-4 w-4" />
+              Coordenação
+            </TabsTrigger>
             <TabsTrigger value="agendas" className="gap-2">
               <Calendar className="h-4 w-4" />
               Agendas
@@ -258,6 +268,14 @@ export default function Radiologia() {
 
           <TabsContent value="escala-sla" className="space-y-6">
             <AbaEscalaPlantao />
+          </TabsContent>
+
+          <TabsContent value="avisos-sla" className="space-y-6">
+            <AbaAvisos />
+          </TabsContent>
+
+          <TabsContent value="coordenacao-sla" className="space-y-6">
+            <AbaCoordenacao />
           </TabsContent>
 
           <TabsContent value="agendas" className="space-y-6">
