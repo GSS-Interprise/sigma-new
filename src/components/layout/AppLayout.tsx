@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Menu, MessageSquare } from "lucide-react";
 import { Sidebar } from "./Sidebar";
 import { NotificacoesSino } from "./NotificacoesSino";
+import { AssistenteSigma } from "@/components/assistente/AssistenteSigma";
 import { Footer } from "./Footer";
 import { GlobalBreadcrumb } from "./GlobalBreadcrumb";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -44,6 +45,8 @@ function AppLayoutContent({ children, headerActions, hideFooter }: AppLayoutProp
               </div>
             </div>
             <div className="flex items-center gap-1 shrink-0">
+              {/* Assistente de IA (docs/arquitetura/assistente-ia-sigma.md): em todas as telas, atalho Ctrl+J. */}
+              <AssistenteSigma />
               <Button
                 variant="ghost"
                 size="icon"
