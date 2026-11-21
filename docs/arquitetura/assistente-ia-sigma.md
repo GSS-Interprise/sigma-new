@@ -3,7 +3,7 @@ tags: [arquitetura, gss, sigma, ia, assistente, agente]
 projeto: SigmaGSS
 autor: Raul
 data: 2026-11-21
-status: aprovada-para-execucao
+status: fase-1-no-ar
 operador: Raul
 repo: sigma-new
 pulse_os: 00618fa8-8ec8-4ead-8153-4469e4676d1b (fases 161c3278, 71bf0532, 25973603, 02d37b4d)
@@ -71,10 +71,11 @@ ferramentas, mesmo guia (vira o system prompt), mesmo hash. Domínio novo entra 
 cada domínio liberado vai no prompt; o resto do Sigma, não.
 
 ### 3b. Permissão (o ponto mais sensível)
-- **Leitura:** domínio liberado só se (a) o papel da pessoa tem o domínio em `agente_dominio_acessos` **e** (b) ela vê
-  o módulo da tela correspondente: escalas → `escalas` ou os papéis do `drescala_*`; campanhas → `disparos`;
-  licitações → `licitacoes`; contratos → `contratos`. Nova função `pode_modulo(uid, modulo, acao)` =
-  `has_permission` **menos** `usuario_modulos_bloqueados` (hoje o bloqueio por pessoa só existe no front).
+- **Leitura:** domínio liberado se a pessoa vê o módulo da tela correspondente (`MODULO_DO_DOMINIO` em
+  `_shared/assistente.ts`): escalas → `escalas`, campanhas → `disparos`, licitações → `licitacoes`, contratos →
+  `contratos`, CRM → `medicos`. Função `pode_modulo(uid, modulo, acao)` = `has_permission` **menos**
+  `usuario_modulos_bloqueados` (antes o bloqueio por pessoa só existia no front). A tabela `agente_dominio_acessos`
+  continua sendo só do MCP dos sócios (decisão de 21/11: dentro do Sigma vale "o que você já vê na tela").
 - **Escrita:** ferramentas `campanhas_propor_criacao` e `campanhas_propor_edicao` só existem no laço se a pessoa pode:
   - criar = `pode_modulo(uid, 'disparos', 'visualizar')` — exatamente quem abre o assistente de campanha hoje;
   - editar = os papéis da RLS de `campanhas` (admin, diretoria, gestor_marketing, gestor_captacao).
@@ -99,7 +100,7 @@ telefone válido). Devolve o antes e o depois para o cartão e grava no históri
 - Limites: até 6 chamadas de ferramenta por pergunta, 40 s de teto, histórico das últimas 12 mensagens.
 
 ### 3e. Tela
-- **Botão fixo** no canto inferior direito do `AppLayout` (todas as telas), atalho `Ctrl+J`.
+- **Botão "Perguntar ao Sigma"** no cabeçalho do `AppLayout` (todas as telas; no canto ele cobriria o Kanban), atalho `Ctrl+J`.
 - **Painel lateral** (Sheet de 420 px): conversa, campo de texto, 3 sugestões por tela (na Prospecção: "como estão
   as campanhas hoje?"; no BI Escalas: "onde tem furo esta semana?").
 - **Cartão de proposta:** título ("Criar campanha Pediatria RS" / "Mudar 2 itens da campanha X"), lista antes → depois,
@@ -139,14 +140,14 @@ Cada um pelo molde da §3i do protocolo (módulo, arquivo de casos, `PROTOCOLO_V
 - **Bloqueio por pessoa** (`usuario_modulos_bloqueados`) hoje só vale no front: `pode_modulo` corrige no banco.
 
 ## 6. Plano de execução (cada item ≈ 1 commit)
-- [ ] T1 — Banco: `pode_modulo`, `assistente_conversas`, `assistente_mensagens`, `assistente_propostas`,
+- [x] T1 — Banco: `pode_modulo`, `assistente_conversas`, `assistente_mensagens`, `assistente_propostas`,
       `assistente_confirmar`; checagem de `pode_modulo` dentro de `campanha_assistente_criar`; testes de banco.
-- [ ] T2 — `campanha_assistente_editar` com lista branca e validações iguais às da tela; testes.
-- [ ] T3 — Edge `sigma-assistente`: auth, domínios por pessoa, laço com Gemini, propostas, registro; testes Deno
+- [x] T2 — `campanha_assistente_editar` com lista branca e validações iguais às da tela; testes.
+- [x] T3 — Edge `sigma-assistente`: auth, domínios por pessoa, laço com Gemini, propostas, registro; testes Deno
       (permissão, limite de chamadas, proposta sem gravar).
-- [ ] T4 — Ferramentas de proposta no domínio campanhas (`campanhas_propor_criacao`, `campanhas_propor_edicao`),
+- [x] T4 — Ferramentas de proposta no domínio campanhas (`campanhas_propor_criacao`, `campanhas_propor_edicao`),
       que só aparecem para quem pode; casos na bateria.
-- [ ] T5 — Tela: botão, painel, cartão de proposta, sugestões por tela; portão visual 1440/1024.
+- [x] T5 — Tela: botão, painel, cartão de proposta, sugestões por tela; portão visual 1440/1024.
 - [ ] T6 — Domínio licitações (fase 2) + casos + bateria.
 - [ ] T7 — Domínio contratos (fase 3) + casos + bateria.
 - [ ] T8 — Manual curto do Sigma e domínio processos (fase 4).
@@ -163,3 +164,10 @@ Cada um pelo molde da §3i do protocolo (módulo, arquivo de casos, `PROTOCOLO_V
 O operador decide nomes, prompts e layout dentro deste desenho. Volta ao Raul: qualquer ação de escrita fora de
 campanhas, mudança na regra de quem pode, troca de motor, e o que entra no manual sobre processo da GSS que não
 estiver no código.
+
+## Estado (21/11/2026)
+- Fase 1 no ar: banco (`20261121220000_assistente_ia_sigma.sql`), edge `sigma-assistente`, painel
+  `src/components/assistente/AssistenteSigma.tsx`. Testes: 6 Deno (`_shared/assistente_test.ts`) e de banco em transação
+  (prévia, confirmação, recusa sem permissão, campo fora da lista). Portão visual 0 falhas em 1440 e 1024 px.
+- `sigma_guia` e `sigma_dominios` ficam fora do chat: o guia já vai nas instruções e a volta extra custava ~15 s.
+- Tempo de resposta medido: ~7 s com uma ferramenta, ~15 a 30 s com duas ou mais.
