@@ -148,7 +148,7 @@ Cada um pelo molde da §3i do protocolo (módulo, arquivo de casos, `PROTOCOLO_V
 - [x] T4 — Ferramentas de proposta no domínio campanhas (`campanhas_propor_criacao`, `campanhas_propor_edicao`),
       que só aparecem para quem pode; casos na bateria.
 - [x] T5 — Tela: botão, painel, cartão de proposta, sugestões por tela; portão visual 1440/1024.
-- [ ] T6 — Domínio licitações (fase 2) + casos + bateria.
+- [x] T6 — Domínio licitações (fase 2) + casos + bateria. (21/11: 4 ferramentas, protocolo v1.2.0, bateria 18/18; no MCP liberado só para admin)
 - [ ] T7 — Domínio contratos (fase 3) + casos + bateria.
 - [ ] T8 — Manual curto do Sigma e domínio processos (fase 4).
 - [ ] T9 — Motor Claude da GSS (quando a conta Max estiver conectada e a GSS aprovar).

@@ -5,6 +5,7 @@ import { acessosDoUsuario, DOMINIOS, dominioBloqueado, exposto, validarRegistro 
 import type { Ctx, Dominio } from "./tipos.ts";
 import { escalas } from "./dominios/escalas.ts";
 import { acharCampanhas, campanhas, linhaFunil } from "./dominios/campanhas.ts";
+import { licitacoes } from "./dominios/licitacoes.ts";
 import { agruparMotivos, motivoLegivel } from "./motivos.ts";
 import { motivoLegivel as motivoTela } from "../../../../src/lib/textoDono.ts";
 import { hojeBR, lerData } from "./tempo.ts";
@@ -82,7 +83,7 @@ Deno.test("exposto: transversais sempre; domínio bloqueado some e é reconhecid
   assertEquals(nomes.slice(0, 2), ["sigma_dominios", "sigma_guia"]);
   assert(nomes.includes("plantoes_descobertos"));
   assertEquals(todos.dominioDe.get("quem_esta_escalado"), "escalas");
-  assertEquals(todos.prompts.length, escalas.prompts.length + campanhas.prompts.length);
+  assertEquals(todos.prompts.length, escalas.prompts.length + campanhas.prompts.length + licitacoes.prompts.length);
 
   const sem = acessosDoUsuario(DOMINIOS, new Set());
   const exp = exposto(sem);

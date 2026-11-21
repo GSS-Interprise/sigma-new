@@ -21,7 +21,8 @@ type Msg = {
 
 const SUGESTOES: { rota: RegExp; itens: string[] }[] = [
   { rota: /^\/(prospeccao|campanhas|disparos)/, itens: ["Como estão as campanhas ativas?", "Quantos médicos receberam mensagem hoje?", "Quero criar uma campanha nova"] },
-  { rota: /^\/(bi|escalas|radiologia)/, itens: ["Onde tem furo na escala esta semana?", "Quem está de plantão no CEPON amanhã?", "Como estão as campanhas ativas?"] },
+  { rota: /^\/licitacoes/, itens: ["Quais disputas temos esta semana?", "Chegou licitação nova hoje?", "Como está o quadro de licitações?"] },
+  { rota: /^\/(bi|escalas|radiologia)/,itens: ["Onde tem furo na escala esta semana?", "Quem está de plantão no CEPON amanhã?", "Como estão as campanhas ativas?"] },
   { rota: /.*/, itens: ["Como estão as campanhas ativas?", "Onde tem furo na escala esta semana?", "Quero criar uma campanha nova"] },
 ];
 
@@ -175,7 +176,7 @@ export function AssistenteSigma() {
           <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4 text-sm">
             {msgs.length === 0 && (
               <div className="space-y-2">
-                <p className="text-muted-foreground">Pergunte sobre campanhas e escalas, ou peça para criar ou mudar uma campanha.</p>
+                <p className="text-muted-foreground">Pergunte sobre campanhas, escalas e licitações, ou peça para criar ou mudar uma campanha.</p>
                 {sugestoes.map((s) => (
                   <button key={s} type="button" onClick={() => enviar(s)}
                     className="block w-full rounded-md border px-3 py-2 text-left transition-colors hover:bg-muted">

@@ -1,0 +1,44 @@
+{
+  "dominio": "licitacoes",
+  "nota": "Casos da bateria de consistência (scripts/agente-consistencia.ts). A paridade usa SQL direto em licitacoes, com os filtros do Kanban (board effecti, empresa, sem arquivados), sem passar pelas RPCs agente_licitacoes_* que as ferramentas usam. Disputas e novas dependem da hora: rodar fora do horário da captação (n8n) para a janela não mudar entre as 3 chamadas.",
+  "casos": [
+    {
+      "nome": "quadro_gss",
+      "pergunta": "Como está o quadro de licitações?",
+      "ferramenta": "licitacoes_quadro",
+      "argumentos": {},
+      "paridade": {
+        "cards": "select count(*) from licitacoes l where l.board = 'effecti' and l.empresa = 'GSS' and l.arquivado_em is null and exists (select 1 from licitacoes_colunas c where c.status_vinculado::text = l.status::text)",
+        "captacao": "select count(*) from licitacoes where board = 'effecti' and empresa = 'GSS' and arquivado_em is null and status::text = 'captacao_edital'"
+      }
+    },
+    {
+      "nome": "quadro_todas",
+      "pergunta": "E somando GSS e AGES?",
+      "ferramenta": "licitacoes_quadro",
+      "argumentos": { "empresa": "todas" },
+      "paridade": {
+        "cards": "select count(*) from licitacoes l where l.board = 'effecti' and l.arquivado_em is null and exists (select 1 from licitacoes_colunas c where c.status_vinculado::text = l.status::text)"
+      }
+    },
+    {
+      "nome": "novas_semana",
+      "pergunta": "Quantas licitações novas chegaram nesta semana?",
+      "ferramenta": "licitacoes_novas",
+      "argumentos": { "dias": 7 },
+      "paridade": {
+        "novas": "select count(*) from licitacoes where board = 'effecti' and empresa = 'GSS' and created_at >= now() - interval '7 days'"
+      }
+    },
+    {
+      "nome": "disputas_semana",
+      "pergunta": "Quais disputas temos nos próximos 7 dias?",
+      "ferramenta": "licitacoes_disputas",
+      "argumentos": {},
+      "paridade": {
+        "disputas": "select count(*) from licitacoes where board = 'effecti' and empresa = 'GSS' and arquivado_em is null and status::text not in ('descarte_edital','nao_ganhamos','suspenso_revogado','arrematados','adjudicacao_homologacao') and data_disputa >= now() and data_disputa < now() + interval '7 days'",
+        "so_captadas": "select count(*) from licitacoes where board = 'effecti' and empresa = 'GSS' and arquivado_em is null and status::text = 'captacao_edital' and data_disputa >= now() and data_disputa < now() + interval '7 days'"
+      }
+    }
+  ]
+}
