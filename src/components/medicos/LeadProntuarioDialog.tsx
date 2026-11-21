@@ -33,6 +33,7 @@ import { LeadPropostasSection } from "./LeadPropostasSection";
 import { LeadHistoricoAnotacoesSection } from "./LeadHistoricoAnotacoesSection";
 import { LeadPerfilIaSection } from "./LeadPerfilIaSection";
 import { LeadTimelineUnificadoSection } from "./LeadTimelineUnificadoSection";
+import { HistoricoGssMedico } from "./HistoricoGssMedico";
 import { LeadAnexosSection, enviarAnexosDoLead } from "./LeadAnexosSection";
 import { LeadLinksExternosSection } from "./LeadLinksExternosSection";
 import { LeadAtividadesPanel } from "./LeadAtividadesPanel";
@@ -1700,9 +1701,10 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                 );
               })()}
               {(() => {
-                const abasPerfil = ["dados", "propostas", "perfil-ia"];
+                // "Na GSS" (21/11): histórico do médico na GSS, só para quem já é do corpo clínico.
+                const abasPerfil = ["dados", "propostas", "perfil-ia", "na-gss"];
                 const isPerfil = abasPerfil.includes(activeTab);
-                const cols = isPerfil ? 3 : canViewOld ? 4 : 3;
+                const cols = isPerfil ? (medicoVinculado?.id ? 4 : 3) : canViewOld ? 4 : 3;
                 return (
                   <TabsList
                     className="grid mx-4 flex-shrink-0 w-auto"
@@ -1722,6 +1724,12 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                           <Brain className="h-3.5 w-3.5" />
                           Perfil IA
                         </TabsTrigger>
+                        {medicoVinculado?.id && (
+                          <TabsTrigger value="na-gss" className="gap-1.5 text-xs">
+                            <Building2 className="h-3.5 w-3.5" />
+                            Na GSS
+                          </TabsTrigger>
+                        )}
                       </>
                     ) : (
                       <>
@@ -2242,6 +2250,15 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                     phoneE164={lead?.phone_e164 || editedData.phone_e164}
                     onConversaClick={(conversaId) => setSidebarConversaId(conversaId)}
                   />
+                </TabsContent>
+
+                {/* Na GSS: plantões, hospitais, produção e campanhas do médico */}
+                <TabsContent value="na-gss" className="m-0 h-full overflow-hidden">
+                  <ScrollArea className="h-full w-full">
+                    <div className="p-4">
+                      <HistoricoGssMedico medicoId={medicoVinculado?.id} />
+                    </div>
+                  </ScrollArea>
                 </TabsContent>
 
                 {/* Perfil IA: perfil extraído + contatos + timeline cross-canal */}
