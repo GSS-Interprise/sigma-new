@@ -8,12 +8,15 @@
 // Só WhatsApp oficial (pedido do Raul), pelo remetente de config alertas_equipe_sender_id. Antes, o aviso de lead
 // quente saía pelo chip Evolution, desligado desde 08/11: em 30 dias 1 lead quente e nenhum aviso entregue.
 // Começa em config alertas_equipe_inicio (2026-11-16). Destinatários: alertas_equipe_destinos = "Nome:55...; Nome:55...".
+//   furos (cron 9h25, 15h25 e 21h25 UTC, logo depois do robo do Dr. Escala) — aviso de furo de escala a quem cuida da
+//               escala (escala_furo_destinos), regras em _shared/furos.ts. Modo teste: config escala_furos_teste_destino.
 //   respondeu { campanha_lead_id, texto } — campanha MANUAL (a equipe conversa): o médico respondeu ao 1º contato.
 // Destinatários por campanha (13/11): campanhas.alerta_destinos [{nome, fone}], escolhidos na criação. Com lista própria
 // o aviso vale desde já (não espera alertas_equipe_inicio); sem lista, vão os destinatários gerais acima.
 // Só service_role chama.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { destinosDaConfig, destinosValidos, trechoAviso } from "../_shared/alertas.ts";
+import { type DestinoFuro, type Feito, type Furo, HORIZONTE_DIAS, montarAvisos, textoAviso } from "../_shared/furos.ts";
 import { appUrl } from "../_shared/app-url.ts";
 
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { "Content-Type": "application/json" } });
@@ -40,6 +43,12 @@ const MODELOS = [
     corpo: "Medico respondeu - {{1}} ({{2}}), campanha {{3}}: {{4}}. A conversa e da equipe: responda pelo Sigma pelo botao.",
     exemplo: ["Dra. Maria Silva", "Pediatria", "Pediatria Nova Prata", "Tenho interesse, qual o valor do plantao?"],
     botao: { type: "URL", text: "Abrir conversa", url: `${SIGMA}/conversas?conversa={{1}}`, example: [`${SIGMA}/conversas?conversa=3f2a9c1e`] },
+  },
+  {
+    nome: "gss_furo_escala_v1",
+    corpo: "Furo na escala - {{1}}: {{2}}. Ninguem escalado ate agora no Dr. Escala. Veja todos os furos no Sigma pelo botao.",
+    exemplo: ["1 furo nas proximas 24 h", "CEPON Radiologia 23/11 19h-07h"],
+    botao: { type: "URL", text: "Ver furos", url: `${SIGMA}/bi?tab=escalas`, example: undefined },
   },
 ];
 
@@ -143,6 +152,43 @@ async function resumoDiario(admin: any, forcar: boolean) {
   return { total, enviados: out };
 }
 
+// Aviso de furo de escala. Um WhatsApp por pessoa e rodada, com todos os furos novos dela (regras em _shared/furos.ts).
+// Só marca como avisado o que saiu: falha (ex.: modelo ainda em análise na Meta) tenta de novo na próxima rodada.
+async function furosEscala(admin: any, forcar: boolean) {
+  if (!forcar && (await config(admin, "escala_furos_ativo")) !== "true") return { pulado: "desligado" };
+  const hoje = new Date();
+  const dia = (n: number) => new Date(hoje.getTime() + n * 86_400_000).toISOString().slice(0, 10);
+  const { data: furosV, error } = await admin.from("drescala_escala_v").select("id, local_id, hospital, setor, inicio, fim")
+    .eq("furo", true).gte("data", dia(-1)).lte("data", dia(HORIZONTE_DIAS + 1)).order("inicio").order("id").limit(2000);
+  if (error) throw error;
+  const teste = dig(await config(admin, "escala_furos_teste_destino"));
+  let destinosF: DestinoFuro[];
+  if (teste) destinosF = [{ nome: "Teste", fone: teste, local_ids: null }];
+  else {
+    const { data } = await admin.from("escala_furo_destinos").select("nome, fone, local_ids").eq("ativo", true).order("nome").order("id");
+    destinosF = (data ?? []) as DestinoFuro[];
+  }
+  if (!destinosF.length) return { pulado: "sem destinatario", furos: (furosV ?? []).length };
+  const ids = (furosV ?? []).map((f: any) => f.id);
+  const { data: feitosV } = ids.length
+    ? await admin.from("escala_furo_avisos").select("plantao_id, tipo, fone").in("plantao_id", ids)
+    : { data: [] };
+  const avisos = montarAvisos((furosV ?? []) as Furo[], destinosF, (feitosV ?? []) as Feito[], hoje);
+  if (!avisos.length) return { furos: ids.length, enviados: [] };
+  const sender = await remetente(admin);
+  const out = [];
+  for (const a of avisos) {
+    const [resumo, lista] = textoAviso(a);
+    try {
+      const wamid = await enviar(sender, a.destino.fone, "gss_furo_escala_v1", [resumo, lista]);
+      await admin.from("escala_furo_avisos").upsert(a.itens.map((i) => ({ plantao_id: i.furo.id, tipo: i.tipo, fone: a.destino.fone,
+        teste: !!teste, wamid })), { onConflict: "plantao_id,tipo,fone", ignoreDuplicates: true });
+      out.push({ para: a.destino.nome, furos: a.itens.length, wamid });
+    } catch (e) { out.push({ para: a.destino.nome, furos: a.itens.length, erro: String((e as Error).message).slice(0, 200) }); }
+  }
+  return { furos: ids.length, teste: !!teste, enviados: out };
+}
+
 async function criarTemplates(admin: any, nomes?: string[]) {
   const sender = await remetente(admin);
   const out = [];
@@ -225,6 +271,7 @@ Deno.serve(async (req) => {
     if (body.acao === "quente") return json({ ok: true, ...(await quente(admin, String(body.campanha_lead_id || ""), String(body.resumo || ""), !!body.forcar)) });
     if (body.acao === "respondeu") return json({ ok: true, ...(await respondeu(admin, String(body.campanha_lead_id || ""), String(body.texto || ""), !!body.forcar)) });
     if (body.acao === "resumo") return json({ ok: true, ...(await resumoDiario(admin, !!body.forcar)) });
+    if (body.acao === "furos") return json({ ok: true, ...(await furosEscala(admin, !!body.forcar)) });
     if (body.acao === "ia_falhas") return json({ ok: true, ...(await iaFalhas(admin)) });
     if (body.acao === "criar_templates") return json({ ok: true, modelos: await criarTemplates(admin, Array.isArray(body.nomes) ? body.nomes : undefined) });
     if (body.acao === "status_templates") return json({ ok: true, modelos: await statusTemplates(admin) });
