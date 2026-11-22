@@ -103,7 +103,7 @@ function Painel() {
               <p className="mt-1 font-display text-5xl font-bold tabular-nums leading-none">{esperandoPessoa.length}</p>
               <p className="mt-2 text-sm">
                 {esperandoPessoa.length
-                  ? <>{esperandoPessoa.length === 1 ? "conversa esperando" : "conversas esperando"} · a mais antiga há <strong>{tempoCurto(maisAntiga)}</strong></>
+                  ? <>{esperandoPessoa.length === 1 ? "conversa esperando" : "conversas esperando"} · a mais antiga há <strong className="whitespace-nowrap">{tempoCurto(maisAntiga)}</strong></>
                   : "Ninguém esperando resposta de uma pessoa nas últimas 24 h."}
               </p>
             </>

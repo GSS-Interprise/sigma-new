@@ -125,14 +125,15 @@ export function GraficoVolume({ serie, porHora, meta }: { serie: PontoSerie[]; p
 
 export function GraficoMediana({ serie, porHora, meta }: { serie: PontoSerie[]; porHora: boolean; meta: number }) {
   const dados = serie.map((p) => ({ bucket: p.bucket, mediana: p.mediana_min }));
-  const max = Math.max(meta * 1.5, ...dados.map((d) => d.mediana ?? 0));
+  // Teto redondo (múltiplo de 5) para as marcas do eixo saírem retas: 0, 5, 10, 15...
+  const max = Math.ceil(Math.max(meta * 1.5, ...dados.map((d) => d.mediana ?? 0)) / 5) * 5;
   return (
     <div className="h-[244px]">
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={dados} margin={{ top: 8, right: 8, bottom: 0, left: -12 }}>
           <CartesianGrid vertical={false} stroke={COR.grade} strokeDasharray="3 3" />
           <XAxis dataKey="bucket" tickFormatter={(v) => fmtBucket(v, porHora)} tick={{ fontSize: 11, fill: COR.texto }} axisLine={false} tickLine={false} minTickGap={12} />
-          <YAxis domain={[0, Math.ceil(max)]} allowDecimals={false} tick={{ fontSize: 11, fill: COR.texto }} axisLine={false} tickLine={false} width={44} />
+          <YAxis domain={[0, max]} ticks={Array.from({ length: Math.floor(max / 5) + 1 }, (_, i) => i * 5).filter((v, _, a) => a.length <= 6 || v % 10 === 0)} allowDecimals={false} tick={{ fontSize: 11, fill: COR.texto }} axisLine={false} tickLine={false} width={44} />
           <ReferenceLine y={meta} stroke={COR.meta} strokeDasharray="5 4" label={{ value: `meta ${meta} min`, position: "insideTopRight", fontSize: 11, fill: COR.meta }} />
           <Tooltip formatter={(v: number) => [tempoCurto(Math.round(v)), "Mediana"]} labelFormatter={(l) => fmtBucket(String(l), porHora)} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
           <Line type="linear" dataKey="mediana" stroke="hsl(var(--foreground))" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} connectNulls isAnimationActive={false} />
