@@ -17,7 +17,7 @@ import {
   FileSignature, Calendar, Stethoscope, Phone, Mail, MapPin,
   Building2, Globe, Heart, IdCard, Save, Briefcase, Home, Import,
   ClipboardCheck, Award, FolderArchive, Activity, Undo2, AlertTriangle,
-  XCircle, Brain
+  XCircle, Brain, BadgeCheck, GraduationCap
 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DocumentacaoTab } from "./DocumentacaoTab";
@@ -34,6 +34,8 @@ import { LeadHistoricoAnotacoesSection } from "./LeadHistoricoAnotacoesSection";
 import { LeadPerfilIaSection } from "./LeadPerfilIaSection";
 import { LeadTimelineUnificadoSection } from "./LeadTimelineUnificadoSection";
 import { HistoricoGssMedico } from "./HistoricoGssMedico";
+import { RegistroProfissionalCard } from "./RegistroProfissionalCard";
+import { CurriculoMedico } from "./CurriculoMedico";
 import { LeadAnexosSection, enviarAnexosDoLead } from "./LeadAnexosSection";
 import { LeadLinksExternosSection } from "./LeadLinksExternosSection";
 import { LeadAtividadesPanel } from "./LeadAtividadesPanel";
@@ -1664,7 +1666,7 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
               {/* Fase C — Agrupamento de 7 abas em 2 grupos pra reduzir carga cognitiva.
                   Perfil = quem é o medico. Atividade = o que ele fez / vamos fazer. */}
               {(() => {
-                const abasPerfil = ["dados", "propostas", "perfil-ia"];
+                const abasPerfil = ["dados", "propostas", "perfil-ia", "registro", "curriculo", "na-gss"];
                 const grupoAtivo = abasPerfil.includes(activeTab) ? "perfil" : "atividade";
                 return (
                   <div className="px-4 mt-2 mb-1 flex gap-1 flex-shrink-0">
@@ -1702,9 +1704,10 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
               })()}
               {(() => {
                 // "Na GSS" (21/11): histórico do médico na GSS, só para quem já é do corpo clínico.
-                const abasPerfil = ["dados", "propostas", "perfil-ia", "na-gss"];
+                // Registro (CRM/CFM e CNES) e Currículo (22/11): a ficha do médico do item 5 da Ramone.
+                const abasPerfil = ["dados", "propostas", "perfil-ia", "registro", "curriculo", "na-gss"];
                 const isPerfil = abasPerfil.includes(activeTab);
-                const cols = isPerfil ? (medicoVinculado?.id ? 4 : 3) : canViewOld ? 4 : 3;
+                const cols = isPerfil ? (medicoVinculado?.id ? 6 : 5) : canViewOld ? 4 : 3;
                 return (
                   <TabsList
                     className="grid mx-4 flex-shrink-0 w-auto"
@@ -1723,6 +1726,14 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                         <TabsTrigger value="perfil-ia" className="gap-1.5 text-xs" disabled={!leadId || isNewLead}>
                           <Brain className="h-3.5 w-3.5" />
                           Perfil IA
+                        </TabsTrigger>
+                        <TabsTrigger value="registro" className="gap-1.5 text-xs" disabled={!leadId || isNewLead}>
+                          <BadgeCheck className="h-3.5 w-3.5" />
+                          CRM e CNES
+                        </TabsTrigger>
+                        <TabsTrigger value="curriculo" className="gap-1.5 text-xs" disabled={!leadId || isNewLead}>
+                          <GraduationCap className="h-3.5 w-3.5" />
+                          Currículo
                         </TabsTrigger>
                         {medicoVinculado?.id && (
                           <TabsTrigger value="na-gss" className="gap-1.5 text-xs">
@@ -2250,6 +2261,20 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                     phoneE164={lead?.phone_e164 || editedData.phone_e164}
                     onConversaClick={(conversaId) => setSidebarConversaId(conversaId)}
                   />
+                </TabsContent>
+
+                {/* CRM e CNES: registro no conselho e estabelecimentos onde atua (CNES) */}
+                <TabsContent value="registro" className="m-0 h-full overflow-hidden">
+                  <ScrollArea className="h-full w-full">
+                    <div className="p-4">{leadId && <RegistroProfissionalCard leadId={leadId} />}</div>
+                  </ScrollArea>
+                </TabsContent>
+
+                {/* Currículo: o que veio pelo WhatsApp ou foi enviado, lido pela IA */}
+                <TabsContent value="curriculo" className="m-0 h-full overflow-hidden">
+                  <ScrollArea className="h-full w-full">
+                    <div className="p-4">{leadId && <CurriculoMedico leadId={leadId} />}</div>
+                  </ScrollArea>
                 </TabsContent>
 
                 {/* Na GSS: plantões, hospitais, produção e campanhas do médico */}
