@@ -55,7 +55,7 @@ language sql stable security definer set search_path = public as $$
       on regexp_replace(cc.phone_e164, '\D', '', 'g') = regexp_replace(i.phone_number, '\D', '', 'g')
   )
   select d.pessoa_id,
-         case when d.automatica then 'Automático (IA, campanha)' else coalesce(max(p.nome_completo), 'Sem responsável no número') end,
+         case when d.automatica then 'Automático (IA, campanha)' else coalesce(max(p.nome_completo), 'Número sem responsável') end,
          count(*)::int, count(d.respondida_em)::int,
          round((percentile_cont(0.5) within group (order by extract(epoch from d.respondida_em - d.desde) / 60.0)
                 filter (where d.respondida_em is not null))::numeric, 1),

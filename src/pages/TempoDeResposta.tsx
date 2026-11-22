@@ -95,8 +95,8 @@ function Painel() {
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-12">
-        <section className={cn("rounded-xl border p-5 lg:col-span-5", esperandoPessoa.length ? "border-amber-200 bg-amber-50/70" : "border-emerald-200 bg-emerald-50/60")}>
+      <div className="grid gap-4 xl:grid-cols-12">
+        <section className={cn("rounded-xl border p-5 xl:col-span-4", esperandoPessoa.length ? "border-amber-200 bg-amber-50/70" : "border-emerald-200 bg-emerald-50/60")}>
           <p className="text-sm font-medium text-muted-foreground">Espera você agora</p>
           {fila.isLoading ? <Skeleton className="mt-2 h-12 w-56" /> : (
             <>
@@ -110,7 +110,7 @@ function Painel() {
           )}
           <div className="mt-5"><BarraFaixas porFaixa={porFaixa} rotulos={FAIXAS} /></div>
         </section>
-        <div className="grid gap-4 sm:grid-cols-3 lg:col-span-7">
+        <div className="grid gap-4 sm:grid-cols-3 xl:col-span-8">
           <Kpi rotulo={`Respondidas em até ${meta} min`} valor={pct == null ? "—" : `${pct}%`} detalhe={`Meta ${metaPct}% · ${tot.meta} de ${tot.esp} ${rotuloPeriodo}`}
             progresso={pct} bom={pct == null ? null : pct >= metaPct} cor={COR.meta}
             serie={pts.map((p) => (p.esperas ? (100 * p.em_meta) / p.esperas : null))} />
@@ -147,7 +147,7 @@ function Painel() {
           {serie.isLoading ? <Skeleton className="h-56 w-full" /> : serie.isError ? <p className="text-sm text-destructive">{(serie.error as Error).message}</p>
             : pts.length ? <GraficoVolume serie={pts} porHora={porHora} meta={meta} /> : <p className="py-16 text-center text-sm text-muted-foreground">Nenhuma mensagem pediu resposta {rotuloPeriodo}.</p>}
         </Cartao>
-        <Cartao titulo="Mediana até a 1ª resposta" apoio="Só respostas de pessoas (celular ou Sigma)">
+        <Cartao titulo="Mediana até a 1ª resposta" apoio="Em minutos · só respostas de pessoas (celular ou Sigma)">
           {serie.isLoading ? <Skeleton className="h-56 w-full" /> : pts.some((p) => p.mediana_min != null)
             ? <GraficoMediana serie={pts} porHora={porHora} meta={meta} />
             : <p className="py-16 text-center text-sm text-muted-foreground">Nenhuma resposta de pessoa {rotuloPeriodo}.</p>}

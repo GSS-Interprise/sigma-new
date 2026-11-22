@@ -39,11 +39,11 @@ export function Kpi({ rotulo, valor, detalhe, progresso, bom, serie, cor }: {
   const pontos = serie.map((v, i) => ({ i, v }));
   return (
     <div className="flex min-w-0 flex-col justify-between rounded-xl border bg-card p-4">
-      <p className="text-sm text-muted-foreground">{rotulo}</p>
-      <div className="mt-1 flex items-end justify-between gap-3">
-        <p className={cn("font-display text-3xl font-semibold tabular-nums", bom === false && "text-amber-700")}>{valor}</p>
+      <p className="text-sm leading-snug text-muted-foreground">{rotulo}</p>
+      <div className="mt-2 flex items-end justify-between gap-2">
+        <p className={cn("whitespace-nowrap font-display text-3xl font-semibold tabular-nums", bom === false && "text-amber-700")}>{valor}</p>
         {pontos.length > 1 && (
-          <div className="h-10 w-24 shrink-0" aria-hidden>
+          <div className="h-9 w-16 min-w-0 shrink" aria-hidden>
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={pontos} margin={{ top: 4, right: 2, bottom: 2, left: 2 }}>
                 <Line type="monotone" dataKey="v" stroke={cor} strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />
@@ -129,13 +129,13 @@ export function GraficoMediana({ serie, porHora, meta }: { serie: PontoSerie[]; 
   return (
     <div className="h-[244px]">
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={dados} margin={{ top: 8, right: 8, bottom: 0, left: -18 }}>
+        <LineChart data={dados} margin={{ top: 8, right: 8, bottom: 0, left: -12 }}>
           <CartesianGrid vertical={false} stroke={COR.grade} strokeDasharray="3 3" />
           <XAxis dataKey="bucket" tickFormatter={(v) => fmtBucket(v, porHora)} tick={{ fontSize: 11, fill: COR.texto }} axisLine={false} tickLine={false} minTickGap={12} />
-          <YAxis domain={[0, Math.ceil(max)]} tickFormatter={(v) => `${v}`} tick={{ fontSize: 11, fill: COR.texto }} axisLine={false} tickLine={false} width={44} unit=" min" />
+          <YAxis domain={[0, Math.ceil(max)]} allowDecimals={false} tick={{ fontSize: 11, fill: COR.texto }} axisLine={false} tickLine={false} width={44} />
           <ReferenceLine y={meta} stroke={COR.meta} strokeDasharray="5 4" label={{ value: `meta ${meta} min`, position: "insideTopRight", fontSize: 11, fill: COR.meta }} />
           <Tooltip formatter={(v: number) => [tempoCurto(Math.round(v)), "Mediana"]} labelFormatter={(l) => fmtBucket(String(l), porHora)} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-          <Line type="monotone" dataKey="mediana" stroke="hsl(var(--foreground))" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} connectNulls isAnimationActive={false} />
+          <Line type="linear" dataKey="mediana" stroke="hsl(var(--foreground))" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} connectNulls isAnimationActive={false} />
         </LineChart>
       </ResponsiveContainer>
     </div>
@@ -154,18 +154,18 @@ export function PorPessoa({ linhas, meta }: { linhas: Indicador[]; meta: number 
         const dentro = med != null && med <= meta;
         return (
           <li key={`${l.pessoa_id}-${l.pessoa}`}>
-            <div className="mb-1.5 flex items-baseline justify-between gap-2 text-sm">
+            <div className="mb-1.5 flex items-baseline justify-between gap-3 text-sm">
               <span className="min-w-0 truncate font-medium" title={l.pessoa}>{l.pessoa}</span>
-              <span className="shrink-0 tabular-nums text-muted-foreground">
-                {med == null ? "sem resposta" : tempoCurto(Math.round(med))}
-                {l.sem_resposta > 0 && <span className="ml-2 font-semibold text-amber-800">{l.sem_resposta} sem resposta</span>}
-              </span>
+              <span className="shrink-0 whitespace-nowrap font-semibold tabular-nums">{med == null ? "—" : tempoCurto(Math.round(med))}</span>
             </div>
             <div className="relative h-2.5 rounded-full bg-muted">
               {med != null && <div className="h-full rounded-full" style={{ width: `${Math.max(3, Math.min(100, (100 * med) / escala))}%`, background: dentro ? COR.meta : COR.sem }} />}
               <div className="absolute -top-1 h-[18px] w-0.5 rounded bg-foreground/40" style={{ left: `${(100 * meta) / escala}%` }} title={`meta ${meta} min`} />
             </div>
-            <p className="mt-1 text-xs text-muted-foreground">{l.respondidas} de {l.esperas} respondidas · {l.esperas ? Math.round((100 * l.em_10min) / l.esperas) : 0}% em até 10 min</p>
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              {l.respondidas} de {l.esperas} respondidas
+              {l.sem_resposta > 0 && <> · <span className="font-semibold text-amber-800">{l.sem_resposta} sem resposta</span></>}
+            </p>
           </li>
         );
       })}
