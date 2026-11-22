@@ -7,7 +7,8 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { "Content-Type": "application/json" } });
-const UNIDADES = new Set(["marieta"]);
+// CEPON entrou em 22/11 (segunda estação, PC da Brenda).
+const UNIDADES = new Set(["marieta", "cepon"]);
 const ORIGENS = new Set(["ps", "internado", "externo"]);
 
 serve(async (req) => {

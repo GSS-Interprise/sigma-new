@@ -8,6 +8,7 @@
 // Só WhatsApp oficial (pedido do Raul), pelo remetente de config alertas_equipe_sender_id. Antes, o aviso de lead
 // quente saía pelo chip Evolution, desligado desde 08/11: em 30 dias 1 lead quente e nenhum aviso entregue.
 // Começa em config alertas_equipe_inicio (2026-11-16). Destinatários: alertas_equipe_destinos = "Nome:55...; Nome:55...".
+//   estacao (chamado pelo sla-alertas) — a estação do SLA de laudos parou, continua parada ou voltou.
 //   atendimento (cron a cada 2 min) — conversa sem resposta nos números oficiais, em escada (3/10/60/180 min úteis),
 //               regras em _shared/atendimento.ts. Modo teste e destinos em atendimento_config.
 //   furos (cron 9h25, 15h25 e 21h25 UTC, logo depois do robo do Dr. Escala) — aviso de furo de escala a quem cuida da
@@ -58,6 +59,12 @@ const MODELOS = [
     corpo: "Conversa sem resposta - {{1}}: {{2}}. Responda pelo celular ou veja a fila no Sigma pelo botao.",
     exemplo: ["2 conversas esperando, a mais antiga ha 15 min", "Hospital Regional (cliente), 15 min, numero 3761 de Ester; Dr. Joao Silva, 4 min, numero 3416 de Duda"],
     botao: { type: "URL", text: "Ver a fila", url: `${SIGMA}/tempo-de-resposta`, example: undefined },
+  },
+  {
+    nome: "gss_estacao_sla_v1",
+    corpo: "Estacao do SLA de laudos - {{1}}: {{2}}. Veja a situacao e o passo a passo no Sigma pelo botao.",
+    exemplo: ["Hospital Marieta parou desde 19/11 23:01", "PC desligado ou sem internet. Ligue a estacao, conecte a VPN e deixe o PACS aberto em Nao lido"],
+    botao: { type: "URL", text: "Ver o SLA", url: `${SIGMA}/radiologia?aba=sla`, example: undefined },
   },
 ];
 
@@ -238,6 +245,27 @@ async function atendimentoEspera(admin: any, forcar: boolean) {
   return { esperando: esperas.length, teste: cfg.modo_teste, enviados: out };
 }
 
+// Estação do SLA parou / continua parada / voltou (chamado pelo sla-alertas). Destinos em config
+// sla_estacao_destinos (JSON [{nome, fone}]); sem lista, vai para sla_teste_destino. Modelo gss_estacao_sla_v1.
+async function estacaoSla(admin: any, b: any) {
+  const evento = String(b.evento || "");
+  const unidade = String(b.unidade || "SLA");
+  const resumo = evento === "voltou" ? `${unidade} voltou ${b.quando || ""}` : evento === "continua" ? `${unidade} continua ${b.quando || ""}` : `${unidade} parou ${b.quando || ""}`;
+  const detalhe = String(b.detalhe || "").replace(/\s+/g, " ").trim().slice(0, 400) || "Sem detalhe.";
+  let lista: { nome: string; fone: string }[] = [];
+  try { lista = JSON.parse(await config(admin, "sla_estacao_destinos") || "[]"); } catch { lista = []; }
+  lista = lista.filter((d) => dig(d?.fone).length >= 12);
+  if (!lista.length) { const t = dig(await config(admin, "sla_teste_destino")); if (t) lista = [{ nome: "Teste", fone: t }]; }
+  if (!lista.length) return { pulado: "sem destinatario" };
+  const sender = await remetente(admin);
+  const out = [];
+  for (const d of lista) {
+    try { out.push({ para: d.nome, wamid: await enviar(sender, dig(d.fone), "gss_estacao_sla_v1", [resumo.trim(), detalhe]) }); }
+    catch (e) { out.push({ para: d.nome, erro: String((e as Error).message).slice(0, 200) }); }
+  }
+  return { enviados: out };
+}
+
 async function criarTemplates(admin: any, nomes?: string[]) {
   const sender = await remetente(admin);
   const out = [];
@@ -320,6 +348,7 @@ Deno.serve(async (req) => {
     if (body.acao === "quente") return json({ ok: true, ...(await quente(admin, String(body.campanha_lead_id || ""), String(body.resumo || ""), !!body.forcar)) });
     if (body.acao === "respondeu") return json({ ok: true, ...(await respondeu(admin, String(body.campanha_lead_id || ""), String(body.texto || ""), !!body.forcar)) });
     if (body.acao === "resumo") return json({ ok: true, ...(await resumoDiario(admin, !!body.forcar)) });
+    if (body.acao === "estacao") return json({ ok: true, ...(await estacaoSla(admin, body)) });
     if (body.acao === "atendimento") return json({ ok: true, ...(await atendimentoEspera(admin, !!body.forcar)) });
     if (body.acao === "furos") return json({ ok: true, ...(await furosEscala(admin, !!body.forcar)) });
     if (body.acao === "ia_falhas") return json({ ok: true, ...(await iaFalhas(admin)) });

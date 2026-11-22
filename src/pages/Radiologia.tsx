@@ -5,6 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Calendar, ClipboardList, AlertCircle, FileEdit, Activity, Building2, CalendarDays, ArrowUpDown, ArrowUp, ArrowDown, History, Timer, UserCheck, BellRing, Users } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { AbaSlaAoVivo } from "@/components/radiologia/sla/AbaSlaAoVivo";
+import { UNIDADES, useUnidade } from "@/components/radiologia/sla/useSla";
 import { AbaEscalaPlantao } from "@/components/radiologia/sla/AbaEscalaPlantao";
 import { AbaAvisos } from "@/components/radiologia/sla/AbaAvisos";
 import { AbaCoordenacao } from "@/components/radiologia/sla/AbaCoordenacao";
@@ -30,6 +31,7 @@ export default function Radiologia() {
   const [params, setParams] = useSearchParams();
   const aba = params.get("aba") || "sla";
   const abaSla = aba === "sla" || aba === "escala-sla";
+  const unidadeSla = useUnidade();
 
   // Buscar clientes que têm pendências importadas usando RPC ou query mais eficiente
   const { data: clientesComPendencias = [] } = useQuery({
@@ -153,8 +155,19 @@ export default function Radiologia() {
     <div className="flex items-center justify-between w-full">
       <div>
         <h1 className="text-2xl font-bold">Radiologia</h1>
-        <p className="text-sm text-muted-foreground">{abaSla ? "Prazo de laudo dos exames do PACS (Hospital Marieta)" : "Gestão completa de agendas, produção e controle de exames radiológicos"}</p>
+        <p className="text-sm text-muted-foreground">{abaSla ? `Prazo de laudo dos exames do PACS (${unidadeSla.nome})` : "Gestão completa de agendas, produção e controle de exames radiológicos"}</p>
       </div>
+      {abaSla && (
+        // Fila, coletor e escala são por unidade; avisos e coordenação valem para todas.
+        <div className="inline-flex shrink-0 rounded-lg border bg-card p-0.5" role="radiogroup" aria-label="Unidade">
+          {UNIDADES.map((u) => (
+            <button key={u.id} type="button" role="radio" aria-checked={unidadeSla.id === u.id} onClick={() => unidadeSla.trocar(u.id)}
+              className={`h-8 whitespace-nowrap rounded-md px-3 text-sm font-medium ${unidadeSla.id === u.id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+              {u.nome}
+            </button>
+          ))}
+        </div>
+      )}
       
       <div className={abaSla ? "hidden" : "flex items-center gap-4"}>
         <div className="flex items-center gap-1">
@@ -218,7 +231,7 @@ export default function Radiologia() {
     <AppLayout headerActions={headerActions}>
       <div className="p-4 space-y-6">
 
-        <Tabs value={aba} onValueChange={(v) => setParams({ aba: v }, { replace: true })} className="w-full">
+        <Tabs value={aba} onValueChange={(v) => { const p = new URLSearchParams(params); p.set("aba", v); setParams(p, { replace: true }); }} className="w-full">
           <TabsList className="flex h-auto w-full flex-wrap justify-start">
             <TabsTrigger value="sla" className="gap-2">
               <Timer className="h-4 w-4" />

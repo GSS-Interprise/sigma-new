@@ -1,5 +1,6 @@
 // Alertas do SLA de laudos (radiologia GSS). Plano: docs/arquitetura/sla-laudos-radiologia.md. Só service_role chama.
-//   coletor (cron 5 min) — sem leitura "ok" da estação há mais de 15 min: abre uma queda e avisa por e-mail; quando volta, avisa.
+//   coletor (cron 5 min) — sem leitura "ok" da estação há mais de 15 min: abre uma queda e avisa por e-mail e WhatsApp
+//                          (lembrete a cada 3 h enquanto continua parada); quando volta, avisa.
 //   exames  (cron 2 min) — sequência configurada na tela (sla_aviso_passos, 21/11): avisos ao plantonista (WhatsApp com
 //                          "Assumir laudo" ou ligação) e, sem ninguém assumir, contatos da aba Coordenação. Regra em
 //                          _shared/slaEscada.ts (passosAgora). Só roda com config sla_alertas_ativo = "true".
@@ -13,7 +14,10 @@ import { SLA_VOZ_URL, tokenAlerta } from "../_shared/sla.ts";
 import { calcularIndicadores, daModalidade, destinoDoAviso, modalidadeDoExame, passosAgora, saidaConfiavel, textoIndicadores } from "../_shared/slaEscada.ts";
 
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { "Content-Type": "application/json" } });
-const UNIDADES = ["marieta"];
+// CEPON entrou em 22/11 (segunda estação: o mesmo Vue PACS do Marieta não abre os dois juntos na mesma máquina).
+const UNIDADES = ["marieta", "cepon"];
+// Lembrete por WhatsApp enquanto a estação continua parada (fim de semana passava em branco só com e-mail).
+const LEMBRETE_QUEDA_H = 3;
 const LIMITE_MIN = 15;
 // Travas do motor depois da enxurrada de 16/11 (104 avisos de exames de sexta): ver checarExames.
 const MAX_ATRASO_MIN = 120;
@@ -139,7 +143,7 @@ async function statusTemplates(admin: any) {
 // Envio pela conta Chakra GSS, plugin d9a6180c (BM GSS, inclui a Amni): é a conta em que os modelos foram criados.
 const PLUGIN_GSS = "d9a6180c-4ae4-4ed4-9c16-401b781e1ee7";
 const ORIGEM: Record<string, string> = { ps: "Pronto Socorro", internado: "Internado", externo: "Externo" };
-const NOME_UNIDADE: Record<string, string> = { marieta: "Hospital Marieta" };
+const NOME_UNIDADE: Record<string, string> = { marieta: "Hospital Marieta", cepon: "CEPON" };
 const dig = (v: unknown) => String(v ?? "").replace(/\D/g, "");
 // Mesmo número com ou sem o 9 e o 55: compara DDD + 8 últimos dígitos.
 const mesmoNumero = (a: string, b: string) => {
@@ -213,8 +217,9 @@ async function checarExames(admin: any, forcar = false, unidades = UNIDADES, tes
     if (!ultOk || agora.getTime() - new Date(ultOk.lida_em).getTime() > LIMITE_MIN * 60_000) {
       res.push({ unidade, pulado: "fila_desatualizada", ultima_ok: ultOk?.lida_em ?? null }); continue;
     }
-    // A unidade "teste" (chamada manual) usa a sequência do Marieta.
-    const passos = (passosTodos ?? []).filter((p: any) => p.unidade === (unidade === "teste" ? "marieta" : unidade)) as any[];
+    // A sequência de avisos é uma só para todas as unidades (regras iguais em todos os PACS, Ramone): a tela grava em
+    // "marieta" e as outras unidades (e a "teste") usam a mesma.
+    const passos = (passosTodos ?? []).filter((p: any) => p.unidade === "marieta") as any[];
 
     const { data: todos } = await admin.from("sla_exames")
       .select("id, origem, inicio_em, vence_em, paciente, estudo")
@@ -408,6 +413,23 @@ function motivoQueda(ultima: { status: string; detalhe: any; lida_em: string } |
 }
 
 // paraQuem: e-mail de um contato da aba Coordenação; sem ele, a lista fixa da coordenação (secret SLA_ALERTA_EMAILS).
+const duracaoTexto = (min: number) => (min < 90 ? `${Math.round(min)} min` : `${Math.round(min / 60)} h`);
+
+/** WhatsApp sobre a estação (parou, continua parada, voltou), pelo alertas-equipe (modelo gss_estacao_sla_v1). */
+async function avisarEstacao(unidade: string, evento: "parou" | "continua" | "voltou", quando: string, detalhe: string) {
+  try {
+    const r = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/alertas-equipe`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ acao: "estacao", unidade: NOME_UNIDADE[unidade] ?? unidade, evento, quando, detalhe }),
+    });
+    const j = await r.json().catch(() => ({}));
+    return { ok: r.ok && (j?.enviados ?? []).some((e: any) => e.wamid), resposta: j };
+  } catch (e) {
+    return { ok: false, erro: String((e as Error).message) };
+  }
+}
+
 async function emailar(titulo: string, corpo: string, paraQuem?: string[]) {
   const resend = Deno.env.get("RESEND_API_KEY");
   const fixos = (Deno.env.get("SLA_ALERTA_EMAILS") || Deno.env.get("MONITOR_WHATSAPP_EMAILS") || "").split(",").map((s) => s.trim());
@@ -440,7 +462,9 @@ async function checarColetor(admin: any, unidades = UNIDADES) {
       .order("lida_em", { ascending: false }).limit(1).maybeSingle();
     const { data: ultima } = await admin.from("sla_leituras").select("lida_em, status, detalhe").eq("unidade", unidade)
       .order("lida_em", { ascending: false }).limit(1).maybeSingle();
-    const { data: aberta } = await admin.from("sla_coletor_quedas").select("id, aberta_em").eq("unidade", unidade)
+    // Unidade sem nenhuma leitura ainda (estação não instalada): não abre queda nem avisa.
+    if (!ultima) { res.push({ unidade, pulado: "sem_estacao" }); continue; }
+    const { data: aberta } = await admin.from("sla_coletor_quedas").select("id, aberta_em, whatsapp_em").eq("unidade", unidade)
       .is("fechada_em", null).maybeSingle();
 
     // Para FECHAR uma queda, lista vazia não basta: precisa de uma leitura "ok" com linhas depois que a queda abriu
@@ -458,16 +482,22 @@ async function checarColetor(admin: any, unidades = UNIDADES) {
 
     if (parado && !aberta) {
       const motivo = motivoQueda(ultima, minNada);
-      await admin.from("sla_coletor_quedas").insert({ unidade, ultima_ok_em: ok?.lida_em ?? null, motivo });
+      const zap = await avisarEstacao(unidade, "parou", `desde ${hora(ok?.lida_em ?? null)}`, motivo);
+      await admin.from("sla_coletor_quedas").insert({ unidade, ultima_ok_em: ok?.lida_em ?? null, motivo, whatsapp_em: zap.ok ? new Date().toISOString() : null });
       const email = await emailar(`SLA de laudos: coletor parado (${unidade})`,
         `Ninguém está lendo a fila de laudos desde ${hora(ok?.lida_em ?? null)}.\n${motivo}\n\nEnquanto não voltar, os alertas de prazo não saem.`);
-      res.push({ unidade, evento: "caiu", email });
+      res.push({ unidade, evento: "caiu", email, whatsapp: zap });
     } else if (!parado && aberta) {
       await admin.from("sla_coletor_quedas").update({ fechada_em: new Date().toISOString() }).eq("id", aberta.id);
       const min = Math.round((Date.now() - new Date(aberta.aberta_em).getTime()) / 60000);
       const email = await emailar(`SLA de laudos: coletor voltou (${unidade})`,
         `A leitura da fila voltou às ${hora(vivo!.lida_em)}. Ficou parada cerca de ${min + LIMITE_MIN} min.`);
-      res.push({ unidade, evento: "voltou", email });
+      const zap = await avisarEstacao(unidade, "voltou", `às ${hora(vivo!.lida_em)}, depois de ${duracaoTexto(min + LIMITE_MIN)}`, "Os avisos de laudo voltaram a sair.");
+      res.push({ unidade, evento: "voltou", email, whatsapp: zap });
+    } else if (parado && aberta && (!aberta.whatsapp_em || Date.now() - new Date(aberta.whatsapp_em).getTime() > LEMBRETE_QUEDA_H * 3_600_000)) {
+      const zap = await avisarEstacao(unidade, "continua", `parada desde ${hora(aberta.aberta_em)}`, motivoQueda(ultima, minNada));
+      if (zap.ok) await admin.from("sla_coletor_quedas").update({ whatsapp_em: new Date().toISOString() }).eq("id", aberta.id);
+      res.push({ unidade, evento: "lembrete", whatsapp: zap });
     } else {
       res.push({ unidade, parado, min_desde_ok: minOk === null ? null : Math.round(minOk) });
     }

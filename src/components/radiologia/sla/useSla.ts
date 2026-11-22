@@ -1,10 +1,24 @@
 // Dados do SLA de laudos (radiologia GSS). Tabelas novas ainda fora dos tipos gerados: "as any" como o resto do módulo.
 // Doc: docs/arquitetura/sla-laudos-radiologia.md.
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 
-export const UNIDADE = "marieta";
-export const NOME_UNIDADE = "Hospital Marieta";
+// Unidades do SLA (22/11/2026: CEPON entra numa segunda estação, porque Marieta e CEPON usam o mesmo Vue PACS e
+// não abrem juntos na mesma máquina). Regras de aviso e coordenação são as mesmas para todas; fila, coletor e escala
+// são por unidade. A unidade da tela vem de ?unidade= na URL (padrão: Marieta).
+export const UNIDADES = [
+  { id: "marieta", nome: "Hospital Marieta" },
+  { id: "cepon", nome: "CEPON" },
+] as const;
+export type UnidadeId = (typeof UNIDADES)[number]["id"];
+export function useUnidade() {
+  const [params, setParams] = useSearchParams();
+  const id = (UNIDADES.find((u) => u.id === params.get("unidade"))?.id ?? "marieta") as UnidadeId;
+  const nome = UNIDADES.find((u) => u.id === id)!.nome;
+  const trocar = (novo: UnidadeId) => { const p = new URLSearchParams(params); p.set("unidade", novo); setParams(p, { replace: true }); };
+  return { id, nome, trocar };
+}
 
 export type Origem = "ps" | "internado" | "externo";
 export const ORIGEM: Record<Origem, { nome: string; curto: string; cor: string; fundo: string }> = {
@@ -64,8 +78,9 @@ export type Plantao = {
 const db = supabase as any;
 
 export function useFila() {
+  const UNIDADE = useUnidade().id;
   return useQuery({
-    queryKey: ["sla-fila"],
+    queryKey: ["sla-fila", UNIDADE],
     refetchInterval: 30_000,
     queryFn: async () => {
       const { data, error } = await db.from("sla_exames")
@@ -78,8 +93,9 @@ export function useFila() {
 }
 
 export function useColetor() {
+  const UNIDADE = useUnidade().id;
   return useQuery({
-    queryKey: ["sla-coletor"],
+    queryKey: ["sla-coletor", UNIDADE],
     refetchInterval: 30_000,
     queryFn: async () => {
       const [{ data: ok }, { data: queda }, { data: ativo }, { data: teste }] = await Promise.all([
@@ -145,8 +161,9 @@ export function useAnotar() {
 }
 
 export function useEscala(diasAFrente = 14) {
+  const UNIDADE = useUnidade().id;
   return useQuery({
-    queryKey: ["sla-escala", diasAFrente],
+    queryKey: ["sla-escala", diasAFrente, UNIDADE],
     refetchInterval: 60_000,
     queryFn: async () => {
       const ate = new Date(Date.now() + diasAFrente * 86_400_000).toISOString();

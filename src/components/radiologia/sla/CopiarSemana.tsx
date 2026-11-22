@@ -15,7 +15,7 @@ import {
   AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { UNIDADE, type Plantao } from "./useSla";
+import { useUnidade, type Plantao } from "./useSla";
 
 const db = supabase as any;
 const SEMANA_MS = 7 * 86_400_000;
@@ -35,6 +35,7 @@ const chave = (p: { papel: string; telefone: string; inicio: string }) => `${p.p
 type Alvo = "esta" | "proxima";
 
 export function CopiarSemana() {
+  const UNIDADE = useUnidade().id;
   const qc = useQueryClient();
   const [aberto, setAberto] = useState(false);
   const [alvo, setAlvo] = useState<Alvo>("proxima");
@@ -49,7 +50,7 @@ export function CopiarSemana() {
 
   // Lê a semana de origem e a de destino juntas: a de destino serve para não duplicar.
   const semanas = useQuery({
-    queryKey: ["sla-escala-copiar", origem.toISOString()],
+    queryKey: ["sla-escala-copiar", UNIDADE, origem.toISOString()],
     enabled: aberto,
     queryFn: async () => {
       const { data, error } = await db.from("sla_plantao").select("id, papel, inicio, fim, nome, telefone, email, drescala_plantao_id")

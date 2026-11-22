@@ -1,4 +1,4 @@
-# Coletor de SLA de laudos (estacao da GSS, Marieta). ASCII puro: o PowerShell 5.1 le .ps1 sem BOM como ANSI.
+# Coletor de SLA de laudos (estacao da GSS; unidade em estacao.json: Marieta ou CEPON). ASCII puro: o PowerShell 5.1 le .ps1 sem BOM como ANSI.
 # Roda como tarefa agendada na sessao do usuario (captura de tela nao funciona pela sessao do SSH).
 # Le a fila "Nao lido" do Vue PACS por OCR e manda ao Sigma (edge sla-coletor) SO data, hora e origem de cada linha.
 # Nome de paciente fica so na memoria deste processo: nao vai para disco, log nem rede.
@@ -7,7 +7,14 @@
 $base = "C:\ProgramData\ssh-tunel"
 $saida = "$base\captura"
 $url = "https://zupsbgtoeoixfokzkjro.supabase.co/functions/v1/sla-coletor"
-$versao = "coletor-v7"
+$versao = "coletor-v8"
+# Configuracao por estacao (22/11): C:\ProgramData\ssh-tunel\estacao.json. Sem o arquivo, vale o PC do Marieta
+# (tela 1920x1080). O PC da Brenda (CEPON) tem o seu: Marieta e CEPON usam o mesmo Vue PACS e nao abrem juntos.
+$cfg = @{ unidade = "marieta"; grade_x = 487; grade_largura = 1425; grade_topo = 236; atualizar_x = 340; atualizar_y = 95 }
+if (Test-Path "$base\estacao.json") {
+  try { (Get-Content "$base\estacao.json" -Raw | ConvertFrom-Json).PSObject.Properties | ForEach-Object { $cfg[$_.Name] = $_.Value } } catch { }
+}
+$unidade = [string]$cfg.unidade
 $inicio = Get-Date
 New-Item -ItemType Directory -Force $saida | Out-Null
 function Log($msg) {
@@ -170,7 +177,7 @@ $nomes = @{ 1 = 'Internado'; 2 = 'Externo'; 3 = 'PS' }
 
 $pacs = Get-Process mp -ErrorAction SilentlyContinue | Select-Object -First 1
 if (-not $pacs) {
-  $res = Enviar @{ unidade = "marieta"; lida_em = (Get-Date).ToUniversalTime().ToString("o"); status = "erro"; linhas = @(); detalhe = @{ motivo = "pacs_fechado"; versao = $versao } }
+  $res = Enviar @{ unidade = $unidade; lida_em = (Get-Date).ToUniversalTime().ToString("o"); status = "erro"; linhas = @(); detalhe = @{ motivo = "pacs_fechado"; versao = $versao } }
   Log "erro pacs_fechado -> $res"; exit
 }
 # A lista do Vue PACS NAO atualiza sozinha (testado em 12/11: 30 min parada; 1 clique trouxe 19 exames novos).
@@ -188,7 +195,7 @@ public static class Jan {
 $pidFrente = 0; [void][Jan]::GetWindowThreadProcessId([Jan]::GetForegroundWindow(), [ref]$pidFrente)
 $atualizou = $false
 if ($pidFrente -eq $pacs.Id) {
-  [void][Jan]::SetCursorPos(340, 95); Start-Sleep -Milliseconds 150
+  [void][Jan]::SetCursorPos([int]$cfg.atualizar_x, [int]$cfg.atualizar_y); Start-Sleep -Milliseconds 150
   [Jan]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero); Start-Sleep -Milliseconds 60; [Jan]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)
   [void][Jan]::SetCursorPos(1900, 1060)   # mouse fora da grade: tooltip por cima atrapalha o OCR
   Start-Sleep -Seconds 4                  # tempo da lista recarregar do servidor
@@ -208,15 +215,15 @@ function Roda($cliques) {
 }
 try { $tela = Capturar } catch {
   # Tela bloqueada ou sessao desconectada: CopyFromScreen falha.
-  $res = Enviar @{ unidade = "marieta"; lida_em = (Get-Date).ToUniversalTime().ToString("o"); status = "erro"; linhas = @(); detalhe = @{ motivo = "tela_indisponivel"; versao = $versao } }
+  $res = Enviar @{ unidade = $unidade; lida_em = (Get-Date).ToUniversalTime().ToString("o"); status = "erro"; linhas = @(); detalhe = @{ motivo = "tela_indisponivel"; versao = $versao } }
   Log "erro tela_indisponivel -> $res"; exit
 }
 $lidaEm = (Get-Date).ToUniversalTime().ToString("o")
-$gx = 487; $gw = 1425
+$gx = [int]$cfg.grade_x; $gw = [int]$cfg.grade_largura
 $alturaTela = $tela.Height
 # Inicio da grade: 1a linha colorida (y 247 nesta tela). Fica fixo para todas as paginas: rolar desloca a lista
 # por linhas inteiras, e com o inicio fixo a mesma linha da o mesmo hash nas duas telas.
-$faixas = [Grade]::Linhas($tela, $gx, $gw, 236, $alturaTela - 40, 25)
+$faixas = [Grade]::Linhas($tela, $gx, $gw, [int]$cfg.grade_topo, $alturaTela - 40, 25)
 $y0 = if ($faixas.Count -gt 0) { $faixas[0][0] } else { 0 }
 # Hash so da parte esquerda da linha (Data, Nome, Hora, Tipo; x 487-1087): avisos do Windows (OneDrive) cobrem a
 # direita da grade em posicoes fixas da tela e faziam a mesma linha ter hash diferente em telas diferentes.
@@ -367,5 +374,5 @@ if ($status -eq 'sem_grade') {
   try { $tc = New-Object System.Net.Sockets.TcpClient; $vpnOk = $tc.ConnectAsync("192.168.0.90", 2104).Wait(3000) -and $tc.Connected; $tc.Close() } catch { $vpnOk = $false }
   $detalhe.motivo = if ($vpnOk) { 'lista_vazia' } else { 'vpn_desconectada' }
 }
-$res = Enviar @{ unidade = "marieta"; lida_em = $lidaEm; status = $status; cheia = $cheia; linhas = $envio; detalhe = $detalhe }
+$res = Enviar @{ unidade = $unidade; lida_em = $lidaEm; status = $status; cheia = $cheia; linhas = $envio; detalhe = $detalhe }
 Log "$status $($detalhe.motivo) atualizou=$atualizou paginas=$paginas quebrou=$quebrou faixas=$($acum.Count) enviadas=$($envio.Count) sem_hora=$($detalhe.sem_hora) cheia=$cheia $($detalhe.duracao_ms)ms -> $res"

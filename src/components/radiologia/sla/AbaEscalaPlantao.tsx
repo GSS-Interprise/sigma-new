@@ -17,7 +17,7 @@ import {
   AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
-import { UNIDADE, type Plantao, normalizarTelefone, telefoneBonito, useColetor, useEscala } from "./useSla";
+import { useUnidade, type Plantao, normalizarTelefone, telefoneBonito, useColetor, useEscala } from "./useSla";
 import { CopiarSemana } from "./CopiarSemana";
 
 const db = supabase as any;
@@ -51,6 +51,7 @@ function intervalo(data: string, ini: string, fim: string, somaDias: number) {
 }
 
 export function AbaEscalaPlantao() {
+  const UNIDADE = useUnidade().id;
   const escala = useEscala(14);
   const coletor = useColetor();
   const qc = useQueryClient();
