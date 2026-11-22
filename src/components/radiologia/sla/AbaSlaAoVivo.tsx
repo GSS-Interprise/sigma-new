@@ -113,10 +113,8 @@ export function AbaSlaAoVivo() {
             return (
               <div key={o} className="relative overflow-hidden rounded-xl border bg-card p-4 pl-5">
                 <span className={cn("absolute inset-y-0 left-0 w-1.5", FAIXA[o])} aria-hidden />
-                <p className="flex items-baseline justify-between gap-2 text-sm">
-                  <span className="font-semibold">{ORIGEM[o].nome}</span>
-                  <span className="whitespace-nowrap text-xs text-muted-foreground">prazo {prazos.data?.[o] ? duracao(prazos.data[o]!) : "—"}</span>
-                </p>
+                <p className="truncate text-sm font-semibold" title={ORIGEM[o].nome}>{ORIGEM[o].nome}</p>
+                <p className="text-xs text-muted-foreground">prazo de {prazos.data?.[o] ? emHoras(prazos.data[o]!) : "—"}</p>
                 <p className="mt-2 font-display text-3xl font-semibold tabular-nums">{fila.isLoading ? "–" : da.length}</p>
                 <p className="text-xs text-muted-foreground">na fila</p>
                 <div className="mt-3 space-y-0.5 text-xs">
@@ -132,7 +130,10 @@ export function AbaSlaAoVivo() {
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
         <section className="min-w-0 rounded-xl border bg-card">
           <header className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
-            <h2 className="font-display text-base font-semibold">Fila de laudos</h2>
+            <div className="min-w-0">
+              <h2 className="font-display text-base font-semibold">Fila de laudos</h2>
+              {queda && <p className="text-xs text-red-700">Desatualizada: é a fila da última leitura ({queda.ultima_ok_em ? diaHora(queda.ultima_ok_em) : "antes da queda"}).</p>}
+            </div>
             <div className="inline-flex rounded-lg border p-0.5" role="radiogroup" aria-label="Filtro da fila">
               {([["atencao", `Precisam de atenção · ${atencao.length}`], ["todos", `Fila inteira · ${linhas.length}`]] as const).map(([id, r]) => (
                 <button key={id} type="button" role="radio" aria-checked={filtro === id} onClick={() => setFiltro(id)}
@@ -245,6 +246,9 @@ export function AbaSlaAoVivo() {
     </div>
   );
 }
+
+// Prazo do laudo em horas ("48 h", não "2 d"): é como a equipe fala.
+const emHoras = (min: number) => (min % 60 === 0 ? `${min / 60} h` : duracao(min));
 
 function Frase({ grande, linha }: { grande: string; linha: ReactNode }) {
   return (
