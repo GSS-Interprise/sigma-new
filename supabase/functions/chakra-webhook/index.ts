@@ -512,6 +512,10 @@ function normalizedMessage(
     instance: instanceName,
     instance_name: instanceName,
     instance_uuid: `chakra:${phoneNumberId}`,
+    // Quem escreveu a mensagem nossa: "celular" = alguém da equipe no app (coexistence, smb_message_echo);
+    // "api" = IA, campanha ou tela do Sigma (message_echo). O tempo de resposta por pessoa
+    // (atendimento_indicadores) depende disto: sem o campo, a resposta da IA contaria como resposta humana.
+    origem: !fromMe ? "contato" : eventType.startsWith("smb_") ? "celular" : "api",
     data: {
       key: { remoteJid, fromMe, id: messageId },
       pushName,

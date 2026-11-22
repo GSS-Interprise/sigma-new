@@ -15,6 +15,7 @@ export const MODULO_DO_DOMINIO: Record<string, string> = {
   contratos: "contratos",
   licitacoes: "licitacoes",
   processos: "todos",
+  atendimento: "disparos",
   crm: "medicos",
 };
 

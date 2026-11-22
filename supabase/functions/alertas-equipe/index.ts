@@ -8,6 +8,8 @@
 // Só WhatsApp oficial (pedido do Raul), pelo remetente de config alertas_equipe_sender_id. Antes, o aviso de lead
 // quente saía pelo chip Evolution, desligado desde 08/11: em 30 dias 1 lead quente e nenhum aviso entregue.
 // Começa em config alertas_equipe_inicio (2026-11-16). Destinatários: alertas_equipe_destinos = "Nome:55...; Nome:55...".
+//   atendimento (cron a cada 2 min) — conversa sem resposta nos números oficiais, em escada (3/10/60/180 min úteis),
+//               regras em _shared/atendimento.ts. Modo teste e destinos em atendimento_config.
 //   furos (cron 9h25, 15h25 e 21h25 UTC, logo depois do robo do Dr. Escala) — aviso de furo de escala a quem cuida da
 //               escala (escala_furo_destinos), regras em _shared/furos.ts. Modo teste: config escala_furos_teste_destino.
 //   respondeu { campanha_lead_id, texto } — campanha MANUAL (a equipe conversa): o médico respondeu ao 1º contato.
@@ -18,6 +20,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { destinosDaConfig, destinosValidos, trechoAviso } from "../_shared/alertas.ts";
 import { type DestinoFuro, type Feito, type Furo, HORIZONTE_DIAS, montarAvisos, textoAviso } from "../_shared/furos.ts";
 import { appUrl } from "../_shared/app-url.ts";
+import { type Config as ConfigAtendimento, type Espera, montarAvisos as montarAvisosAtendimento, textoAviso as textoAvisoAtendimento } from "../_shared/atendimento.ts";
 
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { "Content-Type": "application/json" } });
 const SIGMA = appUrl();
@@ -49,6 +52,12 @@ const MODELOS = [
     corpo: "Furo na escala - {{1}}: {{2}}. Ninguem escalado ate agora no Dr. Escala. Veja todos os furos no Sigma pelo botao.",
     exemplo: ["1 furo nas proximas 24 h", "CEPON Radiologia 23/11 19h-07h"],
     botao: { type: "URL", text: "Ver furos", url: `${SIGMA}/bi?tab=escalas`, example: undefined },
+  },
+  {
+    nome: "gss_atendimento_espera_v1",
+    corpo: "Conversa sem resposta - {{1}}: {{2}}. Responda pelo celular ou veja a fila no Sigma pelo botao.",
+    exemplo: ["2 conversas esperando, a mais antiga ha 15 min", "Hospital Regional (cliente), 15 min, numero 3761 de Ester; Dr. Joao Silva, 4 min, numero 3416 de Duda"],
+    botao: { type: "URL", text: "Ver a fila", url: `${SIGMA}/tempo-de-resposta`, example: undefined },
   },
 ];
 
@@ -189,6 +198,46 @@ async function furosEscala(admin: any, forcar: boolean) {
   return { furos: ids.length, teste: !!teste, enviados: out };
 }
 
+// Tempo de resposta (docs/arquitetura/tempo-de-resposta-atendimento.md §3d). Cron a cada 2 min. Regras em
+// _shared/atendimento.ts; a fila vem de atendimento_aguardando_base() (a mesma da tela e do agente).
+// Só registra o que saiu: falha (ex.: modelo ainda em análise na Meta) tenta de novo na próxima rodada.
+async function atendimentoEspera(admin: any, forcar: boolean) {
+  const { data: cfgRow } = await admin.from("atendimento_config").select("*").eq("id", true).maybeSingle();
+  if (!cfgRow) return { pulado: "sem configuracao" };
+  if (!forcar && !cfgRow.avisos_ativos) return { pulado: "desligado" };
+  const cfg: ConfigAtendimento = {
+    faixas: cfgRow.faixas ?? [], dias: cfgRow.dias ?? [], hora_inicio: String(cfgRow.hora_inicio), hora_fim: String(cfgRow.hora_fim),
+    coordenacao: cfgRow.coordenacao ?? [], diretoria: cfgRow.diretoria ?? [], modo_teste: !!cfgRow.modo_teste, teste_fone: cfgRow.teste_fone,
+  };
+  if (cfg.modo_teste && !dig(cfg.teste_fone)) return { pulado: "modo teste sem telefone de teste" };
+  const { data: fila, error } = await admin.rpc("atendimento_aguardando_base", { p_dias: 3 });
+  if (error) throw error;
+  const esperas = (fila ?? []) as Espera[];
+  const ids = [...new Set(esperas.map((e) => e.conversation_id))];
+  const { data: feitos } = ids.length
+    ? await admin.from("atendimento_avisos").select("conversation_id, esperando_desde, faixa_min, fone").in("conversation_id", ids)
+    : { data: [] };
+  const resp = [...new Set(esperas.map((e) => e.responsavel_id).filter(Boolean))];
+  const { data: perfis } = resp.length ? await admin.from("profiles").select("id, telefone").in("id", resp) : { data: [] };
+  const fones = new Map<string, string>((perfis ?? []).map((p: any) => [p.id, dig(p.telefone)]));
+  const avisos = montarAvisosAtendimento(esperas, cfg, feitos ?? [], fones, new Date());
+  if (!avisos.length) return { esperando: esperas.length, enviados: [] };
+  const sender = await remetente(admin);
+  const out = [];
+  for (const a of avisos) {
+    const [resumo, lista] = textoAvisoAtendimento(a, cfg.modo_teste);
+    try {
+      const wamid = await enviar(sender, a.fone, "gss_atendimento_espera_v1", [resumo, lista]);
+      await admin.from("atendimento_avisos").upsert(a.itens.map((i) => ({
+        conversation_id: i.espera.conversation_id, esperando_desde: i.espera.esperando_desde, faixa_min: i.faixa,
+        fone: a.fone_real, destino: cfg.modo_teste ? `${a.destino_real} (teste)` : a.destino_real,
+      })), { onConflict: "conversation_id,esperando_desde,faixa_min,fone", ignoreDuplicates: true });
+      out.push({ para: a.destino_real, conversas: a.itens.length, wamid });
+    } catch (e) { out.push({ para: a.destino_real, conversas: a.itens.length, erro: String((e as Error).message).slice(0, 200) }); }
+  }
+  return { esperando: esperas.length, teste: cfg.modo_teste, enviados: out };
+}
+
 async function criarTemplates(admin: any, nomes?: string[]) {
   const sender = await remetente(admin);
   const out = [];
@@ -271,6 +320,7 @@ Deno.serve(async (req) => {
     if (body.acao === "quente") return json({ ok: true, ...(await quente(admin, String(body.campanha_lead_id || ""), String(body.resumo || ""), !!body.forcar)) });
     if (body.acao === "respondeu") return json({ ok: true, ...(await respondeu(admin, String(body.campanha_lead_id || ""), String(body.texto || ""), !!body.forcar)) });
     if (body.acao === "resumo") return json({ ok: true, ...(await resumoDiario(admin, !!body.forcar)) });
+    if (body.acao === "atendimento") return json({ ok: true, ...(await atendimentoEspera(admin, !!body.forcar)) });
     if (body.acao === "furos") return json({ ok: true, ...(await furosEscala(admin, !!body.forcar)) });
     if (body.acao === "ia_falhas") return json({ ok: true, ...(await iaFalhas(admin)) });
     if (body.acao === "criar_templates") return json({ ok: true, modelos: await criarTemplates(admin, Array.isArray(body.nomes) ? body.nomes : undefined) });

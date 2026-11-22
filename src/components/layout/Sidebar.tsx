@@ -29,7 +29,7 @@ import {
   Briefcase,
   type LucideIcon,
   Sparkles,
-} from "lucide-react";
+ Timer } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
@@ -79,6 +79,7 @@ const navigationGroups: NavGroup[] = [
       { name: "Templates WhatsApp", href: "/prospeccao/templates-whatsapp", icon: FileText, modulo: "disparos" },
       { name: "Minhas Tarefas", href: "/tarefas", icon: ListTodo, modulo: "disparos" },
       { name: "Conversas", href: "/conversas", icon: MessageCircle, modulo: "disparos" },
+      { name: "Tempo de resposta", href: "/tempo-de-resposta", icon: Timer, modulo: "disparos" },
       { name: "Leads", href: "/leads", icon: UserSearch, modulo: "disparos" },
       // Voltou em 09/11: a captação converte médico e conecta chip por aqui (Vinícius ficou sem o caminho).
       { name: "Disparos & Chips", href: "/disparos", icon: Send, modulo: "disparos" },
