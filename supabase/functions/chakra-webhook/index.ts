@@ -1065,10 +1065,6 @@ serve(async (request) => {
     const { ids } = JSON.parse(rawBody || "{}");
     return json({ ok: true, resultados: await reprocessarEventos(Array.isArray(ids) ? ids : []) });
   }
-  if (!(await verifySignature(rawBody, request))) {
-    return json({ ok: false, error: "invalid_chakra_signature" }, 401);
-  }
-
   const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
   const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
   if (!supabaseUrl || !serviceRole) {
@@ -1076,13 +1072,38 @@ serve(async (request) => {
   }
   const admin = createClient(supabaseUrl, serviceRole);
 
+  // Pacote recusado ou que não vira nenhum evento também fica registrado (só o formato, sem o conteúdo).
+  // Motivo: em 19/11/2026 os ecos do celular (smb_message_echo) pararam de aparecer e não havia como saber se
+  // a Chakra deixou de mandar ou se o pacote chegava num formato que o parser não reconhecia.
+  const registrarDescartado = async (tipo: string, corpo: AnyRecord | null) => {
+    const formato = corpo
+      ? {
+        chaves: Object.keys(corpo).slice(0, 30),
+        evento: firstText(corpo.event, corpo.type, corpo.eventType, corpo.object) || null,
+        campos: Array.isArray(corpo.entry)
+          ? corpo.entry.flatMap((e: AnyRecord) => (Array.isArray(e?.changes) ? e.changes.map((c: AnyRecord) => c?.field) : [])).slice(0, 20)
+          : null,
+      }
+      : { tamanho: rawBody.length };
+    await admin.from("whatsapp_chakra_webhook_events").insert({
+      event_type: tipo, event_hash: await digest(`${tipo}:${rawBody}`), processing_status: "ignored", payload: formato,
+      received_at: new Date().toISOString(),
+    }).then(() => null, () => null);
+  };
+
   let body: AnyRecord;
   try {
     body = JSON.parse(rawBody);
   } catch {
     return json({ ok: false, error: "invalid_json" }, 400);
   }
+  if (!(await verifySignature(rawBody, request))) {
+    // Só registra o que tem cara de Chakra/Meta: o endpoint é público e não pode virar lixeira de quem bater nele.
+    if (Array.isArray(body?.entry) || firstText(body?.event, body?.type, body?.eventType)) await registrarDescartado("_assinatura_recusada", body);
+    return json({ ok: false, error: "invalid_chakra_signature" }, 401);
+  }
   const events = extractEvents(body);
+  if (!events.length) await registrarDescartado("_sem_evento", body);
   const results: AnyRecord[] = [];
 
   for (const event of events) {
