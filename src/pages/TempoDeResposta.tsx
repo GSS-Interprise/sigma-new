@@ -148,7 +148,7 @@ function LinhaEspera({ e, agora }: { e: Espera; agora: Date }) {
   });
   return (
     <li className="flex items-center gap-3 p-3">
-      <span className={cn("w-[92px] shrink-0 rounded-md border px-2 py-1 text-center text-sm font-semibold tabular-nums", e.ia_atuando ? COR_FAIXA[0] : COR_FAIXA[f])}>{tempoCurto(min)}</span>
+      <span className={cn("w-[108px] shrink-0 whitespace-nowrap rounded-md border px-2 py-1 text-center text-sm font-semibold tabular-nums", e.ia_atuando ? COR_FAIXA[0] : COR_FAIXA[f])}>{tempoCurto(min)}</span>
       <div className="min-w-0 flex-1">
         <p className="flex min-w-0 items-center gap-1.5 text-sm font-medium">
           {e.contato_marcado && <Star className="h-3.5 w-3.5 shrink-0 fill-amber-400 text-amber-500" aria-label="Contato marcado" />}
