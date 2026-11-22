@@ -104,3 +104,14 @@ Twilio com detecção de caixa postal e "aperte 1", aviso de coletor parado, pro
 
 **Falta (outras unidades, já na proposta):** mapear Tijucas (Animati), CEPON e Mobilimed (web), e 2 PACS novos;
 cada um com acesso remoto à estação (túnel), VPN e a tela de pendências.
+
+## Estado em 22/11/2026
+- **Coletor parado desde 19/11 às 23h01** (última leitura "sem grade"; antes, no mesmo dia, quedas da VPN e PACS
+  fechado). Queda aberta em `sla_coletor_quedas` desde 19/11 18h55.
+- **Túneis fora:** nem o PC do Vinícius (`DESKTOP-0VUPT0G`, porta 2222) nem o segundo PC (porta 2223, usuário
+  `heron`) estão conectados à VPS da GSS. PC desligado ou sem rede.
+- Para voltar: alguém na GSS liga a estação, confere a VPN do Sophos e deixa o Vue PACS aberto em "Não lido"; o túnel
+  sobe sozinho em 30 s e o coletor volta na próxima rodada (3 min).
+- `automacao-exames/remoto/gss.sh` aceita `GSS_PC_PORTA` e `GSS_PC_USUARIO` (segundo PC), commit 8361625.
+- Ainda pendente: contatos da Coordenação, outros PACS (esperando a GSS), proposta enviada à Ramone, apagar os
+  instaladores do túnel (`/root/entrega-01dsbo` na VPS e `Downloads\instalar-tunel-gss-2.ps1`), que contêm chave privada.
