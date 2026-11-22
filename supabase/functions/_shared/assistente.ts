@@ -7,12 +7,14 @@ import { guiaTexto, PROTOCOLO_VERSAO } from "./agente/protocolo.ts";
 /**
  * Dentro do Sigma a pessoa vê o que a tela já mostra a ela: domínio liberado = ela vê o módulo da tela correspondente
  * (pode_modulo no banco, que já desconta o bloqueio por pessoa). A tabela agente_dominio_acessos é do MCP dos sócios.
+ * "todos" = liberado para qualquer pessoa logada (o manual filtra página por página pelo módulo de cada uma).
  */
 export const MODULO_DO_DOMINIO: Record<string, string> = {
   escalas: "escalas",
   campanhas: "disparos",
   contratos: "contratos",
   licitacoes: "licitacoes",
+  processos: "todos",
   crm: "medicos",
 };
 

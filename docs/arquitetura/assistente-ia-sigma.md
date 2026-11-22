@@ -150,7 +150,7 @@ Cada um pelo molde da §3i do protocolo (módulo, arquivo de casos, `PROTOCOLO_V
 - [x] T5 — Tela: botão, painel, cartão de proposta, sugestões por tela; portão visual 1440/1024.
 - [x] T6 — Domínio licitações (fase 2) + casos + bateria. (21/11: 4 ferramentas, protocolo v1.2.0, bateria 18/18; no MCP liberado só para admin)
 - [x] T7 — Domínio contratos (fase 3) + casos + bateria. (22/11: 4 ferramentas — panorama, vencimentos, contrato, itens —, protocolo v1.3.0, bateria 21/21; quem só tem papel de licitação não recebe o domínio, igual à tela; no MCP liberado só para admin)
-- [ ] T8 — Manual curto do Sigma e domínio processos (fase 4).
+- [x] T8 — Manual curto do Sigma e domínio processos (fase 4). (22/11: 9 páginas em docs/manual-sigma, escritas a partir do código; embutidas em _shared/agente/manual/paginas.gen.ts por scripts/gerar-manual-agente.ts — o teste falha se o .md mudar sem rodar o gerador; cada página só aparece para quem vê o módulo dela; protocolo v1.4.0, bateria 26/26; no MCP liberado só para admin)
 - [ ] T9 — Motor Claude da GSS (quando a conta Max estiver conectada e a GSS aprovar).
 
 ## 7. Critério de pronto

@@ -1,0 +1,11 @@
+{
+  "dominio": "processos",
+  "nota": "Casos da bateria de consistência (scripts/agente-consistencia.ts). O manual é texto fixo embutido na edge (docs/manual-sigma -> paginas.gen.ts): não há SQL de paridade; o que se confere é o mesmo hash nas 3 chamadas (mesma pergunta = mesmos trechos para qualquer sócio). O token da bateria é de admin, que vê todos os módulos.",
+  "casos": [
+    { "nome": "criar_campanha", "pergunta": "Como crio uma campanha nova?", "ferramenta": "processos_buscar", "argumentos": { "pergunta": "como crio uma campanha nova?" } },
+    { "nome": "aditivo_contrato", "pergunta": "Como lanço um aditivo de prazo no contrato?", "ferramenta": "processos_buscar", "argumentos": { "pergunta": "como lançar um aditivo de prazo no contrato" } },
+    { "nome": "fora_do_manual", "pergunta": "Pergunta que o manual não cobre (tem que dizer que não está no manual).", "ferramenta": "processos_buscar", "argumentos": { "pergunta": "qual o horário do refeitório da GSS" } },
+    { "nome": "areas", "pergunta": "O que o manual cobre?", "ferramenta": "processos_areas", "argumentos": {} },
+    { "nome": "guia", "pergunta": "Guia do domínio processos.", "ferramenta": "sigma_guia", "argumentos": { "dominio": "processos" } }
+  ]
+}

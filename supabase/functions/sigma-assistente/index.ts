@@ -255,7 +255,7 @@ Deno.serve(async (req) => {
   if (!mensagem) return json({ error: "mensagem_vazia" }, 400);
 
   // Permissão: cada domínio pelo módulo da tela; criar/editar campanha como hoje.
-  const pode = async (modulo: string) => !!(await svc.rpc("pode_modulo", { p_uid: userId, p_modulo: modulo, p_acao: "visualizar" })).data;
+  const pode = async (modulo: string) => modulo === "todos" || !!(await svc.rpc("pode_modulo", { p_uid: userId, p_modulo: modulo, p_acao: "visualizar" })).data;
   const ids = Object.keys(MODULO_DO_DOMINIO);
   const flags = await Promise.all(ids.map((d) => pode(MODULO_DO_DOMINIO[d])));
   const liberados = new Set(ids.filter((_, i) => flags[i]));
