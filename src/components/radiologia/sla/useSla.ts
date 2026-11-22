@@ -118,14 +118,16 @@ export function useColetor() {
 }
 
 export function useAlertas(exameIds?: string[]) {
+  const UNIDADE = useUnidade().id;
   return useQuery({
-    queryKey: ["sla-alertas", exameIds?.join(",") ?? "recentes"],
+    queryKey: ["sla-alertas", exameIds?.join(",") ?? "recentes", UNIDADE],
     refetchInterval: 30_000,
     queryFn: async () => {
+      // Lista "Últimos avisos": só os da unidade da tela (com o CEPON, misturava os do Marieta).
       let q = db.from("sla_alertas")
-        .select("id, exame_id, tipo, papel, destino_nome, canal, status, erro, respondido_em, criado_em")
+        .select("id, exame_id, tipo, papel, destino_nome, canal, status, erro, respondido_em, criado_em, exame:sla_exames!inner(unidade)")
         .order("criado_em", { ascending: false });
-      q = exameIds ? q.in("exame_id", exameIds.length ? exameIds : ["00000000-0000-0000-0000-000000000000"]) : q.limit(30);
+      q = exameIds ? q.in("exame_id", exameIds.length ? exameIds : ["00000000-0000-0000-0000-000000000000"]) : q.eq("exame.unidade", UNIDADE).limit(30);
       const { data, error } = await q;
       if (error) throw error;
       return (data ?? []) as Alerta[];
