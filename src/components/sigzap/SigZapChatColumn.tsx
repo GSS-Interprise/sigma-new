@@ -1597,7 +1597,7 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
       const phone = cd?.phone || null;
       return (
         <div className={cn(
-          "mb-2 rounded-md border p-2 flex flex-col gap-2 min-w-[240px]",
+          "mb-2 rounded-md border p-2 flex flex-col gap-2 min-w-[min(240px,100%)]",
           isFromMe ? "bg-white/10 border-white/20" : "bg-background/60 border-border"
         )}>
           <div className="flex items-center gap-3">
@@ -1668,7 +1668,7 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
       const mapsUrl = (lat != null && lng != null) ? `https://maps.google.com/?q=${lat},${lng}` : null;
       return (
         <div className={cn(
-          "mb-2 rounded-md border p-2 min-w-[220px]",
+          "mb-2 rounded-md border p-2 min-w-[min(220px,100%)]",
           isFromMe ? "bg-white/10 border-white/20" : "bg-background/60 border-border"
         )}>
           <div className="flex items-center gap-2 mb-1">
@@ -1714,7 +1714,7 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
       const isMulti = (pd?.selectableOptionsCount ?? 1) !== 1;
       return (
         <div className={cn(
-          "mb-2 rounded-md border p-2 min-w-[240px]",
+          "mb-2 rounded-md border p-2 min-w-[min(240px,100%)]",
           isFromMe ? "bg-white/10 border-white/20" : "bg-background/60 border-border"
         )}>
           <div className="flex items-center gap-2 mb-1">
@@ -1767,12 +1767,14 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
 
     switch (message_type) {
       case 'image':
+        // Na coluna lateral da ficha do médico o balão é mais estreito que 300 px: imagem e cartões (contato, local,
+        // enquete, documento) usam min(X, 100%) para não passar da borda do balão.
         return (
           <div className="mb-2">
             <img 
               src={playableMediaUrl || undefined}
               alt="Imagem" 
-              className="max-w-[300px] rounded-lg max-h-64 object-contain cursor-pointer hover:opacity-90 transition-opacity"
+              className="max-w-[min(300px,100%)] rounded-lg max-h-64 object-contain cursor-pointer hover:opacity-90 transition-opacity"
               onClick={() => setPreviewImage(playableMediaUrl || media_url)}
               onError={(e) => {
                 console.error('Erro ao carregar imagem:', playableMediaUrl || media_url);

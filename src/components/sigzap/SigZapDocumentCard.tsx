@@ -49,7 +49,7 @@ export function SigZapDocumentCard({ url, filename, mimeType, isFromMe }: SigZap
 
   return (
     <div className={cn(
-      "flex items-center gap-3 p-3 rounded-lg min-w-[200px] max-w-[300px]",
+      "flex items-center gap-3 p-3 rounded-lg min-w-[min(200px,100%)] max-w-[300px]",
       isFromMe ? "bg-white/10" : "bg-muted/50"
     )}>
       {/* Icon */}
