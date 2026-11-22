@@ -1,5 +1,5 @@
 import { assert, assertEquals, assertStringIncludes } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { cartaoEdicao, esquemaGemini, historico, instrucoes, textoValor } from "./assistente.ts";
+import { cartaoEdicao, esquemaGemini, historico, instrucoes, textoValor, veContratos } from "./assistente.ts";
 import { acessosDoUsuario, DOMINIOS } from "./agente/registro.ts";
 
 const agora = new Date("2026-11-21T21:00:00Z");
@@ -52,4 +52,12 @@ Deno.test("histórico: últimas N e sem mensagem vazia", () => {
   const m = Array.from({ length: 20 }, (_, i) => ({ papel: i % 2 ? "assistente" : "usuario", texto: i === 19 ? " " : `m${i}` }));
   const h = historico(m, 5);
   assertEquals(h.map((x) => x.texto), ["m14", "m15", "m16", "m17", "m18"]);
+});
+
+Deno.test("contratos: quem só tem papel de licitação não recebe o domínio (igual à tela)", () => {
+  assertEquals(veContratos(["licitador"]), false);
+  assertEquals(veContratos(["lider_licitacao", "gestor_contratos"]), false);
+  assertEquals(veContratos(["admin", "licitador"]), true);
+  assertEquals(veContratos(["gestor_contratos"]), true);
+  assertEquals(veContratos(["diretoria"]), true);
 });

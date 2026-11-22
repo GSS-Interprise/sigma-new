@@ -1,0 +1,44 @@
+{
+  "dominio": "contratos",
+  "nota": "Casos da bateria de consistência (scripts/agente-consistencia.ts). A paridade usa SQL direto em contratos, contrato_aditivos_tempo e contrato_itens, com a regra dos cartões da tela (ContratosMetrics.tsx), sem passar pelas RPCs agente_contratos_* que as ferramentas usam. Vencimento depende do dia de Brasília: não rodar perto da meia-noite.",
+  "casos": [
+    {
+      "nome": "panorama",
+      "pergunta": "Como estão os contratos?",
+      "ferramenta": "contratos_panorama",
+      "argumentos": {},
+      "paridade": {
+        "ativos": "select count(*) from contratos where status_contrato = 'Ativo'",
+        "inativos": "select count(*) from contratos where status_contrato in ('Inativo','Encerrado')",
+        "vencidos": "select count(*) from contratos c where c.status_contrato = 'Ativo' and (case when exists (select 1 from contrato_aditivos_tempo a where a.contrato_id = c.id) then (select max(a.data_termino) from contrato_aditivos_tempo a where a.contrato_id = c.id) else coalesce(c.data_termino, c.data_fim) end) <= (now() at time zone 'America/Sao_Paulo')::date",
+        "a_vencer_30": "select count(*) from contratos c where c.status_contrato = 'Ativo' and (case when exists (select 1 from contrato_aditivos_tempo a where a.contrato_id = c.id) then (select max(a.data_termino) from contrato_aditivos_tempo a where a.contrato_id = c.id) else coalesce(c.data_termino, c.data_fim) end) > (now() at time zone 'America/Sao_Paulo')::date and (case when exists (select 1 from contrato_aditivos_tempo a where a.contrato_id = c.id) then (select max(a.data_termino) from contrato_aditivos_tempo a where a.contrato_id = c.id) else coalesce(c.data_termino, c.data_fim) end) <= (now() at time zone 'America/Sao_Paulo')::date + 30",
+        "pendencia": "select count(*) from contratos where status_contrato in ('Pendente','Aguardando') or assinado::text = 'Pendente'",
+        "ativos_sem_anexo": "select count(*) from contratos c where c.status_contrato = 'Ativo' and not exists (select 1 from contrato_anexos x where x.contrato_id = c.id)"
+      }
+    },
+    {
+      "nome": "vencimentos_90",
+      "pergunta": "Quais contratos vencem nos próximos 90 dias?",
+      "ferramenta": "contratos_vencimentos",
+      "argumentos": {
+        "dias": 90
+      },
+      "paridade": {
+        "a_vencer": "select count(*) from contratos c where c.status_contrato = 'Ativo' and (case when exists (select 1 from contrato_aditivos_tempo a where a.contrato_id = c.id) then (select max(a.data_termino) from contrato_aditivos_tempo a where a.contrato_id = c.id) else coalesce(c.data_termino, c.data_fim) end) > (now() at time zone 'America/Sao_Paulo')::date and (case when exists (select 1 from contrato_aditivos_tempo a where a.contrato_id = c.id) then (select max(a.data_termino) from contrato_aditivos_tempo a where a.contrato_id = c.id) else coalesce(c.data_termino, c.data_fim) end) <= (now() at time zone 'America/Sao_Paulo')::date + 90",
+        "vencidos": "select count(*) from contratos c where c.status_contrato = 'Ativo' and (case when exists (select 1 from contrato_aditivos_tempo a where a.contrato_id = c.id) then (select max(a.data_termino) from contrato_aditivos_tempo a where a.contrato_id = c.id) else coalesce(c.data_termino, c.data_fim) end) <= (now() at time zone 'America/Sao_Paulo')::date"
+      }
+    },
+    {
+      "nome": "itens_ultrassom",
+      "pergunta": "Quais contratos têm ultrassonografia e por quanto?",
+      "ferramenta": "contratos_itens",
+      "argumentos": {
+        "busca": "ultrassonografia"
+      },
+      "paridade": {
+        "itens": "select count(*) from contrato_itens i join contratos c on c.id = i.contrato_id where c.status_contrato = 'Ativo' and translate(lower(i.item), 'áàâãéêíóôõúç', 'aaaaeeiooouc') like '%ultrassonografia%'",
+        "contratos": "select count(distinct i.contrato_id) from contrato_itens i join contratos c on c.id = i.contrato_id where c.status_contrato = 'Ativo' and translate(lower(i.item), 'áàâãéêíóôõúç', 'aaaaeeiooouc') like '%ultrassonografia%'"
+      }
+    }
+  ]
+}

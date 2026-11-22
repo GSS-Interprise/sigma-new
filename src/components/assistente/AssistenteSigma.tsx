@@ -21,6 +21,7 @@ type Msg = {
 
 const SUGESTOES: { rota: RegExp; itens: string[] }[] = [
   { rota: /^\/(prospeccao|campanhas|disparos)/, itens: ["Como estão as campanhas ativas?", "Quantos médicos receberam mensagem hoje?", "Quero criar uma campanha nova"] },
+  { rota: /^\/contratos/, itens: ["Quais contratos vencem nos próximos 60 dias?", "Como estão os contratos?", "Quanto cobramos de ultrassonografia?"] },
   { rota: /^\/licitacoes/, itens: ["Quais disputas temos esta semana?", "Chegou licitação nova hoje?", "Como está o quadro de licitações?"] },
   { rota: /^\/(bi|escalas|radiologia)/,itens: ["Onde tem furo na escala esta semana?", "Quem está de plantão no CEPON amanhã?", "Como estão as campanhas ativas?"] },
   { rota: /.*/, itens: ["Como estão as campanhas ativas?", "Onde tem furo na escala esta semana?", "Quero criar uma campanha nova"] },

@@ -7,6 +7,7 @@ import { type AcessoDominio, guiaTexto, PROTOCOLO_VERSAO } from "./protocolo.ts"
 import { escalas } from "./dominios/escalas.ts";
 import { campanhas } from "./dominios/campanhas.ts";
 import { licitacoes } from "./dominios/licitacoes.ts";
+import { contratos } from "./dominios/contratos.ts";
 
 /** Domínio anunciado mas sem ferramenta: o agente sabe que existe e diz "ainda não disponível". */
 function emBreve(id: string, titulo: string, resumo: string): Dominio {
@@ -20,7 +21,7 @@ function emBreve(id: string, titulo: string, resumo: string): Dominio {
 export const DOMINIOS: Dominio[] = [
   escalas,
   campanhas,
-  emBreve("contratos", "Contratos", "contratos vigentes, vencimentos, aditivos e itens."),
+  contratos,
   licitacoes,
   emBreve("crm", "CRM geral", "ficha de médicos e hospitais, vagas abertas e histórico do lead."),
 ];

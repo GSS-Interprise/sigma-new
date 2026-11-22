@@ -13,7 +13,7 @@ import { acessosDoUsuario, DOMINIOS, exposto } from "../_shared/agente/registro.
 import { acharCampanhas } from "../_shared/agente/dominios/campanhas.ts";
 import { semAcento } from "../_shared/agente/tempo.ts";
 import { ErroFerramenta } from "../_shared/agente/tipos.ts";
-import { type Cartao, cartaoEdicao, esquemaGemini, historico, instrucoes, MODULO_DO_DOMINIO, type Mudanca } from "../_shared/assistente.ts";
+import { type Cartao, cartaoEdicao, esquemaGemini, historico, instrucoes, MODULO_DO_DOMINIO, type Mudanca, veContratos } from "../_shared/assistente.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -259,6 +259,10 @@ Deno.serve(async (req) => {
   const ids = Object.keys(MODULO_DO_DOMINIO);
   const flags = await Promise.all(ids.map((d) => pode(MODULO_DO_DOMINIO[d])));
   const liberados = new Set(ids.filter((_, i) => flags[i]));
+  if (liberados.has("contratos")) {
+    const { data: rs } = await svc.from("user_roles").select("role").eq("user_id", userId);
+    if (!veContratos(((rs || []) as { role: string }[]).map((r) => String(r.role)))) liberados.delete("contratos");
+  }
   const podeCriar = liberados.has("campanhas");
   const podeEditar = podeCriar && !!(await svc.rpc("pode_editar_campanha", { p_uid: userId })).data;
   const ac = acessosDoUsuario(DOMINIOS, liberados);

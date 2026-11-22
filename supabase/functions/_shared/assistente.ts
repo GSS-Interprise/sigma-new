@@ -16,6 +16,16 @@ export const MODULO_DO_DOMINIO: Record<string, string> = {
   crm: "medicos",
 };
 
+/**
+ * A tela de Contratos esconde a lista de contratos de quem tem papel de licitação e não é admin (Contratos.tsx,
+ * isLicitacaoOnly): essas pessoas só veem "Licitações arrematadas". O módulo contratos/visualizar deles existe para
+ * essa aba, então o domínio contratos não vale para elas mesmo com pode_modulo verdadeiro.
+ */
+export function veContratos(papeis: string[]): boolean {
+  if (papeis.includes("admin")) return true;
+  return !papeis.some((p) => p === "licitador" || p === "lider_licitacao");
+}
+
 /** O subconjunto de JSON Schema que o function calling do Gemini aceita. O resto (default, additionalProperties...) sai. */
 export function esquemaGemini(s: unknown): Record<string, unknown> {
   if (!s || typeof s !== "object") return { type: "object", properties: {} };

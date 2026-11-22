@@ -6,6 +6,7 @@ import type { Ctx, Dominio } from "./tipos.ts";
 import { escalas } from "./dominios/escalas.ts";
 import { acharCampanhas, campanhas, linhaFunil } from "./dominios/campanhas.ts";
 import { licitacoes } from "./dominios/licitacoes.ts";
+import { contratos } from "./dominios/contratos.ts";
 import { agruparMotivos, motivoLegivel } from "./motivos.ts";
 import { motivoLegivel as motivoTela } from "../../../../src/lib/textoDono.ts";
 import { hojeBR, lerData } from "./tempo.ts";
@@ -41,7 +42,7 @@ Deno.test("constituição: curta, lista disponíveis, sem acesso e em breve", ()
   assert(c.length < 2500, `constituição com ${c.length} caracteres`);
   assertMatch(c, /- escalas: /);
   assertMatch(c, /- campanhas: /);
-  assertMatch(c, /Ainda não disponíveis: contratos/);
+  assertMatch(c, /Ainda não disponíveis: crm/);
   assert(!c.includes("Sem acesso"));
   const sem = constituicao(acessosDoUsuario(DOMINIOS, new Set()));
   assertMatch(sem, /Sem acesso para o seu usuário .*: escalas/);
@@ -51,7 +52,7 @@ Deno.test("constituição: curta, lista disponíveis, sem acesso e em breve", ()
 Deno.test("guia: traz glossário, rotas e limites; em breve avisa", () => {
   const g = guiaTexto(escalas);
   for (const s of ["## Glossário", "Plantão descoberto (furo)", "`plantoes_descobertos`", "## O que este domínio ainda não responde", "## Perguntas-padrão"]) assert(g.includes(s), s);
-  const eb = guiaTexto(DOMINIOS.find((d) => d.id === "contratos")!);
+  const eb = guiaTexto(DOMINIOS.find((d) => d.id === "crm")!);
   assertMatch(eb, /Ainda não disponível/);
 });
 
@@ -83,7 +84,7 @@ Deno.test("exposto: transversais sempre; domínio bloqueado some e é reconhecid
   assertEquals(nomes.slice(0, 2), ["sigma_dominios", "sigma_guia"]);
   assert(nomes.includes("plantoes_descobertos"));
   assertEquals(todos.dominioDe.get("quem_esta_escalado"), "escalas");
-  assertEquals(todos.prompts.length, escalas.prompts.length + campanhas.prompts.length + licitacoes.prompts.length);
+  assertEquals(todos.prompts.length, escalas.prompts.length + campanhas.prompts.length + licitacoes.prompts.length + contratos.prompts.length);
 
   const sem = acessosDoUsuario(DOMINIOS, new Set());
   const exp = exposto(sem);
@@ -94,9 +95,9 @@ Deno.test("exposto: transversais sempre; domínio bloqueado some e é reconhecid
 });
 
 Deno.test("acessos: só o que a tabela libera; em_breve nunca, mesmo com a linha", () => {
-  const ac = acessosDoUsuario(DOMINIOS, new Set(["escalas", "contratos", "inexistente"]));
+  const ac = acessosDoUsuario(DOMINIOS, new Set(["escalas", "crm", "inexistente"]));
   assertEquals(ac.filter((a) => a.liberado).map((a) => a.dominio.id), ["escalas"]);
-  assertEquals(acessosDoUsuario(DOMINIOS, new Set(["contratos"])).filter((a) => a.liberado).length, 0);
+  assertEquals(acessosDoUsuario(DOMINIOS, new Set(["crm"])).filter((a) => a.liberado).length, 0);
 });
 
 const ctx: Ctx ={ svc: null, userId: "u", agora: new Date("2026-11-14T12:00:00Z") };
