@@ -43,3 +43,15 @@ Could you check:
 3. if anything changed on Nov 19 (Chakra or Meta) that requires an action from us.
 
 Thanks!
+
+---
+
+## Andamento
+- **22/11, resposta da Chakra:** o plugin d9a6180c (que citei por engano: é o dos avisos internos) está certo, mas os 7
+  números estão hoje no plugin `49a435de-00a3-4048-a15e-d96da3b7be7d`, também com o eco ligado. Pediram: números,
+  se falta no pass-through ou no webhook da Chakra, e um exemplo com horário.
+- **22/11, nossa resposta** (`chamado_responder`): corrigi o plugin; o Sigma ainda guarda um plugin diferente por número
+  e três deles não existem mais (c5a9ba61, 83996e9c, f72e550c, finais 0538, 8860 e 7508), então os números foram
+  mudados de plugin; perguntei quando (se foi em 19/11, a inscrição do eco pode não ter acompanhado). Respondi as 3
+  perguntas e prometi um teste pelo app na segunda, 24/11, com horário exato.
+- **Pendente:** teste pelo celular na segunda; atualizar `whatsapp_chakra_connections.plugin_id` para o plugin real.

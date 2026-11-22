@@ -55,6 +55,14 @@ Deno.serve(async (req) => {
     return json({ ok: true, comentarios: await post(contas.gss, `/internal-ticket/${id}/list-comments`, {}),
       chamado: await get(contas.gss, `/internal-ticket/${id}`) });
   }
+  if (input.acao === "chamado_responder" && contas.gss) {
+    const id = String(input.id ?? "").replace(/[^a-f0-9-]/gi, "");
+    const paragrafos = String(input.texto ?? "").split(/\n{2,}/).map((t) => t.trim()).filter(Boolean);
+    if (!id || !paragrafos.length) return json({ ok: false, error: "id e texto obrigatorios" }, 400);
+    // O painel da Chakra grava o comentário no formato do Editor.js (blocos de parágrafo).
+    const description = { time: Date.now(), blocks: paragrafos.map((t, i) => ({ id: `p${i}`, type: "paragraph", data: { text: t.replace(/\n/g, "<br>") } })), version: "2.28.2" };
+    return json({ ok: true, resposta: await post(contas.gss, `/internal-ticket/${id}/comment`, { id: crypto.randomUUID(), description, attachmentIds: [] }) });
+  }
   if (input.acao === "chamados_listar" || input.acao === "chamado_criar") {
     const key = contas.gss;
     if (!key) return json({ ok: false, error: "CHAKRA_API_KEY_GSS ausente" }, 500);
