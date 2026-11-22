@@ -24,12 +24,14 @@ type Curriculo = {
 };
 const db = supabase as unknown as { from: (t: string) => any };
 const ACEITA = ".pdf,.docx,.png,.jpg,.jpeg";
+const EXP_VISIVEIS = 6;
 const data = (iso: string) => new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
 
 export function CurriculoMedico({ leadId }: { leadId: string }) {
   const qc = useQueryClient();
   const input = useRef<HTMLInputElement>(null);
   const [escolhido, setEscolhido] = useState<string | null>(null);
+  const [todasExp, setTodasExp] = useState(false);
   const lista = useQuery({
     queryKey: ["medico-curriculos", leadId],
     queryFn: async () => {
@@ -72,7 +74,8 @@ export function CurriculoMedico({ leadId }: { leadId: string }) {
   });
 
   const cvs = lista.data ?? [];
-  const atual = cvs.find((c) => c.id === escolhido) ?? cvs[0];
+  // Abre no último currículo já lido: o mais novo pode ser um .doc que a IA não lê e esconderia o que já se sabe.
+  const atual = cvs.find((c) => c.id === escolhido) ?? cvs.find((c) => c.status === "lido") ?? cvs[0];
   const botaoEnviar = (
     <>
       <input ref={input} type="file" accept={ACEITA} className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) enviar.mutate(f); e.target.value = ""; }} />
@@ -101,7 +104,7 @@ export function CurriculoMedico({ leadId }: { leadId: string }) {
         <div className="min-w-0 text-xs text-muted-foreground">
           {atual.origem === "whatsapp" ? "Recebido pelo WhatsApp" : "Enviado na ficha"} em {data(atual.recebido_em)}
           {cvs.length > 1 && (
-            <select className="ml-2 rounded border bg-background px-1.5 py-0.5 text-xs" value={atual.id} onChange={(e) => setEscolhido(e.target.value)} aria-label="Escolher currículo">
+            <select className="ml-2 rounded border bg-background px-1.5 py-0.5 text-xs" value={atual.id} onChange={(e) => { setEscolhido(e.target.value); setTodasExp(false); }} aria-label="Escolher currículo">
               {cvs.map((c) => <option key={c.id} value={c.id}>{data(c.recebido_em)} · {(c.arquivo_nome || "currículo").slice(0, 40)}</option>)}
             </select>
           )}
@@ -136,7 +139,7 @@ export function CurriculoMedico({ leadId }: { leadId: string }) {
           </div>
           <Bloco icone={Briefcase} titulo={`Experiência${d.experiencias.length ? ` (${d.experiencias.length})` : ""}`} vazio={!d.experiencias.length}>
             <ol className="relative space-y-3 border-l pl-4">
-              {d.experiencias.map((x, i) => (
+              {(todasExp ? d.experiencias : d.experiencias.slice(0, EXP_VISIVEIS)).map((x, i) => (
                 <li key={i} className="relative">
                   <span className={cn("absolute -left-[21px] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-background", i === 0 ? "bg-primary" : "bg-muted-foreground/40")} aria-hidden />
                   <p className="text-sm font-medium">{x.local}</p>
@@ -144,6 +147,11 @@ export function CurriculoMedico({ leadId }: { leadId: string }) {
                 </li>
               ))}
             </ol>
+            {d.experiencias.length > EXP_VISIVEIS && (
+              <Button size="sm" variant="ghost" className="mt-2 h-8 px-2" onClick={() => setTodasExp((v) => !v)}>
+                {todasExp ? "Mostrar só as mais recentes" : `Ver todas (${d.experiencias.length})`}
+              </Button>
+            )}
           </Bloco>
           {d.cursos.length > 0 && (
             <Bloco icone={FileText} titulo="Cursos e títulos" vazio={false}>
