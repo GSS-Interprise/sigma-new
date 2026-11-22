@@ -102,12 +102,18 @@ async function digest(value: string) {
   return toHex(new Uint8Array(bytes));
 }
 
-async function verifySignature(rawBody: string, request: Request) {
+// Assinatura da Chakra (22/11/2026): HMAC-SHA256 do corpo cru com o segredo do time (painel da Chakra, Admin › Team ›
+// Secrets), no cabeçalho x-chakra-signature-256. O segredo do painel e o CHAKRA_WEBHOOK_SECRET precisam ser iguais.
+// Sem CHAKRA_WEBHOOK_ENFORCE=1 o webhook só OBSERVA (conta ok/diferente/sem cabeçalho em chakra_assinatura_obs) e
+// aceita tudo: trocar o segredo de um lado só derrubaria todo recebimento de mensagem. Ligar o enforce só depois que
+// a contagem mostrar "ok" em mensagens reais e nenhum "diferente".
+type ResultadoAssinatura = "sem_segredo" | "ok" | "sem_cabecalho" | "diferente";
+async function checkSignature(rawBody: string, request: Request): Promise<ResultadoAssinatura> {
   const secret = Deno.env.get("CHAKRA_WEBHOOK_SECRET")?.trim();
-  if (!secret) return true;
+  if (!secret) return "sem_segredo";
   const received = (request.headers.get("x-chakra-signature-256") || "").trim()
-    .toLowerCase();
-  if (!received) return false;
+    .toLowerCase().replace(/^sha256=/, "");
+  if (!received) return "sem_cabecalho";
   const key = await crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(secret),
@@ -120,7 +126,7 @@ async function verifySignature(rawBody: string, request: Request) {
     key,
     new TextEncoder().encode(rawBody),
   );
-  return toHex(new Uint8Array(signature)) === received;
+  return toHex(new Uint8Array(signature)) === received ? "ok" : "diferente";
 }
 
 function phoneNumberIdFrom(value: AnyRecord) {
@@ -1097,9 +1103,14 @@ serve(async (request) => {
   } catch {
     return json({ ok: false, error: "invalid_json" }, 400);
   }
-  if (!(await verifySignature(rawBody, request))) {
+  const assinatura = await checkSignature(rawBody, request);
+  const pareceChakra = Array.isArray(body?.entry) || Boolean(firstText(body?.event, body?.type, body?.eventType));
+  if (assinatura !== "sem_segredo" && pareceChakra) {
+    await admin.rpc("chakra_assinatura_contar", { p_status: assinatura }).then(() => null, () => null);
+  }
+  if (assinatura !== "ok" && assinatura !== "sem_segredo" && Deno.env.get("CHAKRA_WEBHOOK_ENFORCE") === "1") {
     // Só registra o que tem cara de Chakra/Meta: o endpoint é público e não pode virar lixeira de quem bater nele.
-    if (Array.isArray(body?.entry) || firstText(body?.event, body?.type, body?.eventType)) await registrarDescartado("_assinatura_recusada", body);
+    if (pareceChakra) await registrarDescartado("_assinatura_recusada", body);
     return json({ ok: false, error: "invalid_chakra_signature" }, 401);
   }
   const events = extractEvents(body);
