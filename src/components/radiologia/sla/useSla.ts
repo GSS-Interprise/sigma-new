@@ -162,6 +162,46 @@ export function useAnotar() {
   });
 }
 
+/** Prazo de cada origem em minutos (aba Avisos › Prazo do laudo). */
+export function usePrazos() {
+  return useQuery({
+    queryKey: ["sla-prazos"],
+    queryFn: async () => {
+      const { data, error } = await db.from("sla_prazos").select("origem, minutos");
+      if (error) throw error;
+      return Object.fromEntries((data ?? []).map((p: { origem: Origem; minutos: number }) => [p.origem, p.minutos])) as Partial<Record<Origem, number>>;
+    },
+    staleTime: 300_000,
+  });
+}
+
+/** Avisos de hoje (desde 0h de Brasília) da unidade da tela: enviados, assumidos, falhas e tempo até assumir. */
+export function useAvisosHoje() {
+  const UNIDADE = useUnidade().id;
+  return useQuery({
+    queryKey: ["sla-alertas", "hoje", UNIDADE],
+    refetchInterval: 60_000,
+    queryFn: async () => {
+      const br = new Date(Date.now() - 3 * 3_600_000);
+      const desde = new Date(Date.UTC(br.getUTCFullYear(), br.getUTCMonth(), br.getUTCDate(), 3)).toISOString();
+      const { data, error } = await db.from("sla_alertas")
+        .select("exame_id, status, canal, criado_em, respondido_em, exame:sla_exames!inner(unidade)")
+        .eq("exame.unidade", UNIDADE).gte("criado_em", desde);
+      if (error) throw error;
+      const ls = (data ?? []) as { exame_id: string; status: string; respondido_em: string | null; criado_em: string }[];
+      const assumidos = ls.filter((a) => a.respondido_em);
+      const minutos = assumidos.map((a) => (new Date(a.respondido_em!).getTime() - new Date(a.criado_em).getTime()) / 60000).sort((x, y) => x - y);
+      return {
+        enviados: ls.length,
+        exames: new Set(ls.map((a) => a.exame_id)).size,
+        assumidos: assumidos.length,
+        falhas: ls.filter((a) => a.status === "falhou").length,
+        medianaMin: minutos.length ? minutos[Math.floor(minutos.length / 2)] : null,
+      };
+    },
+  });
+}
+
 export function useEscala(diasAFrente = 14) {
   const UNIDADE = useUnidade().id;
   return useQuery({
