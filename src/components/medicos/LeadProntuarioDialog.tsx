@@ -1547,13 +1547,15 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
           {/* Main Content */}
           <div className="flex-1 flex flex-col overflow-hidden min-w-0">
             <DialogHeader className="px-4 py-3 border-b">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-full bg-primary/10">
+              {/* Cabeçalho (22/11): em 1024 px os botões empurravam o nome para 4 linhas e cortavam "Banco de Interesse".
+                  Botões não encolhem; abaixo de xl os secundários ficam só com ícone (dica no title) e o nome trunca. */}
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="p-2 rounded-full bg-primary/10 shrink-0">
                     <User className="h-5 w-5 text-primary" />
                   </div>
-                  <div>
-                    <DialogTitle className="text-base">
+                  <div className="min-w-0">
+                    <DialogTitle className="text-base truncate" title={lead?.nome || undefined}>
                       {isNewLead ? 'Novo Médico' : (loadingLead ? <Skeleton className="h-5 w-40" /> : lead?.nome)}
                     </DialogTitle>
                     <div className="flex items-center gap-2 mt-0.5 flex-wrap">
@@ -1604,15 +1606,17 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                 </div>
                 
                 {/* Action Buttons */}
-                <div className="flex gap-2">
+                <div className="flex gap-2 shrink-0">
                   <Button 
                     variant="outline"
                     onClick={() => setImportDialogOpen(true)}
                     size="sm"
                     className="gap-1.5"
+                    title="Importar"
+                    aria-label="Importar"
                   >
                     <Import className="h-3.5 w-3.5" />
-                    Importar
+                    <span className="hidden xl:inline">Importar</span>
                   </Button>
                   {(hasChanges || isNewLead) && (
                     <Button 
@@ -1633,10 +1637,12 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                       disabled={sendToAcompanhamentoMutation.isPending || lead?.status === 'Acompanhamento'}
                       size="sm"
                       className="gap-1.5"
+                      title="Mandar para Acompanhamento"
+                      aria-label="Mandar para Acompanhamento"
                     >
                       <Send className="h-3.5 w-3.5" />
-                      {sendToAcompanhamentoMutation.isPending ? 'Enviando...' : 
-                       lead?.status === 'Acompanhamento' ? 'Em Acompanhamento' : 'Acompanhamento'}
+                      <span className="hidden xl:inline">{sendToAcompanhamentoMutation.isPending ? 'Enviando...' : 
+                       lead?.status === 'Acompanhamento' ? 'Em Acompanhamento' : 'Acompanhamento'}</span>
                     </Button>
                   )}
                   {/* Botão Região de Interesse */}
@@ -1646,9 +1652,11 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                       size="sm"
                       className="gap-1.5"
                       onClick={() => setShowRegiaoInteresse(true)}
+                      title="Banco de Interesse"
+                      aria-label="Banco de Interesse"
                     >
                       <MapPin className="h-3.5 w-3.5" />
-                       Banco de Interesse
+                      <span className="hidden xl:inline">Banco de Interesse</span>
                     </Button>
                   )}
                   {/* REMOVIDO: Botão Converter do header - conversões devem ser feitas exclusivamente na aba Conversão */}
