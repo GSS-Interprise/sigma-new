@@ -33,15 +33,47 @@ export const inicioDoDiaBR = (agora = new Date()) => {
   return new Date(Date.UTC(br.getUTCFullYear(), br.getUTCMonth(), br.getUTCDate(), 3));
 };
 
-export function useIndicadoresHoje() {
+export type Periodo = "hoje" | "7d" | "30d";
+export const PERIODOS: { id: Periodo; rotulo: string }[] = [{ id: "hoje", rotulo: "Hoje" }, { id: "7d", rotulo: "7 dias" }, { id: "30d", rotulo: "30 dias" }];
+/** Início do período em Brasília: hoje = meia-noite de hoje; 7d/30d = meia-noite de 6/29 dias atrás. */
+export const inicioPeriodo = (p: Periodo, agora = new Date()) => {
+  const ini = inicioDoDiaBR(agora);
+  return new Date(ini.getTime() - (p === "hoje" ? 0 : p === "7d" ? 6 : 29) * 86_400_000);
+};
+
+export function useIndicadores(periodo: Periodo) {
   return useQuery({
-    queryKey: ["atendimento-indicadores-hoje"],
+    queryKey: ["atendimento-indicadores-hoje", periodo],
     queryFn: async () => {
-      const { data, error } = await rpc("atendimento_indicadores", { p_de: inicioDoDiaBR().toISOString(), p_ate: new Date().toISOString() });
+      const { data, error } = await rpc("atendimento_indicadores", { p_de: inicioPeriodo(periodo).toISOString(), p_ate: new Date().toISOString() });
       if (error) throw new Error(error.message);
       return (data || []) as Indicador[];
     },
     refetchInterval: 120_000,
+  });
+}
+
+export type PontoSerie = { bucket: string; esperas: number; em_meta: number; depois: number; sem_resposta: number; mediana_min: number | null; automaticas: number };
+export function useSerie(periodo: Periodo) {
+  return useQuery({
+    queryKey: ["atendimento-indicadores-hoje", "serie", periodo],
+    queryFn: async () => {
+      const { data, error } = await rpc("atendimento_serie", { p_de: inicioPeriodo(periodo).toISOString(), p_ate: new Date().toISOString(), p_bucket: periodo === "hoje" ? "hour" : "day" });
+      if (error) throw new Error(error.message);
+      return ((data || []) as PontoSerie[]).map((p) => ({ ...p, mediana_min: p.mediana_min == null ? null : Number(p.mediana_min) }));
+    },
+    refetchInterval: 120_000,
+  });
+}
+
+export function useMetas() {
+  return useQuery({
+    queryKey: ["atendimento-metas"],
+    queryFn: async () => {
+      const { data } = await (supabase as unknown as { from: (t: string) => any }).from("atendimento_config").select("meta_minutos, meta_pct").eq("id", true).maybeSingle();
+      return { minutos: Number(data?.meta_minutos ?? 10), pct: Number(data?.meta_pct ?? 80) };
+    },
+    staleTime: 300_000,
   });
 }
 

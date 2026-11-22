@@ -16,7 +16,7 @@ type Pessoa = { nome: string; fone: string };
 type Faixa = { min: number; para: "responsavel" | "coordenacao" | "diretoria" };
 type Config = {
   faixas: Faixa[]; dias: number[]; hora_inicio: string; hora_fim: string; coordenacao: Pessoa[]; diretoria: Pessoa[];
-  avisos_ativos: boolean; modo_teste: boolean; teste_fone: string | null;
+  avisos_ativos: boolean; modo_teste: boolean; teste_fone: string | null; meta_minutos: number; meta_pct: number;
 };
 const PARA: Record<Faixa["para"], string> = { responsavel: "quem está com o número", coordenacao: "a coordenação", diretoria: "coordenação e diretoria" };
 const DIAS = [[1, "Seg"], [2, "Ter"], [3, "Qua"], [4, "Qui"], [5, "Sex"], [6, "Sáb"], [7, "Dom"]] as const;
@@ -27,7 +27,7 @@ export function AvisosConfig({ podeGerir }: { podeGerir: boolean }) {
   const q = useQuery({
     queryKey: ["atendimento-config"],
     queryFn: async () => {
-      const { data, error } = await db().from("atendimento_config").select("faixas, dias, hora_inicio, hora_fim, coordenacao, diretoria, avisos_ativos, modo_teste, teste_fone").eq("id", true).maybeSingle();
+      const { data, error } = await db().from("atendimento_config").select("faixas, dias, hora_inicio, hora_fim, coordenacao, diretoria, avisos_ativos, modo_teste, teste_fone, meta_minutos, meta_pct").eq("id", true).maybeSingle();
       if (error) throw new Error(error.message);
       return data as Config | null;
     },
@@ -55,14 +55,16 @@ export function AvisosConfig({ podeGerir }: { podeGerir: boolean }) {
       if (!c.dias.length) throw new Error("Marque ao menos um dia.");
       const faixas = c.faixas.map((f) => ({ ...f, min: Math.round(Number(f.min)) }));
       if (faixas.some((f) => !(f.min >= 1 && f.min <= 1440))) throw new Error("Cada faixa vai de 1 a 1440 minutos.");
+      const metaMin = Math.round(Number(c.meta_minutos)), metaPct = Math.round(Number(c.meta_pct));
+      if (!(metaMin >= 1 && metaMin <= 240) || !(metaPct >= 1 && metaPct <= 100)) throw new Error("Meta: de 1 a 240 minutos e de 1% a 100%.");
       const { error } = await db().from("atendimento_config").update({
         faixas: [...faixas].sort((a, b) => a.min - b.min), dias: [...c.dias].sort(), hora_inicio: c.hora_inicio, hora_fim: c.hora_fim,
         coordenacao: limpa(c.coordenacao), diretoria: limpa(c.diretoria), avisos_ativos: c.avisos_ativos, modo_teste: c.modo_teste,
-        teste_fone: teste, atualizado_em: new Date().toISOString(),
+        teste_fone: teste, meta_minutos: metaMin, meta_pct: metaPct, atualizado_em: new Date().toISOString(),
       }).eq("id", true);
       if (error) throw new Error(error.message);
     },
-    onSuccess: () => { toast.success(c?.avisos_ativos ? (c.modo_teste ? "Salvo. Avisos ligados em modo teste." : "Salvo. Avisos ligados para a equipe.") : "Salvo. Avisos desligados."); qc.invalidateQueries({ queryKey: ["atendimento-config"] }); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["atendimento-metas"] }); qc.invalidateQueries({ queryKey: ["atendimento-indicadores-hoje"] }); toast.success(c?.avisos_ativos ? (c.modo_teste ? "Salvo. Avisos ligados em modo teste." : "Salvo. Avisos ligados para a equipe.") : "Salvo. Avisos desligados."); qc.invalidateQueries({ queryKey: ["atendimento-config"] }); },
     onError: (e) => toast.error((e as Error).message),
   });
 
@@ -117,6 +119,15 @@ export function AvisosConfig({ podeGerir }: { podeGerir: boolean }) {
         </div>
       </section>
       <section className="space-y-4 rounded-lg border bg-card p-4">
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Meta do painel</p>
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <Input type="number" min={1} max={100} className="h-9 w-20" aria-label="Meta em porcentagem" value={c.meta_pct} disabled={ed} onChange={(e) => set({ meta_pct: Number(e.target.value) })} />
+            <span className="text-muted-foreground">% respondidas em até</span>
+            <Input type="number" min={1} max={240} className="h-9 w-20" aria-label="Meta em minutos" value={c.meta_minutos} disabled={ed} onChange={(e) => set({ meta_minutos: Number(e.target.value) })} />
+            <span className="text-muted-foreground">min</span>
+          </div>
+        </div>
         <ListaPessoas titulo="Coordenação" ajuda="Recebe 60 min sem resposta e as conversas de número sem responsável" pessoas={c.coordenacao} ed={ed} onChange={(p) => set({ coordenacao: p })} />
         <ListaPessoas titulo="Diretoria" ajuda="Recebe junto com a coordenação a partir de 180 min" pessoas={c.diretoria} ed={ed} onChange={(p) => set({ diretoria: p })} />
         <p className="text-xs text-muted-foreground">Quem está com cada número recebe pelo telefone do perfil dele no Sigma.</p>
