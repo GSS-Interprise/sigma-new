@@ -28,11 +28,41 @@ async function get(key: string, path: string) {
   }
 }
 
+async function post(key: string, path: string, data: unknown) {
+  try {
+    const r = await fetch(`https://api.chakrahq.com${path}`, {
+      method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" }, body: JSON.stringify(data),
+    });
+    const t = await r.text();
+    let body: unknown = t;
+    try { body = JSON.parse(t); } catch { /* texto */ }
+    return { http: r.status, body };
+  } catch (e) {
+    return { http: 0, body: String(e) };
+  }
+}
+
 Deno.serve(async (req) => {
   if (!ehServiceRole(req.headers.get("Authorization") || "")) return json({ ok: false, error: "service_role_only" }, 403);
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   const contas = { gss: Deno.env.get("CHAKRA_API_KEY_GSS")?.trim(), pulse: Deno.env.get("CHAKRA_API_KEY")?.trim() };
   const input = await req.json().catch(() => ({}));
+
+  // Chamado no suporte da Chakra pela conta da GSS (22/11/2026: ninguém da Pulse tem login nessa conta).
+  // Mesma API do botão "Raise a Ticket" do painel: POST /internal-ticket (criar) e /internal-ticket/list.
+  if (input.acao === "chamado_ver" && contas.gss) {
+    const id = String(input.id ?? "").replace(/[^a-f0-9-]/gi, "");
+    return json({ ok: true, comentarios: await post(contas.gss, `/internal-ticket/${id}/list-comments`, {}),
+      chamado: await get(contas.gss, `/internal-ticket/${id}`) });
+  }
+  if (input.acao === "chamados_listar" || input.acao === "chamado_criar") {
+    const key = contas.gss;
+    if (!key) return json({ ok: false, error: "CHAKRA_API_KEY_GSS ausente" }, 500);
+    if (input.acao === "chamados_listar") return json({ ok: true, resposta: await post(key, "/internal-ticket/list", input.filtro ?? {}) });
+    const titulo = String(input.titulo ?? "").trim(), descricao = String(input.descricao ?? "").trim();
+    if (!titulo || !descricao) return json({ ok: false, error: "titulo e descricao obrigatorios" }, 400);
+    return json({ ok: true, resposta: await post(key, "/internal-ticket", { id: crypto.randomUUID(), title: titulo, description: descricao, attachmentIds: [] }) });
+  }
   const so = input.phone ? String(input.phone) : null;
 
   const { data: conns } = await admin.from("whatsapp_chakra_connections")
