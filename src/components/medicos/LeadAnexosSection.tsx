@@ -114,6 +114,25 @@ export function LeadAnexosSection({ leadId, pendentes = [], onPendentesChange }:
     staleTime: 0,
   });
 
+  // Contratos assinados que o Ideia Signer anexa sozinho (ideia-webhook grava em medico_documentos, marcados
+  // com observacoes 'ideia:<id>'). Ficavam só na aba OLD; a equipe procura aqui, junto dos outros anexos (23/11).
+  const { data: contratosIdeia = [] } = useQuery({
+    queryKey: ['lead-contratos-ideia', leadId],
+    queryFn: async () => {
+      const { data: med } = await supabase.from('medicos').select('id').eq('lead_id', leadId!).maybeSingle();
+      if (!med?.id) return [];
+      const { data, error } = await supabase
+        .from('medico_documentos')
+        .select('id, arquivo_nome, arquivo_path, created_at')
+        .eq('medico_id', med.id)
+        .ilike('observacoes', 'ideia:%')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data ?? []).filter((d: any) => !!d.arquivo_path);
+    },
+    enabled: !!leadId,
+  });
+
   // Detectar bucket correto baseado na URL do anexo
   const getBucketFromUrl = (url: string): string => {
     if (url.startsWith('medico-kanban-anexos/')) {
@@ -238,12 +257,17 @@ export function LeadAnexosSection({ leadId, pendentes = [], onPendentesChange }:
   };
 
   // arquivos que abrem no visualizador (link externo continua abrindo no navegador)
-  const navegaveis: AnexoNavegavel[] = (anexos ?? [])
-    .filter((a: any) => a.arquivo_tipo !== 'link_externo')
-    .map((a: any) => ({
-      id: a.id, arquivo_nome: a.arquivo_nome, bucket: getBucketFromUrl(a.arquivo_url),
-      arquivo_url: a.arquivo_url.startsWith('http') ? a.arquivo_url : getPathFromUrl(a.arquivo_url),
-    }));
+  const navegaveis: AnexoNavegavel[] = [
+    ...contratosIdeia.map((c: any) => ({
+      id: c.id, arquivo_nome: c.arquivo_nome, bucket: 'medicos-documentos', arquivo_url: c.arquivo_path,
+    })),
+    ...(anexos ?? [])
+      .filter((a: any) => a.arquivo_tipo !== 'link_externo')
+      .map((a: any) => ({
+        id: a.id, arquivo_nome: a.arquivo_nome, bucket: getBucketFromUrl(a.arquivo_url),
+        arquivo_url: a.arquivo_url.startsWith('http') ? a.arquivo_url : getPathFromUrl(a.arquivo_url),
+      })),
+  ];
 
   const getPublicUrl = (url: string): string => {
     // Se já é uma URL pública completa
@@ -351,6 +375,28 @@ export function LeadAnexosSection({ leadId, pendentes = [], onPendentesChange }:
             <p className="text-xs text-muted-foreground">Os arquivos são anexados quando você clicar em Criar.</p>
           </div>
         ) : null
+      )}
+
+      {/* Contrato PJ assinado no Ideia: chega sozinho, só leitura (apagar ou renomear fica na aba OLD) */}
+      {leadId && contratosIdeia.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Contrato assinado (Ideia Signer)</p>
+          <ul className="space-y-1.5">
+            {contratosIdeia.map((c: any) => (
+              <li key={c.id} className="flex items-center gap-3 rounded-md border bg-background px-3 py-2">
+                <FileText className="h-5 w-5 shrink-0 text-emerald-700" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium" title={c.arquivo_nome}>{c.arquivo_nome.replace(/^Contrato assinado - /, '')}</p>
+                  <p className="text-xs text-muted-foreground">Assinado e anexado pelo Ideia em {format(new Date(c.created_at), "dd/MM/yyyy", { locale: ptBR })}</p>
+                </div>
+                <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 shrink-0"
+                  onClick={() => setVerIndice(Math.max(0, navegaveis.findIndex((n) => n.id === c.id)))}>
+                  <Eye className="h-3.5 w-3.5" /> Ver
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       {/* File List - Horizontal Scroll */}
