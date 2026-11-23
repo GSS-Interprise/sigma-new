@@ -60,7 +60,8 @@ export default function ResetPassword() {
       // Segunda tentativa (ex.: senha recusada) já tem a sessão do link: não gasta o token de novo.
       if (tokenHash && !(await supabase.auth.getSession()).data.session) {
         const { error: erroLink } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: "recovery" });
-        if (erroLink) throw new Error("Link de redefinição inválido ou expirado. Peça outro em \"Esqueci minha senha\".");
+        // Cada pedido novo cancela o link anterior: o erro mais comum é abrir um e-mail mais antigo.
+        if (erroLink) throw new Error("Este link já não vale. Use o e-mail mais recente (cada pedido cancela o anterior) ou peça outro em \"Esqueci minha senha\".");
       }
       const { error } = await supabase.auth.updateUser({
         password: newPassword
