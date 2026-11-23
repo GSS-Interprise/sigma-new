@@ -238,7 +238,9 @@ export function useContratoRascunho(rascunhoId?: string) {
     enabled: !!rascunho?.licitacao_id,
   });
 
-  return { rascunho, anexos, licitacao, isLoading };
+  // anexos fica undefined até a consulta voltar; o "Ver" da licitação arrematada fazia anexos.map e derrubava a
+  // tela inteira ("Cannot read properties of undefined (reading 'map')", 22/11)
+  return { rascunho, anexos: anexos ?? [], licitacao, isLoading };
 }
 
 export function useContratoRascunhoByLicitacao(licitacaoId?: string) {
