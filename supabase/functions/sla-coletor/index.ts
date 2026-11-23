@@ -2,13 +2,15 @@
 // data, hora, origem, nome do paciente e estudo de cada linha (nome incluído por decisão do Raul em 12/11; o banco
 // apaga o nome quando o exame sai da fila).
 // A estação se identifica com x-sla-key (secret SLA_COLETOR_KEY); a service role fica só aqui.
-//   { unidade, lida_em, status: "ok"|"sem_grade"|"erro", cheia, linhas: [{ data, hora, origem }], detalhe }
+//   { unidade, lida_em, status: "ok"|"sem_grade"|"erro", cheia, linhas: [{ data, hora, origem, vence? }], detalhe }
+// Tijucas (23/11) não usa OCR: o coletor lê a API do Animati, manda o prazo do próprio PACS em "vence" e
+// detalhe.lista_completa = true (lista vazia vale como fila vazia). Ver estacao-gss/sla/tijucas/.
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { "Content-Type": "application/json" } });
 // CEPON entrou em 22/11 (segunda estação, PC da Brenda).
-const UNIDADES = new Set(["marieta", "cepon"]);
+const UNIDADES = new Set(["marieta", "cepon", "tijucas"]);
 const ORIGENS = new Set(["ps", "internado", "externo"]);
 
 serve(async (req) => {
@@ -36,10 +38,18 @@ serve(async (req) => {
     const dias = (t.getTime() - lidaEm.getTime()) / 86_400_000;
     return dias > 1.5 || dias < -10 ? null : iso;
   };
+  // Prazo vindo do PACS: ISO válido, entre 10 dias atrás e 60 dias à frente; fora disso, ignora (vale sla_prazos).
+  const venceValido = (v: unknown): string | null => {
+    if (typeof v !== "string" || !/^\d{4}-\d{2}-\d{2}T/.test(v)) return null;
+    const t = new Date(v);
+    const dias = (t.getTime() - lidaEm.getTime()) / 86_400_000;
+    return isNaN(t.getTime()) || dias < -10 || dias > 60 ? null : t.toISOString();
+  };
   const linhas = (Array.isArray(body.linhas) ? body.linhas : []).slice(0, 300).map((l: Record<string, unknown>) => {
     return {
       data: dataValida(l?.data), hora: String(l?.hora || ""), origem: String(l?.origem || "").toLowerCase(),
       paciente: String(l?.paciente || "").slice(0, 120) || null, estudo: String(l?.estudo || "").slice(0, 120) || null,
+      vence: venceValido(l?.vence),
     };
   }).filter((l: { hora: string; origem: string }) => /^\d{2}:\d{2}(:\d{2})?$/.test(l.hora) && ORIGENS.has(l.origem));
 
