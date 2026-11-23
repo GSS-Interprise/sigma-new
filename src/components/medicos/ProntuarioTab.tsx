@@ -63,8 +63,11 @@ export function ProntuarioTab({ medicoId }: ProntuarioTabProps) {
   });
 
   // Buscar documentos para o resumo IA
+  // Chave própria: com ['medico-documentos', id] esta consulta (só com texto extraído) dividia o cache com a
+  // lista da DocumentacaoTab, que renderiza depois na mesma aba OLD e mostrava esta versão filtrada. O contrato
+  // assinado que o Ideia anexa (sem texto extraído) sumia da lista de documentos (23/11).
   const { data: documentos } = useQuery({
-    queryKey: ['medico-documentos', medicoId],
+    queryKey: ['medico-documentos-resumo-ia', medicoId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('medico_documentos')
