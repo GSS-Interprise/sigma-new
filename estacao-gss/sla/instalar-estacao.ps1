@@ -9,15 +9,24 @@
 param(
   [Parameter(Mandatory = $true)][ValidateSet("marieta", "cepon")][string]$Unidade,
   [int]$GradeX = 487, [int]$GradeLargura = 1425, [int]$GradeTopo = 236, [int]$AtualizarX = 340, [int]$AtualizarY = 95,
-  [string]$SophosConexao = ""
+  [string]$SophosConexao = "",
+  # Pasta da fila que o login automatico abre (vue_login.py). CEPON: "Hoje" (Brenda, 23/11). Marieta: "TC - Plantao".
+  [string]$Pasta = "",
+  [string]$PacsExe = ""
 )
+# O Vue do CEPON e outra instalacao (PACS592extip, servidor srvpacs); o da Marieta e o mvclient_574.
+if (-not $PacsExe) {
+  $PacsExe = $(if ($Unidade -eq "cepon") { "C:\Program Files\Philips\PACS\PACS592extip\mv_client\mp.exe" } else { "C:\Program Files\Philips\PACS\mvclient_574\mv_client\mp.exe" })
+}
+if (-not $Pasta -and $Unidade -eq "cepon") { $Pasta = "Hoje" }
 $base = "C:\ProgramData\ssh-tunel"
-foreach ($f in "coletor.ps1", "coletor.vbs", "vigia.ps1", "vigia.vbs", "sla_key.txt") {
+foreach ($f in "coletor.ps1", "coletor.vbs", "vigia.ps1", "vigia.vbs", "guardar-senha.ps1", "sla_key.txt") {
   if (-not (Test-Path "$base\$f")) { Write-Output "FALTA $base\${f}: copie antes de instalar."; exit 1 }
 }
 $cfg = [ordered]@{
   unidade = $Unidade; grade_x = $GradeX; grade_largura = $GradeLargura; grade_topo = $GradeTopo
   atualizar_x = $AtualizarX; atualizar_y = $AtualizarY; sophos_conexao = $SophosConexao
+  pasta = $Pasta; pacs_exe = $PacsExe
 }
 $cfg | ConvertTo-Json | Set-Content "$base\estacao.json" -Encoding ASCII
 $usuario = $env:USERNAME

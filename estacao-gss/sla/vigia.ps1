@@ -14,12 +14,13 @@ $cfg = @{
   pacs_exe = "C:\Program Files\Philips\PACS\mvclient_574\mv_client\mp.exe"
   vpn_host = "192.168.0.90"; vpn_porta = 2104
   sophos_cli = "C:\Program Files (x86)\Sophos\Connect\sccli.exe"; sophos_conexao = ""
+  pasta = ""
 }
 if (Test-Path "$base\estacao.json") {
   try { (Get-Content "$base\estacao.json" -Raw | ConvertFrom-Json).PSObject.Properties | ForEach-Object { $cfg[$_.Name] = $_.Value } } catch { }
 }
 $estadoArq = "$base\vigia-estado.json"
-$estado = @{ pacs_aberto_em = $null; vpn_tentou_em = $null; coletor_disparou_em = $null }
+$estado = @{ pacs_aberto_em = $null; vpn_tentou_em = $null; coletor_disparou_em = $null; login_tentou_em = $null; login_falhas = 0 }
 if (Test-Path $estadoArq) {
   try { (Get-Content $estadoArq -Raw | ConvertFrom-Json).PSObject.Properties | ForEach-Object { $estado[$_.Name] = $_.Value } } catch { }
 }
@@ -48,11 +49,39 @@ if (-not $pacs) {
   }
 }
 
+# 1b. Login do Vue (23/11/2026): o Vue tem protetor de tela proprio que derruba a sessao parada, e ai a lista some.
+# Com a senha guardada pela GSS (guardar-senha.ps1, DPAPI), vue-login.ps1 entra sozinho e abre a pasta da fila.
+# No maximo 1 tentativa a cada 3 min; depois de 3 falhas seguidas espera 30 min (senha trocada nao vira bloqueio).
+# vue_login.py (pywinauto) e o caminho que funciona; o cliente UIA do .NET nao enxerga os campos do Vue.
+$py = "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe"
+if ($pacs -and (Test-Path "$base\vue_login.py") -and (Test-Path $py)) {
+  $espera = $(if ([int]$estado.login_falhas -ge 3) { 30 } else { 3 })
+  if (Passou $estado.login_tentou_em $espera) {
+    $r = (& $py "$base\vue_login.py" ([string]$cfg.pasta) 2>&1 | Out-String).Trim()
+    if ($r -ne "sem_tela_login") {
+      $estado.login_tentou_em = (Get-Date).ToString("s")
+      if ($r -like "entrou*") { $estado.login_falhas = 0 } elseif ($r -ne "sem_senha_guardada") { $estado.login_falhas = [int]$estado.login_falhas + 1 }
+      Log "vue_tela_login -> $r (falhas seguidas: $($estado.login_falhas))"
+    }
+  }
+}
+
 # 2. VPN
-if (-not (VpnOk)) {
+# Estacao sem VPN (CEPON: servidor publico, sem Sophos): vpn_host vazio em estacao.json pula esta parte.
+if ($cfg.vpn_host -and -not (VpnOk)) {
   if ($cfg.sophos_conexao -and (Test-Path $cfg.sophos_cli) -and (Passou $estado.vpn_tentou_em 5)) {
     $estado.vpn_tentou_em = (Get-Date).ToString("s")
-    $saida = & $cfg.sophos_cli enable -n ([string]$cfg.sophos_conexao) 2>&1 | Out-String
+    # Com usuario e senha guardados (guardar-senha.ps1 -Sistema sophos), reconecta mesmo sem a senha salva no Sophos.
+    $argsVpn = @("enable", "-n", [string]$cfg.sophos_conexao)
+    if (Test-Path "$base\cred-sophos.json") {
+      try {
+        $cs = Get-Content "$base\cred-sophos.json" -Raw | ConvertFrom-Json
+        $ps = [Runtime.InteropServices.Marshal]::PtrToStringBSTR([Runtime.InteropServices.Marshal]::SecureStringToBSTR((ConvertTo-SecureString $cs.senha)))
+        $argsVpn += @("-u", [string]$cs.usuario, "-p", $ps)
+      } catch { }
+    }
+    $saida = & $cfg.sophos_cli @argsVpn 2>&1 | Out-String
+    $ps = $null; $argsVpn = $null
     Start-Sleep -Seconds 20
     Log ("vpn_caida -> pedi reconexao ao Sophos: " + ($(if (VpnOk) { "voltou" } else { "nao voltou" })) + " | " + $saida.Trim().Replace("`r", " ").Replace("`n", " "))
   } elseif (Passou $estado.vpn_tentou_em 30) {
@@ -63,7 +92,8 @@ if (-not (VpnOk)) {
 
 # 3. Coletor
 $logColetor = "$base\coletor.log"
-$parado = -not (Test-Path $logColetor) -or ((Get-Date) - (Get-Item $logColetor).LastWriteTime).TotalMinutes -gt 10
+# Sem coletor.log o coletor ainda nao foi instalado nesta estacao: nada a disparar.
+$parado = (Test-Path $logColetor) -and ((Get-Date) - (Get-Item $logColetor).LastWriteTime).TotalMinutes -gt 10
 if ($parado -and (Passou $estado.coletor_disparou_em 10)) {
   schtasks /run /tn SigmaColetorSLA | Out-Null
   $estado.coletor_disparou_em = (Get-Date).ToString("s")
