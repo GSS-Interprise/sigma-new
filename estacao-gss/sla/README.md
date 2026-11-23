@@ -6,7 +6,28 @@ não abre os dois ao mesmo tempo na mesma máquina (Brenda, 18/11):
 | Estação | Unidades | Túnel (na VPS da GSS) |
 |---|---|---|
 | PC do robô (`DESKTOP-0VUPT0G`, usuário `vinicius`) | Marieta (e Tijucas, quando o Animati for mapeado) | `ssh -i /root/.ssh/gss_pc -p 2222 vinicius@localhost` |
-| PC da Brenda (usuário `heron`, a confirmar) | CEPON | `ssh -i /root/.ssh/gss_pc -p 2223 heron@localhost` |
+| PC da Brenda / baia do Wagner (usuário `heron`) | CEPON (e Tijucas/Mobilimed, web) | `ssh -i /root/.ssh/gss_pc -p 2223 heron@localhost` |
+
+### Mapa da baia do Wagner (sonda só-leitura, 23/11/2026)
+
+- **Dois monitores**, 3840x1080 no total. O Vue PACS (CEPON) fica no monitor da esquerda (0-1920), e o Chrome no da
+  direita. O Vue do CEPON é o `PACS592extip`, servidor `srvpacs` (187.94.103.178), **sem VPN**. O Sophos não
+  está conectado nesse PC.
+- **Vue do CEPON = mesmo programa da Marieta, 48 px mais baixo:** a barra "Aplicativos" do visualizador fica por
+  cima do explorador. Cabeçalho da grade em y 239 (Marieta 191). Logo `-GradeTopo 284 -AtualizarX 341
+  -AtualizarY 143`, com `-GradeX 487` igual. **Conferir numa captura com a lista aberta** antes de instalar.
+- **Árvore do `srvpacs`:**
+  - Procurar;
+  - 00 - BRONCOSCOPIA / COLONOSCOPIA / ENDOSCOPIA / HOJE / RAIO X / RETOSSIGMOIDOSCOPIA / TOMOGRAFIA / ULTRASSONOGRAFIA;
+  - Arquivo de aprendizagem, Hoje, RX - a distribuir, TC - a distribuir, Todos os estudos, Todos os pacientes.
+- **Falta a GSS dizer** qual dessas pastas é a fila de "não laudados" (na Marieta é "TC - Plantão", filtro NÃO LIDO).
+- **Pela UIA**, o Vue expõe o botão Atualizar (`ae_refresh`) e as linhas da grade (`DataItem`). Com isso dá para
+  atualizar sem clique de mouse e sem o PACS na frente, o que importa porque é o PC de trabalho do Wagner. Ainda
+  não testado com a lista aberta.
+- **Tijucas (Animati):** web, `cdi.tijucas.rangsaude.com.br/studies`, no Chrome do Wagner. **Mobilimed:** web,
+  `laudos.mobilemed.com.br`, login da Brenda. O Chrome não expõe o conteúdo da página pela UIA. Para os dois, o
+  caminho é ler a página no navegador (extensão no perfil logado ou API da própria página), não OCR. É coletor
+  novo, ainda não feito.
 
 Arquivos (todos em `C:\ProgramData\ssh-tunel\` na estação; ASCII puro, porque o PowerShell 5.1 lê `.ps1` sem BOM como ANSI):
 
