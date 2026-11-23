@@ -24,6 +24,9 @@ export default function ResetPassword() {
     // na âncora (otp_expired) ou nenhuma sessão = link inválido de verdade.
     const hashParams = new URLSearchParams(window.location.hash.substring(1));
     if (hashParams.get("type") === "recovery") return;
+    // Link novo (?token_hash=...): o token só é gasto no "Salvar", porque a prévia do WhatsApp e o antivírus do
+    // e-mail abrem o link antes da pessoa e queimavam o link antigo (/auth/v1/verify), que vale uma vez só.
+    if (searchParams.get("token_hash")) return;
     const invalido = () => {
       toast.error("Link de redefinição inválido ou expirado. Peça outro em \"Esqueci minha senha\".");
       navigate("/auth");
@@ -35,7 +38,7 @@ export default function ResetPassword() {
       if (ativo && !data.session) invalido();
     }, 800);
     return () => { ativo = false; clearTimeout(t); };
-  }, [navigate]);
+  }, [navigate, searchParams]);
 
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,6 +56,12 @@ export default function ResetPassword() {
     setLoading(true);
 
     try {
+      const tokenHash = searchParams.get("token_hash");
+      // Segunda tentativa (ex.: senha recusada) já tem a sessão do link: não gasta o token de novo.
+      if (tokenHash && !(await supabase.auth.getSession()).data.session) {
+        const { error: erroLink } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: "recovery" });
+        if (erroLink) throw new Error("Link de redefinição inválido ou expirado. Peça outro em \"Esqueci minha senha\".");
+      }
       const { error } = await supabase.auth.updateUser({
         password: newPassword
       });
