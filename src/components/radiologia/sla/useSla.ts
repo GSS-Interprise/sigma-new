@@ -10,6 +10,8 @@ import { supabase } from "@/integrations/supabase/client";
 export const UNIDADES = [
   { id: "marieta", nome: "Hospital Marieta" },
   { id: "cepon", nome: "CEPON" },
+  // 23/11/2026: Tijucas lido pela API do Animati (prioridades "GSS LAUDOS", sem laudo), PC da baia do Wagner.
+  { id: "tijucas", nome: "Tijucas" },
 ] as const;
 export type UnidadeId = (typeof UNIDADES)[number]["id"];
 export function useUnidade() {
