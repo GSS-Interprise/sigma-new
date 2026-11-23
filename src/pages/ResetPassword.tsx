@@ -18,14 +18,23 @@ export default function ResetPassword() {
   const [searchParams] = useSearchParams();
 
   useEffect(() => {
-    // Verificar se há um token de recuperação na URL
+    // O supabase-js troca o #access_token...&type=recovery por uma sessão e LIMPA a âncora antes desta tela montar
+    // (e o AuthContext ainda navega para cá sem âncora no PASSWORD_RECOVERY). Checar só "type=recovery" na âncora
+    // recusava todo link válido (Bia, 23/11). Vale: âncora de recovery OU sessão aberta pelo link. Erro do Supabase
+    // na âncora (otp_expired) ou nenhuma sessão = link inválido de verdade.
     const hashParams = new URLSearchParams(window.location.hash.substring(1));
-    const type = hashParams.get('type');
-    
-    if (type !== 'recovery') {
-      toast.error("Link de redefinição inválido ou expirado");
+    if (hashParams.get("type") === "recovery") return;
+    const invalido = () => {
+      toast.error("Link de redefinição inválido ou expirado. Peça outro em \"Esqueci minha senha\".");
       navigate("/auth");
-    }
+    };
+    if (hashParams.get("error")) { invalido(); return; }
+    let ativo = true;
+    const t = setTimeout(async () => {
+      const { data } = await supabase.auth.getSession();
+      if (ativo && !data.session) invalido();
+    }, 800);
+    return () => { ativo = false; clearTimeout(t); };
   }, [navigate]);
 
   const handleResetPassword = async (e: React.FormEvent) => {
