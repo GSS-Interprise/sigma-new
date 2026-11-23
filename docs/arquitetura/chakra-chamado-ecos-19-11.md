@@ -55,3 +55,8 @@ Thanks!
   mudados de plugin; perguntei quando (se foi em 19/11, a inscrição do eco pode não ter acompanhado). Respondi as 3
   perguntas e prometi um teste pelo app na segunda, 24/11, com horário exato.
 - **Pendente:** teste pelo celular na segunda; atualizar `whatsapp_chakra_connections.plugin_id` para o plugin real.
+- **23/11, resolvido:** os ecos voltaram sozinhos (415 `smb_message_echo` em 23/11 desde 08:35). O "buraco" de 20 a 22/11
+  foi feriado (Consciência Negra) + fim de semana, sem ninguém usando o app no celular. O plugin `49a435de` já tinha
+  webhook e eco ligados (conferido com a nova ação `plugin_ver` da `chakra-diagnostico`). Respondemos pedindo para
+  fechar. **`plugin_id` velho no Sigma ficou como está de propósito:** ele compõe a chave dos modelos
+  (`chakra:<plugin>:<modelo>` no chakra-connect) e trocar pode soltar modelos já usados em campanha.

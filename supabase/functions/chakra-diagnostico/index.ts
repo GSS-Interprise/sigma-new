@@ -71,6 +71,21 @@ Deno.serve(async (req) => {
     if (!titulo || !descricao) return json({ ok: false, error: "titulo e descricao obrigatorios" }, 400);
     return json({ ok: true, resposta: await post(key, "/internal-ticket", { id: crypto.randomUUID(), title: titulo, description: descricao, attachmentIds: [] }) });
   }
+  // Config de um plugin WhatsApp da GSS (23/11/2026, chamado #2224: os números migraram para o plugin 49a435de e o
+  // eco do celular parou). plugin_atualizar manda só os campos pedidos; a resposta crua volta para conferir.
+  if ((input.acao === "plugin_ver" || input.acao === "plugin_atualizar") && contas.gss) {
+    const id = String(input.id ?? "").replace(/[^a-f0-9-]/gi, "");
+    if (!id) return json({ ok: false, error: "id obrigatorio" }, 400);
+    const caminho = `/v1/ext/plugin/whatsapp/${id}/config`;
+    if (input.acao === "plugin_ver") return json({ ok: true, config: await get(contas.gss, caminho) });
+    if (!input.config || typeof input.config !== "object") return json({ ok: false, error: "config obrigatoria" }, 400);
+    const metodo = input.metodo === "PUT" || input.metodo === "PATCH" ? input.metodo : "POST";
+    const r = await fetch(`https://api.chakrahq.com${caminho}`, {
+      method: metodo, headers: { Authorization: `Bearer ${contas.gss}`, "Content-Type": "application/json" }, body: JSON.stringify(input.config),
+    });
+    const t = await r.text();
+    return json({ ok: r.ok, http: r.status, metodo, resposta: t.slice(0, 3000), depois: await get(contas.gss, caminho) });
+  }
   const so = input.phone ? String(input.phone) : null;
 
   const { data: conns } = await admin.from("whatsapp_chakra_connections")
