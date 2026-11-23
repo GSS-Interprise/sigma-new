@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +16,11 @@ export default function ResetPassword() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  // Lidos UMA vez na abertura: depois do verifyOtp o AuthContext navega para /reset-password sem ?token_hash
+  // (evento PASSWORD_RECOVERY), e o signOut do fim apaga a sessão. Rechecar o link nesses momentos mostrava
+  // "inválido ou expirado" depois de a senha já ter sido trocada (Raul, 23/11).
+  const tokenHash = useRef(searchParams.get("token_hash"));
+  const salvando = useRef(false);
 
   useEffect(() => {
     // O supabase-js troca o #access_token...&type=recovery por uma sessão e LIMPA a âncora antes desta tela montar
@@ -26,7 +31,7 @@ export default function ResetPassword() {
     if (hashParams.get("type") === "recovery") return;
     // Link novo (?token_hash=...): o token só é gasto no "Salvar", porque a prévia do WhatsApp e o antivírus do
     // e-mail abrem o link antes da pessoa e queimavam o link antigo (/auth/v1/verify), que vale uma vez só.
-    if (searchParams.get("token_hash")) return;
+    if (tokenHash.current) return;
     const invalido = () => {
       toast.error("Link de redefinição inválido ou expirado. Peça outro em \"Esqueci minha senha\".");
       navigate("/auth");
@@ -35,10 +40,12 @@ export default function ResetPassword() {
     let ativo = true;
     const t = setTimeout(async () => {
       const { data } = await supabase.auth.getSession();
-      if (ativo && !data.session) invalido();
+      if (ativo && !salvando.current && !data.session) invalido();
     }, 800);
     return () => { ativo = false; clearTimeout(t); };
-  }, [navigate, searchParams]);
+    // Só na abertura da tela (ver tokenHash acima).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,10 +63,10 @@ export default function ResetPassword() {
     setLoading(true);
 
     try {
-      const tokenHash = searchParams.get("token_hash");
       // Segunda tentativa (ex.: senha recusada) já tem a sessão do link: não gasta o token de novo.
-      if (tokenHash && !(await supabase.auth.getSession()).data.session) {
-        const { error: erroLink } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: "recovery" });
+      salvando.current = true;
+      if (tokenHash.current && !(await supabase.auth.getSession()).data.session) {
+        const { error: erroLink } = await supabase.auth.verifyOtp({ token_hash: tokenHash.current, type: "recovery" });
         // Cada pedido novo cancela o link anterior: o erro mais comum é abrir um e-mail mais antigo.
         if (erroLink) throw new Error("Este link já não vale. Use o e-mail mais recente (cada pedido cancela o anterior) ou peça outro em \"Esqueci minha senha\".");
       }
