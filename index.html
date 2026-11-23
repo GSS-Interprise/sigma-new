@@ -4,6 +4,14 @@
 <html lang="pt-BR" translate="no">
   <head>
     <meta charset="UTF-8" />
+    <!-- Endereço antigo (23/11/2026): quem abre sigma-gss.lovable.app vai para o domínio novo, no mesmo caminho
+         (links /nf/... gravados no modelo da Meta continuam valendo). Só o host publicado: a prévia do editor do
+         Lovable (id-preview--*.lovable.app, *.lovableproject.com) continua funcionando. -->
+    <script>
+      if (location.hostname === "sigma-gss.lovable.app") {
+        location.replace("https://sigma.gestaoservicosaude.com.br" + location.pathname + location.search + location.hash);
+      }
+    </script>
     <meta name="google" content="notranslate" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Sigma · GSS</title>
