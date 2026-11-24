@@ -7,7 +7,8 @@
 # falta menos de 90 s, o coletor recarrega a aba e a pagina troca o token pelo refresh_token (sem senha).
 # Fila = exames nao liberados da lista padrao da Brenda (tipo_listagem 1). Cada exame ja vem com o prazo que o
 # Mobilemed calcula (sla_expiration_date -> "vence"). Ainda a confirmar com a GSS (24/11): quais empresas entram
-# (24/11: Forquilhinha 5725, Tijucas 5750, Mostardas 5835, Urubici 5845) e se "digitado" (status 6, laudo feito sem liberar) conta como pendente. Ate la: tudo entra.
+# (24/11: Forquilhinha 5725, Tijucas 5750, Mostardas 5835, Urubici 5845).
+# "Digitado" (status 6) e pre-laudo esperando o medico revisar e liberar (Brenda, 24/11): continua pendente no SLA.
 #
 # Uso: pythonw coletor_mobilemed.py   (config em %LOCALAPPDATA%\SigmaSLA: sla_key.txt)
 # Log curto em %LOCALAPPDATA%\SigmaSLA\coletor_mobilemed.log (sem nome de paciente).
@@ -29,7 +30,7 @@ PRIORIDADE_ROTINA = 1
 # para cidade fora desta lista (Forquilhinha, em 24/11, ainda sem prazo informado).
 PRAZOS_H = {"URUBICI": (72, 72), "MOSTARDAS": (2, 24), "TIJUCAS": (72, 72), "VILA VELHA": (2, 48)}
 EMPRESAS = None  # None = todas; ex.: {5725} quando a GSS disser quais unidades entram
-STATUS_FORA = set()  # ex.: {6} se "digitado" nao contar como pendente
+STATUS_FORA = set()  # "digitado" (6) fica: so sai da fila quando o medico libera
 BRT = timezone(timedelta(hours=-3))
 LOG = BASE / "coletor_mobilemed.log"
 
