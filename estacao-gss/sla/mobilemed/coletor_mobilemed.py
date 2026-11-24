@@ -31,6 +31,10 @@ PRIORIDADE_ROTINA = 1
 PRAZOS_H = {"URUBICI": (72, 72), "MOSTARDAS": (2, 24), "TIJUCAS": (72, 72), "VILA VELHA": (2, 48),
             "FORQUILHINHA": (72, 72), "ITABERAI": (2, 24), "ITABERAÍ": (2, 24), "NOVO HAMBURGO": (72, 72)}
 EMPRESAS = None  # None = todas; ex.: {5725} quando a GSS disser quais unidades entram
+# Tijucas (5750) fica de fora (Brenda, 24/11): o exame chega no Animati, ela transfere para o Mobilemed, o medico
+# lauda aqui e o laudo volta ao Animati. O coletor do Tijucas (Animati) ja conta desde a chegada; ler aqui tambem
+# duplicaria o exame e o aviso ao medico.
+EMPRESAS_FORA = {5750}
 STATUS_FORA = set()  # "digitado" (6) fica: so sai da fila quando o medico libera
 BRT = timezone(timedelta(hours=-3))
 LOG = BASE / "coletor_mobilemed.log"
@@ -180,7 +184,7 @@ def main():
     linhas, antigos, fora, cidades = [], 0, 0, {}
     for e in regs:
         if e.get("is_liberado") or e.get("is_excluido") or e.get("status_id") in STATUS_FORA \
-                or (EMPRESAS is not None and e.get("empresa_id") not in EMPRESAS):
+                or (EMPRESAS is not None and e.get("empresa_id") not in EMPRESAS) or e.get("empresa_id") in EMPRESAS_FORA:
             fora += 1
             continue
         # Inicio do prazo = chegada no Mobilemed (o proprio SLA dele conta daqui: transferencia + 48 h).
