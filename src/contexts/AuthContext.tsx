@@ -233,7 +233,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     try {
-      const { error } = await supabase.auth.signOut();
+      // scope "local": sai só deste navegador. O padrão do supabase-js é "global", que derrubava a pessoa em
+      // todos os computadores; como a inatividade (1 h) chama este signOut, uma aba esquecida aberta num PC
+      // deslogava a pessoa no PC em que estava trabalhando (24/11: Raul caiu em dois navegadores ao mesmo tempo).
+      const { error } = await supabase.auth.signOut({ scope: "local" });
       if (error) throw error;
 
       toast.success("Logout realizado com sucesso!");
