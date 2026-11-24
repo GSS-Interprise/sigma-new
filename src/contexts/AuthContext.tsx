@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, useRef, ReactNode } from "react";
+import { comRetryDeRede, mensagemErroAuth } from "@/lib/authRede";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
@@ -186,17 +187,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { error } = await comRetryDeRede(() => supabase.auth.signInWithPassword({
         email,
         password,
-      });
+      }));
 
       if (error) throw error;
 
       toast.success("Login realizado com sucesso!");
       navigate(consumirVolta() ?? "/");
     } catch (error: any) {
-      toast.error(error.message || "Erro ao fazer login");
+      toast.error(mensagemErroAuth(error, "Erro ao fazer login"));
       throw error;
     }
   };

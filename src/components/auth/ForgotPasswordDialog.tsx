@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { comRetryDeRede, mensagemErroAuth } from "@/lib/authRede";
 
 interface ForgotPasswordDialogProps {
   open: boolean;
@@ -26,9 +27,10 @@ export function ForgotPasswordDialog({ open, onOpenChange }: ForgotPasswordDialo
     setLoading(true);
 
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      // Queda rápida de rede ("Failed to fetch") repete sozinha: ver lib/authRede.ts (Wagner, 24/11).
+      const { error } = await comRetryDeRede(() => supabase.auth.resetPasswordForEmail(email.trim(), {
         redirectTo: `${window.location.origin}/reset-password`,
-      });
+      }));
 
       if (error) throw error;
 
@@ -36,7 +38,7 @@ export function ForgotPasswordDialog({ open, onOpenChange }: ForgotPasswordDialo
       onOpenChange(false);
       setEmail("");
     } catch (error: any) {
-      toast.error(error.message || "Erro ao enviar email de redefinição");
+      toast.error(mensagemErroAuth(error, "Erro ao enviar email de redefinição"));
     } finally {
       setLoading(false);
     }
