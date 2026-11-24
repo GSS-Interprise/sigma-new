@@ -17,7 +17,10 @@ $cfg = @{
   pasta = ""
 }
 if (Test-Path "$base\estacao.json") {
-  try { (Get-Content "$base\estacao.json" -Raw | ConvertFrom-Json).PSObject.Properties | ForEach-Object { $cfg[$_.Name] = $_.Value } } catch { }
+  # 24/11: estacao.json com "\" sem escape caiu aqui calado e o vigia do CEPON abriu o Vue da Marieta (padrao acima).
+  # Config ilegivel agora para tudo: melhor nao fazer nada do que abrir o PACS errado no PC de alguem.
+  try { (Get-Content "$base\estacao.json" -Raw | ConvertFrom-Json).PSObject.Properties | ForEach-Object { $cfg[$_.Name] = $_.Value } }
+  catch { Add-Content -Path "$base\vigia.log" -Value ("{0:yyyy-MM-dd HH:mm:ss} estacao.json ilegivel, nada feito: {1}" -f (Get-Date), $_.Exception.Message); exit 1 }
 }
 $estadoArq = "$base\vigia-estado.json"
 $estado = @{ pacs_aberto_em = $null; vpn_tentou_em = $null; coletor_disparou_em = $null; login_tentou_em = $null; login_falhas = 0 }

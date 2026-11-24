@@ -85,20 +85,32 @@ def main():
         sai("falhou:continua_na_tela_login")
     if not pasta:
         sai("entrou")
-    time.sleep(5)
-    for w in Desktop(backend="uia").windows():
-        if "Vue" not in (w.window_text() or ""):
-            continue
-        for item in w.descendants(control_type="TreeItem"):
-            if (item.window_text() or "").strip().lower() == pasta.lower():
+    # Depois do login o Vue do CEPON abre o visualizador e um aviso modal "Pasta nao existe: Lista de arquivos\srv"
+    # (janela "Cliente Vue PACS", botao OK); enquanto ele esta na tela a arvore de pastas nao aparece (24/11).
+    for _ in range(15):  # ate ~45 s para a arvore de pastas carregar
+        time.sleep(3)
+        for w in Desktop(backend="uia").windows():
+            if w.window_text() == "Cliente Vue PACS":
                 try:
-                    item.select()
+                    if any("Pasta n" in (t.window_text() or "") for t in w.descendants(control_type="Text")):
+                        for b in w.descendants(control_type="Button"):
+                            if b.window_text() == "OK":
+                                b.invoke()
                 except Exception:
+                    pass
+        for w in Desktop(backend="uia").windows():
+            if "Vue" not in (w.window_text() or ""):
+                continue
+            for item in w.descendants(control_type="TreeItem"):
+                if (item.window_text() or "").strip().lower() == pasta.lower():
                     try:
-                        item.click_input()
+                        item.select()
                     except Exception:
-                        pass
-                sai("entrou:pasta_" + pasta)
+                        try:
+                            item.click_input()
+                        except Exception:
+                            pass
+                    sai("entrou:pasta_" + pasta)
     sai("entrou:sem_pasta_" + pasta)
 
 
