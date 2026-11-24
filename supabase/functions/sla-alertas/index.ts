@@ -530,7 +530,10 @@ async function ligar(admin: any, para: string, alertaId: string) {
       // AsyncAmd: a voz começa assim que atende e a detecção de caixa postal roda em paralelo (sla-voz p=amd derruba
       // a ligação se for máquina). Sem isso o Twilio ficava segundos em silêncio analisando e quem atendia desligava
       // achando que era engano: teste com o Raul em 13/11, iPhone, "recebi a ligação mas não falou nada".
-      To: `+${comNove(para)}`, From: de, Timeout: "30", MachineDetection: "Enable", AsyncAmd: "true",
+      // DetectMessageEnd (24/11): com "Enable" o Twilio dava machine_start para quem atendia calado e a ligação caía
+      // na cara (Raul e Ramone, 24/11). Mesmo machine_end_beep errou com o Raul calado: desde 24/11 o sla-voz não
+      // derruba mais por detecção, só anota "possivel caixa postal" (e a fala não diz o nome do paciente).
+      To: `+${comNove(para)}`, From: de, Timeout: "30", MachineDetection: "DetectMessageEnd", AsyncAmd: "true",
       AsyncAmdStatusCallback: `${base}&p=amd`, AsyncAmdStatusCallbackMethod: "POST",
       Url: `${base}&p=inicio`, StatusCallback: `${base}&p=status`, StatusCallbackEvent: "completed",
     }),

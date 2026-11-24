@@ -2,7 +2,7 @@
 // Fluxo (cada chamada do Twilio traz ?a=<alerta_id>&t=<token>&p=<passo>):
 //   p=inicio  — atendeu: fala o alerta na hora e pede "aperte 1" (Gather). A detecção de máquina roda em paralelo
 //               (AsyncAmd, desde 13/11: com a detecção antes da fala, quem atendia ouvia segundos de silêncio).
-//   p=amd     — resultado da detecção: caixa postal/máquina derruba a ligação e fica registrada como não atendida.
+//   p=amd     — resultado da detecção: só anota "possivel caixa postal" (desde 24/11 não derruba: errava com pessoa calada).
 //   p=tecla   — Digits=1: marca o exame como assumido e agradece. Outra tecla ou nada: repete uma vez.
 //   p=status  — StatusCallback no fim da chamada: completed/no-answer/busy/failed vão para o alerta.
 // Atender e desligar não conta: só a tecla 1 para os avisos (decisão de 12/11, após teste que caiu na caixa postal).
@@ -35,23 +35,20 @@ Deno.serve(async (req) => {
   const atrasoMin = ex ? Math.max(0, Math.round((Date.now() - new Date(ex.vence_em).getTime()) / 60000)) : 0;
   const texto = ex
     ? `Atenção, plantão da radiologia. Alerta de prazo de laudo da G S S. Exame do ${ORIGEM[ex.origem] ?? ex.origem}, `
-      + (ex.paciente ? `paciente ${ex.paciente}, ${ex.estudo ? `${ex.estudo}, ` : ""}` : "") + `das ${hora(ex.inicio_em)}, `
+      // Sem nome do paciente (24/11): a ligação pode cair na caixa postal e o recado fica gravado. Estudo e hora bastam.
+      + (ex.estudo ? `${ex.estudo}, ` : "") + `das ${hora(ex.inicio_em)}, `
       + (atrasoMin > 0 ? `passou do prazo há ${atrasoMin} minutos. ` : `está perto de vencer. `) + `Confira o PACS.`
     : "Atenção, plantão da radiologia. Alerta de prazo de laudo da G S S. Confira o PACS.";
   const qs = (p: string) => esc(`${BASE}?a=${alertaId}&t=${u.searchParams.get("t")}&p=${p}`);
 
   if (passo === "amd") {
+    // 24/11 (Raul): a detecção do Twilio dá "caixa postal" para quem atende calado (machine_start e até
+    // machine_end_beep, testes com Raul e Ramone). NÃO derruba mais a ligação: a mensagem toca até o fim e só a tecla
+    // 1 assume o exame. Aqui só anota a suspeita. Por isso a fala não diz mais o nome do paciente (ver "texto"): se
+    // for mesmo caixa postal, o recado gravado não tem dado de paciente.
     const quem = campo("AnsweredBy");
     if (quem.startsWith("machine") || quem === "fax") {
-      await admin.from("sla_alertas").update({ status: "falhou", erro: `caixa postal (${quem})` }).eq("id", alertaId).neq("status", "respondido");
-      // Derruba a ligação: o recado não deve ficar gravado na caixa postal (e a escada segue para o próximo).
-      const sid = Deno.env.get("TWILIO_ACCOUNT_SID") ?? "", tok = Deno.env.get("TWILIO_AUTH_TOKEN") ?? "", call = campo("CallSid");
-      if (sid && tok && call) {
-        await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Calls/${call}.json`, {
-          method: "POST", headers: { Authorization: "Basic " + btoa(`${sid}:${tok}`), "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({ Status: "completed" }),
-        }).catch(() => null);
-      }
+      await admin.from("sla_alertas").update({ erro: `possivel caixa postal (${quem})` }).eq("id", alertaId).neq("status", "respondido");
     }
     return new Response("ok");
   }
@@ -60,7 +57,10 @@ Deno.serve(async (req) => {
     const st = campo("CallStatus"), quem = campo("AnsweredBy");
     // respondido (tecla 1) não é rebaixado pelo status final; caixa postal já registrada pelo p=amd também não.
     const { data: atual } = await admin.from("sla_alertas").select("erro").eq("id", alertaId).maybeSingle();
-    if (al.status !== "respondido" && !String(atual?.erro || "").startsWith("caixa postal")) {
+    const suspeita = String(atual?.erro || "").startsWith("possivel caixa postal");
+    if (al.status !== "respondido" && suspeita) {
+      await admin.from("sla_alertas").update({ status: "falhou" }).eq("id", alertaId).neq("status", "respondido");
+    } else if (al.status !== "respondido" && !String(atual?.erro || "").startsWith("caixa postal")) {
       // "unknown": o Twilio não soube dizer se foi pessoa ou caixa postal (teste de 13/11 caiu assim). Conta como
       // atendida sem a tecla 1; para a escada não muda nada (só a tecla 1 para), muda só o que a tela mostra.
       const atendeu = st === "completed" && (quem === "human" || quem === "" || quem === "unknown");
