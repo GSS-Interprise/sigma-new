@@ -103,11 +103,13 @@ def main():
                 continue
             for item in w.descendants(control_type="TreeItem"):
                 if (item.window_text() or "").strip().lower() == pasta.lower():
+                    # select() so marca o item; a lista so abre com clique (24/11). E logo apos o login automatico,
+                    # quando ninguem esta usando o Vue.
                     try:
-                        item.select()
+                        item.click_input()
                     except Exception:
                         try:
-                            item.click_input()
+                            item.select()
                         except Exception:
                             pass
                     sai("entrou:pasta_" + pasta)
