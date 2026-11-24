@@ -79,10 +79,17 @@ const navigationGroups: NavGroup[] = [
       { name: "Templates WhatsApp", href: "/prospeccao/templates-whatsapp", icon: FileText, modulo: "disparos" },
       { name: "Minhas Tarefas", href: "/tarefas", icon: ListTodo, modulo: "disparos" },
       { name: "Conversas", href: "/conversas", icon: MessageCircle, modulo: "disparos" },
-      { name: "Tempo de resposta", href: "/tempo-de-resposta", icon: Timer, modulo: "disparos" },
       { name: "Leads", href: "/leads", icon: UserSearch, modulo: "disparos" },
       // Voltou em 09/11: a captação converte médico e conecta chip por aqui (Vinícius ficou sem o caminho).
       { name: "Disparos & Chips", href: "/disparos", icon: Send, modulo: "disparos" },
+    ],
+  },
+  {
+    // 24/11 (Raul): o tempo de resposta mede três operações (prospecção, escalas, clientes), não só a prospecção.
+    // Os números e o tipo/dono de cada um ficam aqui, junto da tela que usa esse cadastro.
+    label: "Atendimento",
+    items: [
+      { name: "Tempo de resposta", href: "/tempo-de-resposta", icon: Timer, modulo: "disparos" },
       { name: "Números WhatsApp", href: "/numeros-whatsapp", icon: Smartphone, modulo: "disparos", captacao: "seigzaps_config" },
     ],
   },
@@ -92,11 +99,14 @@ const navigationGroups: NavGroup[] = [
       { name: "Vagas em aberto", href: "/vagas", icon: Briefcase },
       { name: "Médicos", href: "/medicos", icon: Users, modulo: "medicos" },
       { name: "Pareceres", href: "/parecer", icon: ClipboardCheck, adminOrLeader: true },
-      { name: "Relacionamento", href: "/relacionamento-medico", icon: Activity, modulo: "relacionamento" },
-      { name: "Escalas", href: "/escalas", icon: Calendar, modulo: "escalas" },
+      // Oculto do menu em 24/11 (Raul: pouco usado); a rota continua valendo por URL.
+      // { name: "Relacionamento", href: "/relacionamento-medico", icon: Activity, modulo: "relacionamento" },
+      // Oculto do menu em 24/11 (Raul: pouco usado); a rota continua valendo por URL.
+      // { name: "Escalas", href: "/escalas", icon: Calendar, modulo: "escalas" },
       { name: "Clientes e Contratos", href: "/contratos", icon: FileText, modulo: "contratos" },
       { name: "Licitações", href: "/licitacoes", icon: Gavel, modulo: "licitacoes" },
-      { name: "AGES", href: "/ages", icon: Building2, modulo: "ages" },
+      // Oculto do menu em 24/11 (Raul: pouco usado); a rota continua valendo por URL.
+      // { name: "AGES", href: "/ages", icon: Building2, modulo: "ages" },
       // Voltou em 09/11: gestor de radiologia (Vinícius) ficou sem caminho; só aparece para quem tem o módulo.
       { name: "Radiologia", href: "/radiologia", icon: Stethoscope, modulo: "radiologia" },
     ],
@@ -107,8 +117,10 @@ const navigationGroups: NavGroup[] = [
       { name: "BI", href: "/bi", icon: BarChart3, modulo: "bi" },
       { name: "Atividades de Campo", href: "/atividades-campo", icon: Footprints, adminOrLeader: true },
       { name: "Financeiro", href: "/financeiro", icon: DollarSign, modulo: "financeiro" },
-      { name: "Aprovações", href: "/financeiro/aprovacoes", icon: ClipboardCheck, modulo: "financeiro" },
-      { name: "Comprovantes", href: "/financeiro/comprovantes", icon: Receipt, modulo: "financeiro" },
+      // Oculto do menu em 24/11 (Raul: pouco usado); a rota continua valendo por URL.
+      // { name: "Aprovações", href: "/financeiro/aprovacoes", icon: ClipboardCheck, modulo: "financeiro" },
+      // Oculto do menu em 24/11 (Raul: pouco usado); a rota continua valendo por URL.
+      // { name: "Comprovantes", href: "/financeiro/comprovantes", icon: Receipt, modulo: "financeiro" },
     ],
   },
 ];
