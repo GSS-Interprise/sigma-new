@@ -47,7 +47,90 @@ export function esquemaGemini(s: unknown): Record<string, unknown> {
   return out;
 }
 
-export type Contexto = { agora: Date; pagina?: string | null; nome?: string | null; podeCriar: boolean; podeEditar: boolean };
+type ConsultaLiberado = {
+  from(t: string): { select(c: string): { eq(c: string, v: string): { maybeSingle(): PromiseLike<{ data: unknown; error: unknown }> } } };
+};
+
+/**
+ * O robô do Sigma é só para a lista nominal de assistente_liberados (Configurações › Agente do Sigma), não para um papel:
+ * há admins no banco que não devem vê-lo. Erro de consulta = recusa (fecha na dúvida).
+ */
+export async function roboLiberado(svc: ConsultaLiberado, userId: string | null | undefined): Promise<boolean> {
+  if (!userId) return false;
+  const { data, error } = await svc.from("assistente_liberados").select("user_id").eq("user_id", userId).maybeSingle();
+  return !error && !!data;
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Id da campanha aberta na tela, a partir da rota com a busca. A Prospecção guarda a campanha aberta em ?campanha=<id>
+ * (CampanhasProspeccao.tsx); a tela antiga de propostas usa /disparos/campanhas/<id>/propostas. Id que não é uuid é
+ * ignorado: o valor vem do navegador e vai para uma consulta.
+ */
+export function campanhaDaPagina(pagina: string | null | undefined): string | null {
+  if (!pagina) return null;
+  const [caminho, busca = ""] = pagina.split("?");
+  const daBusca = new URLSearchParams(busca).get("campanha");
+  const doCaminho = caminho.match(/^\/disparos\/campanhas\/([^/]+)\/propostas/)?.[1] ?? null;
+  const id = (daBusca || doCaminho || "").trim();
+  return UUID.test(id) ? id.toLowerCase() : null;
+}
+
+// Nome da tela como a equipe fala. Ordem importa: a rota mais específica primeiro.
+const TELAS: [RegExp, string][] = [
+  [/^\/prospeccao\/nova/, "Nova campanha (assistente de criação)"],
+  [/^\/prospeccao\/templates-whatsapp/, "Modelos de mensagem do WhatsApp"],
+  [/^\/prospeccao/, "Prospecção (campanhas)"],
+  [/^\/disparos\/acompanhamento/, "Acompanhamento das campanhas"],
+  [/^\/disparos\/campanhas/, "Campanhas (disparos)"],
+  [/^\/disparos\/email/, "Campanhas de e-mail"],
+  [/^\/disparos/, "Disparos"],
+  [/^\/licitacoes/, "Licitações"],
+  [/^\/contratos/, "Contratos"],
+  [/^\/escalas/, "Escalas"],
+  [/^\/bi/, "BI (escalas e indicadores)"],
+  [/^\/radiologia/, "Radiologia"],
+  [/^\/vagas/, "Vagas"],
+  [/^\/medicos/, "Médicos"],
+  [/^\/leads/, "Leads"],
+  [/^\/financeiro/, "Financeiro"],
+  [/^\/(sigzap|conversas|comunicacao)/, "Conversas"],
+  [/^\/configuracoes/, "Configurações"],
+  [/^\/tempo-de-resposta/, "Tempo de resposta"],
+  [/^\/$/, "Início"],
+];
+
+export function nomeDaTela(pagina: string | null | undefined): string | null {
+  if (!pagina) return null;
+  const caminho = pagina.split("?")[0] || "/";
+  return TELAS.find(([r]) => r.test(caminho))?.[1] ?? caminho;
+}
+
+/**
+ * Onde a pessoa está e como isso muda o recorte da resposta. Dentro de uma campanha, pergunta sem campanha citada é
+ * sobre ela; fora, é sobre todas. `campanha` = nome lido com o login da pessoa (null se não abriu ou não achou).
+ */
+export function contextoTela(pagina: string | null | undefined, campanha: string | null): string[] {
+  const tela = nomeDaTela(pagina);
+  const linhas: string[] = [];
+  if (tela) linhas.push(`Ela está na tela ${tela} do Sigma.`);
+  if (campanha) {
+    const nome = campanha.trim();
+    linhas.push(
+      `A pessoa está dentro da campanha "${nome}". Pergunta sem campanha citada é sobre esta campanha: passe "${nome}" no argumento campanha das ferramentas e, quando a ferramenta trouxer todas as campanhas (ex.: disparos do dia), responda só com a linha desta (não aparecer na lista = 0). Se ela citar outra campanha pelo nome, responda sobre a citada.`,
+    );
+  } else {
+    linhas.push("Ela não está dentro de uma campanha: pergunta sobre campanhas sem campanha citada é no geral, somando todas.");
+  }
+  return linhas;
+}
+
+export type Contexto = {
+  agora: Date; pagina?: string | null; nome?: string | null; podeCriar: boolean; podeEditar: boolean;
+  /** Nome da campanha aberta na tela, se houver. */
+  campanha?: string | null;
+};
 
 /** Instruções do assistente: regras do protocolo, guia dos domínios liberados e as regras de proposta. */
 export function instrucoes(acessos: AcessoDominio[], ctx: Contexto): string {
@@ -71,7 +154,7 @@ export function instrucoes(acessos: AcessoDominio[], ctx: Contexto): string {
   return [
     `Você é o assistente do Sigma, o sistema da GSS (empresa que oferece plantões e vagas a médicos). Hoje é ${hoje}.`,
     ctx.nome ? `Quem pergunta: ${ctx.nome}.` : "",
-    ctx.pagina ? `Ela está na tela ${ctx.pagina} do Sigma.` : "",
+    ...contextoTela(ctx.pagina, ctx.campanha ?? null),
     "",
     "## Como responder",
     "- Português do Brasil, curto e direto: a resposta primeiro, no máximo 6 linhas ou uma lista curta. Sem saudação.",

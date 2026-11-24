@@ -1,15 +1,19 @@
 // Assistente de IA do Sigma (docs/arquitetura/assistente-ia-sigma.md, T5, 21/11/2026).
-// Pergunta da tela: "o que eu quero saber ou mudar no Sigma agora?" Quem usa: qualquer pessoa logada; cada uma só
-// recebe resposta do que já vê nas telas. Decisão principal: confirmar ou descartar a proposta que a IA montou.
-// A IA nunca grava: a edge sigma-assistente monta uma proposta e só o clique em Confirmar chama assistente_confirmar,
-// com o login da pessoa. Botão no cabeçalho (AppLayout) e atalho Ctrl+J.
+// Pergunta da tela: "o que eu quero saber ou mudar no Sigma agora?" Quem usa: só a lista de assistente_liberados
+// (Configurações › Agente do Sigma); cada uma só recebe resposta do que já vê nas telas. Decisão principal: confirmar
+// ou descartar a proposta que a IA montou. A IA nunca grava: a edge sigma-assistente monta uma proposta e só o clique
+// em Confirmar chama assistente_confirmar, com o login da pessoa.
+// Robô redondo no canto inferior direito, dentro do rodapé do AppLayout (ali não cobre botão de tela), e atalho Ctrl+J.
+// Responde conforme a tela: dentro de uma campanha (?campanha=<id>), pergunta sem campanha citada é sobre ela.
 import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { ArrowRight, Loader2, RotateCcw, Send, Sparkles } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { ArrowRight, Bot, Loader2, RotateCcw, Send } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 type Linha = { rotulo: string; antes: string | null; depois: string };
@@ -26,6 +30,13 @@ const SUGESTOES: { rota: RegExp; itens: string[] }[] = [
   { rota: /^\/(bi|escalas|radiologia)/,itens: ["Onde tem furo na escala esta semana?", "Quem está de plantão no CEPON amanhã?", "Como estão as campanhas ativas?"] },
   { rota: /.*/, itens: ["Como estão as campanhas ativas?", "Onde tem furo na escala esta semana?", "Quero criar uma campanha nova"] },
 ];
+const SUGESTOES_CAMPANHA = ["Quantos disparos esta campanha teve hoje?", "Como está o funil desta campanha?", "Quantos médicos desta campanha estão em atendimento?"];
+
+/** Campanha aberta na tela: ?campanha=<id> da Prospecção ou a rota antiga de propostas (mesma regra da edge). */
+function campanhaDaTela(pathname: string, search: string): string | null {
+  const id = new URLSearchParams(search).get("campanha") ?? pathname.match(/^\/disparos\/campanhas\/([^/]+)\/propostas/)?.[1] ?? null;
+  return id && /^[0-9a-f-]{36}$/i.test(id) ? id : null;
+}
 
 // Markdown mínimo da resposta (negrito, listas, parágrafos), montado como elementos React: nada vira HTML cru.
 function negrito(t: string) {
@@ -96,7 +107,17 @@ const ERRO_RPC: Record<string, string> = {
 const erroLegivel = (m: string) => Object.entries(ERRO_RPC).find(([k]) => m.includes(k))?.[1] ?? `Não gravou: ${m}`;
 
 export function AssistenteSigma() {
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
+  const campanhaId = campanhaDaTela(pathname, search);
+  const { data: campanhaNome } = useQuery({
+    queryKey: ["assistente-campanha-nome", campanhaId],
+    enabled: !!campanhaId,
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const { data } = await supabase.from("campanhas").select("nome").eq("id", campanhaId!).maybeSingle();
+      return (data?.nome as string | undefined)?.trim() ?? null;
+    },
+  });
   const [aberto, setAberto] = useState(false);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [conversaId, setConversaId] = useState<string | null>(null);
@@ -104,7 +125,10 @@ export function AssistenteSigma() {
   const [enviando, setEnviando] = useState(false);
   const fim = useRef<HTMLDivElement>(null);
   const campo = useRef<HTMLTextAreaElement>(null);
-  const sugestoes = useMemo(() => SUGESTOES.find((s) => s.rota.test(pathname))!.itens, [pathname]);
+  const sugestoes = useMemo(
+    () => (campanhaId ? SUGESTOES_CAMPANHA : SUGESTOES.find((s) => s.rota.test(pathname))!.itens),
+    [pathname, campanhaId],
+  );
 
   useEffect(() => {
     const atalho = (e: KeyboardEvent) => {
@@ -125,7 +149,7 @@ export function AssistenteSigma() {
     setMsgs((ms) => [...ms, { id: crypto.randomUUID(), papel: "usuario", texto: mensagem }]);
     setEnviando(true);
     try {
-      const { data, error } = await supabase.functions.invoke("sigma-assistente", { body: { mensagem, conversa_id: conversaId, pagina: pathname } });
+      const { data, error } = await supabase.functions.invoke("sigma-assistente", { body: { mensagem, conversa_id: conversaId, pagina: pathname + search, campanha_id: campanhaId } });
       if (error) throw error;
       setConversaId(data.conversa_id);
       setMsgs((ms) => [...ms, { id: crypto.randomUUID(), papel: "assistente", texto: data.texto, proposta: data.proposta }]);
@@ -156,22 +180,30 @@ export function AssistenteSigma() {
 
   return (
     <>
-      <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={() => setAberto(true)} aria-label="Perguntar ao Sigma (Ctrl+J)" title="Perguntar ao Sigma (Ctrl+J)">
-        <Sparkles className="h-4 w-4" />
-        <span className="hidden lg:inline">Perguntar ao Sigma</span>
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button size="icon" className="h-10 w-10 shrink-0 rounded-full shadow-md" onClick={() => setAberto(true)} aria-label="Perguntar ao Sigma (Ctrl+J)">
+            <Bot className="h-5 w-5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="left">Perguntar ao Sigma (Ctrl+J)</TooltipContent>
+      </Tooltip>
       <Sheet open={aberto} onOpenChange={setAberto}>
         <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-[440px]">
           <SheetHeader className="border-b px-4 py-3 text-left">
             <div className="flex items-center justify-between gap-2 pr-8">
-              <SheetTitle className="flex items-center gap-2 text-base"><Sparkles className="h-4 w-4" />Assistente do Sigma</SheetTitle>
+              <SheetTitle className="flex items-center gap-2 text-base"><Bot className="h-4 w-4" />Assistente do Sigma</SheetTitle>
               {msgs.length > 0 && (
                 <Button variant="ghost" size="sm" className="h-8 gap-1" disabled={enviando} onClick={() => { setMsgs([]); setConversaId(null); }}>
                   <RotateCcw className="h-3.5 w-3.5" />Nova conversa
                 </Button>
               )}
             </div>
-            <SheetDescription className="text-xs">Responde com os dados do Sigma que você já vê. Mudança só com o seu clique.</SheetDescription>
+            <SheetDescription className="text-xs">
+              {campanhaId
+                ? <>Respondendo sobre a campanha <span className="font-medium text-foreground">{campanhaNome ?? "aberta"}</span>. Para outra, cite o nome.</>
+                : "Responde com os dados do Sigma que você já vê. Mudança só com o seu clique."}
+            </SheetDescription>
           </SheetHeader>
 
           <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4 text-sm">

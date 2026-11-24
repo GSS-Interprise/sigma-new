@@ -71,6 +71,13 @@ ferramentas, mesmo guia (vira o system prompt), mesmo hash. Domínio novo entra 
 cada domínio liberado vai no prompt; o resto do Sigma, não.
 
 ### 3b. Permissão (o ponto mais sensível)
+- **Quem vê o robô (24/11/2026):** lista nominal em `assistente_liberados` (migration
+  `20261124120000_assistente_liberados.sql`), não papel: entre os admins do banco há gente que não deve vê-lo (Ewerton,
+  desligado; Frederico). Lista inicial: Raul, Ramone, Maikon (as duas contas), Vinícius, Heron e João Vilela. O admin
+  edita em Configurações › Agente do Sigma › "Quem vê o robô do Sigma" (RPCs `assistente_liberados_painel` e
+  `assistente_definir_liberado`, só admin). O front pergunta `assistente_liberado()` e, se não, não monta o robô nem o
+  Ctrl+J; a edge confere de novo (`roboLiberado` em `_shared/assistente.ts`) e devolve **403
+  `sem_acesso_ao_assistente`** para quem não está na lista. Na dúvida (erro de consulta) recusa.
 - **Leitura:** domínio liberado se a pessoa vê o módulo da tela correspondente (`MODULO_DO_DOMINIO` em
   `_shared/assistente.ts`): escalas → `escalas`, campanhas → `disparos`, licitações → `licitacoes`, contratos →
   `contratos`, CRM → `medicos`. Função `pode_modulo(uid, modulo, acao)` = `has_permission` **menos**
@@ -100,7 +107,19 @@ telefone válido). Devolve o antes e o depois para o cartão e grava no históri
 - Limites: até 6 chamadas de ferramenta por pergunta, 40 s de teto, histórico das últimas 12 mensagens.
 
 ### 3e. Tela
-- **Botão "Perguntar ao Sigma"** no cabeçalho do `AppLayout` (todas as telas; no canto ele cobriria o Kanban), atalho `Ctrl+J`.
+- **Robô no canto inferior direito** (24/11/2026; antes era o botão "Perguntar ao Sigma" no cabeçalho): botão redondo
+  com o ícone `Bot`, tooltip "Perguntar ao Sigma (Ctrl+J)", atalho `Ctrl+J`. Fica **dentro do rodapé** do `AppLayout`
+  (`Footer` com `acao`), não flutuando sobre a página: o rodapé está sempre na base da tela porque o conteúdo rola no
+  `<main>`, então o robô parece fixo no canto e nunca cobre Kanban, barra de ações ou botão Enviar. Telas sem rodapé
+  (`hideFooter`: Conversas, SigZap, Monitor) ganham só a faixa do robô, e só para quem está liberado.
+- **Responde conforme a tela.** O front manda `pagina` = rota com a busca e `campanha_id` quando há campanha aberta. A
+  Prospecção guarda a campanha aberta na URL (`/prospeccao?campanha=<id>`; antes era estado interno e o parâmetro era
+  apagado); a rota antiga `/disparos/campanhas/<id>/propostas` também vale. A edge lê o nome da campanha **com o login
+  da pessoa** (só vira contexto se ela enxerga a campanha) e as instruções dizem: dentro da campanha, pergunta sem
+  campanha citada é sobre ela (e, quando a ferramenta traz todas, responde só com a linha dela; ausente = 0); se citar
+  outra pelo nome, responde sobre a citada. Fora de campanha: no geral, somando todas. Nome amigável das telas em
+  `nomeDaTela` (`_shared/assistente.ts`). O painel mostra "Respondendo sobre a campanha X. Para outra, cite o nome." e
+  troca as sugestões ("Quantos disparos esta campanha teve hoje?").
 - **Painel lateral** (Sheet de 420 px): conversa, campo de texto, 3 sugestões por tela (na Prospecção: "como estão
   as campanhas hoje?"; no BI Escalas: "onde tem furo esta semana?").
 - **Cartão de proposta:** título ("Criar campanha Pediatria RS" / "Mudar 2 itens da campanha X"), lista antes → depois,
@@ -171,3 +190,10 @@ estiver no código.
   (prévia, confirmação, recusa sem permissão, campo fora da lista). Portão visual 0 falhas em 1440 e 1024 px.
 - `sigma_guia` e `sigma_dominios` ficam fora do chat: o guia já vai nas instruções e a volta extra custava ~15 s.
 - Tempo de resposta medido: ~7 s com uma ferramenta, ~15 a 30 s com duas ou mais.
+
+## Estado (24/11/2026)
+- Robô no canto inferior direito só para a lista de `assistente_liberados`; a edge recusa os demais (403, testado
+  tirando o Raul da lista por um instante). Contexto da tela no ar: na edge publicada, "quantos disparos teve hoje?"
+  em `/prospeccao` deu 212 disparos e 104 falhas em 2 campanhas; dentro da ANESTESIO - SMO deu só 129 e 52; dentro
+  dela citando "pediatria" deu 83 e 52 — os três iguais a `agente_campanhas_disparos_dia` no banco.
+- Testes Deno: 11 em `_shared/assistente_test.ts` (contexto da tela, campanha da página, nome da tela, permissão).

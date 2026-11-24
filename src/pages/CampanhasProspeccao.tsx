@@ -151,7 +151,6 @@ export default function CampanhasProspeccao() {
   }, [responsavelFiltro]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [configurarId, setConfigurarId] = useState<string | null>(null);
-  const [selecionada, setSelecionada] = useState<string | null>(null);
   // Resumo ou Kanban dentro da campanha; lembra a última escolha neste navegador (pode falhar em aba anônima).
   const [visao, setVisao] = useState<"resumo" | "kanban">(() => {
     try { return localStorage.getItem("campanha-visao") === "kanban" ? "kanban" : "resumo"; } catch { return "resumo"; }
@@ -165,6 +164,16 @@ export default function CampanhasProspeccao() {
   const [emailOpen, setEmailOpen] = useState(false);
   const [emailsEnviadosOpen, setEmailsEnviadosOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
+  // A campanha aberta vive na URL (?campanha=<id>): o robô do Sigma lê dali para responder sobre ela, o link abre
+  // direto na campanha e o Voltar do navegador volta para a lista.
+  const selecionada = searchParams.get("campanha");
+  const setSelecionada = (id: string | null) =>
+    setSearchParams((atual) => {
+      const sp = new URLSearchParams(atual);
+      if (id) sp.set("campanha", id);
+      else sp.delete("campanha");
+      return sp;
+    });
   const view = (searchParams.get("view") || "campanhas") as
     | "campanhas"
     | "acompanhamento"
@@ -180,15 +189,11 @@ export default function CampanhasProspeccao() {
     setSearchParams(sp);
   };
   const navigate = useNavigate();
-  // Vindo do assistente de campanha: ?campanha=<id> abre a campanha criada; ?avancado=1 abre o formulário completo.
+  // Vindo do assistente de campanha: ?avancado=1 abre o formulário completo (?campanha=<id> já abre a campanha sozinho).
   useEffect(() => {
-    const campanhaParam = searchParams.get("campanha");
-    const avancado = searchParams.get("avancado");
-    if (!campanhaParam && !avancado) return;
-    if (campanhaParam) setSelecionada(campanhaParam);
-    if (avancado) setDialogOpen(true);
+    if (!searchParams.get("avancado")) return;
+    setDialogOpen(true);
     const sp = new URLSearchParams(searchParams);
-    sp.delete("campanha");
     sp.delete("avancado");
     setSearchParams(sp, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -1,5 +1,7 @@
 // Assistente de IA dentro do Sigma (docs/arquitetura/assistente-ia-sigma.md, 21/11/2026).
-// POST { mensagem, conversa_id?, pagina? } com o login da pessoa (JWT do Supabase).
+// POST { mensagem, conversa_id?, pagina?, campanha_id? } com o login da pessoa (JWT do Supabase).
+// - Só para a lista nominal de assistente_liberados (403 para o resto). pagina = rota com a busca; a campanha aberta
+//   (campanha_id ou ?campanha= na rota) muda o recorte: pergunta sem campanha citada é sobre ela.
 // - Responde com o MESMO registro de domínios do sigma-mcp (_shared/agente): mesmo fato que o Claude dos sócios.
 // - Domínio liberado = a pessoa vê o módulo da tela (pode_modulo); as ferramentas de leitura usam o service role
 //   porque a permissão já foi checada aqui (mesmo contrato do sigma-mcp).
@@ -13,7 +15,9 @@ import { acessosDoUsuario, DOMINIOS, exposto } from "../_shared/agente/registro.
 import { acharCampanhas } from "../_shared/agente/dominios/campanhas.ts";
 import { semAcento } from "../_shared/agente/tempo.ts";
 import { ErroFerramenta } from "../_shared/agente/tipos.ts";
-import { type Cartao, cartaoEdicao, esquemaGemini, historico, instrucoes, MODULO_DO_DOMINIO, type Mudanca, veContratos } from "../_shared/assistente.ts";
+import {
+  campanhaDaPagina, type Cartao, cartaoEdicao, esquemaGemini, historico, instrucoes, MODULO_DO_DOMINIO, type Mudanca, roboLiberado, veContratos,
+} from "../_shared/assistente.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -249,6 +253,7 @@ Deno.serve(async (req) => {
   if (!u?.user) return json({ error: "login_necessario" }, 401);
   const userId = u.user.id;
   const usr = createClient(url, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: `Bearer ${jwt}` } }, auth: { persistSession: false } });
+  if (!(await roboLiberado(svc, userId))) return json({ error: "sem_acesso_ao_assistente" }, 403);
 
   const body = await req.json().catch(() => ({}));
   const mensagem = String(body.mensagem ?? "").trim().slice(0, 2000);
@@ -299,8 +304,16 @@ Deno.serve(async (req) => {
     ferrs.push({ nome: "campanhas_propor_edicao", descricao: "Monta a proposta de mudança numa campanha em andamento (nome, pausar/retomar, limite, números, modelo, dados da vaga) para a pessoa conferir e confirmar. Não grava nada.", esquema: ESQ_EDITAR, rodar: (a) => proporEdicao(e, a) });
   }
 
-  const { data: perfil } = await svc.from("profiles").select("nome_completo").eq("id", userId).maybeSingle();
-  const sistema = instrucoes(ac, { agora: new Date(), pagina: String(body.pagina ?? "") || null, nome: perfil?.nome_completo ?? null, podeCriar, podeEditar });
+  const pagina = String(body.pagina ?? "").slice(0, 500) || null;
+  // Campanha aberta: lida com o login da pessoa, então só vira contexto se ela enxerga essa campanha.
+  const campanhaId = campanhaDaPagina(body.campanha_id ? `?campanha=${body.campanha_id}` : pagina);
+  const [{ data: perfil }, campanhaAberta] = await Promise.all([
+    svc.from("profiles").select("nome_completo").eq("id", userId).maybeSingle(),
+    campanhaId ? usr.from("campanhas").select("nome").eq("id", campanhaId).maybeSingle().then((r) => r.data as { nome: string } | null) : null,
+  ]);
+  const sistema = instrucoes(ac, {
+    agora: new Date(), pagina, nome: perfil?.nome_completo ?? null, podeCriar, podeEditar, campanha: campanhaAberta?.nome ?? null,
+  });
   const contents: Conteudo[] = [
     ...historico((anteriores ?? []) as { papel: string; texto: string }[]).map((m) => ({ role: m.papel === "usuario" ? "user" as const : "model" as const, parts: [{ text: m.texto }] })),
     { role: "user", parts: [{ text: mensagem }] },

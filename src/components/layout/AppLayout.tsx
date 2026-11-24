@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { InstallPrompt } from "@/components/pwa/InstallPrompt";
 import { NotificacaoPrompt } from "@/components/pwa/NotificacaoPrompt";
 import { useLicitacoesRealtimeAccess } from "@/hooks/useLicitacoesRealtimeAccess";
+import { useAssistenteLiberado } from "@/hooks/useAssistenteLiberado";
 import { useLicitacoesRealtime } from "@/hooks/useLicitacoesRealtime";
 
 interface AppLayoutProps {
@@ -29,6 +30,8 @@ function LicitacoesRealtimeLoader() {
 function AppLayoutContent({ children, headerActions, hideFooter }: AppLayoutProps) {
   const { hasAccess, isLoading } = useLicitacoesRealtimeAccess();
   const navigate = useNavigate();
+  // Robô do Sigma (docs/arquitetura/assistente-ia-sigma.md): só para a lista de assistente_liberados; atalho Ctrl+J.
+  const roboLiberado = useAssistenteLiberado();
 
   return (
     <div className="flex h-screen h-[100dvh] bg-background overflow-hidden w-full">
@@ -45,8 +48,6 @@ function AppLayoutContent({ children, headerActions, hideFooter }: AppLayoutProp
               </div>
             </div>
             <div className="flex items-center gap-1 shrink-0">
-              {/* Assistente de IA (docs/arquitetura/assistente-ia-sigma.md): em todas as telas, atalho Ctrl+J. */}
-              <AssistenteSigma />
               <Button
                 variant="ghost"
                 size="icon"
@@ -66,7 +67,7 @@ function AppLayoutContent({ children, headerActions, hideFooter }: AppLayoutProp
         <main className="flex-1 overflow-auto flex flex-col min-h-0 pb-[env(safe-area-inset-bottom)]">
           {children}
         </main>
-        {!hideFooter && <Footer />}
+        {(!hideFooter || roboLiberado) && <Footer acao={roboLiberado ? <AssistenteSigma /> : undefined} semTexto={hideFooter} />}
       </div>
       {!isLoading && hasAccess && <LicitacoesRealtimeLoader />}
       <InstallPrompt />

@@ -2,13 +2,14 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Check, ChevronDown, Copy, Loader2, Unplug } from "lucide-react";
+import { Bot, Check, ChevronDown, Copy, Loader2, Unplug, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -177,6 +178,8 @@ export function AgenteSigmaTab() {
           </div>
         </div>
       </Card>
+
+      <QuemVeORobo />
 
       {painel.isError && (
         <Card className="p-4 text-sm text-destructive">
@@ -376,6 +379,88 @@ export function AgenteSigmaTab() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  );
+}
+
+type PainelRobo = { liberados: Pessoa[]; pessoas: Pessoa[] };
+
+/**
+ * Quem vê o robô do Sigma (o assistente dentro das telas, Ctrl+J). Lista nominal, não papel: há admins no banco que
+ * não devem vê-lo. A edge sigma-assistente recusa quem não está aqui. RPCs: assistente_liberados_painel e
+ * assistente_definir_liberado (só admin).
+ */
+function QuemVeORobo() {
+  const qc = useQueryClient();
+  const painel = useQuery({
+    queryKey: ["agente-sigma", "robo"],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).rpc("assistente_liberados_painel");
+      if (error) throw new Error(error.message);
+      return data as PainelRobo;
+    },
+  });
+  const definir = useMutation({
+    mutationFn: async (v: { pessoa: Pessoa; liberado: boolean }) => {
+      const { error } = await (supabase as any).rpc("assistente_definir_liberado", { p_user_id: v.pessoa.id, p_liberado: v.liberado });
+      if (error) throw new Error(error.message);
+      return v;
+    },
+    onSuccess: (v) => {
+      toast.success(v.liberado
+        ? `${v.pessoa.nome} passa a ver o robô ao recarregar o Sigma.`
+        : `${v.pessoa.nome} deixa de ver o robô. As perguntas dele já são recusadas.`);
+      qc.invalidateQueries({ queryKey: ["agente-sigma", "robo"] });
+      qc.invalidateQueries({ queryKey: ["assistente-liberado"] });
+    },
+    onError: (e: Error) => toast.error(`Não mudou: ${e.message}`),
+  });
+  const p = painel.data;
+  const nomes = p ? nomesUnicos(p.liberados) : [];
+  const opcoes = p ? p.pessoas.map((x, i) => ({ value: x.id, label: nomesUnicos(p.pessoas)[i] })) : [];
+
+  return (
+    <Card className="p-5 space-y-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="flex items-center gap-2 font-semibold"><Bot className="h-4 w-4" />Quem vê o robô do Sigma</h2>
+          <p className="text-sm text-muted-foreground">O assistente no canto da tela. Só estas pessoas o veem e podem perguntar.</p>
+        </div>
+        {p && (
+          <SearchableSelect
+            className="w-64"
+            options={opcoes}
+            value=""
+            onChange={(id) => {
+              const pessoa = p.pessoas.find((x) => x.id === id);
+              if (pessoa) definir.mutate({ pessoa, liberado: true });
+            }}
+            placeholder="Liberar mais alguém"
+            searchPlaceholder="Buscar pelo nome"
+            emptyText="Ninguém com esse nome"
+          />
+        )}
+      </div>
+      {painel.isLoading && <Skeleton className="h-10 w-full" />}
+      {painel.isError && <p className="text-sm text-destructive">Não carregou a lista: {(painel.error as Error).message}.</p>}
+      {p && p.liberados.length === 0 && <p className="text-sm text-muted-foreground">Ninguém vê o robô agora. Libere alguém ao lado.</p>}
+      {p && p.liberados.length > 0 && (
+        <ul className="flex flex-wrap gap-2">
+          {p.liberados.map((x, i) => (
+            <li key={x.id} className="flex max-w-full items-center gap-1 rounded-full border bg-muted/40 py-1 pl-3 pr-1 text-sm">
+              <span className="truncate" title={x.email}>{nomes[i]}</span>
+              <Button
+                variant="ghost" size="icon" className="h-6 w-6 shrink-0 rounded-full"
+                disabled={definir.isPending}
+                aria-label={`Tirar o robô de ${x.nome}`}
+                onClick={() => definir.mutate({ pessoa: x, liberado: false })}
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
   );
 }
 
