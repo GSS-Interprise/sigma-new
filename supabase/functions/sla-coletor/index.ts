@@ -13,6 +13,7 @@ const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: 
 // CEPON entrou em 22/11 (segunda estação, PC da Brenda).
 const UNIDADES = new Set(["marieta", "cepon", "tijucas", "mobilemed"]);
 const ORIGENS = new Set(["ps", "internado", "externo"]);
+const AVC = /(^|[^A-Z])AVC([^A-Z]|$)|ACIDENTE VASCULAR/i;
 
 serve(async (req) => {
   if (req.method !== "POST") return json({ ok: false, error: "metodo" }, 405);
@@ -52,7 +53,15 @@ serve(async (req) => {
       paciente: String(l?.paciente || "").slice(0, 120) || null, estudo: String(l?.estudo || "").slice(0, 120) || null,
       vence: venceValido(l?.vence),
     };
-  }).filter((l: { hora: string; origem: string }) => /^\d{2}:\d{2}(:\d{2})?$/.test(l.hora) && ORIGENS.has(l.origem));
+  }).filter((l: { hora: string; origem: string }) => /^\d{2}:\d{2}(:\d{2})?$/.test(l.hora) && ORIGENS.has(l.origem))
+    .map((l: any) => {
+      // Protocolo AVC: 30 min de prazo, como urgência (Wagner, 24/11: "Tem os protocolos de AVC - 30 min. Importante").
+      // Vale para qualquer unidade em que o estudo traga "AVC" no nome. Hora do PACS é de Brasília.
+      if (!AVC.test(l.estudo ?? "")) return l;
+      const dia = l.data ?? new Date(lidaEm.getTime() - 3 * 3_600_000).toISOString().slice(0, 10);
+      const inicio = new Date(`${dia}T${l.hora.length === 5 ? l.hora + ":00" : l.hora}-03:00`);
+      return isNaN(inicio.getTime()) ? l : { ...l, origem: "ps", vence: new Date(inicio.getTime() + 30 * 60_000).toISOString() };
+    });
 
   const svc = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   const { data, error } = await svc.rpc("sla_registrar_leitura", {
