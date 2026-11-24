@@ -79,17 +79,10 @@ const navigationGroups: NavGroup[] = [
       { name: "Templates WhatsApp", href: "/prospeccao/templates-whatsapp", icon: FileText, modulo: "disparos" },
       { name: "Minhas Tarefas", href: "/tarefas", icon: ListTodo, modulo: "disparos" },
       { name: "Conversas", href: "/conversas", icon: MessageCircle, modulo: "disparos" },
+      { name: "Tempo de resposta", href: "/tempo-de-resposta", icon: Timer, modulo: "disparos" },
       { name: "Leads", href: "/leads", icon: UserSearch, modulo: "disparos" },
       // Voltou em 09/11: a captação converte médico e conecta chip por aqui (Vinícius ficou sem o caminho).
       { name: "Disparos & Chips", href: "/disparos", icon: Send, modulo: "disparos" },
-    ],
-  },
-  {
-    // 24/11 (Raul): o tempo de resposta mede três operações (prospecção, escalas, clientes), não só a prospecção.
-    // Os números e o tipo/dono de cada um ficam aqui, junto da tela que usa esse cadastro.
-    label: "Atendimento",
-    items: [
-      { name: "Tempo de resposta", href: "/tempo-de-resposta", icon: Timer, modulo: "disparos" },
       { name: "Números WhatsApp", href: "/numeros-whatsapp", icon: Smartphone, modulo: "disparos", captacao: "seigzaps_config" },
     ],
   },
