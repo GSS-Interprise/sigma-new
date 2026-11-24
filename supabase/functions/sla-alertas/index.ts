@@ -553,6 +553,29 @@ async function ligar(admin: any, para: string, alertaId: string) {
   return b.sid as string;
 }
 
+// Saldo do Twilio (24/11): as ligações do SLA consomem crédito pré-pago da conta da GSS; sem saldo a ligação falha
+// calada (erro 13227). Cron diário (sla-twilio-saldo, 9h): abaixo do limite (config sla_twilio_saldo_min, padrão 10
+// na moeda da conta), e-mail para a lista da coordenação pedindo recarga. Volta a avisar todo dia enquanto estiver baixo.
+async function saldoTwilio(enviar: boolean) {
+  const sid = Deno.env.get("TWILIO_ACCOUNT_SID") ?? "", tok = Deno.env.get("TWILIO_AUTH_TOKEN") ?? "";
+  const b = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Balance.json`, {
+    headers: { Authorization: "Basic " + btoa(`${sid}:${tok}`) },
+  }).then((r) => r.json()).catch(() => ({}));
+  const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  const limite = Number((await config(admin, "sla_twilio_saldo_min")) || 10);
+  const saldo = Number(b?.balance);
+  if (!Number.isFinite(saldo)) return { ok: false, erro: "saldo ilegível" };
+  const baixo = saldo < limite;
+  let avisou = false;
+  if (baixo && enviar) {
+    avisou = await emailar(`Sigma SLA: saldo do Twilio baixo (${saldo.toFixed(2)} ${b.currency})`,
+      `O saldo da conta Twilio que faz as ligações do SLA de laudos está em ${saldo.toFixed(2)} ${b.currency}, abaixo do ` +
+      `limite de ${limite}. Sem saldo, as ligações para o médico de plantão param de sair. Recarregue em console.twilio.com ` +
+      `(conta da GSS, e-mail bi@gestaoservicosaude.com.br).`);
+  }
+  return { ok: true, saldo, moeda: b.currency, limite, baixo, avisou };
+}
+
 async function statusLigacao(callSid: string) {
   const sid = Deno.env.get("TWILIO_ACCOUNT_SID") ?? "", tok = Deno.env.get("TWILIO_AUTH_TOKEN") ?? "";
   const b = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Calls/${callSid}.json`, {
@@ -620,6 +643,7 @@ Deno.serve(async (req) => {
     if (body.acao === "status_templates") return json({ ok: true, modelos: await statusTemplates(admin) });
     if (body.acao === "criar_templates") return json({ ok: true, modelos: await criarTemplates(admin, !!body.dry_run, Array.isArray(body.nomes) ? body.nomes.map(String) : undefined) });
     // body.unidades só para teste manual (ex.: ["teste"]); o cron não manda.
+    if (body.acao === "saldo_twilio") return json(await saldoTwilio(body.enviar !== false));
     if (body.acao === "coletor") return json({ ok: true, coletor: await checarColetor(admin, Array.isArray(body.unidades) ? body.unidades.map(String) : UNIDADES) });
     return json({ ok: false, error: "acao" }, 400);
   } catch (e) {
