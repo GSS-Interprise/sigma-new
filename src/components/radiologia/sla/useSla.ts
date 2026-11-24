@@ -213,9 +213,17 @@ export function useEscala(diasAFrente = 14) {
     refetchInterval: 60_000,
     queryFn: async () => {
       const ate = new Date(Date.now() + diasAFrente * 86_400_000).toISOString();
-      const { data, error } = await db.from("sla_plantao").select("id, papel, inicio, fim, nome, telefone, email, modalidade, drescala_plantao_id")
-        .eq("unidade", UNIDADE).gt("fim", new Date().toISOString()).lt("inicio", ate).order("inicio");
+      const ler = (unidade: string) => db.from("sla_plantao").select("id, papel, inicio, fim, nome, telefone, email, modalidade, drescala_plantao_id")
+        .eq("unidade", unidade).gt("fim", new Date().toISOString()).lt("inicio", ate).order("inicio");
+      const { data, error } = await ler(UNIDADE);
       if (error) throw error;
+      // Mesma regra do motor de avisos (sla-alertas, 24/11): unidade sem escala própria usa a equipe da Marieta.
+      // Sem isto a tela de CEPON/Tijucas/Mobilemed dizia "Ninguém na escala" enquanto os avisos iam para o plantão.
+      if (!(data ?? []).length && UNIDADE !== "marieta") {
+        const { data: daMarieta, error: e2 } = await ler("marieta");
+        if (e2) throw e2;
+        return (daMarieta ?? []) as Plantao[];
+      }
       return (data ?? []) as Plantao[];
     },
   });
