@@ -6,7 +6,8 @@
 #
 # Seguranca contra "fila vazia falsa": so manda leitura se o titulo da lista for a pasta configurada (ex.: ...\Hoje).
 # Fora dela (outra pasta, visualizador, tela de login) manda sem_grade e o Sigma nao tira ninguem da fila.
-# A UIA so expoe as linhas desenhadas: se a grade estiver cheia (rolagem), manda cheia = true e ninguem sai.
+# A UIA so expoe as linhas desenhadas: o coletor rola a grade ate o fim (sem mouse). Se nao chegar ao fim, manda
+# cheia = true e ninguem sai da fila por nao ter sido visto.
 #
 # Uso: pythonw coletor_vue_uia.py   (unidade e pasta em C:\ProgramData\ssh-tunel\estacao.json; chave em sla_key.txt)
 import json, re, sys, traceback, urllib.request
@@ -101,19 +102,59 @@ def ler(pasta):
     # ";" na ordem da tela: Data;Hora;Nome do paciente;Descricao;Status;Data de assinatura final;ID;Tipo de
     # Atendimento;... As celulas soltas (DataItem) so aparecem depois de mexer na grade com o mouse (24/11), entao o
     # Value da linha e o caminho que funciona sempre. Data e hora sao conferidas no formato para pegar coluna trocada.
+    def visiveis():
+        vs = []
+        for corpo in tabela.children():
+            for r in corpo.children():
+                if re.match(r"Row \d+$", r.window_text() or ""):
+                    try:
+                        vs.append(r.legacy_properties().get("Value") or "")
+                    except Exception:
+                        pass
+        return vs
+
+    # A grade so expoe as ~28 linhas desenhadas. Para ler a pasta inteira, rola com WM_MOUSEWHEEL mandado direto a
+    # janela da grade (PostMessage): nao mexe o cursor nem rouba o foco do PC do Wagner. WM_VSCROLL e o padrao de
+    # rolagem da UIA a grade ignora (teste de 24/11). Rola ate a ultima linha parar de mudar e volta ao topo.
+    import ctypes
+    u32 = ctypes.windll.user32
+    rr = tabela.rectangle()
+    pos = (((rr.top + rr.bottom) // 2) << 16) | (((rr.left + rr.right) // 2) & 0xFFFF)
+    def rolar(notches):
+        delta = (-120 if notches > 0 else 120) & 0xFFFF
+        for _ in range(abs(notches)):
+            u32.PostMessageW(tabela.handle, 0x020A, delta << 16, pos)
+        time.sleep(1.2)
+    vistos, ordem = set(), []
+    def juntar(vs):
+        for v in vs:
+            if v and v not in vistos:
+                vistos.add(v)
+                ordem.append(v)
+    atual = visiveis()
+    juntar(atual)
+    fim = True
+    if len(atual) >= 20 and tabela.handle:
+        fim = False
+        for _ in range(25):
+            rolar(6)
+            nova = visiveis()
+            juntar(nova)
+            if nova and atual and nova[-1] == atual[-1]:
+                fim = True
+                break
+            atual = nova
+        rolar(-200)
+    # Cada linha: Value (LegacyIAccessible) com as colunas separadas por ";" na ordem da tela: Data;Hora;Nome do
+    # paciente;Descricao;Status;Data de assinatura final;ID;Tipo de Atendimento;... (as celulas soltas, DataItem, so
+    # aparecem depois de mexer na grade com o mouse). Data e hora conferidas no formato para pegar coluna trocada.
     linhas = []
-    for corpo in tabela.children():
-        for r in corpo.children():
-            if not re.match(r"Row \d+$", r.window_text() or ""):
-                continue
-            try:
-                v = (r.legacy_properties().get("Value") or "").split(";")
-            except Exception:
-                continue
-            if len(v) < 8 or not re.match(r"\d{2}/\d{2}/\d{4}$", v[0]) or not re.match(r"\d{2}:\d{2}", v[1]):
-                continue
-            linhas.append({"Data": v[0], "Hora": v[1], "Nome do paciente": v[2], "Descricao": v[3], "Status": v[4],
-                           "Tipo de Atendimento": v[7]})
+    for valor in ordem:
+        v = valor.split(";")
+        if len(v) < 8 or not re.match(r"\d{2}/\d{2}/\d{4}$", v[0]) or not re.match(r"\d{2}:\d{2}", v[1]):
+            continue
+        linhas.append({"Data": v[0], "Hora": v[1], "Nome do paciente": v[2], "Descricao": v[3], "Status": v[4],
+                       "Tipo de Atendimento": v[7]})
     # Total da pasta na barra de status ("1/74 itens selecionados"): a grade so expoe as linhas desenhadas (~28).
     total = None
     for t in jan.descendants(control_type="Text"):
@@ -122,7 +163,7 @@ def ler(pasta):
             total = int(m.group(1))
             break
     r = tabela.rectangle()
-    return {"linhas": linhas, "altura": r.bottom - r.top, "total": total}, None
+    return {"linhas": linhas, "altura": r.bottom - r.top, "total": total, "fim": fim}, None
 
 
 def main():
@@ -154,7 +195,7 @@ def main():
     # Lista incompleta = ha mais exames na pasta do que linhas lidas (barra de status) ou, sem esse total, as linhas
     # enchem a grade. Incompleta vai como cheia: o Sigma nao tira ninguem da fila por nao ter visto.
     total = grade.get("total")
-    cheia = (total > len(grade["linhas"])) if total is not None else len(grade["linhas"]) * 25 >= grade["altura"] - 100
+    cheia = not grade.get("fim") or (total is not None and total > len(grade["linhas"]))
     detalhe = {"fonte": "vue_uia", "lista_completa": not cheia, "total": len(grade["linhas"]), "total_pasta": total, "tipos": tipos}
     r = enviar({**base, "status": "ok", "cheia": cheia, "linhas": linhas, "detalhe": detalhe})
     log(f"ok {len(linhas)} linhas, cheia {cheia}, tipos {tipos}: {r}")
