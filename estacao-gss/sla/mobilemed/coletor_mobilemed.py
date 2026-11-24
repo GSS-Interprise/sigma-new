@@ -7,7 +7,7 @@
 # falta menos de 90 s, o coletor recarrega a aba e a pagina troca o token pelo refresh_token (sem senha).
 # Fila = exames nao liberados da lista padrao da Brenda (tipo_listagem 1). Cada exame ja vem com o prazo que o
 # Mobilemed calcula (sla_expiration_date -> "vence"). Ainda a confirmar com a GSS (24/11): quais empresas entram
-# (ids 5725 e 5835) e se "digitado" (status 6, laudo feito sem liberar) conta como pendente. Ate la: tudo entra.
+# (24/11: Forquilhinha 5725, Tijucas 5750, Mostardas 5835, Urubici 5845) e se "digitado" (status 6, laudo feito sem liberar) conta como pendente. Ate la: tudo entra.
 #
 # Uso: pythonw coletor_mobilemed.py   (config em %LOCALAPPDATA%\SigmaSLA: sla_key.txt)
 # Log curto em %LOCALAPPDATA%\SigmaSLA\coletor_mobilemed.log (sem nome de paciente).
@@ -22,8 +22,12 @@ HOST = "laudos.mobilemed.com.br"
 URL_LISTA = "https://laudos.mobilemed.com.br/exames"
 MAX = 200
 USUARIO_ID = 64788  # usuario da Brenda no Mobilemed (pesquisapadrao/64788); so entra no filtro de contagem
-# prioridade_id do Mobilemed -> origem do SLA. Em 24/11 a fila inteira era 1 (rotina); id sem mapa vira "externo".
-PRIORIDADES = {1: "externo"}
+# prioridade_id do Mobilemed: 1 = rotina (eletivo, origem "externo"); qualquer outra e urgencia (origem "ps").
+PRIORIDADE_ROTINA = 1
+# Prazo por cidade (Brenda, 24/11), em horas (urgencia, eletivo), contado da chegada no Mobilemed. O prazo que o
+# proprio Mobilemed calcula (sla_expiration_date) nao bate com o contrato (Urubici 48 h, Mostardas 120 h): so vale
+# para cidade fora desta lista (Forquilhinha, em 24/11, ainda sem prazo informado).
+PRAZOS_H = {"URUBICI": (72, 72), "MOSTARDAS": (2, 24), "TIJUCAS": (72, 72), "VILA VELHA": (2, 48)}
 EMPRESAS = None  # None = todas; ex.: {5725} quando a GSS disser quais unidades entram
 STATUS_FORA = set()  # ex.: {6} se "digitado" nao contar como pendente
 BRT = timezone(timedelta(hours=-3))
@@ -171,7 +175,7 @@ def main():
             cheia = True
             break
     total = len(regs)
-    linhas, antigos, fora = [], 0, 0
+    linhas, antigos, fora, cidades = [], 0, 0, {}
     for e in regs:
         if e.get("is_liberado") or e.get("is_excluido") or e.get("status_id") in STATUS_FORA \
                 or (EMPRESAS is not None and e.get("empresa_id") not in EMPRESAS):
@@ -185,17 +189,24 @@ def main():
         if (agora - quando).days >= 10:  # a edge so aceita data de ate 10 dias; mais velho fica so na contagem
             antigos += 1
             continue
-        estudo = (e.get("estudo_descricao") or "").strip()
+        cidade = (e.get("nome_fantasia") or (e.get("empresa") or {}).get("nome_fantasia") or "").strip().upper()
+        urgente = e.get("prioridade_id") != PRIORIDADE_ROTINA
+        if cidade in PRAZOS_H:
+            vence = (quando + timedelta(hours=PRAZOS_H[cidade][0 if urgente else 1])).isoformat()
+        else:
+            vence = iso(e["sla_expiration_date"]).isoformat() if e.get("sla_expiration_date") else None
+        cidades[cidade or "?"] = cidades.get(cidade or "?", 0) + 1
+        # A cidade vai na frente do estudo: a fila do Mobilemed mistura varias cidades na mesma unidade do Sigma.
+        estudo = " - ".join(x for x in [cidade.title(), (e.get("estudo_descricao") or "").strip()] if x)
         linhas.append({
             "data": quando.strftime("%d/%m/%Y"), "hora": quando.strftime("%H:%M:%S"),
-            "origem": PRIORIDADES.get(e.get("prioridade_id"), "externo"),
-            "paciente": (e.get("nome_paciente") or "").strip()[:120], "estudo": estudo[:120],
-            "vence": iso(e["sla_expiration_date"]).isoformat() if e.get("sla_expiration_date") else None,
+            "origem": "ps" if urgente else "externo",
+            "paciente": (e.get("nome_paciente") or "").strip()[:120], "estudo": estudo[:120], "vence": vence,
         })
     detalhe = {"fonte": "mobilemed_api", "lista_completa": not cheia and antigos == 0, "total": total,
-               "antigos": antigos, "fora_do_filtro": fora}
+               "antigos": antigos, "fora_do_filtro": fora, "cidades": cidades}
     r = enviar({**base, "status": "ok", "cheia": cheia, "linhas": linhas, "detalhe": detalhe})
-    log(f"ok {len(linhas)} linhas, total {total}, fora {fora}, antigos {antigos}: {r}")
+    log(f"ok {len(linhas)} linhas, total {total}, fora {fora}, antigos {antigos}, cidades {cidades}: {r}")
     return r
 
 
