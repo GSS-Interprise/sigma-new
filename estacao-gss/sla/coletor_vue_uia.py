@@ -92,20 +92,37 @@ def ler(pasta):
             break
     import time
     time.sleep(3)
-    tabela = None
-    for t in jan.descendants(control_type="Table"):
-        if any(re.match(r"Data row \d+$", d.window_text() or "") for d in t.descendants(control_type="DataItem")):
-            tabela = t
-            break
+    tabela = next(iter(jan.descendants(control_type="Table")), None)
     if tabela is None:
-        return {"linhas": [], "altura": 0, "visiveis": 0}, None
-    linhas = {}
-    for d in tabela.descendants(control_type="DataItem"):
-        m = re.match(r"(.+) row (\d+)$", d.window_text() or "")
-        if m and int(m.group(2)) >= 0:
-            linhas.setdefault(int(m.group(2)), {})[m.group(1)] = valor(d)
+        # Sem a grade de exames (24/11: depois do login automatico a lista nao voltou e o coletor mandava "ok 0
+        # linhas", que parecia fila vazia). Sem grade nao e fila vazia: avisa como sem_grade.
+        return None, "sem_tabela"
+    # Cada linha da grade e um elemento "Row N" cujo Value (LegacyIAccessible) traz todas as colunas separadas por
+    # ";" na ordem da tela: Data;Hora;Nome do paciente;Descricao;Status;Data de assinatura final;ID;Tipo de
+    # Atendimento;... As celulas soltas (DataItem) so aparecem depois de mexer na grade com o mouse (24/11), entao o
+    # Value da linha e o caminho que funciona sempre. Data e hora sao conferidas no formato para pegar coluna trocada.
+    linhas = []
+    for corpo in tabela.children():
+        for r in corpo.children():
+            if not re.match(r"Row \d+$", r.window_text() or ""):
+                continue
+            try:
+                v = (r.legacy_properties().get("Value") or "").split(";")
+            except Exception:
+                continue
+            if len(v) < 8 or not re.match(r"\d{2}/\d{2}/\d{4}$", v[0]) or not re.match(r"\d{2}:\d{2}", v[1]):
+                continue
+            linhas.append({"Data": v[0], "Hora": v[1], "Nome do paciente": v[2], "Descricao": v[3], "Status": v[4],
+                           "Tipo de Atendimento": v[7]})
+    # Total da pasta na barra de status ("1/74 itens selecionados"): a grade so expoe as linhas desenhadas (~28).
+    total = None
+    for t in jan.descendants(control_type="Text"):
+        m = re.search(r"\d+/(\d+) itens", t.window_text() or "")
+        if m:
+            total = int(m.group(1))
+            break
     r = tabela.rectangle()
-    return {"linhas": [linhas[k] for k in sorted(linhas)], "altura": r.bottom - r.top}, None
+    return {"linhas": linhas, "altura": r.bottom - r.top, "total": total}, None
 
 
 def main():
@@ -134,8 +151,11 @@ def main():
         linhas.append({"data": l["Data"], "hora": l["Hora"], "origem": org, "vence": vence,
                        "paciente": (l.get("Nome do paciente") or "")[:120], "estudo": (l.get("Descri\u00e7\u00e3o") or l.get("Descricao") or "")[:120]})
     # Linha de 25 px: se as linhas ocupam a grade quase toda, pode haver mais abaixo (UIA so expoe as desenhadas).
-    cheia = len(grade["linhas"]) * 25 >= grade["altura"] - 60
-    detalhe = {"fonte": "vue_uia", "lista_completa": not cheia, "total": len(grade["linhas"]), "tipos": tipos}
+    # Lista incompleta = ha mais exames na pasta do que linhas lidas (barra de status) ou, sem esse total, as linhas
+    # enchem a grade. Incompleta vai como cheia: o Sigma nao tira ninguem da fila por nao ter visto.
+    total = grade.get("total")
+    cheia = (total > len(grade["linhas"])) if total is not None else len(grade["linhas"]) * 25 >= grade["altura"] - 100
+    detalhe = {"fonte": "vue_uia", "lista_completa": not cheia, "total": len(grade["linhas"]), "total_pasta": total, "tipos": tipos}
     r = enviar({**base, "status": "ok", "cheia": cheia, "linhas": linhas, "detalhe": detalhe})
     log(f"ok {len(linhas)} linhas, cheia {cheia}, tipos {tipos}: {r}")
     return r
