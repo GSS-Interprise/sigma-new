@@ -59,7 +59,9 @@ def main():
         sai("sem_senha_guardada")
     try:
         campo_user = filho(dlg, "txtUsername")
-        if usuario and campo_user is not None:
+        # Na tela de bloqueio (protetor de tela do Vue) o usuario vem preenchido e o campo desabilitado:
+        # escrever nele dava ElementNotEnabled e o login nunca acontecia (CEPON, 24/11). So a senha e pedida.
+        if usuario and campo_user is not None and campo_user.is_enabled():
             campo_user.set_edit_text(usuario)
         campo = filho(dlg, "txtPassword")
         botao = filho(dlg, "btnLogin")

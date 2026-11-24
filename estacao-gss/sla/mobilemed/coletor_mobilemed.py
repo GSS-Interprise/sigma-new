@@ -27,8 +27,9 @@ USUARIO_ID = 64788  # usuario da Brenda no Mobilemed (pesquisapadrao/64788); so 
 PRIORIDADE_ROTINA = 1
 # Prazo por cidade (Brenda, 24/11), em horas (urgencia, eletivo), contado da chegada no Mobilemed. O prazo que o
 # proprio Mobilemed calcula (sla_expiration_date) nao bate com o contrato (Urubici 48 h, Mostardas 120 h): so vale
-# para cidade fora desta lista (Forquilhinha, em 24/11, ainda sem prazo informado).
-PRAZOS_H = {"URUBICI": (72, 72), "MOSTARDAS": (2, 24), "TIJUCAS": (72, 72), "VILA VELHA": (2, 48)}
+# para cidade fora desta lista. Segunda lista da Brenda (24/11): Forquilhinha 72 h, Itaberai 2 h/24 h, Novo Hamburgo 72 h.
+PRAZOS_H = {"URUBICI": (72, 72), "MOSTARDAS": (2, 24), "TIJUCAS": (72, 72), "VILA VELHA": (2, 48),
+            "FORQUILHINHA": (72, 72), "ITABERAI": (2, 24), "ITABERAÍ": (2, 24), "NOVO HAMBURGO": (72, 72)}
 EMPRESAS = None  # None = todas; ex.: {5725} quando a GSS disser quais unidades entram
 STATUS_FORA = set()  # "digitado" (6) fica: so sai da fila quando o medico libera
 BRT = timezone(timedelta(hours=-3))

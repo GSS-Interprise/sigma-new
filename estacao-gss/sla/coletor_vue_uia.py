@@ -10,7 +10,7 @@
 #
 # Uso: pythonw coletor_vue_uia.py   (unidade e pasta em C:\ProgramData\ssh-tunel\estacao.json; chave em sla_key.txt)
 import json, re, sys, traceback, urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 BASE = Path(r"C:\ProgramData\ssh-tunel")
@@ -28,9 +28,22 @@ def log(msg):
         pass
 
 
+BRT = timezone(timedelta(hours=-3))
+
+
 def cfg():
     c = json.loads((BASE / "estacao.json").read_text(encoding="utf-8-sig"))
     return c["unidade"], c.get("pasta") or "Hoje"
+
+
+def prazo_externo_h():
+    # Prazo do eletivo/externo por unidade (Brenda, 24/11: Marieta 48 h, CEPON 72 h). O padrao do Sigma
+    # (sla_prazos) e um so para todas as unidades (48 h); com prazo_externo_h em estacao.json o coletor manda o
+    # "vence" do exame externo. PS e internado seguem o padrao (2 h e 4 h).
+    try:
+        return int(json.loads((BASE / "estacao.json").read_text(encoding="utf-8-sig")).get("prazo_externo_h") or 0)
+    except Exception:
+        return 0
 
 
 def enviar(payload):
@@ -103,7 +116,7 @@ def main():
     if problema:
         log(problema)
         return enviar({**base, "status": "sem_grade", "detalhe": {"motivo": problema, "fonte": "vue_uia"}})
-    linhas, tipos = [], {}
+    linhas, tipos, prazo_h = [], {}, prazo_externo_h()
     for l in grade["linhas"]:
         st = (l.get("Status") or "").strip().lower()
         if st and not st.startswith("n"):
@@ -112,7 +125,13 @@ def main():
             continue
         tipo = l.get("Tipo de Atendimento", "")
         tipos[tipo] = tipos.get(tipo, 0) + 1
-        linhas.append({"data": l["Data"], "hora": l["Hora"], "origem": origem(tipo),
+        org = origem(tipo)
+        vence = None
+        if org == "externo" and prazo_h:
+            h = l["Hora"] if len(l["Hora"]) == 8 else l["Hora"] + ":00"
+            vence = (datetime.strptime(l["Data"] + " " + h, "%d/%m/%Y %H:%M:%S").replace(tzinfo=BRT)
+                     + timedelta(hours=prazo_h)).isoformat()
+        linhas.append({"data": l["Data"], "hora": l["Hora"], "origem": org, "vence": vence,
                        "paciente": (l.get("Nome do paciente") or "")[:120], "estudo": (l.get("Descri\u00e7\u00e3o") or l.get("Descricao") or "")[:120]})
     # Linha de 25 px: se as linhas ocupam a grade quase toda, pode haver mais abaixo (UIA so expoe as desenhadas).
     cheia = len(grade["linhas"]) * 25 >= grade["altura"] - 60
