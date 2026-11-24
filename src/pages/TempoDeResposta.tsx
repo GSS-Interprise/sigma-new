@@ -20,8 +20,8 @@ import {
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import {
-  type Espera, FAIXAS, faixaDe, minutosDesde, type Periodo, PERIODOS, rpc, tempoCurto, useAgora, useFila, useIndicadores, useMetas,
-  usePodeGerir, useSerie, useTempoRealFila,
+  type Espera, FAIXAS, faixaDe, minutosDesde, type Periodo, PERIODOS, rpc, tempoCurto, type TipoNumero, TIPOS_NUMERO, useAgora, useFila,
+  useIndicadores, useMetas, useNumerosPorTipo, usePodeGerir, useSerie, useTempoRealFila,
 } from "@/components/atendimento/useAtendimento";
 import { BarraFaixas, Cartao, COR, COR_FAIXA, GraficoMediana, GraficoVolume, Kpi, PorPessoa } from "@/components/atendimento/PainelGraficos";
 import { ContatosMarcados } from "@/components/atendimento/ContatosMarcados";
@@ -54,14 +54,70 @@ function Painel() {
   const agora = useAgora();
   useTempoRealFila();
   const [periodo, setPeriodo] = useState<Periodo>("hoje");
+  // Prospecção, escalas e clientes são operações diferentes: tudo abaixo (fila, indicadores, gráficos) segue o tipo.
+  const [tipo, setTipo] = useState<TipoNumero>("todos");
   const fila = useFila();
-  const ind = useIndicadores(periodo);
-  const serie = useSerie(periodo);
+  const ind = useIndicadores(periodo, tipo);
+  const serie = useSerie(periodo, tipo);
   const metas = useMetas();
+  const numerosTipo = useNumerosPorTipo();
   const meta = metas.data?.minutos ?? 10;
   const metaPct = metas.data?.pct ?? 80;
 
-  const todas = fila.data || [];
+  const doTipo = (e: Espera) => tipo === "todos" || e.uso === tipo;
+  const esperandoAgora = (fila.data || []).filter((e) => !e.ia_atuando && minutosDesde(e.esperando_desde, agora) < DIA_MIN);
+  const contaTipo = (t: TipoNumero) => esperandoAgora.filter((e) => t === "todos" || e.uso === t).length;
+  const numerosDoTipo = (numerosTipo.data || []).filter((n) => tipo === "todos" || n.uso === tipo).length;
+  const rotuloTipo = TIPOS_NUMERO.find((t) => t.id === tipo)!.rotulo;
+
+  const seletores = (
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="inline-flex rounded-lg border bg-card p-0.5" role="radiogroup" aria-label="Tipo de número">
+        {TIPOS_NUMERO.map((t) => {
+          const n = fila.isLoading ? null : contaTipo(t.id);
+          return (
+            <button key={t.id} type="button" role="radio" aria-checked={tipo === t.id} onClick={() => setTipo(t.id)}
+              title={n ? `${n} esperando resposta agora` : undefined}
+              className={cn("inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-sm font-medium transition-colors", tipo === t.id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}>
+              {t.rotulo}
+              {!!n && <span className={cn("rounded-full px-1.5 text-xs tabular-nums", tipo === t.id ? "bg-primary-foreground/20" : "bg-amber-100 text-amber-900")}>{n}</span>}
+            </button>
+          );
+        })}
+      </div>
+      <div className="flex items-center gap-4">
+        <p className="flex items-center gap-2 text-sm text-muted-foreground">
+          <span className="relative flex h-2.5 w-2.5"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60" /><span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-600" /></span>
+          Ao vivo
+        </p>
+        <div className="inline-flex rounded-lg border bg-card p-0.5" role="radiogroup" aria-label="Período">
+          {PERIODOS.map((p) => (
+            <button key={p.id} type="button" role="radio" aria-checked={periodo === p.id} onClick={() => setPeriodo(p.id)}
+              className={cn("h-8 rounded-md px-3 text-sm font-medium transition-colors", periodo === p.id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}>
+              {p.rotulo}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
+  if (tipo !== "todos" && numerosTipo.isSuccess && numerosDoTipo === 0) {
+    return (
+      <div className="space-y-5">
+        {seletores}
+        <div className="flex flex-col items-center gap-2 rounded-xl border bg-card px-6 py-16 text-center">
+          <p className="font-medium">Nenhum número marcado como {rotuloTipo}</p>
+          <p className="max-w-md text-sm text-muted-foreground">
+            O tempo de {rotuloTipo.toLowerCase()} aparece aqui quando um número tiver esse tipo. Marque o tipo e o responsável de cada número em Números WhatsApp.
+          </p>
+          <Button asChild size="sm" variant="outline" className="mt-2"><Link to="/numeros-whatsapp">Abrir Números WhatsApp</Link></Button>
+        </div>
+      </div>
+    );
+  }
+
+  const todas = (fila.data || []).filter(doTipo);
   const recentes = todas.filter((e) => minutosDesde(e.esperando_desde, agora) < DIA_MIN);
   const esperandoPessoa = recentes.filter((e) => !e.ia_atuando);
   const maisAntiga = esperandoPessoa.reduce((m, e) => Math.max(m, minutosDesde(e.esperando_desde, agora)), 0);
@@ -80,20 +136,7 @@ function Painel() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="flex items-center gap-2 text-sm text-muted-foreground">
-          <span className="relative flex h-2.5 w-2.5"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60" /><span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-600" /></span>
-          Ao vivo nos números oficiais
-        </p>
-        <div className="inline-flex rounded-lg border bg-card p-0.5" role="radiogroup" aria-label="Período">
-          {PERIODOS.map((p) => (
-            <button key={p.id} type="button" role="radio" aria-checked={periodo === p.id} onClick={() => setPeriodo(p.id)}
-              className={cn("h-8 rounded-md px-3 text-sm font-medium transition-colors", periodo === p.id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}>
-              {p.rotulo}
-            </button>
-          ))}
-        </div>
-      </div>
+      {seletores}
 
       <div className="grid gap-4 xl:grid-cols-12">
         <section className={cn("rounded-xl border p-5 xl:col-span-4", esperandoPessoa.length ? "border-amber-200 bg-amber-50/70" : "border-emerald-200 bg-emerald-50/60")}>

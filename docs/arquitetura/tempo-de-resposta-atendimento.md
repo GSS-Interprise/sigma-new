@@ -27,8 +27,8 @@ assume a conversa. O Maikon quer o mesmo para os sócios ("tu não ter acesso à
 ### 3a. Fonte do dado (já existe)
 - `sigzap_messages` + `sigzap_conversations` + `sigzap_instances` (provider `chakra`): 9 números conectados, todas as
   mensagens entram (inclusive as enviadas pelo celular, que chegam como echo `smb_message_echo`).
-- `whatsapp_chakra_connections`: `responsavel_id` e `uso` (prospeccao, financeiro, pessoal) já existem e são editados
-  em Configurações › Números oficiais. Hoje nenhum número tem responsável.
+- `whatsapp_chakra_connections`: `responsavel_id` e `uso` (prospeccao, escalas, clientes, financeiro, pessoal; ver §3g)
+  são editados em Números WhatsApp. Em 24/11 nenhum número tinha responsável.
 - IA conduzindo = o contato é lead de campanha ativa com `tipo_envio` `ia`/`ambos`, na etapa contatado/em_conversa/
   aquecido e sem `humano_assumiu` (mesma regra do `campanha-ia-responder`).
 
@@ -73,6 +73,31 @@ assume a conversa. O Maikon quer o mesmo para os sócios ("tu não ter acesso à
 - Aba "Contatos marcados" e aba "Avisos" (faixas, horário, destinos, modo teste).
 - Portão visual 1440 e 1024 px (ninguém usa o Sigma no celular).
 
+### 3g. Tipo do número e onde a GSS cadastra cada coisa (24/11)
+Prospecção, escalas e clientes são operações diferentes; um tempo de resposta só misturava tudo. O tipo de cada número
+fica em `whatsapp_chakra_connections.uso` (check `whatsapp_chakra_connections_uso_check`, migration
+`20261124180000_whatsapp_uso_escalas_clientes`):
+
+| `uso` | Rótulo na tela | O que é |
+|---|---|---|
+| `prospeccao` | Prospecção de médicos | Chips que falam com médicos para captar. Os únicos que entram em campanha. |
+| `escalas` | Escalas (médicos escalados) | Números da equipe de escalas (Danilo e outros) que conversam com os médicos já escalados. |
+| `clientes` | Clientes | Números que atendem os clientes (hospitais). |
+| `financeiro` | Financeiro | Automações financeiras (o da Amni). |
+| `pessoal` | Pessoal | Número pessoal conectado. |
+
+Onde a GSS cadastra:
+- **Números WhatsApp** (`/numeros-whatsapp`): o **tipo** e o **responsável** de cada número, nos campos Tipo e
+  Responsável de cada linha; a tela agrupa os números por tipo. Grava pela RPC `whatsapp_numero_atualizar`
+  (admin ou permissão `seigzaps_config`, igual a antes).
+- **Tempo de resposta › Contatos marcados**: quem é cliente (e contatos importantes), com nome e prioridade.
+- **Tempo de resposta › Avisos**: coordenação, diretoria, horário de atendimento, faixas e modo teste.
+
+No painel, o seletor **Todos / Prospecção / Escalas / Clientes** filtra a fila (`uso` que `atendimento_aguardando`
+já devolvia) e os indicadores e gráficos (`atendimento_indicadores` e `atendimento_serie` ganharam `p_uso`; `null` =
+todos, que é o mesmo resultado de antes). Número que não está em `whatsapp_chakra_connections` só entra em "Todos".
+A meta é a mesma para os três tipos por enquanto; os avisos em escada não mudaram (valem para todos os números).
+
 ### 3f. Agente
 - Domínio `atendimento` no protocolo (`_shared/agente/dominios/atendimento.ts`): `atendimento_aguardando` e
   `atendimento_indicadores`, com casos na bateria. Nasce sem papel no MCP; no assistente vale pelo módulo `disparos`.
@@ -87,7 +112,8 @@ assume a conversa. O Maikon quer o mesmo para os sócios ("tu não ter acesso à
 
 ## 5. Riscos, pegadinhas e dependências
 - **Ninguém é responsável por número hoje.** Sem isso, todo aviso cai na coordenação. Vini precisa preencher em
-  Configurações › Números oficiais (e trocar quando o chip muda de mão).
+  Números WhatsApp, junto com o tipo (e trocar quando o chip muda de mão). Sem o tipo, todo número conta como
+  prospecção e as abas Escalas e Clientes ficam vazias.
 - **Números que ainda não estão na Chakra** (3 que não conectaram + o da Ramone, desvinculando de outro portfólio):
   sem eles, as conversas desses números não aparecem.
 - **LGPD:** números de uso pessoal gravam todas as conversas. A chave `somente_leads` existe por número; está desligada
@@ -102,6 +128,7 @@ assume a conversa. O Maikon quer o mesmo para os sócios ("tu não ter acesso à
 - [x] T2 — Avisos: ação `atendimento` no `alertas-equipe`, cron de 2 min, template na Meta, modo teste. (22/11: regras em `_shared/atendimento.ts`, escada em minutos úteis; modelo `gss_atendimento_espera_v1` em análise na Meta; avisos desligados até o alinhamento)
 - [x] T3 — Tela `/tempo-de-resposta`: fila ao vivo, números do dia, encerrar, contatos marcados, configuração dos avisos.
 - [x] T4 — Domínio `atendimento` no agente (assistente e Claude dos sócios) + casos da bateria. (22/11: protocolo v1.5.0, bateria 29/29; no MCP liberado só para admin)
+- [x] T6 — Tipo do número (escalas e clientes) e painel separado por tipo (§3g). (24/11)
 - [ ] T5 — Alinhamento com a Ramone: destinos, horário, faixas, lista de clientes; responsáveis dos números; desligar
       o modo teste.
 

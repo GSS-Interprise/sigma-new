@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { AlertTriangle, ChevronDown, Download, Loader2, MoreHorizontal, RefreshCw, Send } from "lucide-react";
+import { AlertTriangle, ChevronDown, Download, Loader2, RefreshCw, Send } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -14,9 +14,6 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { ChakraConnectCard } from "./ChakraConnectCard";
 
@@ -24,13 +21,15 @@ import { ChakraConnectCard } from "./ChakraConnectCard";
  * Configurações › WhatsApp — pergunta da tela: "quais números oficiais posso usar agora e o que falta nos outros?"
  * A disponibilidade vem de whatsapp_numeros_recalcular_disponibilidade (saúde da Meta + entregas reais dos
  * últimos 7 dias). O "Enviar teste" manda um template, que é o tipo de envio que a Meta bloqueia: só ele prova.
+ * É aqui que a GSS diz o tipo de cada número e quem está com ele: o Tempo de resposta separa os indicadores por tipo
+ * e cobra o responsável (docs/arquitetura/tempo-de-resposta-atendimento.md §3g).
  */
 
 type Numero = {
   connection_id: string;
   phone_e164: string;
   display_name: string | null;
-  uso: "prospeccao" | "financeiro" | "pessoal";
+  uso: Uso;
   responsavel_id: string | null;
   responsavel_nome: string | null;
   conta: string;
@@ -51,11 +50,17 @@ const DISP = {
   indisponivel: { rotulo: "Não usar", classe: "bg-red-50 text-red-700 ring-red-600/20 dark:bg-red-950 dark:text-red-300", ordem: 2 },
 } as const;
 
-const USO_ROTULO: Record<Numero["uso"], string> = {
-  prospeccao: "Prospecção",
-  financeiro: "Financeiro",
-  pessoal: "Pessoal",
-};
+// Ordem = ordem dos grupos na tela. Os três primeiros aparecem mesmo vazios (o Tempo de resposta tem uma aba para
+// cada um); financeiro e pessoal só quando há número. Espelha o check whatsapp_chakra_connections_uso_check.
+type Uso = "prospeccao" | "escalas" | "clientes" | "financeiro" | "pessoal";
+const USOS: Array<{ id: Uso; rotulo: string; curto: string; sempre: boolean }> = [
+  { id: "prospeccao", rotulo: "Prospecção de médicos", curto: "Prospecção", sempre: true },
+  { id: "escalas", rotulo: "Escalas (médicos escalados)", curto: "Escalas", sempre: true },
+  { id: "clientes", rotulo: "Clientes", curto: "Clientes", sempre: true },
+  { id: "financeiro", rotulo: "Financeiro", curto: "Financeiro", sempre: false },
+  { id: "pessoal", rotulo: "Pessoal", curto: "Pessoal", sempre: false },
+];
+const USO_ROTULO = Object.fromEntries(USOS.map((u) => [u.id, u.rotulo])) as Record<Uso, string>;
 
 function formatarTelefone(e164: string) {
   const d = e164.replace(/\D/g, "").replace(/^55/, "");
@@ -75,7 +80,7 @@ function escapar(texto: string) {
 
 function baixarPdf(numeros: Numero[]) {
   const linhas = numeros.map((n) => `<tr><td>${formatarTelefone(n.phone_e164)}</td><td>${escapar(n.display_name || "")}</td>`
-    + `<td>${USO_ROTULO[n.uso]}</td><td>${n.disponibilidade ? DISP[n.disponibilidade].rotulo : "—"}</td>`
+    + `<td>${USO_ROTULO[n.uso] ?? n.uso}</td><td>${n.disponibilidade ? DISP[n.disponibilidade].rotulo : "—"}</td>`
     + `<td>${escapar(n.disponibilidade_motivo || "")}</td><td>${n.tem_template_padrao ? "Sim" : "Não"}</td>`
     + `<td>${escapar(n.responsavel_nome || "—")}</td></tr>`).join("");
   const janela = window.open("", "_blank");
@@ -87,7 +92,7 @@ function baixarPdf(numeros: Numero[]) {
     <style>body{font:12px system-ui,sans-serif;margin:24px;color:#111}h1{font-size:18px;margin:0 0 4px}p{margin:0 0 16px;color:#555}
     table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:6px 8px;text-align:left;vertical-align:top}th{background:#f4f4f5}</style>
     </head><body><h1>Números WhatsApp oficiais — GSS</h1><p>Gerado em ${new Date().toLocaleString("pt-BR")}</p>
-    <table><thead><tr><th>Número</th><th>Nome</th><th>Uso</th><th>Situação</th><th>Motivo</th><th>Modelo padrão</th><th>Responsável</th></tr></thead>
+    <table><thead><tr><th>Número</th><th>Nome</th><th>Tipo</th><th>Situação</th><th>Motivo</th><th>Modelo padrão</th><th>Responsável</th></tr></thead>
     <tbody>${linhas}</tbody></table><script>window.onload=()=>window.print()</script></body></html>`);
   janela.document.close();
 }
@@ -133,7 +138,7 @@ export function NumerosOficiaisTab() {
   });
 
   const atualizar = useMutation({
-    mutationFn: async (vars: { numero: Numero; responsavel_id?: string | null; uso?: Numero["uso"] }) => {
+    mutationFn: async (vars: { numero: Numero; responsavel_id?: string | null; uso?: Uso }) => {
       const { error } = await (supabase as any).rpc("whatsapp_numero_atualizar", {
         p_connection_id: vars.numero.connection_id,
         p_responsavel_id: vars.responsavel_id !== undefined ? vars.responsavel_id : vars.numero.responsavel_id,
@@ -141,9 +146,15 @@ export function NumerosOficiaisTab() {
       });
       if (error) throw error;
     },
-    onSuccess: () => {
+    onSuccess: (_d, vars) => {
       queryClient.invalidateQueries({ queryKey: ["whatsapp-numeros-oficiais"] });
-      toast.success("Número atualizado.");
+      queryClient.invalidateQueries({ queryKey: ["atendimento-numeros-tipo"] });
+      const fone = formatarTelefone(vars.numero.phone_e164);
+      if (vars.uso) toast.success(`${fone} agora é ${USO_ROTULO[vars.uso]}.`);
+      else {
+        const nome = pessoas.find((p) => p.id === vars.responsavel_id)?.nome_completo;
+        toast.success(nome ? `${fone} agora está com ${nome}.` : `${fone} ficou sem responsável.`);
+      }
     },
     onError: () => toast.error("Não foi possível salvar. Confira sua permissão de configurar WhatsApp."),
   });
@@ -155,7 +166,10 @@ export function NumerosOficiaisTab() {
     [numeros],
   );
   const prospeccao = ordenados.filter((n) => n.uso === "prospeccao");
-  const outros = ordenados.filter((n) => n.uso !== "prospeccao");
+  const grupos = USOS
+    .map((u) => ({ ...u, numeros: ordenados.filter((n) => n.uso === u.id) }))
+    .filter((g) => g.sempre || g.numeros.length > 0);
+  const semDono = numeros.filter((n) => !n.responsavel_id).length;
   const prontos = prospeccao.filter((n) => n.disponibilidade === "disponivel").length;
   // Conta pela saúde da Meta, não pelo motivo exibido: um número RED também pode estar com pagamento recusado.
   const bloqueadosMeta = prospeccao.filter((n) => n.meta_pode_enviar === "BLOCKED").length;
@@ -173,6 +187,7 @@ export function NumerosOficiaisTab() {
               <p className="text-sm text-muted-foreground">
                 <span className="text-2xl font-semibold text-foreground tabular-nums">{prontos}</span>
                 {" "}de {prospeccao.length} prontos para campanha
+                {semDono > 0 && <span> · {semDono} {semDono === 1 ? "número sem responsável" : "números sem responsável"}</span>}
                 {atualizadoEm && <span> · conferido {haQuanto(atualizadoEm)}</span>}
               </p>
             )}
@@ -207,22 +222,17 @@ export function NumerosOficiaisTab() {
 
       {!isLoading && !error && (
         <>
-          <TabelaNumeros
-            titulo="Prospecção"
-            numeros={prospeccao}
-            pessoas={pessoas}
-            onTeste={setTesteDe}
-            onAtualizar={(numero, mudanca) => atualizar.mutate({ numero, ...mudanca })}
-          />
-          {outros.length > 0 && (
+          {grupos.map((g) => (
             <TabelaNumeros
-              titulo="Outros usos"
-              numeros={outros}
+              key={g.id}
+              titulo={g.rotulo}
+              numeros={g.numeros}
               pessoas={pessoas}
+              salvando={atualizar.isPending ? atualizar.variables?.numero.connection_id : undefined}
               onTeste={setTesteDe}
               onAtualizar={(numero, mudanca) => atualizar.mutate({ numero, ...mudanca })}
             />
-          )}
+          ))}
         </>
       )}
 
@@ -243,29 +253,31 @@ export function NumerosOficiaisTab() {
 }
 
 function TabelaNumeros({
-  titulo, numeros, pessoas, onTeste, onAtualizar,
+  titulo, numeros, pessoas, salvando, onTeste, onAtualizar,
 }: {
   titulo: string;
   numeros: Numero[];
   pessoas: Array<{ id: string; nome_completo: string | null }>;
+  salvando?: string;
   onTeste: (n: Numero) => void;
-  onAtualizar: (n: Numero, mudanca: { responsavel_id?: string | null; uso?: Numero["uso"] }) => void;
+  onAtualizar: (n: Numero, mudanca: { responsavel_id?: string | null; uso?: Uso }) => void;
 }) {
   return (
     <Card className="overflow-hidden">
       <div className="border-b px-5 py-3 text-sm font-medium">{titulo} · {numeros.length}</div>
       {numeros.length === 0 ? (
-        <p className="px-5 py-6 text-sm text-muted-foreground">Nenhum número neste grupo.</p>
+        <p className="px-5 py-6 text-sm text-muted-foreground">Nenhum número aqui. Para trazer um, mude o Tipo dele no grupo onde ele está.</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full table-fixed text-sm">
             <thead className="bg-muted/40 text-left text-xs text-muted-foreground">
               <tr>
-                <th className="w-[24%] px-5 py-2 font-medium">Número</th>
-                <th className="w-[33%] px-3 py-2 font-medium">Situação</th>
-                <th className="hidden w-[15%] px-3 py-2 font-medium xl:table-cell">Última entrega</th>
-                <th className="w-[23%] px-3 py-2 font-medium">Responsável</th>
-                <th className="w-[6rem] px-5 py-2 xl:w-[12.5rem]"><span className="sr-only">Ações</span></th>
+                <th className="w-[22%] px-5 xl:w-[20%] py-2 font-medium">Número</th>
+                <th className="w-[24%] px-3 xl:w-[22%] py-2 font-medium">Situação</th>
+                <th className="hidden w-[16%] px-3 py-2 font-medium xl:table-cell">Última entrega</th>
+                <th className="w-[22%] px-3 xl:w-[15%] py-2 font-medium">Tipo</th>
+                <th className="w-[20%] px-3 xl:w-[15%] py-2 font-medium">Responsável</th>
+                <th className="w-[4.5rem] px-5 py-2 xl:w-[10.5rem]"><span className="sr-only">Ações</span></th>
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -297,11 +309,27 @@ function TabelaNumeros({
                       </div>
                     </td>
                     <td className="px-3 py-3">
+                      <Select value={n.uso} disabled={salvando === n.connection_id}
+                        onValueChange={(v) => onAtualizar(n, { uso: v as Uso })}>
+                        <SelectTrigger className="h-8 w-full" aria-label={`Tipo do número ${formatarTelefone(n.phone_e164)}`}>
+                          {/* No gatilho vai o nome curto (o grupo já diz o tipo por extenso); a lista mostra o completo. */}
+                          <SelectValue>{USOS.find((u) => u.id === n.uso)?.curto ?? n.uso}</SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {USOS.map((u) => <SelectItem key={u.id} value={u.id}>{u.rotulo}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </td>
+                    <td className="px-3 py-3">
                       <Select
                         value={n.responsavel_id || "nenhum"}
+                        disabled={salvando === n.connection_id}
                         onValueChange={(v) => onAtualizar(n, { responsavel_id: v === "nenhum" ? null : v })}
                       >
-                        <SelectTrigger className="h-8 w-full"><SelectValue placeholder="Ninguém" /></SelectTrigger>
+                        <SelectTrigger className={cn("h-8 w-full", !n.responsavel_id && "text-muted-foreground")}
+                          aria-label={`Responsável pelo número ${formatarTelefone(n.phone_e164)}`}>
+                          <SelectValue placeholder="Ninguém" />
+                        </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="nenhum">Ninguém</SelectItem>
                           {pessoas.map((p) => (
@@ -317,21 +345,6 @@ function TabelaNumeros({
                         title={n.templates_aprovados === 0 ? "Este número não tem nenhum modelo aprovado" : "Enviar teste"}>
                         <Send className="h-3.5 w-3.5 xl:mr-1.5" /> <span className="hidden xl:inline">Enviar teste</span>
                       </Button>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button size="sm" variant="ghost" className="h-8 w-8 shrink-0 p-0" aria-label="Mudar o uso do número">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuLabel>Usar este número para</DropdownMenuLabel>
-                          <DropdownMenuRadioGroup value={n.uso} onValueChange={(v) => onAtualizar(n, { uso: v as Numero["uso"] })}>
-                            {(Object.keys(USO_ROTULO) as Numero["uso"][]).map((u) => (
-                              <DropdownMenuRadioItem key={u} value={u}>{USO_ROTULO[u]}</DropdownMenuRadioItem>
-                            ))}
-                          </DropdownMenuRadioGroup>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
                       </div>
                     </td>
                   </tr>

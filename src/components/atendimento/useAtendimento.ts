@@ -41,11 +41,35 @@ export const inicioPeriodo = (p: Periodo, agora = new Date()) => {
   return new Date(ini.getTime() - (p === "hoje" ? 0 : p === "7d" ? 6 : 29) * 86_400_000);
 };
 
-export function useIndicadores(periodo: Periodo) {
+/**
+ * Tipo do número (whatsapp_chakra_connections.uso), cadastrado em Números WhatsApp. Prospecção, escalas e clientes são
+ * operações diferentes, então o painel mede cada uma separada; "todos" soma tudo (inclusive financeiro e pessoal).
+ */
+export type TipoNumero = "todos" | "prospeccao" | "escalas" | "clientes";
+export const TIPOS_NUMERO: { id: TipoNumero; rotulo: string }[] = [
+  { id: "todos", rotulo: "Todos" }, { id: "prospeccao", rotulo: "Prospecção" }, { id: "escalas", rotulo: "Escalas" }, { id: "clientes", rotulo: "Clientes" },
+];
+const pUso = (tipo: TipoNumero) => (tipo === "todos" ? null : tipo);
+
+/** Quantos números conectados há de cada tipo e quantos estão sem responsável (para o estado vazio de cada aba). */
+export function useNumerosPorTipo() {
   return useQuery({
-    queryKey: ["atendimento-indicadores-hoje", periodo],
+    queryKey: ["atendimento-numeros-tipo"],
     queryFn: async () => {
-      const { data, error } = await rpc("atendimento_indicadores", { p_de: inicioPeriodo(periodo).toISOString(), p_ate: new Date().toISOString() });
+      const { data, error } = await (supabase as unknown as { from: (t: string) => any })
+        .from("whatsapp_chakra_connections").select("uso, responsavel_id").neq("status", "desconectado");
+      if (error) throw new Error(error.message);
+      return (data || []) as { uso: string; responsavel_id: string | null }[];
+    },
+    staleTime: 60_000,
+  });
+}
+
+export function useIndicadores(periodo: Periodo, tipo: TipoNumero = "todos") {
+  return useQuery({
+    queryKey: ["atendimento-indicadores-hoje", periodo, tipo],
+    queryFn: async () => {
+      const { data, error } = await rpc("atendimento_indicadores", { p_de: inicioPeriodo(periodo).toISOString(), p_ate: new Date().toISOString(), p_uso: pUso(tipo) });
       if (error) throw new Error(error.message);
       return (data || []) as Indicador[];
     },
@@ -54,11 +78,11 @@ export function useIndicadores(periodo: Periodo) {
 }
 
 export type PontoSerie = { bucket: string; esperas: number; em_meta: number; depois: number; sem_resposta: number; mediana_min: number | null; automaticas: number };
-export function useSerie(periodo: Periodo) {
+export function useSerie(periodo: Periodo, tipo: TipoNumero = "todos") {
   return useQuery({
-    queryKey: ["atendimento-indicadores-hoje", "serie", periodo],
+    queryKey: ["atendimento-indicadores-hoje", "serie", periodo, tipo],
     queryFn: async () => {
-      const { data, error } = await rpc("atendimento_serie", { p_de: inicioPeriodo(periodo).toISOString(), p_ate: new Date().toISOString(), p_bucket: periodo === "hoje" ? "hour" : "day" });
+      const { data, error } = await rpc("atendimento_serie", { p_de: inicioPeriodo(periodo).toISOString(), p_ate: new Date().toISOString(), p_bucket: periodo === "hoje" ? "hour" : "day", p_uso: pUso(tipo) });
       if (error) throw new Error(error.message);
       return ((data || []) as PontoSerie[]).map((p) => ({ ...p, mediana_min: p.mediana_min == null ? null : Number(p.mediana_min) }));
     },
