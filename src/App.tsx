@@ -94,7 +94,9 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <AuthProvider>
-            <AlertaDemandasAtrasadasModal />
+            {/* Modal de "itens atrasados" desligado em 24/11 (Raul: "não pode mais aparecer"). Para admin ele somava as
+                pendências de todos os setores (200 "Captação de edital" de janeiro) e travava a tela a cada 40 min,
+                inclusive na frente dos sócios. Os atrasados continuam nas telas de demandas. */}
             <AlertaTarefasHoraModal />
             <Routes>
             <Route path="/auth" element={<Auth />} />
