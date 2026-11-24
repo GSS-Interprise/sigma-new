@@ -15,7 +15,8 @@ import { calcularIndicadores, daModalidade, destinoDoAviso, modalidadeDoExame, p
 
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { "Content-Type": "application/json" } });
 // CEPON entrou em 22/11 (segunda estação: o mesmo Vue PACS do Marieta não abre os dois juntos na mesma máquina).
-const UNIDADES = ["marieta", "cepon"];
+// Tijucas (Animati) e Mobilemed entraram nos avisos em 24/11.
+const UNIDADES = ["marieta", "cepon", "tijucas", "mobilemed"];
 // Lembrete por WhatsApp enquanto a estação continua parada (fim de semana passava em branco só com e-mail).
 const LEMBRETE_QUEDA_H = 3;
 const LIMITE_MIN = 15;
@@ -143,7 +144,7 @@ async function statusTemplates(admin: any) {
 // Envio pela conta Chakra GSS, plugin d9a6180c (BM GSS, inclui a Amni): é a conta em que os modelos foram criados.
 const PLUGIN_GSS = "d9a6180c-4ae4-4ed4-9c16-401b781e1ee7";
 const ORIGEM: Record<string, string> = { ps: "Pronto Socorro", internado: "Internado", externo: "Externo" };
-const NOME_UNIDADE: Record<string, string> = { marieta: "Hospital Marieta", cepon: "CEPON" };
+const NOME_UNIDADE: Record<string, string> = { marieta: "Hospital Marieta", cepon: "CEPON", tijucas: "Tijucas", mobilemed: "Mobilemed" };
 const dig = (v: unknown) => String(v ?? "").replace(/\D/g, "");
 // Mesmo número com ou sem o 9 e o 55: compara DDD + 8 últimos dígitos.
 const mesmoNumero = (a: string, b: string) => {
@@ -241,8 +242,12 @@ async function checarExames(admin: any, forcar = false, unidades = UNIDADES, tes
     const doGrupo = new Map<string, string>(exames.flatMap((e: any) => e.irmaos.map((id: string) => [id, e.id] as [string, string])));
     const ja = (jaBruto ?? []).map((a: any) => ({ ...a, exame_id: doGrupo.get(a.exame_id) ?? a.exame_id }));
     let enviados = 0;
+    // Mesma equipe em todas as unidades (Raul, 24/11): unidade sem escala própria futura usa a da Marieta. Se um dia
+    // a unidade ganhar escala própria na tela, ela passa a valer sozinha.
+    const { count: propria } = await admin.from("sla_plantao").select("id", { count: "exact", head: true })
+      .eq("unidade", unidade).gt("fim", agora.toISOString());
     const { data: escala } = await admin.from("sla_plantao").select("id, papel, nome, telefone, email, modalidade")
-      .eq("unidade", unidade).lte("inicio", agora.toISOString()).gt("fim", agora.toISOString());
+      .eq("unidade", propria ? unidade : "marieta").lte("inicio", agora.toISOString()).gt("fim", agora.toISOString());
     const plantonistas = (escala ?? []).filter((p: any) => p.papel === "plantonista");
 
     for (const e of exames) {
