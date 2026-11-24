@@ -12,10 +12,18 @@ export default function NumerosWhatsApp() {
   const { hasCaptacaoPermission } = useCaptacaoPermissions();
   if (!isAdmin && !hasCaptacaoPermission("seigzaps_config")) return <Navigate to="/" replace />;
   return (
-    <AppLayout>
-      <main className="mx-auto w-full max-w-7xl p-4 sm:p-6">
+    <AppLayout
+      headerActions={(
+        <div className="min-w-0">
+          <h1 className="font-display text-2xl font-bold">Números WhatsApp</h1>
+          <p className="truncate text-sm text-muted-foreground">Tipo, responsável e situação de cada número oficial da GSS</p>
+        </div>
+      )}
+    >
+      {/* largura cheia como as telas vizinhas (SLA ao vivo): a tabela precisa do espaço para Tipo e Responsável */}
+      <div className="w-full p-4 md:p-6">
         <NumerosOficiaisTab />
-      </main>
+      </div>
     </AppLayout>
   );
 }

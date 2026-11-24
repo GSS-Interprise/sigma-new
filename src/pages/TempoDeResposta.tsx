@@ -5,7 +5,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Bot, Check, ExternalLink, Loader2, Star } from "lucide-react";
+import { ArrowRight, Bot, Check, ExternalLink, Loader2, Star, UserX } from "lucide-react";
 import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
@@ -35,8 +35,15 @@ export default function TempoDeResposta() {
   const { user } = useAuth();
   const pode = usePodeGerir(user?.id || null);
   return (
-    <AppLayout headerActions={<h1 className="font-display text-2xl font-bold">Tempo de resposta</h1>}>
-      <Tabs defaultValue="painel" className="space-y-5">
+    <AppLayout
+      headerActions={(
+        <div className="min-w-0">
+          <h1 className="font-display text-2xl font-bold">Tempo de resposta</h1>
+          <p className="truncate text-sm text-muted-foreground">Quem está esperando resposta no WhatsApp, há quanto tempo e com quem está</p>
+        </div>
+      )}
+    >
+      <Tabs defaultValue="painel" className="space-y-5 p-4 md:p-6">
         <TabsList>
           <TabsTrigger value="painel">Painel</TabsTrigger>
           <TabsTrigger value="contatos">Contatos marcados</TabsTrigger>
@@ -67,23 +74,30 @@ function Painel() {
   const doTipo = (e: Espera) => tipo === "todos" || e.uso === tipo;
   const esperandoAgora = (fila.data || []).filter((e) => !e.ia_atuando && minutosDesde(e.esperando_desde, agora) < DIA_MIN);
   const contaTipo = (t: TipoNumero) => esperandoAgora.filter((e) => t === "todos" || e.uso === t).length;
-  const numerosDoTipo = (numerosTipo.data || []).filter((n) => tipo === "todos" || n.uso === tipo).length;
+  const numerosDoTipoLista = (numerosTipo.data || []).filter((n) => tipo === "todos" || n.uso === tipo);
+  const numerosDoTipo = numerosDoTipoLista.length;
+  // Número sem dono vira um aviso só, no topo, com o caminho para resolver (antes repetia "Sem responsável" em cada linha).
+  const semDonoTipo = numerosDoTipoLista.filter((n) => !n.responsavel_id).length;
   const rotuloTipo = TIPOS_NUMERO.find((t) => t.id === tipo)!.rotulo;
 
   const seletores = (
     <div className="flex flex-wrap items-center justify-between gap-3">
-      <div className="inline-flex rounded-lg border bg-card p-0.5" role="radiogroup" aria-label="Tipo de número">
-        {TIPOS_NUMERO.map((t) => {
-          const n = fila.isLoading ? null : contaTipo(t.id);
-          return (
-            <button key={t.id} type="button" role="radio" aria-checked={tipo === t.id} onClick={() => setTipo(t.id)}
-              title={n ? `${n} esperando resposta agora` : undefined}
-              className={cn("inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-sm font-medium transition-colors", tipo === t.id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}>
-              {t.rotulo}
-              {!!n && <span className={cn("rounded-full px-1.5 text-xs tabular-nums", tipo === t.id ? "bg-primary-foreground/20" : "bg-amber-100 text-amber-900")}>{n}</span>}
-            </button>
-          );
-        })}
+      {/* "Qual operação estou vendo": cada tipo de número é uma operação com fila e indicadores próprios. */}
+      <div className="flex flex-wrap items-center gap-3">
+        <span id="rotulo-operacao" className="text-sm font-medium text-muted-foreground">Operação</span>
+        <div className="inline-flex rounded-lg border bg-card p-1 shadow-sm" role="radiogroup" aria-labelledby="rotulo-operacao">
+          {TIPOS_NUMERO.map((t) => {
+            const n = fila.isLoading ? null : contaTipo(t.id);
+            return (
+              <button key={t.id} type="button" role="radio" aria-checked={tipo === t.id} onClick={() => setTipo(t.id)}
+                title={n ? `${n} esperando resposta agora` : undefined}
+                className={cn("inline-flex h-9 items-center gap-1.5 rounded-md px-4 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", tipo === t.id ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground")}>
+                {t.rotulo}
+                {!!n && <span className={cn("rounded-full px-1.5 text-xs tabular-nums", tipo === t.id ? "bg-primary-foreground/20" : "bg-amber-100 text-amber-900")}>{n}</span>}
+              </button>
+            );
+          })}
+        </div>
       </div>
       <div className="flex items-center gap-4">
         <p className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -93,7 +107,7 @@ function Painel() {
         <div className="inline-flex rounded-lg border bg-card p-0.5" role="radiogroup" aria-label="Período">
           {PERIODOS.map((p) => (
             <button key={p.id} type="button" role="radio" aria-checked={periodo === p.id} onClick={() => setPeriodo(p.id)}
-              className={cn("h-8 rounded-md px-3 text-sm font-medium transition-colors", periodo === p.id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}>
+              className={cn("h-8 rounded-md px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", periodo === p.id ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground")}>
               {p.rotulo}
             </button>
           ))}
@@ -140,7 +154,7 @@ function Painel() {
 
       <div className="grid gap-4 xl:grid-cols-12">
         <section className={cn("rounded-xl border p-5 xl:col-span-4", esperandoPessoa.length ? "border-amber-200 bg-amber-50/70" : "border-emerald-200 bg-emerald-50/60")}>
-          <p className="text-sm font-medium text-muted-foreground">Espera você agora</p>
+          <p className="text-sm font-medium text-muted-foreground">Espera você agora{tipo !== "todos" && <> · {rotuloTipo}</>}</p>
           {fila.isLoading ? <Skeleton className="mt-2 h-12 w-56" /> : (
             <>
               <p className="mt-1 font-display text-5xl font-bold tabular-nums leading-none">{esperandoPessoa.length}</p>
@@ -164,6 +178,21 @@ function Painel() {
         </div>
       </div>
 
+      {semDonoTipo > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card px-4 py-2.5 text-sm">
+          <p className="flex items-center gap-2.5">
+            <UserX className="h-4 w-4 shrink-0 text-amber-700" aria-hidden />
+            <span>
+              <strong className="font-semibold tabular-nums">{semDonoTipo} {semDonoTipo === 1 ? "número sem responsável" : "números sem responsável"}</strong>
+              <span className="text-muted-foreground"> · a espera deles não é cobrada de ninguém</span>
+            </span>
+          </p>
+          <Button asChild size="sm" variant="outline" className="h-8">
+            <Link to="/numeros-whatsapp">Definir em Números WhatsApp <ArrowRight className="ml-1.5 h-3.5 w-3.5" /></Link>
+          </Button>
+        </div>
+      )}
+
       {semEco && (
         <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
           Nenhuma resposta digitada no celular chegou ao Sigma {rotuloPeriodo}. Se a equipe respondeu pelo celular, a ligação do WhatsApp do celular com o Sigma caiu.
@@ -175,11 +204,6 @@ function Painel() {
         <div className="space-y-4">
           <Cartao titulo="Quem responde como" apoio={`Mediana até a 1ª resposta ${rotuloPeriodo} · traço = meta`}>
             {ind.isLoading ? <Skeleton className="h-24 w-full" /> : ind.isError ? <p className="text-sm text-destructive">{(ind.error as Error).message}</p> : <PorPessoa linhas={ind.data || []} meta={meta} />}
-            {humanas.some((l) => !l.pessoa_id) && (
-              <p className="mt-4 border-t pt-3 text-xs text-muted-foreground">
-                Número sem responsável não mostra quem demorou. Defina em <Link className="underline" to="/numeros-whatsapp">Números WhatsApp</Link>.
-              </p>
-            )}
           </Cartao>
           <PorNumero esperas={esperandoPessoa} />
         </div>
@@ -306,8 +330,9 @@ function LinhaEspera({ e, agora }: { e: Espera; agora: Date }) {
         </p>
         <p className="truncate text-sm text-muted-foreground">{e.mensagens > 1 ? `${e.mensagens} mensagens · ` : ""}{e.ultima_mensagem || "—"}</p>
       </div>
+      {/* Sem dono, a linha mostra só o número: o aviso único do topo já cobra o responsável. */}
       <div className="hidden w-[140px] shrink-0 text-right text-xs lg:block">
-        <p className="truncate font-medium">{e.responsavel_nome || "Sem responsável"}</p>
+        {e.responsavel_nome && <p className="truncate font-medium">{e.responsavel_nome}</p>}
         <p className="text-muted-foreground">número final {ultimos4(e.numero)}</p>
       </div>
       <div className="flex w-[104px] shrink-0 flex-col items-end gap-1">

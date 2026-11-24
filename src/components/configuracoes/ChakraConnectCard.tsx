@@ -93,7 +93,11 @@ function loadChakraSdk() {
   return chakraSdkPromise;
 }
 
-export function ChakraConnectCard() {
+/**
+ * modo "conectar": só o fluxo de conexão (sem o cartão, a explicação e a lista de vinculados), para abrir num painel
+ * lateral da tela Números WhatsApp, que já mostra a lista. onConectado avisa quem abriu para reler os números.
+ */
+export function ChakraConnectCard({ modo = "completo", onConectado }: { modo?: "completo" | "conectar"; onConectado?: () => void } = {}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const sdkInstance = useRef<{ destroy?: () => void } | null>(null);
   const pluginIdTouched = useRef(false);
@@ -185,6 +189,7 @@ export function ChakraConnectCard() {
       if (error) throw error;
       if (!result?.ok) throw new Error(result?.error || "Não foi possível salvar a conexão.");
       toast.success("WhatsApp conectado ao Sigma.");
+      onConectado?.();
       setConnectToken(null);
       sdkInstance.current?.destroy?.();
       sdkInstance.current = null;
@@ -271,6 +276,90 @@ export function ChakraConnectCard() {
     return () => { cancelled = true; };
   }, [connectToken]);
 
+  const fluxo = (
+    <>
+      <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
+        <div className="space-y-2">
+          <Label htmlFor="chakra-plugin-id">Conexão da GSS no Chakra</Label>
+          <Input
+            id="chakra-plugin-id"
+            value={pluginId}
+            onChange={(event) => {
+              pluginIdTouched.current = true;
+              setPluginId(event.target.value);
+            }}
+            placeholder="Plugin ID existente ou vazio para criar outro"
+          />
+        </div>
+        <Button onClick={prepareConnection} disabled={isPreparing || isSaving} className="min-h-11">
+          {isPreparing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <QrCode className="mr-2 h-4 w-4" />}
+          Iniciar conexão
+        </Button>
+      </div>
+      {/* a ajuda fica fora da grade para o botão alinhar com o campo, não com o fim do texto */}
+      <p className="-mt-3 text-xs text-muted-foreground">
+        {pluginId
+          ? "O ID existente foi preenchido para reutilizar a conexão da GSS. Confirme que este é o plugin da GSS antes de continuar."
+          : "Para outro número ou portfólio da mesma GSS, use o Plugin ID já existente. Deixe vazio apenas se quiser criar um novo plugin no Chakra."}
+      </p>
+      <div className="rounded-lg border border-slate-200 p-3 text-xs text-muted-foreground">
+        <p className="font-medium text-foreground">Etapas da conexão</p>
+        <p className="mt-1">Iniciar aqui → entrar na Meta → escolher o portfólio e a conta WhatsApp (WABA) → autorizar o número. A lista é atualizada após o fluxo ser concluído e o número ser salvo.</p>
+      </div>
+
+      {connectToken && (
+        <>
+          <Separator />
+          <div>
+            <p className="mb-2 text-sm font-medium">Conectar número da GSS</p>
+            <div id="chakra-whatsapp-connect" ref={containerRef} className="min-h-[260px] overflow-hidden rounded-lg border bg-muted/20 p-3" />
+            {isSaving && <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Salvando os dados no Sigma…</p>}
+            <p className="mt-2 text-xs text-muted-foreground">O token expira em 1 hora. Se necessário, gere uma nova conexão.</p>
+          </div>
+        </>
+      )}
+
+      {pendingConnection && (
+        <Alert className="border-amber-300 bg-amber-50">
+          <Smartphone className="h-4 w-4 text-amber-700" />
+          <AlertDescription className="space-y-3">
+            <p className="font-medium text-amber-950">O Chakra retornou mais de um número.</p>
+            <p className="text-sm text-amber-900">
+              Selecione qual número da GSS deseja vincular agora. Os demais não serão importados automaticamente; conclua uma vinculação para cada número que também deve aparecer e ser usado no Sigma.
+            </p>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <Select
+                value={pendingConnection.selectedPhoneNumberId}
+                onValueChange={(value) => setPendingConnection((current) => current ? { ...current, selectedPhoneNumberId: value } : current)}
+              >
+                <SelectTrigger className="min-h-11 w-full bg-background sm:max-w-md">
+                  <SelectValue placeholder="Selecione o número do Sigma" />
+                </SelectTrigger>
+                <SelectContent>
+                  {pendingConnection.phones.map((phone) => (
+                    <SelectItem key={phone.phone_number_id} value={phone.phone_number_id}>
+                      {phone.display_name || phone.phone_e164 || phone.phone_number_id} {phone.phone_e164 ? `(${phone.phone_e164})` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                className="min-h-11"
+                disabled={!pendingConnection.selectedPhoneNumberId || isSaving}
+                onClick={() => void saveConnection(pendingConnection.payload, pendingConnection.selectedPhoneNumberId)}
+              >
+                {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+                Vincular este número
+              </Button>
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
+    </>
+  );
+
+  if (modo === "conectar") return <div className="space-y-5">{fluxo}</div>;
+
   return (
     <Card className="border-emerald-200 shadow-sm">
       <CardHeader>
@@ -303,82 +392,7 @@ export function ChakraConnectCard() {
           </p>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
-          <div className="space-y-2">
-            <Label htmlFor="chakra-plugin-id">Conexão da GSS no Chakra</Label>
-            <Input
-              id="chakra-plugin-id"
-              value={pluginId}
-              onChange={(event) => {
-                pluginIdTouched.current = true;
-                setPluginId(event.target.value);
-              }}
-              placeholder="Plugin ID existente ou vazio para criar outro"
-            />
-            <p className="text-xs text-muted-foreground">
-              {pluginId
-                ? "O ID existente foi preenchido para reutilizar a conexão da GSS. Confirme que este é o plugin da GSS antes de continuar."
-                : "Para outro número ou portfólio da mesma GSS, use o Plugin ID já existente. Deixe vazio apenas se quiser criar um novo plugin no Chakra."}
-            </p>
-          </div>
-          <Button onClick={prepareConnection} disabled={isPreparing || isSaving} className="min-h-11">
-            {isPreparing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <QrCode className="mr-2 h-4 w-4" />}
-            Iniciar conexão
-          </Button>
-        </div>
-        <div className="-mt-3 rounded-lg border border-slate-200 p-3 text-xs text-muted-foreground">
-          <p className="font-medium text-foreground">Etapas da conexão</p>
-          <p className="mt-1">Iniciar aqui → entrar na Meta → escolher o portfólio e a conta WhatsApp (WABA) → autorizar o número. A lista é atualizada após o fluxo ser concluído e o número ser salvo.</p>
-        </div>
-
-        {connectToken && (
-          <>
-            <Separator />
-            <div>
-              <p className="mb-2 text-sm font-medium">Conectar número da GSS</p>
-              <div id="chakra-whatsapp-connect" ref={containerRef} className="min-h-[260px] overflow-hidden rounded-lg border bg-muted/20 p-3" />
-              {isSaving && <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Salvando os dados no Sigma…</p>}
-              <p className="mt-2 text-xs text-muted-foreground">O token expira em 1 hora. Se necessário, gere uma nova conexão.</p>
-            </div>
-          </>
-        )}
-
-        {pendingConnection && (
-          <Alert className="border-amber-300 bg-amber-50">
-            <Smartphone className="h-4 w-4 text-amber-700" />
-            <AlertDescription className="space-y-3">
-              <p className="font-medium text-amber-950">O Chakra retornou mais de um número.</p>
-              <p className="text-sm text-amber-900">
-                Selecione qual número da GSS deseja vincular agora. Os demais não serão importados automaticamente; conclua uma vinculação para cada número que também deve aparecer e ser usado no Sigma.
-              </p>
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                <Select
-                  value={pendingConnection.selectedPhoneNumberId}
-                  onValueChange={(value) => setPendingConnection((current) => current ? { ...current, selectedPhoneNumberId: value } : current)}
-                >
-                  <SelectTrigger className="min-h-11 w-full bg-background sm:max-w-md">
-                    <SelectValue placeholder="Selecione o número do Sigma" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {pendingConnection.phones.map((phone) => (
-                      <SelectItem key={phone.phone_number_id} value={phone.phone_number_id}>
-                        {phone.display_name || phone.phone_e164 || phone.phone_number_id} {phone.phone_e164 ? `(${phone.phone_e164})` : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button
-                  className="min-h-11"
-                  disabled={!pendingConnection.selectedPhoneNumberId || isSaving}
-                  onClick={() => void saveConnection(pendingConnection.payload, pendingConnection.selectedPhoneNumberId)}
-                >
-                  {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
-                  Vincular este número
-                </Button>
-              </div>
-            </AlertDescription>
-          </Alert>
-        )}
+        {fluxo}
 
         <Separator />
         <div className="space-y-3">

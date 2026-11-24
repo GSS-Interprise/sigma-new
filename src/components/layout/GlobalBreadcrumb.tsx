@@ -41,6 +41,7 @@ const ROUTE_LABELS: Record<string, string> = {
   sigzap: "Conversas",
   conversas: "Conversas",
   "tempo-de-resposta": "Tempo de resposta",
+  "numeros-whatsapp": "Números WhatsApp",
 };
 
 // Sub-views via query param ?view=xxx ou ?tab=xxx

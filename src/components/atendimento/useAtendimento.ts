@@ -47,7 +47,7 @@ export const inicioPeriodo = (p: Periodo, agora = new Date()) => {
  */
 export type TipoNumero = "todos" | "prospeccao" | "escalas" | "clientes";
 export const TIPOS_NUMERO: { id: TipoNumero; rotulo: string }[] = [
-  { id: "todos", rotulo: "Todos" }, { id: "prospeccao", rotulo: "Prospecção" }, { id: "escalas", rotulo: "Escalas" }, { id: "clientes", rotulo: "Clientes" },
+  { id: "todos", rotulo: "Todas" }, { id: "prospeccao", rotulo: "Prospecção" }, { id: "escalas", rotulo: "Escalas" }, { id: "clientes", rotulo: "Clientes" },
 ];
 const pUso = (tipo: TipoNumero) => (tipo === "todos" ? null : tipo);
 
