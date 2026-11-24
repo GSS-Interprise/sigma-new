@@ -5,6 +5,34 @@ import type { Database } from './types';
 const SUPABASE_URL = "https://zupsbgtoeoixfokzkjro.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp1cHNiZ3RvZW9peGZva3pranJvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxNTQwODEsImV4cCI6MjA5MDczMDA4MX0.BKhpdlsDdH13j9pJYwZgvuOeBS10DDH5GehQ3efpqkw";
 
+// Desvio pelo domínio do Sigma (24/11/2026). Alguns provedores de internet no Brasil não resolvem *.supabase.co
+// (incidente aberto da Supabase "Access issues from some providers in Brazil"): o navegador dá "Failed to fetch" no
+// login, no "esqueci minha senha" e em qualquer tela, para uns usuários e não para outros (Wagner, Evelyn...).
+// Primeiro tenta o caminho normal; se a rede falhar antes de chegar ao servidor, refaz pelo próprio domínio do Sigma
+// (vercel.json: /sb/* -> projeto Supabase) e segue por ele nesta aba. Realtime (WebSocket) não passa pelo desvio.
+const DESVIO = typeof window !== "undefined" && /gestaoservicosaude\.com\.br$/.test(window.location.hostname)
+  ? `${window.location.origin}/sb` : null;
+let usarDesvio = (() => { try { return sessionStorage.getItem("sb_desvio") === "1"; } catch { return false; } })();
+
+// Vale para o fetch da página inteira (não só o deste cliente): ~20 telas chamam /functions/v1 com fetch direto.
+const fetchOriginal: typeof fetch = typeof window !== "undefined" ? window.fetch.bind(window) : fetch;
+const fetchComDesvio: typeof fetch = async (input, init) => {
+  const url = typeof input === "string" ? input : input instanceof URL ? input.href : null;
+  if (!DESVIO || !url || !url.startsWith(SUPABASE_URL)) return fetchOriginal(input, init);
+  const pelaDesvio = () => fetchOriginal(DESVIO + url.slice(SUPABASE_URL.length), init);
+  if (usarDesvio) return pelaDesvio();
+  try {
+    return await fetchOriginal(input, init);
+  } catch (e) {
+    if (init?.signal?.aborted) throw e;
+    usarDesvio = true;
+    try { sessionStorage.setItem("sb_desvio", "1"); } catch { /* sem sessionStorage: vale só até recarregar */ }
+    return pelaDesvio();
+  }
+};
+
+if (DESVIO) window.fetch = fetchComDesvio;
+
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 
@@ -13,5 +41,5 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
     storage: localStorage,
     persistSession: true,
     autoRefreshToken: true,
-  }
+  },
 });
