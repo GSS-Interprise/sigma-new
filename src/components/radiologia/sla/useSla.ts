@@ -12,6 +12,8 @@ export const UNIDADES = [
   { id: "cepon", nome: "CEPON" },
   // 23/11/2026: Tijucas lido pela API do Animati (prioridades "GSS LAUDOS", sem laudo), PC da baia do Wagner.
   { id: "tijucas", nome: "Tijucas" },
+  // 24/11/2026: Mobilemed lido pela API do portal (exames não liberados, prazo do próprio Mobilemed), mesmo PC.
+  { id: "mobilemed", nome: "Mobilemed" },
 ] as const;
 export type UnidadeId = (typeof UNIDADES)[number]["id"];
 export function useUnidade() {

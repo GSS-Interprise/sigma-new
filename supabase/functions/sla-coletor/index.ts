@@ -5,12 +5,13 @@
 //   { unidade, lida_em, status: "ok"|"sem_grade"|"erro", cheia, linhas: [{ data, hora, origem, vence? }], detalhe }
 // Tijucas (23/11) não usa OCR: o coletor lê a API do Animati, manda o prazo do próprio PACS em "vence" e
 // detalhe.lista_completa = true (lista vazia vale como fila vazia). Ver estacao-gss/sla/tijucas/.
+// Mobilemed (24/11) igual ao Tijucas, pela API do portal (prazo = sla_expiration_date). Ver estacao-gss/sla/mobilemed/.
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { "Content-Type": "application/json" } });
 // CEPON entrou em 22/11 (segunda estação, PC da Brenda).
-const UNIDADES = new Set(["marieta", "cepon", "tijucas"]);
+const UNIDADES = new Set(["marieta", "cepon", "tijucas", "mobilemed"]);
 const ORIGENS = new Set(["ps", "internado", "externo"]);
 
 serve(async (req) => {
