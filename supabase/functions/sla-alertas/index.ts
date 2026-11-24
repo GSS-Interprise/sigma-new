@@ -201,6 +201,9 @@ async function checarExames(admin: any, forcar = false, unidades = UNIDADES, tes
     .in("friendly_name", ["gss_sla_laudo_prazo_v2", "gss_sla_laudo_vencido_v2"]).eq("approval_status", "approved");
   const v2Aprovado = (v2 ?? []).length === 2;
   const testeDestino = await config(admin, "sla_teste_destino");
+  // Externo não avisa o plantão (Wagner, 24/11: "o externo não vejo tanta necessidade agora para o plantão").
+  // Continua na fila e no resumo; para voltar a avisar, config sla_avisar_externo = "true".
+  const avisarExterno = (await config(admin, "sla_avisar_externo")) === "true";
   // Sequência de avisos configurada nas abas Avisos e Coordenação (sla_aviso_passos, 21/11).
   const { data: passosTodos } = await admin.from("sla_aviso_passos")
     .select("id, unidade, destino, minutos, canal, ativo, contato_nome, contato_papel, contato_telefone, contato_email")
@@ -231,6 +234,7 @@ async function checarExames(admin: any, forcar = false, unidades = UNIDADES, tes
     const grupos = new Map<string, any>();
     for (const e of todos ?? []) {
       if (agora.getTime() - new Date(e.vence_em).getTime() > MAX_ATRASO_MIN * 60_000) continue;
+      if (e.origem === "externo" && !avisarExterno) continue;
       const k = chaveExame(e);
       if (!grupos.has(k)) grupos.set(k, { ...e, irmaos: [e.id] }); else grupos.get(k).irmaos.push(e.id);
     }
