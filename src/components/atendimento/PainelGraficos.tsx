@@ -1,5 +1,5 @@
 // Peças visuais do painel Tempo de resposta. Paleta validada (dataviz, validate_palette.js, 22/11/2026):
-// verde-escuro = respondida dentro da meta; verde-claro = respondida depois; âmbar = sem resposta (espera você).
+// verde-escuro = respondida dentro da meta (a da categoria do contato, atendimento_regras); verde-claro = respondida depois; âmbar = sem resposta (espera você).
 // Uma cor por significado, igual em todos os gráficos; legenda sempre com o número (o verde-claro tem pouco contraste).
 import type { ReactNode } from "react";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -82,14 +82,14 @@ export function BarraFaixas({ porFaixa, rotulos }: { porFaixa: number[]; rotulos
   );
 }
 
-function DicaSerie({ active, payload, label, porHora, meta }: { active?: boolean; payload?: { payload: PontoSerie }[]; label?: string; porHora: boolean; meta: number }) {
+function DicaSerie({ active, payload, label, porHora }: { active?: boolean; payload?: { payload: PontoSerie }[]; label?: string; porHora: boolean }) {
   if (!active || !payload?.length || !label) return null;
   const p = payload[0].payload;
   return (
     <div className="rounded-lg border bg-popover px-3 py-2 text-xs shadow-md">
       <p className="mb-1 font-semibold">{fmtBucket(label, porHora)}</p>
       <p>{p.esperas} pediram resposta</p>
-      <p><span style={{ color: COR.meta }}>●</span> {p.em_meta} em até {meta} min</p>
+      <p><span style={{ color: COR.meta }}>●</span> {p.em_meta} dentro da meta</p>
       <p><span style={{ color: COR.depois }}>●</span> {p.depois} depois</p>
       <p><span style={{ color: COR.sem }}>●</span> {p.sem_resposta} sem resposta</p>
       {p.mediana_min != null && <p className="mt-1 text-muted-foreground">Mediana {tempoCurto(Math.round(p.mediana_min))}</p>}
@@ -97,12 +97,12 @@ function DicaSerie({ active, payload, label, porHora, meta }: { active?: boolean
   );
 }
 
-export function GraficoVolume({ serie, porHora, meta }: { serie: PontoSerie[]; porHora: boolean; meta: number }) {
+export function GraficoVolume({ serie, porHora }: { serie: PontoSerie[]; porHora: boolean }) {
   const tot = serie.reduce((a, p) => ({ m: a.m + p.em_meta, d: a.d + p.depois, s: a.s + p.sem_resposta }), { m: 0, d: 0, s: 0 });
   return (
     <div>
       <ul className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-        <li className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: COR.meta }} />Em até {meta} min <strong className="tabular-nums text-foreground">{tot.m}</strong></li>
+        <li className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: COR.meta }} />Dentro da meta <strong className="tabular-nums text-foreground">{tot.m}</strong></li>
         <li className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: COR.depois }} />Depois <strong className="tabular-nums text-foreground">{tot.d}</strong></li>
         <li className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: COR.sem }} />Sem resposta <strong className="tabular-nums text-foreground">{tot.s}</strong></li>
       </ul>
@@ -112,7 +112,7 @@ export function GraficoVolume({ serie, porHora, meta }: { serie: PontoSerie[]; p
             <CartesianGrid vertical={false} stroke={COR.grade} strokeDasharray="3 3" />
             <XAxis dataKey="bucket" tickFormatter={(v) => fmtBucket(v, porHora)} tick={{ fontSize: 11, fill: COR.texto }} axisLine={false} tickLine={false} minTickGap={12} />
             <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: COR.texto }} axisLine={false} tickLine={false} width={44} />
-            <Tooltip cursor={{ fill: "hsl(var(--muted))", opacity: 0.5 }} content={<DicaSerie porHora={porHora} meta={meta} />} />
+            <Tooltip cursor={{ fill: "hsl(var(--muted))", opacity: 0.5 }} content={<DicaSerie porHora={porHora} />} />
             <Bar dataKey="em_meta" stackId="a" fill={COR.meta} stroke="hsl(var(--card))" strokeWidth={1} isAnimationActive={false} />
             <Bar dataKey="depois" stackId="a" fill={COR.depois} stroke="hsl(var(--card))" strokeWidth={1} isAnimationActive={false} />
             <Bar dataKey="sem_resposta" stackId="a" fill={COR.sem} stroke="hsl(var(--card))" strokeWidth={1} radius={[4, 4, 0, 0]} isAnimationActive={false} />
@@ -161,10 +161,12 @@ export function PorPessoa({ linhas, meta }: { linhas: Indicador[]; meta: number 
             </div>
             <div className="relative h-2.5 rounded-full bg-muted">
               {med != null && <div className="h-full rounded-full" style={{ width: `${Math.max(3, Math.min(100, (100 * med) / escala))}%`, background: dentro ? COR.meta : COR.sem }} />}
-              <div className="absolute -top-1 h-[18px] w-0.5 rounded bg-foreground/40" style={{ left: `${(100 * meta) / escala}%` }} title={`meta ${meta} min`} />
+              <div className="absolute -top-1 h-[18px] w-0.5 rounded bg-foreground/40" style={{ left: `${(100 * meta) / escala}%` }} title={`meta padrão ${meta} min`} />
             </div>
             <p className="mt-1.5 text-xs text-muted-foreground">
               {l.respondidas} de {l.esperas} respondidas
+              {/* em_meta usa a meta da categoria de cada conversa; a barra acima compara com a meta padrão. */}
+              {l.esperas > 0 && l.em_meta != null && <> · {Math.round((100 * l.em_meta) / l.esperas)}% dentro da meta</>}
               {l.sem_resposta > 0 && <> · <span className="font-semibold text-amber-800">{l.sem_resposta} sem resposta</span></>}
             </p>
           </li>

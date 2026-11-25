@@ -1,5 +1,7 @@
 // Configuração dos avisos de conversa sem resposta (atendimento_config, linha única). Regras em
 // supabase/functions/_shared/atendimento.ts: a escada conta só minutos dentro do horário de atendimento.
+// Desde 25/11 a escada e a meta de cada tipo de contato ficam em atendimento_regras (RegrasPorTipo, no topo da aba);
+// atendimento_config.faixas e meta_minutos não são mais editadas aqui nem lidas pelos avisos.
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Plus, Trash2 } from "lucide-react";
@@ -11,14 +13,13 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { normalizarFone } from "./ContatosMarcados";
+import { RegrasPorTipo } from "./RegrasPorTipo";
 
 type Pessoa = { nome: string; fone: string };
-type Faixa = { min: number; para: "responsavel" | "coordenacao" | "diretoria" };
 type Config = {
-  faixas: Faixa[]; dias: number[]; hora_inicio: string; hora_fim: string; coordenacao: Pessoa[]; diretoria: Pessoa[];
-  avisos_ativos: boolean; modo_teste: boolean; teste_fone: string | null; meta_minutos: number; meta_pct: number;
+  dias: number[]; hora_inicio: string; hora_fim: string; coordenacao: Pessoa[]; diretoria: Pessoa[];
+  avisos_ativos: boolean; modo_teste: boolean; teste_fone: string | null; meta_pct: number;
 };
-const PARA: Record<Faixa["para"], string> = { responsavel: "quem está com o número", coordenacao: "a coordenação", diretoria: "coordenação e diretoria" };
 const DIAS = [[1, "Seg"], [2, "Ter"], [3, "Qua"], [4, "Qui"], [5, "Sex"], [6, "Sáb"], [7, "Dom"]] as const;
 const db = () => supabase as unknown as { from: (t: string) => any };
 
@@ -27,7 +28,7 @@ export function AvisosConfig({ podeGerir }: { podeGerir: boolean }) {
   const q = useQuery({
     queryKey: ["atendimento-config"],
     queryFn: async () => {
-      const { data, error } = await db().from("atendimento_config").select("faixas, dias, hora_inicio, hora_fim, coordenacao, diretoria, avisos_ativos, modo_teste, teste_fone, meta_minutos, meta_pct").eq("id", true).maybeSingle();
+      const { data, error } = await db().from("atendimento_config").select("dias, hora_inicio, hora_fim, coordenacao, diretoria, avisos_ativos, modo_teste, teste_fone, meta_pct").eq("id", true).maybeSingle();
       if (error) throw new Error(error.message);
       return data as Config | null;
     },
@@ -53,14 +54,12 @@ export function AvisosConfig({ podeGerir }: { podeGerir: boolean }) {
       if (c.modo_teste && !teste) throw new Error("Em modo teste, informe o telefone de teste.");
       if (c.hora_fim <= c.hora_inicio) throw new Error("O fim do atendimento precisa ser depois do início.");
       if (!c.dias.length) throw new Error("Marque ao menos um dia.");
-      const faixas = c.faixas.map((f) => ({ ...f, min: Math.round(Number(f.min)) }));
-      if (faixas.some((f) => !(f.min >= 1 && f.min <= 1440))) throw new Error("Cada faixa vai de 1 a 1440 minutos.");
-      const metaMin = Math.round(Number(c.meta_minutos)), metaPct = Math.round(Number(c.meta_pct));
-      if (!(metaMin >= 1 && metaMin <= 240) || !(metaPct >= 1 && metaPct <= 100)) throw new Error("Meta: de 1 a 240 minutos e de 1% a 100%.");
+      const metaPct = Math.round(Number(c.meta_pct));
+      if (!(metaPct >= 1 && metaPct <= 100)) throw new Error("Meta: de 1% a 100%.");
       const { error } = await db().from("atendimento_config").update({
-        faixas: [...faixas].sort((a, b) => a.min - b.min), dias: [...c.dias].sort(), hora_inicio: c.hora_inicio, hora_fim: c.hora_fim,
+        dias: [...c.dias].sort(), hora_inicio: c.hora_inicio, hora_fim: c.hora_fim,
         coordenacao: limpa(c.coordenacao), diretoria: limpa(c.diretoria), avisos_ativos: c.avisos_ativos, modo_teste: c.modo_teste,
-        teste_fone: teste, meta_minutos: metaMin, meta_pct: metaPct, atualizado_em: new Date().toISOString(),
+        teste_fone: teste, meta_pct: metaPct, atualizado_em: new Date().toISOString(),
       }).eq("id", true);
       if (error) throw new Error(error.message);
     },
@@ -74,6 +73,8 @@ export function AvisosConfig({ podeGerir }: { podeGerir: boolean }) {
   const modeloTxt = modelo.data === "approved" ? "Modelo do WhatsApp aprovado pela Meta." : modelo.data === "nao_criado" ? "Modelo do WhatsApp ainda não criado." : "Modelo do WhatsApp em análise na Meta: os avisos só saem depois da aprovação.";
 
   return (
+    <div className="space-y-4">
+    <RegrasPorTipo podeGerir={podeGerir} />
     <div className="grid gap-4 xl:grid-cols-2">
       <section className="space-y-4 rounded-lg border bg-card p-4">
         <div className="flex items-start justify-between gap-4">
@@ -82,16 +83,6 @@ export function AvisosConfig({ podeGerir }: { podeGerir: boolean }) {
             <p className="text-xs text-muted-foreground">{modeloTxt}</p>
           </div>
           <div className="flex shrink-0 items-center gap-2"><Label htmlFor="av-ativo">{c.avisos_ativos ? "Ligados" : "Desligados"}</Label><Switch id="av-ativo" checked={c.avisos_ativos} disabled={ed} onCheckedChange={(v) => set({ avisos_ativos: v })} /></div>
-        </div>
-        <div className="space-y-2">
-          <p className="text-sm font-medium">Escada (minutos dentro do horário de atendimento)</p>
-          {c.faixas.map((f, i) => (
-            <div key={i} className="flex items-center gap-2 text-sm">
-              <Input type="number" min={1} max={1440} className="h-9 w-20" aria-label={`Minutos da faixa ${i + 1}`} value={f.min} disabled={ed}
-                onChange={(e) => set({ faixas: c.faixas.map((x, j) => (j === i ? { ...x, min: Number(e.target.value) } : x)) })} />
-              <span className="text-muted-foreground">min sem resposta: avisa {PARA[f.para]}</span>
-            </div>
-          ))}
         </div>
         <div className="space-y-2">
           <p className="text-sm font-medium">Horário de atendimento</p>
@@ -123,18 +114,17 @@ export function AvisosConfig({ podeGerir }: { podeGerir: boolean }) {
           <p className="text-sm font-medium">Meta do painel</p>
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <Input type="number" min={1} max={100} className="h-9 w-20" aria-label="Meta em porcentagem" value={c.meta_pct} disabled={ed} onChange={(e) => set({ meta_pct: Number(e.target.value) })} />
-            <span className="text-muted-foreground">% respondidas em até</span>
-            <Input type="number" min={1} max={240} className="h-9 w-20" aria-label="Meta em minutos" value={c.meta_minutos} disabled={ed} onChange={(e) => set({ meta_minutos: Number(e.target.value) })} />
-            <span className="text-muted-foreground">min</span>
+            <span className="text-muted-foreground">% das conversas respondidas dentro da meta do tipo de contato</span>
           </div>
         </div>
-        <ListaPessoas titulo="Coordenação" ajuda="Recebe 60 min sem resposta e as conversas de número sem responsável" pessoas={c.coordenacao} ed={ed} onChange={(p) => set({ coordenacao: p })} />
-        <ListaPessoas titulo="Diretoria" ajuda="Recebe junto com a coordenação a partir de 180 min" pessoas={c.diretoria} ed={ed} onChange={(p) => set({ diretoria: p })} />
+        <ListaPessoas titulo="Coordenação" ajuda="Recebe no tempo da coluna Coordenação e as conversas de número sem responsável" pessoas={c.coordenacao} ed={ed} onChange={(p) => set({ coordenacao: p })} />
+        <ListaPessoas titulo="Diretoria" ajuda="Recebe junto com a coordenação no tempo da coluna Diretoria" pessoas={c.diretoria} ed={ed} onChange={(p) => set({ diretoria: p })} />
         <p className="text-xs text-muted-foreground">Quem está com cada número recebe pelo telefone do perfil dele no Sigma.</p>
         {podeGerir ? (
           <Button onClick={() => salvar.mutate()} disabled={salvar.isPending}>{salvar.isPending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Salvando…</> : "Salvar avisos"}</Button>
         ) : <p className="text-sm text-muted-foreground">Só a coordenação (admin, diretoria e gestão de captação) muda os avisos.</p>}
       </section>
+    </div>
     </div>
   );
 }

@@ -27,7 +27,8 @@ assume a conversa. O Maikon quer o mesmo para os sócios ("tu não ter acesso à
 ### 3a. Fonte do dado (já existe)
 - `sigzap_messages` + `sigzap_conversations` + `sigzap_instances` (provider `chakra`): 9 números conectados, todas as
   mensagens entram (inclusive as enviadas pelo celular, que chegam como echo `smb_message_echo`).
-- `whatsapp_chakra_connections`: `responsavel_id` e `uso` (prospeccao, escalas, clientes, financeiro, pessoal; ver §3g)
+- `whatsapp_chakra_connections`: `responsavel_id` e `uso` (prospeccao, escalas, clientes, ambulatorio, financeiro,
+  pessoal; ver §3g)
   são editados em Números WhatsApp. Em 24/11 nenhum número tinha responsável.
 - IA conduzindo = o contato é lead de campanha ativa com `tipo_envio` `ia`/`ambos`, na etapa contatado/em_conversa/
   aquecido e sem `humano_assumiu` (mesma regra do `campanha-ia-responder`).
@@ -83,6 +84,7 @@ fica em `whatsapp_chakra_connections.uso` (check `whatsapp_chakra_connections_us
 | `prospeccao` | Prospecção de médicos | Chips que falam com médicos para captar. Os únicos que entram em campanha. |
 | `escalas` | Escalas (médicos escalados) | Números da equipe de escalas (Danilo e outros) que conversam com os médicos já escalados. |
 | `clientes` | Clientes | Números que atendem os clientes (hospitais). |
+| `ambulatorio` | Ambulatório (consultas dos municípios) | Números que atendem as consultas ambulatoriais dos municípios (25/11, migration `20261125101000_whatsapp_uso_ambulatorio`). Nunca entram em campanha. |
 | `financeiro` | Financeiro | Automações financeiras (o da Amni). |
 | `pessoal` | Pessoal | Número pessoal conectado. |
 
@@ -93,10 +95,38 @@ Onde a GSS cadastra:
 - **Tempo de resposta › Contatos marcados**: quem é cliente (e contatos importantes), com nome e prioridade.
 - **Tempo de resposta › Avisos**: coordenação, diretoria, horário de atendimento, faixas e modo teste.
 
-No painel, o seletor **Todos / Prospecção / Escalas / Clientes** filtra a fila (`uso` que `atendimento_aguardando`
+No painel, o seletor **Todos / Prospecção / Escalas / Clientes / Ambulatório** filtra a fila (`uso` que `atendimento_aguardando`
 já devolvia) e os indicadores e gráficos (`atendimento_indicadores` e `atendimento_serie` ganharam `p_uso`; `null` =
 todos, que é o mesmo resultado de antes). Número que não está em `whatsapp_chakra_connections` só entra em "Todos".
-A meta é a mesma para os três tipos por enquanto; os avisos em escada não mudaram (valem para todos os números).
+A meta e os avisos não dependem do tipo do número: dependem do tipo de CONTATO (§3h).
+
+### 3h. Regras por tipo de contato (reunião com os sócios, 24/11; migration `20261125100000_atendimento_regras_por_tipo`)
+Uma escada e uma meta só para todo mundo não servia: pessoa-chave cobra mais rápido; cliente e médico têm prazo maior.
+- `atendimento_regras` — uma linha por `categoria` (`padrao`, `prioridade`, `cliente`, `medico`, `parceiro`, `outro`):
+  `meta_min`, `pessoa_min int[]` (avisos para quem está com o número), `coordenacao_min`, `diretoria_min` (null = não
+  avisa). Ler = quem vê a tela; mudar = admin, diretoria, gestor_captacao (mesmo molde de `atendimento_config`).
+- **Categoria da conversa** = `prioridade` se o contato marcado tem prioridade; senão o tipo do contato marcado; senão
+  `padrao` (função `atendimento_categoria`). Categoria sem linha cai na `padrao`.
+- Valores iniciais (sugestão; a GSS ajusta em Tempo de resposta › Avisos):
+
+  | Categoria | Meta | Pessoa | Coordenação | Diretoria |
+  |---|---|---|---|---|
+  | padrao (não marcado) | 10 | 3, 10 | 60 | 180 |
+  | prioridade | 10 | 3, 10 | 30 | 60 |
+  | cliente | 30 | 10, 30 | 60 | 180 |
+  | medico | 60 | 30, 60 | 120 | 240 |
+  | parceiro, outro | 10 | 3, 10 | 60 | 180 |
+
+  `padrao` = o comportamento de antes: para contato não marcado nada mudou (conferido por hash antes/depois em
+  `atendimento_aguardando_base`, `atendimento_indicadores_base` e `atendimento_serie_base`).
+- `atendimento_aguardando` devolve `categoria` e `meta_min` no fim de cada linha; `atendimento_indicadores` ganhou
+  `em_meta` (dentro da meta da categoria; `em_10min` continua fixo em 10 min, que é o que o agente lê);
+  `atendimento_serie.em_meta`/`depois` passaram a usar a meta de cada conversa.
+- Avisos: `_shared/atendimento.ts` (`escadaDe`) usa a escada da categoria; `atendimento_config.faixas` e
+  `meta_minutos` ficam no banco só como reserva (sem regra nenhuma, a escada única de antes vale).
+- Painel: a linha da fila mostra a categoria (menos Padrão) e a meta; fica âmbar ao passar da meta da categoria e
+  vermelha ao passar do aviso da coordenação. A aba **Sem resposta há mais de 24 h** lista as conversas esquecidas,
+  da maior espera para a menor; o topo mostra quantas são e leva até ela.
 
 ### 3f. Agente
 - Domínio `atendimento` no protocolo (`_shared/agente/dominios/atendimento.ts`): `atendimento_aguardando` e
@@ -129,6 +159,8 @@ A meta é a mesma para os três tipos por enquanto; os avisos em escada não mud
 - [x] T3 — Tela `/tempo-de-resposta`: fila ao vivo, números do dia, encerrar, contatos marcados, configuração dos avisos.
 - [x] T4 — Domínio `atendimento` no agente (assistente e Claude dos sócios) + casos da bateria. (22/11: protocolo v1.5.0, bateria 29/29; no MCP liberado só para admin)
 - [x] T6 — Tipo do número (escalas e clientes) e painel separado por tipo (§3g). (24/11)
+- [x] T7 — Regras por tipo de contato (§3h), lista "Sem resposta há mais de 24 h" e tipo de número Ambulatório (§3g).
+      (25/11, pedido dos sócios em 24/11; valores iniciais a confirmar com a GSS)
 - [ ] T5 — Alinhamento com a Ramone: destinos, horário, faixas, lista de clientes; responsáveis dos números; desligar
       o modo teste.
 

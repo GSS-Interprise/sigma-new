@@ -20,14 +20,17 @@ import {
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import {
-  type Espera, FAIXAS, faixaDe, minutosDesde, type Periodo, PERIODOS, rpc, tempoCurto, type TipoNumero, TIPOS_NUMERO, useAgora, useFila,
-  useIndicadores, useMetas, useNumerosPorTipo, usePodeGerir, useSerie, useTempoRealFila,
+  type Espera, estadoEspera, FAIXAS, faixaDe, minutosDesde, type Periodo, PERIODOS, type Regra, rotuloCategoria, rpc, tempoCurto, type TipoNumero,
+  TIPOS_NUMERO, useAgora, useFila, useIndicadores, useMetas, useNumerosPorTipo, usePodeGerir, useRegras, useSerie, useTempoRealFila,
 } from "@/components/atendimento/useAtendimento";
 import { BarraFaixas, Cartao, COR, COR_FAIXA, GraficoMediana, GraficoVolume, Kpi, PorPessoa } from "@/components/atendimento/PainelGraficos";
 import { ContatosMarcados } from "@/components/atendimento/ContatosMarcados";
 import { AvisosConfig } from "@/components/atendimento/AvisosConfig";
 
 const DIA_MIN = 24 * 60;
+// Cor da espera contra a meta da categoria (estadoEspera): neutro, âmbar (passou da meta), vermelho (coordenação avisada).
+const COR_ESTADO_TEXTO = [undefined, "#b45309", "#b91c1c"];
+const COR_ESTADO_BARRA = ["#d6d3d1", "#f59e0b", "#dc2626"];
 const ultimos4 = (n: string) => n.replace(/\D/g, "").slice(-4);
 const iniciais = (s: string) => s.replace(/[^\p{L}\s]/gu, " ").trim().split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join("").toUpperCase() || "?";
 
@@ -63,7 +66,10 @@ function Painel() {
   const [periodo, setPeriodo] = useState<Periodo>("hoje");
   // Prospecção, escalas e clientes são operações diferentes: tudo abaixo (fila, indicadores, gráficos) segue o tipo.
   const [tipo, setTipo] = useState<TipoNumero>("todos");
+  // Fica aqui (e não na Fila) para o topo poder abrir direto a lista de esquecidas (mais de 24 h sem resposta).
+  const [janela, setJanela] = useState<Janela>("recentes");
   const fila = useFila();
+  const regras = useRegras();
   const ind = useIndicadores(periodo, tipo);
   const serie = useSerie(periodo, tipo);
   const metas = useMetas();
@@ -134,6 +140,9 @@ function Painel() {
   const todas = (fila.data || []).filter(doTipo);
   const recentes = todas.filter((e) => minutosDesde(e.esperando_desde, agora) < DIA_MIN);
   const esperandoPessoa = recentes.filter((e) => !e.ia_atuando);
+  // Mesma conta da aba "Sem resposta há mais de 24 h" da fila (com IA atuando também), para o número bater.
+  const esquecidas = todas.filter((e) => minutosDesde(e.esperando_desde, agora) >= DIA_MIN).length;
+  const verEsquecidas = () => { setJanela("antigas"); document.getElementById("fila-atendimento")?.scrollIntoView({ behavior: "smooth", block: "start" }); };
   const maisAntiga = esperandoPessoa.reduce((m, e) => Math.max(m, minutosDesde(e.esperando_desde, agora)), 0);
   const porFaixa = FAIXAS.map((_, i) => esperandoPessoa.filter((e) => faixaDe(minutosDesde(e.esperando_desde, agora)) === i).length);
 
@@ -163,15 +172,21 @@ function Painel() {
                   ? <>{esperandoPessoa.length === 1 ? "conversa esperando" : "conversas esperando"} · a mais antiga há <strong className="whitespace-nowrap">{tempoCurto(maisAntiga)}</strong></>
                   : "Ninguém esperando resposta de uma pessoa nas últimas 24 h."}
               </p>
+              {esquecidas > 0 && (
+                <button type="button" onClick={verEsquecidas}
+                  className="mt-1 inline-flex items-center gap-1 text-sm font-medium text-red-800 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  {esquecidas} sem resposta há mais de 24 h <ArrowRight className="h-3.5 w-3.5" />
+                </button>
+              )}
             </>
           )}
           <div className="mt-5"><BarraFaixas porFaixa={porFaixa} rotulos={FAIXAS} /></div>
         </section>
         <div className="grid gap-4 sm:grid-cols-3 xl:col-span-8">
-          <Kpi rotulo={`Respondidas em até ${meta} min`} valor={pct == null ? "—" : `${pct}%`} detalhe={`Meta ${metaPct}% · ${tot.meta} de ${tot.esp} ${rotuloPeriodo}`}
+          <Kpi rotulo="Respondidas dentro da meta" valor={pct == null ? "—" : `${pct}%`} detalhe={`Meta ${metaPct}% · ${tot.meta} de ${tot.esp} ${rotuloPeriodo}`}
             progresso={pct} bom={pct == null ? null : pct >= metaPct} cor={COR.meta}
             serie={pts.map((p) => (p.esperas ? (100 * p.em_meta) / p.esperas : null))} />
-          <Kpi rotulo="Mediana até a 1ª resposta" valor={mediana == null ? "—" : tempoCurto(Math.round(mediana))} detalhe={`Meta ${meta} min · ${respondidas} respondidas por pessoas`}
+          <Kpi rotulo="Mediana até a 1ª resposta" valor={mediana == null ? "—" : tempoCurto(Math.round(mediana))} detalhe={`Meta padrão ${meta} min · ${respondidas} respondidas por pessoas`}
             bom={mediana == null ? null : mediana <= meta} cor="hsl(var(--foreground))" serie={pts.map((p) => p.mediana_min)} />
           <Kpi rotulo="Ficaram sem resposta" valor={String(tot.sem)} detalhe={tot.auto ? `A IA respondeu outras ${tot.auto} sozinha` : `De ${tot.esp} que pediram resposta`}
             bom={tot.sem === 0} cor={COR.sem} serie={pts.map((p) => p.sem_resposta)} />
@@ -200,7 +215,8 @@ function Painel() {
       )}
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
-        <Fila todas={todas} agora={agora} carregando={fila.isLoading} erro={fila.isError ? (fila.error as Error).message : null} />
+        <Fila todas={todas} agora={agora} carregando={fila.isLoading} erro={fila.isError ? (fila.error as Error).message : null}
+          janela={janela} setJanela={setJanela} regras={regras.data || []} />
         <div className="space-y-4">
           <Cartao titulo="Quem responde como" apoio={`Mediana até a 1ª resposta ${rotuloPeriodo} · traço = meta`}>
             {ind.isLoading ? <Skeleton className="h-24 w-full" /> : ind.isError ? <p className="text-sm text-destructive">{(ind.error as Error).message}</p> : <PorPessoa linhas={ind.data || []} meta={meta} />}
@@ -212,7 +228,7 @@ function Painel() {
       <div className="grid gap-4 lg:grid-cols-2">
         <Cartao titulo="Conversas que pediram resposta" apoio={porHora ? "Hoje, por hora" : `${PERIODOS.find((p) => p.id === periodo)?.rotulo}, por dia`}>
           {serie.isLoading ? <Skeleton className="h-56 w-full" /> : serie.isError ? <p className="text-sm text-destructive">{(serie.error as Error).message}</p>
-            : pts.length ? <GraficoVolume serie={pts} porHora={porHora} meta={meta} /> : <p className="py-16 text-center text-sm text-muted-foreground">Nenhuma mensagem pediu resposta {rotuloPeriodo}.</p>}
+            : pts.length ? <GraficoVolume serie={pts} porHora={porHora} /> : <p className="py-16 text-center text-sm text-muted-foreground">Nenhuma mensagem pediu resposta {rotuloPeriodo}.</p>}
         </Cartao>
         <Cartao titulo="Mediana até a 1ª resposta" apoio="Em minutos · só respostas de pessoas (celular ou Sigma)">
           {serie.isLoading ? <Skeleton className="h-56 w-full" /> : pts.some((p) => p.mediana_min != null)
@@ -251,8 +267,11 @@ function PorNumero({ esperas }: { esperas: Espera[] }) {
   );
 }
 
-function Fila({ todas, agora, carregando, erro }: { todas: Espera[]; agora: Date; carregando: boolean; erro: string | null }) {
-  const [janela, setJanela] = useState<"recentes" | "antigas">("recentes");
+type Janela = "recentes" | "antigas";
+
+function Fila({ todas, agora, carregando, erro, janela, setJanela, regras }: {
+  todas: Espera[]; agora: Date; carregando: boolean; erro: string | null; janela: Janela; setJanela: (j: Janela) => void; regras: Regra[];
+}) {
   const [pessoa, setPessoa] = useState("todas");
   const opcoesPessoa = useMemo(() => {
     const m = new Map<string, string>();
@@ -263,19 +282,25 @@ function Fila({ todas, agora, carregando, erro }: { todas: Espera[]; agora: Date
   const recentes = daPessoa.filter((e) => minutosDesde(e.esperando_desde, agora) < DIA_MIN);
   const antigas = daPessoa.filter((e) => minutosDesde(e.esperando_desde, agora) >= DIA_MIN);
   const lista = janela === "recentes" ? recentes : antigas;
+  const coordDe = (e: Espera) => (regras.find((r) => r.categoria === e.categoria) ?? regras.find((r) => r.categoria === "padrao"))?.coordenacao_min ?? null;
+  const estado = (e: Espera) => estadoEspera(minutosDesde(e.esperando_desde, agora), e.meta_min || 10, coordDe(e));
+  // Últimas 24 h: primeiro o que estourou mais (contra a meta DA CATEGORIA), depois prioridade, depois a mais antiga.
+  // Mais de 24 h: só a espera mais longa primeiro (é a lista das esquecidas).
   const ordenada = [...lista].sort((a, b) => {
-    const fa = faixaDe(minutosDesde(a.esperando_desde, agora)), fb = faixaDe(minutosDesde(b.esperando_desde, agora));
-    if (fa !== fb) return fb - fa;
-    if (a.prioridade !== b.prioridade) return a.prioridade ? -1 : 1;
+    if (janela === "recentes") {
+      const ea = estado(a), eb = estado(b);
+      if (ea !== eb) return eb - ea;
+      if (a.prioridade !== b.prioridade) return a.prioridade ? -1 : 1;
+    }
     return a.esperando_desde.localeCompare(b.esperando_desde);
   });
   return (
-    <section className="min-w-0 rounded-xl border bg-card">
+    <section id="fila-atendimento" className="min-w-0 scroll-mt-4 rounded-xl border bg-card">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
         <div className="flex items-center gap-4">
           <h2 className="font-display text-base font-semibold">Fila</h2>
           <div className="flex gap-1" role="radiogroup" aria-label="Período da fila">
-            {([["recentes", `Últimas 24 h · ${recentes.length}`], ["antigas", `Mais antigas · ${antigas.length}`]] as const).map(([id, r]) => (
+            {([["recentes", `Últimas 24 h · ${recentes.length}`], ["antigas", `Sem resposta há mais de 24 h · ${antigas.length}`]] as const).map(([id, r]) => (
               <button key={id} type="button" role="radio" aria-checked={janela === id} onClick={() => setJanela(id)}
                 className={cn("h-8 rounded-md px-2.5 text-sm font-medium", janela === id ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground")}>{r}</button>
             ))}
@@ -297,19 +322,18 @@ function Fila({ todas, agora, carregando, erro }: { todas: Espera[]; agora: Date
         : ordenada.length === 0 ? (
           <div className="flex flex-col items-center gap-2 px-6 py-14 text-center">
             <span className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-50 text-emerald-700"><Check className="h-5 w-5" /></span>
-            <p className="font-medium">{janela === "recentes" ? "Ninguém esperando agora" : "Nenhuma espera antiga"}</p>
-            <p className="text-sm text-muted-foreground">{janela === "recentes" ? "Toda mensagem das últimas 24 h teve resposta." : "A fila está limpa."}</p>
+            <p className="font-medium">{janela === "recentes" ? "Ninguém esperando agora" : "Nenhuma conversa esquecida"}</p>
+            <p className="text-sm text-muted-foreground">{janela === "recentes" ? "Toda mensagem das últimas 24 h teve resposta." : "Nenhuma conversa está há mais de 24 h sem resposta."}</p>
           </div>
-        ) : <ul className="divide-y">{ordenada.slice(0, 200).map((e) => <LinhaEspera key={e.conversation_id} e={e} agora={agora} />)}</ul>}
+        ) : <ul className="divide-y">{ordenada.slice(0, 200).map((e) => <LinhaEspera key={e.conversation_id} e={e} agora={agora} estado={estado(e)} />)}</ul>}
       {ordenada.length > 200 && <p className="border-t px-5 py-3 text-xs text-muted-foreground">Mostrando as 200 de maior espera de {ordenada.length}.</p>}
     </section>
   );
 }
 
-function LinhaEspera({ e, agora }: { e: Espera; agora: Date }) {
+function LinhaEspera({ e, agora, estado }: { e: Espera; agora: Date; estado: number }) {
   const qc = useQueryClient();
   const min = minutosDesde(e.esperando_desde, agora);
-  const f = faixaDe(min);
   const encerrar = useMutation({
     mutationFn: async () => { const { error } = await rpc("atendimento_encerrar", { p_conversation_id: e.conversation_id }); if (error) throw new Error(error.message); },
     onSuccess: () => { toast.success("Conversa encerrada. Volta para a fila se o contato escrever de novo."); qc.invalidateQueries({ queryKey: ["atendimento-fila"] }); },
@@ -325,7 +349,11 @@ function LinhaEspera({ e, agora }: { e: Espera; agora: Date }) {
       <div className="min-w-0 flex-1">
         <p className="flex min-w-0 items-center gap-2 text-sm">
           <span className="truncate font-semibold">{nome}</span>
-          {e.contato_marcado && <span className="shrink-0 text-xs text-muted-foreground">{e.contato_tipo === "cliente" ? "Cliente" : e.contato_tipo}</span>}
+          {e.categoria && e.categoria !== "padrao" && (
+            <span className={cn("shrink-0 rounded border px-1.5 py-0.5 text-xs", e.categoria === "prioridade" ? "border-foreground/30 font-semibold text-foreground" : "text-muted-foreground")}>
+              {rotuloCategoria(e.categoria)}
+            </span>
+          )}
           {e.ia_atuando && <span className="inline-flex shrink-0 items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground"><Bot className="h-3 w-3" />IA atuando</span>}
         </p>
         <p className="truncate text-sm text-muted-foreground">{e.mensagens > 1 ? `${e.mensagens} mensagens · ` : ""}{e.ultima_mensagem || "—"}</p>
@@ -336,10 +364,11 @@ function LinhaEspera({ e, agora }: { e: Espera; agora: Date }) {
         <p className="text-muted-foreground">número final {ultimos4(e.numero)}</p>
       </div>
       <div className="flex w-[104px] shrink-0 flex-col items-end gap-1">
-        <span className="whitespace-nowrap text-sm font-semibold tabular-nums" style={{ color: e.ia_atuando ? undefined : f >= 3 ? "#b91c1c" : f >= 1 ? "#b45309" : undefined }}>{tempoCurto(min)}</span>
+        <span className="whitespace-nowrap text-sm font-semibold tabular-nums" style={{ color: e.ia_atuando ? undefined : COR_ESTADO_TEXTO[estado] }}>{tempoCurto(min)}</span>
         <span className="h-1 w-full overflow-hidden rounded-full bg-muted" aria-hidden>
-          <span className="block h-full rounded-full" style={{ width: `${Math.min(100, (100 * Math.log10(1 + min)) / Math.log10(1 + DIA_MIN))}%`, background: e.ia_atuando ? "#d6d3d1" : COR_FAIXA[f] }} />
+          <span className="block h-full rounded-full" style={{ width: `${Math.min(100, (100 * Math.log10(1 + min)) / Math.log10(1 + DIA_MIN))}%`, background: e.ia_atuando ? "#d6d3d1" : COR_ESTADO_BARRA[estado] }} />
         </span>
+        <span className="whitespace-nowrap text-xs text-muted-foreground">meta {tempoCurto(e.meta_min || 10)}</span>
       </div>
       <div className="flex shrink-0 gap-1">
         <Button asChild size="sm" variant="outline" className="h-8">

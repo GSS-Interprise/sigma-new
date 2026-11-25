@@ -7,6 +7,9 @@
 //     na segunda às 8h (a tela mostra o tempo corrido; o aviso usa o tempo útil);
 //   - conversa com a IA atuando não gera aviso (quem responde é a IA);
 //   - faixa "responsavel" sem responsável no número, ou sem telefone, vai para a coordenação;
+//   - a escada é a da CATEGORIA da conversa (atendimento_regras, desde 25/11: padrao, prioridade, cliente, medico,
+//     parceiro, outro); categoria sem regra cai na "padrao"; sem regra nenhuma (ou espera sem categoria, de uma versão
+//     antiga da RPC) usa cfg.faixas, a escada única de antes;
 //   - um WhatsApp por pessoa e rodada, com todas as conversas novas dela; cada (conversa, início da espera, faixa,
 //     telefone REAL) sai uma vez só, em modo teste também.
 
@@ -15,14 +18,17 @@ export const JANELA_DIAS = 3; // espera mais velha que isto não gera aviso (vir
 
 export type Faixa = { min: number; para: "responsavel" | "coordenacao" | "diretoria" };
 export type Pessoa = { nome: string; fone: string };
+/** Uma linha de atendimento_regras: meta e escada de uma categoria de contato. null = não avisa aquele destino. */
+export type Regra = { categoria: string; meta_min: number; pessoa_min: number[]; coordenacao_min: number | null; diretoria_min: number | null };
 export type Config = {
   faixas: Faixa[]; dias: number[]; hora_inicio: string; hora_fim: string;
   coordenacao: Pessoa[]; diretoria: Pessoa[]; modo_teste: boolean; teste_fone: string | null;
+  regras?: Regra[];
 };
 export type Espera = {
   conversation_id: string; contato_nome: string; contato_marcado: string | null; prioridade: boolean;
   numero: string; responsavel_id: string | null; responsavel_nome: string | null;
-  esperando_desde: string; ia_atuando: boolean;
+  esperando_desde: string; ia_atuando: boolean; categoria?: string | null;
 };
 export type Feito = { conversation_id: string; esperando_desde: string; faixa_min: number; fone: string };
 export type Item = { espera: Espera; faixa: number; minutos: number };
@@ -54,6 +60,22 @@ export function minutosUteis(de: Date, ate: Date, cfg: Pick<Config, "dias" | "ho
 export const dentroDoHorario = (agora: Date, cfg: Pick<Config, "dias" | "hora_inicio" | "hora_fim">) =>
   minutosUteis(new Date(agora.getTime() - 60_000), agora, cfg) > 0;
 
+/** Escada de uma regra: os avisos da pessoa, depois coordenação, depois diretoria (que também leva a coordenação). */
+export function escadaDaRegra(r: Regra): Faixa[] {
+  const f: Faixa[] = (r.pessoa_min ?? []).map((min) => ({ min: Number(min), para: "responsavel" as const }));
+  if (r.coordenacao_min) f.push({ min: Number(r.coordenacao_min), para: "coordenacao" });
+  if (r.diretoria_min) f.push({ min: Number(r.diretoria_min), para: "diretoria" });
+  return f.filter((x) => x.min > 0).sort((x, y) => x.min - y.min);
+}
+
+/** Escada que vale para a conversa: a da categoria, senão a da "padrao", senão a escada única da config. */
+export function escadaDe(e: Pick<Espera, "categoria">, cfg: Pick<Config, "faixas" | "regras">): Faixa[] {
+  const regras = cfg.regras ?? [];
+  const r = regras.find((x) => x.categoria === (e.categoria || "padrao")) ?? regras.find((x) => x.categoria === "padrao");
+  if (r) return escadaDaRegra(r);
+  return [...cfg.faixas].filter((f) => f.min > 0).sort((x, y) => x.min - y.min);
+}
+
 /**
  * Avisos desta rodada. `fones` = telefone de cada responsável (profiles.telefone), por id.
  * Em modo teste tudo vai para teste_fone, com o destino real guardado em `destino_real`.
@@ -61,7 +83,6 @@ export const dentroDoHorario = (agora: Date, cfg: Pick<Config, "dias" | "hora_in
 export function montarAvisos(esperas: Espera[], cfg: Config, feitos: Feito[], fones: Map<string, string>, agora: Date): Aviso[] {
   if (!dentroDoHorario(agora, cfg)) return [];
   const ja = new Set(feitos.map((f) => `${f.conversation_id}|${new Date(f.esperando_desde).getTime()}|${f.faixa_min}|${dig(f.fone)}`));
-  const faixas = [...cfg.faixas].filter((f) => f.min > 0).sort((x, y) => x.min - y.min);
   const porFone = new Map<string, Aviso>();
   const limite = agora.getTime() - JANELA_DIAS * 86_400_000;
   for (const e of esperas) {
@@ -69,7 +90,7 @@ export function montarAvisos(esperas: Espera[], cfg: Config, feitos: Feito[], fo
     const desde = new Date(e.esperando_desde);
     if (desde.getTime() < limite) continue;
     const uteis = minutosUteis(desde, agora, cfg);
-    for (const f of faixas.filter((x) => uteis >= x.min)) {
+    for (const f of escadaDe(e, cfg).filter((x) => uteis >= x.min)) {
       let quem: Pessoa[];
       if (f.para === "responsavel") {
         const fone = e.responsavel_id ? dig(fones.get(e.responsavel_id)) : "";
@@ -96,6 +117,9 @@ export function montarAvisos(esperas: Espera[], cfg: Config, feitos: Feito[], fo
   return [...porFone.values()].map((a) => ({ ...a, itens: a.itens.sort((x, y) => y.minutos - x.minutos) }));
 }
 
+// Como o contato marcado aparece no texto do aviso. Sem categoria (RPC antiga) era sempre "cliente".
+const ROTULO_CATEGORIA: Record<string, string> = { prioridade: "prioridade", cliente: "cliente", medico: "médico", parceiro: "parceiro", outro: "contato marcado" };
+
 export const tempo = (min: number) => (min < 60 ? `${min} min` : `${Math.floor(min / 60)} h${min % 60 ? ` ${min % 60} min` : ""}`);
 
 /** Os 2 parâmetros do modelo gss_atendimento_espera_v1 (sem quebra de linha, até ~700 caracteres). */
@@ -106,7 +130,9 @@ export function textoAviso(a: Aviso, teste: boolean): [string, string] {
   const partes: string[] = [];
   let tam = 0;
   for (const [i, it] of a.itens.entries()) {
-    const quem = it.espera.contato_marcado ? `${it.espera.contato_marcado} (cliente)` : it.espera.contato_nome;
+    const quem = it.espera.contato_marcado
+      ? `${it.espera.contato_marcado} (${ROTULO_CATEGORIA[it.espera.categoria || "cliente"] ?? "contato marcado"})`
+      : it.espera.contato_nome;
     const p = `${quem.replace(/\s+/g, " ").trim().slice(0, 50)}, ${tempo(it.minutos)}, número ${it.espera.numero.slice(-4)}${it.espera.responsavel_nome ? ` de ${it.espera.responsavel_nome.split(" ")[0]}` : ""}`;
     if (tam + p.length > 600) { partes.push(`+${n - i} no Sigma`); break; }
     partes.push(p); tam += p.length + 2;

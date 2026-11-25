@@ -53,14 +53,17 @@ const DISP = {
   indisponivel: { rotulo: "Não usar", classe: "bg-red-50 text-red-700 ring-red-600/20 dark:bg-red-950 dark:text-red-300", ordem: 2 },
 } as const;
 
-// Ordem = ordem dos grupos na tela. Os três primeiros aparecem mesmo vazios (o Tempo de resposta tem uma aba para
+// Ordem = ordem dos grupos na tela. Os quatro primeiros aparecem mesmo vazios (o Tempo de resposta tem uma aba para
 // cada um); financeiro e pessoal só quando há número. Espelha o check whatsapp_chakra_connections_uso_check.
-type Uso = "prospeccao" | "escalas" | "clientes" | "financeiro" | "pessoal";
-// rotuloResumo = nome no resumo do topo (só os três "sempre").
+// Ambulatório (25/11) = números das consultas ambulatoriais dos municípios; como escalas e clientes, nunca entra em
+// campanha (campanha_assistente_numeros só lista uso = 'prospeccao').
+type Uso = "prospeccao" | "escalas" | "clientes" | "ambulatorio" | "financeiro" | "pessoal";
+// rotuloResumo = nome no resumo do topo (só os "sempre").
 const USOS: Array<{ id: Uso; rotulo: string; curto: string; rotuloResumo: string; sempre: boolean }> = [
   { id: "prospeccao", rotulo: "Prospecção de médicos", curto: "Prospecção", rotuloResumo: "Prospecção de médicos", sempre: true },
   { id: "escalas", rotulo: "Escalas (médicos escalados)", curto: "Escalas", rotuloResumo: "Escalas", sempre: true },
   { id: "clientes", rotulo: "Clientes", curto: "Clientes", rotuloResumo: "Clientes", sempre: true },
+  { id: "ambulatorio", rotulo: "Ambulatório (consultas dos municípios)", curto: "Ambulatório", rotuloResumo: "Ambulatório", sempre: true },
   { id: "financeiro", rotulo: "Financeiro", curto: "Financeiro", rotuloResumo: "Financeiro", sempre: false },
   { id: "pessoal", rotulo: "Pessoal", curto: "Pessoal", rotuloResumo: "Pessoal", sempre: false },
 ];
@@ -209,7 +212,7 @@ export function NumerosOficiaisTab() {
       </div>
 
       {/* Resumo: quantos números há de cada tipo e quantos estão sem dono. O tipo leva ao grupo; o sem dono filtra. */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-3 xl:grid-cols-5">
         {USOS.filter((u) => u.sempre).map((u) => {
           const doTipo = numeros.filter((n) => n.uso === u.id);
           const prontos = doTipo.filter((n) => n.disponibilidade === "disponivel").length;

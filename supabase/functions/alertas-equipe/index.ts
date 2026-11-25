@@ -9,8 +9,9 @@
 // quente saía pelo chip Evolution, desligado desde 08/11: em 30 dias 1 lead quente e nenhum aviso entregue.
 // Começa em config alertas_equipe_inicio (2026-11-16). Destinatários: alertas_equipe_destinos = "Nome:55...; Nome:55...".
 //   estacao (chamado pelo sla-alertas) — a estação do SLA de laudos parou, continua parada ou voltou.
-//   atendimento (cron a cada 2 min) — conversa sem resposta nos números oficiais, em escada (3/10/60/180 min úteis),
-//               regras em _shared/atendimento.ts. Modo teste e destinos em atendimento_config.
+//   atendimento (cron a cada 2 min) — conversa sem resposta nos números oficiais, em escada por categoria de contato
+//               (atendimento_regras; padrão 3/10/60/180 min úteis), regras em _shared/atendimento.ts. Modo teste e
+//               destinos em atendimento_config.
 //   furos (cron 9h25, 15h25 e 21h25 UTC, logo depois do robo do Dr. Escala) — aviso de furo de escala a quem cuida da
 //               escala (escala_furo_destinos), regras em _shared/furos.ts. Modo teste: config escala_furos_teste_destino.
 //   respondeu { campanha_lead_id, texto } — campanha MANUAL (a equipe conversa): o médico respondeu ao 1º contato.
@@ -216,6 +217,9 @@ async function atendimentoEspera(admin: any, forcar: boolean) {
     faixas: cfgRow.faixas ?? [], dias: cfgRow.dias ?? [], hora_inicio: String(cfgRow.hora_inicio), hora_fim: String(cfgRow.hora_fim),
     coordenacao: cfgRow.coordenacao ?? [], diretoria: cfgRow.diretoria ?? [], modo_teste: !!cfgRow.modo_teste, teste_fone: cfgRow.teste_fone,
   };
+  // Escada por categoria de contato (atendimento_regras, 25/11). Se a leitura falhar, cfg.faixas (escada única) segura.
+  const { data: regras, error: erroRegras } = await admin.from("atendimento_regras").select("categoria, meta_min, pessoa_min, coordenacao_min, diretoria_min");
+  if (!erroRegras) cfg.regras = regras ?? [];
   if (cfg.modo_teste && !dig(cfg.teste_fone)) return { pulado: "modo teste sem telefone de teste" };
   const { data: fila, error } = await admin.rpc("atendimento_aguardando_base", { p_dias: 3 });
   if (error) throw error;

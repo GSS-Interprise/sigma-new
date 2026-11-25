@@ -1,6 +1,6 @@
 // deno test --node-modules-dir=none atendimento_test.ts  (a partir de supabase/functions/_shared)
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { type Config, dentroDoHorario, type Espera, minutosUteis, montarAvisos, textoAviso } from "./atendimento.ts";
+import { type Config, dentroDoHorario, escadaDe, type Espera, minutosUteis, montarAvisos, type Regra, textoAviso } from "./atendimento.ts";
 
 const cfg: Config = {
   faixas: [{ min: 3, para: "responsavel" }, { min: 10, para: "responsavel" }, { min: 60, para: "coordenacao" }, { min: 180, para: "diretoria" }],
@@ -67,4 +67,73 @@ Deno.test("texto: cliente marcado aparece pelo nome; lista longa corta com +N no
   assertEquals(lista.startsWith("Hospital Regional - diretor (cliente), 1 h, número 3761 de Ester; "), true);
   assertEquals(/\+\d+ no Sigma$/.test(lista), true);
   assertEquals(lista.length <= 700, true);
+});
+
+// ── Regras por categoria de contato (atendimento_regras, 25/11): valores iniciais da migration 20261125100000. ──
+const regras: Regra[] = [
+  { categoria: "padrao", meta_min: 10, pessoa_min: [3, 10], coordenacao_min: 60, diretoria_min: 180 },
+  { categoria: "prioridade", meta_min: 10, pessoa_min: [3, 10], coordenacao_min: 30, diretoria_min: 60 },
+  { categoria: "cliente", meta_min: 30, pessoa_min: [10, 30], coordenacao_min: 60, diretoria_min: 180 },
+  { categoria: "medico", meta_min: 60, pessoa_min: [30, 60], coordenacao_min: 120, diretoria_min: 240 },
+  { categoria: "parceiro", meta_min: 10, pessoa_min: [3, 10], coordenacao_min: 60, diretoria_min: 180 },
+  { categoria: "outro", meta_min: 10, pessoa_min: [3, 10], coordenacao_min: 60, diretoria_min: 180 },
+];
+const cfgR: Config = { ...cfg, regras };
+const faixasPor = (avisos: ReturnType<typeof montarAvisos>) =>
+  Object.fromEntries(avisos.map((a) => [a.nome, a.itens.map((i) => `${i.espera.conversation_id}:${i.faixa}`)]));
+
+Deno.test("categoria padrao: mesma escada de antes (3/10 pessoa, 60 coordenação, 180 diretoria)", () => {
+  const agora = br(24, 13);
+  const es = [esp("a", br(24, 12, 55), { categoria: "padrao" }), esp("b", br(24, 12, 45), { categoria: "padrao" }),
+    esp("c", br(24, 11, 50), { categoria: "padrao" }), esp("d", br(24, 9, 50), { categoria: "padrao" })];
+  assertEquals(faixasPor(montarAvisos(es, cfgR, [], fones, agora)), faixasPor(montarAvisos(es, cfg, [], fones, agora)));
+  assertEquals(escadaDe({ categoria: "padrao" }, cfgR), cfg.faixas);
+});
+
+Deno.test("prioridade: coordenação aos 30 e diretoria aos 60", () => {
+  const agora = br(24, 13);
+  const por = faixasPor(montarAvisos([esp("p", br(24, 12, 25), { categoria: "prioridade" }), esp("q", br(24, 11, 55), { categoria: "prioridade" })], cfgR, [], fones, agora));
+  assertEquals(por["Ester Souza"], ["q:10", "p:10"]);
+  assertEquals(por["Ramone"], ["q:60", "p:30"]);
+  assertEquals(por["Maikon"], ["q:60"]);
+});
+
+Deno.test("cliente: pessoa só aos 10 e 30; nada aos 3", () => {
+  const agora = br(24, 13);
+  assertEquals(montarAvisos([esp("c", br(24, 12, 55), { categoria: "cliente" })], cfgR, [], fones, agora), []);
+  const por = faixasPor(montarAvisos([esp("c", br(24, 12, 25), { categoria: "cliente" })], cfgR, [], fones, agora));
+  assertEquals(por, { "Ester Souza": ["c:30"] });
+});
+
+Deno.test("médico: pessoa aos 30 e 60, coordenação aos 120, diretoria aos 240", () => {
+  const agora = br(24, 15);
+  assertEquals(montarAvisos([esp("m", br(24, 14, 35), { categoria: "medico" })], cfgR, [], fones, agora), []);
+  const por = faixasPor(montarAvisos([esp("m", br(24, 12, 50), { categoria: "medico" }), esp("n", br(24, 10, 50), { categoria: "medico" })], cfgR, [], fones, agora));
+  assertEquals(por["Ester Souza"], ["n:60", "m:60"]);
+  assertEquals(por["Ramone"], ["n:240", "m:120"]);
+  assertEquals(por["Maikon"], ["n:240"]);
+});
+
+Deno.test("parceiro e outro seguem a padrao; categoria sem regra cai na padrao; sem regras usa cfg.faixas", () => {
+  assertEquals(escadaDe({ categoria: "parceiro" }, cfgR), cfg.faixas);
+  assertEquals(escadaDe({ categoria: "outro" }, cfgR), cfg.faixas);
+  assertEquals(escadaDe({ categoria: "inexistente" }, { ...cfgR, regras: regras.filter((r) => r.categoria !== "inexistente") }), cfg.faixas);
+  assertEquals(escadaDe({ categoria: "cliente" }, cfg), cfg.faixas);
+  assertEquals(escadaDe({}, cfgR), cfg.faixas);
+});
+
+Deno.test("regra sem coordenação/diretoria (null) não avisa esses destinos; dedupe por faixa vale por categoria", () => {
+  const agora = br(24, 13);
+  const so = { ...cfgR, regras: [{ categoria: "padrao", meta_min: 10, pessoa_min: [5], coordenacao_min: null, diretoria_min: null }] };
+  assertEquals(faixasPor(montarAvisos([esp("z", br(24, 9))], so, [], fones, agora)), { "Ester Souza": ["z:5"] });
+  const e = esp("c", br(24, 12, 25), { categoria: "cliente" });
+  const feitos = [{ conversation_id: "c", esperando_desde: e.esperando_desde, faixa_min: 30, fone: "5547999990003" },
+    { conversation_id: "c", esperando_desde: e.esperando_desde, faixa_min: 10, fone: "5547999990003" }];
+  assertEquals(montarAvisos([e], cfgR, feitos, fones, agora), []);
+});
+
+Deno.test("texto: contato marcado mostra a categoria", () => {
+  const it = (categoria: string) => ({ espera: esp("x", br(24, 12), { contato_marcado: "Dr. Fulano", categoria }), faixa: 30, minutos: 30 });
+  assertEquals(textoAviso({ nome: "R", fone: "1", fone_real: "1", destino_real: "R", itens: [it("medico")] }, false)[1].startsWith("Dr. Fulano (médico), 30 min"), true);
+  assertEquals(textoAviso({ nome: "R", fone: "1", fone_real: "1", destino_real: "R", itens: [it("prioridade")] }, false)[1].startsWith("Dr. Fulano (prioridade)"), true);
 });

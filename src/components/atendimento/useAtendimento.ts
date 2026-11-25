@@ -9,8 +9,49 @@ export type Espera = {
   numero: string; numero_nome: string | null; uso: string | null; responsavel_id: string | null; responsavel_nome: string | null;
   esperando_desde: string; mensagens: number; ultima_mensagem: string | null; ultima_em: string;
   ia_atuando: boolean; contato_marcado: string | null; contato_tipo: string | null; prioridade: boolean;
+  /** Categoria do contato (atendimento_regras): prioridade, cliente, medico, parceiro, outro ou padrao (não marcado). */
+  categoria: Categoria; meta_min: number;
 };
-export type Indicador = { pessoa_id: string | null; pessoa: string; esperas: number; respondidas: number; mediana_min: number | null; em_10min: number; sem_resposta: number };
+/** em_10min = fixo em 10 min (o agente lê); em_meta = dentro da meta da categoria de cada conversa. */
+export type Indicador = { pessoa_id: string | null; pessoa: string; esperas: number; respondidas: number; mediana_min: number | null; em_10min: number; sem_resposta: number; em_meta: number };
+
+/**
+ * Regras por tipo de contato (atendimento_regras, 25/11). A categoria da conversa vem do contato marcado: prioridade se
+ * marcado com prioridade, senão o tipo dele; contato não marcado = padrao.
+ */
+export type Categoria = "padrao" | "prioridade" | "cliente" | "medico" | "parceiro" | "outro";
+export type Regra = { categoria: Categoria; meta_min: number; pessoa_min: number[]; coordenacao_min: number | null; diretoria_min: number | null };
+export const CATEGORIAS: { id: Categoria; rotulo: string; ajuda: string }[] = [
+  { id: "padrao", rotulo: "Padrão", ajuda: "Contato não marcado" },
+  { id: "prioridade", rotulo: "Prioridade", ajuda: "Contato marcado com prioridade" },
+  { id: "cliente", rotulo: "Cliente", ajuda: "Contato marcado como cliente" },
+  { id: "medico", rotulo: "Médico", ajuda: "Contato marcado como médico" },
+  { id: "parceiro", rotulo: "Parceiro", ajuda: "Contato marcado como parceiro" },
+  { id: "outro", rotulo: "Outro", ajuda: "Contato marcado como outro" },
+];
+export const rotuloCategoria = (c: string | null | undefined) => CATEGORIAS.find((x) => x.id === c)?.rotulo ?? "Padrão";
+
+export function useRegras() {
+  return useQuery({
+    queryKey: ["atendimento-regras"],
+    queryFn: async () => {
+      const { data, error } = await (supabase as unknown as { from: (t: string) => any })
+        .from("atendimento_regras").select("categoria, meta_min, pessoa_min, coordenacao_min, diretoria_min");
+      if (error) throw new Error(error.message);
+      const lista = (data || []) as Regra[];
+      // Sempre na ordem da tela (padrão primeiro), não na do banco.
+      return CATEGORIAS.map((c) => lista.find((r) => r.categoria === c.id)).filter(Boolean) as Regra[];
+    },
+    staleTime: 300_000,
+  });
+}
+
+/**
+ * Estado da espera contra a meta DA CATEGORIA: 0 = dentro da meta, 1 = passou da meta (âmbar),
+ * 2 = passou do aviso da coordenação (vermelho; sem aviso de coordenação na regra, 6× a meta).
+ */
+export const estadoEspera = (min: number, meta: number, coordenacaoMin: number | null | undefined) =>
+  min >= (coordenacaoMin || meta * 6) ? 2 : min >= meta ? 1 : 0;
 
 // RPCs novas ainda não estão nos tipos gerados do Supabase.
 const rpc = (nome: string, args?: Record<string, unknown>) => (supabase.rpc as unknown as (n: string, a?: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>)(nome, args);
@@ -42,12 +83,14 @@ export const inicioPeriodo = (p: Periodo, agora = new Date()) => {
 };
 
 /**
- * Tipo do número (whatsapp_chakra_connections.uso), cadastrado em Números WhatsApp. Prospecção, escalas e clientes são
+ * Tipo do número (whatsapp_chakra_connections.uso), cadastrado em Números WhatsApp. Prospecção, escalas, clientes e
+ * ambulatório (consultas dos municípios, 25/11) são
  * operações diferentes, então o painel mede cada uma separada; "todos" soma tudo (inclusive financeiro e pessoal).
  */
-export type TipoNumero = "todos" | "prospeccao" | "escalas" | "clientes";
+export type TipoNumero = "todos" | "prospeccao" | "escalas" | "clientes" | "ambulatorio";
 export const TIPOS_NUMERO: { id: TipoNumero; rotulo: string }[] = [
   { id: "todos", rotulo: "Todas" }, { id: "prospeccao", rotulo: "Prospecção" }, { id: "escalas", rotulo: "Escalas" }, { id: "clientes", rotulo: "Clientes" },
+  { id: "ambulatorio", rotulo: "Ambulatório" },
 ];
 const pUso = (tipo: TipoNumero) => (tipo === "todos" ? null : tipo);
 
@@ -90,12 +133,17 @@ export function useSerie(periodo: Periodo, tipo: TipoNumero = "todos") {
   });
 }
 
+/** `minutos` = meta da categoria padrão (contato não marcado); cada conversa usa a meta da sua categoria. */
 export function useMetas() {
   return useQuery({
     queryKey: ["atendimento-metas"],
     queryFn: async () => {
-      const { data } = await (supabase as unknown as { from: (t: string) => any }).from("atendimento_config").select("meta_minutos, meta_pct").eq("id", true).maybeSingle();
-      return { minutos: Number(data?.meta_minutos ?? 10), pct: Number(data?.meta_pct ?? 80) };
+      const db = supabase as unknown as { from: (t: string) => any };
+      const [{ data }, { data: padrao }] = await Promise.all([
+        db.from("atendimento_config").select("meta_minutos, meta_pct").eq("id", true).maybeSingle(),
+        db.from("atendimento_regras").select("meta_min").eq("categoria", "padrao").maybeSingle(),
+      ]);
+      return { minutos: Number(padrao?.meta_min ?? data?.meta_minutos ?? 10), pct: Number(data?.meta_pct ?? 80) };
     },
     staleTime: 300_000,
   });
