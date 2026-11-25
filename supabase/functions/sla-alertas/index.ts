@@ -453,8 +453,37 @@ const hora = (iso: string | null) => iso
   ? new Date(iso).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
   : "nunca";
 
+async function emailsDaEstacao(admin: any) {
+  const { data } = await admin.from("config_lista_items").select("valor").eq("campo_nome", "sla_estacao_destinos").maybeSingle();
+  try { return (JSON.parse(data?.valor || "[]") as { email?: string }[]).map((d) => String(d?.email || "").trim()).filter(Boolean); } catch { return []; }
+}
+
+/** Retrato das 4 estações por e-mail, para quem está em "Se a estação parar" (pedido do Raul, 25/11/2026). */
+async function statusEstacoes(admin: any, enviar: boolean) {
+  const linhas: string[] = [];
+  for (const unidade of UNIDADES) {
+    const { data: ok } = await admin.from("sla_leituras").select("lida_em").eq("unidade", unidade).eq("status", "ok")
+      .order("lida_em", { ascending: false }).limit(1).maybeSingle();
+    const { data: queda } = await admin.from("sla_coletor_quedas").select("aberta_em, motivo").eq("unidade", unidade)
+      .is("fechada_em", null).maybeSingle();
+    const nome = NOME_UNIDADE[unidade] ?? unidade;
+    linhas.push(queda
+      ? `• ${nome}: PARADA desde ${hora(queda.aberta_em)}. ${queda.motivo ?? ""}`.trim()
+      : ok ? `• ${nome}: conectada, última leitura em ${hora(ok.lida_em)}.` : `• ${nome}: sem estação instalada.`);
+  }
+  const para = await emailsDaEstacao(admin);
+  const paradas = linhas.filter((l) => l.includes("PARADA")).length;
+  const titulo = paradas ? `SLA de laudos: ${paradas} estação(ões) parada(s)` : "SLA de laudos: todas as estações conectadas";
+  const corpo = `Situação das estações agora:\n\n${linhas.join("\n")}\n\nA partir de agora vocês recebem este e-mail quando uma estação parar e quando voltar. `
+    + "Acompanhe em Sigma › Radiologia › SLA ao vivo (faixa no topo).";
+  const email = enviar && para.length ? await emailar(titulo, corpo, para) : false;
+  return { para, titulo, linhas, email };
+}
+
 async function checarColetor(admin: any, unidades = UNIDADES) {
   const res: unknown[] = [];
+  // E-mail de parou/voltou: os e-mails de "Se a estação parar" (aba Coordenação, 25/11); sem nenhum, a lista fixa.
+  const emailsEstacao = await emailsDaEstacao(admin);
   for (const unidade of unidades) {
     // Leitura "viva": ok, ou lista vazia com o servidor do PACS respondendo (fila zerada de verdade, ex.: madrugada).
     const { data: ok } = await admin.from("sla_leituras").select("lida_em").eq("unidade", unidade)
@@ -491,13 +520,13 @@ async function checarColetor(admin: any, unidades = UNIDADES) {
       const zap = await avisarEstacao(unidade, "parou", `desde ${hora(ok?.lida_em ?? null)}`, motivo);
       await admin.from("sla_coletor_quedas").insert({ unidade, ultima_ok_em: ok?.lida_em ?? null, motivo, whatsapp_em: zap.ok ? new Date().toISOString() : null });
       const email = await emailar(`SLA de laudos: coletor parado (${unidade})`,
-        `Ninguém está lendo a fila de laudos desde ${hora(ok?.lida_em ?? null)}.\n${motivo}\n\nEnquanto não voltar, os alertas de prazo não saem.`);
+        `Ninguém está lendo a fila de laudos desde ${hora(ok?.lida_em ?? null)}.\n${motivo}\n\nEnquanto não voltar, os alertas de prazo não saem.`, emailsEstacao);
       res.push({ unidade, evento: "caiu", email, whatsapp: zap });
     } else if (!parado && aberta) {
       await admin.from("sla_coletor_quedas").update({ fechada_em: new Date().toISOString() }).eq("id", aberta.id);
       const min = Math.round((Date.now() - new Date(aberta.aberta_em).getTime()) / 60000);
       const email = await emailar(`SLA de laudos: coletor voltou (${unidade})`,
-        `A leitura da fila voltou às ${hora(vivo!.lida_em)}. Ficou parada cerca de ${min + LIMITE_MIN} min.`);
+        `A leitura da fila voltou às ${hora(vivo!.lida_em)}. Ficou parada cerca de ${min + LIMITE_MIN} min.`, emailsEstacao);
       const zap = await avisarEstacao(unidade, "voltou", `às ${hora(vivo!.lida_em)}, depois de ${duracaoTexto(min + LIMITE_MIN)}`, "Os avisos de laudo voltaram a sair.");
       res.push({ unidade, evento: "voltou", email, whatsapp: zap });
     } else if (parado && aberta && (!aberta.whatsapp_em || Date.now() - new Date(aberta.whatsapp_em).getTime() > LEMBRETE_QUEDA_H * 3_600_000)) {
@@ -641,6 +670,7 @@ Deno.serve(async (req) => {
     if (body.acao === "criar_templates") return json({ ok: true, modelos: await criarTemplates(admin, !!body.dry_run, Array.isArray(body.nomes) ? body.nomes.map(String) : undefined) });
     // body.unidades só para teste manual (ex.: ["teste"]); o cron não manda.
     if (body.acao === "saldo_twilio") return json(await saldoTwilio(body.enviar !== false));
+    if (body.acao === "status_estacoes") return json({ ok: true, ...(await statusEstacoes(admin, body.enviar !== false)) });
     if (body.acao === "coletor") return json({ ok: true, coletor: await checarColetor(admin, Array.isArray(body.unidades) ? body.unidades.map(String) : UNIDADES) });
     return json({ ok: false, error: "acao" }, 400);
   } catch (e) {

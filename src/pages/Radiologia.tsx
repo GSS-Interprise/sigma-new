@@ -9,6 +9,7 @@ import { AbaSlaAoVivo } from "@/components/radiologia/sla/AbaSlaAoVivo";
 import { AbaEscalaPlantao } from "@/components/radiologia/sla/AbaEscalaPlantao";
 import { AbaAvisos } from "@/components/radiologia/sla/AbaAvisos";
 import { AbaCoordenacao } from "@/components/radiologia/sla/AbaCoordenacao";
+import { EstacaoDestinos } from "@/components/radiologia/sla/EstacaoDestinos";
 import { UNIDADES, useUnidade } from "@/components/radiologia/sla/useSla";
 
 const ABAS = ["sla", "escala-sla", "avisos-sla", "coordenacao-sla"];
@@ -53,7 +54,7 @@ export default function Radiologia() {
           <TabsContent value="sla" className="mt-5" data-portao="sla"><AbaSlaAoVivo /></TabsContent>
           <TabsContent value="escala-sla" className="mt-5 space-y-6"><AbaEscalaPlantao /></TabsContent>
           <TabsContent value="avisos-sla" className="mt-5 space-y-6"><AbaAvisos /></TabsContent>
-          <TabsContent value="coordenacao-sla" className="mt-5 space-y-6"><AbaCoordenacao /></TabsContent>
+          <TabsContent value="coordenacao-sla" className="mt-5 space-y-6"><AbaCoordenacao /><EstacaoDestinos /></TabsContent>
         </Tabs>
       </div>
     </AppLayout>

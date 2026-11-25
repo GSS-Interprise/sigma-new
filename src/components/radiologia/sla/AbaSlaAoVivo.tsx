@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import {
   ORIGEM, type Alerta, type Exame, type Origem, diaHora, duracao, ehHoje, horaCurta, situacaoPrazo, useAlertas, useAvisosHoje,
-  useColetor, useEscala, useFila, usePrazos, useUnidade,
+  type UnidadeId, useColetor, useEscala, useEstacoes, useFila, usePrazos, useUnidade,
 } from "./useSla";
 import { ExameSlaDialog } from "./ExameSlaDialog";
 
@@ -72,7 +72,7 @@ export function AbaSlaAoVivo() {
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
-        <Estacao coletor={coletor.data} carregando={coletor.isLoading} />
+        <FaixaEstacoes atual={unidade.id} trocar={unidade.trocar} />
         {coletor.data && (!coletor.data.alertasAtivos
           ? <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1 text-amber-900"><BellOff className="h-3.5 w-3.5" />Avisos ao médico desligados</span>
           : coletor.data.testeDestino
@@ -80,7 +80,7 @@ export function AbaSlaAoVivo() {
             : <span className="rounded-full bg-emerald-50 px-3 py-1 text-emerald-800">Avisos ao médico ligados</span>)}
       </div>
 
-      {queda && <EstacaoParada queda={queda} unidade={unidade.nome} />}
+      {queda && <EstacaoParada queda={queda} unidade={unidade.nome} unidadeId={unidade.id} />}
 
       <div className="grid gap-4 xl:grid-cols-12">
         <section className={cn("rounded-xl border p-5 xl:col-span-5", cartao)}>
@@ -289,31 +289,55 @@ function Numero({ valor, rotulo, tom }: { valor: number | string; rotulo: string
   );
 }
 
-function Estacao({ coletor, carregando }: { coletor: ReturnType<typeof useColetor>["data"]; carregando: boolean }) {
-  if (carregando || !coletor) return <span className="text-muted-foreground">Verificando a estação…</span>;
-  if (coletor.queda) return <span className="inline-flex items-center gap-2 font-medium text-red-700"><span className="h-2.5 w-2.5 rounded-full bg-red-600" />Estação parada</span>;
-  if (!coletor.ultimaOk) return <span className="inline-flex items-center gap-2 text-muted-foreground"><span className="h-2.5 w-2.5 rounded-full bg-slate-400" />Estação ainda não instalada nesta unidade</span>;
+// As 4 estações numa linha: verde lendo, vermelho parada (com o motivo no título). Clique troca a unidade da tela.
+function FaixaEstacoes({ atual, trocar }: { atual: UnidadeId; trocar: (u: UnidadeId) => void }) {
+  const estacoes = useEstacoes();
+  if (estacoes.isLoading || !estacoes.data) return <span className="text-muted-foreground">Verificando as estações…</span>;
   return (
-    <span className="inline-flex items-center gap-2 text-muted-foreground">
-      <span className="relative flex h-2.5 w-2.5"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60" /><span className="relative h-2.5 w-2.5 rounded-full bg-emerald-600" /></span>
-      Lendo o PACS · última leitura às {horaCurta(coletor.ultimaOk)}
-    </span>
+    <div className="flex flex-wrap items-center gap-2" aria-label="Estações do SLA">
+      {estacoes.data.map((e) => {
+        const parada = !!e.queda;
+        const semEstacao = !parada && !e.ultimaOk;
+        const quando = (iso: string) => (ehHoje(iso) ? horaCurta(iso) : diaHora(iso));
+        const texto = parada ? `parada desde ${quando(e.queda!.aberta_em)}` : semEstacao ? "sem estação" : `lendo · ${quando(e.ultimaOk!)}`;
+        return (
+          <button key={e.id} type="button" onClick={() => trocar(e.id)} title={parada ? e.queda!.motivo ?? undefined : undefined}
+            aria-current={e.id === atual ? "true" : undefined}
+            className={cn("inline-flex h-8 items-center gap-2 rounded-full border px-3 text-sm transition-colors",
+              parada ? "border-red-200 bg-red-50 text-red-800 hover:bg-red-100" : "border-border bg-background text-muted-foreground hover:bg-muted",
+              e.id === atual && "ring-2 ring-primary/40")}>
+            <span className={cn("h-2.5 w-2.5 shrink-0 rounded-full", parada ? "bg-red-600" : semEstacao ? "bg-slate-400" : "bg-emerald-600")} />
+            <span className={cn("font-medium", !parada && "text-foreground")}>{e.nome}</span>
+            <span className="whitespace-nowrap">{texto}</span>
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
-function EstacaoParada({ queda, unidade }: { queda: { aberta_em: string; motivo: string | null; ultima_ok_em: string | null }; unidade: string }) {
+// O que fazer para a estação voltar, por unidade: Marieta e CEPON leem o Vue PACS na tela; Tijucas e Mobilemed leem
+// o portal web pelo Chrome do robô no PC da baia do Wagner.
+const PASSOS_ESTACAO: Record<UnidadeId, string[]> = {
+  marieta: ["Ligue o PC do robô (sem suspender) e entre no Windows.", "Conecte a VPN do Sophos.", "Abra o Vue PACS na pasta \"Não lido\", maximizado."],
+  cepon: ["Ligue o PC da baia do Wagner e entre no Windows.", "Abra o Vue PACS do CEPON e entre com o usuário da GSS.", "Deixe na pasta \"Hoje\", maximizado."],
+  tijucas: ["Ligue o PC da baia do Wagner e entre no Windows.", "No Chrome do robô (atalho Tijucas), entre no portal com o usuário da GSS.", "Deixe a aba do portal aberta; não feche o Chrome."],
+  mobilemed: ["Ligue o PC da baia do Wagner e entre no Windows.", "No Chrome do robô, abra o portal da Mobilemed e entre com o usuário da GSS.", "Deixe a aba do portal aberta; não feche o Chrome."],
+};
+
+function EstacaoParada({ queda, unidade, unidadeId }: { queda: { aberta_em: string; motivo: string | null; ultima_ok_em: string | null }; unidade: string; unidadeId: UnidadeId }) {
   return (
     <section className="rounded-xl border border-red-200 bg-red-50 p-5 text-red-950">
       <div className="flex items-start gap-3">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-700"><MonitorX className="h-5 w-5" /></span>
         <div className="min-w-0">
-          <p className="font-display text-lg font-semibold">A estação do {unidade} parou de ler o PACS</p>
+          <p className="font-display text-lg font-semibold">A estação do {unidade} parou de ler a fila</p>
           <p className="text-sm">
             Desde {queda.ultima_ok_em ? diaHora(queda.ultima_ok_em) : diaHora(queda.aberta_em)}. Enquanto não voltar, os avisos ao médico não saem.
-            {queda.motivo ? ` ${queda.motivo}` : ""}
           </p>
+          {queda.motivo && <p className="mt-1 text-sm font-medium">{queda.motivo}</p>}
           <ol className="mt-3 grid gap-2 text-sm sm:grid-cols-3">
-            {["Ligue o computador da estação (sem suspender).", "Conecte a VPN do Sophos.", "Abra o PACS na pasta \"Não lido\", maximizado."].map((t, i) => (
+            {PASSOS_ESTACAO[unidadeId].map((t, i) => (
               <li key={t} className="flex gap-2 rounded-lg bg-white/70 p-2.5">
                 <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-red-600 text-xs font-semibold text-white">{i + 1}</span>{t}
               </li>

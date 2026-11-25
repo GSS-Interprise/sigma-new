@@ -121,6 +121,54 @@ export function useColetor() {
   });
 }
 
+// As 4 estações de uma vez (25/11/2026): a faixa do topo mostra qual está lendo e qual caiu, sem trocar de unidade.
+// "Parada" = queda aberta pelo sla-alertas (o mesmo critério que dispara o WhatsApp), com o motivo atual da queda.
+export type EstacaoResumo = { id: UnidadeId; nome: string; ultimaOk: string | null; queda: { aberta_em: string; motivo: string | null } | null };
+export function useEstacoes() {
+  return useQuery({
+    queryKey: ["sla-estacoes"],
+    refetchInterval: 30_000,
+    queryFn: async (): Promise<EstacaoResumo[]> => {
+      const [quedas, ...oks] = await Promise.all([
+        db.from("sla_coletor_quedas").select("unidade, aberta_em, motivo").is("fechada_em", null),
+        ...UNIDADES.map((u) => db.from("sla_leituras").select("lida_em").eq("unidade", u.id).eq("status", "ok")
+          .order("lida_em", { ascending: false }).limit(1).maybeSingle()),
+      ]);
+      if (quedas.error) throw quedas.error;
+      return UNIDADES.map((u, i) => ({
+        id: u.id, nome: u.nome,
+        ultimaOk: (oks[i].data?.lida_em as string | undefined) ?? null,
+        queda: ((quedas.data ?? []) as { unidade: string; aberta_em: string; motivo: string | null }[]).find((q) => q.unidade === u.id) ?? null,
+      }));
+    },
+  });
+}
+
+// Quem recebe o aviso de estação parada/voltou (config sla_estacao_destinos): WhatsApp pelo alertas-equipe, e-mail
+// pelo sla-alertas.
+// Lista vazia = o aviso vai só para o número de teste.
+export type DestinoEstacao = { nome: string; fone?: string; email?: string };
+export function useEstacaoDestinos() {
+  return useQuery({
+    queryKey: ["sla-estacao-destinos"],
+    queryFn: async (): Promise<DestinoEstacao[]> => {
+      const { data, error } = await db.from("config_lista_items").select("valor").eq("campo_nome", "sla_estacao_destinos").maybeSingle();
+      if (error) throw error;
+      try { const v = JSON.parse(data?.valor || "[]"); return Array.isArray(v) ? v : []; } catch { return []; }
+    },
+  });
+}
+export function useSalvarEstacaoDestinos() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (lista: DestinoEstacao[]) => {
+      const { error } = await db.rpc("sla_estacao_destinos_salvar", { p_destinos: lista });
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["sla-estacao-destinos"] }),
+  });
+}
+
 export function useAlertas(exameIds?: string[]) {
   const UNIDADE = useUnidade().id;
   return useQuery({
