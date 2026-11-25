@@ -83,8 +83,15 @@ if ($cfg.vpn_host -and -not (VpnOk)) {
         $argsVpn += @("-u", [string]$cs.usuario, "-p", $ps)
       } catch { }
     }
-    $saida = & $cfg.sophos_cli @argsVpn 2>&1 | Out-String
+    # 25/11: o sccli ficou preso (esperando o Sophos) e, com a tarefa em IgnoreNew, nenhuma rodada nova do vigia
+    # comecou. Em 24/11 o vigia parou de gravar depois das 13:47 e, as 18:46, o Vue fechou e ninguem reabriu.
+    # Agora espera no maximo 60 s. Start-Process nao poe aspas nos argumentos: senha com espaco quebraria.
+    $saidaArq = "$base\sccli-saida.txt"
+    $proc = Start-Process -FilePath $cfg.sophos_cli -ArgumentList ($argsVpn | ForEach-Object { '"' + $_ + '"' }) -NoNewWindow -PassThru -RedirectStandardOutput $saidaArq
     $ps = $null; $argsVpn = $null
+    if ($proc.WaitForExit(60000)) { $saida = (Get-Content $saidaArq -Raw -ErrorAction SilentlyContinue) + "" }
+    else { try { $proc.Kill() } catch { }; $saida = "sccli travou e foi encerrado depois de 60 s" }
+    Remove-Item $saidaArq -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 20
     Log ("vpn_caida -> pedi reconexao ao Sophos: " + ($(if (VpnOk) { "voltou" } else { "nao voltou" })) + " | " + $saida.Trim().Replace("`r", " ").Replace("`n", " "))
   } elseif (Passou $estado.vpn_tentou_em 30) {

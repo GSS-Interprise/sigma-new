@@ -33,6 +33,12 @@ $usuario = $env:USERNAME
 # /it = so roda com o usuario logado na tela (captura e abrir programa nao funcionam pela sessao do SSH).
 schtasks /create /tn SigmaColetorSLA /tr "wscript.exe //B $base\coletor.vbs" /sc minute /mo 3 /it /ru $usuario /f | Out-Null
 schtasks /create /tn SigmaVigiaSLA /tr "wscript.exe //B $base\vigia.vbs" /sc minute /mo 1 /it /ru $usuario /f | Out-Null
+# Limite por rodada (25/11): com o padrao de 72 h e IgnoreNew, uma rodada travada (o sccli do Sophos em 24/11) bloqueia
+# todas as seguintes. O vigia roda em segundos; o coletor, em menos de 1 min.
+foreach ($t in @(@("SigmaVigiaSLA", 4), @("SigmaColetorSLA", 10))) {
+  $s = (Get-ScheduledTask -TaskName $t[0]).Settings; $s.ExecutionTimeLimit = "PT$($t[1])M"
+  Set-ScheduledTask -TaskName $t[0] -Settings $s | Out-Null
+}
 Write-Output "estacao.json:"; Get-Content "$base\estacao.json"
 Write-Output "`nTarefas:"; schtasks /query /tn SigmaColetorSLA /fo LIST | Select-String "Nome da tarefa|TaskName|Status"; schtasks /query /tn SigmaVigiaSLA /fo LIST | Select-String "Nome da tarefa|TaskName|Status"
 Write-Output "`nPronto. Em ate 3 min a primeira leitura de '$Unidade' aparece no Sigma (Radiologia > SLA ao vivo)."
