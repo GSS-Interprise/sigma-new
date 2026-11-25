@@ -119,7 +119,7 @@ export function AbaSlaAoVivo() {
               <div key={o} className="relative overflow-hidden rounded-xl border bg-card p-4 pl-5">
                 <span className={cn("absolute inset-y-0 left-0 w-1.5", FAIXA[o])} aria-hidden />
                 <p className="truncate text-sm font-semibold" title={ORIGEM[o].nome}>{ORIGEM[o].nome}</p>
-                <p className="text-xs text-muted-foreground">prazo de {prazos.data?.[o] ? emHoras(prazos.data[o]!) : "—"}</p>
+                <p className="text-xs text-muted-foreground">prazo de {prazoDaFila(da.map((l) => l.e), prazos.data?.[o])}</p>
                 <p className="mt-2 font-display text-3xl font-semibold tabular-nums">{fila.isLoading ? "–" : da.length}</p>
                 <p className="text-xs text-muted-foreground">na fila</p>
                 <div className="mt-3 space-y-0.5 text-xs">
@@ -176,7 +176,8 @@ export function AbaSlaAoVivo() {
                     </p>
                   </div>
                   <span className={cn("hidden max-w-[220px] shrink-0 truncate rounded-full px-2.5 py-1 text-xs lg:inline-block", sit.tom)} title={sit.texto}>{sit.texto}</span>
-                  <div className="w-[128px] shrink-0 text-right">
+                  {/* 144 px: "venceu há 10 h 59 min" (o texto mais longo) cabe sem passar da coluna */}
+                  <div className="w-[144px] shrink-0 text-right">
                     <p className={cn("whitespace-nowrap text-sm font-semibold tabular-nums", cor)}>
                       {s.faltaMin <= 0 ? `venceu há ${duracao(-s.faltaMin)}` : `vence em ${duracao(s.faltaMin)}`}
                     </p>
@@ -254,6 +255,16 @@ export function AbaSlaAoVivo() {
 
 // Prazo do laudo em horas ("48 h", não "2 d"): é como a equipe fala.
 const emHoras = (min: number) => (min % 60 === 0 ? `${min / 60} h` : duracao(min));
+
+// O prazo do externo muda por unidade (CEPON 72 h, Marieta 48 h, Mobilemed por cidade, de 24 a 72 h): o card lê o
+// prazo dos exames que estão na fila (vence_em - inicio_em). Fila vazia cai no prazo padrão da origem (sla_prazos).
+function prazoDaFila(exames: Pick<Exame, "inicio_em" | "vence_em">[], padraoMin?: number) {
+  const horas = exames.map((e) => Math.round((new Date(e.vence_em).getTime() - new Date(e.inicio_em).getTime()) / 3_600_000))
+    .filter((h) => h > 0);
+  if (!horas.length) return padraoMin ? emHoras(padraoMin) : "—";
+  const min = Math.min(...horas), max = Math.max(...horas);
+  return min === max ? `${min} h` : `${min} a ${max} h`;
+}
 
 function Frase({ grande, linha }: { grande: string; linha: ReactNode }) {
   return (
