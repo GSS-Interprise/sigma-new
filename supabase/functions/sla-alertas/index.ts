@@ -693,6 +693,23 @@ Deno.serve(async (req) => {
       }
       return json({ ok: true, enviados: out });
     }
+    if (body.acao === "caller_ids") {
+      const sid = Deno.env.get("TWILIO_ACCOUNT_SID") ?? "", tok = Deno.env.get("TWILIO_AUTH_TOKEN") ?? "";
+      const b = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/OutgoingCallerIds.json`, {
+        headers: { Authorization: "Basic " + btoa(`${sid}:${tok}`) } }).then((r) => r.json());
+      return json({ ok: true, verificados: (b.outgoing_caller_ids ?? []).map((c: any) => `${c.phone_number} ${c.friendly_name}`) });
+    }
+    if (body.acao === "verificar_caller_id") {
+      // 25/11: a ligação do SLA passa a sair com um número da própria GSS (Verified Caller ID). O Twilio liga para o
+      // número e a pessoa digita o código devolvido aqui. Depois, sla_twilio_from aponta para esse número.
+      const sid = Deno.env.get("TWILIO_ACCOUNT_SID") ?? "", tok = Deno.env.get("TWILIO_AUTH_TOKEN") ?? "";
+      const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/OutgoingCallerIds.json`, {
+        method: "POST", headers: { Authorization: "Basic " + btoa(`${sid}:${tok}`), "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ PhoneNumber: `+${dig(body.telefone)}`, FriendlyName: String(body.nome || "GSS"), CallDelay: "5" }),
+      });
+      const b = await r.json();
+      return json({ ok: r.ok, codigo: b.validation_code ?? null, numero: b.phone_number ?? null, erro: r.ok ? null : b.message ?? b });
+    }
     if (body.acao === "indicadores") return json({ ok: true, ...(await indicadores(admin, Array.isArray(body.unidades) ? body.unidades.map(String) : UNIDADES, new Date(), body.enviar !== false)) });
     if (body.acao === "status_ligacao") return json({ ok: true, ...(await statusLigacao(String(body.sid || ""))) });
     if (body.acao === "exames") return json({ ok: true, exames: await checarExames(admin, !!body.forcar, Array.isArray(body.unidades) ? body.unidades.map(String) : UNIDADES, body.teste === true) });
