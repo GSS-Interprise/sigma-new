@@ -36,8 +36,11 @@ export function AvisosConfig({ podeGerir }: { podeGerir: boolean }) {
   const modelo = useQuery({
     queryKey: ["atendimento-modelo"],
     queryFn: async () => {
-      const { data } = await db().from("whatsapp_official_templates").select("approval_status").eq("friendly_name", "gss_atendimento_espera_v1").limit(1).maybeSingle();
-      return (data?.approval_status as string | undefined) ?? "nao_criado";
+      // O modelo tem mais de uma linha (cada envio à Meta grava uma): aprovado se qualquer uma estiver aprovada.
+      // Antes lia uma linha qualquer e mostrava "em análise" com o modelo já aprovado (25/11).
+      const { data } = await db().from("whatsapp_official_templates").select("approval_status").eq("friendly_name", "gss_atendimento_espera_v1");
+      const st = ((data ?? []) as { approval_status: string }[]).map((r) => r.approval_status);
+      return st.includes("approved") ? "approved" : (st[0] ?? "nao_criado");
     },
   });
   const [c, setC] = useState<Config | null>(null);
