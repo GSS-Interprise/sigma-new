@@ -551,7 +551,7 @@ function comNove(t: string) {
 }
 // O roteiro vem de sla-voz: detecção de máquina (caixa postal não conta) e "aperte 1 para assumir". O status final
 // da chamada volta por StatusCallback e fica no alerta (entregue, falhou com motivo, respondido).
-async function ligar(admin: any, para: string, alertaId: string) {
+async function ligar(admin: any, para: string, alertaId: string, exato = false) {
   const sid = Deno.env.get("TWILIO_ACCOUNT_SID") ?? "", tok = Deno.env.get("TWILIO_AUTH_TOKEN") ?? "";
   const de = await config(admin, "sla_twilio_from");
   if (!sid || !tok || !de) throw new Error("twilio_nao_configurado");
@@ -568,7 +568,7 @@ async function ligar(admin: any, para: string, alertaId: string) {
       // DetectMessageEnd (24/11): com "Enable" o Twilio dava machine_start para quem atendia calado e a ligação caía
       // na cara (Raul e Ramone, 24/11). Mesmo machine_end_beep errou com o Raul calado: desde 24/11 o sla-voz não
       // derruba mais por detecção, só anota "possivel caixa postal" (e a fala não diz o nome do paciente).
-      To: `+${comNove(para)}`, From: de, Timeout: "30", MachineDetection: "DetectMessageEnd", AsyncAmd: "true",
+      To: `+${exato ? dig(para) : comNove(para)}`, From: de, Timeout: "30", MachineDetection: "DetectMessageEnd", AsyncAmd: "true",
       AsyncAmdStatusCallback: `${base}&p=amd`, AsyncAmdStatusCallbackMethod: "POST",
       Url: `${base}&p=inicio`, StatusCallback: `${base}&p=status`, StatusCallbackEvent: "completed",
     }),
@@ -626,7 +626,12 @@ async function statusLigacao(callSid: string) {
   const ult = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Calls.json?PageSize=5`, auth).then((r) => r.json()).catch(() => ({}));
   const ultimas = (ult.calls ?? []).map((c: { date_created?: string; from?: string; status?: string; duration?: string }) =>
     `${c.date_created} de ${c.from} ${c.status} ${c.duration}s`);
-  return { status: b.status, duracao: b.duration, de: b.from, para: b.to, erros, alertas, numeros, ultimas, saldo: saldo.balance, moeda: saldo.currency };
+  // Voice Insights (25/11): "failed 0 s" sem notificação; o código SIP da operadora só aparece no resumo da chamada.
+  const ins = await fetch(`https://insights.twilio.com/v1/Voice/${callSid}/Summary`, auth).then((r) => r.json()).catch(() => ({}));
+  const operadora = { sip: ins?.carrier_edge?.metrics?.outbound?.sip_response_code ?? ins?.sip_response_code ?? null,
+    quem_desligou: ins?.properties?.disconnected_by ?? null, motivo: ins?.properties?.last_sip_response_num ?? null,
+    estado: ins?.call_state ?? null, tags: ins?.tags ?? null, erro_insights: ins?.message ?? null };
+  return { status: b.status, duracao: b.duration, de: b.from, para: b.to, atendido_por: b.answered_by ?? null, operadora, erros, alertas, numeros, ultimas, saldo: saldo.balance, moeda: saldo.currency };
 }
 
 // Quem chama: o cron (JWT service_role do Vault) e o chakra-webhook (SUPABASE_SERVICE_ROLE_KEY, que não é JWT e o
@@ -660,7 +665,7 @@ Deno.serve(async (req) => {
         exame_id: ex.id, tipo: "vencido", papel: "plantonista", destino_nome: String(body.nome || "Teste"), destino: dig(body.telefone), canal: "ligacao",
       }).select("id").single();
       if (!al) throw new Error("alerta de teste não criado");
-      return json({ ok: true, alerta: al.id, ligacao: await ligar(admin, String(body.telefone || ""), al.id) });
+      return json({ ok: true, alerta: al.id, ligacao: await ligar(admin, String(body.telefone || ""), al.id, body.exato === true) });
     }
     if (body.acao === "whats_teste") {
       // 25/11 (Raul): mostrar a quem vai receber como chega o WhatsApp do SLA (perto do prazo e vencido) e o botão
