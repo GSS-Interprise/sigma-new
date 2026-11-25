@@ -33,7 +33,9 @@ type Dados = {
   hoje: { ia: number; manual: number; total: number };
   periodo: { ia: number; manual: number; total: number };
   resumo: { ativas: number; pausadas: number; rodando_hoje: number; paradas: number; sem_chip_online: number };
-  por_dia: { dia: string; ia: number; manual: number; total: number }[];
+  // zenvia: disparos da Zenvia no dia (barra à parte; "total" é só do Sigma). Desde 25/11.
+  por_dia: { dia: string; ia: number; manual: number; total: number; zenvia?: number }[];
+  zenvia?: { hoje: number; disparos: number; responderam: number };
   campanhas: Campanha[];
 };
 
@@ -91,7 +93,7 @@ export function AbaAcompanhamentoCampanhas() {
   });
 
   const serie = useMemo(
-    () => (data?.por_dia ?? []).map((r) => ({ dia: String(r.dia).slice(5), ia: Number(r.ia) || 0, manual: Number(r.manual) || 0 })),
+    () => (data?.por_dia ?? []).map((r) => ({ dia: String(r.dia).slice(5), ia: Number(r.ia) || 0, manual: Number(r.manual) || 0, zenvia: Number(r.zenvia) || 0 })),
     [data]
   );
 
@@ -146,7 +148,7 @@ export function AbaAcompanhamentoCampanhas() {
       <Card className="overflow-hidden">
         <CardContent className="p-0">
           <div className="grid grid-cols-2 md:grid-cols-5 divide-x divide-y md:divide-y-0 divide-slate-100">
-            <Pulso icon={Activity} label="Disparos hoje" value={fmt(data.hoje.total)} cor={data.hoje.total > 0 ? C.green : C.red} sub={`IA ${data.hoje.ia} · Manual ${data.hoje.manual}`} big />
+            <Pulso icon={Activity} label="Disparos hoje" value={fmt(data.hoje.total)} cor={data.hoje.total > 0 ? C.green : C.red} sub={`IA ${data.hoje.ia} · Manual ${data.hoje.manual}${data.zenvia?.hoje ? ` · Zenvia ${fmt(data.zenvia.hoje)}` : ""}`} big />
             <Pulso icon={Rocket} label="Campanhas ativas" value={fmt(r.ativas)} cor={C.ink} sub={`${r.pausadas} pausadas`} />
             <Pulso icon={CheckCircle2} label="Disparando hoje" value={fmt(r.rodando_hoje)} cor={C.green} />
             <Pulso icon={AlertTriangle} label="Paradas" value={fmt(r.paradas)} cor={r.paradas > 0 ? C.red : C.soft} />
@@ -188,7 +190,7 @@ export function AbaAcompanhamentoCampanhas() {
       <Card>
         <CardContent className="p-5">
           <div className="font-semibold text-slate-800 mb-1">A máquina está rodando?</div>
-          <p className="text-xs text-slate-500 mb-3">Disparos das campanhas por dia — IA (automático) × Manual (equipe)</p>
+          <p className="text-xs text-slate-500 mb-3">Disparos das campanhas por dia: IA (automático), Manual (equipe) e Zenvia (fora do Sigma)</p>
           {serie.length === 0 ? (
             <p className="text-sm py-10 text-center text-slate-400">Nenhuma campanha disparou no período.</p>
           ) : (
@@ -200,7 +202,8 @@ export function AbaAcompanhamentoCampanhas() {
                 <RechartsTooltip contentStyle={tooltipStyle} cursor={{ fill: "rgba(37,99,235,.05)" }} />
                 <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" />
                 <Bar dataKey="ia" stackId="d" name="IA (automático)" fill={C.purple} />
-                <Bar dataKey="manual" stackId="d" name="Manual (equipe)" fill={C.blue} radius={[4, 4, 0, 0]} />
+                <Bar dataKey="manual" stackId="d" name="Manual (equipe)" fill={C.blue} />
+                <Bar dataKey="zenvia" stackId="d" name="Zenvia" fill={C.cyan} radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           )}

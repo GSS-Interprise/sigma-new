@@ -11,6 +11,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 // mensagens e fila de cada campanha ativa pelo número oficial). Hoje, 7 dias e campanhas vêm abaixo.
 // Disparo = 1ª mensagem de campanha enviada a um médico (conta também a que a Meta não entregou).
 // Máquina (fórmula, fonte) fica fora; o único aviso é "nada saiu" dentro do horário de envio.
+// Zenvia (25/11): o que sai pela Zenvia aparece na barra ciano empilhada e em "Hoje por campanha" (Zenvia · especialidade),
+// sem entrar na estimativa nem no andamento, que medem o ritmo das campanhas do próprio Sigma. Fora da linha "Hoje":
+// em 1024 px ela empurrava o "fecha perto de" para fora.
 
 type Painel = {
   hoje: number;
@@ -18,8 +21,10 @@ type Painel = {
   fila: number;
   ultimo_envio: string | null;
   // medicos = 1º contato enviado (o mesmo número do BI e do Claude dos sócios); falharam = não chegou (18/11).
-  serie: { dia: string; medicos: number; falharam?: number }[];
+  serie: { dia: string; medicos: number; falharam?: number; zenvia?: number }[];
   campanhas: { id: string; campanha: string; hoje: number; estimativa: number; fila: number }[];
+  zenvia_hoje?: number;
+  zenvia_campanhas?: { id: string; campanha: string; hoje: number; dias7: number }[];
 };
 
 /** Mesma consulta (e mesmo cache) para a faixa geral e para a linha de cada campanha. */
@@ -80,7 +85,13 @@ export function DisparosHojeFaixa({ className = "" }: { className?: string }) {
   const est = data.estimativa_dia;
   const pct = est > 0 ? Math.min(100, Math.round((data.hoje / est) * 100)) : 0;
   const diasFila = est > 0 ? Math.ceil(data.fila / est) : null;
-  const maxSerie = Math.max(1, est, ...data.serie.map((d) => d.medicos));
+  const maxSerie = Math.max(1, est, ...data.serie.map((d) => d.medicos + (d.zenvia ?? 0)));
+  const temZenvia = data.serie.some((d) => (d.zenvia ?? 0) > 0);
+  // Lista "Hoje por campanha": as do Sigma e, depois, as da Zenvia que dispararam hoje (sem estimativa: é fora do Sigma).
+  const linhas = [
+    ...data.campanhas.map((c) => ({ chave: c.id, nome: c.campanha, hoje: c.hoje, est: c.estimativa as number | null })),
+    ...(data.zenvia_campanhas ?? []).filter((z) => z.hoje > 0).map((z) => ({ chave: z.id, nome: z.campanha, hoje: z.hoje, est: null })),
+  ].sort((a, b) => b.hoje - a.hoje || (b.est ?? 0) - (a.est ?? 0)); // quem mais disparou hoje primeiro (só 3 cabem)
   const silencio = silencioMin(data.ultimo_envio);
   const projecao = projecaoDia(data.hoje, est);
 
@@ -97,12 +108,12 @@ export function DisparosHojeFaixa({ className = "" }: { className?: string }) {
           <Send className="h-3.5 w-3.5 shrink-0 text-primary" />
           <span className="truncate">Disparos por dia (estimativa)</span>
         </p>
-        <div className="mt-1 flex min-w-0 items-baseline gap-2">
+        <div className="mt-1 flex min-w-0 flex-wrap items-baseline gap-x-2">
           <p className="shrink-0 text-4xl font-bold leading-none tabular-nums text-foreground">
             {est > 0 ? `~${fmt(est)}` : "0"}
           </p>
           {est > 0 && (
-            <p className="min-w-0 truncate text-xs text-muted-foreground">
+            <p className="min-w-0 text-xs text-muted-foreground">
               Hoje <strong className="font-semibold text-foreground tabular-nums">{fmt(data.hoje)}</strong>
               {projecao !== null && (
                 <span title="No ritmo de agora, o dia fecha perto deste número">
@@ -128,8 +139,14 @@ export function DisparosHojeFaixa({ className = "" }: { className?: string }) {
 
       {/* 2. Os últimos 7 dias (uma série: sem legenda; hoje em destaque; tracejado = estimativa) */}
       <div className="min-w-0">
-        <p className="text-xs font-medium text-muted-foreground">Últimos 7 dias</p>
-        <div className="relative mt-1.5 flex h-12 items-end gap-1.5" role="img" aria-label={data.serie.map((d) => `${d.dia}: ${d.medicos}`).join(", ")}>
+        {/* Legenda só da Zenvia: a barra verde é a de sempre (Sigma). Com as duas, o título quebrava em 1024 px. */}
+        <p className="flex items-center gap-2.5 whitespace-nowrap text-xs font-medium text-muted-foreground">
+          Últimos 7 dias
+          {temZenvia && (
+            <span className="flex items-center gap-1 font-normal"><span className="h-2 w-2 rounded-sm bg-cyan-500" aria-hidden />Zenvia</span>
+          )}
+        </p>
+        <div className="relative mt-1.5 flex h-12 items-end gap-1.5" role="img" aria-label={data.serie.map((d) => `${d.dia}: ${d.medicos}${d.zenvia ? ` + ${d.zenvia} Zenvia` : ""}`).join(", ")}>
           {est > 0 && (
             <div
               className="pointer-events-none absolute inset-x-0 border-t border-dashed border-muted-foreground/40"
@@ -141,9 +158,15 @@ export function DisparosHojeFaixa({ className = "" }: { className?: string }) {
             const hoje = i === data.serie.length - 1;
             const dt = new Date(`${d.dia}T12:00:00`);
             return (
-              <div key={d.dia} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-0.5" title={`${DIA[dt.getDay()]} ${dt.getDate()}: ${fmt(d.medicos)} disparos${d.falharam ? ` (+${fmt(d.falharam)} não entregues)` : ""}`}>
+              <div key={d.dia} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-0.5" title={`${DIA[dt.getDay()]} ${dt.getDate()}: ${fmt(d.medicos)} disparos${d.falharam ? ` (+${fmt(d.falharam)} não entregues)` : ""}${d.zenvia ? ` · Zenvia ${fmt(d.zenvia)}` : ""}`}>
+                {(d.zenvia ?? 0) > 0 && (
+                  <div
+                    className={`w-full max-w-[18px] rounded-t ${hoje ? "bg-cyan-500" : "bg-cyan-500/40"}`}
+                    style={{ height: `${Math.max(3, Math.round(((d.zenvia ?? 0) / maxSerie) * 34))}px` }}
+                  />
+                )}
                 <div
-                  className={`w-full max-w-[18px] rounded-t ${hoje ? "bg-primary" : "bg-primary/30"}`}
+                  className={`w-full max-w-[18px] ${(d.zenvia ?? 0) > 0 ? "" : "rounded-t"} ${hoje ? "bg-primary" : "bg-primary/30"}`}
                   style={{ height: `${Math.max(d.medicos > 0 ? 4 : 2, Math.round((d.medicos / maxSerie) * 34))}px` }}
                 />
                 <span className={`text-[10px] leading-none ${hoje ? "font-semibold text-foreground" : "text-muted-foreground"}`}>
@@ -158,21 +181,21 @@ export function DisparosHojeFaixa({ className = "" }: { className?: string }) {
       {/* 3. Cada campanha ativa: hoje / estimativa do dia */}
       <div className="min-w-0">
         <p className="text-xs font-medium text-muted-foreground">Hoje por campanha</p>
-        {data.campanhas.length === 0 ? (
+        {linhas.length === 0 ? (
           <p className="mt-1.5 text-sm text-muted-foreground">Nenhuma campanha ativa.</p>
         ) : (
           <ul className="mt-1 space-y-0.5">
-            {data.campanhas.slice(0, 3).map((c) => (
-              <li key={c.campanha} className="flex items-center justify-between gap-3 text-sm">
-                <span className="truncate" title={c.campanha}>{c.campanha}</span>
+            {linhas.slice(0, 3).map((c) => (
+              <li key={c.chave} className="flex items-center justify-between gap-3 text-sm">
+                <span className="truncate" title={c.nome}>{c.nome}</span>
                 <span className="shrink-0 tabular-nums">
                   <strong className="font-semibold">{fmt(c.hoje)}</strong>
-                  <span className="text-muted-foreground"> / ~{fmt(c.estimativa)}</span>
+                  {c.est !== null && <span className="text-muted-foreground"> / ~{fmt(c.est)}</span>}
                 </span>
               </li>
             ))}
-            {data.campanhas.length > 3 && (
-              <li className="text-xs text-muted-foreground">+{data.campanhas.length - 3} campanhas</li>
+            {linhas.length > 3 && (
+              <li className="text-xs text-muted-foreground">+{linhas.length - 3} campanhas</li>
             )}
           </ul>
         )}

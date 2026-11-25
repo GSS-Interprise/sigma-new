@@ -6,6 +6,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { DisparosHojeFaixa, DisparosCampanhaHoje } from "@/components/campanhas/DisparosHojeFaixa";
+import { ZenviaCampanhas } from "@/components/campanhas/ZenviaCampanhas";
 import { CaptacaoProtectedRoute } from "@/components/auth/CaptacaoProtectedRoute";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -830,6 +831,11 @@ export default function CampanhasProspeccao() {
                   </div>
                 </>
               )}
+
+              {/* Zenvia (25/11): disparos feitos fora do Sigma, uma campanha por especialidade, só leitura. */}
+              <ErrorBoundary label="ZenviaCampanhas">
+                <ZenviaCampanhas />
+              </ErrorBoundary>
             </>
           ) : view === "acompanhamento" ? (
             <ErrorBoundary label="AcompanhamentoView">
