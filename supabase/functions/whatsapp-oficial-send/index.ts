@@ -8,6 +8,7 @@ import {
   chakraApi,
   unwrapChakraPayload,
 } from "../_shared/chakra.ts";
+import { ZenviaErro, zenviaEnviarTexto } from "../_shared/zenvia.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -127,6 +128,44 @@ async function releaseOfficialSenderLease(
   }
 }
 
+// Conversa de um disparo da Zenvia (médico respondeu ao número da Zenvia): a resposta sai pela própria Zenvia, do
+// mesmo número, para o médico ver tudo numa conversa só. Só texto e só dentro de 24 h da última mensagem dele.
+// deno-lint-ignore no-explicit-any
+async function responderPelaZenvia(admin: any, conversa: any, instance: any, body: string, templateId: string, userId: string | null) {
+  if (templateId) return json({ ok: false, error: "Modelos da Zenvia não estão no Sigma. Retome a conversa pela Zenvia." }, 409);
+  if (!body) return json({ ok: false, error: "empty_body" }, 400);
+  const { data: ultima } = await admin.from("sigzap_messages").select("sent_at")
+    .eq("conversation_id", conversa.id).eq("from_me", false).order("sent_at", { ascending: false }).limit(1).maybeSingle();
+  const janela = Math.max(
+    conversa.service_window_expires_at ? new Date(conversa.service_window_expires_at).getTime() : 0,
+    ultima?.sent_at ? new Date(ultima.sent_at).getTime() + 24 * 3600 * 1000 : 0,
+  );
+  if (janela <= Date.now()) return json({ ok: false, error: "approved_template_required_outside_service_window" }, 409);
+  const { data: contato, error: contatoErro } = await admin.from("sigzap_contacts").select("contact_phone")
+    .eq("id", conversa.contact_id).single();
+  if (contatoErro) throw contatoErro;
+  const de = String(instance.external_ref || "").replace(/^zenvia:/, "");
+  const para = digits(String(contato.contact_phone || ""));
+  if (!de || !para) return json({ ok: false, error: "lead_without_valid_phone" }, 400);
+  let enviada: { id: string };
+  try {
+    enviada = await zenviaEnviarTexto(de, para, body);
+  } catch (e) {
+    const detalhe = e instanceof ZenviaErro ? e.detalhe : errorMessage(e);
+    return json({ ok: false, error: "zenvia_send_failed", provider_message: `Zenvia recusou: ${detalhe}` }, 502);
+  }
+  const agora = new Date().toISOString();
+  const { error: msgErro } = await admin.from("sigzap_messages").insert({
+    conversation_id: conversa.id, wa_message_id: enviada.id, provider: "zenvia", provider_message_id: enviada.id,
+    from_me: true, sent_by_user_id: userId, message_text: body, message_type: "text", message_status: "sent",
+    raw_payload: { provider: "zenvia", id: enviada.id }, sent_at: agora,
+  });
+  if (msgErro) throw msgErro;
+  await admin.from("sigzap_conversations").update({ last_message_text: body, last_message_at: agora, updated_at: agora })
+    .eq("id", conversa.id);
+  return json({ ok: true, message_sid: enviada.id, status: "sent", provider: "zenvia", conversation_id: conversa.id });
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -232,6 +271,9 @@ serve(async (req) => {
         .eq("id", data.instance_id)
         .single();
       if (instanceError) throw instanceError;
+      if (instance.provider === "zenvia") {
+        return await responderPelaZenvia(admin, data, instance, body, templateIdInput, user?.id || null);
+      }
       if (instance.provider !== "chakra") {
         return json(
           { ok: false, error: "conversation_not_official_provider" },

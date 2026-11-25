@@ -1,4 +1,4 @@
-// Recebe os eventos da Zenvia (assinaturas da API v2: MESSAGE_STATUS e MESSAGE do canal WhatsApp) e grava em
+// Recebe os eventos da Zenvia (assinaturas da API v2: MESSAGE_STATUS e MESSAGE IN/OUT do canal WhatsApp) e grava em
 // zenvia_eventos, para o BI comparar os disparos da Zenvia com os da Chakra (Raul, 18/11; tabela e motivo na migração
 // 20261118120000_zenvia_eventos.sql).
 // Segurança: a assinatura na Zenvia manda o cabeçalho x-sigma-chave com o segredo ZENVIA_WEBHOOK_SEGREDO; sem ele,
@@ -38,7 +38,9 @@ export function normalizar(ev: any) {
     status_descricao: ev?.messageStatus?.description ?? null,
     evento_em: ev?.messageStatus?.timestamp ?? ev?.timestamp ?? msg?.timestamp ?? new Date().toISOString(),
     remetente: de, destinatario: para, telefone_norm: tel,
-    texto: tipo === "MESSAGE" && direcao === "IN" ? texto : null,
+    // MESSAGE OUT (assinatura de 25/11): texto do que a Zenvia enviou (disparo ou resposta da equipe pela Zenvia),
+    // para Conversas mostrar o texto em vez de só o status.
+    texto: tipo === "MESSAGE" ? texto : null,
     payload: ev,
   };
 }

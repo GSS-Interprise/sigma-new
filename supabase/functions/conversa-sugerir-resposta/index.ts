@@ -150,7 +150,8 @@ Deno.serve(async (req) => {
     .eq("id", conversaId).maybeSingle();
   if (!conv) return json({ error: "Conversa não encontrada." }, 404);
   const { data: inst } = await svc.from("sigzap_instances").select("phone_number, provider").eq("id", conv.instance_id).maybeSingle();
-  if (!inst || inst.provider !== "chakra") return json({ error: "Só conversas dos números oficiais." }, 409);
+  // Zenvia (25/11): número de disparo de prospecção, sem linha em whatsapp_chakra_connections, conta como prospecção.
+  if (!inst || !["chakra", "zenvia"].includes(inst.provider)) return json({ error: "Só conversas dos números oficiais." }, 409);
 
   const [{ data: conexao }, { data: cfg }] = await Promise.all([
     svc.from("whatsapp_chakra_connections").select("uso").eq("phone_e164", inst.phone_number).limit(1).maybeSingle(),

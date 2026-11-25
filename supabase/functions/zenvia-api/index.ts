@@ -1,6 +1,7 @@
 // Ponte para a API da Zenvia (25/11/2026), só com a chave de serviço. Usos:
 //   { acao: "get", caminho: "/v2/..." }            — leitura (para descobrir envios/lotes e relatórios)
 //   { acao: "reativar_webhooks" }                   — volta as assinaturas (webhooks) degradadas para ACTIVE
+//   { acao: "assinar_saida" }                       — assina MESSAGE OUT (texto do que a Zenvia enviou)
 // O token fica no secret ZENVIA_API_TOKEN e nunca sai daqui.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -46,6 +47,21 @@ Deno.serve(async (req) => {
       out.push({ id: s.id, tipo: (s.criteria as Record<string, unknown>)?.channel ?? null, antes: s.status, status_http: r.status, depois: (r.corpo as Record<string, unknown>)?.status ?? r.corpo });
     }
     return json({ ok: true, listagem_http: lista.status, assinaturas: out });
+  }
+  if (b.acao === "assinar_saida") {
+    // Assina MESSAGE com direction OUT no mesmo webhook (e cabeçalho) da assinatura de entrada: a Zenvia manda o texto
+    // do que ela enviou, que o MESSAGE_STATUS não traz. Idempotente: se já existe, não cria outra.
+    const lista = await zenvia("/v2/subscriptions");
+    const subs = Array.isArray(lista.corpo) ? lista.corpo as Array<Record<string, any>> : [];
+    const ja = subs.find((s) => s.eventType === "MESSAGE" && s.criteria?.direction === "OUT");
+    if (ja) return json({ ok: true, ja_existia: ja.id, status: ja.status });
+    const entrada = subs.find((s) => s.eventType === "MESSAGE" && s.criteria?.direction === "IN");
+    if (!entrada) return json({ ok: false, error: "sem_assinatura_de_entrada" }, 409);
+    const r = await zenvia("/v2/subscriptions", { method: "POST", body: JSON.stringify({
+      eventType: "MESSAGE", webhook: entrada.webhook, criteria: { channel: "whatsapp", direction: "OUT" },
+    }) });
+    const c = r.corpo as Record<string, any>;
+    return json({ ok: r.status < 300, status_http: r.status, id: c?.id ?? null, status: c?.status ?? c });
   }
   return json({ ok: false, error: "acao" }, 400);
 });

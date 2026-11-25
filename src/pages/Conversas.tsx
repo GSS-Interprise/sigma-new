@@ -276,7 +276,9 @@ function JanelaConversa({ conversa, numero, userId }: { conversa: ConversaItem; 
   const janelaAberta = (conversa.service_window_expires_at && new Date(conversa.service_window_expires_at).getTime() > Date.now())
     || (!!ultimaDoMedico && Date.now() - new Date(ultimaDoMedico).getTime() < 24 * 3600 * 1000);
   const minha = conversa.assigned_user_id === userId;
-  const { data: modelos = [] } = useModelosConversa(conversa.id, !janelaAberta);
+  // conversas_numeros devolve "Zenvia" como nome do número da Zenvia (20261125235000_zenvia_conversas.sql)
+  const ehZenvia = numero?.display_name === "Zenvia";
+  const { data: modelos = [] } = useModelosConversa(conversa.id, !janelaAberta && !ehZenvia);
 
   const ultimoId = mensagens[mensagens.length - 1]?.id;
   useEffect(() => {
@@ -429,6 +431,12 @@ function JanelaConversa({ conversa, numero, userId }: { conversa: ConversaItem; 
               {enviarTexto.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             </Button>
           </form>
+        ) : ehZenvia ? (
+          // Os modelos da Zenvia ficam na própria Zenvia (não estão no Sigma): fora das 24 h, retoma-se por lá.
+          <p className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
+            <Clock className="h-4 w-4 shrink-0" />
+            O médico não escreve há mais de 24 h. Para retomar, mande um modelo pela Zenvia.
+          </p>
         ) : (
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
