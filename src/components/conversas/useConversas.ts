@@ -150,6 +150,42 @@ export function useModelosConversa(conversaId: string | null, ativo: boolean) {
   });
 }
 
+/**
+ * Tipos de número em que o "Sugerir resposta" está liberado (supabase_config.sugestao_resposta_usos, array JSON).
+ * Portão de LGPD: começa só em prospecção. A edge conversa-sugerir-resposta confere de novo e recusa com 403.
+ */
+export function useUsosSugestao() {
+  return useQuery({
+    queryKey: ["conversas-usos-sugestao"],
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const { data } = await (supabase as any).from("supabase_config").select("valor").eq("chave", "sugestao_resposta_usos").maybeSingle();
+      try {
+        const v = JSON.parse(data?.valor ?? '["prospeccao"]');
+        return Array.isArray(v) ? v.map(String) : ["prospeccao"];
+      } catch {
+        return ["prospeccao"];
+      }
+    },
+  });
+}
+
+export type SugestaoResposta = {
+  texto?: string;
+  fora_janela?: boolean;
+  modelo_sugerido?: { template_id: string; friendly_name: string; motivo: string | null } | null;
+  motor?: "claude" | "gemini" | null;
+  sugestao_id: string | null;
+};
+
+/** Mede a sugestão: o que foi enviado e se saiu igual ao sugerido. Falha aqui não pode atrapalhar o envio. */
+export async function registrarEnvioSugestao(sugestaoId: string, enviado: string, semEdicao: boolean) {
+  await (supabase as any).from("conversa_sugestoes")
+    .update({ texto_enviado: enviado, enviado_sem_edicao: semEdicao, sent_at: new Date().toISOString() })
+    .eq("id", sugestaoId)
+    .then(() => null, () => null);
+}
+
 /** Mensagem nova, tique e "lida" chegam sem recarregar (lacuna de 05/11: a caixa não atualizava). */
 export function useTempoRealConversas(conversaId: string | null) {
   const qc = useQueryClient();

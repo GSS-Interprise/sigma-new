@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { AlertTriangle, Check, CheckCheck, Clock, FileText, Loader2, MessageSquareText, Search, Send, UserCheck } from "lucide-react";
+import { AlertTriangle, Check, CheckCheck, Clock, FileText, Loader2, MessageSquareText, Search, Send, Sparkles, UserCheck } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -12,13 +12,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SigZapAudioPlayer, SigZapVideoPlayer } from "@/components/sigzap/SigZapMediaPlayer";
 import { SigZapDocumentCard } from "@/components/sigzap/SigZapDocumentCard";
 import { cn } from "@/lib/utils";
 import { motivoLegivel, nomeModelo, nomeProprio, trechoModelo } from "@/lib/textoDono";
 import {
-  useListaConversas, useMensagens, useModelosConversa, useNumerosConversa, useTempoRealConversas,
-  type ConversaItem, type FiltroConversa, type Mensagem, type ModeloConversa, type NumeroConversa,
+  registrarEnvioSugestao, useListaConversas, useMensagens, useModelosConversa, useNumerosConversa, useTempoRealConversas, useUsosSugestao,
+  type ConversaItem, type FiltroConversa, type Mensagem, type ModeloConversa, type NumeroConversa, type SugestaoResposta,
 } from "@/components/conversas/useConversas";
 
 /**
@@ -52,15 +53,15 @@ const horaLista = (iso: string | null) => {
 };
 const rotuloDia = (d: Date) => (isToday(d) ? "Hoje" : isYesterday(d) ? "Ontem" : format(d, "d 'de' MMMM 'de' yyyy", { locale: ptBR }));
 
-async function erroDaFuncao(error: unknown): Promise<string> {
+async function erroDaFuncao(error: unknown, padrao = "Falha no envio."): Promise<string> {
   const response = (error as { context?: unknown })?.context;
   if (response instanceof Response) {
     try {
       const body = await response.clone().json();
       if (body?.error === "approved_template_required_outside_service_window") return "A janela de 24 h fechou. Envie um modelo aprovado.";
-      return body?.provider_message || body?.error || "Falha no envio.";
+      return body?.provider_message || body?.error || padrao;
     } catch {
-      return "Falha no envio.";
+      return padrao;
     }
   }
   return error instanceof Error ? error.message : String(error);
@@ -261,7 +262,15 @@ function JanelaConversa({ conversa, numero, userId }: { conversa: ConversaItem; 
   const mensagens = useMemo(() => (msgs.data?.pages || []).flat().slice().reverse(), [msgs.data]);
   const fimRef = useRef<HTMLDivElement | null>(null);
   const [texto, setTexto] = useState("");
+  const caixaRef = useRef<HTMLTextAreaElement | null>(null);
+  // Sugestão que está na caixa: no envio, a medição compara o texto enviado com o sugerido (conversa_sugestoes).
+  const [sugestao, setSugestao] = useState<{ id: string | null; texto: string } | null>(null);
+  const [modeloSugerido, setModeloSugerido] = useState<{ id: string | null; template_id: string; motivo: string | null } | null>(null);
+  const [modeloAberto, setModeloAberto] = useState(false);
   const nome = nomeConversa(conversa);
+  const { data: usosLiberados = ["prospeccao"] } = useUsosSugestao();
+  // Portão de LGPD (supabase_config.sugestao_resposta_usos): número sem tipo conta como prospecção, igual à edge.
+  const sugestaoLiberada = usosLiberados.includes(numero?.uso || "prospeccao");
 
   const ultimaDoMedico = [...mensagens].reverse().find((m) => !m.from_me)?.sent_at;
   const janelaAberta = (conversa.service_window_expires_at && new Date(conversa.service_window_expires_at).getTime() > Date.now())
@@ -283,11 +292,44 @@ function JanelaConversa({ conversa, numero, userId }: { conversa: ConversaItem; 
 
   const enviarTexto = useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke("whatsapp-oficial-send", { body: { conversation_id: conversa.id, body: texto.trim() } });
+      const enviado = texto.trim();
+      const { data, error } = await supabase.functions.invoke("whatsapp-oficial-send", { body: { conversation_id: conversa.id, body: enviado } });
       if (error) throw new Error(await erroDaFuncao(error));
       if ((data as { ok?: boolean; error?: string })?.ok === false) throw new Error((data as { error?: string }).error);
+      return enviado;
     },
-    onSuccess: async () => { setTexto(""); await posEnvio(); },
+    onSuccess: async (enviado) => {
+      if (sugestao?.id) void registrarEnvioSugestao(sugestao.id, enviado, enviado === sugestao.texto.trim());
+      setSugestao(null);
+      setTexto("");
+      await posEnvio();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  // A IA lê a conversa e devolve o texto para a caixa (ou o modelo, fora da janela). Nunca envia: a pessoa revisa.
+  const sugerir = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke("conversa-sugerir-resposta", { body: { conversation_id: conversa.id } });
+      if (error) throw new Error(await erroDaFuncao(error, "Não consegui sugerir agora. Tente de novo."));
+      return data as SugestaoResposta;
+    },
+    onSuccess: (r) => {
+      if (r.fora_janela) {
+        if (!r.modelo_sugerido) { toast.info("Este número não tem modelo aprovado para retomar a conversa."); return; }
+        setModeloSugerido({ id: r.sugestao_id, template_id: r.modelo_sugerido.template_id, motivo: r.modelo_sugerido.motivo });
+        setModeloAberto(true);
+        return;
+      }
+      const t = (r.texto || "").trim();
+      if (!t) { toast.error("A IA voltou sem texto. Tente de novo."); return; }
+      setTexto(t);
+      setSugestao({ id: r.sugestao_id, texto: t });
+      requestAnimationFrame(() => {
+        const el = caixaRef.current;
+        if (el) { el.focus(); el.setSelectionRange(t.length, t.length); }
+      });
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -299,7 +341,15 @@ function JanelaConversa({ conversa, numero, userId }: { conversa: ConversaItem; 
       if (error) throw new Error(await erroDaFuncao(error));
       if ((data as { ok?: boolean; error?: string })?.ok === false) throw new Error((data as { error?: string }).error);
     },
-    onSuccess: async () => { toast.success("Modelo enviado."); await posEnvio(); },
+    onSuccess: async (_d, { modelo, valores }) => {
+      if (modeloSugerido?.id) {
+        const enviado = modelo.body.replace(/\{\{(\d+)\}\}/g, (_x, p) => valores[p] || "");
+        void registrarEnvioSugestao(modeloSugerido.id, enviado, modelo.template_id === modeloSugerido.template_id);
+      }
+      setModeloSugerido(null);
+      toast.success("Modelo enviado.");
+      await posEnvio();
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -362,9 +412,19 @@ function JanelaConversa({ conversa, numero, userId }: { conversa: ConversaItem; 
       <footer className="border-t bg-[#f0f2f5] px-4 py-3 dark:bg-[#202c33]">
         {janelaAberta ? (
           <form className="flex items-end gap-2" onSubmit={(e) => { e.preventDefault(); if (texto.trim()) enviarTexto.mutate(); }}>
-            <Textarea value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Digite uma mensagem" rows={1}
-              className="max-h-40 min-h-10 resize-none bg-background"
-              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (texto.trim()) enviarTexto.mutate(); } }} />
+            <BotaoSugerir liberado={sugestaoLiberada} carregando={sugerir.isPending} onClick={() => sugerir.mutate()} rotulo="Sugerir resposta" compacto />
+            <div className="min-w-0 flex-1">
+              {sugestao && (
+                <p className="mb-1 flex items-center gap-1 text-xs text-muted-foreground">
+                  <Sparkles className="h-3 w-3 shrink-0" /> Sugestão da IA. Revise antes de enviar.
+                </p>
+              )}
+              <Textarea ref={caixaRef} value={texto} rows={sugestao ? 3 : 1}
+                onChange={(e) => { setTexto(e.target.value); if (!e.target.value.trim()) setSugestao(null); }}
+                placeholder={sugerir.isPending ? "Lendo a conversa…" : "Digite uma mensagem"}
+                className="max-h-40 min-h-10 resize-none bg-background"
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (texto.trim()) enviarTexto.mutate(); } }} />
+            </div>
             <Button type="submit" size="icon" className="h-10 w-10 shrink-0 rounded-full" disabled={!texto.trim() || enviarTexto.isPending} aria-label="Enviar">
               {enviarTexto.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             </Button>
@@ -375,8 +435,12 @@ function JanelaConversa({ conversa, numero, userId }: { conversa: ConversaItem; 
               <Clock className="h-4 w-4 shrink-0" />
               {ultimaDoMedico ? "O médico não escreve há mais de 24 h." : "O médico ainda não respondeu."} A Meta só deixa mandar um modelo aprovado.
             </p>
-            <EscolherModelo modelos={modelos} nome={nome} enviando={enviarModelo.isPending}
-              onEnviar={(modelo, valores) => enviarModelo.mutate({ modelo, valores })} />
+            <div className="flex shrink-0 items-center gap-2">
+              <BotaoSugerir liberado={sugestaoLiberada && modelos.length > 0} carregando={sugerir.isPending} onClick={() => sugerir.mutate()}
+                rotulo="Sugerir modelo" motivoBloqueio={sugestaoLiberada ? "Este número não tem modelo aprovado" : undefined} />
+              <EscolherModelo modelos={modelos} nome={nome} enviando={enviarModelo.isPending} aberto={modeloAberto} onAberto={setModeloAberto}
+                sugerido={modeloSugerido} onEnviar={(modelo, valores) => enviarModelo.mutate({ modelo, valores })} />
+            </div>
           </div>
         )}
       </footer>
@@ -427,10 +491,11 @@ function Balao({ mensagem: m }: { mensagem: Mensagem }) {
   );
 }
 
-function EscolherModelo({ modelos, nome, enviando, onEnviar }: {
-  modelos: ModeloConversa[]; nome: string; enviando: boolean; onEnviar: (m: ModeloConversa, valores: Record<string, string>) => void;
+function EscolherModelo({ modelos, nome, enviando, aberto, onAberto: setAberto, sugerido, onEnviar }: {
+  modelos: ModeloConversa[]; nome: string; enviando: boolean; aberto: boolean; onAberto: (v: boolean) => void;
+  sugerido: { template_id: string; motivo: string | null } | null;
+  onEnviar: (m: ModeloConversa, valores: Record<string, string>) => void;
 }) {
-  const [aberto, setAberto] = useState(false);
   const [escolhido, setEscolhido] = useState<ModeloConversa | null>(null);
   const [valores, setValores] = useState<Record<string, string>>({});
   const posicoes = Object.keys(escolhido?.variables || {}).sort((a, b) => Number(a) - Number(b));
@@ -441,6 +506,12 @@ function EscolherModelo({ modelos, nome, enviando, onEnviar }: {
     const pos = Object.keys(m.variables || {}).sort((a, b) => Number(a) - Number(b));
     setValores(Object.fromEntries(pos.map((p, i) => [p, i === 0 ? primeiroNome : ""])));
   };
+  // Modelo sugerido pela IA chega já escolhido; a pessoa pode trocar por outro da lista.
+  useEffect(() => {
+    const m = sugerido && modelos.find((x) => x.template_id === sugerido.template_id);
+    if (m) escolher(m);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sugerido?.template_id, modelos]);
   const previa = escolhido ? escolhido.body.replace(/\{\{(\d+)\}\}/g, (_x, p) => valores[p] || `{{${p}}}`) : "";
   const completo = posicoes.every((p) => (valores[p] || "").trim());
 
@@ -453,6 +524,12 @@ function EscolherModelo({ modelos, nome, enviando, onEnviar }: {
       </PopoverTrigger>
       <PopoverContent align="end" className="w-[380px] space-y-3">
         <p className="text-sm font-medium">Modelos aprovados deste número</p>
+        {sugerido && escolhido?.template_id === sugerido.template_id && (
+          <p className="flex gap-1.5 rounded-md bg-muted px-2 py-1.5 text-xs text-muted-foreground">
+            <Sparkles className="mt-0.5 h-3 w-3 shrink-0" />
+            <span>Sugerido pela IA{sugerido.motivo ? `: ${sugerido.motivo}` : "."} Confira os campos antes de enviar.</span>
+          </p>
+        )}
         <div className="max-h-40 space-y-1 overflow-y-auto">
           {modelos.map((m) => (
             <button key={m.template_id} type="button" onClick={() => escolher(m)}
@@ -476,5 +553,29 @@ function EscolherModelo({ modelos, nome, enviando, onEnviar }: {
         )}
       </PopoverContent>
     </Popover>
+  );
+}
+
+function BotaoSugerir({ liberado, carregando, onClick, rotulo, motivoBloqueio, compacto }: {
+  liberado: boolean; carregando: boolean; onClick: () => void; rotulo: string; motivoBloqueio?: string; compacto?: boolean;
+}) {
+  // Compacto (na linha da caixa de texto): abaixo de 1280 px o painel da conversa fica com ~450 px e o rótulo
+  // espremia a caixa; vira só o ícone, como os botões do WhatsApp, com o nome no title e no aria-label.
+  const texto = carregando ? "Lendo a conversa…" : rotulo;
+  const botao = (
+    <Button type="button" variant="outline" className={cn("h-10 shrink-0 bg-background", compacto && "w-10 px-0 xl:w-auto xl:px-4")}
+      disabled={!liberado || carregando} onClick={onClick} aria-label={texto} title={compacto ? texto : undefined}>
+      {carregando ? <Loader2 className={cn("h-4 w-4 animate-spin", compacto ? "xl:mr-1.5" : "mr-1.5")} />
+        : <Sparkles className={cn("h-4 w-4", compacto ? "xl:mr-1.5" : "mr-1.5")} />}
+      <span className={cn(compacto && "hidden xl:inline")}>{texto}</span>
+    </Button>
+  );
+  if (liberado || carregando) return botao;
+  // Botão desabilitado não recebe hover: o span leva o tooltip no lugar dele.
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild><span tabIndex={0} className="shrink-0">{botao}</span></TooltipTrigger>
+      <TooltipContent>{motivoBloqueio || "Liberado só para prospecção até o ok de LGPD"}</TooltipContent>
+    </Tooltip>
   );
 }
