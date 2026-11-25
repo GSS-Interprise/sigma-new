@@ -72,7 +72,7 @@ export function ZenviaCampanhas() {
         </h2>
         <p className="text-xs text-muted-foreground">Feitos fora do Sigma, agrupados pela especialidade do médico.</p>
       </div>
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
         {data.map((c) => (
           <ZenviaCard key={c.id} c={c} />
         ))}

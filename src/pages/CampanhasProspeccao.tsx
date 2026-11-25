@@ -603,7 +603,9 @@ export default function CampanhasProspeccao() {
   return (
     <CaptacaoProtectedRoute permission="disparos_zap">
       <AppLayout headerActions={headerActions}>
-        <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-4">
+        {/* w-full: dentro do main (flex em coluna), o mx-auto encolhia o contêiner até o conteúdo e a barra de abas
+            empurrava a página para 833 px em 1024 (rolagem lateral, 25/11). Com largura cheia, a barra rola sozinha. */}
+        <div className="w-full p-4 md:p-6 max-w-7xl mx-auto space-y-4">
           <div className="flex items-center gap-1 overflow-x-auto overflow-y-hidden border-b">
             <ToggleTab active={view === "campanhas"} onClick={() => setView("campanhas")}>
               <Rocket className="h-3.5 w-3.5" />
@@ -727,8 +729,10 @@ export default function CampanhasProspeccao() {
               </div>
 
               <Card>
-                <CardContent className="flex flex-col gap-3 p-4 lg:flex-row lg:items-center lg:justify-between">
-                  <div className="relative flex-1 min-w-[240px] max-w-md">
+                {/* Abaixo de 1280: busca e botões na 1ª linha, filtros na 2ª. Em coluna, a 1024 o "Nova Campanha" ocupava
+                    a largura toda (25/11). A partir de 1280, tudo numa linha. */}
+                <CardContent className="flex flex-wrap items-center gap-3 p-4">
+                  <div className="relative order-1 min-w-[240px] flex-1 xl:max-w-md">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
                       placeholder="Buscar campanha..."
@@ -737,7 +741,7 @@ export default function CampanhasProspeccao() {
                       className="pl-9"
                     />
                   </div>
-                  <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:w-auto">
+                  <div className="order-3 grid w-full grid-cols-1 gap-2 sm:grid-cols-2 xl:order-2 xl:w-auto">
                     <select
                       className="min-h-11 rounded-md border bg-background px-3 text-sm"
                       value={modalidadeFiltro}
@@ -771,13 +775,15 @@ export default function CampanhasProspeccao() {
                       <option value="configurando">Configurando</option>
                     </select>
                   </div>
-                  <Button variant="ghost" className="text-muted-foreground" onClick={() => setDialogOpen(true)}>
-                    Modo avançado
-                  </Button>
-                  <Button onClick={() => navigate("/prospeccao/nova")}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Nova Campanha
-                  </Button>
+                  <div className="order-2 ml-auto flex items-center gap-2 xl:order-3">
+                    <Button variant="ghost" className="text-muted-foreground" onClick={() => setDialogOpen(true)}>
+                      Modo avançado
+                    </Button>
+                    <Button onClick={() => navigate("/prospeccao/nova")}>
+                      <Plus className="h-4 w-4 mr-2" />
+                      Nova Campanha
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
 
@@ -816,7 +822,8 @@ export default function CampanhasProspeccao() {
                       </span>
                     </div>
                   )}
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {/* xl e não lg: com a barra lateral, a 1024 sobram ~705 px e 3 colunas espremiam os cards (25/11). */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                     {campanhasFiltradas.map((c) => (
                       <CampanhaCard
                         key={c.id}
@@ -928,7 +935,8 @@ function ToggleTab({
     <button
       type="button"
       onClick={onClick}
-      className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
+      // Ícone só a partir de 1280 px: em 1024 as 7 abas passavam 80 px da largura e "E-mail" ficava escondida (25/11).
+      className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px [&>svg]:hidden xl:[&>svg]:block ${
         active
           ? "text-primary border-primary"
           : "text-muted-foreground border-transparent hover:text-foreground hover:border-muted"
@@ -957,7 +965,7 @@ function DashboardCard({
           <Icon className={`h-5 w-5 ${color}`} />
         </div>
         <div className="min-w-0">
-          <p className="text-3xl font-bold tabular-nums leading-none text-slate-900">{value}</p>
+          <p className="text-2xl xl:text-3xl font-bold tabular-nums leading-none text-slate-900">{value}</p>
           <p className="mt-1.5 text-[11px] font-medium uppercase tracking-wide text-slate-400">{label}</p>
         </div>
       </CardContent>
@@ -1202,16 +1210,17 @@ function CampanhaCard({
           </div>
         </div>
 
-        <div className="flex items-center gap-4 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1">
+        {/* flex-wrap: em 1024 o card fica estreito e "N convertidos" passava 22 px da borda. */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1 whitespace-nowrap">
             <Users className="h-3 w-3" />
             {totalExibido} leads
           </span>
-          <span className="flex items-center gap-1 text-red-600 font-medium">
+          <span className="flex items-center gap-1 whitespace-nowrap text-red-600 font-medium">
             <Flame className="h-3 w-3" />
             {campanha.total_quente} quentes
           </span>
-          <span className="flex items-center gap-1 text-green-600 font-medium">
+          <span className="flex items-center gap-1 whitespace-nowrap text-green-600 font-medium">
             <CheckCircle className="h-3 w-3" />
             {campanha.total_convertido} convertidos
           </span>
