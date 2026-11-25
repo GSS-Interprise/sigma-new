@@ -24,6 +24,8 @@ const LIMITE_MIN = 15;
 // Travas do motor depois da enxurrada de 16/11 (104 avisos de exames de sexta): ver checarExames.
 const MAX_ATRASO_MIN = 120;
 const MAX_POR_RODADA = 10;
+// Assumiu e não laudou: o aviso sai 5 min depois do vencimento (Ramone, 25/11).
+const ASSUMIDO_FOLGA_MIN = 5;
 const chaveExame = (e: { origem: string; inicio_em: string; paciente?: string | null; estudo?: string | null }) =>
   [e.origem, new Date(e.inicio_em).getTime(), (e.paciente ?? "").trim().toLowerCase(), (e.estudo ?? "").trim().toLowerCase()].join("|");
 
@@ -307,7 +309,7 @@ async function checarExames(admin: any, forcar = false, unidades = UNIDADES, tes
 
 // Um passo da sequência para uma pessoa. Grava em sla_alertas com passo_id (é o que impede repetir) antes de enviar.
 // Teste interno (sla_teste_destino): WhatsApp vai para o número de teste e ninguém recebe ligação.
-// Assumiu e o prazo venceu sem laudo (Ramone, 25/11: "se o cara apertar laudo assumido e não assumir, como fica?").
+// Assumiu e o prazo venceu sem laudo, 5 min depois do vencimento (Ramone, 25/11: "se o cara apertar laudo assumido e não assumir, como fica?").
 // Assumir tira o exame da escada (ninguém mais é chamado), mas se o prazo vencer e o exame continuar na fila do PACS,
 // vai UM aviso: WhatsApp de texto para quem assumiu (a janela de 24 h costuma estar aberta pelo clique em Assumir; se
 // não estiver, a Meta recusa e fica só o e-mail) e e-mail para a Coordenação. Uma vez por exame (tipo
@@ -317,7 +319,7 @@ async function avisarAssumidosVencidos(admin: any, sender: any, unidade: string,
   const { data: exs } = await admin.from("sla_exames")
     .select("id, origem, inicio_em, vence_em, paciente, estudo, assumido_em, assumido_por")
     .eq("unidade", unidade).is("saiu_em", null).is("ausente_em", null).is("silenciado_em", null)
-    .not("assumido_em", "is", null).lte("vence_em", agora.toISOString())
+    .not("assumido_em", "is", null).lte("vence_em", new Date(agora.getTime() - ASSUMIDO_FOLGA_MIN * 60_000).toISOString())
     .gte("vence_em", new Date(agora.getTime() - MAX_ATRASO_MIN * 60_000).toISOString()).order("vence_em").order("id");
   if (!exs?.length) return out;
   const ids = exs.map((e: any) => e.id);
