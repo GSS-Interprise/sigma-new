@@ -19,13 +19,17 @@ const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: 
 // Tijucas (Animati) e Mobilemed entraram nos avisos em 24/11.
 const UNIDADES = ["marieta", "cepon", "tijucas", "mobilemed"];
 // Lembrete por WhatsApp enquanto a estação continua parada (fim de semana passava em branco só com e-mail).
-const LEMBRETE_QUEDA_H = 3;
-const LIMITE_MIN = 15;
+// Estes tempos são editáveis na aba Avisos (25/11, config sla_*; ver migration 20261125230000): os valores abaixo são
+// o padrão e são recarregados por carregarRegras() no começo de cada chamada.
+let LEMBRETE_QUEDA_H = 3;
+let LIMITE_MIN = 15;
 // Travas do motor depois da enxurrada de 16/11 (104 avisos de exames de sexta): ver checarExames.
-const MAX_ATRASO_MIN = 120;
+let MAX_ATRASO_MIN = 120;
 const MAX_POR_RODADA = 10;
-// Assumiu e não laudou: o aviso sai 5 min depois do vencimento (Ramone, 25/11).
-const ASSUMIDO_FOLGA_MIN = 5;
+// Assumiu e não laudou: minutos depois do vencimento para avisar (Ramone, 25/11: 5 min).
+let ASSUMIDO_FOLGA_MIN = 5;
+let AVISAR_EXTERNO = false;
+let RESUMO_HORA = 7;
 const chaveExame = (e: { origem: string; inicio_em: string; paciente?: string | null; estudo?: string | null }) =>
   [e.origem, new Date(e.inicio_em).getTime(), (e.paciente ?? "").trim().toLowerCase(), (e.estudo ?? "").trim().toLowerCase()].join("|");
 
@@ -187,6 +191,22 @@ async function enviarTexto(sender: any, para: string, texto: string) {
   } catch (e) { console.warn("[sla-alertas] texto", e); }
 }
 
+// Tempos editáveis (aba Avisos). Valor fora da faixa ou ausente fica no padrão: aviso nunca para por config ruim.
+async function carregarRegras(admin: any) {
+  const { data } = await admin.from("config_lista_items").select("campo_nome, valor").in("campo_nome",
+    ["sla_assumido_folga_min", "sla_avisar_externo", "sla_max_atraso_min", "sla_estacao_limite_min", "sla_estacao_lembrete_h", "sla_resumo_hora"]);
+  const v = new Map<string, string>((data ?? []).map((r: any) => [r.campo_nome, String(r.valor ?? "").trim()]));
+  const num = (k: string, min: number, max: number, padrao: number) => {
+    const n = Number(v.get(k)); return v.get(k) && Number.isInteger(n) && n >= min && n <= max ? n : padrao;
+  };
+  MAX_ATRASO_MIN = num("sla_max_atraso_min", 30, 120, 120);
+  ASSUMIDO_FOLGA_MIN = Math.min(num("sla_assumido_folga_min", 0, 119, 5), MAX_ATRASO_MIN - 1);
+  LIMITE_MIN = num("sla_estacao_limite_min", 6, 60, 15);
+  LEMBRETE_QUEDA_H = num("sla_estacao_lembrete_h", 1, 24, 3);
+  RESUMO_HORA = num("sla_resumo_hora", 0, 23, 7);
+  AVISAR_EXTERNO = v.get("sla_avisar_externo") === "true";
+}
+
 async function config(admin: any, nome: string) {
   const { data } = await admin.from("config_lista_items").select("valor").eq("campo_nome", nome).maybeSingle();
   return String(data?.valor ?? "").trim();
@@ -206,7 +226,7 @@ async function checarExames(admin: any, forcar = false, unidades = UNIDADES, tes
   const testeDestino = await config(admin, "sla_teste_destino");
   // Externo não avisa o plantão (Wagner, 24/11: "o externo não vejo tanta necessidade agora para o plantão").
   // Continua na fila e no resumo; para voltar a avisar, config sla_avisar_externo = "true".
-  const avisarExterno = (await config(admin, "sla_avisar_externo")) === "true";
+  const avisarExterno = AVISAR_EXTERNO;
   // Sequência de avisos configurada nas abas Avisos e Coordenação (sla_aviso_passos, 21/11).
   const { data: passosTodos } = await admin.from("sla_aviso_passos")
     .select("id, unidade, destino, minutos, canal, ativo, contato_nome, contato_papel, contato_telefone, contato_email")
@@ -227,7 +247,7 @@ async function checarExames(admin: any, forcar = false, unidades = UNIDADES, tes
     // A sequência de avisos é uma só para todas as unidades (regras iguais em todos os PACS, Ramone): a tela grava em
     // "marieta" e as outras unidades (e a "teste") usam a mesma.
     const passos = (passosTodos ?? []).filter((p: any) => p.unidade === "marieta") as any[];
-    res.push(...await avisarAssumidosVencidos(admin, sender, unidade, agora, testeDestino, emails));
+    res.push(...await avisarAssumidosVencidos(admin, sender, unidade, agora, testeDestino, emails, ASSUMIDO_FOLGA_MIN));
 
     const { data: todos } = await admin.from("sla_exames")
       .select("id, origem, inicio_em, vence_em, paciente, estudo")
@@ -309,17 +329,18 @@ async function checarExames(admin: any, forcar = false, unidades = UNIDADES, tes
 
 // Um passo da sequência para uma pessoa. Grava em sla_alertas com passo_id (é o que impede repetir) antes de enviar.
 // Teste interno (sla_teste_destino): WhatsApp vai para o número de teste e ninguém recebe ligação.
-// Assumiu e o prazo venceu sem laudo, 5 min depois do vencimento (Ramone, 25/11: "se o cara apertar laudo assumido e não assumir, como fica?").
+// Assumiu e o prazo venceu sem laudo, N min depois do vencimento (Ramone, 25/11: "se o cara apertar laudo assumido e não assumir, como fica?").
 // Assumir tira o exame da escada (ninguém mais é chamado), mas se o prazo vencer e o exame continuar na fila do PACS,
 // vai UM aviso: WhatsApp de texto para quem assumiu (a janela de 24 h costuma estar aberta pelo clique em Assumir; se
 // não estiver, a Meta recusa e fica só o e-mail) e e-mail para a Coordenação. Uma vez por exame (tipo
 // assumido_vencido); vencido há mais de MAX_ATRASO_MIN fica para o resumo das 7h, como os outros avisos.
-async function avisarAssumidosVencidos(admin: any, sender: any, unidade: string, agora: Date, testeDestino: string, emails: string[]) {
+async function avisarAssumidosVencidos(admin: any, sender: any, unidade: string, agora: Date, testeDestino: string, emails: string[],
+  folgaMin = ASSUMIDO_FOLGA_MIN) {
   const out: any[] = [];
   const { data: exs } = await admin.from("sla_exames")
     .select("id, origem, inicio_em, vence_em, paciente, estudo, assumido_em, assumido_por")
     .eq("unidade", unidade).is("saiu_em", null).is("ausente_em", null).is("silenciado_em", null)
-    .not("assumido_em", "is", null).lte("vence_em", new Date(agora.getTime() - ASSUMIDO_FOLGA_MIN * 60_000).toISOString())
+    .not("assumido_em", "is", null).lte("vence_em", new Date(agora.getTime() - folgaMin * 60_000).toISOString())
     .gte("vence_em", new Date(agora.getTime() - MAX_ATRASO_MIN * 60_000).toISOString()).order("vence_em").order("id");
   if (!exs?.length) return out;
   const ids = exs.map((e: any) => e.id);
@@ -389,11 +410,11 @@ async function dispararPasso(admin: any, sender: any, e: any, passo: any, pessoa
 async function indicadores(admin: any, unidades = UNIDADES, agora = new Date(), enviar = true) {
   const hojeSP = new Date(agora.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
   const deslocamento = agora.getTime() - hojeSP.getTime();
-  const fimSP = new Date(hojeSP); fimSP.setHours(7, 0, 0, 0);
-  if (hojeSP < fimSP) fimSP.setDate(fimSP.getDate() - 1); // rodou antes das 7h: fecha no 7h anterior
+  const fimSP = new Date(hojeSP); fimSP.setHours(RESUMO_HORA, 0, 0, 0);
+  if (hojeSP < fimSP) fimSP.setDate(fimSP.getDate() - 1); // rodou antes da hora do resumo: fecha no dia anterior
   const fim = new Date(fimSP.getTime() + deslocamento), ini = new Date(fim.getTime() - 86_400_000);
   const dia = (d: Date) => d.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit" });
-  const periodo = `${dia(ini)} 7h a ${dia(fim)} 7h`;
+  const periodo = `${dia(ini)} ${RESUMO_HORA}h a ${dia(fim)} ${RESUMO_HORA}h`;
   const textos: string[] = [];
   const res: any[] = [];
   for (const unidade of unidades) {
@@ -700,6 +721,7 @@ Deno.serve(async (req) => {
   const body = await req.json().catch(() => ({}));
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   try {
+    await carregarRegras(admin);
     if (body.acao === "ligar_teste") {
       // Exame e alerta de teste na unidade "teste" (PS vencido há 15 min), para a ligação ter roteiro de verdade.
       const agora = Date.now();

@@ -14,6 +14,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { telefoneBonito, useColetor } from "./useSla";
 import { RegrasAvisos, useRegras } from "./RegrasAvisos";
+import { RegrasExtras } from "./RegrasExtras";
+import { PreviaCelular } from "./PreviaCelular";
 import { CANAL, MAX_ANTES, MAX_DEPOIS, type Passo, quando, usePassos, useSalvarPassos } from "./usePassos";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- tabelas do SLA fora dos tipos gerados (ver useSla.ts)
@@ -65,6 +67,7 @@ export function AbaAvisos() {
 
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="min-w-0 space-y-4">
       <Card>
         <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0 pb-3">
           <div>
@@ -142,8 +145,13 @@ export function AbaAvisos() {
           )}
         </CardContent>
       </Card>
+      <PreviaCelular />
+      </div>
 
-      <RegrasAvisos />
+      <div className="space-y-4">
+        <RegrasAvisos />
+        <RegrasExtras />
+      </div>
     </div>
   );
 }
