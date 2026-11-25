@@ -623,6 +623,10 @@ serve(async (req) => {
 
     const payload: EvolutionMessage = await req.json();
     const provider = payload.provider || "evolution";
+    // Modo histórico (25/11/2026): mensagem antiga que chega pela fila do chakra-webhook (backlog de um pico, ou
+    // histórico do celular ao conectar o número). Só grava: não aciona IA, alerta da equipe nem status do lead, não
+    // soma não lida e não troca a "última mensagem" da conversa por uma mais antiga.
+    const historico = (payload as Record<string, unknown>).sigma_historico === true;
     console.log("📩 Payload recebido:", JSON.stringify(payload, null, 2));
 
     // Detecta o tipo de evento
@@ -1126,7 +1130,7 @@ serve(async (req) => {
     // 3. Buscar ou criar conversa
     let { data: conversation, error: conversationError } = await supabase
       .from("sigzap_conversations")
-      .select("id, unread_count")
+      .select("id, unread_count, last_message_at")
       .eq("contact_id", contact.id)
       .eq("instance_id", instance.id)
       .maybeSingle();
@@ -1157,16 +1161,16 @@ serve(async (req) => {
             last_message_text: messageContent.text,
             last_message_at: sentAt,
             service_window_expires_at: serviceWindowExpiresAt,
-            unread_count: fromMe ? 0 : 1,
+            unread_count: fromMe || historico ? 0 : 1,
             status: "open",
           })
-          .select("id, unread_count")
+          .select("id, unread_count, last_message_at")
           .single();
 
       if (createConversationError?.code === "23505") {
         const { data: criadaAoMesmoTempo } = await supabase
           .from("sigzap_conversations")
-          .select("id, unread_count")
+          .select("id, unread_count, last_message_at")
           .eq("contact_id", contact.id)
           .eq("instance_id", instance.id)
           .maybeSingle();
@@ -1182,7 +1186,15 @@ serve(async (req) => {
       }
     }
 
-    if (!conversaCriadaAgora) {
+    const maisNova = !conversation.last_message_at || new Date(sentAt) >= new Date(conversation.last_message_at);
+    if (!conversaCriadaAgora && historico) {
+      // Histórico: só avança a "última mensagem" se esta for mais nova; não mexe em não lida nem reabre.
+      if (maisNova) {
+        await supabase.from("sigzap_conversations")
+          .update({ last_message_text: messageContent.text, last_message_at: sentAt })
+          .eq("id", conversation.id);
+      }
+    } else if (!conversaCriadaAgora) {
       // Atualizar conversa existente
       const newUnreadCount = fromMe ? 0 : (conversation.unread_count || 0) + 1;
 
@@ -1236,7 +1248,7 @@ serve(async (req) => {
           .eq("id", leadId)
           .single();
 
-        if (leadData?.status === "Novo") {
+        if (!historico && leadData?.status === "Novo") {
           await supabase
             .from("leads")
             .update({
@@ -1250,7 +1262,7 @@ serve(async (req) => {
         console.log("✅ Lead vinculado à conversa:", leadId);
 
         // 3.6 Auto-routing: se lead está em campanha ativa, chamar IA (non-blocking)
-        if (!fromMe && messageContent.text) {
+        if (!historico && !fromMe && messageContent.text) {
           try {
             const { data: campLeadCheck } = await supabase
               .from("campanha_leads")
@@ -1476,7 +1488,7 @@ serve(async (req) => {
     // ========== IA AUTO-RESPOSTA PARA DISPAROS ==========
     // Se a mensagem NÃO é enviada por nós (é do médico) e é texto, verificar se deve acionar IA
     if (
-      !fromMe && messageContent.type === "text" && messageContent.text &&
+      !historico && !fromMe && messageContent.type === "text" && messageContent.text &&
       contactPhone
     ) {
       try {

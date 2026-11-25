@@ -1057,6 +1057,356 @@ async function reprocessarEventos(ids: string[]) {
   return resultados;
 }
 
+// Processa um evento já gravado na fila (25/11/2026: antes rodava dentro da requisição do webhook e um pico de
+// histórico derrubou tudo; ver docs/arquitetura/chakra-webhook-fila.md). historico = backlog ou mensagem antiga: só
+// grava, sem IA, sem botão, sem descadastro, sem contato da equipe. Lança erro para a fila tentar de novo.
+type EventoFila = { id: string; type: string; payload: AnyRecord; phoneNumberId: string; wabaId: string; pluginId: string; receivedAt: string };
+async function processarEvento(admin: AdminClient, supabaseUrl: string, serviceRole: string, ev: EventoFila, historico: boolean): Promise<string> {
+  const event = ev;
+  let st = "processed";
+  if (!event.phoneNumberId && !event.wabaId) {
+    await admin.from("whatsapp_chakra_webhook_events").update({
+      processing_status: "ignored", error_message: "ignored_missing_phone_and_waba",
+    }).eq("id", ev.id);
+    st = "ignored_missing_phone_and_waba";
+    return st;
+  }
+
+  const connectionQuery = admin.from("whatsapp_chakra_connections")
+    .select(
+      "id, plugin_id, waba_id, phone_number_id, phone_e164, display_name, somente_leads",
+    );
+  const { data: connection } = event.phoneNumberId
+    ? await connectionQuery.eq("phone_number_id", event.phoneNumberId)
+      .maybeSingle()
+    : event.wabaId
+    ? await connectionQuery.eq("waba_id", event.wabaId).maybeSingle()
+    : { data: null };
+  if (!connection) {
+    await admin.from("whatsapp_chakra_webhook_events").update({
+      processing_status: "ignored", error_message: "ignored_unmanaged_phone",
+    }).eq("id", ev.id);
+    st = "ignored_unmanaged_phone";
+    return st;
+  }
+  if (event.pluginId && connection.plugin_id !== event.pluginId) {
+    await admin.from("whatsapp_chakra_webhook_events").update({
+      processing_status: "ignored", error_message: "ignored_plugin_mismatch",
+    }).eq("id", ev.id);
+    st = "ignored_plugin_mismatch";
+    return st;
+  }
+
+  // Chakra coexistence events identify the WABA, while the Sigma instance is
+  // keyed by phone number. Resolve the phone once before processing so the
+  // event is not discarded and status updates can match the original wamid.
+  const resolvedPhoneNumberId = event.phoneNumberId ||
+    connection.phone_number_id;
+  if (!event.phoneNumberId && resolvedPhoneNumberId) {
+    event.phoneNumberId = resolvedPhoneNumberId;
+    await admin.from("whatsapp_chakra_webhook_events")
+      .update({ phone_number_id: resolvedPhoneNumberId })
+      .eq("id", ev.id);
+  }
+
+  try {
+    await updateConnection(admin, event.phoneNumberId, {
+      last_webhook_event_at: ev.receivedAt,
+      last_webhook_event_type: event.type,
+      last_webhook_error: null,
+    });
+
+    if (
+      ["message", "message_echo", "smb_message_echo", "messages"].includes(
+        event.type,
+      )
+    ) {
+      const itemBruto = asObject(
+        asObject(event.payload).item || asObject(event.payload).message || event.payload,
+      );
+      if (await aplicarEdicaoOuApagada(admin, itemBruto)) {
+        await admin.from("whatsapp_chakra_webhook_events").update({
+          processing_status: "processed",
+        }).eq("id", ev.id);
+        st = "applied_to_original";
+        return st;
+      }
+      const instance = await ensureInstance(admin, connection);
+      const payload = normalizedMessage(
+        event.type,
+        event.payload,
+        event.phoneNumberId,
+        instance.name,
+      );
+      const contactDigits = payload
+        ? digits(String(asObject(asObject(payload.data).key).remoteJid || "").split("@")[0])
+        : "";
+      const fromApp = event.type === "smb_message_echo";
+      // Número de uso pessoal da equipe: só entra no Sigma a conversa com quem está
+      // na base de leads. O resto do WhatsApp da pessoa não é gravado.
+      let leadId: string | null = null;
+      if (payload && contactDigits && (fromApp || connection.somente_leads)) {
+        const { data } = await admin.rpc("find_lead_by_phone", {
+          p_phone: `+${contactDigits}`,
+        });
+        leadId = (data as string | null) || null;
+      }
+      if (payload && connection.somente_leads && !leadId) {
+        await admin.from("whatsapp_chakra_webhook_events").update({
+          processing_status: "ignored",
+          payload: { descartado: "contato_fora_da_base" },
+        }).eq("id", ev.id);
+        st = "ignored_not_a_lead";
+        return st;
+      }
+      if (payload && historico) {
+        // Mensagem antiga: grava direto no banco (importar_mensagem_chakra, idempotente), sem o pulo HTTP para o
+        // receiver, que tem limite de chamada entre funções e travou até mensagem ao vivo em 25/11.
+        const { data: imp, error: impErro } = await admin.rpc("importar_mensagem_chakra", {
+          p_event_id: ev.id, p_phone_number_id: event.phoneNumberId,
+        });
+        if (impErro) throw impErro;
+        if (imp && (imp as AnyRecord).ok === false) throw new Error(`historico:${(imp as AnyRecord).erro}`);
+        await admin.from("whatsapp_chakra_webhook_events").update({ processing_status: "processed", error_message: null }).eq("id", ev.id);
+        return "historico";
+      }
+      if (payload) {
+        const forwarded = await forwardMessage(
+          supabaseUrl,
+          serviceRole,
+          payload,
+        );
+        const conversationId = forwarded?.data?.conversationId;
+        if (fromApp && leadId && !historico) {
+          const sentAt = new Date(
+            Number(asObject(payload.data).messageTimestamp || Date.now() / 1000) * 1000,
+          ).toISOString();
+          // regra no banco (registrar_contato_equipe): campanha que lista este número
+          // ganha o primeiro contato, com o dono do número como quem contatou
+          const { error: contatoError } = await admin.rpc("registrar_contato_equipe", {
+            p_lead_id: leadId,
+            p_phone_number_id: String(event.phoneNumberId || connection.phone_number_id || ""),
+            p_conversa_id: conversationId || null,
+            p_quando: sentAt,
+          });
+          if (contatoError) {
+            console.warn("[chakra] falha ao registrar contato da equipe:", contatoError.message);
+            await markManualContact(admin, leadId, conversationId, sentAt)
+              .catch((error) =>
+                console.warn("[chakra] falha ao registrar contato manual:", error)
+              );
+          }
+        }
+        const messageData = asObject(payload.data);
+        const messageKey = asObject(messageData.key);
+        const inboundMessage = asObject(messageData.message);
+        const inboundText = firstText(
+          inboundMessage.conversation,
+          inboundMessage.extendedTextMessage?.text,
+        );
+        // Clique em botão: "Sem interesse" encerra só esta vaga e pergunta sobre
+        // outras oportunidades; a resposta a essa pergunta decide o bloqueio geral.
+        const buttonIntent = messageKey.fromMe
+          ? null
+          : classifyChakraButton(messageData.buttonReply ?? null);
+        const contactPhone = digits(String(messageKey.remoteJid || "").split("@")[0]);
+        const replyToContact = async (message: AnyRecord) => {
+          try {
+            await chakraApi(
+              `/v1/ext/plugin/whatsapp/${connection.plugin_id}/api/v24.0/${event.phoneNumberId}/messages`,
+              { method: "POST", body: JSON.stringify(message) },
+            );
+          } catch (error) {
+            console.warn("[chakra] falha ao responder clique de botao:", error);
+          }
+        };
+        // Clique nos botões do pedido de aprovação de pagamento (financeiro): o payload
+        // identifica o pedido. Não é conversa de prospecção: nem IA, nem descadastro.
+        // Histórico (backlog ou mensagem antiga): já foi gravada acima; nada de botão, IA, descadastro ou SLA.
+        if (historico) {
+          await admin.from("whatsapp_chakra_webhook_events").update({ processing_status: "processed", error_message: null }).eq("id", ev.id);
+          return "historico";
+        }
+        const financeApproval = !messageKey.fromMe &&
+          /^fin_(aprovar|nao_aprovar):/.test(String(messageData.buttonReply?.id || ""));
+        if (financeApproval) {
+          const approvalResponse = await fetch(`${supabaseUrl}/functions/v1/financeiro-aprovacao-whatsapp`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${serviceRole}`, apikey: serviceRole, "Content-Type": "application/json" },
+            body: JSON.stringify({ acao: "responder", telefone: contactPhone, payload: messageData.buttonReply.id }),
+          });
+          if (!approvalResponse.ok) throw new Error(`aprovacao_financeiro_${approvalResponse.status}`);
+        } else if (!messageKey.fromMe && String(messageData.buttonReply?.id || "").startsWith("sla_assumir:")) {
+          // Médico tocou em "Assumir laudo" no alerta de SLA da radiologia: para os avisos daquele exame.
+          const slaResponse = await fetch(`${supabaseUrl}/functions/v1/sla-alertas`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${serviceRole}`, apikey: serviceRole, "Content-Type": "application/json" },
+            body: JSON.stringify({ acao: "assumir", telefone: contactPhone, payload: messageData.buttonReply.id }),
+          });
+          if (!slaResponse.ok) throw new Error(`sla_assumir_${slaResponse.status}`);
+        } else if (buttonIntent === "outras_sim") {
+          // Fica no cadastro para futuras vagas; nada a registrar nem a mandar para a IA.
+          await replyToContact(chakraTextMessage(
+            contactPhone,
+            "Combinado! Quando aparecer uma oportunidade com o seu perfil, a gente te avisa por aqui.",
+          ));
+        } else if (!messageKey.fromMe && (buttonIntent === "outras_nao" || isExplicitChakraOptOut(inboundText))) {
+          // O canal oficial não passa pelo bridge Evolution. Processar o
+          // descadastro antes da IA evita resposta e novo contato indevido.
+          const phone = contactPhone;
+          const optOutResponse = await fetch(
+            `${supabaseUrl}/functions/v1/campanha-opt-out-handler`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${serviceRole}`,
+                apikey: serviceRole,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ phone, msg_text: inboundText, instance_name: "" }),
+            },
+          );
+          if (!optOutResponse.ok) {
+            throw new Error(`opt_out_handler_${optOutResponse.status}`);
+          }
+          if (buttonIntent === "outras_nao") {
+            await replyToContact(chakraTextMessage(
+              contactPhone,
+              "Entendido. Não vamos mais te enviar mensagens. Se mudar de ideia, é só chamar por aqui.",
+            ));
+          }
+        } else {
+          // O receiver persiste a mensagem; Chakra precisa acionar a IA
+          // diretamente porque não passa pelo bridge Evolution.
+          void forwardCampaignAi(
+            supabaseUrl,
+            serviceRole,
+            payload,
+            instance.name,
+            conversationId,
+          )
+            .catch((error) =>
+              console.warn("[chakra] falha ao acionar IA:", error)
+            );
+          void forwardNfFinanceiro(
+            supabaseUrl,
+            serviceRole,
+            event.payload,
+            event.phoneNumberId,
+          )
+            .catch((error) =>
+              console.warn("[chakra] falha no inbound de NF:", error)
+            );
+          // A IA acima registra o desinteresse NESTA campanha (e não responde);
+          // aqui só perguntamos se a pessoa quer continuar recebendo outras vagas.
+          if (buttonIntent === "sem_interesse") {
+            await replyToContact(chakraOutrasOportunidadesMessage(contactPhone));
+          }
+        }
+      }
+    } else if (["status", "statuses"].includes(event.type)) {
+      await updateDeliveryStatus(admin, event.payload);
+    } else if (event.type === "message_template_status_update") {
+      await updateTemplateStatus(admin, event.payload);
+    } else if (event.type === "history") {
+      // Histórico do celular (coexistência): vira mensagem na caixa de entrada pelo banco,
+      // sem passar pelo receive (mensagem antiga não pode acionar IA nem mexer em campanha).
+      const { data: hist, error: histErro } = await admin.rpc("importar_historico_chakra", { p_event_id: ev.id });
+      if (histErro) throw histErro;
+      // A RPC devolve {ok:false} sem erro quando ainda não há instância: falha para a fila tentar de novo.
+      if (hist && (hist as AnyRecord).ok === false) {
+        await ensureInstance(admin, connection);
+        throw new Error(`historico:${(hist as AnyRecord).erro || "nao_importado"}`);
+      }
+    }
+    await admin.from("whatsapp_chakra_webhook_events").update({
+      processing_status: "processed", error_message: null,
+    }).eq("id", ev.id);
+    st = "processed";
+  } catch (error) {
+    const message = error instanceof Error
+      ? error.message
+      : "processing_failed";
+    await updateConnection(admin, event.phoneNumberId, {
+      last_webhook_error: message,
+    });
+    throw error;
+  }
+  return st;
+}
+
+// Prioridade na fila: 1 mensagem ao vivo, 3 status de entrega, 7 mensagem antiga (eco/histórico reenviado),
+// 9 pacote de histórico do celular. Menor sai primeiro.
+const MIN_ANTIGA = 30;
+function segundosDaMensagem(payload: AnyRecord): number | null {
+  const p = asObject(payload);
+  const t = Number(firstText(p.timestamp, asObject(p.message).timestamp, asObject(p.item).timestamp));
+  return Number.isFinite(t) && t > 1e9 ? t : null;
+}
+function prioridadeDe(event: WebhookEvent): number {
+  if (event.type === "history") return 9;
+  if (["status", "statuses"].includes(event.type)) return 3;
+  const t = segundosDaMensagem(event.payload);
+  if (t && Date.now() / 1000 - t > MIN_ANTIGA * 60) return 7;
+  return 1;
+}
+
+// deno-lint-ignore no-explicit-any
+function eventoDaLinha(row: any): EventoFila {
+  const payload = asObject(row.payload);
+  return {
+    id: row.id, type: row.event_type, payload, phoneNumberId: row.phone_number_id || "",
+    wabaId: row.waba_id || String(payload.wabaId || ""), pluginId: row.plugin_id || "", receivedAt: row.received_at,
+  };
+}
+
+// Worker da fila: reserva lotes (chakra_fila_reservar, SKIP LOCKED + teto global) e processa com concorrência
+// pequena, até ~50 s por chamada. Backlog (prioridade >= 7, ou parado há mais de 10 min, ou mensagem com mais de
+// 30 min) vai em modo histórico.
+const LOTE = 20, PARALELO = 4, ORCAMENTO_MS = 50_000;
+async function processarFila(admin: AdminClient, supabaseUrl: string, serviceRole: string) {
+  const inicio = Date.now();
+  const conta: Record<string, number> = {};
+  while (Date.now() - inicio < ORCAMENTO_MS) {
+    const { data: lote, error } = await admin.rpc("chakra_fila_reservar", { p_limite: LOTE, p_max_em_andamento: 40 });
+    if (error) throw error;
+    if (!lote?.length) break;
+    const fila = [...lote];
+    const umPorVez = async () => {
+      for (let row = fila.shift(); row; row = fila.shift()) {
+        const payload = asObject(row.payload);
+        const t = segundosDaMensagem(payload);
+        const historico = row.prioridade >= 7 || Date.now() - new Date(row.received_at).getTime() > 10 * 60_000 ||
+          (t !== null && Date.now() / 1000 - t > MIN_ANTIGA * 60);
+        const ev = eventoDaLinha(row);
+        try {
+          const st = await processarEvento(admin, supabaseUrl, serviceRole, ev, historico);
+          conta[st] = (conta[st] || 0) + 1;
+        } catch (e) {
+          await admin.rpc("chakra_fila_falhou", { p_id: row.id, p_erro: e instanceof Error ? e.message : String(e) });
+          conta.falhou = (conta.falhou || 0) + 1;
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: PARALELO }, umPorVez));
+  }
+  return conta;
+}
+
+// Quem pode acordar o worker: o próprio webhook (chave de serviço do ambiente) ou o cron (JWT service_role do Vault).
+async function servicoAutorizado(auth: string) {
+  const chave = auth.replace(/^Bearer\s+/i, "").trim();
+  if (!chave) return false;
+  if (chave === (Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "").trim()) return true;
+  try {
+    const claims = JSON.parse(atob(chave.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    if (claims?.role !== "service_role") return false;
+  } catch { return false; }
+  const { error } = await createClient(Deno.env.get("SUPABASE_URL")!, chave, { auth: { persistSession: false } })
+    .rpc("chakra_fila_resumo");
+  return !error;
+}
+
 serve(async (request) => {
   if (request.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -1073,6 +1423,9 @@ serve(async (request) => {
   }
   const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
   const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  if (request.headers.get("x-sigma-fila") && await servicoAutorizado(request.headers.get("Authorization") || "")) {
+    return json({ ok: true, fila: await processarFila(createClient(supabaseUrl, serviceRole), supabaseUrl, serviceRole) });
+  }
   if (!supabaseUrl || !serviceRole) {
     return json({ ok: false, error: "supabase_not_configured" }, 503);
   }
@@ -1116,300 +1469,50 @@ serve(async (request) => {
   const events = extractEvents(body);
   if (!events.length) await registrarDescartado("_sem_evento", body);
   const results: AnyRecord[] = [];
+  const filaAoVivo: { id: string; prioridade: number }[] = [];
 
+  // Só grava na fila e responde: o processamento é do worker (abaixo), em lotes e com teto de concorrência.
   for (const event of events) {
-    const eventHash = await digest(
-      JSON.stringify({ type: event.type, payload: event.payload }),
-    );
-    const receivedAt = new Date().toISOString();
-    const { error: logError } = await admin.from(
-      "whatsapp_chakra_webhook_events",
-    ).insert({
+    const eventHash = await digest(JSON.stringify({ type: event.type, payload: event.payload }));
+    const prioridade = prioridadeDe(event);
+    const { data: inserido, error: logError } = await admin.from("whatsapp_chakra_webhook_events").insert({
       plugin_id: event.pluginId || null,
       phone_number_id: event.phoneNumberId || null,
+      waba_id: event.wabaId || null,
       event_type: event.type,
       event_hash: eventHash,
       payload: event.payload,
       processing_status: "received",
-      received_at: receivedAt,
-    });
-    if (logError?.code === "23505") {
-      results.push({ type: event.type, status: "duplicate" });
-      continue;
-    }
+      prioridade,
+      received_at: new Date().toISOString(),
+    }).select("id").maybeSingle();
+    if (logError?.code === "23505") { results.push({ type: event.type, status: "duplicate" }); continue; }
     if (logError) throw logError;
-
-    if (!event.phoneNumberId && !event.wabaId) {
-      await admin.from("whatsapp_chakra_webhook_events").update({
-        processing_status: "ignored",
-      }).eq("event_hash", eventHash);
-      results.push({
-        type: event.type,
-        status: "ignored_missing_phone_and_waba",
-      });
-      continue;
-    }
-
-    const connectionQuery = admin.from("whatsapp_chakra_connections")
-      .select(
-        "id, plugin_id, waba_id, phone_number_id, phone_e164, display_name, somente_leads",
-      );
-    const { data: connection } = event.phoneNumberId
-      ? await connectionQuery.eq("phone_number_id", event.phoneNumberId)
-        .maybeSingle()
-      : event.wabaId
-      ? await connectionQuery.eq("waba_id", event.wabaId).maybeSingle()
-      : { data: null };
-    if (!connection) {
-      await admin.from("whatsapp_chakra_webhook_events").update({
-        processing_status: "ignored",
-      }).eq("event_hash", eventHash);
-      results.push({
-        type: event.type,
-        phoneNumberId: event.phoneNumberId,
-        status: "ignored_unmanaged_phone",
-      });
-      continue;
-    }
-    if (event.pluginId && connection.plugin_id !== event.pluginId) {
-      await admin.from("whatsapp_chakra_webhook_events").update({
-        processing_status: "ignored",
-      }).eq("event_hash", eventHash);
-      results.push({
-        type: event.type,
-        phoneNumberId: event.phoneNumberId,
-        status: "ignored_plugin_mismatch",
-      });
-      continue;
-    }
-
-    // Chakra coexistence events identify the WABA, while the Sigma instance is
-    // keyed by phone number. Resolve the phone once before processing so the
-    // event is not discarded and status updates can match the original wamid.
-    const resolvedPhoneNumberId = event.phoneNumberId ||
-      connection.phone_number_id;
-    if (!event.phoneNumberId && resolvedPhoneNumberId) {
-      event.phoneNumberId = resolvedPhoneNumberId;
-      await admin.from("whatsapp_chakra_webhook_events")
-        .update({ phone_number_id: resolvedPhoneNumberId })
-        .eq("event_hash", eventHash);
-    }
-
-    try {
-      await updateConnection(admin, event.phoneNumberId, {
-        last_webhook_event_at: receivedAt,
-        last_webhook_event_type: event.type,
-        last_webhook_error: null,
-      });
-
-      if (
-        ["message", "message_echo", "smb_message_echo", "messages"].includes(
-          event.type,
-        )
-      ) {
-        const itemBruto = asObject(
-          asObject(event.payload).item || asObject(event.payload).message || event.payload,
-        );
-        if (await aplicarEdicaoOuApagada(admin, itemBruto)) {
-          await admin.from("whatsapp_chakra_webhook_events").update({
-            processing_status: "processed",
-          }).eq("event_hash", eventHash);
-          results.push({ type: event.type, status: "applied_to_original" });
-          continue;
-        }
-        const instance = await ensureInstance(admin, connection);
-        const payload = normalizedMessage(
-          event.type,
-          event.payload,
-          event.phoneNumberId,
-          instance.name,
-        );
-        const contactDigits = payload
-          ? digits(String(asObject(asObject(payload.data).key).remoteJid || "").split("@")[0])
-          : "";
-        const fromApp = event.type === "smb_message_echo";
-        // Número de uso pessoal da equipe: só entra no Sigma a conversa com quem está
-        // na base de leads. O resto do WhatsApp da pessoa não é gravado.
-        let leadId: string | null = null;
-        if (payload && contactDigits && (fromApp || connection.somente_leads)) {
-          const { data } = await admin.rpc("find_lead_by_phone", {
-            p_phone: `+${contactDigits}`,
-          });
-          leadId = (data as string | null) || null;
-        }
-        if (payload && connection.somente_leads && !leadId) {
-          await admin.from("whatsapp_chakra_webhook_events").update({
-            processing_status: "ignored",
-            payload: { descartado: "contato_fora_da_base" },
-          }).eq("event_hash", eventHash);
-          results.push({ type: event.type, status: "ignored_not_a_lead" });
-          continue;
-        }
-        if (payload) {
-          const forwarded = await forwardMessage(
-            supabaseUrl,
-            serviceRole,
-            payload,
-          );
-          const conversationId = forwarded?.data?.conversationId;
-          if (fromApp && leadId) {
-            const sentAt = new Date(
-              Number(asObject(payload.data).messageTimestamp || Date.now() / 1000) * 1000,
-            ).toISOString();
-            // regra no banco (registrar_contato_equipe): campanha que lista este número
-            // ganha o primeiro contato, com o dono do número como quem contatou
-            const { error: contatoError } = await admin.rpc("registrar_contato_equipe", {
-              p_lead_id: leadId,
-              p_phone_number_id: String(event.phoneNumberId || connection.phone_number_id || ""),
-              p_conversa_id: conversationId || null,
-              p_quando: sentAt,
-            });
-            if (contatoError) {
-              console.warn("[chakra] falha ao registrar contato da equipe:", contatoError.message);
-              await markManualContact(admin, leadId, conversationId, sentAt)
-                .catch((error) =>
-                  console.warn("[chakra] falha ao registrar contato manual:", error)
-                );
-            }
-          }
-          const messageData = asObject(payload.data);
-          const messageKey = asObject(messageData.key);
-          const inboundMessage = asObject(messageData.message);
-          const inboundText = firstText(
-            inboundMessage.conversation,
-            inboundMessage.extendedTextMessage?.text,
-          );
-          // Clique em botão: "Sem interesse" encerra só esta vaga e pergunta sobre
-          // outras oportunidades; a resposta a essa pergunta decide o bloqueio geral.
-          const buttonIntent = messageKey.fromMe
-            ? null
-            : classifyChakraButton(messageData.buttonReply ?? null);
-          const contactPhone = digits(String(messageKey.remoteJid || "").split("@")[0]);
-          const replyToContact = async (message: AnyRecord) => {
-            try {
-              await chakraApi(
-                `/v1/ext/plugin/whatsapp/${connection.plugin_id}/api/v24.0/${event.phoneNumberId}/messages`,
-                { method: "POST", body: JSON.stringify(message) },
-              );
-            } catch (error) {
-              console.warn("[chakra] falha ao responder clique de botao:", error);
-            }
-          };
-          // Clique nos botões do pedido de aprovação de pagamento (financeiro): o payload
-          // identifica o pedido. Não é conversa de prospecção: nem IA, nem descadastro.
-          const financeApproval = !messageKey.fromMe &&
-            /^fin_(aprovar|nao_aprovar):/.test(String(messageData.buttonReply?.id || ""));
-          if (financeApproval) {
-            const approvalResponse = await fetch(`${supabaseUrl}/functions/v1/financeiro-aprovacao-whatsapp`, {
-              method: "POST",
-              headers: { Authorization: `Bearer ${serviceRole}`, apikey: serviceRole, "Content-Type": "application/json" },
-              body: JSON.stringify({ acao: "responder", telefone: contactPhone, payload: messageData.buttonReply.id }),
-            });
-            if (!approvalResponse.ok) throw new Error(`aprovacao_financeiro_${approvalResponse.status}`);
-          } else if (!messageKey.fromMe && String(messageData.buttonReply?.id || "").startsWith("sla_assumir:")) {
-            // Médico tocou em "Assumir laudo" no alerta de SLA da radiologia: para os avisos daquele exame.
-            const slaResponse = await fetch(`${supabaseUrl}/functions/v1/sla-alertas`, {
-              method: "POST",
-              headers: { Authorization: `Bearer ${serviceRole}`, apikey: serviceRole, "Content-Type": "application/json" },
-              body: JSON.stringify({ acao: "assumir", telefone: contactPhone, payload: messageData.buttonReply.id }),
-            });
-            if (!slaResponse.ok) throw new Error(`sla_assumir_${slaResponse.status}`);
-          } else if (buttonIntent === "outras_sim") {
-            // Fica no cadastro para futuras vagas; nada a registrar nem a mandar para a IA.
-            await replyToContact(chakraTextMessage(
-              contactPhone,
-              "Combinado! Quando aparecer uma oportunidade com o seu perfil, a gente te avisa por aqui.",
-            ));
-          } else if (!messageKey.fromMe && (buttonIntent === "outras_nao" || isExplicitChakraOptOut(inboundText))) {
-            // O canal oficial não passa pelo bridge Evolution. Processar o
-            // descadastro antes da IA evita resposta e novo contato indevido.
-            const phone = contactPhone;
-            const optOutResponse = await fetch(
-              `${supabaseUrl}/functions/v1/campanha-opt-out-handler`,
-              {
-                method: "POST",
-                headers: {
-                  Authorization: `Bearer ${serviceRole}`,
-                  apikey: serviceRole,
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({ phone, msg_text: inboundText, instance_name: "" }),
-              },
-            );
-            if (!optOutResponse.ok) {
-              throw new Error(`opt_out_handler_${optOutResponse.status}`);
-            }
-            if (buttonIntent === "outras_nao") {
-              await replyToContact(chakraTextMessage(
-                contactPhone,
-                "Entendido. Não vamos mais te enviar mensagens. Se mudar de ideia, é só chamar por aqui.",
-              ));
-            }
-          } else {
-            // O receiver persiste a mensagem; Chakra precisa acionar a IA
-            // diretamente porque não passa pelo bridge Evolution.
-            void forwardCampaignAi(
-              supabaseUrl,
-              serviceRole,
-              payload,
-              instance.name,
-              conversationId,
-            )
-              .catch((error) =>
-                console.warn("[chakra] falha ao acionar IA:", error)
-              );
-            void forwardNfFinanceiro(
-              supabaseUrl,
-              serviceRole,
-              event.payload,
-              event.phoneNumberId,
-            )
-              .catch((error) =>
-                console.warn("[chakra] falha no inbound de NF:", error)
-              );
-            // A IA acima registra o desinteresse NESTA campanha (e não responde);
-            // aqui só perguntamos se a pessoa quer continuar recebendo outras vagas.
-            if (buttonIntent === "sem_interesse") {
-              await replyToContact(chakraOutrasOportunidadesMessage(contactPhone));
-            }
-          }
-        }
-      } else if (["status", "statuses"].includes(event.type)) {
-        await updateDeliveryStatus(admin, event.payload);
-      } else if (event.type === "message_template_status_update") {
-        await updateTemplateStatus(admin, event.payload);
-      } else if (event.type === "history") {
-        // Histórico do celular (coexistência): vira mensagem na caixa de entrada pelo banco,
-        // sem passar pelo receive (mensagem antiga não pode acionar IA nem mexer em campanha).
-        const { data: salvo } = await admin.from("whatsapp_chakra_webhook_events")
-          .select("id").eq("event_hash", eventHash).maybeSingle();
-        if (salvo?.id) {
-          const { error: histErro } = await admin.rpc("importar_historico_chakra", { p_event_id: salvo.id });
-          if (histErro) throw histErro;
+    results.push({ type: event.type, status: "queued" });
+    if (inserido?.id) filaAoVivo.push({ id: inserido.id, prioridade });
+  }
+  // Ao vivo (prioridade 1 mensagem, 3 status): processa nesta mesma chamada, depois de responder (waitUntil), como
+  // antes, para a IA responder rápido. Backlog e histórico ficam para o worker do cron (1 min), que vem do banco
+  // (pg_net) e não gasta a cota de chamada entre funções. 25/11: "acordar o worker" a cada webhook gastava essa
+  // cota e até mensagem ao vivo caía em "Rate limit exceeded for function".
+  const aoVivo = filaAoVivo.filter((f) => f.prioridade <= 3);
+  if (aoVivo.length) {
+    const tarefa = (async () => {
+      for (const f of aoVivo) {
+        const { data: row } = await admin.from("whatsapp_chakra_webhook_events")
+          .update({ processing_status: "processing", reservado_em: new Date().toISOString(), tentativas: 1 })
+          .eq("id", f.id).eq("processing_status", "received").select("*").maybeSingle();
+        if (!row) continue; // o worker já pegou
+        try {
+          await processarEvento(admin, supabaseUrl, serviceRole, eventoDaLinha(row), false);
+        } catch (e) {
+          await admin.rpc("chakra_fila_falhou", { p_id: row.id, p_erro: e instanceof Error ? e.message : String(e) });
         }
       }
-      await admin.from("whatsapp_chakra_webhook_events").update({
-        processing_status: "processed",
-      }).eq("event_hash", eventHash);
-      results.push({
-        type: event.type,
-        phoneNumberId: event.phoneNumberId,
-        status: "processed",
-      });
-    } catch (error) {
-      const message = error instanceof Error
-        ? error.message
-        : "processing_failed";
-      await admin.from("whatsapp_chakra_webhook_events").update({
-        processing_status: "failed",
-        error_message: message,
-      }).eq("event_hash", eventHash);
-      await updateConnection(admin, event.phoneNumberId, {
-        last_webhook_error: message,
-      });
-      throw error;
-    }
+    })().catch((e) => console.warn("[chakra] ao vivo:", e));
+    // deno-lint-ignore no-explicit-any
+    const rt = (globalThis as any).EdgeRuntime;
+    if (rt?.waitUntil) rt.waitUntil(tarefa); else await tarefa;
   }
-
   return json({ ok: true, processed: results });
 });
