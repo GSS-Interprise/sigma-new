@@ -11,6 +11,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { chakraApi, unwrapChakraPayload } from "../_shared/chakra.ts";
 import { SLA_VOZ_URL, tokenAlerta } from "../_shared/sla.ts";
+import { motivoQueda } from "../_shared/slaEstacao.ts";
 import { calcularIndicadores, daModalidade, destinoDoAviso, modalidadeDoExame, passosAgora, saidaConfiavel, textoIndicadores } from "../_shared/slaEscada.ts";
 
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { "Content-Type": "application/json" } });
@@ -408,18 +409,8 @@ function ehServiceRole(auth: string) {
   }
 }
 
-// Motivo legível a partir da última leitura recebida (qualquer status).
-function motivoQueda(ultima: { status: string; detalhe: any; lida_em: string } | null, minutosSemNada: number | null) {
-  if (!ultima || (minutosSemNada !== null && minutosSemNada > LIMITE_MIN)) {
-    return "A estação parou de mandar leituras: PC desligado ou em suspensão, internet/túnel caído ou a tarefa do coletor parou.";
-  }
-  const m = ultima.detalhe?.motivo;
-  if (m === "pacs_fechado") return "O Vue PACS está fechado na estação.";
-  if (m === "tela_indisponivel") return "A tela da estação está bloqueada ou a sessão do usuário caiu.";
-  if (m === "vpn_desconectada") return "A VPN do hospital (Sophos) caiu: o PACS não alcança o servidor. Alguém precisa reconectar a VPN na estação.";
-  if (ultima.status === "sem_grade") return "O PACS está aberto, mas a lista não aparece: outra janela por cima, outra pasta ou a VPN caiu.";
-  return `Última leitura com status "${ultima.status}".`;
-}
+// Motivo legível da queda: _shared/slaEstacao.ts (texto por código do coletor e por unidade).
+const motivoDe = (unidade: string, ultima: any, minNada: number | null) => motivoQueda(unidade, ultima, minNada, LIMITE_MIN);
 
 // paraQuem: e-mail de um contato da aba Coordenação; sem ele, a lista fixa da coordenação (secret SLA_ALERTA_EMAILS).
 const duracaoTexto = (min: number) => (min < 90 ? `${Math.round(min)} min` : `${Math.round(min / 60)} h`);
@@ -473,7 +464,7 @@ async function checarColetor(admin: any, unidades = UNIDADES) {
       .order("lida_em", { ascending: false }).limit(1).maybeSingle();
     // Unidade sem nenhuma leitura ainda (estação não instalada): não abre queda nem avisa.
     if (!ultima) { res.push({ unidade, pulado: "sem_estacao" }); continue; }
-    const { data: aberta } = await admin.from("sla_coletor_quedas").select("id, aberta_em, whatsapp_em").eq("unidade", unidade)
+    const { data: aberta } = await admin.from("sla_coletor_quedas").select("id, aberta_em, whatsapp_em, motivo").eq("unidade", unidade)
       .is("fechada_em", null).maybeSingle();
 
     // Para FECHAR uma queda, lista vazia não basta: precisa de uma leitura "ok" com linhas depois que a queda abriu
@@ -488,9 +479,15 @@ async function checarColetor(admin: any, unidades = UNIDADES) {
     const minOk = vivo ? (Date.now() - new Date(vivo.lida_em).getTime()) / 60000 : null;
     const minNada = ultima ? (Date.now() - new Date(ultima.lida_em).getTime()) / 60000 : null;
     const parado = minOk === null || minOk > LIMITE_MIN;
+    // Queda aberta: o motivo acompanha a última leitura (25/11: Tijucas seguiu "PC desligado" com o PC ligado e o
+    // login do portal expirado). É o texto que a tela de Radiologia mostra.
+    const motivoAgora = motivoDe(unidade, ultima, minNada);
+    if (aberta && parado && aberta.motivo !== motivoAgora) {
+      await admin.from("sla_coletor_quedas").update({ motivo: motivoAgora }).eq("id", aberta.id);
+    }
 
     if (parado && !aberta) {
-      const motivo = motivoQueda(ultima, minNada);
+      const motivo = motivoAgora;
       const zap = await avisarEstacao(unidade, "parou", `desde ${hora(ok?.lida_em ?? null)}`, motivo);
       await admin.from("sla_coletor_quedas").insert({ unidade, ultima_ok_em: ok?.lida_em ?? null, motivo, whatsapp_em: zap.ok ? new Date().toISOString() : null });
       const email = await emailar(`SLA de laudos: coletor parado (${unidade})`,
@@ -504,7 +501,7 @@ async function checarColetor(admin: any, unidades = UNIDADES) {
       const zap = await avisarEstacao(unidade, "voltou", `às ${hora(vivo!.lida_em)}, depois de ${duracaoTexto(min + LIMITE_MIN)}`, "Os avisos de laudo voltaram a sair.");
       res.push({ unidade, evento: "voltou", email, whatsapp: zap });
     } else if (parado && aberta && (!aberta.whatsapp_em || Date.now() - new Date(aberta.whatsapp_em).getTime() > LEMBRETE_QUEDA_H * 3_600_000)) {
-      const zap = await avisarEstacao(unidade, "continua", `parada desde ${hora(aberta.aberta_em)}`, motivoQueda(ultima, minNada));
+      const zap = await avisarEstacao(unidade, "continua", `parada desde ${hora(aberta.aberta_em)}`, motivoAgora);
       if (zap.ok) await admin.from("sla_coletor_quedas").update({ whatsapp_em: new Date().toISOString() }).eq("id", aberta.id);
       res.push({ unidade, evento: "lembrete", whatsapp: zap });
     } else {
