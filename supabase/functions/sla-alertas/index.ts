@@ -662,6 +662,32 @@ Deno.serve(async (req) => {
       if (!al) throw new Error("alerta de teste não criado");
       return json({ ok: true, alerta: al.id, ligacao: await ligar(admin, String(body.telefone || ""), al.id) });
     }
+    if (body.acao === "whats_teste") {
+      // 25/11 (Raul): mostrar a quem vai receber como chega o WhatsApp do SLA (perto do prazo e vencido) e o botão
+      // Assumir laudo. Exame fictício na unidade "teste", modelos v1 (sem nome de paciente).
+      const tel = dig(body.telefone);
+      if (tel.length < 12) throw new Error("telefone com DDI e DDD");
+      const sender = await remetente(admin);
+      const agora = Date.now();
+      const out = [];
+      for (const [tipo, desloc] of [["prazo", 20], ["vencido", -15]] as const) {
+        const vence = agora + desloc * 60000;
+        const { data: ex } = await admin.from("sla_exames").insert({
+          unidade: "teste", data_exame: new Date(agora).toISOString().slice(0, 10), hora_min: "00:00", ordem: Math.floor(Math.random() * 1e6),
+          origem: "ps", hora_exame: "00:00", inicio_em: new Date(vence - 120 * 60000).toISOString(), vence_em: new Date(vence).toISOString(),
+          visto_primeiro_em: new Date(agora).toISOString(), visto_ultimo_em: new Date(agora).toISOString(),
+        }).select("id, inicio_em").single();
+        if (!ex) throw new Error("exame de teste não criado");
+        const { data: al } = await admin.from("sla_alertas").insert({
+          exame_id: ex.id, tipo, papel: "plantonista", destino_nome: String(body.nome || "Teste"), destino: tel, canal: "whatsapp",
+        }).select("id").single();
+        if (!al) throw new Error("alerta de teste não criado");
+        const wamid = await enviarModelo(sender, tel, `gss_sla_laudo_${tipo}_v1`, ["Pronto Socorro", "Teste", horaExame(ex.inicio_em), duracao(Math.abs(desloc))], al.id);
+        await admin.from("sla_alertas").update({ status: wamid ? "enviado" : "falhou", mensagem_id: wamid }).eq("id", al.id);
+        out.push({ tipo, alerta: al.id, wamid });
+      }
+      return json({ ok: true, enviados: out });
+    }
     if (body.acao === "indicadores") return json({ ok: true, ...(await indicadores(admin, Array.isArray(body.unidades) ? body.unidades.map(String) : UNIDADES, new Date(), body.enviar !== false)) });
     if (body.acao === "status_ligacao") return json({ ok: true, ...(await statusLigacao(String(body.sid || ""))) });
     if (body.acao === "exames") return json({ ok: true, exames: await checarExames(admin, !!body.forcar, Array.isArray(body.unidades) ? body.unidades.map(String) : UNIDADES, body.teste === true) });
