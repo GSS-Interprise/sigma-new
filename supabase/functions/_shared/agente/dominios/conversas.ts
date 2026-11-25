@@ -4,9 +4,10 @@
 // mostra o texto. Contagens no banco: supabase/migrations/20261125120000_agente_conversas.sql.
 //
 // LGPD: o domínio nasce SEM papel em agente_dominio_acessos (o admin libera em Configurações › Agente do Sigma) e só
-// lê números cujo uso está na lista USOS (lista de inclusão, não de exclusão): 'pessoal' fica de fora, 'ambulatorio'
-// também (atende paciente dos municípios, e dado de paciente está fora do protocolo, §4), e uso novo que alguém criar
-// amanhã só entra quando for posto aqui. Número sem cadastro em Números WhatsApp também fica de fora.
+// lê números cujo uso está na lista USOS (lista de inclusão, não de exclusão): 'pessoal' fica de fora, e uso novo
+// que alguém criar amanhã só entra quando for posto aqui. 'ambulatorio' entrou em 25/11/2026: o Raul confirmou que o
+// número do Danilo fala com os municípios (secretarias), não com paciente; se um dia atender paciente, sai da lista.
+// Número sem cadastro em Números WhatsApp também fica de fora.
 // Telefone do contato não sai: só os 4 últimos dígitos.
 import type { Ctx, Dominio, Fonte, Resultado } from "../tipos.ts";
 import { ErroFerramenta } from "../tipos.ts";
@@ -19,8 +20,8 @@ const PADRAO_MENSAGENS = 30;
 const MAX_DIAS = 90;
 const MAX_TEXTO = 600;
 
-export const USOS = ["prospeccao", "escalas", "clientes", "financeiro"] as const;
-const USO_ROTULO: Record<string, string> = { prospeccao: "prospecção", escalas: "escalas", clientes: "clientes", financeiro: "financeiro" };
+export const USOS = ["prospeccao", "escalas", "clientes", "financeiro", "ambulatorio"] as const;
+const USO_ROTULO: Record<string, string> = { prospeccao: "prospecção", escalas: "escalas", clientes: "clientes", financeiro: "financeiro", ambulatorio: "ambulatório" };
 
 // ---- regras puras (testadas em conversas_test.ts) -------------------------------------------------------------------
 
@@ -362,14 +363,14 @@ const NUMERO = {
 export const conversas: Dominio = {
   id: "conversas",
   titulo: "Conversas do WhatsApp",
-  versao: "1.0.0",
+  versao: "1.1.0",
   status: "ativo",
   resumo: "o que foi conversado com médicos, hospitais e clientes nos números oficiais do WhatsApp (texto das mensagens).",
   frescor,
   guia: {
     proposito: "Mostra o conteúdo das conversas da equipe nos números oficiais do WhatsApp (API oficial/Chakra, inclusive o que a equipe digita no celular desses números): achar a conversa de um contato, ler as últimas mensagens e ver por número o que ficou sem resposta. Para tempo de resposta e fila ao vivo, use o domínio atendimento.",
     glossario: [
-      { termo: "Número oficial", definicao: "número da GSS conectado à API oficial e cadastrado em Números WhatsApp com uso prospecção, escalas, clientes ou financeiro. Números de uso pessoal, de ambulatório (pacientes) e sem cadastro nunca aparecem." },
+      { termo: "Número oficial", definicao: "número da GSS conectado à API oficial e cadastrado em Números WhatsApp com uso prospecção, escalas, clientes, financeiro ou ambulatório (municípios). Números de uso pessoal e sem cadastro nunca aparecem." },
       { termo: "Conversa no período", definicao: "conversa com pelo menos uma mensagem (recebida ou enviada) entre o primeiro e o último dia do período, em hora de Brasília." },
       { termo: "Sem resposta no período", definicao: "a última mensagem da conversa dentro do período é do contato. Para a fila oficial de quem está esperando agora (que desconta IA atuando, conversa encerrada e pedido de descadastro), use atendimento_aguardando." },
       { termo: "Recebidas / enviadas", definicao: "mensagens do contato / mensagens da GSS (equipe, campanha ou IA) no período." },
@@ -391,7 +392,7 @@ export const conversas: Dominio = {
       "Diga o período e o número junto com a contagem.",
     ],
     limites: [
-      "Só números oficiais (API oficial/Chakra) de prospecção, escalas, clientes e financeiro. Números pessoais, de ambulatório (conversa com paciente), WhatsApp fora do Sigma e números não oficiais não entram.",
+      "Só números oficiais (API oficial/Chakra) de prospecção, escalas, clientes, financeiro e ambulatório (conversa com os municípios). Números pessoais, WhatsApp fora do Sigma e números não oficiais não entram.",
       "Não transcreve áudio nem lê o conteúdo de imagens e documentos (só o nome do arquivo ou a legenda).",
       "Período de no máximo 90 dias; até 50 mensagens por leitura.",
       "Não envia mensagem nem marca nada: só leitura.",

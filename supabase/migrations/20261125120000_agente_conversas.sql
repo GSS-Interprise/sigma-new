@@ -4,7 +4,7 @@
 -- o admin libera em Configurações › Agente do Sigma depois do ok de LGPD.
 
 -- 1) Conversas com mensagem num período, já contadas no banco (o PostgREST corta em 1000 linhas e o hash precisa do
---    mesmo recorte para todo sócio). Quem filtra os números permitidos (lista de usos; pessoal e ambulatorio nunca) é a edge, em
+--    mesmo recorte para todo sócio). Quem filtra os números permitidos (lista de usos; pessoal nunca) é a edge, em
 --    p_instancias: a função não decide permissão, só conta.
 --    "Sem resposta no período" = a última mensagem da conversa DENTRO do período é do contato.
 create or replace function public.agente_conversas_base(

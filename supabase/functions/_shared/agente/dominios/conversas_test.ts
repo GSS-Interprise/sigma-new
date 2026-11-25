@@ -17,11 +17,11 @@ const conexoes = [
 ];
 const nomes = new Map([["p1", "Danilo Souza"]]);
 
-Deno.test("números: pessoal, ambulatório (paciente) e sem cadastro ficam de fora; ordem por nome", () => {
+Deno.test("números: pessoal e sem cadastro ficam de fora, ambulatório entra; ordem por nome", () => {
   const ns = casarNumeros(insts, conexoes, nomes);
-  assertEquals(ns.map((n) => n.instancia), ["i1", "i2"]);
-  assertEquals(ns[0], { instancia: "i1", nome: "Escalas GSS", uso: "escalas", responsavel: "Danilo Souza", final: "0001" });
-  assertEquals(ns[1].responsavel, null);
+  assertEquals(ns.map((n) => n.instancia), ["i4", "i1", "i2"]);
+  assertEquals(ns[1], { instancia: "i1", nome: "Escalas GSS", uso: "escalas", responsavel: "Danilo Souza", final: "0001" });
+  assertEquals(ns[2].responsavel, null);
 });
 
 Deno.test("números: filtro por uso, nome, final e responsável; uso inválido é erro claro", () => {
@@ -31,9 +31,9 @@ Deno.test("números: filtro por uso, nome, final e responsável; uso inválido �
   assertEquals(filtrarNumeros(ns, { numero: "escalas" }).map((n) => n.instancia), ["i1"]);
   assertEquals(filtrarNumeros(ns, { numero: "0002" }).map((n) => n.instancia), ["i2"]);
   assertEquals(filtrarNumeros(ns, { pessoa: "danilo" }).map((n) => n.instancia), ["i1"]);
-  assertEquals(filtrarNumeros(ns, {}).length, 2);
+  assertEquals(filtrarNumeros(ns, {}).length, 3);
   assertThrows(() => filtrarNumeros(ns, { uso: "pessoal" }), ErroFerramenta);
-  assertThrows(() => filtrarNumeros(ns, { uso: "ambulatorio" }), ErroFerramenta);
+  assertEquals(filtrarNumeros(ns, { uso: "ambulatório" }).map((n) => n.instancia), ["i4"]);
 });
 
 Deno.test("texto: áudio não é transcrito, mídia leva legenda, uma linha e corte em 600", () => {

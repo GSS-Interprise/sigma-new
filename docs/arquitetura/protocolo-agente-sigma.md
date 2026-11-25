@@ -285,8 +285,9 @@ Só admin (Configurações já é só admin). A `/conectar-claude` continua para
   v1.6.0; `conversas_buscar` (por contato, número, uso, responsável, período e só sem resposta), `conversas_ler` (últimas
   N mensagens de uma conversa, até 50, áudio como `[áudio]`, hora absoluta dd/mm hh:mm) e `conversas_por_numero`, mais
   2 prompts. Contagens nas RPCs `agente_conversas_base`/`agente_conversas_por_numero` (migration
-  `20261125120000_agente_conversas.sql`, só service role). **LGPD:** só números com uso prospecção, escalas, clientes
-  ou financeiro (lista de inclusão: pessoal, ambulatório/paciente e número sem cadastro nunca entram); telefone do
+  `20261125120000_agente_conversas.sql`, só service role). **LGPD:** só números com uso prospecção, escalas, clientes,
+  financeiro ou ambulatório (lista de inclusão: pessoal e número sem cadastro nunca entram; ambulatório entrou em 25/11
+  porque o número do Danilo fala com os municípios, não com paciente); telefone do
   contato só com os 4 últimos dígitos. **Nasce sem papel nenhum**: o admin liga em Configurações › Agente do Sigma
   depois do ok de LGPD da GSS. A bateria testa antes de liberar com o token de origem `bateria` (abaixo). 5 casos em
   `casos/conversas.json`, todos em período fechado; 34 de 34 na bateria.)
