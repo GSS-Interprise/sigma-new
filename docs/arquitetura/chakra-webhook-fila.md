@@ -1,7 +1,8 @@
 # Fila do webhook da Chakra (WhatsApp oficial)
 
 25/11/2026. Código: `supabase/functions/chakra-webhook/index.ts`. Banco: migrations `20261125160000_chakra_fila_webhook.sql`,
-`20261125170000_chakra_mensagem_direto_banco.sql` e `20261125180000_chakra_fila_cron.sql`.
+`20261125170000_chakra_mensagem_direto_banco.sql`, `20261125180000_chakra_fila_cron.sql` e
+`20261125190000_chakra_fila_drenar_sql.sql`.
 
 ## Por que existe
 
@@ -54,6 +55,27 @@ médico ficou parada.
 6. **Sem duplicar.** O receiver confere `provider` + `wa_message_id`. O índice único
    `(conversation_id, wa_message_id)` segura o resto, e o importador usa `on conflict do nothing`. Reprocessar o mesmo
    evento devolve `ja_existiam`.
+
+## Ajuste do mesmo dia (volume permanente da coexistência)
+
+Com coexistência, todo o WhatsApp dos números da equipe passa pelo webhook, cerca de 300 eventos por minuto. Mandar
+cada mensagem ao receiver por HTTP sempre bate no limite de chamada entre funções. O worker em edge também estourava
+recurso (`WORKER_RESOURCE_LIMIT`) com os pacotes de histórico. Por isso:
+
+- **Dreno no banco.** O cron `chakra-fila-drenar` roda a cada 20 s, com lote de 700, e chama
+  `chakra_fila_drenar`. Ele grava backlog e histórico 100% em SQL: mensagens (menos edição, apagada e reação) e
+  pacotes `history`, respeitando `somente_leads`. Medido em 25/11: cerca de 4 mil eventos por minuto.
+- **Mensagem ao vivo também vai pelo banco** (`importar_mensagem_chakra` com `p_ao_vivo`): soma não lida, reabre a
+  conversa, abre a janela de 24 h e grava o nome do contato.
+- **Só vai ao receiver o que precisa de automação:** clique em botão, pedido de descadastro, lead em campanha ativa
+  (IA ou aviso da equipe) e número do financeiro (NF).
+- **Eco do celular** para um lead registra o contato da equipe por RPC.
+- **Sem o receiver, a mídia não é baixada na hora.** O id fica guardado para o `chakra-midia-recuperar`.
+- **Timestamp:** o da mensagem (`message`/`item`) vem em segundos e o do envelope da Chakra vem em milissegundos. Ler
+  o envelope como segundos deixou histórico com cara de "ao vivo" e entupiu o caminho ao vivo. Foi corrigido em
+  `segundosDaMensagem`.
+- **Worker em edge:** cron `chakra-webhook-fila` a cada 30 s, lote de 10, 2 em paralelo. Ele fica com o que o SQL não
+  faz: status de entrega, edição e apagada, e novas tentativas de mensagem ao vivo.
 
 ## Estados de um evento
 

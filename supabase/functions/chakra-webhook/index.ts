@@ -1074,7 +1074,7 @@ async function processarEvento(admin: AdminClient, supabaseUrl: string, serviceR
 
   const connectionQuery = admin.from("whatsapp_chakra_connections")
     .select(
-      "id, plugin_id, waba_id, phone_number_id, phone_e164, display_name, somente_leads",
+      "id, plugin_id, waba_id, phone_number_id, phone_e164, display_name, somente_leads, uso",
     );
   const { data: connection } = event.phoneNumberId
     ? await connectionQuery.eq("phone_number_id", event.phoneNumberId)
@@ -1145,7 +1145,7 @@ async function processarEvento(admin: AdminClient, supabaseUrl: string, serviceR
       // Número de uso pessoal da equipe: só entra no Sigma a conversa com quem está
       // na base de leads. O resto do WhatsApp da pessoa não é gravado.
       let leadId: string | null = null;
-      if (payload && contactDigits && (fromApp || connection.somente_leads)) {
+      if (payload && contactDigits) {
         const { data } = await admin.rpc("find_lead_by_phone", {
           p_phone: `+${contactDigits}`,
         });
@@ -1159,16 +1159,39 @@ async function processarEvento(admin: AdminClient, supabaseUrl: string, serviceR
         st = "ignored_not_a_lead";
         return st;
       }
-      if (payload && historico) {
-        // Mensagem antiga: grava direto no banco (importar_mensagem_chakra, idempotente), sem o pulo HTTP para o
-        // receiver, que tem limite de chamada entre funções e travou até mensagem ao vivo em 25/11.
+      // Só vai ao receiver (HTTP, com limite de chamada entre funções) o que precisa de automação: clique em botão,
+      // pedido de descadastro, lead em campanha ativa (IA ou aviso da equipe) e número do financeiro (NF). O resto do
+      // WhatsApp da equipe (coexistência, ~300 eventos/min desde 25/11) é gravado direto no banco.
+      let precisaReceiver = false;
+      if (payload && !historico && !fromApp) {
+        const dados = asObject(payload.data);
+        const texto = firstText(asObject(dados.message).conversation, asObject(asObject(dados.message).extendedTextMessage).text);
+        precisaReceiver = Boolean(dados.buttonReply) || isExplicitChakraOptOut(texto) || connection.uso === "financeiro";
+        if (!precisaReceiver && leadId) {
+          const { data: emCampanha } = await admin.from("campanha_leads").select("id").eq("lead_id", leadId)
+            .in("status", ["contatado", "sem_resposta", "em_conversa", "aquecido"]).limit(1).maybeSingle();
+          precisaReceiver = Boolean(emCampanha);
+        }
+      }
+      if (payload && fromApp && leadId && !historico) {
+        // Eco do celular para um lead: registra o contato da equipe (RPC no banco, sem chamada entre funções).
+        const sentAt = new Date(Number(asObject(payload.data).messageTimestamp || Date.now() / 1000) * 1000).toISOString();
+        const { error: contatoError } = await admin.rpc("registrar_contato_equipe", {
+          p_lead_id: leadId, p_phone_number_id: String(event.phoneNumberId || connection.phone_number_id || ""),
+          p_conversa_id: null, p_quando: sentAt,
+        });
+        if (contatoError) console.warn("[chakra] falha ao registrar contato da equipe:", contatoError.message);
+      }
+      if (payload && (historico || !precisaReceiver)) {
+        // Grava direto no banco (importar_mensagem_chakra, idempotente: on conflict no wa_message_id). Ao vivo soma
+        // não lida e abre a janela de 24 h; histórico só grava.
         const { data: imp, error: impErro } = await admin.rpc("importar_mensagem_chakra", {
-          p_event_id: ev.id, p_phone_number_id: event.phoneNumberId,
+          p_event_id: ev.id, p_phone_number_id: event.phoneNumberId, p_ao_vivo: !historico,
         });
         if (impErro) throw impErro;
         if (imp && (imp as AnyRecord).ok === false) throw new Error(`historico:${(imp as AnyRecord).erro}`);
         await admin.from("whatsapp_chakra_webhook_events").update({ processing_status: "processed", error_message: null }).eq("id", ev.id);
-        return "historico";
+        return historico ? "historico" : "banco";
       }
       if (payload) {
         const forwarded = await forwardMessage(
@@ -1340,7 +1363,10 @@ async function processarEvento(admin: AdminClient, supabaseUrl: string, serviceR
 const MIN_ANTIGA = 30;
 function segundosDaMensagem(payload: AnyRecord): number | null {
   const p = asObject(payload);
-  const t = Number(firstText(p.timestamp, asObject(p.message).timestamp, asObject(p.item).timestamp));
+  // O timestamp da mensagem (message/item) vem em segundos; o do envelope da Chakra vem em milissegundos. 25/11: ler
+  // o do envelope como segundos deixou histórico com cara de "ao vivo" e entupiu o caminho ao vivo.
+  let t = Number(firstText(asObject(p.message).timestamp, asObject(p.item).timestamp, p.timestamp));
+  if (t > 1e11) t = t / 1000;
   return Number.isFinite(t) && t > 1e9 ? t : null;
 }
 function prioridadeDe(event: WebhookEvent): number {
@@ -1363,7 +1389,7 @@ function eventoDaLinha(row: any): EventoFila {
 // Worker da fila: reserva lotes (chakra_fila_reservar, SKIP LOCKED + teto global) e processa com concorrência
 // pequena, até ~50 s por chamada. Backlog (prioridade >= 7, ou parado há mais de 10 min, ou mensagem com mais de
 // 30 min) vai em modo histórico.
-const LOTE = 20, PARALELO = 4, ORCAMENTO_MS = 50_000;
+const LOTE = 10, PARALELO = 2, ORCAMENTO_MS = 40_000;
 async function processarFila(admin: AdminClient, supabaseUrl: string, serviceRole: string) {
   const inicio = Date.now();
   const conta: Record<string, number> = {};
