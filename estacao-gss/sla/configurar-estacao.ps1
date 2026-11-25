@@ -13,7 +13,9 @@ function PorReg($caminho, $nome, $valor) {
   New-ItemProperty -Path $caminho -Name $nome -Value $valor -PropertyType DWord -Force | Out-Null
 }
 function Energia($sub, $set) {
-  $linha = (powercfg /query SCHEME_CURRENT $sub $set | Select-String "Current AC Power Setting Index|Indice da Configuracao de Energia CA Atual|Configura" | Select-Object -Last 1)
+  # Linha da TOMADA (AC). Em portugues e "Correntes Alternadas"; "Correntes Continuas" e a bateria (DC) e vem
+  # depois: pegar a ultima linha com "Configura" lia a bateria e mostrava "10 min" com a tomada ja em "nunca" (25/11).
+  $linha = (powercfg /query SCHEME_CURRENT $sub $set | Select-String "Current AC Power Setting Index|Alternadas" | Select-Object -First 1)
   if (-not $linha) { return "?" }
   $v = $linha.ToString() -replace '.*:\s*', ''
   # Tempos vem em segundos e em hexadecimal (0x00000258 = 600 s = 10 min); 0 = nunca.
@@ -66,9 +68,15 @@ PorReg $WU "AUOptions" 3
 PorReg $SIS "InactivityTimeoutSecs" 0
 Set-ItemProperty -Path $DESK -Name ScreenSaveActive -Value "0"
 Set-ItemProperty -Path $DESK -Name ScreenSaverIsSecure -Value "0"
-# Placa de rede ligada sempre (economia de energia derruba o tunel e a VPN).
+# Placa de rede ligada sempre (economia de energia derruba o tunel e a VPN). Pelo WMI (MSPower_DeviceEnable) porque
+# no Windows 11 do PC do robo o Set-NetAdapterPowerManagement nao tem -AllowComputerToTurnOffDevice (25/11) e o erro
+# saia mudo. E o mesmo que desmarcar "O computador pode desligar este dispositivo" no Gerenciador de Dispositivos.
 Get-NetAdapter -Physical -ErrorAction SilentlyContinue | Where-Object Status -eq "Up" | ForEach-Object {
-  try { Set-NetAdapterPowerManagement -Name $_.Name -AllowComputerToTurnOffDevice Disabled -ErrorAction Stop } catch { Write-Output "rede $($_.Name): $($_.Exception.Message)" }
+  $pnp = $_.PnPDeviceID.ToUpper()
+  try {
+    Get-CimInstance -Namespace root\wmi -ClassName MSPower_DeviceEnable -ErrorAction Stop |
+      Where-Object { $_.InstanceName.ToUpper() -like "$pnp*" } | Set-CimInstance -Property @{ Enable = $false } -ErrorAction Stop
+  } catch { Write-Output "rede $($_.Name): $($_.Exception.Message)" }
 }
 
 Write-Output "`n-- Depois --"
