@@ -117,11 +117,12 @@ export default function FinanceiroNotasFiscais(
   const [pagoOpen, setPagoOpen] = useState(false);
   const [alvoConf, setAlvoConf] = useState<Linha | null>(null);
   const [liquidoManual, setLiquidoManual] = useState("");
-  // nota sem campo de líquido (prefeitura): já abre com o líquido escrito na discriminação, para a
-  // pessoa conferir na nota e aceitar. O Sigma não aceita sozinho; quem confere confirma o valor.
+  // O campo do líquido abre sempre preenchido (o lido da nota ou o escrito na discriminação) e editável.
+  // Antes só aparecia com o líquido vazio: com o valor já lido, o texto pedia "informe o líquido" e não havia
+  // onde digitar (Mavi, 25/11, Fábio Rech e Dimas em Ibirama). O Sigma não aceita sozinho; quem confere confirma.
   const abrirConferencia = (l: Linha) => {
     setAlvoConf(l);
-    const ld = l.nf_valor_liquido == null ? l.nf_conferencia?.liquido_na_descricao : null;
+    const ld = l.nf_valor_liquido ?? l.nf_conferencia?.liquido_na_descricao ?? null;
     setLiquidoManual(ld != null ? Number(ld).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "");
   };
   const [contatoNovo, setContatoNovo] = useState("");
@@ -194,6 +195,8 @@ export default function FinanceiroNotasFiscais(
     && !["aceita", "ok"].includes(String(l.nf_conferencia_status))
     && (l.ca_evento_id ? semNfRetido(l) : (["divergente", "manual"].includes(String(l.nf_conferencia_status)) || !!l.conferir));
   const precisaConferir = (l: Linha) => podeAceitar(l) || semNfRetido(l);
+  // nota já aceita e ainda não lançada no Conta Azul: dá para corrigir o líquido (lançada, o valor já foi para o CA)
+  const podeCorrigirLiquido = (l: Linha) => !!l.nf_arquivo_path && !l.ca_evento_id && l.nf_conferencia_status === "aceita";
   // outros lançamentos do mesmo médico na competência, ainda sem nota: destino para mover a nota
   const outrosLocais = (l: Linha) => todasLinhas.filter((x) => x.id !== l.id && !!l.medico_id
     && x.medico_id === l.medico_id && !x.nf_arquivo_path && !x.ca_evento_id);
@@ -314,7 +317,7 @@ export default function FinanceiroNotasFiscais(
     const ca = resp?.conta_azul as { ok: boolean | null; detalhe: string } | null | undefined;
     if (ca?.ok === false) toast.warning("Nota aceita, mas o pagamento continua retido no Conta Azul.", { description: ca.detalhe, duration: 12000 });
     else if (ca?.ok === true) toast.success("Nota aceita. O SEM NF saiu do Conta Azul: pagamento liberado.");
-    else toast.success("Nota aceita. Ficou registrado quem aceitou.");
+    else toast.success(l.nf_conferencia_status === "aceita" ? "Valor líquido salvo." : "Nota aceita. Ficou registrado quem aceitou.");
     setAlvoConf(null);
     qc.invalidateQueries({ queryKey: ["financeiro-nf"] });
   };
@@ -587,7 +590,12 @@ export default function FinanceiroNotasFiscais(
                               {l.medico_id && <Pencil className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100" />}
                             </button>
                           </TableCell>
-                          <TableCell className="text-right tabular-nums">{brl(Number(l.valor_total))}</TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {brl(Number(l.valor_total))}
+                            {l.nf_valor_liquido != null && Number(l.nf_valor_liquido) !== Number(l.valor_total) && (
+                              <p className="text-[11px] text-muted-foreground">líquido {brl(Number(l.nf_valor_liquido))}</p>
+                            )}
+                          </TableCell>
                           <TableCell>
                             <span className={`rounded-full px-2 py-0.5 text-[11px] ${st.cls}`}>{st.label}</span>
                             {semNfRetido(l) ? (
@@ -764,21 +772,24 @@ export default function FinanceiroNotasFiscais(
               <p className="text-sm text-amber-700">Na chegada: {alvoConf.conferir}.</p>
             )}
           </div>
-          {alvoConf && podeAceitar(alvoConf) && (
+          {alvoConf && (podeAceitar(alvoConf) || podeCorrigirLiquido(alvoConf)) && (
             <div className="rounded-md border bg-muted/30 p-3 space-y-2">
+              <label htmlFor="liquido-manual" className="text-sm font-medium">Valor líquido a pagar</label>
+              <Input id="liquido-manual" value={liquidoManual} onChange={(e) => setLiquidoManual(e.target.value)} placeholder="ex.: 12.345,67" inputMode="decimal" />
               <p className="text-xs text-muted-foreground">
-                Para seguir com esta nota mesmo assim, aceite a exceção. {alvoConf.nf_valor_liquido == null && "Informe o valor líquido a pagar, que a leitura não encontrou."}
+                {podeCorrigirLiquido(alvoConf)
+                  ? "Nota já aceita. Se o líquido estiver errado, corrija e salve."
+                  : alvoConf.nf_valor_liquido == null && !liquidoManual.trim()
+                    ? "A leitura não encontrou o líquido: confira na nota, informe e aceite a exceção."
+                    : "Confira com a nota. Se estiver certo, aceite; se não, corrija antes de aceitar."}
               </p>
-              {alvoConf.nf_valor_liquido == null && (
-                <Input value={liquidoManual} onChange={(e) => setLiquidoManual(e.target.value)} placeholder="Valor líquido, ex.: 12.345,67" inputMode="decimal" />
-              )}
             </div>
           )}
           <DialogFooter>
             <Button variant="outline" disabled={enviando} onClick={() => alvoConf && conferirDeNovo(alvoConf)}>Conferir de novo</Button>
-            {alvoConf && podeAceitar(alvoConf) && (
+            {alvoConf && (podeAceitar(alvoConf) || podeCorrigirLiquido(alvoConf)) && (
               <Button disabled={enviando} onClick={() => aceitarNota(alvoConf)}>
-                {enviando && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />} Aceitar esta nota
+                {enviando && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />} {podeCorrigirLiquido(alvoConf) ? "Salvar valor líquido" : "Aceitar esta nota"}
               </Button>
             )}
           </DialogFooter>
