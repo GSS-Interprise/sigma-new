@@ -57,13 +57,15 @@ const DISP = {
 // cada um); financeiro e pessoal só quando há número. Espelha o check whatsapp_chakra_connections_uso_check.
 // Ambulatório (25/11) = números das consultas ambulatoriais dos municípios; como escalas e clientes, nunca entra em
 // campanha (campanha_assistente_numeros só lista uso = 'prospeccao').
-type Uso = "prospeccao" | "escalas" | "clientes" | "ambulatorio" | "financeiro" | "pessoal";
+type Uso = "prospeccao" | "escalas" | "clientes" | "ambulatorio" | "radiologia" | "financeiro" | "pessoal";
 // rotuloResumo = nome no resumo do topo (só os "sempre").
 const USOS: Array<{ id: Uso; rotulo: string; curto: string; rotuloResumo: string; sempre: boolean }> = [
   { id: "prospeccao", rotulo: "Prospecção de médicos", curto: "Prospecção", rotuloResumo: "Prospecção de médicos", sempre: true },
   { id: "escalas", rotulo: "Escalas (médicos escalados)", curto: "Escalas", rotuloResumo: "Escalas", sempre: true },
   { id: "clientes", rotulo: "Clientes", curto: "Clientes", rotuloResumo: "Clientes", sempre: true },
   { id: "ambulatorio", rotulo: "Ambulatório (consultas dos municípios)", curto: "Ambulatório", rotuloResumo: "Ambulatório", sempre: true },
+  // Radiologia (25/11) = Wagner e Brenda, laudos com médicos e hospitais; nunca entra em campanha.
+  { id: "radiologia", rotulo: "Radiologia (laudos)", curto: "Radiologia", rotuloResumo: "Radiologia", sempre: false },
   { id: "financeiro", rotulo: "Financeiro", curto: "Financeiro", rotuloResumo: "Financeiro", sempre: false },
   { id: "pessoal", rotulo: "Pessoal", curto: "Pessoal", rotuloResumo: "Pessoal", sempre: false },
 ];

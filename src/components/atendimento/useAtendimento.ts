@@ -87,10 +87,10 @@ export const inicioPeriodo = (p: Periodo, agora = new Date()) => {
  * ambulatório (consultas dos municípios, 25/11) são
  * operações diferentes, então o painel mede cada uma separada; "todos" soma tudo (inclusive financeiro e pessoal).
  */
-export type TipoNumero = "todos" | "prospeccao" | "escalas" | "clientes" | "ambulatorio";
+export type TipoNumero = "todos" | "prospeccao" | "escalas" | "clientes" | "ambulatorio" | "radiologia";
 export const TIPOS_NUMERO: { id: TipoNumero; rotulo: string }[] = [
   { id: "todos", rotulo: "Todas" }, { id: "prospeccao", rotulo: "Prospecção" }, { id: "escalas", rotulo: "Escalas" }, { id: "clientes", rotulo: "Clientes" },
-  { id: "ambulatorio", rotulo: "Ambulatório" },
+  { id: "ambulatorio", rotulo: "Ambulatório" }, { id: "radiologia", rotulo: "Radiologia" },
 ];
 const pUso = (tipo: TipoNumero) => (tipo === "todos" ? null : tipo);
 
