@@ -378,7 +378,7 @@ async function montarPagar(svc: Svc, ids: string[], ajustes: Record<string, any>
     await svc.from("financeiro_pagamentos").update({ nf_link_token: tok }).eq("id", x.id).is("nf_link_token", null);
   }
   const { data: pags } = await svc.from("financeiro_pagamentos")
-    .select("id, profissional_nome, medico_id, unidade, mes_referencia, ano_referencia, valor_total, status, nf_status, nf_numero, nf_prestador_cnpj, nf_valor_bruto, nf_retencoes, nf_valor_liquido, nf_conferencia_status, nf_link_token, nf_dados_bancarios, ca_evento_id, ca_lancado_em")
+    .select("id, profissional_nome, medico_id, unidade, mes_referencia, ano_referencia, valor_total, status, nf_status, nf_numero, nf_prestador_cnpj, nf_valor_bruto, nf_retencoes, nf_valor_liquido, nf_conferencia_status, nf_conferencia, nf_link_token, nf_dados_bancarios, ca_evento_id, ca_lancado_em")
     .in("id", ids);
   const unidades = [...new Set((pags ?? []).map((p: any) => p.unidade).filter(Boolean))];
   const { data: mapa } = unidades.length
@@ -451,8 +451,21 @@ async function montarPagar(svc: Svc, ids: string[], ajustes: Record<string, any>
       .or(numerosLote.map((n) => `descricao.ilike.%NF ${n}`).join(",")).limit(5000)
     : { data: [] as any[] };
   const nfNaDescricao = (d: string) => String(d || "").match(/NF\s*(?:N[º°o.]*\s*)?(\d{1,15})(?!\d)/i)?.[1];
-  const jaNoCa = (fornecedorId: string, numero: string) => (lancsCa ?? []).find((l: any) =>
-    l.pessoa_id === fornecedorId && nfNaDescricao(l.descricao) != null && Number(nfNaDescricao(l.descricao)) === Number(numero));
+  // Mesmo número de NF não basta: o prestador pode repetir número (Mavi 25/11, Rafael Lourenção: "REF. JUNHO -
+  // NF 17" já no Conta Azul e outra NF 17 de outubro, emitida em 18/11). Não é a mesma nota quando o mês do "REF."
+  // da descrição é outro ou quando a despesa vence antes de a nota ser emitida.
+  const mesNaDescricao = (d: string) => {
+    const m = String(d || "").toUpperCase().match(/REF\.?\s+([A-ZÇ]+)/);
+    const i = m ? MESES.indexOf(m[1]) : -1;
+    return i >= 0 ? i + 1 : null;
+  };
+  const jaNoCa = (fornecedorId: string, numero: string, mesRef: number | null, emissao: string | null) => (lancsCa ?? []).find((l: any) => {
+    if (l.pessoa_id !== fornecedorId || nfNaDescricao(l.descricao) == null || Number(nfNaDescricao(l.descricao)) !== Number(numero)) return false;
+    const mesCa = mesNaDescricao(l.descricao);
+    if (mesRef && mesCa && mesCa !== mesRef) return false;
+    if (emissao && l.data_vencimento && String(l.data_vencimento).slice(0, 10) < emissao.slice(0, 10)) return false;
+    return true;
+  });
 
   const itens = (pags ?? []).map((p: any) => {
     const aj = ajustes?.[p.id] ?? {};
@@ -491,7 +504,7 @@ async function montarPagar(svc: Svc, ids: string[], ajustes: Record<string, any>
     const numNf = String(aj.nf_numero ?? p.nf_numero ?? "").trim();
     if (!p.ca_evento_id && !semNf && /^\d+$/.test(numNf)) {
       const dup = [...new Set([fornecedor?.ca_id, ...cands.map((c: any) => c.ca_id)].filter(Boolean))]
-        .map((f) => jaNoCa(String(f), numNf)).find(Boolean);
+        .map((f) => jaNoCa(String(f), numNf, p.mes_referencia ?? null, p.nf_conferencia?.emissao ?? null)).find(Boolean);
       if (dup) problemas.push(`Já existe no Conta Azul "${dup.descricao}" deste fornecedor (${brl(Number(dup.total))}, vencimento ${String(dup.data_vencimento).split("-").reverse().join("/")}): lançado à mão? Não lance de novo.`);
     }
 
