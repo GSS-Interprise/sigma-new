@@ -1,0 +1,68 @@
+{
+  "dominio": "conversas",
+  "nota": "Casos da bateria de consistência (scripts/agente-consistencia.ts). Só períodos FECHADOS (ontem, ou até 20/11 na leitura de uma conversa fixa): o mesmo fato dá o mesmo hash e o texto usa hora absoluta (dd/mm hh:mm), nunca 'há X min'. A paridade refaz as contagens em SQL direto sobre sigzap_messages (sem passar por agente_conversas_base), com a mesma regra de números: Chakra cadastrado em Números WhatsApp com uso prospeccao, escalas, clientes ou financeiro (pessoal e ambulatorio nunca). O domínio nasce sem papel; o token da bateria (origem 'bateria') vê todos os domínios ativos. Sem nome nem telefone de contato aqui (LGPD): só o id de uma conversa.",
+  "casos": [
+    {
+      "nome": "conversas_ontem",
+      "pergunta": "Quais conversas tiveram mensagem ontem nos números oficiais?",
+      "ferramenta": "conversas_buscar",
+      "argumentos": {
+        "de": "{ontem}",
+        "ate": "{ontem}"
+      },
+      "paridade": {
+        "conversas": "select count(distinct m.conversation_id) from sigzap_messages m join sigzap_conversations c on c.id = m.conversation_id where c.instance_id in (select i.id from sigzap_instances i where i.provider = 'chakra' and exists (select 1 from whatsapp_chakra_connections cc where regexp_replace(cc.phone_e164, '\\D', '', 'g') = regexp_replace(i.phone_number, '\\D', '', 'g') and cc.uso in ('prospeccao', 'escalas', 'clientes', 'financeiro'))) and m.sent_at >= ('{ontem}'::date)::timestamp at time zone 'America/Sao_Paulo' and m.sent_at < ('{hoje}'::date)::timestamp at time zone 'America/Sao_Paulo'"
+      }
+    },
+    {
+      "nome": "sem_resposta_ontem",
+      "pergunta": "O que ficou sem resposta ontem?",
+      "ferramenta": "conversas_buscar",
+      "argumentos": {
+        "de": "{ontem}",
+        "ate": "{ontem}",
+        "sem_resposta": true
+      },
+      "paridade": {
+        "conversas": "select count(*) from (select distinct on (m.conversation_id) m.conversation_id, m.from_me from sigzap_messages m join sigzap_conversations c on c.id = m.conversation_id where c.instance_id in (select i.id from sigzap_instances i where i.provider = 'chakra' and exists (select 1 from whatsapp_chakra_connections cc where regexp_replace(cc.phone_e164, '\\D', '', 'g') = regexp_replace(i.phone_number, '\\D', '', 'g') and cc.uso in ('prospeccao', 'escalas', 'clientes', 'financeiro'))) and m.sent_at >= ('{ontem}'::date)::timestamp at time zone 'America/Sao_Paulo' and m.sent_at < ('{hoje}'::date)::timestamp at time zone 'America/Sao_Paulo' order by m.conversation_id, m.sent_at desc, m.id desc) u where not u.from_me"
+      }
+    },
+    {
+      "nome": "por_numero_ontem",
+      "pergunta": "Como foi o movimento de ontem por número?",
+      "ferramenta": "conversas_por_numero",
+      "argumentos": {
+        "de": "{ontem}",
+        "ate": "{ontem}"
+      },
+      "paridade": {
+        "conversas": "select count(distinct m.conversation_id) from sigzap_messages m join sigzap_conversations c on c.id = m.conversation_id where c.instance_id in (select i.id from sigzap_instances i where i.provider = 'chakra' and exists (select 1 from whatsapp_chakra_connections cc where regexp_replace(cc.phone_e164, '\\D', '', 'g') = regexp_replace(i.phone_number, '\\D', '', 'g') and cc.uso in ('prospeccao', 'escalas', 'clientes', 'financeiro'))) and m.sent_at >= ('{ontem}'::date)::timestamp at time zone 'America/Sao_Paulo' and m.sent_at < ('{hoje}'::date)::timestamp at time zone 'America/Sao_Paulo'",
+        "recebidas": "select count(*) from sigzap_messages m join sigzap_conversations c on c.id = m.conversation_id where c.instance_id in (select i.id from sigzap_instances i where i.provider = 'chakra' and exists (select 1 from whatsapp_chakra_connections cc where regexp_replace(cc.phone_e164, '\\D', '', 'g') = regexp_replace(i.phone_number, '\\D', '', 'g') and cc.uso in ('prospeccao', 'escalas', 'clientes', 'financeiro'))) and m.sent_at >= ('{ontem}'::date)::timestamp at time zone 'America/Sao_Paulo' and m.sent_at < ('{hoje}'::date)::timestamp at time zone 'America/Sao_Paulo' and not m.from_me",
+        "enviadas": "select count(*) from sigzap_messages m join sigzap_conversations c on c.id = m.conversation_id where c.instance_id in (select i.id from sigzap_instances i where i.provider = 'chakra' and exists (select 1 from whatsapp_chakra_connections cc where regexp_replace(cc.phone_e164, '\\D', '', 'g') = regexp_replace(i.phone_number, '\\D', '', 'g') and cc.uso in ('prospeccao', 'escalas', 'clientes', 'financeiro'))) and m.sent_at >= ('{ontem}'::date)::timestamp at time zone 'America/Sao_Paulo' and m.sent_at < ('{hoje}'::date)::timestamp at time zone 'America/Sao_Paulo' and m.from_me",
+        "sem_resposta": "select count(*) from (select distinct on (m.conversation_id) m.conversation_id, m.from_me from sigzap_messages m join sigzap_conversations c on c.id = m.conversation_id where c.instance_id in (select i.id from sigzap_instances i where i.provider = 'chakra' and exists (select 1 from whatsapp_chakra_connections cc where regexp_replace(cc.phone_e164, '\\D', '', 'g') = regexp_replace(i.phone_number, '\\D', '', 'g') and cc.uso in ('prospeccao', 'escalas', 'clientes', 'financeiro'))) and m.sent_at >= ('{ontem}'::date)::timestamp at time zone 'America/Sao_Paulo' and m.sent_at < ('{hoje}'::date)::timestamp at time zone 'America/Sao_Paulo' order by m.conversation_id, m.sent_at desc, m.id desc) u where not u.from_me"
+      }
+    },
+    {
+      "nome": "ler_conversa_fechada",
+      "pergunta": "Resuma esta conversa (até 20/11).",
+      "ferramenta": "conversas_ler",
+      "argumentos": {
+        "conversa": "fbbfb936-9bd6-4a54-8f09-cb2a4093db85",
+        "ate": "2026-11-20",
+        "limite": 20
+      },
+      "paridade": {
+        "mensagens": "select least(20, count(*)) from sigzap_messages m where m.conversation_id = 'fbbfb936-9bd6-4a54-8f09-cb2a4093db85' and m.sent_at < timestamp '2026-11-21 00:00' at time zone 'America/Sao_Paulo'",
+        "total": "select count(*) from sigzap_messages m where m.conversation_id = 'fbbfb936-9bd6-4a54-8f09-cb2a4093db85' and m.sent_at < timestamp '2026-11-21 00:00' at time zone 'America/Sao_Paulo'"
+      }
+    },
+    {
+      "nome": "guia",
+      "pergunta": "Guia do domínio conversas.",
+      "ferramenta": "sigma_guia",
+      "argumentos": {
+        "dominio": "conversas"
+      }
+    }
+  ]
+}

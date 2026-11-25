@@ -180,6 +180,12 @@ Só admin (Configurações já é só admin). A `/conectar-claude` continua para
   `supabase/functions/_shared/agente/casos/<dominio>.json` com chamadas fixas; o script chama o `sigma-mcp`
   publicado 3 vezes por caso e exige o mesmo `resultado_hash`, e compara o número principal com a consulta da tela
   (SQL de paridade no próprio caso). Roda depois de todo deploy do `sigma-mcp` e antes de liberar domínio novo.
+- **Domínio sem papel também é testado:** o token temporário da bateria tem `mcp_tokens.origem = 'bateria'` (só o
+  service role/Management API grava essa origem; o usuário só altera `nome` e `revogado_em`), e o `sigma-mcp` dá a ele
+  todos os domínios ativos. Assim o domínio novo passa na bateria antes de qualquer papel enxergá-lo. Expira em 30 min
+  e é revogado no fim.
+- **Texto ao vivo:** caso cuja resposta tem hora relativa ("há 5 min", fila do `atendimento_aguardando`) leva
+  `"texto_ao_vivo": true` e confere só hash e paridade. Domínio novo não usa hora relativa: hora absoluta em Brasília.
 - **Ponta a ponta com o modelo (depois):** as perguntas reais de cada domínio rodadas por um Claude de verdade pelo
   Motor de IA da VPS (`docs/arquitetura/motor-ia-hermes-claude.md`), com os fatos esperados conferidos no texto.
 
@@ -192,6 +198,7 @@ Só admin (Configurações já é só admin). A `/conectar-claude` continua para
 | 3 | CRM | ficha de um médico/hospital, vagas abertas, histórico do lead | `leads`, `medicos`, `hospitais`, `vagas_abertas_v` | decisão LGPD do Heron (§9) |
 | 4 | Contratos | vigentes, vencendo, aditivos, itens de um contrato, número antigo → novo | `contratos*`, `contratos_renumeracao` | quem vê valor (§9) |
 | 5 | Licitações | em disputa, prazos da semana, resultado de um edital, concorrentes | `licitacoes*`, `pncp_mirror` | alarme de frescor do PNCP |
+| 6 | Conversas | o que o contato pediu, resumo de uma conversa, o que ficou sem resposta por número | `sigzap_messages`, `sigzap_conversations`, `whatsapp_chakra_connections` (uso) | ok de LGPD da GSS para ligar o papel |
 
 **Molde de um domínio (definição de pronto de cada um):** glossário com cada termo definido; views/RPCs
 `agente_<id>_*` batendo com a tela; resolução de nomes com teste; 3 a 6 ferramentas `<id>_*` com `outputSchema`;
@@ -274,6 +281,15 @@ Só admin (Configurações já é só admin). A `/conectar-claude` continua para
 - [ ] **T9 — Domínio Licitações** pelo molde (com aviso de frescor do `pncp_mirror`).
 - [ ] **T10 — Domínio CRM** pelo molde, depois da decisão LGPD.
 - [ ] **T11 — Avaliação ponta a ponta com o modelo** pelo Motor de IA da VPS, semanal, resultado na aba.
+- [x] **T12 — Domínio Conversas** pelo molde (pedido do Heron, 24/11). (24/11: `dominios/conversas.ts`, protocolo
+  v1.6.0; `conversas_buscar` (por contato, número, uso, responsável, período e só sem resposta), `conversas_ler` (últimas
+  N mensagens de uma conversa, até 50, áudio como `[áudio]`, hora absoluta dd/mm hh:mm) e `conversas_por_numero`, mais
+  2 prompts. Contagens nas RPCs `agente_conversas_base`/`agente_conversas_por_numero` (migration
+  `20261125120000_agente_conversas.sql`, só service role). **LGPD:** só números com uso prospecção, escalas, clientes
+  ou financeiro (lista de inclusão: pessoal, ambulatório/paciente e número sem cadastro nunca entram); telefone do
+  contato só com os 4 últimos dígitos. **Nasce sem papel nenhum**: o admin liga em Configurações › Agente do Sigma
+  depois do ok de LGPD da GSS. A bateria testa antes de liberar com o token de origem `bateria` (abaixo). 5 casos em
+  `casos/conversas.json`, todos em período fechado; 34 de 34 na bateria.)
 
 ## 7. Critério de pronto
 

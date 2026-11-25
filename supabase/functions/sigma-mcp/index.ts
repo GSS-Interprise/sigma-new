@@ -44,6 +44,9 @@ validarDominios(DOMINIOS);
  * chave da aba de admin valer na hora. Falha de leitura = nenhum domínio (nunca abrir tudo por erro).
  */
 async function acessos(svc: SupabaseClient, s: Sessao) {
+  // Token da bateria de consistência (origem 'bateria', só gravável pelo service role/Management API; migration
+  // 20261125120000): vê todos os domínios ativos para testar um domínio novo ANTES de liberá-lo a qualquer papel.
+  if (s.bateria) return acessosDoUsuario(DOMINIOS, "todos");
   const { data, error } = await svc.rpc("agente_dominios_do_usuario", { p_user: s.userId });
   if (error) console.error("agente_dominios_do_usuario", error.message);
   return acessosDoUsuario(DOMINIOS, new Set<string>(error ? [] : (data as string[] | null) ?? []));
@@ -51,7 +54,7 @@ async function acessos(svc: SupabaseClient, s: Sessao) {
 
 // ---- autenticação --------------------------------------------------------------------------------------
 
-type Sessao = { userId: string; tokenId: string };
+type Sessao = { userId: string; tokenId: string; bateria?: boolean };
 
 const negar = (s: number, msg: string) =>
   resp({ error: s === 401 ? "invalid_token" : "insufficient_scope", error_description: msg }, s,
@@ -66,13 +69,13 @@ async function autenticar(svc: SupabaseClient, req: Request): Promise<Sessao | R
   const tok = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "").trim();
   // Sem token: 401 com resource_metadata, que é o que faz o Claude.ai abrir o fluxo de login.
   if (!tok.startsWith("sgm_")) return negar(401, "token ausente ou inválido");
-  const { data: t } = await svc.from("mcp_tokens").select("id,user_id,revogado_em,expira_em")
+  const { data: t } = await svc.from("mcp_tokens").select("id,user_id,revogado_em,expira_em,origem")
     .eq("token_hash", await sha256Hex(tok)).maybeSingle();
   if (!t || t.revogado_em) return negar(401, "token inválido ou revogado");
   if (t.expira_em && new Date(t.expira_em) <= new Date()) return negar(401, "token expirado");
   if (!(await papelLiberado(svc, t.user_id))) return negar(403, "usuário sem papel liberado para o MCP");
   await svc.from("mcp_tokens").update({ ultimo_uso_em: new Date().toISOString() }).eq("id", t.id);
-  return { userId: t.user_id, tokenId: t.id };
+  return { userId: t.user_id, tokenId: t.id, bateria: t.origem === "bateria" && !!t.expira_em };
 }
 
 // ---- OAuth 2.1 (T7) --------------------------------------------------------------------------------------

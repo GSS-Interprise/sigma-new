@@ -1,12 +1,13 @@
 {
   "dominio": "atendimento",
-  "nota": "Casos da bateria de consistência (scripts/agente-consistencia.ts). A paridade refaz a regra de 'esperando resposta' em SQL direto sobre sigzap_messages (sem passar por atendimento_aguardando_base). Dado ao vivo: se chegar mensagem entre as chamadas o hash pode mudar; rodar de novo.",
+  "nota": "Casos da bateria de consistência (scripts/agente-consistencia.ts). A paridade refaz a regra de 'esperando resposta' em SQL direto sobre sigzap_messages (sem passar por atendimento_aguardando_base). Dado ao vivo: se chegar mensagem entre as chamadas o hash pode mudar; rodar de novo. O texto da fila diz 'há X min' (muda a cada minuto): aguardando_24h confere hash e paridade, não o texto (texto_ao_vivo).",
   "casos": [
     {
       "nome": "aguardando_24h",
       "pergunta": "Quem está sem responder agora?",
       "ferramenta": "atendimento_aguardando",
       "argumentos": {},
+      "texto_ao_vivo": true,
       "paridade": {
         "esperando": "with c as (select c.id, c.lead_id, (select max(m.sent_at) from sigzap_messages m where m.conversation_id = c.id and m.from_me) nossa, e.encerrada_em from sigzap_conversations c join sigzap_instances i on i.id = c.instance_id and i.provider = 'chakra' left join atendimento_encerradas e on e.conversation_id = c.id where c.last_message_at > now() - interval '1 day'), p as (select c.*, (select min(m.sent_at) from sigzap_messages m where m.conversation_id = c.id and not m.from_me and m.sent_at > greatest(coalesce(c.nossa, '-infinity'), coalesce(c.encerrada_em, '-infinity'))) desde, (select coalesce(nullif(m.message_text, ''), '[' || m.message_type || ']') from sigzap_messages m where m.conversation_id = c.id and not m.from_me order by m.sent_at desc limit 1) ult from c) select count(*) from p where desde is not null and desde > now() - interval '1 day' and lower(trim(regexp_replace(coalesce(ult, ''), '[[:punct:][:space:]]+', ' ', 'g'))) not in ('sair','parar','pare','stop','remover','cancelar','descadastrar') and not exists (select 1 from campanha_leads cl join campanhas ca on ca.id = cl.campanha_id where p.lead_id is not null and cl.lead_id = p.lead_id and ca.status = 'ativa' and coalesce(ca.tipo_envio, 'ia') in ('ia','ambos') and cl.status in ('contatado','em_conversa','aquecido') and not coalesce(cl.humano_assumiu, false))"
       }

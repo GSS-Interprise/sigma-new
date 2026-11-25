@@ -9,7 +9,9 @@
 // Uso:  SUPABASE_ACCESS_TOKEN=sbp_... deno run -A scripts/agente-consistencia.ts [dominio ...]
 //   SUPABASE_ACCESS_TOKEN: token pessoal da Management API (o mesmo do `npx supabase`). Nunca commitar.
 //   SIGMA_ADMIN_EMAIL (opcional): dono do token temporário do MCP; padrão = primeiro admin.
-// O script cria um token MCP temporário ("bateria-consistencia"), usa e revoga no fim, mesmo se falhar.
+// O script cria um token MCP temporário ("bateria-consistencia", origem 'bateria'), usa e revoga no fim, mesmo se falhar.
+// A origem 'bateria' vê todos os domínios ativos, inclusive o que ainda não tem papel liberado (domínio novo é testado
+// antes de ser liberado, §3i); só o service role grava essa origem.
 // Só lê: as ferramentas do MCP são somente leitura e o SQL de paridade é SELECT.
 
 const REF = "zupsbgtoeoixfokzkjro";
@@ -20,6 +22,8 @@ const CASOS_DIR = new URL("../supabase/functions/_shared/agente/casos/", import.
 type Caso = {
   nome: string; pergunta: string; ferramenta: string; argumentos: Record<string, unknown>;
   paridade?: Record<string, string>;
+  /** Resposta com hora relativa ("há 5 min") que muda a cada chamada: confere só o hash, não o texto. */
+  texto_ao_vivo?: boolean;
 };
 type Arquivo = { dominio: string; casos: Caso[] };
 
@@ -75,8 +79,8 @@ async function criarToken(): Promise<{ token: string; id: string }> {
     ? `(select u.id from auth.users u join user_roles r on r.user_id = u.id and r.role = 'admin' where u.email = ${lit(email)} limit 1)`
     : `(select user_id from user_roles where role = 'admin' order by user_id limit 1)`;
   const [linha] = await sql<{ id: string }>(
-    `insert into mcp_tokens (user_id, nome, token_hash, prefixo, expira_em)
-     select ${dono}, 'bateria-consistencia', ${lit(hash)}, ${lit(token.slice(0, 8))}, now() + interval '30 minutes'
+    `insert into mcp_tokens (user_id, nome, token_hash, prefixo, expira_em, origem)
+     select ${dono}, 'bateria-consistencia', ${lit(hash)}, ${lit(token.slice(0, 8))}, now() + interval '30 minutes', 'bateria'
      returning id`,
   );
   if (!linha?.id) throw new Error("não criou o token temporário (SIGMA_ADMIN_EMAIL é admin?)");
@@ -108,7 +112,7 @@ async function rodarCaso(token: string, c: Caso): Promise<string[]> {
   if (hashes.size !== 1 || !rs[0].structuredContent?.hash) falhas.push(`hash mudou entre ${RODADAS} chamadas iguais: ${[...hashes].map((h) => h?.slice(0, 10)).join(", ")}`);
   // Sem o rodapé: nas ferramentas do próprio Sigma (sigma_guia) a hora do rodapé é a da chamada.
   const textos = new Set(rs.map((r) => (r.content[0]?.text ?? "").replace(/\n\n_Fonte: [^\n]*_$/, "")));
-  if (textos.size !== 1) falhas.push("texto mudou entre chamadas iguais (mesmo hash, redação diferente no servidor)");
+  if (textos.size !== 1 && !c.texto_ao_vivo) falhas.push("texto mudou entre chamadas iguais (mesmo hash, redação diferente no servidor)");
 
   const texto = rs[0].content[0]?.text ?? "";
   const sc = rs[0].structuredContent!;
