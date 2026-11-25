@@ -225,6 +225,7 @@ async function checarExames(admin: any, forcar = false, unidades = UNIDADES, tes
     // A sequência de avisos é uma só para todas as unidades (regras iguais em todos os PACS, Ramone): a tela grava em
     // "marieta" e as outras unidades (e a "teste") usam a mesma.
     const passos = (passosTodos ?? []).filter((p: any) => p.unidade === "marieta") as any[];
+    res.push(...await avisarAssumidosVencidos(admin, sender, unidade, agora, testeDestino, emails));
 
     const { data: todos } = await admin.from("sla_exames")
       .select("id, origem, inicio_em, vence_em, paciente, estudo")
@@ -306,6 +307,51 @@ async function checarExames(admin: any, forcar = false, unidades = UNIDADES, tes
 
 // Um passo da sequência para uma pessoa. Grava em sla_alertas com passo_id (é o que impede repetir) antes de enviar.
 // Teste interno (sla_teste_destino): WhatsApp vai para o número de teste e ninguém recebe ligação.
+// Assumiu e o prazo venceu sem laudo (Ramone, 25/11: "se o cara apertar laudo assumido e não assumir, como fica?").
+// Assumir tira o exame da escada (ninguém mais é chamado), mas se o prazo vencer e o exame continuar na fila do PACS,
+// vai UM aviso: WhatsApp de texto para quem assumiu (a janela de 24 h costuma estar aberta pelo clique em Assumir; se
+// não estiver, a Meta recusa e fica só o e-mail) e e-mail para a Coordenação. Uma vez por exame (tipo
+// assumido_vencido); vencido há mais de MAX_ATRASO_MIN fica para o resumo das 7h, como os outros avisos.
+async function avisarAssumidosVencidos(admin: any, sender: any, unidade: string, agora: Date, testeDestino: string, emails: string[]) {
+  const out: any[] = [];
+  const { data: exs } = await admin.from("sla_exames")
+    .select("id, origem, inicio_em, vence_em, paciente, estudo, assumido_em, assumido_por")
+    .eq("unidade", unidade).is("saiu_em", null).is("ausente_em", null).is("silenciado_em", null)
+    .not("assumido_em", "is", null).lte("vence_em", agora.toISOString())
+    .gte("vence_em", new Date(agora.getTime() - MAX_ATRASO_MIN * 60_000).toISOString()).order("vence_em").order("id");
+  if (!exs?.length) return out;
+  const ids = exs.map((e: any) => e.id);
+  const { data: ja } = await admin.from("sla_alertas").select("exame_id").in("exame_id", ids).eq("tipo", "assumido_vencido");
+  const avisados = new Set((ja ?? []).map((a: any) => a.exame_id));
+  // Quem assumiu: o alerta respondido (tecla 1 ou botão) do exame tem o telefone.
+  const { data: resp } = await admin.from("sla_alertas").select("exame_id, destino, destino_nome, respondido_em")
+    .in("exame_id", ids).eq("status", "respondido").order("respondido_em", { ascending: false }).order("id");
+  const vistos = new Set<string>();
+  for (const e of exs) {
+    const k = chaveExame(e);
+    if (avisados.has(e.id) || vistos.has(k)) continue; // cópias do mesmo exame no PACS: um aviso só
+    vistos.add(k);
+    const r = (resp ?? []).find((a: any) => a.exame_id === e.id);
+    const nome = e.assumido_por || r?.destino_nome || "quem assumiu";
+    const un = NOME_UNIDADE[unidade] ?? unidade, origem = ORIGEM[e.origem] ?? e.origem, hh = horaExame(e.inicio_em);
+    const atraso = duracao((agora.getTime() - new Date(e.vence_em).getTime()) / 60000);
+    const linha = `${un}, ${origem}${e.estudo ? `, ${e.estudo}` : ""}, exame das ${hh}`;
+    const fone = dig(r?.destino);
+    const alvo = fone.length >= 12 ? destinoDoAviso({ nome, telefone: fone }, testeDestino) : null;
+    const { data: al } = await admin.from("sla_alertas").insert({
+      exame_id: e.id, tipo: "assumido_vencido", papel: "assumiu", canal: alvo ? "whatsapp" : "email",
+      destino_nome: alvo ? alvo.nome : "Coordenação (e-mail)", destino: alvo ? alvo.telefone : null, status: "enviado",
+    }).select("id").single();
+    if (alvo) {
+      await enviarTexto(sender, alvo.telefone,
+        `SLA de laudo: ${linha}. Você assumiu este laudo, mas o prazo venceu há ${atraso} e o exame ainda está sem laudo no PACS. Confira, por favor.`);
+    }
+    emails.push(`${linha}: assumido por ${nome}, mas o prazo venceu há ${atraso} e o laudo ainda não saiu.`);
+    out.push({ exame: e.id, assumido_vencido: true, para: alvo?.nome ?? null, alerta: al?.id });
+  }
+  return out;
+}
+
 async function dispararPasso(admin: any, sender: any, e: any, passo: any, pessoa: any, tipo: string, modelo: string,
   params: string[], linha: string, testeDestino: string, emails: string[]) {
   const base = { exame_id: e.id, tipo, papel: pessoa.papel, plantao_id: pessoa.id, passo_id: passo.id, canal: passo.canal };

@@ -49,7 +49,7 @@ export type Exame = {
 export type Alerta = {
   id: string;
   exame_id: string | null;
-  tipo: "prazo" | "vencido" | "sem_escala";
+  tipo: "prazo" | "vencido" | "sem_escala" | "assumido_vencido";
   papel: string | null;
   destino_nome: string | null;
   canal: "whatsapp" | "email" | "ligacao";

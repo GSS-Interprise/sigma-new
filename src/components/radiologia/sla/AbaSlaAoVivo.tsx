@@ -14,14 +14,19 @@ import {
 } from "./useSla";
 import { ExameSlaDialog } from "./ExameSlaDialog";
 
-const TIPO_ALERTA: Record<Alerta["tipo"], string> = { prazo: "Perto do prazo", vencido: "Prazo vencido", sem_escala: "Sem escala" };
+const TIPO_ALERTA: Record<Alerta["tipo"], string> = { prazo: "Perto do prazo", vencido: "Prazo vencido", sem_escala: "Sem escala", assumido_vencido: "Assumido, prazo vencido" };
 // Cor da faixa da origem igual à do Vue PACS (vermelho PS, laranja internado, azul externo).
 const FAIXA: Record<Origem, string> = { ps: "bg-red-600", internado: "bg-orange-500", externo: "bg-sky-500" };
 const ORDEM_ORIGEM: Origem[] = ["ps", "internado", "externo"];
 
 function situacao(e: Exame, alertas: Alerta[]) {
   if (e.silenciado_em) return { texto: "Não precisa de laudo", tom: "bg-muted text-muted-foreground" };
-  if (e.assumido_em) return { texto: `Assumido${e.assumido_por ? ` por ${e.assumido_por}` : ""} às ${horaCurta(e.assumido_em)}`, tom: "bg-emerald-50 text-emerald-800" };
+  if (e.assumido_em) {
+    // Assumiu e o prazo venceu sem laudo: o robô avisou quem assumiu e a Coordenação (25/11).
+    const venceu = alertas.find((a) => a.exame_id === e.id && a.tipo === "assumido_vencido");
+    if (venceu) return { texto: `Assumido${e.assumido_por ? ` por ${e.assumido_por}` : ""} · prazo venceu sem laudo`, tom: "bg-amber-50 text-amber-900" };
+    return { texto: `Assumido${e.assumido_por ? ` por ${e.assumido_por}` : ""} às ${horaCurta(e.assumido_em)}`, tom: "bg-emerald-50 text-emerald-800" };
+  }
   const ultimo = alertas.find((a) => a.exame_id === e.id);
   if (!ultimo) return { texto: "Sem aviso ainda", tom: "bg-muted text-muted-foreground" };
   if (ultimo.status === "falhou") return { texto: `Aviso falhou às ${horaCurta(ultimo.criado_em)}`, tom: "bg-red-50 text-red-800" };

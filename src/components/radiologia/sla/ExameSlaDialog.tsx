@@ -38,6 +38,7 @@ export function ExameSlaDialog({ exame, alertas, onClose, agora }: { exame: Exam
       texto: a.status === "falhou"
         ? `Aviso (${a.tipo === "vencido" ? "prazo vencido" : "perto do prazo"}) para ${a.destino_nome ?? "—"} falhou${a.erro ? `: ${a.erro}` : ""}`
         : a.papel === "sem_escala" ? "Ninguém na escala: aviso só por e-mail"
+          : a.tipo === "assumido_vencido" ? `Prazo venceu depois de assumido: robô avisou ${a.destino_nome ?? "—"} e a Coordenação`
           : `Robô avisou ${a.destino_nome ?? "—"} por ${a.canal === "whatsapp" ? "WhatsApp" : a.canal} (${a.tipo === "vencido" ? "prazo vencido" : "perto do prazo"})${a.respondido_em ? ` · assumiu às ${horaCurta(a.respondido_em)}` : ""}`,
     })),
     ...(notas.data ?? []).map((n) => ({ id: n.id, em: n.criado_em, texto: `${n.autor_nome ?? "Alguém"}: ${NOTA_TXT[n.tipo]}${n.texto ? ` — ${n.texto}` : ""}` })),

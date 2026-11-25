@@ -12,6 +12,8 @@ import { SLA_VOZ_URL, tokenAlerta } from "../_shared/sla.ts";
 
 const BASE = SLA_VOZ_URL;
 const ORIGEM: Record<string, string> = { ps: "Pronto Socorro", internado: "Internado", externo: "Externo" };
+// Unidade dita na ligação (Ramone, 25/11: "teria que dizer qual é a instituição"). Mesmo nome dos avisos de WhatsApp.
+const UNIDADE: Record<string, string> = { marieta: "Hospital Marieta", cepon: "CEPON", tijucas: "Tijucas", mobilemed: "Mobilemed", teste: "unidade de teste" };
 const VOZ = 'language="pt-BR" voice="Polly.Camila"';
 const xml = (corpo: string) =>
   new Response(`<?xml version="1.0" encoding="UTF-8"?><Response>${corpo}</Response>`, { headers: { "Content-Type": "text/xml" } });
@@ -34,7 +36,7 @@ Deno.serve(async (req) => {
   const { data: ex } = await admin.from("sla_exames").select("id, origem, inicio_em, vence_em, assumido_em, unidade, paciente, estudo").eq("id", al.exame_id).maybeSingle();
   const atrasoMin = ex ? Math.max(0, Math.round((Date.now() - new Date(ex.vence_em).getTime()) / 60000)) : 0;
   const texto = ex
-    ? `Atenção, plantão da radiologia. Alerta de prazo de laudo da G S S. Exame do ${ORIGEM[ex.origem] ?? ex.origem}, `
+    ? `Atenção, plantão da radiologia. Alerta de prazo de laudo da G S S, ${UNIDADE[ex.unidade] ?? ex.unidade}. Exame do ${ORIGEM[ex.origem] ?? ex.origem}, `
       // Sem nome do paciente (24/11): a ligação pode cair na caixa postal e o recado fica gravado. Estudo e hora bastam.
       + (ex.estudo ? `${ex.estudo}, ` : "") + `das ${hora(ex.inicio_em)}, `
       + (atrasoMin > 0 ? `passou do prazo há ${atrasoMin} minutos. ` : `está perto de vencer. `) + `Confira o PACS.`
