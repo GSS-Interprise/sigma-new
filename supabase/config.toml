@@ -150,3 +150,7 @@ verify_jwt = false
 
 [functions.sigma-mcp]
 verify_jwt = false
+
+# Ponte para a API da Zenvia (25/11): só chave de serviço, checada no código.
+[functions.zenvia-api]
+verify_jwt = false
