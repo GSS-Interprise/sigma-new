@@ -8,7 +8,9 @@
 // - Escrita: só PROPOSTA (assistente_propostas). Quem grava é assistente_confirmar, chamada pelo front com o JWT da
 //   pessoa no clique do cartão. As prévias (campanha_assistente_editar com p_aplicar=false, prévia de leads) rodam com
 //   o JWT da pessoa, então as checagens de permissão das RPCs valem já na hora de propor.
-// Motor: Gemini com function calling (GEMINI_API_KEY). O Claude da GSS entra quando a conta Max estiver conectada (T9).
+// Motor: o Claude da GSS (Hermes na VPS, rotina ia_claude_robo_sigma) quando a conta Max está conectada; a edge segue
+// dona do laço de ferramentas e o Claude só decide o próximo passo em JSON (desenho em claude.ts). Sem login, erro ou
+// demora: Gemini com function calling (GEMINI_API_KEY), exatamente o caminho de antes.
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { hashResultado, renderizar } from "../_shared/agente/protocolo.ts";
 import { acessosDoUsuario, DOMINIOS, exposto } from "../_shared/agente/registro.ts";
@@ -18,6 +20,8 @@ import { ErroFerramenta } from "../_shared/agente/tipos.ts";
 import {
   campanhaDaPagina, type Cartao, cartaoEdicao, esquemaGemini, historico, instrucoes, MODULO_DO_DOMINIO, type Mudanca, roboLiberado, veContratos,
 } from "../_shared/assistente.ts";
+import { claudeLigado, ERRO_DESISTIU, pedirAoClaude } from "../_shared/motor-ia.ts";
+import { type Chamada, instrucoesClaude, lerPasso, pedidoClaude, type Rodada } from "./claude.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -239,6 +243,58 @@ async function gemini(sistema: string, contents: Conteudo[], ferrs: Ferr[], rest
   throw new Error(`IA indisponível agora (${erro})`);
 }
 
+// ---- Claude da GSS (Hermes na VPS) ------------------------------------------------------------------------
+
+const ROTINA_CLAUDE = "ia_claude_robo_sigma";
+const MODELO_CLAUDE = "claude-sonnet (Hermes)";
+// Cada passo é um pedido à fila: o worker pega em 2-8 s e o Hermes leva uns 10-20 s. Passado o teto, o Gemini
+// responde do zero com o próprio teto (TETO_MS), e o total fica abaixo do limite da edge (150 s).
+const TETO_CLAUDE_MS = 80_000;
+// Se a VPS nem pegou o pedido neste tempo, o worker está parado: não adianta esperar o teto inteiro.
+const PEGAR_MS = 20_000;
+// Depois de a VPS não pegar um pedido, as próximas perguntas vão direto ao Gemini por este tempo.
+const PAUSA_VPS_MS = 10 * 60_000;
+
+async function usarClaude(svc: SupabaseClient): Promise<boolean> {
+  try {
+    if (!(await claudeLigado(svc))) return false;
+    const { data } = await svc.from("rotina_pedidos").select("erro, concluido_em").eq("tipo", ROTINA_CLAUDE)
+      .in("status", ["feito", "erro"]).order("concluido_em", { ascending: false }).limit(1).maybeSingle();
+    const vpsParada = data?.erro === ERRO_DESISTIU && Date.now() - new Date(data.concluido_em).getTime() < PAUSA_VPS_MS;
+    return !vpsParada;
+  } catch {
+    return false;
+  }
+}
+
+/** Laço de ferramentas com o Claude decidindo cada passo. Devolve o texto final ou null (o Gemini assume). */
+async function responderComClaude(
+  svc: SupabaseClient, sistema: string, ferrs: Ferr[], anteriores: { papel: string; texto: string }[], mensagem: string,
+  rodar: (nome: string, args: Record<string, unknown>) => Promise<string>,
+): Promise<string | null> {
+  const inicio = Date.now();
+  const rodadas: Rodada[] = [];
+  const decl = ferrs.map((f) => ({ nome: f.nome, descricao: f.descricao, esquema: f.esquema }));
+  for (let volta = 0; volta <= MAX_FERRAMENTAS; volta++) {
+    const restante = TETO_CLAUDE_MS - (Date.now() - inicio);
+    if (restante < 5_000) return null;
+    const podeFerramenta = volta < MAX_FERRAMENTAS;
+    const r = await pedirAoClaude(svc, ROTINA_CLAUDE, {
+      instrucoes: instrucoesClaude(sistema, podeFerramenta ? decl : [], podeFerramenta),
+      pedido: pedidoClaude(anteriores, mensagem, rodadas),
+    }, { limiteMs: restante, pegarMs: PEGAR_MS, limparResultado: true });
+    const passo = lerPasso(r?.passo);
+    if (!passo) return null;
+    if (passo.tipo === "resposta") return passo.texto;
+    if (!podeFerramenta) return null;
+    const chamadas: Chamada[] = passo.chamadas;
+    const resultados: string[] = [];
+    for (const c of chamadas) resultados.push(await rodar(c.nome, c.args));
+    rodadas.push({ chamadas, resultados });
+  }
+  return null;
+}
+
 // ---- edge ------------------------------------------------------------------------------------------------
 
 Deno.serve(async (req) => {
@@ -320,42 +376,61 @@ Deno.serve(async (req) => {
   ];
 
   const usadas: Record<string, unknown>[] = [];
+  // Roda uma chamada de ferramenta pedida pelo modelo (Gemini ou Claude): mesma checagem de "só o que a pessoa pode".
+  const rodarFerramenta = async (nome: string, args: Record<string, unknown>) => {
+    const t1 = Date.now();
+    const f = ferrs.find((x) => x.nome === nome);
+    let saida: string;
+    let falhou: string | null = null;
+    try {
+      if (!f) throw new ErroFerramenta(`ferramenta indisponível para esta pessoa: ${nome}`);
+      saida = await f.rodar(args);
+    } catch (x) {
+      falhou = x instanceof Error ? x.message : String(x);
+      saida = `Erro: ${falhou}`;
+    }
+    usadas.push({ nome, args, ms: Date.now() - t1, erro: falhou, hash: await hashResultado(nome, saida) });
+    return saida;
+  };
+
   let texto = "";
   let modelo = "";
   let erro: string | null = null;
-  try {
-    for (let volta = 0; volta <= MAX_FERRAMENTAS; volta++) {
-      const g = await gemini(sistema, contents, volta < MAX_FERRAMENTAS ? ferrs : [], TETO_MS - (Date.now() - t0));
-      modelo = g.modelo;
-      const chamadas = g.partes.filter((p) => p.functionCall);
-      texto = g.partes.map((p) => p.text ?? "").join("").trim();
-      if (!chamadas.length) break;
-      contents.push({ role: "model", parts: g.partes });
-      const respostas: Parte[] = [];
-      for (const c of chamadas) {
-        const nome = c.functionCall!.name;
-        const args = c.functionCall!.args ?? {};
-        const t1 = Date.now();
-        const f = ferrs.find((x) => x.nome === nome);
-        let saida: string;
-        let falhou: string | null = null;
-        try {
-          if (!f) throw new ErroFerramenta(`ferramenta indisponível para esta pessoa: ${nome}`);
-          saida = await f.rodar(args);
-        } catch (x) {
-          falhou = x instanceof Error ? x.message : String(x);
-          saida = `Erro: ${falhou}`;
+
+  // 1) Claude da GSS (Hermes na VPS), quando há login. Qualquer falha devolve null e o Gemini responde como sempre.
+  let tGemini = t0;
+  if (await usarClaude(svc)) {
+    const c = await responderComClaude(svc, sistema, ferrs, historico((anteriores ?? []) as { papel: string; texto: string }[]), mensagem, rodarFerramenta)
+      .catch((x) => { console.error("[sigma-assistente] claude", x); return null; });
+    if (c) { texto = c; modelo = MODELO_CLAUDE; }
+    tGemini = Date.now();
+  }
+
+  // 2) Gemini (o caminho de antes). Se o Claude já montou uma proposta e depois falhou, não pede outra: o cartão vale.
+  if (!texto && e.proposta) { texto = "Preparei a proposta abaixo. Confira e clique em Confirmar."; modelo = MODELO_CLAUDE; }
+  if (!texto) {
+    try {
+      for (let volta = 0; volta <= MAX_FERRAMENTAS; volta++) {
+        const g = await gemini(sistema, contents, volta < MAX_FERRAMENTAS ? ferrs : [], TETO_MS - (Date.now() - tGemini));
+        modelo = g.modelo;
+        const chamadas = g.partes.filter((p) => p.functionCall);
+        texto = g.partes.map((p) => p.text ?? "").join("").trim();
+        if (!chamadas.length) break;
+        contents.push({ role: "model", parts: g.partes });
+        const respostas: Parte[] = [];
+        for (const c of chamadas) {
+          const nome = c.functionCall!.name;
+          const saida = await rodarFerramenta(nome, c.functionCall!.args ?? {});
+          respostas.push({ functionResponse: { name: nome, response: { resultado: saida } } });
         }
-        usadas.push({ nome, args, ms: Date.now() - t1, erro: falhou, hash: await hashResultado(nome, saida) });
-        respostas.push({ functionResponse: { name: nome, response: { resultado: saida } } });
+        contents.push({ role: "user", parts: respostas });
+        if (Date.now() - tGemini > TETO_MS) { texto = "Demorei demais para juntar os dados. Pergunte de novo, de um jeito mais específico."; break; }
       }
-      contents.push({ role: "user", parts: respostas });
-      if (Date.now() - t0 > TETO_MS) { texto = "Demorei demais para juntar os dados. Pergunte de novo, de um jeito mais específico."; break; }
+      if (!texto) texto = e.proposta ? "Preparei a proposta abaixo. Confira e clique em Confirmar." : "Não consegui responder agora. Tente de novo.";
+    } catch (x) {
+      erro = (x as Error).message;
+      texto = "A IA não respondeu agora. Tente de novo em instantes.";
     }
-    if (!texto) texto = e.proposta ? "Preparei a proposta abaixo. Confira e clique em Confirmar." : "Não consegui responder agora. Tente de novo.";
-  } catch (x) {
-    erro = (x as Error).message;
-    texto = "A IA não respondeu agora. Tente de novo em instantes.";
   }
 
   await svc.from("assistente_mensagens").insert({

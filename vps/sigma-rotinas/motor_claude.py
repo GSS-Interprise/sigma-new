@@ -150,29 +150,81 @@ def json_da_resposta(saida):
     return None
 
 
+# O Linux recusa argumento de linha de comando acima de 128 KB, e a pergunta vira um argumento do Hermes ("$(cat)").
+LIMITE_PERGUNTA_BYTES = 120_000
+
+
+def _perguntar_json(instrucoes, pedido, tempo):
+    """Uma pergunta ao Claude pelo Hermes, sem ferramenta nenhuma; devolve o primeiro objeto JSON da resposta."""
+    token = _token()
+    if not token:
+        raise RuntimeError("sem-login")
+    if not instrucoes or not pedido:
+        raise RuntimeError("pedido vazio")
+    pergunta = f"{instrucoes}\n\n{pedido}\n\nResponda só com o JSON, sem texto antes ou depois."
+    if len(pergunta.encode("utf-8")) > LIMITE_PERGUNTA_BYTES:
+        raise RuntimeError("pedido grande demais para o Hermes")
+    # A pergunta vai pela entrada padrão (como no login): como argumento direto ficaria no comando montado pelo worker.
+    cod, saida = _como_usuario(
+        ["bash", "-c", f'exec "{HERMES}" chat -Q --provider {PROVEDOR} -m sonnet -q "$(cat)"'],
+        entrada=pergunta, tempo=tempo, env_extra={"CLAUDE_CODE_OAUTH_TOKEN": token},
+    )
+    if cod is None:
+        raise RuntimeError(f"o Claude não respondeu em {tempo} s")
+    obj = json_da_resposta(saida) if cod == 0 else None
+    if obj is None:
+        raise RuntimeError(f"resposta sem JSON: {ultima_linha_segura(saida)}")
+    return obj
+
+
 def assistente_campanha(payload):
     """Primeiro processo do Claude da GSS (Raul, 17/11/2026): o assistente de campanha lê a "regra especial" que o dono
     escreveu e devolve os campos em JSON. As instruções vêm da edge campanha-assistente-ia (o mesmo texto que o Gemini
     de reserva usa), então mudar o pedido é mudar só a edge. Sem ferramenta nenhuma: só texto entra e sai."""
+    instrucoes = str((payload or {}).get("instrucoes") or "").strip()
+    pedido = str((payload or {}).get("pedido") or "").strip()
+    return {"particularidades": _perguntar_json(instrucoes, pedido[:4000], 90)}
+
+
+def robo_sigma(payload):
+    """Robô "Perguntar ao Sigma" (Raul, 25/11/2026): um PASSO do laço de ferramentas da edge sigma-assistente.
+    A edge roda as ferramentas com as permissões de quem pergunta; aqui o Claude só lê a conversa e os resultados já
+    consultados e devolve {"ferramentas": [...]} ou {"resposta": "..."}. Sem ferramenta do Hermes: o Claude nunca toca
+    no banco. O payload sai da fila no rotina_concluir e a edge apaga o resultado depois de ler (pode ter dado de médico)."""
+    instrucoes = str((payload or {}).get("instrucoes") or "").strip()
+    pedido = str((payload or {}).get("pedido") or "").strip()
+    return {"passo": _perguntar_json(instrucoes, pedido, 75)}
+
+
+def sugerir_resposta(payload):
+    """Sugestão de resposta da tela Conversas (Raul, 25/11/2026; pedido do Heron): o Claude lê a conversa e devolve
+    só o texto da próxima mensagem ({"texto"}) ou, fora da janela de 24 h, o modelo escolhido ({"json"}). Instruções e
+    pedido vêm da edge conversa-sugerir-resposta, o mesmo texto que o Gemini de reserva usa. Sem ferramenta nenhuma.
+    O pedido leva a conversa com o médico: o payload sai da fila no rotina_concluir, a fila esconde este tipo da tela
+    e a edge apaga o resultado depois de ler. Nada é gravado em disco nem no log."""
+    instrucoes = str((payload or {}).get("instrucoes") or "").strip()
+    pedido = str((payload or {}).get("pedido") or "").strip()[:12000]
+    if str((payload or {}).get("formato") or "texto") == "json":
+        return {"json": _perguntar_json(instrucoes, pedido, 60)}
     token = _token()
     if not token:
         raise RuntimeError("sem-login")
-    instrucoes = str((payload or {}).get("instrucoes") or "").strip()
-    pedido = str((payload or {}).get("pedido") or "").strip()
     if not instrucoes or not pedido:
         raise RuntimeError("pedido vazio")
-    pergunta = f"{instrucoes}\n\n{pedido[:4000]}\n\nResponda só com o JSON, sem texto antes ou depois."
-    # A pergunta vai pela entrada padrão (como no login): como argumento ficaria na lista de processos da VPS.
+    pergunta = f"{instrucoes}\n\n{pedido}\n\nResponda só com o texto da mensagem, sem aspas, sem explicação antes ou depois."
+    # A pergunta vai pela entrada padrão: como argumento direto ficaria no comando montado pelo worker.
     cod, saida = _como_usuario(
         ["bash", "-c", f'exec "{HERMES}" chat -Q --provider {PROVEDOR} -m sonnet -q "$(cat)"'],
-        entrada=pergunta, tempo=90, env_extra={"CLAUDE_CODE_OAUTH_TOKEN": token},
+        entrada=pergunta, tempo=60, env_extra={"CLAUDE_CODE_OAUTH_TOKEN": token},
     )
     if cod is None:
-        raise RuntimeError("o Claude não respondeu em 90 s")
-    obj = json_da_resposta(saida) if cod == 0 else None
-    if obj is None:
-        raise RuntimeError(f"resposta sem JSON: {ultima_linha_segura(saida)}")
-    return {"particularidades": obj}
+        raise RuntimeError("o Claude não respondeu em 60 s")
+    if cod != 0:
+        raise RuntimeError(f"falha no Claude: {ultima_linha_segura(saida)}")
+    texto = saida.strip()
+    if not texto:
+        raise RuntimeError("resposta vazia")
+    return {"texto": texto[:2000]}
 
 
 def sair(_payload=None):
@@ -190,4 +242,6 @@ ROTINAS = {
     "ia_claude_teste": teste,
     "ia_claude_sair": sair,
     "ia_claude_assistente_campanha": assistente_campanha,
+    "ia_claude_sugerir_resposta": sugerir_resposta,
+    "ia_claude_robo_sigma": robo_sigma,
 }

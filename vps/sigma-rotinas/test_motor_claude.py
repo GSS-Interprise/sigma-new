@@ -39,10 +39,10 @@ class TestMotorClaude(unittest.TestCase):
         self.assertLessEqual(len(m.ultima_linha_segura("x" * 500)), 200)
 
     def test_rotinas_registradas_batem_com_a_fila(self):
-        # Os mesmos tipos que a migration 20261113170000 aceita em rotina_pedir.
+        # Os mesmos tipos ia_claude_* que rotina_pedir aceita (última versão: 20261125110000).
         self.assertEqual(sorted(m.ROTINAS), sorted([
             "ia_claude_situacao", "ia_claude_login", "ia_claude_codigo", "ia_claude_teste", "ia_claude_sair",
-            "ia_claude_assistente_campanha"]))
+            "ia_claude_assistente_campanha", "ia_claude_sugerir_resposta", "ia_claude_robo_sigma"]))
 
     def test_json_da_resposta_tira_o_texto_em_volta(self):
         self.assertEqual(m.json_da_resposta('{"a": 1}'), {"a": 1})
@@ -58,6 +58,42 @@ class TestMotorClaude(unittest.TestCase):
                 m.assistente_campanha({"instrucoes": "x", "pedido": "y"})
         finally:
             m._token = token
+
+    def test_sugerir_resposta_sem_login_ou_vazio_falha_logo(self):
+        token, m._token = m._token, lambda: None
+        try:
+            with self.assertRaisesRegex(RuntimeError, "sem-login"):
+                m.sugerir_resposta({"instrucoes": "x", "pedido": "y"})
+        finally:
+            m._token = token
+        token, m._token = m._token, lambda: "tok"
+        try:
+            with self.assertRaisesRegex(RuntimeError, "pedido vazio"):
+                m.sugerir_resposta({"instrucoes": "x", "pedido": ""})
+        finally:
+            m._token = token
+
+    def test_robo_sem_login_falha_logo(self):
+        token, m._token = m._token, lambda: None
+        try:
+            with self.assertRaisesRegex(RuntimeError, "sem-login"):
+                m.robo_sigma({"instrucoes": "x", "pedido": "y"})
+        finally:
+            m._token = token
+
+    def test_robo_devolve_o_passo_e_recusa_pedido_grande(self):
+        token, como = m._token, m._como_usuario
+        chamadas = []
+        m._token = lambda: "tok"
+        m._como_usuario = lambda args, entrada="", tempo=120, env_extra=None: (chamadas.append(entrada) or (0, 'ok {"resposta": "12 furos"}'))
+        try:
+            self.assertEqual(m.robo_sigma({"instrucoes": "regras", "pedido": "Pessoa: furos?"}), {"passo": {"resposta": "12 furos"}})
+            self.assertIn("Pessoa: furos?", chamadas[0])
+            with self.assertRaisesRegex(RuntimeError, "grande demais"):
+                m.robo_sigma({"instrucoes": "regras", "pedido": "é" * 70_000})
+            self.assertEqual(len(chamadas), 1)  # o pedido grande nem chegou ao Hermes
+        finally:
+            m._token, m._como_usuario = token, como
 
     def test_codigo_invalido_nem_chega_na_vps(self):
         with self.assertRaises(RuntimeError):

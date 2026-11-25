@@ -13,7 +13,8 @@ import { cn } from "@/lib/utils";
 
 /**
  * Configurações › Motor de IA — pergunta da tela: "o Claude da GSS está ligado ao Sigma e respondendo?".
- * Decisão: conectar (ou reconectar) a assinatura Max da GSS e testar.
+ * Decisão: conectar (ou reconectar) a assinatura Max da GSS e testar. Abaixo, onde o Claude é usado e qual motor
+ * respondeu por último em cada processo (RPC motor_ia_processos, sem abrir o conteúdo de nenhum pedido).
  * O motor é o Hermes na VPS da GSS com o plugin claude-subscription-directsdk; o login gera um token de 1 ano que
  * fica só na VPS (usuário sigma-ia). O Sigma fala com a VPS pela fila rotina_pedidos (rotinas ia_claude_*), e o
  * worker atende essa fila em até ~8 s. Desenho: docs/arquitetura/motor-ia-hermes-claude.md.
@@ -39,6 +40,15 @@ async function pedir<T>(tipo: string, payload: Record<string, unknown> = {}, lim
   throw new Error("A VPS da GSS não respondeu a tempo. O serviço sigma-rotinas pode estar parado.");
 }
 
+type Processo = { processo: string; motor: "claude" | "gemini" | null; em: string | null };
+
+// Os processos que usam o Claude (com o Gemini de reserva). Mesma lista de docs/arquitetura/motor-ia-hermes-claude.md.
+const PROCESSOS: { id: string; nome: string; ve: string }[] = [
+  { id: "assistente_campanha", nome: "Assistente de campanha", ve: "Lê a regra especial que o dono escreve. Vê só o rascunho da campanha, sem dado de médico." },
+  { id: "robo_sigma", nome: "Robô do Sigma", ve: "Responde o \"Perguntar ao Sigma\" com os mesmos acessos de quem pergunta." },
+  { id: "sugerir_resposta", nome: "Sugestão de resposta em Conversas", ve: "Lê as últimas mensagens, o cadastro do médico e a vaga, só em números de prospecção." },
+];
+
 const quando = (iso: string | null) => (iso ? format(new Date(iso), "dd/MM/yyyy", { locale: ptBR }) : "—");
 
 export function MotorIaTab() {
@@ -63,6 +73,16 @@ export function MotorIaTab() {
       const t = (data.tipo === "ia_claude_codigo" ? data.resultado?.teste : data.resultado) as Teste | undefined;
       return t ? { ...t, em: data.concluido_em as string } : null;
     },
+  });
+  const processos = useQuery({
+    queryKey: ["motor-ia", "processos"],
+    queryFn: async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC nova fora dos tipos gerados
+      const { data, error } = await (supabase as any).rpc("motor_ia_processos");
+      if (error) throw new Error(error.message);
+      return (data ?? []) as Processo[];
+    },
+    staleTime: 60_000,
   });
   const atualizar = () => qc.invalidateQueries({ queryKey: ["motor-ia"] });
 
@@ -122,7 +142,7 @@ export function MotorIaTab() {
               <p className="mt-1 text-sm text-muted-foreground">
                 {s?.conectado
                   ? `Login em ${quando(s.login_em)} · vence por volta de ${quando(s.vence_em_estimado)}`
-                  : "Nenhum processo do Sigma usa o Claude enquanto não houver login."}
+                  : "Enquanto não houver login, os processos abaixo usam o Gemini."}
               </p>
               {/* Teste anterior ao login atual não diz nada sobre ele; sem login, o "Sem login" já basta. */}
               {t && s?.conectado && s.login_em && new Date(t.em) >= new Date(s.login_em) && (
@@ -146,13 +166,21 @@ export function MotorIaTab() {
           </div>
         )}
 
+        {s && !s.conectado && !link && (
+          <ol className="mt-5 grid gap-3 rounded-md border bg-muted/40 p-4 text-sm sm:grid-cols-3">
+            <li><span className="font-medium">1. Quem faz:</span> um administrador do Sigma, com o e-mail e a senha da conta Claude da GSS (plano Max, @gestaoservicosaude.com.br).</li>
+            <li><span className="font-medium">2. Link:</span> clique em Conectar assinatura, abra o link, entre com a conta da GSS e clique em Autorizar.</li>
+            <li><span className="font-medium">3. Código:</span> copie o código que a página do Claude mostrar e cole aqui. O Sigma testa sozinho.</li>
+          </ol>
+        )}
+
         {link && (
           <div className="mt-5 space-y-3 rounded-md border bg-muted/40 p-4">
-            <p className="text-sm font-medium">1. Entre com a conta Claude da GSS (@gestaoservicosaude.com.br) e autorize.</p>
+            <p className="text-sm font-medium">1. Abra a página do Claude, entre com a conta da GSS (@gestaoservicosaude.com.br) e clique em Autorizar.</p>
             <Button asChild variant="outline" size="sm" className="h-8">
               <a href={link} target="_blank" rel="noopener noreferrer"><ExternalLink className="mr-1.5 h-3.5 w-3.5" />Abrir página do Claude</a>
             </Button>
-            <p className="pt-1 text-sm font-medium">2. Cole aqui o código que a página mostrar.</p>
+            <p className="pt-1 text-sm font-medium">2. Copie o código que a página mostrar e cole aqui.</p>
             <form className="flex flex-wrap gap-2" onSubmit={(e) => { e.preventDefault(); if (codigo.trim()) concluir.mutate(); }}>
               <Input value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="Código do Claude" autoComplete="off"
                 spellCheck={false} className="h-9 min-w-0 flex-1 basis-64 font-mono text-sm" disabled={concluir.isPending} />
@@ -168,13 +196,39 @@ export function MotorIaTab() {
       </Card>
 
       <Card className="p-5">
-        <h3 className="text-base font-semibold">Processos que usam o Claude</h3>
-        <ul className="mt-2 space-y-1 text-sm">
-          <li>
-            <span className="font-medium">Assistente de campanha</span>
-            <span className="text-muted-foreground"> · lê a regra especial que o dono escreve. Vê só o rascunho da campanha, sem dado de médico. Sem login, usa o Gemini.</span>
-          </li>
-        </ul>
+        <h3 className="text-base font-semibold">Onde o Claude é usado</h3>
+        <p className="mt-0.5 text-sm text-muted-foreground">Sem login, com erro ou demora, o Gemini responde no lugar.</p>
+        {processos.error ? (
+          <p className="mt-3 text-sm text-destructive">Não deu para ler o uso agora: {(processos.error as Error).message}</p>
+        ) : (
+          <ul className="mt-3 divide-y">
+            {PROCESSOS.map((p) => {
+              const u = processos.data?.find((x) => x.processo === p.id);
+              return (
+                <li key={p.id} className="flex flex-wrap items-start justify-between gap-x-6 gap-y-1 py-3 first:pt-0 last:pb-0">
+                  <div className="min-w-0 flex-1 basis-72">
+                    <p className="text-sm font-medium">{p.nome}</p>
+                    <p className="text-sm text-muted-foreground">{p.ve}</p>
+                  </div>
+                  <div className="shrink-0 text-sm sm:text-right">
+                    {processos.isLoading ? (
+                      <Skeleton className="h-5 w-40" />
+                    ) : u?.motor ? (
+                      <>
+                        <p className={cn("font-medium", u.motor === "claude" ? "text-emerald-700" : "text-foreground")}>
+                          Última resposta: {u.motor === "claude" ? "Claude" : "Gemini (reserva)"}
+                        </p>
+                        {u.em && <p className="text-xs text-muted-foreground">{formatDistanceToNow(new Date(u.em), { addSuffix: true, locale: ptBR })}</p>}
+                      </>
+                    ) : (
+                      <p className="text-muted-foreground">Ainda sem uso registrado</p>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </Card>
 
       {s && (

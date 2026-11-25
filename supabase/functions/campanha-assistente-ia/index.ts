@@ -9,6 +9,7 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { normalizarParticularidades } from "../_shared/sigilo.ts";
+import { claudeLigado, pedirAoClaude } from "../_shared/motor-ia.ts";
 
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...cors, "Content-Type": "application/json" } });
@@ -34,40 +35,11 @@ const pedidoDoDono = (texto: string, rascunho: unknown) =>
 // deno-lint-ignore no-explicit-any
 type Svc = any;
 
-// O Claude está ligado? Vale o último pedido do motor que terminou: login, teste, desconexão ou o próprio assistente.
-// Sem login nenhum (o caso até a GSS conectar) a edge vai direto ao Gemini, sem esperar a VPS.
-async function claudeLigado(svc: Svc): Promise<boolean> {
-  const { data } = await svc.from("rotina_pedidos").select("tipo, status, resultado, erro")
-    .in("tipo", ["ia_claude_situacao", "ia_claude_codigo", "ia_claude_teste", "ia_claude_sair", "ia_claude_assistente_campanha"])
-    .in("status", ["feito", "erro"]).order("concluido_em", { ascending: false }).limit(10);
-  for (const p of data || []) {
-    if (p.tipo === "ia_claude_sair" && p.status === "feito") return false;
-    if (p.tipo === "ia_claude_codigo" && p.status === "feito") return true;
-    if (p.tipo === "ia_claude_situacao" && p.status === "feito") return !!p.resultado?.conectado;
-    if (p.tipo === "ia_claude_teste" && p.status === "feito") return !!p.resultado?.ok;
-    if (p.tipo === "ia_claude_assistente_campanha") return !String(p.erro || "").includes("sem-login");
-  }
-  return false;
-}
-
-// Pede ao worker da VPS (laço rápido: 8 s parado) e espera até 60 s. null = cai no Gemini.
+// Pede ao worker da VPS e espera até 60 s (helper comum em _shared/motor-ia.ts). null = cai no Gemini.
 async function interpretarComClaude(svc: Svc, texto: string, rascunho: unknown) {
-  const { data: id, error } = await svc.rpc("rotina_pedir", {
-    p_tipo: "ia_claude_assistente_campanha",
-    p_payload: { instrucoes: PROMPT, pedido: pedidoDoDono(texto, rascunho) },
-  });
-  if (error || !id) return null;
-  const limite = Date.now() + 60_000;
-  while (Date.now() < limite) {
-    await new Promise((r) => setTimeout(r, 1500));
-    const { data: p } = await svc.from("rotina_pedidos").select("status, resultado").eq("id", id).single();
-    if (p?.status === "feito") return p.resultado?.particularidades ?? null;
-    if (p?.status === "erro") return null;
-  }
-  // Desistiu: se a VPS ainda não pegou, tira da fila para não gastar a cota com resposta que ninguém vai ler.
-  await svc.from("rotina_pedidos").update({ status: "erro", erro: "a edge desistiu de esperar", concluido_em: new Date().toISOString() })
-    .eq("id", id).eq("status", "pendente");
-  return null;
+  const r = await pedirAoClaude(svc, "ia_claude_assistente_campanha",
+    { instrucoes: PROMPT, pedido: pedidoDoDono(texto, rascunho) }, { limiteMs: 60_000 });
+  return r?.particularidades ?? null;
 }
 
 async function interpretar(chave: string, texto: string, rascunho: unknown) {
@@ -116,7 +88,8 @@ serve(async (req) => {
 
     const svc = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const texto1500 = pedido.slice(0, 1500);
-    if (await claudeLigado(svc).catch(() => false)) {
+    // Mesmo critério de antes da extração: só o erro "sem-login" do próprio assistente conta como desligado.
+    if (await claudeLigado(svc, ["ia_claude_assistente_campanha"]).catch(() => false)) {
       const doClaude = await interpretarComClaude(svc, texto1500, rascunho ?? {}).catch(() => null);
       if (doClaude && typeof doClaude === "object") {
         return json({ ok: true, motor: "claude", particularidades: normalizarParticularidades(doClaude) });

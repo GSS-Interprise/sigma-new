@@ -42,11 +42,49 @@ Sigma (tela ou edge)                VPS da GSS 147.93.71.48
   | `ia_claude_teste` | `hermes chat -Q --provider <plugin> -m sonnet -q "Responda apenas a palavra OK."` |
   | `ia_claude_sair` | apaga o token |
   | `ia_claude_assistente_campanha` | 1º processo (17/11): interpreta a "regra especial" do assistente de campanha e devolve JSON. Pedida pela edge `campanha-assistente-ia` (service_role), que espera até 60 s e cai no Gemini se não houver login, der erro ou demorar. Vê só o rascunho da campanha, sem dado de médico; sem ferramentas |
+  | `ia_claude_sugerir_resposta` | 2º processo (25/11, pedido do Heron): botão "Sugerir resposta" da tela Conversas. Pedida pela edge `conversa-sugerir-resposta` (service_role), que espera até 25 s e cai no Gemini se não houver login, der erro ou demorar. Devolve o texto da próxima mensagem (`{texto}`) ou, fora da janela de 24 h, o modelo escolhido (`{json}`). **Vê dado de médico** (últimas 30 mensagens, nome, especialidade, cidade, vaga): só para números com `uso` em `supabase_config.sugestao_resposta_usos` (começa em `["prospeccao"]`, LGPD). Por isso a fila esconde esse tipo da leitura da tela (policy `rotina_pedidos_ler`), `rotina_concluir` apaga o payload e a edge apaga o resultado depois de ler. Motor de cada sugestão em `conversa_sugestoes.motor`. Sem ferramentas |
+  | `ia_claude_robo_sigma` | 3º processo (25/11): um **passo** do robô "Perguntar ao Sigma" (edge `sigma-assistente`). Ver "Robô do Sigma no Claude" abaixo. **Vê dado de médico** (resultados das ferramentas que a pessoa pode usar); mesma proteção da sugestão: fila esconde o tipo, payload apagado no `rotina_concluir`, resultado apagado pela edge. Motor de cada resposta em `assistente_mensagens.modelo` (`claude-sonnet (Hermes)` ou o modelo do Gemini). Sem ferramentas do Hermes |
+
+## Processos que usam o Claude
+
+Todos com o Gemini de reserva: sem login, com erro ou demora, o Gemini responde e o Sigma segue igual. Helper comum
+das edges: `supabase/functions/_shared/motor-ia.ts` (`claudeLigado`, `pedirAoClaude`).
+
+| Processo | Edge | Rotina | Vê | Espera o Claude | Onde fica o motor que respondeu |
+|---|---|---|---|---|---|
+| Assistente de campanha | `campanha-assistente-ia` | `ia_claude_assistente_campanha` | rascunho da campanha, sem dado de médico | 60 s | `rotina_pedidos` (erro = o Gemini respondeu; sem login o Gemini responde sem passar pela fila) |
+| Robô do Sigma ("Perguntar ao Sigma") | `sigma-assistente` | `ia_claude_robo_sigma` | o que a pessoa vê nas telas (domínios liberados) | 80 s no total, 20 s para a VPS pegar o pedido | `assistente_mensagens.modelo` |
+| Sugestão de resposta em Conversas | `conversa-sugerir-resposta` | `ia_claude_sugerir_resposta` | conversa, cadastro do médico e vaga (só números de prospecção) | 25 s | `conversa_sugestoes.motor` |
+
+A tela mostra, por processo, qual motor respondeu por último e quando (RPC `motor_ia_processos()`, só administrador,
+sem abrir o conteúdo de nenhum pedido; migration `20261125130000_motor_ia_robo_sigma.sql`).
+
+### Robô do Sigma no Claude (desenho b)
+
+- **A edge continua dona do laço de ferramentas.** A cada passo ela pede `ia_claude_robo_sigma` com as instruções de
+  sempre (`instrucoes()` de `_shared/assistente.ts`, as mesmas do Gemini), a lista de ferramentas liberadas para a
+  pessoa e a conversa com os resultados já consultados. O Claude devolve só `{"ferramentas": [{nome, args}]}` (até 4)
+  ou `{"resposta": "..."}`. A edge roda as ferramentas e repete, até 6 voltas (`sigma-assistente/claude.ts`).
+- **Permissões iguais às de hoje:** as ferramentas rodam na edge, com `roboLiberado`, `MODULO_DO_DOMINIO`,
+  `veContratos`, a campanha da página (`?campanha=`) e `pode_editar_campanha`. Nome de ferramenta fora da lista vira
+  "ferramenta indisponível para esta pessoa". Escrita continua só proposta: o cartão "Confere?" sai igual.
+- **Por que não o desenho (a)** (Claude na VPS chamando o `sigma-mcp`): o MCP decide acesso por papel
+  (`agente_dominio_acessos`), não pelo módulo da tela de cada pessoa, não tem as ferramentas de proposta nem o
+  contexto da página, e pediria um token por usuário guardado na VPS.
+- **Reserva:** passo sem JSON válido, erro, sem login ou passou de 80 s: o Gemini responde do zero com o próprio teto
+  de 40 s (o caminho de antes, sem mudança). Se o Claude já montou uma proposta antes de falhar, o cartão vale e o
+  Gemini não é chamado. Se a VPS não pegar um pedido em 20 s (worker parado), o robô vai direto ao Gemini por 10 min.
+- **Tamanho:** as instruções somam ~27 KB (guias dos domínios); os resultados dividem ~60 mil caracteres (até 8 mil
+  cada), porque a pergunta vira um argumento do Hermes e o Linux recusa argumento acima de 128 KB. O worker recusa
+  acima de 120 KB (vira Gemini).
+- **Tempo e cota:** cada passo é um `hermes chat` (uns 10-20 s); uma pergunta com consulta usa 2 passos. O laço rápido
+  do worker atende um pedido por vez: duas pessoas perguntando juntas esperam uma pela outra.
 
 - **Segredo:** nenhum resultado leva token, código ou a tela crua. O código do login sai do `payload` quando o pedido
   termina (`rotina_concluir`), porque a fila é legível por qualquer usuário logado.
 - **Tela:** Configurações › Canais & Integrações › **Motor de IA (Claude)** (`MotorIaTab.tsx`): situação, conectar ou
-  refazer login, testar, desconectar e a lista de processos que usam o Claude (vazia até a GSS definir).
+  refazer login, testar, desconectar, o passo a passo do login para quem não é técnico e o bloco "Onde o Claude é
+  usado" (cada processo com o último motor que respondeu e quando).
 
 ## Regras para um processo novo usar o Claude
 
@@ -70,3 +108,5 @@ Sigma (tela ou edge)                VPS da GSS 147.93.71.48
 - [x] Rotinas `ia_claude_*`, migration `20261113170000_motor_ia_claude.sql`, tela Motor de IA
 - [ ] Login com a conta Max da GSS (Raul, pela tela) e teste respondendo
 - [x] Primeiro processo: assistente de campanha (Raul, 17/11), com o Gemini de reserva até a GSS conectar
+- [x] Robô do Sigma no Claude (25/11): edge `sigma-assistente` e migration `20261125130000` no ar; falta publicar
+  `motor_claude.py` (rotina `ia_claude_robo_sigma`) na VPS e reiniciar o `sigma-rotinas`
