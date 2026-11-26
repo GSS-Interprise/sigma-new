@@ -63,20 +63,34 @@ async function indicadores(ctx: Ctx, a: Record<string, unknown>): Promise<Result
   // Dia de Brasília: "hoje" começa à meia-noite de Brasília (03:00 UTC).
   const br = new Date(ctx.agora.getTime() - 3 * 3_600_000);
   const inicio = new Date(Date.UTC(br.getUTCFullYear(), br.getUTCMonth(), br.getUTCDate() - (dias - 1), 3));
-  const { data, error } = await ctx.svc.rpc("atendimento_indicadores_base", { p_de: inicio.toISOString(), p_ate: ctx.agora.toISOString() });
-  if (error) throw error;
-  const ls = ((data || []) as Indicador[]).sort((x, y) => y.esperas - x.esperas || x.pessoa.localeCompare(y.pessoa));
+  const de = inicio.toISOString(), ate = ctx.agora.toISOString();
+  // Os 3 cartões do topo da tela Tempo de resposta saem da série (atendimento_serie: dentro da meta, sem resposta, IA)
+  // e a mediana das pessoas ponderada pelas respondidas (TempoDeResposta.tsx). Mesma conta aqui para o número bater.
+  const [ind, ser, cfg] = await Promise.all([
+    ctx.svc.rpc("atendimento_indicadores_base", { p_de: de, p_ate: ate }),
+    ctx.svc.rpc("atendimento_serie_base", { p_de: de, p_ate: ate, p_bucket: dias === 1 ? "hour" : "day", p_uso: null }),
+    ctx.svc.from("atendimento_config").select("meta_pct").eq("id", true).maybeSingle(),
+  ]);
+  if (ind.error) throw ind.error;
+  if (ser.error) throw ser.error;
+  const ls = ((ind.data || []) as Indicador[]).sort((x, y) => y.esperas - x.esperas || x.pessoa.localeCompare(y.pessoa));
+  const pts = (ser.data || []) as { esperas: number; em_meta: number; sem_resposta: number; automaticas: number }[];
+  const tot = pts.reduce((s, p) => ({ esp: s.esp + Number(p.esperas), meta: s.meta + Number(p.em_meta), sem: s.sem + Number(p.sem_resposta), auto: s.auto + Number(p.automaticas) }), { esp: 0, meta: 0, sem: 0, auto: 0 });
+  const metaPct = Number(cfg.data?.meta_pct ?? 80);
   const periodo = dias === 1 ? "hoje" : `nos últimos ${dias} dias`;
   const humanas = ls.filter((l) => !l.pessoa.startsWith("Automático"));
-  const esperas = humanas.reduce((s, l) => s + l.esperas, 0);
-  const sem = humanas.reduce((s, l) => s + l.sem_resposta, 0);
-  if (!ls.length) return { resumo: `Ninguém escreveu para os números oficiais ${periodo}.`, dados: { dias, linhas: [] }, totais: { esperas: 0, sem_resposta: 0 }, fonte: await frescor(ctx) };
+  const respondidas = humanas.reduce((s, l) => s + l.respondidas, 0);
+  const mediana = respondidas ? Math.round(humanas.reduce((s, l) => s + Number(l.mediana_min ?? 0) * l.respondidas, 0) / respondidas) : null;
+  const pct = tot.esp ? Math.round((100 * tot.meta) / tot.esp) : null;
+  if (!ls.length && !tot.esp) return { resumo: `Ninguém escreveu para os números oficiais ${periodo}.`, dados: { dias, linhas: [] }, totais: { esperas: 0, sem_resposta: 0 }, fonte: await frescor(ctx) };
   const linha = (l: Indicador) => `- **${l.pessoa}**: ${l.respondidas} de ${l.esperas} respondidas · mediana ${l.mediana_min == null ? "—" : tempo(Math.round(Number(l.mediana_min)))} · ${l.esperas ? Math.round((100 * l.em_10min) / l.esperas) : 0}% em até 10 min · ${l.sem_resposta} sem resposta`;
   return {
-    resumo: `**Tempo de resposta ${periodo}**: ${esperas} conversas pediram resposta de uma pessoa e ${sem} ainda estão sem resposta.`,
-    corpo: "\n" + ls.map(linha).join("\n"),
+    resumo: `**Tempo de resposta ${periodo}**: ${pct == null ? "—" : `${pct}%`} das conversas respondidas dentro da meta (meta ${metaPct}%; ${tot.meta} de ${tot.esp}). `
+      + `Mediana até a 1ª resposta: ${mediana == null ? "—" : tempo(mediana)} (${respondidas} respondidas por pessoas). `
+      + `${tot.sem} ficaram sem resposta${tot.auto ? `; a IA respondeu outras ${tot.auto} sozinha` : ""}.`,
+    corpo: "\n**Por pessoa:**\n" + ls.map(linha).join("\n"),
     dados: { dias, linhas: ls.map((l) => [l.pessoa, l.esperas, l.respondidas, l.mediana_min == null ? null : Number(l.mediana_min), l.em_10min, l.sem_resposta]) },
-    totais: { esperas, sem_resposta: sem },
+    totais: { esperas: tot.esp, dentro_da_meta: tot.meta, pct_dentro_da_meta: pct, meta_pct: metaPct, mediana_min: mediana, respondidas_por_pessoas: respondidas, sem_resposta: tot.sem, ia_sozinha: tot.auto },
     fonte: await frescor(ctx),
   };
 }
@@ -84,7 +98,7 @@ async function indicadores(ctx: Ctx, a: Record<string, unknown>): Promise<Result
 export const atendimento: Dominio = {
   id: "atendimento",
   titulo: "Tempo de resposta",
-  versao: "1.0.0",
+  versao: "1.1.0",
   status: "ativo",
   resumo: "quem está esperando resposta nos números oficiais do WhatsApp e o tempo de resposta de cada pessoa.",
   frescor,
@@ -95,12 +109,14 @@ export const atendimento: Dominio = {
       { termo: "De quem é", definicao: "a pessoa marcada como responsável pelo número no Sigma. Número sem responsável aparece como \"sem responsável\"." },
       { termo: "IA atuando", definicao: "conversa de campanha em que a IA responde sozinha; não conta como espera de uma pessoa." },
       { termo: "Contato marcado", definicao: "cliente ou contato importante que a coordenação marcou com nome no Sigma." },
-      { termo: "Mediana", definicao: "tempo do meio até a primeira resposta (metade foi mais rápida, metade mais lenta)." },
+      { termo: "Mediana", definicao: "tempo do meio até a primeira resposta (metade foi mais rápida, metade mais lenta). O número geral é a mediana de cada pessoa ponderada pelas respostas dela, igual ao cartão da tela." },
+      { termo: "Dentro da meta", definicao: "conversa respondida dentro do prazo do tipo de contato (médico, cliente, pessoa-chave; 10 min por padrão). É o % do cartão do topo da tela Tempo de resposta; a meta da GSS (ex.: 80%) fica em Tempo de resposta › Avisos." },
+      { termo: "Espera você agora", definicao: "conversas esperando uma pessoa nas últimas 24 h, sem IA atuando: o total de atendimento_aguardando (padrão 24 h), igual ao cartão grande da tela." },
       { termo: "Pedido de descadastro", definicao: "\"SAIR\" e parecidos não contam como espera." },
     ],
     rotas: [
       { pergunta: "Quem está sem responder agora / tem conversa esperando", ferramenta: "atendimento_aguardando", observacao: "horas: padrão 24; pessoa: filtra pelo responsável" },
-      { pergunta: "Como está o tempo de resposta da equipe hoje / na semana", ferramenta: "atendimento_indicadores", observacao: "dias: 1 = hoje" },
+      { pergunta: "Como está o tempo de resposta da equipe hoje / na semana; taxa de resposta em até 10 min / dentro da meta; mediana; quantas ficaram sem resposta", ferramenta: "atendimento_indicadores", observacao: "dias: 1 = hoje (Hoje da tela), 7 = 7 dias, 30 = 30 dias. Use os números do resumo: são os cartões da tela." },
     ],
     regras: [
       "Diga o período (últimas 24 h, hoje, semana) junto com o número.",
