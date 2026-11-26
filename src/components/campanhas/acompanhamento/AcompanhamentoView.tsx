@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { AlertTriangle, ClipboardList, Clock, Loader2, Search, X } from "lucide-react";
+import { AlertTriangle, ClipboardList, Loader2, Search, X } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AcompanhamentoKanban } from "./AcompanhamentoKanban";
@@ -125,15 +125,6 @@ export function AcompanhamentoView() {
 
   return (
     <div className="space-y-3">
-      <AiSupervisionQueue onOpenLead={setLeadAbertoId} />
-
-      {/* F3.4 — Banner de aging de leads quentes (threshold configurável) */}
-      <AcompanhamentoAgingBanner
-        leads={quadro.quentesSemDono}
-        thresholdHoras={agingThreshold}
-        onLeadClick={setLeadAbertoId}
-      />
-
       {/* Busca + filtros: achar um médico específico é a primeira coisa que a pessoa faz aqui. */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative w-full max-w-md">
@@ -177,23 +168,6 @@ export function AcompanhamentoView() {
             </FiltroChip>
           ))}
         </div>
-
-        <div className="ml-auto flex items-center gap-2 text-xs">
-          <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-          <span className="text-muted-foreground">Alertar quentes parados há</span>
-          <Select value={String(agingThreshold)} onValueChange={(v) => setAgingThreshold(Number(v))}>
-            <SelectTrigger className="min-h-11 w-28 text-xs" aria-label="Alertar quentes parados há">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {THRESHOLD_OPCOES.map((o) => (
-                <SelectItem key={o.value} value={String(o.value)} className="text-xs">
-                  {o.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
       </div>
 
       {termo && !buscandoAgora && !quadro.error && (
@@ -210,6 +184,34 @@ export function AcompanhamentoView() {
             </>
           )}
         </p>
+      )}
+
+      {/* Na busca, só o resultado importa: os alertas saem da frente e voltam ao limpar. */}
+      {!termo && (
+        <>
+          {/* Quentes parados sem dono. O seletor de horas mora no alerta que ele regula. */}
+          <AcompanhamentoAgingBanner
+            leads={quadro.quentesSemDono}
+            thresholdHoras={agingThreshold}
+            onLeadClick={setLeadAbertoId}
+            acao={
+              <Select value={String(agingThreshold)} onValueChange={(v) => setAgingThreshold(Number(v))}>
+                <SelectTrigger className="h-9 w-28 bg-background text-xs" aria-label="Alertar quentes parados há">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {THRESHOLD_OPCOES.map((o) => (
+                    <SelectItem key={o.value} value={String(o.value)} className="text-xs">
+                      Após {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            }
+          />
+
+          <AiSupervisionQueue onOpenLead={setLeadAbertoId} />
+        </>
       )}
 
       {quadro.error ? (

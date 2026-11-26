@@ -11,6 +11,8 @@ interface Props {
   thresholdHoras?: number;
   /** Click no lead atrasado pra abrir o painel. */
   onLeadClick: (campanhaLeadId: string) => void;
+  /** Controle à direita do título (o seletor de horas fica junto do alerta que ele regula). */
+  acao?: React.ReactNode;
 }
 
 /**
@@ -22,7 +24,7 @@ interface Props {
  * Escala de cor: <12h calmo (verde), 12-24h atento (amarelo),
  * >24h crítico (vermelho).
  */
-export function AcompanhamentoAgingBanner({ leads, thresholdHoras = 12, onLeadClick }: Props) {
+export function AcompanhamentoAgingBanner({ leads, thresholdHoras = 12, onLeadClick, acao }: Props) {
   const quentesEsperando = useMemo(() => {
     const agora = Date.now();
     return leads
@@ -109,6 +111,7 @@ export function AcompanhamentoAgingBanner({ leads, thresholdHoras = 12, onLeadCl
             )}
           </div>
         </div>
+        {acao && <div className="shrink-0">{acao}</div>}
       </div>
     </Card>
   );

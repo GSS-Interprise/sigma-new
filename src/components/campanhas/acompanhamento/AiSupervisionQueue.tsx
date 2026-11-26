@@ -60,7 +60,8 @@ export function AiSupervisionQueue({
   }
   if (items.length === 0) return null;
 
-  const visible = expanded ? items : items.slice(0, 5);
+  // 4 = duas linhas no desktop; com 5 a terceira linha empurrava o quadro da aba para baixo da dobra.
+  const visible = expanded ? items : items.slice(0, 4);
   return (
     <section className="rounded-lg border border-violet-200 bg-violet-50/40 p-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -76,7 +77,7 @@ export function AiSupervisionQueue({
             Conversas que precisam de responsável, resposta ou próximo passo.
           </p>
         </div>
-        {items.length > 5 && (
+        {items.length > 4 && (
           <Button
             type="button"
             variant="ghost"
