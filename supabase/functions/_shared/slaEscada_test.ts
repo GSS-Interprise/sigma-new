@@ -1,5 +1,5 @@
 import { assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import { calcularIndicadores, daModalidade, destinoDoAviso, modalidadeDoExame, noPeriodo, passosAgora, saidaConfiavel, textoIndicadores, type ExameDia } from "./slaEscada.ts";
+import { calcularIndicadores, daModalidade, destinoDoAviso, listaDoAviso, modalidadeDoExame, noPeriodo, passosAgora, saidaConfiavel, textoIndicadores, type ExameDia } from "./slaEscada.ts";
 
 const P = (id: string, destino: "plantonista" | "contato", minutos: number, ativo = true) =>
   ({ id, destino, minutos, canal: "whatsapp" as const, ativo });
@@ -128,4 +128,13 @@ Deno.test("período: contato fora do período não sai (e fica para quando entra
   const ps = [{ ...P("brenda", "contato", 10), periodo: "comercial" }, { ...P("wagner", "contato", 10), periodo: "fora" }];
   assertEquals(ids(passosAgora(ps, new Set(), 12, new Date("2026-11-26T13:00:00Z"))), ["brenda"]);
   assertEquals(ids(passosAgora(ps, new Set(), 12, new Date("2026-11-26T23:00:00Z"))), ["wagner"]);
+});
+
+Deno.test("aviso agrupado: lista numa linha, unidade só quando muda, corta em 8", () => {
+  const i = (h: string, u = "Marieta") => ({ unidade: u, origem: "PS", hora: h, estudo: "TC Pelve ou bacia", estado: "vencido ha 41 min" });
+  assertEquals(listaDoAviso([i("10:01"), i("10:12")]), "PS 10:01 (TC Pelve ou bacia) vencido ha 41 min; PS 10:12 (TC Pelve ou bacia) vencido ha 41 min");
+  assertEquals(listaDoAviso([i("10:01"), i("10:12", "CEPON")]).startsWith("Marieta: PS 10:01"), true);
+  const muitos = Array.from({ length: 11 }, (_, k) => i(`10:${String(k).padStart(2, "0")}`));
+  assertEquals(listaDoAviso(muitos).endsWith("; e mais 3"), true);
+  assertEquals(listaDoAviso(muitos).includes("\n"), false);
 });

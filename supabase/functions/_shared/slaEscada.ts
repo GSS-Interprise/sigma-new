@@ -151,3 +151,17 @@ export function modalidadeDoExame(estudo: string | null | undefined): "TC" | "US
 export function daModalidade<T extends { modalidade?: string | null }>(pessoas: T[], m: string): T[] {
   return pessoas.filter((p) => !p.modalidade || p.modalidade === m);
 }
+
+// ---- Aviso agrupado (26/11) ----------------------------------------------------------------------------------------
+// Vários exames para a mesma pessoa na mesma rodada viram UMA mensagem (e uma ligação): em 26/11 o Wagner recebeu 4
+// modelos seguidos e a Meta barrou 2 ("healthy ecosystem engagement"). Parâmetro de modelo não aceita quebra de linha:
+// itens separados por "; ". Até 8 itens; o resto vira "e mais N".
+export type ItemAviso = { unidade?: string | null; origem: string; hora: string; estudo?: string | null; estado: string };
+export function listaDoAviso(itens: ItemAviso[], max = 8): string {
+  const variasUnidades = new Set(itens.map((i) => i.unidade ?? "")).size > 1;
+  const partes = itens.slice(0, max).map((i) =>
+    [variasUnidades && i.unidade ? `${i.unidade}:` : "", i.origem, i.hora, i.estudo ? `(${i.estudo.slice(0, 40)})` : "", i.estado]
+      .filter(Boolean).join(" ").replace(/\s+/g, " ").trim());
+  const resto = itens.length - max;
+  return partes.join("; ") + (resto > 0 ? `; e mais ${resto}` : "");
+}

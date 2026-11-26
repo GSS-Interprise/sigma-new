@@ -12,7 +12,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { chakraApi, unwrapChakraPayload } from "../_shared/chakra.ts";
 import { SLA_VOZ_URL, tokenAlerta } from "../_shared/sla.ts";
 import { motivoQueda, quedaRapida, SILENCIO_MIN } from "../_shared/slaEstacao.ts";
-import { calcularIndicadores, daModalidade, destinoDoAviso, modalidadeDoExame, passosAgora, saidaConfiavel, textoIndicadores } from "../_shared/slaEscada.ts";
+import { calcularIndicadores, daModalidade, destinoDoAviso, listaDoAviso, modalidadeDoExame, passosAgora, saidaConfiavel, textoIndicadores } from "../_shared/slaEscada.ts";
 
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { "Content-Type": "application/json" } });
 // CEPON entrou em 22/11 (segunda estação: o mesmo Vue PACS do Marieta não abre os dois juntos na mesma máquina).
@@ -63,6 +63,14 @@ const MODELOS = [
     exemplo: ["Pronto Socorro", "Hospital Marieta", "Maria Silva", "TC Cranio", "08:22", "15 min"],
     variaveis: { "1": "Origem", "2": "Unidade", "3": "Paciente", "4": "Estudo", "5": "Hora do exame", "6": "Tempo de atraso" },
   },
+  // Agrupado (26/11): vários exames para a mesma pessoa na mesma rodada. O botão assume todos (payload sla_assumir:g:).
+  {
+    nome: "gss_sla_laudo_varios_v1",
+    corpo: "Alerta de SLA de laudo - {{1}}: {{2}} exames precisam de laudo. {{3}}. Confira o PACS e toque em Assumir laudos para assumir todos.",
+    exemplo: ["Hospital Marieta", "3", "PS 10:01 (TC Pelve) vencido ha 41 min; PS 10:12 (TC Torax) vence em 5 min; Internado 09:40 (TC Cranio) vence em 20 min"],
+    variaveis: { "1": "Unidade", "2": "Quantidade", "3": "Lista de exames" },
+    botao: "Assumir laudos",
+  },
 ];
 
 async function remetente(admin: any) {
@@ -98,7 +106,7 @@ async function criarTemplates(admin: any, dryRun: boolean, nomes?: string[]) {
   for (const m of MODELOS.filter((x) => !nomes?.length || nomes.includes(x.nome))) {
     const componentes = [
       { type: "BODY", text: m.corpo, example: { body_text: [m.exemplo] } },
-      { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: "Assumir laudo" }] },
+      { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: (m as { botao?: string }).botao ?? "Assumir laudo" }] },
     ];
     if (dryRun) { out.push({ nome: m.nome, remetente: sender.phone_e164, componentes }); continue; }
     const resposta = await chakraGss(`/v1/ext/plugin/whatsapp/api/v24.0/${sender.chakra_waba_id}/message_templates`,
@@ -223,6 +231,11 @@ async function checarExames(admin: any, forcar = false, unidades = UNIDADES, tes
   const { data: v2 } = await admin.from("whatsapp_official_templates").select("friendly_name")
     .in("friendly_name", ["gss_sla_laudo_prazo_v2", "gss_sla_laudo_vencido_v2"]).eq("approval_status", "approved");
   const v2Aprovado = (v2 ?? []).length === 2;
+  const { data: vr } = await admin.from("whatsapp_official_templates").select("friendly_name")
+    .eq("friendly_name", "gss_sla_laudo_varios_v1").eq("approval_status", "approved").limit(1);
+  const variosAprovado = (vr ?? []).length > 0;
+  // WhatsApp e ligação da rodada ficam aqui e saem no fim, juntos por pessoa (dispararRodada). E-mail sai na hora.
+  const fila: ItemFila[] = [];
   const testeDestino = await config(admin, "sla_teste_destino");
   // Externo não avisa o plantão (Wagner, 24/11: "o externo não vejo tanta necessidade agora para o plantão").
   // Continua na fila e no resumo; para voltar a avisar, config sla_avisar_externo = "true".
@@ -315,17 +328,80 @@ async function checarExames(admin: any, forcar = false, unidades = UNIDADES, tes
           continue;
         }
         for (const pessoa of pessoas) {
-          res.push(await dispararPasso(admin, sender, e, passo, pessoa, tipo, modelo, params, linha, testeDestino, emails));
+          if (passo.canal === "email") res.push(await dispararPasso(admin, sender, e, passo, pessoa, tipo, modelo, params, linha, testeDestino, emails));
+          else fila.push({ e, passo, pessoa, tipo, modelo, params, linha, unidade: un, origem, hh, tempo });
         }
       }
       const contatos = agoraPassos.filter((p) => p.destino === "contato");
       if (vencido && contatos.length) emails.push(`${linha}. Ninguém assumiu; avisado(s): ${contatos.map((p) => p.contato_nome).join(", ")}.`);
     }
   }
+  res.push(...await dispararRodada(admin, sender, fila, testeDestino, emails, variosAprovado));
   if (emails.length && !teste) {
     await emailar(`SLA de laudos: ${emails.length} aviso(s)`, emails.join("\n") + "\n\nAcompanhe em Sigma › Radiologia › SLA ao vivo.");
   }
   return res;
+}
+
+type ItemFila = { e: any; passo: any; pessoa: any; tipo: string; modelo: string; params: string[]; linha: string;
+  unidade: string; origem: string; hh: string; tempo: string };
+
+// Fim da rodada (26/11): o que vai para a mesma pessoa pelo mesmo canal sai junto. Um item = como antes (modelo do
+// exame, botão Assumir laudo). Dois ou mais = uma ligação, ou um WhatsApp com a lista (gss_sla_laudo_varios_v1, se
+// aprovado; senão, um por exame como antes). Em 26/11 o Wagner recebeu 4 modelos seguidos e a Meta barrou 2.
+async function dispararRodada(admin: any, sender: any, fila: ItemFila[], testeDestino: string, emails: string[], variosAprovado: boolean) {
+  const out: any[] = [];
+  const porPessoa = new Map<string, ItemFila[]>();
+  for (const it of fila) {
+    const k = `${it.passo.canal}:${dig(destinoDoAviso(it.pessoa, testeDestino).telefone)}`;
+    porPessoa.set(k, [...(porPessoa.get(k) ?? []), it]);
+  }
+  for (const itens of porPessoa.values()) {
+    const juntos = itens.length > 1 && (itens[0].passo.canal === "ligacao" || variosAprovado);
+    if (!juntos) {
+      for (const it of itens) out.push(await dispararPasso(admin, sender, it.e, it.passo, it.pessoa, it.tipo, it.modelo, it.params, it.linha, testeDestino, emails));
+      continue;
+    }
+    out.push(await dispararGrupo(admin, sender, itens, testeDestino, emails));
+  }
+  return out;
+}
+
+async function dispararGrupo(admin: any, sender: any, itens: ItemFila[], testeDestino: string, emails: string[]) {
+  itens.sort((a, b) => new Date(a.e.vence_em).getTime() - new Date(b.e.vence_em).getTime() || String(a.e.id).localeCompare(String(b.e.id)));
+  const canal = itens[0].passo.canal;
+  const alvo = destinoDoAviso(itens[0].pessoa, testeDestino);
+  const grupo = crypto.randomUUID();
+  const { data: linhas, error } = await admin.from("sla_alertas").insert(itens.map((it) => ({
+    exame_id: it.e.id, tipo: it.tipo, papel: it.pessoa.papel, plantao_id: it.pessoa.id, passo_id: it.passo.id, canal,
+    destino_nome: alvo.nome, destino: alvo.telefone, grupo,
+  }))).select("id");
+  if (error) throw error;
+  const ids = (linhas ?? []).map((l: any) => l.id);
+  try {
+    if (canal === "ligacao") {
+      if (alvo.teste) throw new Error("teste interno: ligação não sai");
+      await ligar(admin, alvo.telefone, ids[0]);
+      const { data: l0 } = await admin.from("sla_alertas").select("mensagem_id").eq("id", ids[0]).single();
+      await admin.from("sla_alertas").update({ status: "enviado", mensagem_id: l0?.mensagem_id ?? null }).eq("grupo", grupo);
+    } else {
+      const unidades = [...new Set(itens.map((it) => it.unidade))].join(" e ");
+      const lista = listaDoAviso(itens.map((it) => ({
+        unidade: it.unidade, origem: it.e.origem === "ps" ? "PS" : it.origem, hora: it.hh, estudo: it.e.estudo,
+        estado: it.tipo === "vencido" ? `vencido ha ${it.tempo}` : `vence em ${it.tempo}`,
+      })));
+      const wamid = await enviarModelo(sender, alvo.telefone, "gss_sla_laudo_varios_v1", [unidades, String(itens.length), lista], `g:${grupo}`);
+      await admin.from("sla_alertas").update({ status: "enviado", mensagem_id: wamid }).eq("grupo", grupo);
+    }
+    return { grupo, para: alvo.nome, canal, exames: itens.length, ok: true };
+  } catch (err) {
+    const msg = String((err as Error).message || err).slice(0, 300);
+    await admin.from("sla_alertas").update({ status: "falhou", erro: msg }).eq("grupo", grupo);
+    if (!msg.startsWith("teste interno")) {
+      emails.push(`${itens.length} exames: ${canal === "ligacao" ? "a ligação" : "o WhatsApp"} para ${alvo.nome} falhou: ${msg}`);
+    }
+    return { grupo, para: alvo.nome, canal, exames: itens.length, ok: false, erro: msg };
+  }
 }
 
 // Um passo da sequência para uma pessoa. Grava em sla_alertas com passo_id (é o que impede repetir) antes de enviar.
@@ -444,6 +520,7 @@ async function indicadores(admin: any, unidades = UNIDADES, agora = new Date(), 
 async function assumir(admin: any, telefone: string, payload: string) {
   if (!payload.startsWith(PAYLOAD_ASSUMIR)) return { tratado: false };
   const alertaId = payload.slice(PAYLOAD_ASSUMIR.length);
+  if (alertaId.startsWith("g:")) return await assumirGrupo(admin, telefone, alertaId.slice(2));
   const { data: al } = await admin.from("sla_alertas").select("id, exame_id, destino, destino_nome").eq("id", alertaId).maybeSingle();
   // o clique só vale do número para onde o alerta foi
   if (!al || !al.destino || !mesmoNumero(al.destino, telefone)) return { tratado: false };
@@ -625,6 +702,33 @@ function comNove(t: string) {
 }
 // O roteiro vem de sla-voz: detecção de máquina (caixa postal não conta) e "aperte 1 para assumir". O status final
 // da chamada volta por StatusCallback e fica no alerta (entregue, falhou com motivo, respondido).
+// Botão "Assumir laudos" do aviso agrupado: assume todos os exames do grupo que ainda estão sem dono (e as cópias de
+// cada um), com uma resposta só.
+async function assumirGrupo(admin: any, telefone: string, grupo: string) {
+  if (!/^[0-9a-f-]{36}$/i.test(grupo)) return { tratado: false };
+  const { data: als } = await admin.from("sla_alertas").select("id, exame_id, destino, destino_nome").eq("grupo", grupo);
+  if (!als?.length || !mesmoNumero(als[0].destino, telefone)) return { tratado: false };
+  const agora = new Date().toISOString();
+  const { data: marcou } = await admin.from("sla_alertas").update({ status: "respondido", respondido_em: agora })
+    .eq("grupo", grupo).is("respondido_em", null).select("id");
+  if (!marcou?.length) return { tratado: true, repetido: true, duplicado: true };
+  const sender = await remetente(admin);
+  const assumidos: string[] = [];
+  for (const al of als) {
+    const { data: ex } = await admin.from("sla_exames").select("id, unidade, origem, inicio_em, paciente, estudo, assumido_em").eq("id", al.exame_id).maybeSingle();
+    if (!ex || ex.assumido_em) continue;
+    const { data: abertos } = await admin.from("sla_exames").select("id, origem, inicio_em, paciente, estudo")
+      .eq("unidade", ex.unidade).eq("origem", ex.origem).eq("inicio_em", ex.inicio_em).is("assumido_em", null).is("saiu_em", null);
+    const ids = [ex.id, ...(abertos ?? []).filter((x: any) => x.id !== ex.id && chaveExame(x) === chaveExame(ex)).map((x: any) => x.id)];
+    await admin.from("sla_exames").update({ assumido_em: agora, assumido_por: al.destino_nome, assumido_via: "whatsapp" }).in("id", ids).is("assumido_em", null);
+    assumidos.push(`${ORIGEM[ex.origem] ?? ex.origem} ${horaExame(ex.inicio_em)}`);
+  }
+  await enviarTexto(sender, dig(telefone), assumidos.length
+    ? `Laudos assumidos (${assumidos.length}): ${assumidos.join(", ")}. Os avisos destes exames pararam. Obrigado!`
+    : "Estes exames ja tinham sido assumidos. Os avisos deles ja estao parados.");
+  return { tratado: true, assumido: assumidos.length };
+}
+
 async function ligar(admin: any, para: string, alertaId: string, exato = false) {
   const sid = Deno.env.get("TWILIO_ACCOUNT_SID") ?? "", tok = Deno.env.get("TWILIO_AUTH_TOKEN") ?? "";
   const de = await config(admin, "sla_twilio_from");

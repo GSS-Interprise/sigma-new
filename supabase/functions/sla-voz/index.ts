@@ -31,11 +31,24 @@ Deno.serve(async (req) => {
   const campo = (n: string) => String(form?.get(n) ?? u.searchParams.get(n) ?? "");
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-  const { data: al } = await admin.from("sla_alertas").select("id, exame_id, destino_nome, tipo, status").eq("id", alertaId).maybeSingle();
+  const { data: al } = await admin.from("sla_alertas").select("id, exame_id, destino_nome, tipo, status, grupo").eq("id", alertaId).maybeSingle();
   if (!al) return xml(`<Hangup/>`);
-  const { data: ex } = await admin.from("sla_exames").select("id, origem, inicio_em, vence_em, assumido_em, unidade, paciente, estudo").eq("id", al.exame_id).maybeSingle();
+  // Ligação agrupada (26/11): um alerta por exame com o mesmo grupo; a ligação fala quantos são, o mais atrasado
+  // primeiro, e a tecla 1 assume todos. Status e respostas valem para todas as linhas do grupo.
+  const { data: doGrupo } = al.grupo
+    ? await admin.from("sla_alertas").select("exame_id").eq("grupo", al.grupo)
+    : { data: [{ exame_id: al.exame_id }] };
+  const { data: exs } = await admin.from("sla_exames").select("id, origem, inicio_em, vence_em, assumido_em, unidade, paciente, estudo")
+    .in("id", (doGrupo ?? []).map((x: any) => x.exame_id)).order("vence_em").order("id");
+  const ex = (exs ?? [])[0] ?? null;
+  const n = (exs ?? []).length;
+  const alvoAlertas = al.grupo ? { col: "grupo", val: al.grupo } : { col: "id", val: alertaId };
   const atrasoMin = ex ? Math.max(0, Math.round((Date.now() - new Date(ex.vence_em).getTime()) / 60000)) : 0;
-  const texto = ex
+  const texto = ex && n > 1
+    ? `Atenção, plantão da radiologia. Alerta de prazo de laudo da G S S, ${UNIDADE[ex.unidade] ?? ex.unidade}. São ${n} exames sem laudo. `
+      + `O mais atrasado é do ${ORIGEM[ex.origem] ?? ex.origem}, ${ex.estudo ? `${ex.estudo}, ` : ""}das ${hora(ex.inicio_em)}, `
+      + (atrasoMin > 0 ? `passou do prazo há ${atrasoMin} minutos. ` : `está perto de vencer. `) + `Confira o PACS.`
+    : ex
     ? `Atenção, plantão da radiologia. Alerta de prazo de laudo da G S S, ${UNIDADE[ex.unidade] ?? ex.unidade}. Exame do ${ORIGEM[ex.origem] ?? ex.origem}, `
       // Sem nome do paciente (24/11): a ligação pode cair na caixa postal e o recado fica gravado. Estudo e hora bastam.
       + (ex.estudo ? `${ex.estudo}, ` : "") + `das ${hora(ex.inicio_em)}, `
@@ -50,7 +63,7 @@ Deno.serve(async (req) => {
     // for mesmo caixa postal, o recado gravado não tem dado de paciente.
     const quem = campo("AnsweredBy");
     if (quem.startsWith("machine") || quem === "fax") {
-      await admin.from("sla_alertas").update({ erro: `possivel caixa postal (${quem})` }).eq("id", alertaId).neq("status", "respondido");
+      await admin.from("sla_alertas").update({ erro: `possivel caixa postal (${quem})` }).eq(alvoAlertas.col, alvoAlertas.val).neq("status", "respondido");
     }
     return new Response("ok");
   }
@@ -61,7 +74,7 @@ Deno.serve(async (req) => {
     const { data: atual } = await admin.from("sla_alertas").select("erro").eq("id", alertaId).maybeSingle();
     const suspeita = String(atual?.erro || "").startsWith("possivel caixa postal");
     if (al.status !== "respondido" && suspeita) {
-      await admin.from("sla_alertas").update({ status: "falhou" }).eq("id", alertaId).neq("status", "respondido");
+      await admin.from("sla_alertas").update({ status: "falhou" }).eq(alvoAlertas.col, alvoAlertas.val).neq("status", "respondido");
     } else if (al.status !== "respondido" && !String(atual?.erro || "").startsWith("caixa postal")) {
       // "unknown": o Twilio não soube dizer se foi pessoa ou caixa postal (teste de 13/11 caiu assim). Conta como
       // atendida sem a tecla 1; para a escada não muda nada (só a tecla 1 para), muda só o que a tela mostra.
@@ -69,7 +82,7 @@ Deno.serve(async (req) => {
       await admin.from("sla_alertas").update({
         status: atendeu ? "entregue" : "falhou",
         erro: atendeu ? "atendeu sem apertar 1" : `ligacao ${st}${quem ? ` (${quem})` : ""}`,
-      }).eq("id", alertaId);
+      }).eq(alvoAlertas.col, alvoAlertas.val).neq("status", "respondido");
     }
     return new Response("ok");
   }
@@ -77,19 +90,20 @@ Deno.serve(async (req) => {
   if (passo === "tecla") {
     if (campo("Digits") === "1") {
       const agora = new Date().toISOString();
-      await admin.from("sla_alertas").update({ status: "respondido", respondido_em: agora, erro: null }).eq("id", alertaId).is("respondido_em", null);
-      if (ex && !ex.assumido_em) {
+      await admin.from("sla_alertas").update({ status: "respondido", respondido_em: agora, erro: null }).eq(alvoAlertas.col, alvoAlertas.val).is("respondido_em", null);
+      const abertos = (exs ?? []).filter((x: any) => !x.assumido_em).map((x: any) => x.id);
+      if (abertos.length) {
         await admin.from("sla_exames").update({ assumido_em: agora, assumido_por: al.destino_nome, assumido_via: "ligacao" })
-          .eq("id", ex.id).is("assumido_em", null);
+          .in("id", abertos).is("assumido_em", null);
       }
-      return xml(`<Say ${VOZ}>Laudo assumido. Os avisos deste exame pararam. Obrigado.</Say><Hangup/>`);
+      return xml(`<Say ${VOZ}>${n > 1 ? `${n} laudos assumidos. Os avisos destes exames pararam.` : "Laudo assumido. Os avisos deste exame pararam."} Obrigado.</Say><Hangup/>`);
     }
     if (u.searchParams.get("r") !== "1") {
-      return xml(`<Gather numDigits="1" timeout="8" action="${qs("tecla")}&amp;r=1"><Say ${VOZ}>${esc(texto)} Aperte 1 para assumir o laudo.</Say></Gather><Say ${VOZ}>Nenhuma tecla recebida. Vamos avisar o próximo da escala.</Say><Hangup/>`);
+      return xml(`<Gather numDigits="1" timeout="8" action="${qs("tecla")}&amp;r=1"><Say ${VOZ}>${esc(texto)} ${n > 1 ? "Aperte 1 para assumir todos." : "Aperte 1 para assumir o laudo."}</Say></Gather><Say ${VOZ}>Nenhuma tecla recebida. Vamos avisar o próximo da escala.</Say><Hangup/>`);
     }
     return xml(`<Say ${VOZ}>Nenhuma tecla recebida. Vamos avisar o próximo da escala.</Say><Hangup/>`);
   }
 
   // inicio: fala na hora (a detecção de caixa postal chega depois, em p=amd)
-  return xml(`<Gather numDigits="1" timeout="8" action="${qs("tecla")}"><Say ${VOZ}>${esc(texto)} Aperte 1 para assumir o laudo.</Say></Gather><Redirect method="POST">${qs("tecla")}</Redirect>`);
+  return xml(`<Gather numDigits="1" timeout="8" action="${qs("tecla")}"><Say ${VOZ}>${esc(texto)} ${n > 1 ? "Aperte 1 para assumir todos." : "Aperte 1 para assumir o laudo."}</Say></Gather><Redirect method="POST">${qs("tecla")}</Redirect>`);
 });
