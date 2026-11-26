@@ -589,8 +589,9 @@ export function LeadsTab() {
 
   return (
     <div className="space-y-4 flex-1 min-h-0 flex flex-col">
-      <div className="flex items-center justify-between">
-        <div className="flex-1 max-w-sm">
+      {/* no celular busca e botões empilham: em 390 px o "Novo Lead" saía da tela */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+        <div className="w-full sm:flex-1 sm:max-w-sm">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -601,7 +602,7 @@ export function LeadsTab() {
             />
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {filterData && (
             <span className="text-sm text-muted-foreground">
               {filterData.totalLeads.toLocaleString('pt-BR')} leads no total
@@ -623,7 +624,7 @@ export function LeadsTab() {
 
       {/* Filtros de data e avançados */}
       <div className="flex items-center gap-3 flex-wrap">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Calendar className="h-4 w-4 text-muted-foreground" />
           <span className="text-sm text-muted-foreground">De:</span>
           <Input

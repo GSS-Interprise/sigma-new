@@ -9,7 +9,8 @@ const Toaster = ({ ...props }: ToasterProps) => {
   return (
     <Sonner
       theme={theme as ToasterProps["theme"]}
-      className="toaster group"
+      // com um modal aberto o Radix põe pointer-events: none no body; sem o auto o botão do aviso não recebe clique
+      className="toaster group pointer-events-auto"
       toastOptions={{
         classNames: {
           toast:

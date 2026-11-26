@@ -1603,14 +1603,22 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[92vw] max-w-[92vw] h-[97vh] max-h-[97vh] p-0 gap-0 overflow-hidden">
+      <DialogContent
+        className="w-[92vw] max-w-[92vw] h-[97vh] max-h-[97vh] p-0 gap-0 overflow-hidden"
+        // clique no aviso (botão Abrir cadastro do médico repetido) não conta como clique fora: o modal fica aberto
+        onInteractOutside={(e) => {
+          const alvo = (e.detail?.originalEvent?.target ?? e.target) as Element | null;
+          if (alvo?.closest?.('[data-sonner-toaster]')) e.preventDefault();
+        }}
+      >
         <div className="flex h-full overflow-hidden">
           {/* Main Content */}
           <div className="flex-1 flex flex-col overflow-hidden min-w-0">
             <DialogHeader className="px-4 py-3 border-b">
               {/* Cabeçalho (22/11): em 1024 px os botões empurravam o nome para 4 linhas e cortavam "Banco de Interesse".
-                  Botões não encolhem; abaixo de xl os secundários ficam só com ícone (dica no title) e o nome trunca. */}
-              <div className="flex items-center justify-between gap-3">
+                  Botões não encolhem; abaixo de xl os secundários ficam só com ícone (dica no title) e o nome trunca.
+                  No celular (26/11) nome e botões empilham, e abaixo de lg (sem a coluna de canais) o pr-8 deixa o X livre. */}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 pr-8 lg:pr-0">
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="p-2 rounded-full bg-primary/10 shrink-0">
                     <User className="h-5 w-5 text-primary" />
@@ -1777,10 +1785,12 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                 const abasPerfil = ["dados", "propostas", "perfil-ia", "registro", "curriculo", "na-gss"];
                 const isPerfil = abasPerfil.includes(activeTab);
                 const cols = isPerfil ? (medicoVinculado?.id ? 6 : 5) : canViewOld ? 4 : 3;
+                // abas rolam na horizontal quando não cabem (1024 e celular), em vez de espremer "CRM e CNES"
                 return (
+                  <div className="mx-4 flex-shrink-0 overflow-x-auto">
                   <TabsList
-                    className="grid mx-4 flex-shrink-0 w-auto"
-                    style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+                    className="grid w-max min-w-full"
+                    style={{ gridTemplateColumns: `repeat(${cols}, minmax(max-content, 1fr))` }}
                   >
                     {isPerfil ? (
                       <>
@@ -1839,6 +1849,7 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                       </>
                     )}
                   </TabsList>
+                  </div>
                 );
               })()}
 
@@ -1876,7 +1887,7 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                               />
                             </div>
 
-                            <div className="grid grid-cols-2 gap-3 min-w-0">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 min-w-0">
                               <div className="space-y-1 min-w-0">
                                 <label className="text-xs text-muted-foreground flex items-center gap-1.5">
                                   <CreditCard className="h-3 w-3" />
@@ -2066,7 +2077,7 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                               Dados da Profissão
                             </h4>
 
-                            <div className="grid grid-cols-2 gap-3 min-w-0">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 min-w-0">
                               <div className="space-y-1">
                                 <label className="text-xs text-muted-foreground flex items-center gap-1.5">
                                   <Stethoscope className="h-3 w-3" />
@@ -2155,7 +2166,7 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                               Dados Contratuais e Bancários
                             </h4>
 
-                            <div className="grid grid-cols-2 gap-3 min-w-0">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 min-w-0">
                               <div className="space-y-1">
                                 <label className="text-xs text-muted-foreground flex items-center gap-1.5">
                                   <Building2 className="h-3 w-3" />
@@ -3257,8 +3268,9 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
             </Tabs>
           </div>
 
-          {/* Channels Sidebar - WhatsApp / Instagram / LinkedIn */}
-          <div className="w-[380px] flex-shrink-0 border-l bg-muted/20 flex flex-col">
+          {/* Channels Sidebar - WhatsApp / Instagram / LinkedIn. Abaixo de 1024 px ela tomava a largura toda (380 px
+              fixos) e o prontuário ficava com 0 px, em branco no celular: some ali e o cadastro ocupa a tela. */}
+          <div className="hidden lg:flex w-[380px] flex-shrink-0 border-l bg-muted/20 flex-col">
             {leadId && <LeadChannelsSidebar leadId={leadId} activeConversaIdOverride={sidebarConversaId} />}
           </div>
         </div>

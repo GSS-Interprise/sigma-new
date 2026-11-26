@@ -244,7 +244,7 @@ export function PhoneEmailArrayFields({
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       {/* Telefones */}
       <div className="border rounded-lg p-3 bg-muted/20 space-y-2">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
           <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
             <Phone className="h-3.5 w-3.5" />
             Telefones
