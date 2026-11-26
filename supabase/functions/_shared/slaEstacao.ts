@@ -37,3 +37,18 @@ export function motivoQueda(unidade: string, ultima: Leitura | null, minutosSemN
   }
   return `Última leitura com status "${ultima.status}"${m ? ` (${m})` : ""}.`;
 }
+
+// Queda rápida (26/11/2026): o Wagner fechou o PACS da Marieta e o Sigma seguiu mostrando "lendo" com a fila velha
+// por ~20 min (limite de 15 min sem leitura boa + cron de 5 min). Nos 7 dias anteriores, estes códigos em 2 leituras
+// seguidas nunca voltaram sozinhos, e nenhum silêncio acima de 8 min foi falso. Os outros casos seguem o limite geral.
+// chrome_fechado fica de fora: o Chrome do robô reabre sozinho em até 3 min.
+const DEFINITIVOS = new Set(["pacs_fechado", "vue_fechado", "vpn_desconectada", "tela_login", "sessao_expirada"]);
+export const SILENCIO_MIN = 8;
+
+// ultimas: as 2 leituras mais recentes da unidade, da mais nova para a mais velha.
+export function quedaRapida(ultimas: Leitura[], minutosSemNada: number | null): boolean {
+  if (minutosSemNada !== null && minutosSemNada > SILENCIO_MIN) return true;
+  if (ultimas.length < 2) return false;
+  const m = ultimas.map((u) => u.detalhe?.motivo ?? "");
+  return DEFINITIVOS.has(m[0]) && m[0] === m[1];
+}

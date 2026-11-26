@@ -11,7 +11,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { chakraApi, unwrapChakraPayload } from "../_shared/chakra.ts";
 import { SLA_VOZ_URL, tokenAlerta } from "../_shared/sla.ts";
-import { motivoQueda } from "../_shared/slaEstacao.ts";
+import { motivoQueda, quedaRapida, SILENCIO_MIN } from "../_shared/slaEstacao.ts";
 import { calcularIndicadores, daModalidade, destinoDoAviso, modalidadeDoExame, passosAgora, saidaConfiavel, textoIndicadores } from "../_shared/slaEscada.ts";
 
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { "Content-Type": "application/json" } });
@@ -479,7 +479,7 @@ function ehServiceRole(auth: string) {
 }
 
 // Motivo legível da queda: _shared/slaEstacao.ts (texto por código do coletor e por unidade).
-const motivoDe = (unidade: string, ultima: any, minNada: number | null) => motivoQueda(unidade, ultima, minNada, LIMITE_MIN);
+const motivoDe = (unidade: string, ultima: any, minNada: number | null) => motivoQueda(unidade, ultima, minNada, Math.min(LIMITE_MIN, SILENCIO_MIN));
 
 // paraQuem: e-mail de um contato da aba Coordenação; sem ele, a lista fixa da coordenação (secret SLA_ALERTA_EMAILS).
 const duracaoTexto = (min: number) => (min < 90 ? `${Math.round(min)} min` : `${Math.round(min / 60)} h`);
@@ -558,11 +558,12 @@ async function checarColetor(admin: any, unidades = UNIDADES) {
     const { data: ok } = await admin.from("sla_leituras").select("lida_em").eq("unidade", unidade)
       .or("status.eq.ok,detalhe->>motivo.eq.lista_vazia")
       .order("lida_em", { ascending: false }).limit(1).maybeSingle();
-    const { data: ultima } = await admin.from("sla_leituras").select("lida_em, status, detalhe").eq("unidade", unidade)
-      .order("lida_em", { ascending: false }).limit(1).maybeSingle();
+    const { data: ultimas } = await admin.from("sla_leituras").select("lida_em, status, detalhe").eq("unidade", unidade)
+      .order("lida_em", { ascending: false }).limit(2);
+    const ultima = ultimas?.[0] ?? null;
     // Unidade sem nenhuma leitura ainda (estação não instalada): não abre queda nem avisa.
     if (!ultima) { res.push({ unidade, pulado: "sem_estacao" }); continue; }
-    const { data: aberta } = await admin.from("sla_coletor_quedas").select("id, aberta_em, whatsapp_em, motivo").eq("unidade", unidade)
+    const { data: aberta } = await admin.from("sla_coletor_quedas").select("id, aberta_em, whatsapp_em, motivo, ultima_ok_em").eq("unidade", unidade)
       .is("fechada_em", null).maybeSingle();
 
     // Para FECHAR uma queda, lista vazia não basta: precisa de uma leitura "ok" com linhas depois que a queda abriu
@@ -576,7 +577,9 @@ async function checarColetor(admin: any, unidades = UNIDADES) {
     }
     const minOk = vivo ? (Date.now() - new Date(vivo.lida_em).getTime()) / 60000 : null;
     const minNada = ultima ? (Date.now() - new Date(ultima.lida_em).getTime()) / 60000 : null;
-    const parado = minOk === null || minOk > LIMITE_MIN;
+    // Sem queda aberta, abre mais cedo quando a leitura não deixa dúvida (PACS fechado, VPN caída ou estação calada):
+    // ver quedaRapida em _shared/slaEstacao.ts. Com queda aberta, só uma leitura "ok" nova fecha.
+    const parado = minOk === null || minOk > LIMITE_MIN || (!aberta && quedaRapida(ultimas ?? [], minNada));
     // Queda aberta: o motivo acompanha a última leitura (25/11: Tijucas seguiu "PC desligado" com o PC ligado e o
     // login do portal expirado). É o texto que a tela de Radiologia mostra.
     const motivoAgora = motivoDe(unidade, ultima, minNada);
@@ -593,10 +596,11 @@ async function checarColetor(admin: any, unidades = UNIDADES) {
       res.push({ unidade, evento: "caiu", email, whatsapp: zap });
     } else if (!parado && aberta) {
       await admin.from("sla_coletor_quedas").update({ fechada_em: new Date().toISOString() }).eq("id", aberta.id);
-      const min = Math.round((Date.now() - new Date(aberta.aberta_em).getTime()) / 60000);
+      // Duração real: da última leitura boa antes da queda até a volta (a queda pode abrir com 6 ou com 15 min).
+      const min = Math.round((Date.now() - new Date(aberta.ultima_ok_em ?? aberta.aberta_em).getTime()) / 60000);
       const email = await emailar(`SLA de laudos: coletor voltou (${unidade})`,
-        `A leitura da fila voltou às ${hora(vivo!.lida_em)}. Ficou parada cerca de ${min + LIMITE_MIN} min.`, emailsEstacao);
-      const zap = await avisarEstacao(unidade, "voltou", `às ${hora(vivo!.lida_em)}, depois de ${duracaoTexto(min + LIMITE_MIN)}`, "Os avisos de laudo voltaram a sair.");
+        `A leitura da fila voltou às ${hora(vivo!.lida_em)}. Ficou parada cerca de ${min} min.`, emailsEstacao);
+      const zap = await avisarEstacao(unidade, "voltou", `às ${hora(vivo!.lida_em)}, depois de ${duracaoTexto(min)}`, "Os avisos de laudo voltaram a sair.");
       res.push({ unidade, evento: "voltou", email, whatsapp: zap });
     } else if (parado && aberta && (!aberta.whatsapp_em || Date.now() - new Date(aberta.whatsapp_em).getTime() > LEMBRETE_QUEDA_H * 3_600_000)) {
       const zap = await avisarEstacao(unidade, "continua", `parada desde ${hora(aberta.aberta_em)}`, motivoAgora);

@@ -102,17 +102,19 @@ export function useColetor() {
     queryKey: ["sla-coletor", UNIDADE],
     refetchInterval: 30_000,
     queryFn: async () => {
-      const [{ data: ok }, { data: queda }, { data: ativo }, { data: teste }] = await Promise.all([
+      const [{ data: ok }, { data: queda }, { data: ativo }, { data: teste }, { data: ultima }] = await Promise.all([
         db.from("sla_leituras").select("lida_em, detalhe").eq("unidade", UNIDADE).eq("status", "ok")
           .order("lida_em", { ascending: false }).limit(1).maybeSingle(),
         db.from("sla_coletor_quedas").select("aberta_em, motivo, ultima_ok_em").eq("unidade", UNIDADE)
           .is("fechada_em", null).maybeSingle(),
         db.from("config_lista_items").select("valor").eq("campo_nome", "sla_alertas_ativo").maybeSingle(),
         db.from("config_lista_items").select("valor").eq("campo_nome", "sla_teste_destino").maybeSingle(),
+        ultimaLeitura(UNIDADE),
       ]);
       return {
         ultimaOk: (ok?.lida_em as string | undefined) ?? null,
         queda: queda as { aberta_em: string; motivo: string | null; ultima_ok_em: string | null } | null,
+        falha: falhaAgora((ultima as UltimaLeitura | null) ?? null),
         alertasAtivos: ativo?.valor === "true",
         // Teste interno (sla_teste_destino): todo aviso vai para esse número, não para o médico escalado.
         testeDestino: (teste?.valor as string | undefined)?.trim() || null,
@@ -123,22 +125,47 @@ export function useColetor() {
 
 // As 4 estações de uma vez (25/11/2026): a faixa do topo mostra qual está lendo e qual caiu, sem trocar de unidade.
 // "Parada" = queda aberta pelo sla-alertas (o mesmo critério que dispara o WhatsApp), com o motivo atual da queda.
-export type EstacaoResumo = { id: UnidadeId; nome: string; ultimaOk: string | null; queda: { aberta_em: string; motivo: string | null } | null };
+// Falha na hora (26/11/2026): a queda só abre depois de 2 leituras ruins ou 8 min calada (sla-alertas, quedaRapida).
+// Até lá a tela mostrava "lendo" com a fila velha; agora a última leitura ruim já aparece, antes da queda.
+type UltimaLeitura = { lida_em: string; status: string; detalhe: { motivo?: string | null } | null };
+const FALHA_CURTA: Record<string, string> = {
+  pacs_fechado: "PACS fechado", vue_fechado: "PACS fechado", vpn_desconectada: "VPN caiu", tela_login: "PACS na tela de login",
+  tela_indisponivel: "tela bloqueada", fora_da_pasta: "PACS fora da pasta", sem_tabela: "lista não aparece",
+  sessao_expirada: "login do portal expirou", chrome_fechado: "Chrome fechado", sem_aba_animati: "sem a aba do portal",
+  sem_aba_mobilemed: "sem a aba do portal", api: "portal não respondeu",
+};
+export type FalhaAgora = { texto: string; desde: string };
+export function falhaAgora(ultima: UltimaLeitura | null, agoraMs = Date.now()): FalhaAgora | null {
+  if (!ultima) return null;
+  // O coletor lê a cada 3 min: mais de 5 min sem nada já é uma leitura perdida.
+  if (agoraMs - new Date(ultima.lida_em).getTime() > 5 * 60_000) return { texto: "sem leitura", desde: ultima.lida_em };
+  const m = ultima.detalhe?.motivo ?? "";
+  if (ultima.status === "ok" || m === "lista_vazia") return null;
+  return { texto: FALHA_CURTA[m] ?? "leitura falhou", desde: ultima.lida_em };
+}
+const ultimaLeitura = (u: string) => db.from("sla_leituras").select("lida_em, status, detalhe").eq("unidade", u)
+  .order("lida_em", { ascending: false }).limit(1).maybeSingle();
+
+export type EstacaoResumo = { id: UnidadeId; nome: string; ultimaOk: string | null; queda: { aberta_em: string; motivo: string | null } | null; falha: FalhaAgora | null };
 export function useEstacoes() {
   return useQuery({
     queryKey: ["sla-estacoes"],
     refetchInterval: 30_000,
     queryFn: async (): Promise<EstacaoResumo[]> => {
-      const [quedas, ...oks] = await Promise.all([
+      const [quedas, ...resto] = await Promise.all([
         db.from("sla_coletor_quedas").select("unidade, aberta_em, motivo").is("fechada_em", null),
         ...UNIDADES.map((u) => db.from("sla_leituras").select("lida_em").eq("unidade", u.id).eq("status", "ok")
           .order("lida_em", { ascending: false }).limit(1).maybeSingle()),
+        ...UNIDADES.map((u) => ultimaLeitura(u.id)),
       ]);
+      const oks = resto.slice(0, UNIDADES.length);
+      const ultimas = resto.slice(UNIDADES.length);
       if (quedas.error) throw quedas.error;
       return UNIDADES.map((u, i) => ({
         id: u.id, nome: u.nome,
         ultimaOk: (oks[i].data?.lida_em as string | undefined) ?? null,
         queda: ((quedas.data ?? []) as { unidade: string; aberta_em: string; motivo: string | null }[]).find((q) => q.unidade === u.id) ?? null,
+        falha: falhaAgora((ultimas[i].data as UltimaLeitura | null) ?? null),
       }));
     },
   });

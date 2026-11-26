@@ -64,6 +64,7 @@ Arquivos (todos em `C:\ProgramData\ssh-tunel\` na estação; ASCII puro, porque 
 
 ## Avisos quando a estação para
 
-A edge `sla-alertas` (cron 5 min) abre uma queda quando a estação fica 15 min sem leitura boa e avisa por e-mail e
+A edge `sla-alertas` (cron 2 min) abre uma queda quando a estação fica 15 min sem leitura boa, ou antes: 2 leituras
+seguidas com PACS fechado, VPN caída, tela de login ou sessão expirada, ou 8 min sem leitura nenhuma (26/11). Avisa por e-mail e
 WhatsApp (modelo `gss_estacao_sla_v1`), com lembrete a cada 3 h enquanto continuar parada, e de novo quando volta.
 Quem recebe o WhatsApp: config `sla_estacao_destinos` (JSON `[{"nome","fone"}]`); vazio = `sla_teste_destino`.

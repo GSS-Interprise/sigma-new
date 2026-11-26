@@ -61,6 +61,7 @@ export function AbaSlaAoVivo() {
   const visiveis = filtro === "atencao" ? atencao : linhas;
   const alertas = alertasFila.data ?? [];
   const queda = coletor.data?.queda ?? null;
+  const falha = queda ? null : coletor.data?.falha ?? null;
   const proximo = linhas.find((l) => l.s.estado !== "vencido" && semDono(l));
   const dePlantao = (escala.data ?? []).filter((p) => p.papel === "plantonista" && new Date(p.inicio).getTime() <= agora && new Date(p.fim).getTime() > agora);
   const proximoPlantao = (escala.data ?? []).filter((p) => p.papel === "plantonista" && new Date(p.inicio).getTime() > agora)[0];
@@ -138,6 +139,7 @@ export function AbaSlaAoVivo() {
             <div className="min-w-0">
               <h2 className="font-display text-base font-semibold">Fila de laudos</h2>
               {queda && <p className="text-xs text-red-700">Desatualizada: é a fila da última leitura ({queda.ultima_ok_em ? diaHora(queda.ultima_ok_em) : "antes da queda"}).</p>}
+              {falha && <p className="text-xs text-amber-800">Pode estar desatualizada: a leitura das {horaCurta(falha.desde)} falhou ({falha.texto}). Se não voltar, o Sigma avisa a coordenação em poucos minutos.</p>}
             </div>
             <div className="inline-flex rounded-lg border p-0.5" role="radiogroup" aria-label="Filtro da fila">
               {([["atencao", `Precisam de atenção · ${atencao.length}`], ["todos", `Fila inteira · ${linhas.length}`]] as const).map(([id, r]) => (
@@ -314,15 +316,20 @@ function FaixaEstacoes({ atual, trocar }: { atual: UnidadeId; trocar: (u: Unidad
       {estacoes.data.map((e) => {
         const parada = !!e.queda;
         const semEstacao = !parada && !e.ultimaOk;
+        const falhando = !parada && !semEstacao && !!e.falha;
         const quando = (iso: string) => (ehHoje(iso) ? horaCurta(iso) : diaHora(iso));
-        const texto = parada ? `parada desde ${quando(e.queda!.aberta_em)}` : semEstacao ? "sem estação" : `lendo · ${quando(e.ultimaOk!)}`;
+        const texto = parada ? `parada desde ${quando(e.queda!.aberta_em)}` : semEstacao ? "sem estação"
+          : falhando ? `falhou · ${e.falha!.texto}` : `lendo · ${quando(e.ultimaOk!)}`;
         return (
-          <button key={e.id} type="button" onClick={() => trocar(e.id)} title={parada ? e.queda!.motivo ?? undefined : undefined}
+          <button key={e.id} type="button" onClick={() => trocar(e.id)}
+            title={parada ? e.queda!.motivo ?? undefined : falhando ? `Última leitura boa: ${e.ultimaOk ? quando(e.ultimaOk) : "nenhuma"}` : undefined}
             aria-current={e.id === atual ? "true" : undefined}
             className={cn("inline-flex h-8 items-center gap-2 rounded-full border px-3 text-sm transition-colors",
-              parada ? "border-red-200 bg-red-50 text-red-800 hover:bg-red-100" : "border-border bg-background text-muted-foreground hover:bg-muted",
+              parada ? "border-red-200 bg-red-50 text-red-800 hover:bg-red-100"
+                : falhando ? "border-amber-200 bg-amber-50 text-amber-900 hover:bg-amber-100"
+                : "border-border bg-background text-muted-foreground hover:bg-muted",
               e.id === atual && "ring-2 ring-primary/40")}>
-            <span className={cn("h-2.5 w-2.5 shrink-0 rounded-full", parada ? "bg-red-600" : semEstacao ? "bg-slate-400" : "bg-emerald-600")} />
+            <span className={cn("h-2.5 w-2.5 shrink-0 rounded-full", parada ? "bg-red-600" : semEstacao ? "bg-slate-400" : falhando ? "bg-amber-500" : "bg-emerald-600")} />
             <span className={cn("font-medium", !parada && "text-foreground")}>{e.nome}</span>
             <span className="whitespace-nowrap">{texto}</span>
           </button>
