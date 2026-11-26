@@ -355,9 +355,7 @@ async function checarExames(admin: any, forcar = false, unidades = UNIDADES, tes
     }
   }
   res.push(...await dispararRodada(admin, sender, fila, testeDestino, emails, variosAprovado));
-  if (emails.length && !teste) {
-    await emailar(`SLA de laudos: ${emails.length} aviso(s)`, emails.join("\n") + "\n\nAcompanhe em Sigma › Radiologia › SLA ao vivo.");
-  }
+  if (!teste) await emailResumoSla(admin, emails);
   return res;
 }
 
@@ -604,7 +602,39 @@ async function avisarEstacao(unidade: string, evento: "parou" | "continua" | "vo
   }
 }
 
-async function emailar(titulo: string, corpo: string, paraQuem?: string[]) {
+// E-mail da coordenação sobre exames (26/11, Raul: "muito e-mail"): saía um a cada rodada de 2 min (15 num dia), com o
+// mesmo exame repetido. Agora as linhas da rodada vão para uma fila (config sla_email_fila) e sai no máximo 1 e-mail por
+// hora, com uma linha por exame (a mais recente) e a falta de escala agrupada por modalidade.
+const INTERVALO_EMAIL_SLA_MIN = 60;
+async function emailResumoSla(admin: any, novas: string[]) {
+  let fila: { linhas: string[]; ultimo: string | null } = { linhas: [], ultimo: null };
+  try { fila = { linhas: [], ultimo: null, ...JSON.parse(await config(admin, "sla_email_fila") || "{}") }; } catch { /* fila nova */ }
+  fila.linhas = [...fila.linhas, ...novas].slice(-300);
+  const agora = Date.now();
+  const pode = !fila.ultimo || agora - new Date(fila.ultimo).getTime() >= INTERVALO_EMAIL_SLA_MIN * 60_000;
+  if (fila.linhas.length && pode) {
+    // Uma linha por exame: a chave é o que vem antes de ": " ("Pronto Socorro, Fulano (TC), exame das 10:01").
+    const porExame = new Map<string, string>();
+    const semEscala = new Map<string, Set<string>>();
+    for (const l of fila.linhas) {
+      const m = l.match(/^(.*?): (.*?)\. Ninguém de (\S+) na escala de plantão agora\.$/);
+      if (m) { const set = semEscala.get(m[3]) ?? new Set<string>(); set.add(m[1]); semEscala.set(m[3], set); continue; }
+      porExame.set(l.split(": ")[0], l);
+    }
+    const blocos = [
+      ...[...semEscala.entries()].map(([mod, ex]) => `Sem ninguém de ${mod} na escala: ${ex.size} exame(s) foram só para a coordenação. ${[...ex].slice(0, 6).join("; ")}${ex.size > 6 ? "; ..." : ""}.`),
+      ...porExame.values(),
+    ];
+    const ok = await emailar(`SLA de laudos: resumo da última hora (${blocos.length} item(ns))`,
+      blocos.join("\n\n") + "\n\nAcompanhe em Sigma › Radiologia › SLA ao vivo.", undefined, "Resumo do SLA de laudos: no máximo um e-mail por hora.");
+    if (ok) fila = { linhas: [], ultimo: new Date(agora).toISOString() };
+  }
+  const valor = JSON.stringify(fila);
+  const { data } = await admin.from("config_lista_items").update({ valor }).eq("campo_nome", "sla_email_fila").select("campo_nome");
+  if (!data?.length) await admin.from("config_lista_items").insert({ campo_nome: "sla_email_fila", valor });
+}
+
+async function emailar(titulo: string, corpo: string, paraQuem?: string[], rodape = "Sigma GSS · SLA de laudos.") {
   const resend = Deno.env.get("RESEND_API_KEY");
   const fixos = (Deno.env.get("SLA_ALERTA_EMAILS") || Deno.env.get("MONITOR_WHATSAPP_EMAILS") || "").split(",").map((s) => s.trim());
   const para = (paraQuem?.some(Boolean) ? paraQuem : fixos).filter(Boolean);
@@ -616,7 +646,7 @@ async function emailar(titulo: string, corpo: string, paraQuem?: string[]) {
       from: "Sigma GSS <avisos@gestaoservicosaude.com.br>", to: para, subject: titulo,
       html: `<div style="font-family:Arial,sans-serif;font-size:14px;color:#1f2937;max-width:600px"><p><b>${esc(titulo)}</b></p>`
         + `<p style="white-space:pre-line">${esc(corpo)}</p>`
-        + `<p style="color:#9ca3af;font-size:12px">Coletor de SLA de laudos. O aviso sai quando a leitura para e quando volta.</p></div>`,
+        + `<p style="color:#9ca3af;font-size:12px">${esc(rodape)}</p></div>`,
       tags: [{ name: "origem", value: "sla_coletor" }],
     }),
   }).catch(() => null);
@@ -769,14 +799,14 @@ async function checarColetor(admin: any, unidades = UNIDADES) {
       const zap = await avisarEstacao(unidade, "parou", `desde ${hora(ok?.lida_em ?? null)}`, motivo);
       await admin.from("sla_coletor_quedas").insert({ unidade, ultima_ok_em: ok?.lida_em ?? null, motivo, whatsapp_em: zap.ok ? new Date().toISOString() : null });
       const email = await emailar(`SLA de laudos: coletor parado (${unidade})`,
-        `Ninguém está lendo a fila de laudos desde ${hora(ok?.lida_em ?? null)}.\n${motivo}\n\nEnquanto não voltar, os alertas de prazo não saem.`, emailsEstacao);
+        `Ninguém está lendo a fila de laudos desde ${hora(ok?.lida_em ?? null)}.\n${motivo}\n\nEnquanto não voltar, os alertas de prazo não saem.`, emailsEstacao, "Estação do SLA de laudos: o aviso sai quando a leitura para e quando volta.");
       res.push({ unidade, evento: "caiu", email, whatsapp: zap });
     } else if (!parado && aberta) {
       await admin.from("sla_coletor_quedas").update({ fechada_em: new Date().toISOString() }).eq("id", aberta.id);
       // Duração real: da última leitura boa antes da queda até a volta (a queda pode abrir com 6 ou com 15 min).
       const min = Math.round((Date.now() - new Date(aberta.ultima_ok_em ?? aberta.aberta_em).getTime()) / 60000);
       const email = await emailar(`SLA de laudos: coletor voltou (${unidade})`,
-        `A leitura da fila voltou às ${hora(vivo!.lida_em)}. Ficou parada cerca de ${min} min.`, emailsEstacao);
+        `A leitura da fila voltou às ${hora(vivo!.lida_em)}. Ficou parada cerca de ${min} min.`, emailsEstacao, "Estação do SLA de laudos: o aviso sai quando a leitura para e quando volta.");
       const zap = await avisarEstacao(unidade, "voltou", `às ${hora(vivo!.lida_em)}, depois de ${duracaoTexto(min)}`, "Os avisos de laudo voltaram a sair.");
       res.push({ unidade, evento: "voltou", email, whatsapp: zap });
     } else if (parado && aberta && (!aberta.whatsapp_em || Date.now() - new Date(aberta.whatsapp_em).getTime() > LEMBRETE_QUEDA_H * 3_600_000)) {

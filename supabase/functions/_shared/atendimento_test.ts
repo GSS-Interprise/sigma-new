@@ -1,6 +1,6 @@
 // deno test --node-modules-dir=none atendimento_test.ts  (a partir de supabase/functions/_shared)
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { type Config, dentroDoHorario, escadaDe, type Espera, minutosUteis, montarAvisos, type Regra, textoAviso } from "./atendimento.ts";
+import { type Config, dentroDoHorario, ehEncerramento, escadaDe, type Espera, minutosUteis, montarAvisos, type Regra, textoAviso } from "./atendimento.ts";
 
 const cfg: Config = {
   faixas: [{ min: 3, para: "responsavel" }, { min: 10, para: "responsavel" }, { min: 60, para: "coordenacao" }, { min: 180, para: "diretoria" }],
@@ -136,4 +136,9 @@ Deno.test("texto: contato marcado mostra a categoria", () => {
   const it = (categoria: string) => ({ espera: esp("x", br(24, 12), { contato_marcado: "Dr. Fulano", categoria }), faixa: 30, minutos: 30 });
   assertEquals(textoAviso({ nome: "R", fone: "1", fone_real: "1", destino_real: "R", itens: [it("medico")] }, false)[1].startsWith("Dr. Fulano (médico), 30 min"), true);
   assertEquals(textoAviso({ nome: "R", fone: "1", fone_real: "1", destino_real: "R", itens: [it("prioridade")] }, false)[1].startsWith("Dr. Fulano (prioridade)"), true);
+});
+
+Deno.test("encerramento: ok, obrigado e só emoji não pedem resposta", () => {
+  for (const t of ["ok", "Ok!", "obrigado", "Obrigada 🙏", "valeu", "👍", "🤝", "Beleza", "ta bom", "Perfeito.", "show"]) assertEquals(ehEncerramento(t), true, t);
+  for (const t of ["ok, qual o valor?", "Tenho interesse", "obrigado, mas qual a cidade?", "", null, "?"]) assertEquals(ehEncerramento(t), false, String(t));
 });

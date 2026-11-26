@@ -139,3 +139,13 @@ export function textoAviso(a: Aviso, teste: boolean): [string, string] {
   }
   return [resumo, partes.join("; ")];
 }
+
+// Encerramento (26/11, Raul): conversa cuja última mensagem do contato é só "ok", "obrigado" ou emoji não espera
+// resposta da equipe e não vira aviso. Só o aviso usa isto; a tela e os números de Tempo de resposta não mudam.
+const ENCERRAMENTO = /^(ok(ay|ey)?|obrigad[oa]s?|muito obrigad[oa]|valeu|vlw|blz|beleza|show|perfeito|certo|combinado|t[aá] bom|top|de nada|disponha)$/i;
+export function ehEncerramento(texto: string | null | undefined): boolean {
+  const t = String(texto ?? "").replace(/[\p{Extended_Pictographic}‍️\s.!,]+/gu, " ").trim();
+  const temEmoji = /\p{Extended_Pictographic}/u.test(String(texto ?? ""));
+  if (!t) return temEmoji;
+  return ENCERRAMENTO.test(t);
+}

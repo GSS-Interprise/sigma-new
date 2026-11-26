@@ -23,7 +23,7 @@ import { noPeriodo } from "../_shared/slaEscada.ts";
 import { destinosDaConfig, destinosValidos, trechoAviso } from "../_shared/alertas.ts";
 import { type DestinoFuro, type Feito, type Furo, HORIZONTE_DIAS, montarAvisos, textoAviso } from "../_shared/furos.ts";
 import { appUrl } from "../_shared/app-url.ts";
-import { type Config as ConfigAtendimento, type Espera, montarAvisos as montarAvisosAtendimento, textoAviso as textoAvisoAtendimento } from "../_shared/atendimento.ts";
+import { type Config as ConfigAtendimento, ehEncerramento, type Espera, montarAvisos as montarAvisosAtendimento, textoAviso as textoAvisoAtendimento } from "../_shared/atendimento.ts";
 
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { "Content-Type": "application/json" } });
 const SIGMA = appUrl();
@@ -218,6 +218,12 @@ async function furosEscala(admin: any, forcar: boolean) {
 // Tempo de resposta (docs/arquitetura/tempo-de-resposta-atendimento.md §3d). Cron a cada 2 min. Regras em
 // _shared/atendimento.ts; a fila vem de atendimento_aguardando_base() (a mesma da tela e do agente).
 // Só registra o que saiu: falha (ex.: modelo ainda em análise na Meta) tenta de novo na próxima rodada.
+const INTERVALO_ATENDIMENTO_MIN = 60;
+async function salvarConfig(admin: any, nome: string, valor: string) {
+  const { data } = await admin.from("config_lista_items").update({ valor }).eq("campo_nome", nome).select("campo_nome");
+  if (!data?.length) await admin.from("config_lista_items").insert({ campo_nome: nome, valor });
+}
+
 async function atendimentoEspera(admin: any, forcar: boolean) {
   const { data: cfgRow } = await admin.from("atendimento_config").select("*").eq("id", true).maybeSingle();
   if (!cfgRow) return { pulado: "sem configuracao" };
@@ -232,7 +238,8 @@ async function atendimentoEspera(admin: any, forcar: boolean) {
   if (cfg.modo_teste && !dig(cfg.teste_fone)) return { pulado: "modo teste sem telefone de teste" };
   const { data: fila, error } = await admin.rpc("atendimento_aguardando_base", { p_dias: 3 });
   if (error) throw error;
-  const esperas = (fila ?? []) as Espera[];
+  // 26/11 (Raul): conversa que terminou em "ok", "obrigado" ou só emoji não vira aviso.
+  const esperas = ((fila ?? []) as Espera[]).filter((e) => !ehEncerramento((e as { ultima_mensagem?: string }).ultima_mensagem));
   const ids = [...new Set(esperas.map((e) => e.conversation_id))];
   const { data: feitos } = ids.length
     ? await admin.from("atendimento_avisos").select("conversation_id, esperando_desde, faixa_min, fone").in("conversation_id", ids)
@@ -244,7 +251,16 @@ async function atendimentoEspera(admin: any, forcar: boolean) {
   if (!avisos.length) return { esperando: esperas.length, enviados: [] };
   const sender = await remetente(admin);
   const out = [];
+  // No máximo 1 aviso por pessoa por hora (26/11: o Raul recebeu 5 em 10 min com 220 conversas esperando). Quem já
+  // recebeu na última hora fica de fora e nada é marcado: as conversas entram juntas no próximo aviso dele.
+  let ultimos: Record<string, string> = {};
+  try { ultimos = JSON.parse(await config(admin, "atendimento_ultimo_aviso") || "{}"); } catch { ultimos = {}; }
+  const agoraMs = Date.now();
   for (const a of avisos) {
+    if (ultimos[a.fone] && agoraMs - new Date(ultimos[a.fone]).getTime() < INTERVALO_ATENDIMENTO_MIN * 60_000) {
+      out.push({ para: a.destino_real, conversas: a.itens.length, adiado: true });
+      continue;
+    }
     const [resumo, lista] = textoAvisoAtendimento(a, cfg.modo_teste);
     try {
       const wamid = await enviar(sender, a.fone, "gss_atendimento_espera_v1", [resumo, lista]);
@@ -253,8 +269,10 @@ async function atendimentoEspera(admin: any, forcar: boolean) {
         fone: a.fone_real, destino: cfg.modo_teste ? `${a.destino_real} (teste)` : a.destino_real,
       })), { onConflict: "conversation_id,esperando_desde,faixa_min,fone", ignoreDuplicates: true });
       out.push({ para: a.destino_real, conversas: a.itens.length, wamid });
+      ultimos[a.fone] = new Date(agoraMs).toISOString();
     } catch (e) { out.push({ para: a.destino_real, conversas: a.itens.length, erro: String((e as Error).message).slice(0, 200) }); }
   }
+  await salvarConfig(admin, "atendimento_ultimo_aviso", JSON.stringify(ultimos));
   return { esperando: esperas.length, teste: cfg.modo_teste, enviados: out };
 }
 
