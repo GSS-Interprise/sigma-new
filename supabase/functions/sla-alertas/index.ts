@@ -288,8 +288,9 @@ async function checarExames(admin: any, forcar = false, unidades = UNIDADES, tes
       if (enviados >= MAX_POR_RODADA) { res.push({ unidade, adiados: true }); break; }
       enviados++;
       // Escala do Dr. Escala (19/11): sobreaviso de TC e de US ao mesmo tempo. O exame avisa quem é da modalidade
-      // dele; sem ninguém da modalidade, avisa todos os plantonistas (melhor sobrar aviso que ninguém ver).
-      const plantonistasDoExame = daModalidade(plantonistas, modalidadeDoExame(e.estudo));
+      // dele; sem ninguém da modalidade, ninguém de outra modalidade é chamado (Wagner, 26/11): vira "sem escala".
+      const modalidade = modalidadeDoExame(e.estudo);
+      const plantonistasDoExame = daModalidade(plantonistas, modalidade);
       const vencido = agora.getTime() >= fim;
       const tipo = vencido ? "vencido" : "prazo";
       const origem = ORIGEM[e.origem] ?? e.origem, hh = horaExame(e.inicio_em), un = NOME_UNIDADE[unidade] ?? unidade;
@@ -309,7 +310,7 @@ async function checarExames(admin: any, forcar = false, unidades = UNIDADES, tes
           // Sem ninguém na escala neste horário: registra o passo (não repete) e avisa por e-mail.
           await admin.from("sla_alertas").insert({ exame_id: e.id, tipo: "sem_escala", papel: "sem_escala", canal: "email",
             status: "enviado", destino_nome: "Coordenação (e-mail)", passo_id: passo.id });
-          emails.push(`${linha}. Ninguém na escala de plantão agora.`);
+          emails.push(`${linha}. Ninguém de ${modalidade === "US" ? "ultrassom" : "tomografia"} na escala de plantão agora.`);
           res.push({ exame: e.id, passo: passo.id, sem_escala: true });
           continue;
         }

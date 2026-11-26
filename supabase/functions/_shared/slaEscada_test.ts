@@ -102,10 +102,13 @@ Deno.test("modalidade do exame: ultrassom pelo nome, o resto é TC", () => {
   assertEquals(modalidadeDoExame("TORAX SC(AduIt)"), "TC");
 });
 
-Deno.test("plantonista da modalidade; sem ninguém dela, todos", () => {
+Deno.test("plantonista da modalidade; sem ninguém dela, ninguém", () => {
   const p = [{ nome: "a", modalidade: "TC" }, { nome: "b", modalidade: "US" }, { nome: "c", modalidade: null }];
   assertEquals(daModalidade(p, "US").map((x) => x.nome), ["b", "c"]);
-  assertEquals(daModalidade([{ nome: "a", modalidade: "TC" }], "US").map((x) => x.nome), ["a"]);
+  // 26/11 (Wagner): TC às 11:38 sem ninguém de TC na escala avisou as duas médicas do ultrassom. Sem a modalidade,
+  // ninguém de outra modalidade é chamado; o exame vai para a coordenação (e-mail e aba Coordenação).
+  assertEquals(daModalidade([{ nome: "a", modalidade: "TC" }], "US").map((x) => x.nome), []);
+  assertEquals(daModalidade([{ nome: "a", modalidade: "US" }, { nome: "z", modalidade: null }], "TC").map((x) => x.nome), ["z"]);
 });
 
 Deno.test("período do contato: comercial seg-sex 7h-17h, fora = noite e fim de semana (Wagner, 26/11)", () => {

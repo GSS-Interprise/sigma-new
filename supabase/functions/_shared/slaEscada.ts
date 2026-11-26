@@ -145,7 +145,9 @@ export function modalidadeDoExame(estudo: string | null | undefined): "TC" | "US
   return /\b(US|USG|ULTRA|ULTRASS|DOPPLER|ECOGRAF)/i.test(estudo ?? "") ? "US" : "TC";
 }
 
+// Só quem é da modalidade do exame (ou sem modalidade na escala). Até 26/11, sem ninguém da modalidade, avisava todos
+// ("melhor sobrar aviso"); o Wagner pediu o contrário: médica do ultrassom recebia TC. Lista vazia = o motor registra
+// "sem escala", manda o e-mail da coordenação e, se vencer, a aba Coordenação chama Brenda, Wagner ou Ramone.
 export function daModalidade<T extends { modalidade?: string | null }>(pessoas: T[], m: string): T[] {
-  const certas = pessoas.filter((p) => !p.modalidade || p.modalidade === m);
-  return certas.length ? certas : pessoas;
+  return pessoas.filter((p) => !p.modalidade || p.modalidade === m);
 }
