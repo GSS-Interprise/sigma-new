@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
 export type EtapaAcompanhamento = "quente" | "em_analise" | "aprovado" | "na_escala" | "perdido";
@@ -66,160 +65,153 @@ export interface AcompanhamentoLead {
   last_incoming_at: string | null;
 }
 
-// Estágios de entrada da campanha MANUAL (derivados do status, antes da triagem)
-export type ColunaManual = "pendentes" | "aguardando" | "aquecido";
-export function colunaManualDeLead(l: { status: string }): ColunaManual {
-  if (l.status === "frio") return "pendentes";
-  if (l.status === "contatado" || l.status === "sem_resposta") return "aguardando";
-  return "aquecido"; // em_conversa / quente
-}
-
-function ordenarPorPrioridade(a: AcompanhamentoLead, b: AcompanhamentoLead) {
-  const unreadDiff = Number(b.unread_messages > 0) - Number(a.unread_messages > 0);
-  if (unreadDiff !== 0) return unreadDiff;
-  const aTime = new Date(a.last_incoming_at || a.data_ultimo_contato || a.data_status || 0).getTime();
-  const bTime = new Date(b.last_incoming_at || b.data_ultimo_contato || b.data_status || 0).getTime();
-  return bTime - aTime;
-}
-
 export type FiltroAcompanhamento = "todos" | "minha_fila" | "sem_dono" | "aguarda_maikon" | "aguarda_equipe";
 
-export function useAcompanhamentoLeads(filtro: FiltroAcompanhamento = "todos") {
-  const { user } = useAuth();
-  const qc = useQueryClient();
+export type ContagemFiltros = Record<FiltroAcompanhamento, number>;
 
-  const { data: leads = [], isLoading } = useQuery({
-    queryKey: ["acompanhamento-leads"],
-    queryFn: async () => {
-      // PostgREST limita 1000/request — campanhas grandes capavam a fila/contadores em 1000.
-      // Paginar até trazer todas (cap 20k de segurança).
-      const PAGE = 1000;
-      const CAP = 20000;
-      let all: AcompanhamentoLead[] = [];
-      for (let from = 0; from < CAP; from += PAGE) {
-        const { data, error } = await (supabase as any)
-          .from("vw_acompanhamento_kanban")
-          .select("*")
-          .order("data_status", { ascending: false })
-          .range(from, from + PAGE - 1);
-        if (error) throw error;
-        const chunk = (data || []) as AcompanhamentoLead[];
-        all = all.concat(chunk);
-        if (chunk.length < PAGE) break;
-      }
-      return all;
+export interface QuenteSemDono {
+  campanha_lead_id: string;
+  lead_nome: string;
+  campanha_nome: string;
+  data_status: string;
+}
+
+interface QuadroResposta {
+  filtros: ContagemFiltros;
+  colunas: Partial<Record<EtapaCrm, number>>;
+  leads: AcompanhamentoLead[];
+  quentes_sem_dono: QuenteSemDono[];
+}
+
+/** Cards por coluna na primeira carga; o resto vem por "Carregar mais" (useAcompanhamentoColunaMais). */
+export const CARDS_POR_COLUNA = 25;
+
+const ETAPAS_CRM: EtapaCrm[] = [
+  "novo",
+  "contatado",
+  "respondeu",
+  "em_atendimento",
+  "qualificado",
+  "encaminhado",
+  "convertido",
+  "perdido",
+];
+
+function porEtapaVazio(): Record<EtapaCrm, AcompanhamentoLead[]> {
+  return Object.fromEntries(ETAPAS_CRM.map((e) => [e, []])) as unknown as Record<EtapaCrm, AcompanhamentoLead[]>;
+}
+
+/**
+ * Aba Quentes (IA). Até 26/11/2026 este hook baixava a view vw_acompanhamento_kanban inteira (10.696 linhas, 11
+ * páginas em fila, ~15 s de tela vazia) e contava tudo no navegador. Agora a RPC acompanhamento_quadro faz busca,
+ * filtro e contagens no servidor numa passada e devolve só os primeiros CARDS_POR_COLUNA de cada coluna.
+ * A chave começa com "acompanhamento-leads" de propósito: as mutações e outras telas invalidam esse prefixo.
+ */
+export function useAcompanhamentoQuadro(filtro: FiltroAcompanhamento, busca: string) {
+  const qc = useQueryClient();
+  const termo = busca.trim();
+
+  const query = useQuery({
+    queryKey: ["acompanhamento-leads", "quadro", filtro, termo],
+    placeholderData: keepPreviousData,
+    queryFn: async (): Promise<QuadroResposta> => {
+      const { data, error } = await (supabase as any).rpc("acompanhamento_quadro", {
+        p_filtro: filtro,
+        p_busca: termo || null,
+        p_por_coluna: CARDS_POR_COLUNA,
+      });
+      if (error) throw error;
+      return data as QuadroResposta;
     },
   });
 
-  // Realtime: atualizações em campanha_leads invalidam a lista
-  // Nome único por mount evita colisão quando hook é chamado em paralelo
-  // por componentes diferentes (AcompanhamentoView + AcompanhamentoKanban) —
-  // antes dava erro 'cannot add postgres_changes callbacks after subscribe()'
+  // Realtime: mudança em campanha_leads ou numa conversa recarrega o quadro. Com debounce: um disparo em massa
+  // gera centenas de UPDATEs seguidos e cada recarga custa ~1 s no servidor.
   const channelIdRef = useRef(
     typeof crypto !== "undefined" && "randomUUID" in crypto
       ? `acompanhamento-realtime-${crypto.randomUUID()}`
       : `acompanhamento-realtime-${Math.random().toString(36).slice(2)}`
   );
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const recarregar = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => qc.invalidateQueries({ queryKey: ["acompanhamento-leads"] }), 3000);
+    };
     const channel = (supabase as any)
       .channel(channelIdRef.current)
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "campanha_leads" },
-        () => qc.invalidateQueries({ queryKey: ["acompanhamento-leads"] }),
-      )
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "campanha_leads" },
-        () => qc.invalidateQueries({ queryKey: ["acompanhamento-leads"] }),
-      )
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "sigzap_conversations" },
-        () => qc.invalidateQueries({ queryKey: ["acompanhamento-leads"] }),
-      )
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "campanha_leads" }, recarregar)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "campanha_leads" }, recarregar)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "sigzap_conversations" }, recarregar)
       .subscribe();
     return () => {
+      if (timer) clearTimeout(timer);
       (supabase as any).removeChannel(channel);
     };
   }, [qc]);
 
-  const filtrados = useMemo(() => {
-    if (filtro === "minha_fila") return leads.filter((l) => l.assumido_por === user?.id);
-    if (filtro === "sem_dono") return leads.filter((l) => l.assumido_por === null);
-    if (filtro === "aguarda_maikon")
-      return leads.filter((l) => !l.validacoes?.validacao_maikon?.ok);
-    if (filtro === "aguarda_equipe")
-      return leads.filter((l) => !l.validacoes?.validacao_equipe?.ok);
-    return leads;
-  }, [leads, filtro, user?.id]);
-
-  const counts = useMemo(() => {
-    return {
-      total: leads.length,
-      minha_fila: leads.filter((l) => l.assumido_por === user?.id).length,
-      sem_dono: leads.filter((l) => l.assumido_por === null).length,
-      aguarda_maikon: leads.filter((l) => !l.validacoes?.validacao_maikon?.ok).length,
-      aguarda_equipe: leads.filter((l) => !l.validacoes?.validacao_equipe?.ok).length,
-    };
-  }, [leads, user?.id]);
-
-  const porEtapa = useMemo(() => {
-    const grupos: Record<EtapaAcompanhamento, AcompanhamentoLead[]> = {
-      quente: [],
-      em_analise: [],
-      aprovado: [],
-      na_escala: [],
-      perdido: [],
-    };
-    for (const l of filtrados) {
-      // lead manual em estágio de entrada (etapa nula) não entra no funil de triagem
-      if (l.tipo_envio === "manual" && !l.etapa_acompanhamento) continue;
-      if (grupos[l.etapa_acompanhamento]) grupos[l.etapa_acompanhamento].push(l);
-    }
-    return grupos;
-  }, [filtrados]);
-
-  // Estágios de entrada manual (Pendentes/Aguardando/Aquecido) — derivados do status
-  const porColunaManual = useMemo(() => {
-    const grupos: Record<ColunaManual, AcompanhamentoLead[]> = { pendentes: [], aguardando: [], aquecido: [] };
-    for (const l of filtrados) {
-      if (l.tipo_envio === "manual" && !l.etapa_acompanhamento) {
-        grupos[colunaManualDeLead(l)].push(l);
-      }
-    }
-    return grupos;
-  }, [filtrados]);
-  const temManual = porColunaManual.pendentes.length + porColunaManual.aguardando.length + porColunaManual.aquecido.length > 0;
-
   const porEtapaCrm = useMemo(() => {
-    const grupos: Record<EtapaCrm, AcompanhamentoLead[]> = {
-      novo: [],
-      contatado: [],
-      respondeu: [],
-      em_atendimento: [],
-      qualificado: [],
-      encaminhado: [],
-      convertido: [],
-      perdido: [],
-    };
-    for (const lead of filtrados) {
-      if (grupos[lead.etapa_crm]) grupos[lead.etapa_crm].push(lead);
-    }
-    Object.values(grupos).forEach((grupo) => grupo.sort(ordenarPorPrioridade));
+    const grupos = porEtapaVazio();
+    for (const lead of query.data?.leads ?? []) grupos[lead.etapa_crm]?.push(lead);
     return grupos;
-  }, [filtrados]);
+  }, [query.data]);
 
   return {
-    leads: filtrados,
-    todosLeads: leads,
-    isLoading,
-    counts,
-    porEtapa,
-    porColunaManual,
+    filtros: query.data?.filtros,
+    colunas: query.data?.colunas ?? {},
     porEtapaCrm,
-    temManual,
+    leads: query.data?.leads ?? [],
+    quentesSemDono: query.data?.quentes_sem_dono ?? [],
+    isLoading: query.isLoading,
+    isFetching: query.isFetching,
+    atualizadoEm: query.dataUpdatedAt,
+    error: query.error as Error | null,
   };
+}
+
+/** Páginas seguintes de uma coluna (ou a coluna Perdidos inteira, que não vem na carga inicial). */
+export function useAcompanhamentoColunaMais(
+  etapa: EtapaCrm,
+  filtro: FiltroAcompanhamento,
+  busca: string,
+  enabled: boolean,
+  offsetInicial: number,
+) {
+  const termo = busca.trim();
+  return useInfiniteQuery({
+    queryKey: ["acompanhamento-leads", "coluna", etapa, filtro, termo, offsetInicial],
+    enabled,
+    initialPageParam: offsetInicial,
+    queryFn: async ({ pageParam }): Promise<AcompanhamentoLead[]> => {
+      const { data, error } = await (supabase as any).rpc("acompanhamento_quadro", {
+        p_filtro: filtro,
+        p_busca: termo || null,
+        p_por_coluna: 50,
+        p_etapa: etapa,
+        p_offset: pageParam,
+      });
+      if (error) throw error;
+      return ((data as QuadroResposta).leads ?? []) as AcompanhamentoLead[];
+    },
+    getNextPageParam: (ultima, paginas) =>
+      ultima.length < 50 ? undefined : offsetInicial + paginas.reduce((n, p) => n + p.length, 0),
+  });
+}
+
+/** Um lead pela campanha_lead_id (painel lateral). Mesma chave e consulta do CampanhaProspeccaoKanban. */
+export function useAcompanhamentoLeadPorId(campanhaLeadId: string | null) {
+  return useQuery({
+    queryKey: ["acompanhamento-lead-by-campanha-lead", campanhaLeadId],
+    enabled: !!campanhaLeadId,
+    queryFn: async (): Promise<AcompanhamentoLead | null> => {
+      const { data } = await supabase
+        .from("vw_acompanhamento_kanban_full" as never)
+        .select("*")
+        .eq("campanha_lead_id", campanhaLeadId)
+        .maybeSingle();
+      return (data as AcompanhamentoLead) ?? null;
+    },
+  });
 }
 
 // ── Mutações (RPCs) ──────────────────────────────────────────

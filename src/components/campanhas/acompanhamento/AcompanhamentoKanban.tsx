@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
 import {
   ArrowRightToLine,
-  CheckCircle2,
   CheckSquare,
+  ChevronsLeft,
   CircleDot,
   Clock,
   Handshake,
+  Loader2,
   MessageCircleReply,
   PhoneOutgoing,
   UserCheck,
@@ -25,7 +26,7 @@ import { toast } from "sonner";
 import { AcompanhamentoCard } from "./AcompanhamentoCard";
 import { CanaisProvider } from "./canaisDoLead";
 import {
-  useAcompanhamentoLeads,
+  useAcompanhamentoColunaMais,
   useAprovarLead,
   useMarcarPerdido,
   useMoverEtapa,
@@ -37,25 +38,49 @@ import { useLeadsCrossCampanha } from "@/hooks/useLeadsCrossCampanha";
 
 interface Props {
   filtro: FiltroAcompanhamento;
+  busca: string;
+  /** Saída do useAcompanhamentoQuadro, que mora na AcompanhamentoView (uma consulta só para a aba inteira). */
+  porEtapaCrm: Record<EtapaCrm, AcompanhamentoLead[]>;
+  colunas: Partial<Record<EtapaCrm, number>>;
+  isLoading: boolean;
   onLeadClick: (lead: AcompanhamentoLead) => void;
 }
 
-const COLUNAS: Array<{
+type ColunaDef = {
   etapa: Exclude<EtapaCrm, "perdido">;
   label: string;
   descricao: string;
   icon: React.ElementType;
   color: string;
   bg: string;
-}> = [
-  { etapa: "novo", label: "Novo", descricao: "Ainda não contatado", icon: UserRoundPlus, color: "text-slate-600", bg: "bg-slate-50" },
-  { etapa: "contatado", label: "Contatado", descricao: "Aguardando resposta", icon: PhoneOutgoing, color: "text-violet-600", bg: "bg-violet-50" },
-  { etapa: "respondeu", label: "Respondeu", descricao: "Aguardando responsável", icon: MessageCircleReply, color: "text-orange-600", bg: "bg-orange-50" },
+  /** Coluna que pede ação da equipe: cabeçalho em destaque. */
+  destaque?: boolean;
+  /** Coluna de volume (milhares de cards, nada a fazer): começa recolhida numa faixa estreita. */
+  volume?: boolean;
+};
+
+const COLUNAS: ColunaDef[] = [
+  { etapa: "novo", label: "Novo", descricao: "Ainda não contatado", icon: UserRoundPlus, color: "text-slate-600", bg: "bg-slate-50", volume: true },
+  { etapa: "contatado", label: "Contatado", descricao: "Aguardando resposta", icon: PhoneOutgoing, color: "text-violet-600", bg: "bg-violet-50", volume: true },
+  { etapa: "respondeu", label: "Respondeu", descricao: "Aguardando responsável", icon: MessageCircleReply, color: "text-orange-600", bg: "bg-orange-50", destaque: true },
   { etapa: "em_atendimento", label: "Em atendimento", descricao: "Conversa assumida", icon: UserCheck, color: "text-cyan-700", bg: "bg-cyan-50" },
-  { etapa: "qualificado", label: "Qualificado", descricao: "Interesse e requisitos", icon: CircleDot, color: "text-amber-700", bg: "bg-amber-50" },
+  { etapa: "qualificado", label: "Qualificado", descricao: "Quentes: interesse e requisitos", icon: CircleDot, color: "text-amber-700", bg: "bg-amber-50", destaque: true },
   { etapa: "encaminhado", label: "Encaminhado", descricao: "Avançou na oportunidade", icon: ArrowRightToLine, color: "text-blue-700", bg: "bg-blue-50" },
   { etapa: "convertido", label: "Convertido", descricao: "Enviado para Contratos", icon: Handshake, color: "text-emerald-700", bg: "bg-emerald-50" },
 ];
+
+// Colunas que a pessoa trocou do padrão (Novo/Contatado começam recolhidas; as outras, abertas).
+const ALTERNADAS_STORAGE_KEY = "acompanhamento-colunas-alternadas";
+
+function carregarAlternadas(): Set<EtapaCrm> {
+  try {
+    const salvo = JSON.parse(localStorage.getItem(ALTERNADAS_STORAGE_KEY) || "[]");
+    if (Array.isArray(salvo)) return new Set(salvo as EtapaCrm[]);
+  } catch {
+    // localStorage bloqueado ou lixo: começa com as colunas de volume recolhidas
+  }
+  return new Set();
+}
 
 const ETAPAS_AUTOMATICAS = new Set<EtapaCrm>([
   "novo",
@@ -64,19 +89,39 @@ const ETAPAS_AUTOMATICAS = new Set<EtapaCrm>([
   "em_atendimento",
 ]);
 
-export function AcompanhamentoKanban({ filtro, onLeadClick }: Props) {
-  const { porEtapaCrm, todosLeads, isLoading } = useAcompanhamentoLeads(filtro);
+export function AcompanhamentoKanban({ filtro, busca, porEtapaCrm, colunas, isLoading, onLeadClick }: Props) {
   const [perdidoExpanded, setPerdidoExpanded] = useState(false);
-  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragging, setDragging] = useState<AcompanhamentoLead | null>(null);
   const [dragOverEtapa, setDragOverEtapa] = useState<EtapaCrm | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [alternadas, setAlternadas] = useState<Set<EtapaCrm>>(() => carregarAlternadas());
   const moverEtapa = useMoverEtapa();
   const aprovarLead = useAprovarLead();
   const marcarPerdido = useMarcarPerdido();
+  const buscando = busca.trim().length > 0;
 
-  const leadIds = useMemo(() => todosLeads.map((lead) => lead.lead_id), [todosLeads]);
+  const leadsCarregados = useMemo(() => Object.values(porEtapaCrm).flat(), [porEtapaCrm]);
+  const leadIds = useMemo(() => leadsCarregados.map((lead) => lead.lead_id), [leadsCarregados]);
   const { data: crossCampanhasMap } = useLeadsCrossCampanha(leadIds);
+
+  const perdidos = useAcompanhamentoColunaMais("perdido", filtro, busca, perdidoExpanded, 0);
+  const listaPerdidos = useMemo(() => perdidos.data?.pages.flat() ?? [], [perdidos.data]);
+  const totalPerdidos = colunas.perdido ?? 0;
+
+  const alternarColuna = (etapa: EtapaCrm) => {
+    setAlternadas((atual) => {
+      const next = new Set(atual);
+      if (next.has(etapa)) next.delete(etapa);
+      else next.add(etapa);
+      try {
+        localStorage.setItem(ALTERNADAS_STORAGE_KEY, JSON.stringify([...next]));
+      } catch {
+        // sem localStorage a preferência vale só nesta visita
+      }
+      return next;
+    });
+  };
 
   const toggleSelect = (campanhaLeadId: string) => {
     setSelectedIds((current) => {
@@ -131,14 +176,12 @@ export function AcompanhamentoKanban({ filtro, onLeadClick }: Props) {
   };
 
   const handleDrop = async (etapa: EtapaCrm) => {
-    const id = draggingId;
-    setDraggingId(null);
+    const lead = dragging;
+    setDragging(null);
     setDragOverEtapa(null);
-    if (!id) return;
-    const lead = todosLeads.find((item) => item.campanha_lead_id === id);
     if (!lead || lead.etapa_crm === etapa) return;
     try {
-      await moverParaEtapaComercial(id, etapa);
+      await moverParaEtapaComercial(lead.campanha_lead_id, etapa);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Não foi possível mover o lead");
     }
@@ -146,9 +189,12 @@ export function AcompanhamentoKanban({ filtro, onLeadClick }: Props) {
 
   if (isLoading) {
     return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        {COLUNAS.slice(0, 4).map((coluna) => (
-          <div key={coluna.etapa} className="min-h-72 animate-pulse rounded-md border bg-muted/20" />
+      <div className="flex gap-3 overflow-hidden" aria-busy="true" aria-label="Carregando o quadro">
+        {COLUNAS.map((coluna) => (
+          <div
+            key={coluna.etapa}
+            className={`${coluna.volume ? "w-14" : "w-[min(82vw,19rem)]"} min-h-72 shrink-0 animate-pulse rounded-md border bg-muted/20`}
+          />
         ))}
       </div>
     );
@@ -161,33 +207,57 @@ export function AcompanhamentoKanban({ filtro, onLeadClick }: Props) {
         <span>Contato, resposta e assunção movem o card automaticamente.</span>
       </div>
 
-      <CanaisProvider leads={todosLeads}>
-      <div className="overflow-x-auto pb-3">
-        <div className="flex min-w-max gap-3">
-          {COLUNAS.map((coluna) => (
-            <Coluna
-              key={coluna.etapa}
-              {...coluna}
-              leads={porEtapaCrm[coluna.etapa] || []}
-              crossCampanhasMap={crossCampanhasMap}
-              onLeadClick={onLeadClick}
-              onDragStart={setDraggingId}
-              onDragEnd={() => {
-                setDraggingId(null);
-                setDragOverEtapa(null);
-              }}
-              onDragOver={(event) => {
-                event.preventDefault();
-                setDragOverEtapa(coluna.etapa);
-              }}
-              onDrop={() => void handleDrop(coluna.etapa)}
-              isOver={dragOverEtapa === coluna.etapa}
-              selectedIds={selectedIds}
-              onToggleSelect={toggleSelect}
-            />
-          ))}
+      <CanaisProvider leads={leadsCarregados}>
+        <div className="overflow-x-auto pb-3">
+          <div className="flex min-w-max gap-3">
+            {COLUNAS.map((coluna) => {
+              const total = colunas[coluna.etapa] ?? 0;
+              // Na busca, coluna com resultado abre sozinha e coluna vazia recolhe: o lead procurado fica à vista.
+              const recolhida = buscando
+                ? total === 0
+                : coluna.volume
+                  ? !alternadas.has(coluna.etapa)
+                  : alternadas.has(coluna.etapa);
+              if (recolhida) {
+                return (
+                  <ColunaRecolhida
+                    key={coluna.etapa}
+                    {...coluna}
+                    total={total}
+                    podeAbrir={!buscando}
+                    onAbrir={() => alternarColuna(coluna.etapa)}
+                  />
+                );
+              }
+              return (
+                <Coluna
+                  key={coluna.etapa}
+                  {...coluna}
+                  total={total}
+                  leads={porEtapaCrm[coluna.etapa] || []}
+                  filtro={filtro}
+                  busca={busca}
+                  crossCampanhasMap={crossCampanhasMap}
+                  onLeadClick={onLeadClick}
+                  onDragStart={setDragging}
+                  onDragEnd={() => {
+                    setDragging(null);
+                    setDragOverEtapa(null);
+                  }}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    setDragOverEtapa(coluna.etapa);
+                  }}
+                  onDrop={() => void handleDrop(coluna.etapa)}
+                  isOver={dragOverEtapa === coluna.etapa}
+                  selectedIds={selectedIds}
+                  onToggleSelect={toggleSelect}
+                  onRecolher={buscando ? undefined : () => alternarColuna(coluna.etapa)}
+                />
+              );
+            })}
+          </div>
         </div>
-      </div>
       </CanaisProvider>
 
       {selectedIds.size > 0 && (
@@ -232,25 +302,38 @@ export function AcompanhamentoKanban({ filtro, onLeadClick }: Props) {
           <div className="flex items-center gap-2">
             <XCircle className="h-4 w-4 text-slate-500" />
             <span className="text-sm font-medium">Perdidos</span>
-            <Badge variant="outline" className="text-xs">{porEtapaCrm.perdido.length}</Badge>
+            <Badge variant="outline" className="text-xs tabular-nums">{formatarNumero(totalPerdidos)}</Badge>
           </div>
           <span className="text-xs text-muted-foreground">{perdidoExpanded ? "Ocultar" : "Mostrar"}</span>
         </button>
         {perdidoExpanded && (
-          <div className="grid grid-cols-1 gap-2 border-t p-2 sm:grid-cols-2 lg:grid-cols-4">
-            {porEtapaCrm.perdido.length === 0 ? (
+          <div className="border-t p-2">
+            {perdidos.isLoading ? (
+              <p className="flex items-center justify-center gap-2 py-4 text-xs text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Carregando perdidos...
+              </p>
+            ) : listaPerdidos.length === 0 ? (
               <p className="py-4 text-center text-xs italic text-muted-foreground">Nenhum lead perdido.</p>
             ) : (
-              porEtapaCrm.perdido.map((lead) => (
-                <AcompanhamentoCard
-                  key={lead.campanha_lead_id}
-                  lead={lead}
-                  crossCampanhas={crossCampanhasMap?.get(lead.lead_id)}
-                  onClick={() => onLeadClick(lead)}
-                  onDragStart={() => setDraggingId(lead.campanha_lead_id)}
-                  onDragEnd={() => setDraggingId(null)}
+              <CanaisProvider leads={listaPerdidos}>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                  {listaPerdidos.map((lead) => (
+                    <AcompanhamentoCard
+                      key={lead.campanha_lead_id}
+                      lead={lead}
+                      onClick={() => onLeadClick(lead)}
+                      onDragStart={() => setDragging(lead)}
+                      onDragEnd={() => setDragging(null)}
+                    />
+                  ))}
+                </div>
+                <BotaoCarregarMais
+                  restantes={totalPerdidos - listaPerdidos.length}
+                  carregando={perdidos.isFetchingNextPage}
+                  disponivel={!!perdidos.hasNextPage}
+                  onClick={() => void perdidos.fetchNextPage()}
                 />
-              ))
+              </CanaisProvider>
             )}
           </div>
         )}
@@ -259,23 +342,78 @@ export function AcompanhamentoKanban({ filtro, onLeadClick }: Props) {
   );
 }
 
-interface ColunaProps {
-  etapa: Exclude<EtapaCrm, "perdido">;
-  label: string;
-  descricao: string;
-  icon: React.ElementType;
-  color: string;
-  bg: string;
+const fmt = new Intl.NumberFormat("pt-BR");
+function formatarNumero(n: number) {
+  return fmt.format(n);
+}
+
+function BotaoCarregarMais({
+  restantes,
+  carregando,
+  disponivel,
+  onClick,
+}: {
+  restantes: number;
+  carregando: boolean;
+  disponivel: boolean;
+  onClick: () => void;
+}) {
+  if (restantes <= 0 || !disponivel) return null;
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      className="mt-2 min-h-9 w-full text-xs"
+      disabled={carregando}
+      onClick={onClick}
+    >
+      {carregando ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+      Carregar mais ({formatarNumero(restantes)} restantes)
+    </Button>
+  );
+}
+
+function ColunaRecolhida({
+  label,
+  icon: Icon,
+  color,
+  bg,
+  total,
+  podeAbrir,
+  onAbrir,
+}: ColunaDef & { total: number; podeAbrir: boolean; onAbrir: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onAbrir}
+      disabled={!podeAbrir}
+      title={podeAbrir ? `Abrir a coluna ${label}` : `${label}: nenhum resultado na busca`}
+      aria-label={podeAbrir ? `Abrir a coluna ${label} (${total} leads)` : `${label}: nenhum resultado`}
+      className={`flex w-14 shrink-0 flex-col items-center gap-2 rounded-md border ${bg} py-3 transition-colors enabled:hover:border-primary/50 disabled:opacity-60`}
+    >
+      <Icon className={`h-4 w-4 ${color}`} />
+      <span className="text-xs font-semibold tabular-nums">{formatarNumero(total)}</span>
+      <span className="rotate-180 text-sm font-medium [writing-mode:vertical-rl]">{label}</span>
+    </button>
+  );
+}
+
+interface ColunaProps extends ColunaDef {
+  total: number;
   leads: AcompanhamentoLead[];
+  filtro: FiltroAcompanhamento;
+  busca: string;
   crossCampanhasMap?: Map<string, Array<{ id: string; nome: string }>>;
   onLeadClick: (lead: AcompanhamentoLead) => void;
-  onDragStart: (id: string) => void;
+  onDragStart: (lead: AcompanhamentoLead) => void;
   onDragEnd: () => void;
   onDragOver: (event: React.DragEvent) => void;
   onDrop: () => void;
   isOver: boolean;
   selectedIds: Set<string>;
   onToggleSelect: (id: string) => void;
+  onRecolher?: () => void;
 }
 
 function Coluna({
@@ -285,7 +423,11 @@ function Coluna({
   icon: Icon,
   color,
   bg,
+  destaque,
+  total,
   leads,
+  filtro,
+  busca,
   crossCampanhasMap,
   onLeadClick,
   onDragStart,
@@ -295,22 +437,62 @@ function Coluna({
   isOver,
   selectedIds,
   onToggleSelect,
+  onRecolher,
 }: ColunaProps) {
   const automatica = ETAPAS_AUTOMATICAS.has(etapa);
+  const [querMais, setQuerMais] = useState(false);
+  // Páginas além das primeiras CARDS_POR_COLUNA: só quando a pessoa pede.
+  const mais = useAcompanhamentoColunaMais(etapa, filtro, busca, querMais, leads.length);
+  const extras = useMemo(() => mais.data?.pages.flat() ?? [], [mais.data]);
+  const extrasIds = useMemo(() => extras.map((l) => l.lead_id), [extras]);
+  const { data: crossExtras } = useLeadsCrossCampanha(extrasIds);
+  const restantes = total - leads.length - extras.length;
+
+  const renderCard = (lead: AcompanhamentoLead, cross?: Map<string, Array<{ id: string; nome: string }>>) => (
+    <AcompanhamentoCard
+      key={lead.campanha_lead_id}
+      lead={lead}
+      crossCampanhas={cross?.get(lead.lead_id)}
+      onClick={() => onLeadClick(lead)}
+      onDragStart={() => onDragStart(lead)}
+      onDragEnd={onDragEnd}
+      selected={selectedIds.has(lead.campanha_lead_id)}
+      onToggleSelect={() => onToggleSelect(lead.campanha_lead_id)}
+    />
+  );
+
   return (
     <section
       onDragOver={onDragOver}
       onDrop={onDrop}
-      className={`w-[min(82vw,19rem)] shrink-0 rounded-md border ${bg} ${isOver ? "ring-2 ring-primary" : ""}`}
+      className={`w-[min(82vw,19rem)] shrink-0 rounded-md border ${bg} ${destaque ? DESTAQUE_BORDA[etapa] ?? "" : ""} ${isOver ? "ring-2 ring-primary" : ""}`}
       aria-label={`Etapa ${label}`}
     >
       <header className="border-b bg-card/60 p-2.5">
         <div className="flex items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-1.5">
             <Icon className={`h-4 w-4 shrink-0 ${color}`} />
-            <span className="truncate text-sm font-medium">{label}</span>
+            <span className={`truncate text-sm ${destaque ? "font-semibold" : "font-medium"}`}>{label}</span>
           </div>
-          <Badge variant="outline" className="h-5 text-xs">{leads.length}</Badge>
+          <div className="flex shrink-0 items-center gap-1">
+            <Badge
+              variant="outline"
+              className={`h-5 text-xs tabular-nums ${destaque && total > 0 ? DESTAQUE_BADGE[etapa] ?? "" : ""}`}
+            >
+              {formatarNumero(total)}
+            </Badge>
+            {onRecolher && (
+              <button
+                type="button"
+                onClick={onRecolher}
+                title={`Recolher a coluna ${label}`}
+                aria-label={`Recolher a coluna ${label}`}
+                className="flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:bg-muted"
+              >
+                <ChevronsLeft className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
         </div>
         <p className="mt-1 text-[11px] text-muted-foreground">
           {descricao}{automatica ? " · automático" : ""}
@@ -320,20 +502,30 @@ function Coluna({
         {leads.length === 0 ? (
           <p className="py-6 text-center text-xs italic text-muted-foreground">Vazio</p>
         ) : (
-          leads.map((lead) => (
-            <AcompanhamentoCard
-              key={lead.campanha_lead_id}
-              lead={lead}
-              crossCampanhas={crossCampanhasMap?.get(lead.lead_id)}
-              onClick={() => onLeadClick(lead)}
-              onDragStart={() => onDragStart(lead.campanha_lead_id)}
-              onDragEnd={onDragEnd}
-              selected={selectedIds.has(lead.campanha_lead_id)}
-              onToggleSelect={() => onToggleSelect(lead.campanha_lead_id)}
+          <>
+            {leads.map((lead) => renderCard(lead, crossCampanhasMap))}
+            {extras.length > 0 && (
+              <CanaisProvider leads={extras}>{extras.map((lead) => renderCard(lead, crossExtras))}</CanaisProvider>
+            )}
+            <BotaoCarregarMais
+              restantes={restantes}
+              carregando={mais.isFetching}
+              disponivel={!querMais || !!mais.hasNextPage}
+              onClick={() => (querMais ? void mais.fetchNextPage() : setQuerMais(true))}
             />
-          ))
+          </>
         )}
       </div>
     </section>
   );
 }
+
+// Classes literais (o Tailwind só gera o que aparece escrito no código).
+const DESTAQUE_BORDA: Partial<Record<EtapaCrm, string>> = {
+  respondeu: "border-t-4 border-t-orange-500",
+  qualificado: "border-t-4 border-t-amber-500",
+};
+const DESTAQUE_BADGE: Partial<Record<EtapaCrm, string>> = {
+  respondeu: "border-orange-300 bg-orange-100 text-orange-900",
+  qualificado: "border-amber-300 bg-amber-100 text-amber-900",
+};

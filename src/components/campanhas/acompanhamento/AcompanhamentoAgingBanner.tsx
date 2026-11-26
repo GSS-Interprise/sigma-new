@@ -2,15 +2,15 @@ import { useMemo } from "react";
 import { Flame, Clock, AlertTriangle } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import type { AcompanhamentoLead } from "@/hooks/useAcompanhamentoLeads";
+import type { QuenteSemDono } from "@/hooks/useAcompanhamentoLeads";
 
 interface Props {
-  /** Lista de leads (todos os filtros). Banner conta apenas etapa='quente'. */
-  leads: AcompanhamentoLead[];
+  /** Quentes sem dono e fora de Perdidos, já filtrados no servidor (RPC acompanhamento_quadro). */
+  leads: QuenteSemDono[];
   /** Threshold de "atraso" em horas. Default 12h conforme sprint plan F3.4. */
   thresholdHoras?: number;
   /** Click no lead atrasado pra abrir o painel. */
-  onLeadClick: (lead: AcompanhamentoLead) => void;
+  onLeadClick: (campanhaLeadId: string) => void;
 }
 
 /**
@@ -26,9 +26,8 @@ export function AcompanhamentoAgingBanner({ leads, thresholdHoras = 12, onLeadCl
   const quentesEsperando = useMemo(() => {
     const agora = Date.now();
     return leads
-      .filter((l) => l.etapa_acompanhamento === "quente" && !l.assumido_por && l.data_status)
       .map((l) => {
-        const horas = (agora - new Date(l.data_status!).getTime()) / (1000 * 60 * 60);
+        const horas = (agora - new Date(l.data_status).getTime()) / (1000 * 60 * 60);
         return { lead: l, horas };
       })
       .filter((x) => x.horas >= thresholdHoras)
@@ -90,7 +89,7 @@ export function AcompanhamentoAgingBanner({ leads, thresholdHoras = 12, onLeadCl
                 <button
                   key={lead.campanha_lead_id}
                   type="button"
-                  onClick={() => onLeadClick(lead)}
+                  onClick={() => onLeadClick(lead.campanha_lead_id)}
                   className={cn(
                     "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-xs font-medium hover:opacity-80 transition-opacity",
                     corBadge
