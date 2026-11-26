@@ -390,6 +390,8 @@ export function NovaPropostaDialog({ open, onOpenChange, leadId, leadNome, unida
 
   const itensSelecionados = itensValores.filter(item => item.selecionado);
   const totalItens = itensSelecionados.length + itensCustom.length;
+  // A proposta salva mesmo assim (rascunho), mas item sem valor para o médico trava o envio a Contratos (conversaoMedico.ts)
+  const itensSemValorMedico = [...itensSelecionados, ...itensCustom].filter(item => !(Number(item.valor_medico) > 0)).length;
   const todosItensSelecionadosCheck = itensValores.length > 0 && itensValores.every(item => item.selecionado);
 
   const semUnidades = !unidadesVinculadas || unidadesVinculadas.length === 0;
@@ -649,6 +651,16 @@ export function NovaPropostaDialog({ open, onOpenChange, leadId, leadNome, unida
               <Badge variant="outline" className="ml-auto">
                 Total: {totalItens} itens
               </Badge>
+            </div>
+          )}
+
+          {itensSemValorMedico > 0 && (
+            <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>
+                {itensSemValorMedico === 1 ? '1 item está' : `${itensSemValorMedico} itens estão`} sem valor para o médico.
+                Preencha o valor ou tire o item da proposta: sem isso o médico não vai para Contratos.
+              </span>
             </div>
           )}
 

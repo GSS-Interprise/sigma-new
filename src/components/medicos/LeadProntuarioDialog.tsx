@@ -51,7 +51,7 @@ import { LeadEtiquetasDropdown } from "./LeadEtiquetasDropdown";
 import { PhoneEmailArrayFields } from "@/components/leads/PhoneEmailArrayFields";
 import { useLeadHistoricoUnreadCount } from "@/hooks/useLeadHistoricoVisualizacoes";
 import { MedicoCondicoesCard, MedicoNaoAssinou } from "./MedicoCondicoesCard";
-import { MODALIDADES_CONTRATO, camposObrigatoriosConversao, modalidadeExigePJ, pendenciasConversao } from "@/lib/conversaoMedico";
+import { MODALIDADES_CONTRATO, camposObrigatoriosConversao, dadosConversaoDoLead, modalidadeExigePJ, pendenciasConversao } from "@/lib/conversaoMedico";
 
 export interface LeadProntuarioDialogProps {
   open: boolean;
@@ -65,6 +65,22 @@ export interface LeadProntuarioDialogProps {
   initialCnpj?: string;
   /** Depois de criar o lead, em vez de fechar, o pai abre o prontuário dele (Kanban de Médicos). */
   onLeadCriado?: (leadId: string) => void;
+}
+
+// Relê o lead e as propostas no banco (não no que está na tela, que pode estar velho) e recusa o envio a Contratos se
+// faltar algo da trava (src/lib/conversaoMedico.ts). Roda antes de qualquer gravação: nada fica pela metade.
+async function lerLeadCompletoParaContratos(leadId: string) {
+  const [{ data: leadAtual, error: leadErr }, { data: propostasAtuais, error: propErr }] = await Promise.all([
+    supabase.from('leads').select('*').eq('id', leadId).single(),
+    supabase.from('proposta').select('id, proposta_itens(valor_medico)').eq('lead_id', leadId),
+  ]);
+  if (leadErr) throw leadErr;
+  if (propErr) throw propErr;
+  const pendencias = pendenciasConversao(dadosConversaoDoLead(leadAtual, propostasAtuais));
+  if (pendencias.length > 0) {
+    throw new Error(`Não dá para enviar a Contratos. Falta: ${pendencias.join(', ')}.`);
+  }
+  return leadAtual;
 }
 
 // Estilo para inputs invisíveis que mostram borda apenas no hover/focus
@@ -777,48 +793,46 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
       if (!jusImageFile) throw new Error('A imagem de validação JUS é obrigatória');
       if (hasChanges) throw new Error('Salve as alterações do cadastro antes de converter.');
 
-      // Confere de novo no banco (não no que está na tela): é o que Contratos vai receber
-      const [{ data: leadAtual, error: leadAtualErr }, { data: propostasAtuais, error: propErr }] = await Promise.all([
-        supabase.from('leads').select('*').eq('id', lead.id).single(),
-        supabase.from('proposta').select('id, proposta_itens(valor_medico)').eq('lead_id', lead.id),
-      ]);
-      if (leadAtualErr) throw leadAtualErr;
-      if (propErr) throw propErr;
-      const pendencias = pendenciasConversao({
-        nome: leadAtual.nome,
-        cpf: leadAtual.cpf,
-        telefone: leadAtual.phone_e164,
-        email: leadAtual.email,
-        unidades: leadAtual.unidades_vinculadas,
-        modalidade: leadAtual.modalidade_contrato,
-        cnpj: leadAtual.cnpj,
-        representanteNome: leadAtual.representante_legal_nome,
-        representanteEmail: leadAtual.representante_legal_email,
-        propostas: propostasAtuais,
-      });
-      if (pendencias.length > 0) {
-        throw new Error(`Não dá para enviar a Contratos. Falta: ${pendencias.join(', ')}.`);
-      }
+      // 1. Trava: confere no banco antes de gravar qualquer coisa. Daqui para baixo, só os dados lidos agora
+      // (leadAtual) vão para o médico e o card de Contratos, nunca o que estava em cache na tela.
+      const leadAtual = await lerLeadCompletoParaContratos(lead.id);
 
       const { data: { user } } = await supabase.auth.getUser();
+
+      // 2. Imagem do JUS antes de criar o médico: se o envio falhar, nada é convertido (antes o erro só ia para o
+      // console e o médico chegava a Contratos sem a validação anexada).
+      const fileExt = jusImageFile.name.split('.').pop() || 'png';
+      const filePath = `${lead.id}/jus-verificacao-${Date.now()}.${fileExt}`;
+      const { error: uploadError } = await supabase.storage
+        .from('lead-anexos')
+        .upload(filePath, jusImageFile, {
+          contentType: jusImageFile.type,
+          upsert: false,
+        });
+      if (uploadError) {
+        throw new Error(`A imagem do JUS não subiu (${uploadError.message}). Tente de novo: nada foi enviado a Contratos.`);
+      }
+      const { data: { publicUrl: jusPublicUrl } } = supabase.storage
+        .from('lead-anexos')
+        .getPublicUrl(filePath);
 
       // Verificar se já existe médico com mesmo telefone OU mesmo CRM
       const { data: existingByPhone } = await supabase
         .from('medicos')
         .select('id, nome_completo')
-        .eq('phone_e164', lead.phone_e164)
+        .eq('phone_e164', leadAtual.phone_e164)
         .maybeSingle();
 
-      const { data: existingByCRM } = lead.crm ? await supabase
+      const crmAtual = leadAtual.crm!.trim();
+      const { data: existingByCRM } = await supabase
         .from('medicos')
         .select('id, nome_completo, crm')
-        .eq('crm', lead.crm)
-        .maybeSingle() : { data: null };
+        .eq('crm', crmAtual)
+        .maybeSingle();
 
       const existingMedico = existingByPhone || existingByCRM;
 
       let medicoId: string;
-      let isNewMedico = false;
 
       if (existingMedico) {
         // Médico já existe - vincular ao lead
@@ -826,35 +840,34 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
           .from('medicos')
           .update({ lead_id: lead.id })
           .eq('id', existingMedico.id);
-        
+
         if (updateError) throw updateError;
         medicoId = existingMedico.id;
-        
+
         toast.info(`Médico ${existingMedico.nome_completo} já existia e foi vinculado ao lead.`);
       } else {
-        isNewMedico = true;
         const medicoPayload = {
-          nome_completo: lead.nome,
-          especialidade: (lead as any).especialidades?.length > 0 
-            ? (lead as any).especialidades 
-            : (lead.especialidade ? [lead.especialidade] : []),
-          phone_e164: lead.phone_e164,
-          estado: lead.uf,
+          nome_completo: leadAtual.nome,
+          especialidade: (leadAtual as any).especialidades?.length > 0
+            ? (leadAtual as any).especialidades
+            : (leadAtual.especialidade ? [leadAtual.especialidade] : []),
+          phone_e164: leadAtual.phone_e164,
+          estado: leadAtual.uf,
           lead_id: lead.id,
-          email: lead.email || `temp_${lead.phone_e164}@example.com`,
-          telefone: lead.phone_e164,
-          crm: lead.crm || 'PENDENTE',
+          email: leadAtual.email!.trim(),
+          telefone: leadAtual.phone_e164,
+          crm: crmAtual,
         };
-        
+
         const { data: newMedico, error: insertError } = await supabase
           .from('medicos')
           .insert(medicoPayload as any)
           .select('id')
           .single();
-        
+
         if (insertError) {
           if (insertError.message?.includes('medicos_crm_key')) {
-            throw new Error(`Já existe um médico cadastrado com o CRM "${lead.crm}". Verifique os dados.`);
+            throw new Error(`Já existe um médico cadastrado com o CRM "${crmAtual}". Verifique os dados.`);
           }
           throw insertError;
         }
@@ -878,74 +891,54 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
           .limit(1)
           .single();
 
-        if (primeiraColuna) {
-          await supabase
-            .from('medico_kanban_cards')
-            .insert({
-              nome: lead.nome,
-              cpf: lead.cpf,
-              data_nascimento: lead.data_nascimento,
-              crm: lead.crm,
-              telefone: lead.phone_e164,
-              email: lead.email,
-              observacoes: lead.observacoes,
-              status: primeiraColuna.status_id,
-              medico_id: medicoId,
-            });
-        }
+        if (!primeiraColuna) throw new Error('Não foi possível encontrar a coluna inicial do Kanban de Contratos');
+
+        const { error: cardError } = await supabase
+          .from('medico_kanban_cards')
+          .insert({
+            nome: leadAtual.nome,
+            cpf: leadAtual.cpf,
+            data_nascimento: leadAtual.data_nascimento,
+            crm: crmAtual,
+            telefone: leadAtual.phone_e164,
+            email: leadAtual.email,
+            observacoes: leadAtual.observacoes,
+            status: primeiraColuna.status_id,
+            medico_id: medicoId,
+          });
+        if (cardError) throw cardError;
       }
 
       const { error: leadError } = await supabase
         .from('leads')
-        .update({ 
+        .update({
           status: 'Convertido',
           data_conversao: new Date().toISOString(),
           convertido_por: user?.id,
           canal_conversao: canalConversao
         } as any)
         .eq('id', lead.id);
-      
+
       if (leadError) throw leadError;
 
-      // Upload JUS verification image first so we can include URL in conversion event
-      let jusPublicUrl: string | null = null;
-      const fileExt = jusImageFile.name.split('.').pop() || 'png';
-      const filePath = `${lead.id}/jus-verificacao-${Date.now()}.${fileExt}`;
-      
-      const { error: uploadError } = await supabase.storage
-        .from('lead-anexos')
-        .upload(filePath, jusImageFile, {
-          contentType: jusImageFile.type,
-          upsert: false,
-        });
-      
-      if (uploadError) {
-        console.error('Erro ao fazer upload da imagem JUS:', uploadError);
-      } else {
-        const { data: { publicUrl } } = supabase.storage
-          .from('lead-anexos')
-          .getPublicUrl(filePath);
-        jusPublicUrl = publicUrl;
-        
-        // Salvar como anexo do lead
-        await supabase.from('lead_anexos').insert({
-          lead_id: lead.id,
-          arquivo_nome: `Validação JUS - ${lead.nome}.${fileExt}`,
-          arquivo_url: publicUrl,
-          arquivo_tipo: jusImageFile.type,
-          arquivo_tamanho: jusImageFile.size,
-          usuario_id: user?.id || null,
-          usuario_nome: user?.user_metadata?.nome_completo || user?.email || null,
-        });
-      }
+      // Salvar a imagem do JUS como anexo do lead
+      await supabase.from('lead_anexos').insert({
+        lead_id: lead.id,
+        arquivo_nome: `Validação JUS - ${leadAtual.nome}.${fileExt}`,
+        arquivo_url: jusPublicUrl,
+        arquivo_tipo: jusImageFile.type,
+        arquivo_tamanho: jusImageFile.size,
+        usuario_id: user?.id || null,
+        usuario_nome: user?.user_metadata?.nome_completo || user?.email || null,
+      });
 
       await registrarConversaoMedico(lead.id, medicoId, {
         motivo_conversao: motivoConversao.trim(),
         dados_lead: {
-          nome: lead.nome,
-          especialidade: lead.especialidade,
-          telefone: lead.phone_e164,
-          email: lead.email
+          nome: leadAtual.nome,
+          especialidade: leadAtual.especialidade,
+          telefone: leadAtual.phone_e164,
+          email: leadAtual.email
         },
         jus_verificacao_url: jusPublicUrl,
       });
@@ -1369,6 +1362,10 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
     mutationFn: async () => {
       if (!lead || !medicoVinculado) throw new Error('Lead ou médico não encontrado');
       if (!motivoReprocessamento.trim()) throw new Error('O motivo do reprocessamento é obrigatório');
+      if (hasChanges) throw new Error('Salve as alterações do cadastro antes de reprocessar.');
+
+      // Reprocessar cria um card novo em Contratos: passa pela mesma trava da conversão, antes de mexer no médico
+      const leadAtual = await lerLeadCompletoParaContratos(lead.id);
 
       const medicoId = medicoVinculado.id;
 
@@ -1414,12 +1411,12 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
       const { error: cardError } = await supabase
         .from('medico_kanban_cards')
         .insert({
-          nome: lead.nome,
-          cpf: lead.cpf,
-          data_nascimento: lead.data_nascimento,
-          crm: lead.crm,
-          telefone: lead.phone_e164,
-          email: lead.email,
+          nome: leadAtual.nome,
+          cpf: leadAtual.cpf,
+          data_nascimento: leadAtual.data_nascimento,
+          crm: leadAtual.crm,
+          telefone: leadAtual.phone_e164,
+          email: leadAtual.email,
           observacoes: `[REPROCESSAMENTO]: ${motivoReprocessamento.trim()}`,
           status: primeiraColuna.status_id,
           medico_id: medicoId,
@@ -2745,34 +2742,31 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
 
                           {/* Checklist de campos obrigatórios para conversão */}
                           {(() => {
-                            const nome = editedData.nome?.trim() || lead?.nome?.trim();
-                            const cpf = editedData.cpf?.trim() || lead?.cpf?.trim();
-                            const telefone = editedData.phone_e164?.trim() || lead?.phone_e164?.trim();
-                            const email = editedData.email?.trim() || lead?.email?.trim();
-                            const unidadesVinculadas = editedData.unidades_vinculadas || lead?.unidades_vinculadas || [];
-                            const modalidade = editedData.modalidade_contrato?.trim() || lead?.modalidade_contrato?.trim();
+                            // O formulário (editedData) nasce do lead: a checklist mostra o que está na tela, inclusive um
+                            // campo apagado. Antes "editedData.x || lead.x" voltava ao valor velho e mostrava verde.
+                            const doForm = (campo: string) => (editedData[campo] ?? (lead as Record<string, unknown> | null | undefined)?.[campo] ?? null);
+                            const modalidade = doForm('modalidade_contrato')?.trim();
 
-                            // Campos opcionais (se tiver)
-                            const cnpj = editedData.cnpj?.trim() || lead?.cnpj?.trim();
-                            const crm = editedData.crm?.trim() || lead?.crm?.trim();
+                            // Mesma regra (e mesmo mapeamento) que a conversão confere no banco (src/lib/conversaoMedico.ts)
+                            const camposObrigatorios = camposObrigatoriosConversao(dadosConversaoDoLead({
+                              nome: doForm('nome'),
+                              cpf: doForm('cpf'),
+                              crm: doForm('crm'),
+                              phone_e164: doForm('phone_e164'),
+                              email: doForm('email'),
+                              unidades_vinculadas: doForm('unidades_vinculadas'),
+                              modalidade_contrato: modalidade,
+                              cnpj: doForm('cnpj'),
+                              representante_legal_nome: doForm('representante_legal_nome'),
+                              representante_legal_email: doForm('representante_legal_email'),
+                            }, propostas));
+
+                            // Só o que não trava o envio. CRM é obrigatório (Bianca, 26/11/2026); CNPJ só é opcional em PF.
+                            const cnpj = doForm('cnpj')?.trim();
                             const rqe = espRqe.length > 0 && !espRqe.some(linhaIncompleta) ? resumoEspRqe(espRqe) : '';
                             const especialidade = espRqe.length > 0 ? espRqe.map(l => formatarEspecialidade(l.nome)).join(', ') : '';
-
-                            // Mesma regra que a conversão confere no banco (src/lib/conversaoMedico.ts)
-                            const camposObrigatorios = camposObrigatoriosConversao({
-                              nome, cpf, telefone, email,
-                              unidades: unidadesVinculadas,
-                              modalidade,
-                              cnpj,
-                              representanteNome: editedData.representante_legal_nome,
-                              representanteEmail: editedData.representante_legal_email,
-                              propostas,
-                            });
-
-                            // Campos opcionais (CNPJ vira obrigatório quando a modalidade envolve PJ)
                             const camposOpcionais = [
                               ...(modalidadeExigePJ(modalidade) ? [] : [{ campo: 'CNPJ', preenchido: !!cnpj, valor: cnpj }]),
-                              { campo: 'CRM', preenchido: !!crm, valor: crm },
                               { campo: 'RQE', preenchido: !!rqe, valor: rqe },
                               { campo: 'Especialidade', preenchido: !!especialidade, valor: especialidade },
                             ];
@@ -2795,8 +2789,9 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                                   {/* 2 colunas só em tela larga: em 1024 px o diálogo é estreito e cortava "Não informado" */}
                                   <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
                                     {camposObrigatorios.map((item) => {
-                                      // Tratamento especial para Proposta Vinculada
-                                      if (item.campo === 'Proposta Vinculada' && !item.preenchido && propostaDisparoRecente) {
+                                      // Sem proposta nenhuma e com disparo recente: oferece vincular. Proposta zerada (item.falta)
+                                      // fica no vermelho com o motivo, para não esconder o que trava o envio.
+                                      if (item.campo === 'Proposta Vinculada' && !item.preenchido && !item.falta && propostaDisparoRecente) {
                                         const proposta = propostaDisparoRecente.propostaDetalhes;
                                         return (
                                           <div 
@@ -2845,6 +2840,8 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                                         <div 
                                           key={item.campo}
                                           className={`flex items-center gap-2 p-2 rounded-md border text-sm ${
+                                            item.campo === 'Proposta Vinculada' ? 'col-span-full ' : ''
+                                          }${
                                             item.preenchido 
                                               ? 'bg-green-500/10 border-green-500/30 text-green-700 dark:text-green-400' 
                                               : 'bg-red-500/10 border-red-500/30 text-red-700 dark:text-red-400'
@@ -2856,7 +2853,8 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                                             <XCircle className="h-4 w-4 flex-shrink-0" />
                                           )}
                                           <span className="font-medium">{item.campo}:</span>
-                                          <span className="truncate text-xs opacity-80">
+                                          {/* o que falta quebra linha em vez de cortar: é o que a pessoa precisa ler para corrigir */}
+                                          <span className={`min-w-0 text-xs opacity-80 ${item.preenchido ? 'truncate' : 'break-words'}`}>
                                             {item.preenchido ? item.valor : (item.falta || 'Não informado')}
                                           </span>
                                         </div>
@@ -2871,7 +2869,7 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                                     <FileText className="h-4 w-4" />
                                     Campos Opcionais (se tiver)
                                   </h4>
-                                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                                     {camposOpcionais.map((item) => (
                                       <div 
                                         key={item.campo}
@@ -2892,8 +2890,18 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                                   </div>
                                 </div>
                                 
+                                {/* A conversão confere o que está gravado: com alteração pendente, pede para salvar antes */}
+                                {todosObrigatoriosPreenchidos && hasChanges && (
+                                  <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
+                                    <p className="text-sm text-amber-700 dark:text-amber-400 flex items-center gap-2">
+                                      <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                                      Há alterações não salvas no cadastro. Salve para poder converter.
+                                    </p>
+                                  </div>
+                                )}
+
                                 {/* Checkbox de confirmação final */}
-                                {todosObrigatoriosPreenchidos && (
+                                {todosObrigatoriosPreenchidos && !hasChanges && (
                                   <div className="mt-4 p-3 rounded-lg border border-primary/30 bg-primary/5">
                                     <div className="flex items-center space-x-3">
                                       <Checkbox 
@@ -2916,8 +2924,8 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
                                 {!todosObrigatoriosPreenchidos && (
                                   <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
                                     <p className="text-sm text-amber-700 dark:text-amber-400 flex items-center gap-2">
-                                      <AlertTriangle className="h-4 w-4" />
-                                      Preencha todos os campos obrigatórios na aba "Dados Pessoais" antes de converter.
+                                      <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                                      Corrija os itens em vermelho para enviar a Contratos: dados na aba "Dados Pessoais", valor do médico na aba "Propostas".
                                     </p>
                                   </div>
                                 )}
