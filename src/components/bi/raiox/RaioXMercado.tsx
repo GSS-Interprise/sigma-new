@@ -1,4 +1,6 @@
 import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 import { useSearchParams } from "react-router-dom";
 import { format, subDays, subMonths } from "date-fns";
 import { Presentation } from "lucide-react";
@@ -12,13 +14,14 @@ import { cn } from "@/lib/utils";
 import { Apresentacao } from "./Apresentacao";
 import { BlocoFalas, BlocoGargalo, BlocoObjecoes, Fonte } from "./Blocos";
 import { ModoGestao } from "./ModoGestao";
-import { mil, useRaioXDestrava, useRaioXEsforco, useRaioXFunil, useRaioXObjecoes, type FiltroRaioX } from "./useRaioX";
+import { mil, useRaioXDestrava, useRaioXEsforco, useRaioXFunil, useRaioXObjecoes, ZENVIA_RAIOX, type FiltroRaioX } from "./useRaioX";
 
 /**
  * Raio-X do mercado médico (plano GSS dono no comando, Fase 7).
  * Pergunta da tela: "por que é difícil preencher [especialidade] em [lugar], com prova?"
  * Modo apresentação vai para o hospital (sem nome de médico, PDF); modo gestão é só da GSS.
- * Filtros vivem na URL (?esp=&uf=&periodo=&modo=) para os atalhos da campanha e da vaga.
+ * Filtros vivem na URL (?camp=&esp=&uf=&periodo=&modo=) para os atalhos da campanha e da vaga.
+ * Campanha (26/11, Raul): vem antes da especialidade; escolher uma campanha leva a especialidade dela junto.
  */
 
 const UFS = ["AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO", "MA", "MG", "MS", "MT", "PA", "PB", "PE", "PI", "PR", "RJ", "RN", "RO", "RR", "RS", "SC", "SE", "SP", "TO"];
@@ -51,11 +54,23 @@ export function RaioXMercado() {
 
   const espPadrao = useMemo(() => (especialidades?.find((e) => e.nome === "PEDIATRIA") ?? especialidades?.[0])?.id ?? "", [especialidades]);
   const espId = sp.get("esp") || espPadrao;
+  const campId = sp.get("camp") || null;
+  const { data: campanhas = [] } = useQuery({
+    queryKey: ["raiox-campanhas"],
+    staleTime: 10 * 60_000,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("campanhas").select("id, nome, especialidade_id, status")
+        .eq("tipo_campanha", "prospeccao").neq("status", "rascunho").order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as { id: string; nome: string; especialidade_id: string | null; status: string }[];
+    },
+  });
+  const campNome = campId === ZENVIA_RAIOX ? "Zenvia" : campanhas.find((c) => c.id === campId)?.nome.trim() ?? null;
   const uf = sp.get("uf") || null;
   const periodo = PERIODOS[sp.get("periodo") || ""] ? (sp.get("periodo") as string) : "tudo";
   const modo = podeGestao && sp.get("modo") === "gestao" ? "gestao" : "apresentacao";
   const desdeData = PERIODOS[periodo].desde();
-  const filtro: FiltroRaioX = { especialidadeId: espId, uf, desde: desdeData ? format(desdeData, "yyyy-MM-dd") : null };
+  const filtro: FiltroRaioX = { especialidadeId: espId, uf, desde: desdeData ? format(desdeData, "yyyy-MM-dd") : null, campanhaId: campId };
   const espNome = titulo(especialidades?.find((e) => e.id === espId)?.nome || "");
 
   const set = (k: string, v: string | null) => setSp((prev) => {
@@ -78,6 +93,24 @@ export function RaioXMercado() {
       <style>{CSS_IMPRESSAO}</style>
 
       <div className="flex flex-wrap items-center gap-2">
+        <BiCombobox
+          className="w-60"
+          value={campId ?? "todas"}
+          onChange={(v) => setSp((prev) => {
+            const n = new URLSearchParams(prev);
+            if (v === "todas") n.delete("camp"); else n.set("camp", v);
+            const esp = campanhas.find((c) => c.id === v)?.especialidade_id;
+            if (esp) n.set("esp", esp);
+            return n;
+          }, { replace: true })}
+          options={[
+            { value: "todas", label: "Todas as campanhas" },
+            { value: ZENVIA_RAIOX, label: "Zenvia (disparos de fora do Sigma)" },
+            ...campanhas.map((c) => ({ value: c.id, label: `${c.nome.trim()}${c.status === "ativa" ? "" : ` (${c.status})`}` })),
+          ]}
+          placeholder="Campanha"
+          searchPlaceholder="Buscar campanha..."
+        />
         <BiCombobox
           className="w-60"
           value={espId}
@@ -130,12 +163,12 @@ export function RaioXMercado() {
         <Card className="p-6 text-sm text-red-600">Não consegui montar o Raio-X. Recarregue a página.</Card>
       ) : f && f.alcancados === 0 ? (
         <Card className="p-6">
-          <p className="font-medium">Ainda não prospectamos {espNome}{uf ? ` em ${uf}` : ""}{periodo !== "tudo" ? " neste período" : ""}.</p>
+          <p className="font-medium">{campNome ? `A campanha ${campNome} não alcançou médicos de ${espNome}` : `Ainda não prospectamos ${espNome}`}{uf ? ` em ${uf}` : ""}{periodo !== "tudo" ? " neste período" : ""}.</p>
           <p className="mt-1 text-sm text-muted-foreground">{mil(f.base_crm)} especialistas na base da GSS prontos para a primeira campanha.</p>
         </Card>
       ) : (
         <div className="space-y-4">
-          <BlocoGargalo f={f} esp={espNome} uf={uf} kicker={`Raio-X do mercado · ${[espNome, uf].filter(Boolean).join(" · ")}`} />
+          <BlocoGargalo f={f} esp={espNome} uf={uf} kicker={`Raio-X do mercado · ${[campNome, espNome, uf].filter(Boolean).join(" · ")}`} />
           <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
             <BlocoObjecoes o={objecoes.data} />
             <BlocoFalas o={objecoes.data} d={destrava.data} esp={espNome} uf={uf} />

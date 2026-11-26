@@ -39,16 +39,19 @@ export type Esforco = {
   desde: string | null;
 };
 
-export type FiltroRaioX ={ especialidadeId: string; uf: string | null; desde: string | null };
+// campanhaId (26/11): null = todas; ZENVIA_RAIOX = tudo o que saiu pela Zenvia (no Raio-X a Zenvia é uma campanha só).
+export type FiltroRaioX = { especialidadeId: string; uf: string | null; desde: string | null; campanhaId?: string | null };
+export const ZENVIA_RAIOX = "4f43ab5a-ba5b-d453-dc18-45e4a9177c54"; // md5('zenvia')::uuid, ver _raiox_contatos
 
 function useRpc<T>(nome: string, f: FiltroRaioX, enabled = true) {
   return useQuery({
-    queryKey: ["raiox", nome, f.especialidadeId, f.uf, f.desde],
+    queryKey: ["raiox", nome, f.especialidadeId, f.uf, f.desde, f.campanhaId ?? null],
     enabled: enabled && !!f.especialidadeId,
     staleTime: 5 * 60_000,
     queryFn: async () => {
       const { data, error } = await (supabase as any).rpc(nome, {
         p_especialidade_ids: [f.especialidadeId], p_ufs: f.uf ? [f.uf] : null, p_desde: f.desde,
+        p_campanha_ids: f.campanhaId ? [f.campanhaId] : null,
       });
       if (error) throw error;
       return data as T;
