@@ -20,8 +20,10 @@ declare
   v_principal record;
   v_motivo text;
   v_achou boolean := false;
-  v_cpf_informado boolean := new.cpf is not null and trim(new.cpf) != '';
+  v_cpf_informado boolean;
 begin
+  v_cpf_informado := new.cpf is not null and trim(new.cpf) != '';
+
   -- Lead fundido não segura chave: o cadastro principal é que representa o médico.
   if new.merged_into_id is not null then
     new.chave_unica := null;
@@ -58,8 +60,9 @@ begin
   -- Mesmo CPF, como foi digitado, guardado num lead fundido (idx_leads_cpf_unique): só checa se o CPF mudou.
   if not v_achou and v_cpf_informado
      and (tg_op = 'INSERT' or new.cpf is distinct from old.cpf) then
+    -- o "is not null and trim" repete o predicado do índice parcial: sem ele o plano varre ~300 mil leads com CPF
     select id, nome, crm, merged_into_id into v_existente
-      from leads where cpf = new.cpf and id <> new.id limit 1;
+      from leads where cpf = new.cpf and cpf is not null and trim(cpf) <> '' and id <> new.id limit 1;
     if found then
       v_achou := true;
       v_motivo := 'cpf';
