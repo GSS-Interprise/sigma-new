@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { FileText, Building2, Briefcase, Calendar, DollarSign, Plus, MapPin, Package, Pencil, Trash2, Link2, Copy, User } from "lucide-react";
+import { FileText, Building2, Briefcase, Calendar, DollarSign, Plus, MapPin, Package, Pencil, Trash2, Link2, Copy, User, AlertCircle } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { toast } from "sonner";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { propostaZerada } from "@/lib/conversaoMedico";
 
 interface LeadPropostasSectionProps {
   leadId: string;
@@ -305,11 +306,12 @@ export function LeadPropostasSection({ leadId, leadNome, unidadesVinculadas }: L
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      {/* flex-wrap: no celular os dois botões não cabem ao lado do título */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="font-semibold">
           Propostas ({propostas?.length || 0})
         </h3>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="outline"
             size="sm"
@@ -341,6 +343,8 @@ export function LeadPropostasSection({ leadId, leadNome, unidadesVinculadas }: L
         <div className="space-y-3">
           {propostas.map((proposta: any) => {
             const itens = propostasItens?.[proposta.id] || [];
+            // Mesma regra da trava de Contratos; só depois de carregar os itens, para não piscar o aviso
+            const zerada = propostasItens !== undefined && propostaZerada({ proposta_itens: itens });
             
             return (
               <div key={proposta.id} className="rounded-lg border bg-card p-4 hover:border-primary/50 transition-colors group">
@@ -352,6 +356,12 @@ export function LeadPropostasSection({ leadId, leadNome, unidadesVinculadas }: L
                         {proposta.numero_proposta ? `Proposta #${proposta.numero_proposta}` : (proposta.id_proposta || proposta.id.slice(0, 8))}
                       </span>
                       {getStatusBadge(proposta.status, proposta.tipo)}
+                      {zerada && (
+                        <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                          <AlertCircle className="h-3 w-3 mr-1" />
+                          Sem valor para o médico
+                        </Badge>
+                      )}
                       
                       {/* Edit/Delete/Personalizar buttons */}
                       <div className="flex items-center gap-1 ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
@@ -495,10 +505,13 @@ export function LeadPropostasSection({ leadId, leadNome, unidadesVinculadas }: L
 
                   {/* Right Side - Value and Date */}
                   <div className="text-right shrink-0">
-                    <div className="flex items-center gap-1 text-lg font-semibold text-primary">
-                      <DollarSign className="h-4 w-4" />
-                      {formatCurrency(proposta.valor)}
-                    </div>
+                    {/* proposta.valor fica 0 na personalizada (o valor está nos itens): mostrava "R$ 0,00" com item preenchido */}
+                    {Number(proposta.valor) > 0 ? (
+                      <div className="flex items-center gap-1 text-lg font-semibold text-primary">
+                        <DollarSign className="h-4 w-4" />
+                        {formatCurrency(proposta.valor)}
+                      </div>
+                    ) : null}
                     <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
                       <Calendar className="h-3 w-3" />
                       {proposta.criado_em ? format(new Date(proposta.criado_em), "dd/MM/yyyy", { locale: ptBR }) : '-'}
@@ -508,13 +521,13 @@ export function LeadPropostasSection({ leadId, leadNome, unidadesVinculadas }: L
 
                 {/* Itens da Proposta */}
                 {itens.length > 0 && (
-                  <Collapsible className="mt-3 pt-3 border-t">
+                  <Collapsible className="mt-3 pt-3 border-t" defaultOpen={zerada}>
                     <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
                       <Package className="h-4 w-4" />
                       <span>{itens.length} {itens.length === 1 ? 'item' : 'itens'}</span>
                     </CollapsibleTrigger>
                     <CollapsibleContent className="mt-2">
-                      <div className="rounded border bg-muted/30">
+                      <div className="rounded border bg-muted/30 overflow-x-auto">
                         <table className="w-full text-sm">
                           <thead>
                             <tr className="border-b">
@@ -529,7 +542,7 @@ export function LeadPropostasSection({ leadId, leadNome, unidadesVinculadas }: L
                               <tr key={item.id} className="border-b last:border-0">
                                 <td className="p-2">{item.item_nome}</td>
                                 <td className="p-2 text-right text-muted-foreground">{formatCurrency(item.valor_contrato)}</td>
-                                <td className="p-2 text-right font-medium">{formatCurrency(item.valor_medico)}</td>
+                                <td className={`p-2 text-right font-medium ${Number(item.valor_medico) > 0 ? '' : 'text-destructive'}`}>{formatCurrency(item.valor_medico)}</td>
                                 <td className="p-2 text-center">{item.quantidade}</td>
                               </tr>
                             ))}
