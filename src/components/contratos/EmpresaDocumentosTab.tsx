@@ -76,11 +76,8 @@ export function EmpresaDocumentosTab() {
 
   return (
     <div className="space-y-4">
+      {/* título e explicação ficam no cabeçalho da página /documentos-empresa */}
       <div className="flex flex-wrap items-center gap-2">
-        <div>
-          <h2 className="text-lg font-semibold">Documentos da empresa</h2>
-          <p className="text-sm text-muted-foreground">Certidões e documentos da GSS com validade. O Sigma avisa antes de vencer.</p>
-        </div>
         <div className="ml-auto flex gap-2">
           <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setAvisos(true)}><Bell className="h-4 w-4" /> Avisos</Button>
           <Button size="sm" className="gap-1.5" onClick={() => setForm({})}><Plus className="h-4 w-4" /> Documento</Button>
@@ -176,7 +173,17 @@ function DocForm({ base, renovar, tiposUsados, onFechar }: { base?: Doc; renovar
   const [observacao, setObservacao] = useState(editar ? base?.observacao ?? "" : "");
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [salvando, setSalvando] = useState(false);
+  const [arrastando, setArrastando] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const escolher = (f?: File | null) => {
+    if (!f) return;
+    if (!(f.type === "application/pdf" || f.type.startsWith("image/") || /\.pdf$/i.test(f.name))) {
+      toast.error("Use um PDF ou uma imagem");
+      return;
+    }
+    setArquivo(f);
+  };
 
   const salvar = async () => {
     if (!tipo.trim()) return toast.error("Escolha ou escreva o tipo");
@@ -248,10 +255,28 @@ function DocForm({ base, renovar, tiposUsados, onFechar }: { base?: Doc; renovar
           </div>
           <div className="col-span-2 space-y-1">
             <span className="text-xs text-muted-foreground">Arquivo{editar && base?.arquivo_nome ? ` (atual: ${base.arquivo_nome})` : ""}</span>
-            <input ref={inputRef} type="file" accept=".pdf,image/*" className="hidden" onChange={(e) => setArquivo(e.target.files?.[0] ?? null)} />
-            <Button type="button" variant="outline" size="sm" className="w-full justify-start gap-2" onClick={() => inputRef.current?.click()}>
-              <FileUp className="h-4 w-4" /> {arquivo ? arquivo.name : editar ? "Trocar arquivo" : "Escolher arquivo"}
-            </Button>
+            <input ref={inputRef} type="file" accept=".pdf,image/*" className="hidden" onChange={(e) => escolher(e.target.files?.[0])} />
+            {/* Arrastar e soltar, como nos anexos do médico (pedido da Bianca, 25/11) */}
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              onDragOver={(e) => { e.preventDefault(); setArrastando(true); }}
+              onDragLeave={() => setArrastando(false)}
+              onDrop={(e) => { e.preventDefault(); setArrastando(false); escolher(e.dataTransfer.files?.[0]); }}
+              className={cn(
+                "flex w-full items-center gap-3 rounded-md border border-dashed px-3 py-3 text-left text-sm transition-colors",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                arrastando ? "border-primary bg-primary/5" : "border-input hover:bg-muted/40",
+              )}
+            >
+              <FileUp className="h-5 w-5 shrink-0 text-muted-foreground" />
+              <span className="min-w-0">
+                <span className="block truncate font-medium">
+                  {arquivo ? arquivo.name : arrastando ? "Solte o arquivo aqui" : editar ? "Trocar arquivo" : "Arraste o arquivo aqui ou clique para escolher"}
+                </span>
+                <span className="block text-xs text-muted-foreground">PDF ou imagem</span>
+              </span>
+            </button>
           </div>
           <div className="col-span-2 space-y-1">
             <span className="text-xs text-muted-foreground">Observação</span>

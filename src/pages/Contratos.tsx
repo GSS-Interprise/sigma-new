@@ -20,7 +20,6 @@ import { UnidadesTab } from "@/components/clientes/UnidadesTab";
 import { ContratosRascunhoTab } from "@/components/contratos/ContratosRascunhoTab";
 import { ContratosDrEscalaTab } from "@/components/contratos/ContratosDrEscalaTab";
 import { ContratosDrOportunidadeTab } from "@/components/contratos/ContratosDrOportunidadeTab";
-import { EmpresaDocumentosTab } from "@/components/contratos/EmpresaDocumentosTab";
 import { MedicosVencimentosTab } from "@/components/contratos/MedicosVencimentosTab";
 import { VencimentosConfigDialog } from "@/components/contratos/VencimentosConfigDialog";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -51,6 +50,9 @@ export default function Contratos() {
   const [cardFilterContratos, setCardFilterContratos] = useState<string | null>(null);
   const [cardFilterClientes, setCardFilterClientes] = useState<string | null>(null);
   const queryClient = useQueryClient();
+
+  // A aba virou página própria em 25/11; o e-mail do robô vencimentos-alertas ainda manda para cá
+  if (searchParams.get("aba") === "documentos-empresa") return <Navigate to="/documentos-empresa" replace />;
 
   // Verificar permissão de visualização
   if (!isAdmin && !canView('contratos')) {
@@ -459,7 +461,6 @@ export default function Contratos() {
             {!isLicitacaoOnly && <TabsTrigger value="dr-oportunidade">Dr. Oportunidade</TabsTrigger>}
             <TabsTrigger value="rascunhos">Licitações arrematadas</TabsTrigger>
             {!isLicitacaoOnly && <TabsTrigger value="clientes">Clientes</TabsTrigger>}
-            <TabsTrigger value="documentos-empresa">Documentos da empresa</TabsTrigger>
             {!isLicitacaoOnly && <TabsTrigger value="vencimentos-medicos">Vencimentos dos médicos</TabsTrigger>}
           </TabsList>
 
@@ -557,9 +558,6 @@ export default function Contratos() {
               onDelete={handleDeleteCliente}
               onManageUnidades={handleManageUnidades}
             />
-          </TabsContent>
-          <TabsContent value="documentos-empresa" className="mt-6">
-            <EmpresaDocumentosTab />
           </TabsContent>
 
           <TabsContent value="vencimentos-medicos" className="mt-6">

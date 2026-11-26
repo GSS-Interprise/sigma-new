@@ -41,6 +41,7 @@ const ROUTE_LABELS: Record<string, string> = {
   sigzap: "Conversas",
   conversas: "Conversas",
   "tempo-de-resposta": "Tempo de resposta",
+  "documentos-empresa": "Documentos da empresa",
   "numeros-whatsapp": "Números WhatsApp",
 };
 

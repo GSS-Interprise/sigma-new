@@ -9291,6 +9291,8 @@ export type Database = {
           migrado_de_medico_em: string | null
           migrado_de_medico_id: string | null
           modalidade_contrato: string | null
+          representante_legal_email: string | null
+          representante_legal_nome: string | null
           nacionalidade: string | null
           naturalidade: string | null
           nome: string
@@ -9369,6 +9371,8 @@ export type Database = {
           migrado_de_medico_em?: string | null
           migrado_de_medico_id?: string | null
           modalidade_contrato?: string | null
+          representante_legal_email?: string | null
+          representante_legal_nome?: string | null
           nacionalidade?: string | null
           naturalidade?: string | null
           nome: string
@@ -9447,6 +9451,8 @@ export type Database = {
           migrado_de_medico_em?: string | null
           migrado_de_medico_id?: string | null
           modalidade_contrato?: string | null
+          representante_legal_email?: string | null
+          representante_legal_nome?: string | null
           nacionalidade?: string | null
           naturalidade?: string | null
           nome?: string

@@ -29,7 +29,8 @@ import {
   Briefcase,
   type LucideIcon,
   Sparkles,
- Timer } from "lucide-react";
+ Timer,
+  FolderCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
@@ -56,6 +57,7 @@ type NavItem = {
   adminOrLeader?: boolean;
   diretoria?: boolean; // admin ou diretoria (os sócios da GSS)
   captacao?: CaptacaoPermission; // além do módulo, exige esta permissão de captação (admin passa)
+  algumModulo?: Modulo[]; // aparece para quem visualiza QUALQUER um destes módulos
 };
 
 type NavGroup = {
@@ -97,6 +99,8 @@ const navigationGroups: NavGroup[] = [
       // Oculto do menu em 24/11 (Raul: pouco usado); a rota continua valendo por URL.
       // { name: "Escalas", href: "/escalas", icon: Calendar, modulo: "escalas" },
       { name: "Clientes e Contratos", href: "/contratos", icon: FileText, modulo: "contratos" },
+      // Saiu de dentro de Clientes e Contratos em 25/11 (Bianca): Financeiro e Licitação também cuidam das certidões.
+      { name: "Documentos da empresa", href: "/documentos-empresa", icon: FolderCheck, algumModulo: ["contratos", "licitacoes", "financeiro"] },
       { name: "Licitações", href: "/licitacoes", icon: Gavel, modulo: "licitacoes" },
       // Oculto do menu em 24/11 (Raul: pouco usado); a rota continua valendo por URL.
       // { name: "AGES", href: "/ages", icon: Building2, modulo: "ages" },
@@ -142,6 +146,7 @@ export function Sidebar() {
     if (item.adminOrLeader) return isAdmin || isLeader;
     if (item.diretoria) return isAdmin || !!userRoles?.some((r) => r.role === "diretoria");
     if (item.captacao && !isAdmin && !hasCaptacaoPermission(item.captacao)) return false;
+    if (item.algumModulo) return isAdmin || item.algumModulo.some((m) => hasPermission(m, "visualizar"));
     const modulo = item.modulo;
     if (!modulo) return true;
     if (modulo === "dashboard") return true; // Home sempre visível

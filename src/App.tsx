@@ -35,6 +35,7 @@ import NumerosWhatsApp from "./pages/NumerosWhatsApp";
 import NovaCampanhaAssistente from "./pages/NovaCampanhaAssistente";
 import Conversas from "./pages/Conversas";
 import TempoDeResposta from "./pages/TempoDeResposta";
+import DocumentosEmpresa from "./pages/DocumentosEmpresa";
 import Vagas from "./pages/Vagas";
 import Noticias from "./pages/Noticias";
 import Parecer from "./pages/Parecer";
@@ -146,6 +147,8 @@ const App = () => (
             <Route path="/disparos/chips-saude" element={<ProtectedRoute><PermissionRoute modulo="disparos"><ChipsSaude /></PermissionRoute></ProtectedRoute>} />
             <Route path="/disparos/tarefas" element={<ProtectedRoute><PermissionRoute modulo="disparos"><DisparosCampanhas /></PermissionRoute></ProtectedRoute>} />
             <Route path="/marketing" element={<ProtectedRoute><PermissionRoute modulo="marketing"><Marketing /></PermissionRoute></ProtectedRoute>} />
+            {/* permissão por qualquer um de contratos, licitações ou financeiro: conferida dentro da página */}
+            <Route path="/documentos-empresa" element={<ProtectedRoute><DocumentosEmpresa /></ProtectedRoute>} />
             <Route path="/contratos" element={<ProtectedRoute><PermissionRoute modulo="contratos"><Contratos /></PermissionRoute></ProtectedRoute>} />
             <Route path="/relacionamento-medico" element={<ProtectedRoute><PermissionRoute modulo="relacionamento"><RelacionamentoMedico /></PermissionRoute></ProtectedRoute>} />
             <Route path="/medicos" element={<ProtectedRoute><PermissionRoute modulo="medicos"><Medicos /></PermissionRoute></ProtectedRoute>} />
