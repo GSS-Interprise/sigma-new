@@ -154,7 +154,9 @@ def ler(pasta):
         if len(v) < 8 or not re.match(r"\d{2}/\d{2}/\d{4}$", v[0]) or not re.match(r"\d{2}:\d{2}", v[1]):
             continue
         linhas.append({"Data": v[0], "Hora": v[1], "Nome do paciente": v[2], "Descricao": v[3], "Status": v[4],
-                       "Tipo de Atendimento": v[7]})
+                       "Tipo de Atendimento": v[7],
+                       # Protocolo AVC (26/11): "AVC" em qualquer coluna da linha (Indicacao Clinica, Descricao). So o sim/nao sai daqui.
+                       "avc": bool(re.search(r"(^|[^A-Za-z])AVC([^A-Za-z]|$)", valor, re.I))})
     # Total da pasta na barra de status ("1/74 itens selecionados"): a grade so expoe as linhas desenhadas (~28).
     total = None
     for t in jan.descendants(control_type="Text"):
@@ -190,7 +192,7 @@ def main():
             vence = (datetime.strptime(l["Data"] + " " + h, "%d/%m/%Y %H:%M:%S").replace(tzinfo=BRT)
                      + timedelta(hours=prazo_h)).isoformat()
         linhas.append({"data": l["Data"], "hora": l["Hora"], "origem": org, "vence": vence,
-                       "paciente": (l.get("Nome do paciente") or "")[:120], "estudo": (l.get("Descri\u00e7\u00e3o") or l.get("Descricao") or "")[:120]})
+                       "paciente": (l.get("Nome do paciente") or "")[:120], "estudo": (l.get("Descri\u00e7\u00e3o") or l.get("Descricao") or "")[:120], "avc": bool(l.get("avc"))})
     # Linha de 25 px: se as linhas ocupam a grade quase toda, pode haver mais abaixo (UIA so expoe as desenhadas).
     # Lista incompleta = ha mais exames na pasta do que linhas lidas (barra de status) ou, sem esse total, as linhas
     # enchem a grade. Incompleta vai como cheia: o Sigma nao tira ninguem da fila por nao ter visto.

@@ -20,7 +20,12 @@ export type Passo = {
   contato_papel?: PapelContato | null;
   contato_telefone?: string | null;
   contato_email?: string | null;
+  periodo?: Periodo | null;
 };
+// Quando o contato recebe (Wagner, 26/11): comercial = seg a sex, 7h às 19h de Brasília; fora = o resto.
+// Mesma regra do motor: noPeriodo em supabase/functions/_shared/slaEscada.ts.
+export type Periodo = "sempre" | "comercial" | "fora";
+export const PERIODO: Record<Periodo, string> = { sempre: "A qualquer hora", comercial: "Seg a sex, 7h às 19h", fora: "Noites e fins de semana" };
 
 export const CANAL: Record<Canal, string> = { whatsapp: "WhatsApp", ligacao: "Ligação", email: "E-mail" };
 export const PAPEL_CONTATO: Record<PapelContato, string> = { coordenacao: "Coordenação", equipe: "Equipe", diretoria: "Diretoria" };

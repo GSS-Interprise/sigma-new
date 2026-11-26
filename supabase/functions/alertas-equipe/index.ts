@@ -19,6 +19,7 @@
 // o aviso vale desde já (não espera alertas_equipe_inicio); sem lista, vão os destinatários gerais acima.
 // Só service_role chama.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
+import { noPeriodo } from "../_shared/slaEscada.ts";
 import { destinosDaConfig, destinosValidos, trechoAviso } from "../_shared/alertas.ts";
 import { type DestinoFuro, type Feito, type Furo, HORIZONTE_DIAS, montarAvisos, textoAviso } from "../_shared/furos.ts";
 import { appUrl } from "../_shared/app-url.ts";
@@ -256,9 +257,10 @@ async function estacaoSla(admin: any, b: any) {
   const unidade = String(b.unidade || "SLA");
   const resumo = evento === "voltou" ? `${unidade} voltou ${b.quando || ""}` : evento === "continua" ? `${unidade} continua ${b.quando || ""}` : `${unidade} parou ${b.quando || ""}`;
   const detalhe = String(b.detalhe || "").replace(/\s+/g, " ").trim().slice(0, 400) || "Sem detalhe.";
-  let lista: { nome: string; fone: string }[] = [];
+  let lista: { nome: string; fone: string; periodo?: string }[] = [];
   try { lista = JSON.parse(await config(admin, "sla_estacao_destinos") || "[]"); } catch { lista = []; }
-  lista = lista.filter((d) => dig(d?.fone).length >= 12);
+  // Período (26/11, Wagner): Brenda no horário comercial, Wagner à noite e no fim de semana. Teste manual vai a todos.
+  lista = lista.filter((d) => dig(d?.fone).length >= 12 && (b.todos === true || noPeriodo(d?.periodo)));
   if (!lista.length) { const t = dig(await config(admin, "sla_teste_destino")); if (t) lista = [{ nome: "Teste", fone: t }]; }
   if (!lista.length) return { pulado: "sem destinatario" };
   const sender = await remetente(admin);

@@ -7,7 +7,18 @@
 // por exame; o motor só chama isto para exame que ninguém assumiu.
 export type PassoAviso = {
   id: string; destino: "plantonista" | "contato"; minutos: number; canal: "whatsapp" | "ligacao" | "email"; ativo: boolean;
+  periodo?: string | null;
 };
+
+// Período do contato da Coordenação (Wagner, 26/11: Brenda no horário comercial, Wagner à noite e no fim de semana,
+// Ramone sempre, por último). Comercial = segunda a sexta, 7h às 19h de Brasília; fora = o resto. Sem período = sempre.
+export function noPeriodo(periodo: string | null | undefined, agora = new Date()): boolean {
+  if (periodo !== "comercial" && periodo !== "fora") return true;
+  const sp = new Date(agora.getTime() - 3 * 3_600_000); // Brasília sem horário de verão
+  const dia = sp.getUTCDay(), hora = sp.getUTCHours();
+  const comercial = dia >= 1 && dia <= 5 && hora >= 7 && hora < 19;
+  return periodo === "comercial" ? comercial : !comercial;
+}
 
 /**
  * Passos a disparar agora para um exame.
@@ -17,8 +28,9 @@ export type PassoAviso = {
  * não recebe o 1º e o 2º aviso juntos; e passo anterior a um que já foi não volta. Contatos: cada um é uma pessoa,
  * todos os que chegaram vão.
  */
-export function passosAgora(passos: PassoAviso[], feitos: Set<string>, desdeVencimentoMin: number): PassoAviso[] {
-  const chegaram = passos.filter((p) => p.ativo && p.minutos <= desdeVencimentoMin && !feitos.has(p.id));
+export function passosAgora(passos: PassoAviso[], feitos: Set<string>, desdeVencimentoMin: number, agora = new Date()): PassoAviso[] {
+  const chegaram = passos.filter((p) => p.ativo && p.minutos <= desdeVencimentoMin && !feitos.has(p.id)
+    && (p.destino !== "contato" || noPeriodo(p.periodo, agora)));
   const doPlantonista = passos.filter((p) => p.destino === "plantonista");
   const ultimoFeito = Math.max(-Infinity, ...doPlantonista.filter((p) => feitos.has(p.id)).map((p) => p.minutos));
   const plantonista = chegaram.filter((p) => p.destino === "plantonista" && p.minutos > ultimoFeito)

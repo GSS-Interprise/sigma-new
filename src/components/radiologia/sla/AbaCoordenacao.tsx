@@ -11,14 +11,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { normalizarTelefone, telefoneBonito } from "./useSla";
-import { CANAL, type Canal, MAX_DEPOIS, PAPEL_CONTATO, type PapelContato, type Passo, quando, usePassos, useSalvarPassos } from "./usePassos";
+import { CANAL, type Canal, MAX_DEPOIS, PAPEL_CONTATO, type PapelContato, type Passo, PERIODO, type Periodo, quando, usePassos, useSalvarPassos } from "./usePassos";
 
-type Linha = { id?: string; nome: string; papel: PapelContato; canal: Canal; contato: string; min: string; ativo: boolean };
+type Linha = { id?: string; nome: string; papel: PapelContato; canal: Canal; contato: string; min: string; ativo: boolean; periodo: Periodo };
 
 const paraLinha = (p: Passo): Linha => ({
   id: p.id, nome: p.contato_nome ?? "", papel: p.contato_papel ?? "coordenacao", canal: p.canal,
   contato: p.canal === "email" ? p.contato_email ?? "" : p.contato_telefone ? telefoneBonito(p.contato_telefone) : "",
-  min: String(Math.max(0, p.minutos)), ativo: p.ativo,
+  min: String(Math.max(0, p.minutos)), ativo: p.ativo, periodo: p.periodo ?? "sempre",
 });
 
 function erroDe(l: Linha, n: number) {
@@ -47,6 +47,7 @@ export function AbaCoordenacao() {
     return {
       id: l.id, destino: "contato", canal: l.canal, minutos: Number(l.min), ativo: l.ativo, contato_nome: l.nome.trim(),
       contato_papel: l.papel, contato_telefone: email ? null : normalizarTelefone(l.contato), contato_email: email ? l.contato.trim() : null,
+      periodo: l.periodo,
     };
   }));
 
@@ -56,7 +57,7 @@ export function AbaCoordenacao() {
         <CardTitle className="text-base">Se ninguém assumir o laudo</CardTitle>
         <p className="text-sm text-muted-foreground">
           {ativos.length
-            ? `Depois do prazo: ${ativos.map((l) => `${l.nome.trim()} ${quando(Number(l.min)).replace(" depois do prazo", "")}`).join(", ")}.`
+            ? `Depois do prazo: ${ativos.map((l) => `${l.nome.trim()} ${quando(Number(l.min)).replace(" depois do prazo", "")}${l.periodo === "sempre" ? "" : ` (${PERIODO[l.periodo].toLowerCase()})`}`).join(", ")}.`
             : "Ninguém cadastrado: o exame vencido sem dono vai só para o e-mail da coordenação."}
         </p>
       </CardHeader>
@@ -99,7 +100,13 @@ export function AbaCoordenacao() {
                   <span className="text-muted-foreground">Avisar</span>
                   <Input className="h-9 w-20 tabular-nums" inputMode="numeric" value={l.min} aria-label={`Minutos depois do prazo, contato ${i + 1}`}
                     onChange={(e) => muda(i, { min: e.target.value.replace(/\D/g, "") })} />
-                  <span className="text-muted-foreground">min depois do prazo, se ninguém assumiu</span>
+                  <span className="text-muted-foreground">min depois do prazo, se ninguém assumiu,</span>
+                  <Select value={l.periodo} onValueChange={(v) => muda(i, { periodo: v as Periodo })}>
+                    <SelectTrigger className="h-9 w-[200px]" aria-label={`Quando avisar o contato ${i + 1}`}><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(PERIODO).map(([k, n]) => <SelectItem key={k} value={k}>{n}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
                   <div className="ml-auto flex items-center gap-2">
                     <Switch checked={l.ativo} onCheckedChange={(v) => muda(i, { ativo: v })} aria-label={`Contato ${i + 1} ligado`} />
                     <Button variant="ghost" size="icon" className="h-9 w-9" aria-label={`Remover contato ${i + 1}`}
@@ -112,7 +119,7 @@ export function AbaCoordenacao() {
             ))}
             <div className="flex flex-wrap items-center gap-2">
               <Button variant="outline" className="h-9" disabled={linhas.length >= 12}
-                onClick={() => setLinhas((ls) => [...ls, { nome: "", papel: "coordenacao", canal: "whatsapp", contato: "", min: String(ls.length ? 15 : 10), ativo: true }])}>
+                onClick={() => setLinhas((ls) => [...ls, { nome: "", papel: "coordenacao", canal: "whatsapp", contato: "", min: String(ls.length ? 15 : 10), ativo: true, periodo: "sempre" }])}>
                 <Plus className="mr-1 h-4 w-4" />Adicionar contato
               </Button>
               <div className="ml-auto flex gap-2">

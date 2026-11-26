@@ -174,7 +174,7 @@ export function useEstacoes() {
 // Quem recebe o aviso de estação parada/voltou (config sla_estacao_destinos): WhatsApp pelo alertas-equipe, e-mail
 // pelo sla-alertas.
 // Lista vazia = o aviso vai só para o número de teste.
-export type DestinoEstacao = { nome: string; fone?: string; email?: string };
+export type DestinoEstacao = { nome: string; fone?: string; email?: string; periodo?: "sempre" | "comercial" | "fora" };
 export function useEstacaoDestinos() {
   return useQuery({
     queryKey: ["sla-estacao-destinos"],

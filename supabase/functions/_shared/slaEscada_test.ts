@@ -1,5 +1,5 @@
 import { assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import { calcularIndicadores, daModalidade, destinoDoAviso, modalidadeDoExame, passosAgora, saidaConfiavel, textoIndicadores, type ExameDia } from "./slaEscada.ts";
+import { calcularIndicadores, daModalidade, destinoDoAviso, modalidadeDoExame, noPeriodo, passosAgora, saidaConfiavel, textoIndicadores, type ExameDia } from "./slaEscada.ts";
 
 const P = (id: string, destino: "plantonista" | "contato", minutos: number, ativo = true) =>
   ({ id, destino, minutos, canal: "whatsapp" as const, ativo });
@@ -106,4 +106,21 @@ Deno.test("plantonista da modalidade; sem ninguém dela, todos", () => {
   const p = [{ nome: "a", modalidade: "TC" }, { nome: "b", modalidade: "US" }, { nome: "c", modalidade: null }];
   assertEquals(daModalidade(p, "US").map((x) => x.nome), ["b", "c"]);
   assertEquals(daModalidade([{ nome: "a", modalidade: "TC" }], "US").map((x) => x.nome), ["a"]);
+});
+
+Deno.test("período do contato: comercial seg-sex 7h-19h, fora = noite e fim de semana (Wagner, 26/11)", () => {
+  // 26/11/2026 é quinta. Horas em Brasília (UTC-3).
+  const qui10 = new Date("2026-11-26T13:00:00Z"), qui20 = new Date("2026-11-26T23:00:00Z");
+  const sab10 = new Date("2026-11-28T13:00:00Z"), qui0659 = new Date("2026-11-26T09:59:00Z");
+  assertEquals([noPeriodo("comercial", qui10), noPeriodo("fora", qui10), noPeriodo("sempre", qui10)], [true, false, true]);
+  assertEquals([noPeriodo("comercial", qui20), noPeriodo("fora", qui20)], [false, true]);
+  assertEquals([noPeriodo("comercial", sab10), noPeriodo("fora", sab10)], [false, true]);
+  assertEquals([noPeriodo("comercial", qui0659), noPeriodo("fora", qui0659)], [false, true]);
+  assertEquals(noPeriodo(null, qui20), true);
+});
+
+Deno.test("período: contato fora do período não sai (e fica para quando entrar, se ainda couber)", () => {
+  const ps = [{ ...P("brenda", "contato", 10), periodo: "comercial" }, { ...P("wagner", "contato", 10), periodo: "fora" }];
+  assertEquals(ids(passosAgora(ps, new Set(), 12, new Date("2026-11-26T13:00:00Z"))), ["brenda"]);
+  assertEquals(ids(passosAgora(ps, new Set(), 12, new Date("2026-11-26T23:00:00Z"))), ["wagner"]);
 });

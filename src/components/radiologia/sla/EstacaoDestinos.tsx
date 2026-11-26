@@ -7,11 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { PERIODO, type Periodo } from "./usePassos";
 import { normalizarTelefone, telefoneBonito, useEstacaoDestinos, useSalvarEstacaoDestinos } from "./useSla";
 
-type Linha = { nome: string; fone: string; email: string };
+type Linha = { nome: string; fone: string; email: string; periodo: Periodo };
 
 function erroDe(l: Linha, n: number) {
   if (!l.nome.trim()) return `Pessoa ${n}: informe o nome.`;
@@ -25,7 +27,7 @@ export function EstacaoDestinos() {
   const destinos = useEstacaoDestinos();
   const salvar = useSalvarEstacaoDestinos();
   const { toast } = useToast();
-  const salvos = useMemo(() => (destinos.data ?? []).map((d) => ({ nome: d.nome, fone: d.fone ? telefoneBonito(d.fone) : "", email: d.email ?? "" })), [destinos.data]);
+  const salvos = useMemo(() => (destinos.data ?? []).map((d) => ({ nome: d.nome, fone: d.fone ? telefoneBonito(d.fone) : "", email: d.email ?? "", periodo: d.periodo ?? "sempre" })), [destinos.data]);
   const [linhas, setLinhas] = useState<Linha[]>([]);
   useEffect(() => { setLinhas(salvos); }, [salvos]);
 
@@ -33,7 +35,7 @@ export function EstacaoDestinos() {
   const erro = linhas.map((l, i) => erroDe(l, i + 1)).find(Boolean) ?? null;
   const muda = (i: number, p: Partial<Linha>) => setLinhas((ls) => ls.map((l, j) => (j === i ? { ...l, ...p } : l)));
 
-  const enviar = () => salvar.mutate(linhas.map((l) => ({ nome: l.nome.trim(), fone: l.fone.trim() ? normalizarTelefone(l.fone)! : undefined, email: l.email.trim() || undefined })), {
+  const enviar = () => salvar.mutate(linhas.map((l) => ({ nome: l.nome.trim(), fone: l.fone.trim() ? normalizarTelefone(l.fone)! : undefined, email: l.email.trim() || undefined, periodo: l.periodo })), {
     onSuccess: () => toast({ title: "Pronto", description: linhas.length ? "Na próxima queda, o aviso vai para essas pessoas." : "Lista vazia: o aviso vai só para o número de teste." }),
     onError: (e) => toast({ title: "Não salvou", description: (e as Error).message, variant: "destructive" }),
   });
@@ -44,7 +46,7 @@ export function EstacaoDestinos() {
         <CardTitle className="text-base">Se a estação parar</CardTitle>
         <p className="text-sm text-muted-foreground">
           {salvos.length
-            ? `Aviso quando um PC da estação para de ler e quando volta: ${salvos.map((l) => l.nome).join(", ")}.`
+            ? `Aviso quando um PC da estação para de ler e quando volta: ${salvos.map((l) => (l.periodo === "sempre" ? l.nome : `${l.nome} (${PERIODO[l.periodo].toLowerCase()})`)).join(", ")}.`
             : "Ninguém cadastrado: o aviso de estação parada vai só para o número de teste."}
         </p>
       </CardHeader>
@@ -67,6 +69,16 @@ export function EstacaoDestinos() {
                   <Label htmlFor={`e-email-${i}`}>E-mail</Label>
                   <Input id={`e-email-${i}`} value={l.email} inputMode="email" placeholder="nome@gestaoservicosaude.com.br" onChange={(e) => muda(i, { email: e.target.value })} />
                 </div>
+                {/* Segunda linha do cartão (order-last): com 5 colunas, nome e telefone ficavam cortados em 1024 e 1440. */}
+                <div className="flex flex-wrap items-center gap-2 md:order-last md:col-span-4">
+                  <span className="text-muted-foreground">Avisar</span>
+                  <Select value={l.periodo} onValueChange={(v) => muda(i, { periodo: v as Periodo })}>
+                    <SelectTrigger className="h-9 w-[220px]" aria-label={`Quando avisar a pessoa ${i + 1}`}><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(PERIODO).map(([k, n]) => <SelectItem key={k} value={k}>{n}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <Button variant="ghost" size="icon" className="h-9 w-9" aria-label={`Remover pessoa ${i + 1}`}
                   onClick={() => setLinhas((ls) => ls.filter((_, j) => j !== i))}>
                   <Trash2 className="h-4 w-4" />
@@ -75,7 +87,7 @@ export function EstacaoDestinos() {
             ))}
             <div className="flex flex-wrap items-center gap-2">
               <Button variant="outline" className="h-9" disabled={linhas.length >= 10}
-                onClick={() => setLinhas((ls) => [...ls, { nome: "", fone: "", email: "" }])}>
+                onClick={() => setLinhas((ls) => [...ls, { nome: "", fone: "", email: "", periodo: "sempre" }])}>
                 <Plus className="mr-1 h-4 w-4" />Adicionar pessoa
               </Button>
               <div className="ml-auto flex gap-2">

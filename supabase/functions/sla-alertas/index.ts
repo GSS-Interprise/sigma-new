@@ -229,7 +229,7 @@ async function checarExames(admin: any, forcar = false, unidades = UNIDADES, tes
   const avisarExterno = AVISAR_EXTERNO;
   // Sequência de avisos configurada nas abas Avisos e Coordenação (sla_aviso_passos, 21/11).
   const { data: passosTodos } = await admin.from("sla_aviso_passos")
-    .select("id, unidade, destino, minutos, canal, ativo, contato_nome, contato_papel, contato_telefone, contato_email")
+    .select("id, unidade, destino, minutos, canal, ativo, contato_nome, contato_papel, contato_telefone, contato_email, periodo")
     .order("ordem").order("id");
   for (const unidade of unidades) {
     // Coletor parado = fila velha: o exame pode já ter sido laudado. Não alerta médico com dado velho
@@ -281,7 +281,7 @@ async function checarExames(admin: any, forcar = false, unidades = UNIDADES, tes
     for (const e of exames) {
       const feitos = new Set<string>(ja.filter((a: any) => a.exame_id === e.id && a.passo_id).map((a: any) => a.passo_id));
       const fim = new Date(e.vence_em).getTime();
-      const agoraPassos = passosAgora(passos, feitos, (agora.getTime() - fim) / 60000) as any[];
+      const agoraPassos = passosAgora(passos, feitos, (agora.getTime() - fim) / 60000, agora) as any[];
       if (!agoraPassos.length) continue;
       // Teto por rodada: se algo escapar das travas acima, sai no máximo isto a cada 2 min (o resto fica para a
       // próxima rodada, mais urgente primeiro), e não 100 mensagens de uma vez no número da Meta.

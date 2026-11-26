@@ -51,13 +51,17 @@ serve(async (req) => {
     return {
       data: dataValida(l?.data), hora: String(l?.hora || ""), origem: String(l?.origem || "").toLowerCase(),
       paciente: String(l?.paciente || "").slice(0, 120) || null, estudo: String(l?.estudo || "").slice(0, 120) || null,
-      vence: venceValido(l?.vence),
+      vence: venceValido(l?.vence), avc: l?.avc === true,
     };
   }).filter((l: { hora: string; origem: string }) => /^\d{2}:\d{2}(:\d{2})?$/.test(l.hora) && ORIGENS.has(l.origem))
     .map((l: any) => {
       // Protocolo AVC: 30 min de prazo, como urgência (Wagner, 24/11: "Tem os protocolos de AVC - 30 min. Importante").
-      // Vale para qualquer unidade em que o estudo traga "AVC" no nome. Hora do PACS é de Brasília.
-      if (!AVC.test(l.estudo ?? "")) return l;
+      // Vale para qualquer unidade em que o estudo traga "AVC" no nome, ou em que a estação marque avc = true (26/11: no
+      // Marieta o técnico escreve "protocolo avc" na coluna Indicação Clínica; o texto da indicação não sai da estação).
+      // Hora do PACS é de Brasília.
+      const { avc, ...resto } = l;
+      if (!avc && !AVC.test(l.estudo ?? "")) return resto;
+      l = resto;
       const dia = l.data ?? new Date(lidaEm.getTime() - 3 * 3_600_000).toISOString().slice(0, 10);
       const inicio = new Date(`${dia}T${l.hora.length === 5 ? l.hora + ":00" : l.hora}-03:00`);
       return isNaN(inicio.getTime()) ? l : { ...l, origem: "ps", vence: new Date(inicio.getTime() + 30 * 60_000).toISOString() };

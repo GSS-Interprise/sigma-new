@@ -7,7 +7,7 @@
 $base = "C:\ProgramData\ssh-tunel"
 $saida = "$base\captura"
 $url = "https://zupsbgtoeoixfokzkjro.supabase.co/functions/v1/sla-coletor"
-$versao = "coletor-v8"
+$versao = "coletor-v9"
 # Configuracao por estacao (22/11): C:\ProgramData\ssh-tunel\estacao.json. Sem o arquivo, vale o PC do Marieta
 # (tela 1920x1080). O PC da Brenda (CEPON) tem o seu: Marieta e CEPON usam o mesmo Vue PACS e nao abrem juntos.
 $cfg = @{ unidade = "marieta"; grade_x = 487; grade_largura = 1425; grade_topo = 236; atualizar_x = 340; atualizar_y = 95 }
@@ -347,19 +347,22 @@ foreach ($bm in $telas) { $bm.Dispose() }
 Remove-Item "$saida\linha.png" -ErrorAction SilentlyContinue
 # Nome do paciente e estudo (coluna Descricao), pelas palavras do OCR da linha (decisao do Raul, 12/11: o aviso
 # leva nome e estudo). Colunas fixas nesta estacao (1920x1080): Nome x 597-805, Descricao x 978-1315.
+# Protocolo AVC (Wagner, 26/11): o tecnico escreve "protocolo avc" na coluna Indicacao Clinica, a direita da
+# Descricao. So vai o sim/nao (avc), nunca o texto da indicacao. O sla-coletor da 30 min de prazo.
 foreach ($l in $linhas) {
-  $nm = @(); $es = @()
+  $nm = @(); $es = @(); $ind = @()
   if ($l.tents.Count -gt 0) {
     $esc0 = $l.tents[0][0]
     foreach ($w in ($l.tents[0][1] | Sort-Object x)) {
       $sx = $gx + $w.x / $esc0
-      if ($sx -ge 597 -and $sx -lt 805) { $nm += $w.t } elseif ($sx -ge 978 -and $sx -lt 1315) { $es += $w.t }
+      if ($sx -ge 597 -and $sx -lt 805) { $nm += $w.t } elseif ($sx -ge 978 -and $sx -lt 1315) { $es += $w.t } elseif ($sx -ge 1315) { $ind += $w.t }
     }
   }
   $l.paciente = (($nm -join ' ') -replace '[^\p{L}\s\.\-]', '').Trim()
   $l.estudo = (($es -join ' ') -replace '\s+', ' ').Trim()
+  $l.avc = (($ind + $es) -join ' ') -match '(?i)(^|[^a-z])avc([^a-z]|$)'
 }
-$envio = @($linhas | Where-Object { $_.hora } | ForEach-Object { @{ data = $_.data; hora = $_.hora; origem = $_.origem; paciente = $_.paciente; estudo = $_.estudo } })
+$envio = @($linhas | Where-Object { $_.hora } | ForEach-Object { @{ data = $_.data; hora = $_.hora; origem = $_.origem; paciente = $_.paciente; estudo = $_.estudo; avc = [bool]$_.avc } })
 $detalhe = @{
   atualizou = $atualizou; versao = $versao; faixas = $acum.Count; paginas = $paginas; quebrou = $quebrou; sem_hora = @($linhas | Where-Object { -not $_.hora }).Count
   por_modelo = @($linhas | Where-Object { $_.via -eq 'modelo' }).Count
