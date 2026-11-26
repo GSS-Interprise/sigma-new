@@ -259,11 +259,15 @@ export default function CampanhasProspeccao() {
           rows.flatMap((r) => r.especialidade_ids || []).filter(Boolean),
         ),
       );
+      // 26/11: nomes, total de leads e estado operacional vêm em paralelo (antes eram 3 idas ao banco em fila).
+      const ids = rows.map((r) => r.id);
+      const [espRes, countsRes, estadosRes] = await Promise.all([
+        todosIds.length > 0 ? supabase.from("especialidades").select("id, nome").in("id", todosIds) : Promise.resolve({ data: [] as { id: string; nome: string }[] }),
+        ids.length > 0 ? supabase.from("vw_campanha_lead_counts").select("campanha_id, total_leads").in("campanha_id", ids) : Promise.resolve({ data: [] }),
+        ids.length > 0 ? supabase.from("vw_campanha_operational_state_v2" as never).select("campanha_id, operational_state, operational_reason").in("campanha_id", ids) : Promise.resolve({ data: [] }),
+      ]);
       if (todosIds.length > 0) {
-        const { data: espNomes } = await supabase
-          .from("especialidades")
-          .select("id, nome")
-          .in("id", todosIds);
+        const espNomes = espRes.data;
         const mapa = new Map((espNomes || []).map((specialty) => [specialty.id, specialty.nome]));
         for (const r of rows) {
           if (r.especialidade_ids && r.especialidade_ids.length > 0) {
@@ -276,18 +280,9 @@ export default function CampanhasProspeccao() {
 
       // Total REAL de leads por campanha (inclui descartado/sem_resposta, que os
       // contadores denormalizados não somam). Card mostra o número verdadeiro.
-      const ids = rows.map((r) => r.id);
       if (ids.length > 0) {
-        const [{ data: counts }, { data: operationalStates }] = await Promise.all([
-          supabase
-            .from("vw_campanha_lead_counts")
-            .select("campanha_id, total_leads")
-            .in("campanha_id", ids),
-          supabase
-            .from("vw_campanha_operational_state_v2" as never)
-            .select("campanha_id, operational_state, operational_reason")
-            .in("campanha_id", ids),
-        ]);
+        const counts = countsRes.data as { campanha_id: string; total_leads: number }[] | null;
+        const operationalStates = estadosRes.data;
         const cmap = new Map((counts || []).map((count) => [count.campanha_id, count.total_leads]));
         const omap = new Map(
           ((operationalStates || []) as Array<{

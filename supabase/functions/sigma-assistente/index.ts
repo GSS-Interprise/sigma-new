@@ -246,7 +246,7 @@ async function gemini(sistema: string, contents: Conteudo[], ferrs: Ferr[], rest
 // ---- Claude da GSS (Hermes na VPS) ------------------------------------------------------------------------
 
 const ROTINA_CLAUDE = "ia_claude_robo_sigma";
-const MODELO_CLAUDE = "claude-sonnet (Hermes)";
+const MODELO_CLAUDE = "claude-haiku-5-5 (Hermes)";
 // Cada passo é um pedido à fila: o worker pega em 2-8 s e o Hermes leva uns 10-20 s. Passado o teto, o Gemini
 // responde do zero com o próprio teto (TETO_MS), e o total fica abaixo do limite da edge (150 s).
 const TETO_CLAUDE_MS = 80_000;

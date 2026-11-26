@@ -1,16 +1,19 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Radio, Stethoscope } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ZenviaKanban } from "./ZenviaKanban";
 
 // Disparos pela Zenvia como campanhas, uma por especialidade (pedido do Raul em 25/11/2026: "monitoramento do Zenvia
-// dentro de uma campanha Zenvia xxxx"). Só leitura: a Zenvia dispara fora do Sigma, então aqui não tem leads, Kanban
-// nem botão. Pergunta da tela: "Quanto saiu pela Zenvia em cada especialidade, e quantos médicos responderam?"
+// dentro de uma campanha Zenvia xxxx"). A Zenvia dispara fora do Sigma; desde 26/11 o cartão abre o Kanban dos médicos
+// (ZenviaKanban), com a conversa de quem respondeu. Pergunta da tela: "Quanto saiu pela Zenvia em cada especialidade, e quantos médicos responderam?"
 // Dados: view zenvia_campanhas (migration 20261125200000), montada dos eventos do webhook da Zenvia.
 
 type ZenviaCampanha = {
   id: string;
+  especialidade_id: string | null;
   nome: string;
   status: "ativa" | "finalizada";
   disparos_hoje: number;
@@ -82,6 +85,7 @@ export function ZenviaCampanhas() {
 }
 
 function ZenviaCard({ c }: { c: ZenviaCampanha }) {
+  const [aberto, setAberto] = useState(false);
   const especialidade = c.nome.replace(/^Zenvia · /, "");
   const situacao =
     c.disparos_hoje > 0
@@ -96,7 +100,10 @@ function ZenviaCard({ c }: { c: ZenviaCampanha }) {
   ];
 
   return (
-    <Card className="border-cyan-200/80">
+    <>
+    <Card className="border-cyan-200/80 transition-colors hover:border-cyan-400">
+      <button type="button" onClick={() => setAberto(true)} className="w-full rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+        aria-label={`Abrir o Kanban de ${c.nome}`}>
       <CardContent className="space-y-3 p-4">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
@@ -127,6 +134,9 @@ function ZenviaCard({ c }: { c: ZenviaCampanha }) {
           ))}
         </dl>
       </CardContent>
+      </button>
     </Card>
+    <ZenviaKanban especialidadeId={c.especialidade_id} nome={c.nome} aberto={aberto} fechar={() => setAberto(false)} />
+    </>
   );
 }

@@ -11,8 +11,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 // mensagens e fila de cada campanha ativa pelo número oficial). Hoje, 7 dias e campanhas vêm abaixo.
 // Disparo = 1ª mensagem de campanha enviada a um médico (conta também a que a Meta não entregou).
 // Máquina (fórmula, fonte) fica fora; o único aviso é "nada saiu" dentro do horário de envio.
-// Zenvia (25/11): o que sai pela Zenvia aparece na barra ciano empilhada e em "Hoje por campanha" (Zenvia · especialidade),
-// sem entrar na estimativa nem no andamento, que medem o ritmo das campanhas do próprio Sigma. Fora da linha "Hoje":
+// Zenvia (25/11): o que sai pela Zenvia aparece na barra ciano empilhada e em "Hoje por campanha" (Zenvia · especialidade).
+// 26/11 (Raul): a estimativa, o "Hoje" e o "fecha perto de" passam a contar a Zenvia também. A estimativa da Zenvia é a
+// média dos dias úteis dos últimos 7 em que ela disparou; a Zenvia sai em lote, então entra inteira, sem projeção.
+// A fila (dias úteis) continua só a das campanhas do Sigma, que é a única que o Sigma conhece. Fora da linha "Hoje":
 // em 1024 px ela empurrava o "fecha perto de" para fora.
 
 type Painel = {
@@ -82,9 +84,14 @@ export function DisparosHojeFaixa({ className = "" }: { className?: string }) {
     );
   }
 
-  const est = data.estimativa_dia;
-  const pct = est > 0 ? Math.min(100, Math.round((data.hoje / est) * 100)) : 0;
-  const diasFila = est > 0 ? Math.ceil(data.fila / est) : null;
+  const estSigma = data.estimativa_dia;
+  const zenHoje = data.zenvia_hoje ?? 0;
+  const diasZen = data.serie.filter((d) => (d.zenvia ?? 0) > 0 && ![0, 6].includes(new Date(`${d.dia}T12:00:00`).getDay()));
+  const estZen = diasZen.length ? Math.round(diasZen.reduce((s, d) => s + (d.zenvia ?? 0), 0) / diasZen.length) : 0;
+  const est = estSigma + estZen;
+  const hoje = data.hoje + zenHoje;
+  const pct = est > 0 ? Math.min(100, Math.round((hoje / est) * 100)) : 0;
+  const diasFila = estSigma > 0 ? Math.ceil(data.fila / estSigma) : null;
   const maxSerie = Math.max(1, est, ...data.serie.map((d) => d.medicos + (d.zenvia ?? 0)));
   const temZenvia = data.serie.some((d) => (d.zenvia ?? 0) > 0);
   // Lista "Hoje por campanha": as do Sigma e, depois, as da Zenvia que dispararam hoje (sem estimativa: é fora do Sigma).
@@ -93,14 +100,16 @@ export function DisparosHojeFaixa({ className = "" }: { className?: string }) {
     ...(data.zenvia_campanhas ?? []).filter((z) => z.hoje > 0).map((z) => ({ chave: z.id, nome: z.campanha, hoje: z.hoje, est: null })),
   ].sort((a, b) => b.hoje - a.hoje || (b.est ?? 0) - (a.est ?? 0)); // quem mais disparou hoje primeiro (só 3 cabem)
   const silencio = silencioMin(data.ultimo_envio);
-  const projecao = projecaoDia(data.hoje, est);
+  const projSigma = projecaoDia(data.hoje, estSigma);
+  const projecao = projSigma === null ? null : projSigma + zenHoje;
+  const detalhe = zenHoje || estZen ? `Sigma ${fmt(data.hoje)} + Zenvia ${fmt(zenHoje)} hoje; estimativa Sigma ~${fmt(estSigma)} + Zenvia ~${fmt(estZen)}` : undefined;
 
   return (
     <button
       type="button"
       onClick={() => navigate("/prospeccao")}
       className={`group grid h-auto w-full grid-cols-1 items-center gap-4 rounded-xl border bg-card px-5 py-4 text-left shadow-sm transition-colors hover:border-primary/40 lg:h-[112px] lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_minmax(0,1.1fr)_auto] lg:gap-6 lg:py-0 ${className}`}
-      aria-label={`Estimativa de ${est} disparos por dia; ${data.hoje} hoje. Abrir campanhas.`}
+      aria-label={`Estimativa de ${est} disparos por dia; ${hoje} hoje${zenHoje ? `, ${zenHoje} pela Zenvia` : ""}. Abrir campanhas.`}
     >
       {/* 1. A estimativa por dia e o andamento de hoje contra ela */}
       <div className="min-w-0">
@@ -113,8 +122,8 @@ export function DisparosHojeFaixa({ className = "" }: { className?: string }) {
             {est > 0 ? `~${fmt(est)}` : "0"}
           </p>
           {est > 0 && (
-            <p className="min-w-0 text-xs text-muted-foreground">
-              Hoje <strong className="font-semibold text-foreground tabular-nums">{fmt(data.hoje)}</strong>
+            <p className="min-w-0 text-xs text-muted-foreground" title={detalhe}>
+              Hoje <strong className="font-semibold text-foreground tabular-nums">{fmt(hoje)}</strong>
               {projecao !== null && (
                 <span title="No ritmo de agora, o dia fecha perto deste número">
                   {" "}· fecha perto de <strong className="font-semibold text-foreground tabular-nums">{fmt(projecao)}</strong>
@@ -130,7 +139,7 @@ export function DisparosHojeFaixa({ className = "" }: { className?: string }) {
         ) : (
           <p className="mt-2 text-xs text-muted-foreground">Nenhuma campanha ativa disparando.</p>
         )}
-        {est > 0 && diasFila !== null && data.fila > 0 && (
+        {estSigma > 0 && diasFila !== null && data.fila > 0 && (
           <p className="mt-1 truncate text-xs text-muted-foreground">
             Fila de {fmt(data.fila)} médicos ≈ {diasFila} {diasFila === 1 ? "dia útil" : "dias úteis"}
           </p>

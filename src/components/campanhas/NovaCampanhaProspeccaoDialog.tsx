@@ -172,6 +172,10 @@ export function NovaCampanhaProspeccaoDialog({ open, onOpenChange, preLead, onCr
         })),
       ];
     },
+    // 26/11: a view conta médicos por especialidade (1,6 s). O diálogo fica montado fechado na tela de Campanhas,
+    // então a contagem rodava a cada abertura da lista e atrasava os cartões. Só carrega com o diálogo aberto.
+    enabled: open,
+    staleTime: 5 * 60_000,
   });
 
   const { data: chips = [] } = useQuery({

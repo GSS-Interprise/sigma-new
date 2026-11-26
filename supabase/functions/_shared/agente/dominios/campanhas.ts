@@ -160,13 +160,27 @@ async function campanhasDisparosDia(ctx: Ctx, a: Record<string, unknown>): Promi
   const rows = (data || []) as { campanha_id: string; campanha: string; status: string; tipo_envio: string | null; enviados: number; falharam: number }[];
   const env = rows.reduce((s, r) => s + Number(r.enviados), 0);
   const fal = rows.reduce((s, r) => s + Number(r.falharam), 0);
+  // Zenvia (26/11, Raul): a Home soma os disparos da Zenvia no "Hoje"; aqui eles vêm separados por especialidade, para
+  // o sócio ouvir o mesmo total da tela. Mesma regra da view zenvia_campanhas (saiu = a Zenvia aceitou o envio).
+  const { data: zd, error: ez } = await ctx.svc.from("zenvia_disparos").select("especialidade_id").eq("dia", dia).eq("saiu", true);
+  if (ez) throw ez;
+  const porEsp = new Map<string, number>();
+  for (const z of (zd || []) as { especialidade_id: string | null }[]) porEsp.set(z.especialidade_id ?? "sem", (porEsp.get(z.especialidade_id ?? "sem") ?? 0) + 1);
+  const { data: zn } = porEsp.size ? await ctx.svc.from("zenvia_campanhas").select("especialidade_id, nome").order("especialidade_id") : { data: [] };
+  const nomeZ = new Map(((zn || []) as { especialidade_id: string | null; nome: string }[]).map((x) => [x.especialidade_id ?? "sem", x.nome]));
+  const zen = [...porEsp.entries()].map(([k, n]) => ({ nome: nomeZ.get(k) ?? "Zenvia", n })).sort((a, b) => b.n - a.n || a.nome.localeCompare(b.nome));
+  const zTotal = zen.reduce((s, z) => s + z.n, 0);
   const fonte = await frescor(ctx);
-  if (!rows.length) return { resumo: `Nenhum médico recebeu a primeira mensagem de campanha em ${diaBR(dia)}.`, dados: { dia, campanhas: [] }, totais: { enviados: 0, falharam: 0, campanhas: 0 }, fonte };
+  if (!rows.length && !zTotal) return { resumo: `Nenhum médico recebeu a primeira mensagem de campanha em ${diaBR(dia)}.`, dados: { dia, campanhas: [], zenvia: [] }, totais: { enviados: 0, falharam: 0, campanhas: 0, zenvia: 0, total_com_zenvia: 0 }, fonte };
+  const linhaZ = zTotal
+    ? ` Pela Zenvia saíram mais ${zTotal} disparos (${zen.map((z) => `${z.nome.replace(/^Zenvia · /, "")} ${z.n}`).join(", ")}): **${env + zTotal} no total**, o número do "Hoje" da Home.`
+    : "";
   return {
-    resumo: `**${diaBR(dia)}**: ${env} médicos receberam a primeira mensagem de campanha e ${fal} não receberam (todas as tentativas falharam), em ${rows.length} campanhas.`,
-    corpo: "\n" + rows.map((r) => `- ${r.campanha.trim()} (${r.status}, ${modo(r)}): ${r.enviados} receberam, ${r.falharam} não receberam`).join("\n"),
-    dados: { dia, campanhas: rows.map((r) => [r.campanha_id, Number(r.enviados), Number(r.falharam)]) },
-    totais: { enviados: env, falharam: fal, campanhas: rows.length },
+    resumo: `**${diaBR(dia)}**: ${env} médicos receberam a primeira mensagem de campanha do Sigma e ${fal} não receberam (todas as tentativas falharam), em ${rows.length} campanhas.${linhaZ}`,
+    corpo: "\n" + [...rows.map((r) => `- ${r.campanha.trim()} (${r.status}, ${modo(r)}): ${r.enviados} receberam, ${r.falharam} não receberam`),
+      ...zen.map((z) => `- ${z.nome} (Zenvia, fora do Sigma): ${z.n} disparos`)].join("\n"),
+    dados: { dia, campanhas: rows.map((r) => [r.campanha_id, Number(r.enviados), Number(r.falharam)]), zenvia: zen.map((z) => [z.nome, z.n]) },
+    totais: { enviados: env, falharam: fal, campanhas: rows.length, zenvia: zTotal, total_com_zenvia: env + zTotal },
     fonte,
   };
 }
@@ -191,7 +205,7 @@ async function campanhasAcompanhamento(ctx: Ctx, a: Record<string, unknown>): Pr
 export const campanhas: Dominio = {
   id: "campanhas",
   titulo: "Campanhas de prospecção",
-  versao: "1.0.0",
+  versao: "1.1.0",
   status: "ativo",
   resumo: "campanhas de prospecção de médicos: ativas, funil de cada uma, disparos do dia e o acompanhamento (Kanban).",
   frescor,

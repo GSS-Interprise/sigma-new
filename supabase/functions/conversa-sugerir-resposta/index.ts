@@ -115,7 +115,7 @@ type Resposta = { texto: string; motor: "claude" | "gemini"; modelo: string | nu
 async function gerar(svc: Svc, sistema: string, pedido: string, jsonOut: boolean): Promise<Resposta> {
   if (await claudeLigado(svc).catch(() => false)) {
     const t = await pedirAoClaude(svc, sistema, pedido, jsonOut).catch(() => null);
-    if (t && t.trim()) return { texto: t, motor: "claude", modelo: "claude-sonnet (hermes)" };
+    if (t && t.trim()) return { texto: t, motor: "claude", modelo: "claude-haiku-5-5 (hermes)" };
   }
   const g = await gemini(sistema, pedido, jsonOut);
   return { texto: g.texto, motor: "gemini", modelo: g.modelo };

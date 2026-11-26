@@ -22,6 +22,9 @@ ROTEIRO = pathlib.Path(__file__).resolve().parent / "login-claude.sh"
 PROVEDOR = "claude-subscription-directsdk-experimental"
 # O token do setup-token vale um ano; a data exata não vem em lugar nenhum, então é estimativa.
 VALIDADE_DIAS = 365
+# Modelo (26/11, Raul: "modelo mais barato, para economizar a cota"): Haiku 5.5. Nome completo, porque o alias
+# "haiku" do Claude Code 2.1.323 ainda cai no Haiku 4.5. Teste na VPS: 5 s por resposta.
+MODELO = "claude-haiku-5-5"
 
 ERROS = {
     "sem-claude": "O Claude Code não foi encontrado na VPS.",
@@ -124,7 +127,7 @@ def teste(_payload=None):
         return {"ok": False, "frase": "Ainda não há login do Claude na VPS."}
     inicio = datetime.now(timezone.utc)
     cod, saida = _como_usuario(
-        [str(HERMES), "chat", "-Q", "--provider", PROVEDOR, "-m", "sonnet", "-q", "Responda apenas a palavra OK."],
+        [str(HERMES), "chat", "-Q", "--provider", PROVEDOR, "-m", MODELO, "-q", "Responda apenas a palavra OK."],
         tempo=180, env_extra={"CLAUDE_CODE_OAUTH_TOKEN": token},
     )
     segundos = round((datetime.now(timezone.utc) - inicio).total_seconds(), 1)
@@ -166,7 +169,7 @@ def _perguntar_json(instrucoes, pedido, tempo):
         raise RuntimeError("pedido grande demais para o Hermes")
     # A pergunta vai pela entrada padrão (como no login): como argumento direto ficaria no comando montado pelo worker.
     cod, saida = _como_usuario(
-        ["bash", "-c", f'exec "{HERMES}" chat -Q --provider {PROVEDOR} -m sonnet -q "$(cat)"'],
+        ["bash", "-c", f'exec "{HERMES}" chat -Q --provider {PROVEDOR} -m {MODELO} -q "$(cat)"'],
         entrada=pergunta, tempo=tempo, env_extra={"CLAUDE_CODE_OAUTH_TOKEN": token},
     )
     if cod is None:
@@ -214,7 +217,7 @@ def sugerir_resposta(payload):
     pergunta = f"{instrucoes}\n\n{pedido}\n\nResponda só com o texto da mensagem, sem aspas, sem explicação antes ou depois."
     # A pergunta vai pela entrada padrão: como argumento direto ficaria no comando montado pelo worker.
     cod, saida = _como_usuario(
-        ["bash", "-c", f'exec "{HERMES}" chat -Q --provider {PROVEDOR} -m sonnet -q "$(cat)"'],
+        ["bash", "-c", f'exec "{HERMES}" chat -Q --provider {PROVEDOR} -m {MODELO} -q "$(cat)"'],
         entrada=pergunta, tempo=60, env_extra={"CLAUDE_CODE_OAUTH_TOKEN": token},
     )
     if cod is None:

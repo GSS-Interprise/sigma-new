@@ -39,7 +39,8 @@
       "argumentos": { "data": "{ontem}" },
       "paridade": {
         "enviados": "select count(*) from (select campanha_lead_id, min(sent_at) primeiro, bool_and(message_status = 'failed') so_falhou from sigzap_messages where from_me and campanha_lead_id is not null group by 1) x where not so_falhou and (primeiro at time zone 'America/Sao_Paulo')::date = '{ontem}'",
-        "falharam": "select count(*) from (select campanha_lead_id, min(sent_at) primeiro, bool_and(message_status = 'failed') so_falhou from sigzap_messages where from_me and campanha_lead_id is not null group by 1) x where so_falhou and (primeiro at time zone 'America/Sao_Paulo')::date = '{ontem}'"
+        "falharam": "select count(*) from (select campanha_lead_id, min(sent_at) primeiro, bool_and(message_status = 'failed') so_falhou from sigzap_messages where from_me and campanha_lead_id is not null group by 1) x where so_falhou and (primeiro at time zone 'America/Sao_Paulo')::date = '{ontem}'",
+        "zenvia": "select count(*) from zenvia_disparos where saiu and dia = '{ontem}'"
       }
     },
     {
