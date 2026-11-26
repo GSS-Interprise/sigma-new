@@ -378,7 +378,8 @@ async function dispararRodada(admin: any, sender: any, fila: ItemFila[], testeDe
     // intervalo nada sai e nada é marcado: os passos ficam para a próxima rodada e saem juntos depois.
     const canal = itens[0].passo.canal;
     const alvo = destinoDoAviso(itens[0].pessoa, testeDestino);
-    const intervaloMin = canal === "ligacao" ? INTERVALO_LIGACAO_MIN : INTERVALO_WHATS_MIN;
+    // Coordenação e diretoria (contato) no máximo 1 ligação por hora (26/11: a Ramone reclamou de 2 ligações em 20 min).
+    const intervaloMin = canal === "ligacao" ? (itens[0].pessoa.papel === "plantonista" ? INTERVALO_LIGACAO_MIN : 60) : INTERVALO_WHATS_MIN;
     const { data: recente } = await admin.from("sla_alertas").select("id").eq("canal", canal).eq("destino", alvo.telefone)
       .gte("criado_em", new Date(Date.now() - intervaloMin * 60_000).toISOString()).not("erro", "like", "teste interno%").limit(1);
     if (!alvo.teste && (recente ?? []).length) { out.push({ para: alvo.nome, canal, adiado: itens.length, intervalo_min: intervaloMin }); continue; }
