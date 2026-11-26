@@ -94,7 +94,25 @@ export function AcompanhamentoView() {
   const quadro = useAcompanhamentoQuadro(filtro, busca);
   const { data: leadAberto } = useAcompanhamentoLeadPorId(leadAbertoId);
 
-  useEffect(() => gravarStorage(FILTRO_STORAGE_KEY, filtro), [filtro]);
+  // Busca procura em Todos: com "Minha fila" salvo, o lead de outra pessoa não aparecia e parecia não existir
+  // (foi assim que o Thiago Natan, do Vinícius, "sumiu" em 26/11). Ao limpar a busca, o filtro anterior volta.
+  const filtroAntesDaBusca = useRef<FiltroAcompanhamento | null>(null);
+  useEffect(() => {
+    const temTermo = buscaDigitada.trim().length > 0;
+    if (temTermo && filtroAntesDaBusca.current === null) {
+      filtroAntesDaBusca.current = filtro;
+      if (filtro !== "todos") setFiltro("todos");
+    } else if (!temTermo && filtroAntesDaBusca.current !== null) {
+      setFiltro(filtroAntesDaBusca.current);
+      filtroAntesDaBusca.current = null;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [buscaDigitada]);
+
+  useEffect(() => {
+    // o filtro trocado pela busca é temporário: não vira a preferência salva
+    if (filtroAntesDaBusca.current === null) gravarStorage(FILTRO_STORAGE_KEY, filtro);
+  }, [filtro]);
   useEffect(() => gravarStorage(AGING_THRESHOLD_STORAGE_KEY, String(agingThreshold)), [agingThreshold]);
 
   // O painel lê o lead por id (fora do quadro paginado). Quando o quadro recarrega depois de uma mutação ou de um
@@ -160,7 +178,16 @@ export function AcompanhamentoView() {
 
         <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filtrar leads">
           {FILTROS.map((f) => (
-            <FiltroChip key={f.id} ativo={filtro === f.id} onClick={() => setFiltro(f.id)} title={f.dica}>
+            <FiltroChip
+              key={f.id}
+              ativo={filtro === f.id}
+              onClick={() => {
+                // escolher filtro durante a busca vale também depois dela
+                if (filtroAntesDaBusca.current !== null) filtroAntesDaBusca.current = f.id;
+                setFiltro(f.id);
+              }}
+              title={f.dica}
+            >
               {f.label}
               <span className="ml-1 tabular-nums opacity-60">
                 {quadro.filtros ? fmt.format(quadro.filtros[f.id]) : "–"}
@@ -196,7 +223,7 @@ export function AcompanhamentoView() {
             onLeadClick={setLeadAbertoId}
             acao={
               <Select value={String(agingThreshold)} onValueChange={(v) => setAgingThreshold(Number(v))}>
-                <SelectTrigger className="h-9 w-28 bg-background text-xs" aria-label="Alertar quentes parados há">
+                <SelectTrigger className="h-9 w-36 bg-background text-xs" aria-label="Alertar quentes parados há">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
