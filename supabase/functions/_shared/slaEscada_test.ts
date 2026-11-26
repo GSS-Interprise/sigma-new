@@ -108,7 +108,7 @@ Deno.test("plantonista da modalidade; sem ninguém dela, todos", () => {
   assertEquals(daModalidade([{ nome: "a", modalidade: "TC" }], "US").map((x) => x.nome), ["a"]);
 });
 
-Deno.test("período do contato: comercial seg-sex 7h-19h, fora = noite e fim de semana (Wagner, 26/11)", () => {
+Deno.test("período do contato: comercial seg-sex 7h-17h, fora = noite e fim de semana (Wagner, 26/11)", () => {
   // 26/11/2026 é quinta. Horas em Brasília (UTC-3).
   const qui10 = new Date("2026-11-26T13:00:00Z"), qui20 = new Date("2026-11-26T23:00:00Z");
   const sab10 = new Date("2026-11-28T13:00:00Z"), qui0659 = new Date("2026-11-26T09:59:00Z");
@@ -117,6 +117,8 @@ Deno.test("período do contato: comercial seg-sex 7h-19h, fora = noite e fim de 
   assertEquals([noPeriodo("comercial", sab10), noPeriodo("fora", sab10)], [false, true]);
   assertEquals([noPeriodo("comercial", qui0659), noPeriodo("fora", qui0659)], [false, true]);
   assertEquals(noPeriodo(null, qui20), true);
+  const qui1730 = new Date("2026-11-26T20:30:00Z"), qui1659 = new Date("2026-11-26T19:59:00Z");
+  assertEquals([noPeriodo("comercial", qui1659), noPeriodo("comercial", qui1730), noPeriodo("fora", qui1730)], [true, false, true]);
 });
 
 Deno.test("período: contato fora do período não sai (e fica para quando entrar, se ainda couber)", () => {

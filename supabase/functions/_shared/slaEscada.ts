@@ -11,12 +11,12 @@ export type PassoAviso = {
 };
 
 // Período do contato da Coordenação (Wagner, 26/11: Brenda no horário comercial, Wagner à noite e no fim de semana,
-// Ramone sempre, por último). Comercial = segunda a sexta, 7h às 19h de Brasília; fora = o resto. Sem período = sempre.
+// Ramone sempre, por último). Comercial = segunda a sexta, 7h às 17h de Brasília (Wagner, 26/11: Brenda até as 17h); fora = o resto. Sem período = sempre.
 export function noPeriodo(periodo: string | null | undefined, agora = new Date()): boolean {
   if (periodo !== "comercial" && periodo !== "fora") return true;
   const sp = new Date(agora.getTime() - 3 * 3_600_000); // Brasília sem horário de verão
   const dia = sp.getUTCDay(), hora = sp.getUTCHours();
-  const comercial = dia >= 1 && dia <= 5 && hora >= 7 && hora < 19;
+  const comercial = dia >= 1 && dia <= 5 && hora >= 7 && hora < 17;
   return periodo === "comercial" ? comercial : !comercial;
 }
 
