@@ -5,7 +5,13 @@
 // O mesmo edital que bate nos dois perfis vira um card por empresa (api-licitacoes separa pela
 // etiqueta "AGES").
 //
-// Fluxo: POST /aviso/licitacao (janela de dias) → só perfilNome GSS → para cada aviso:
+// Desde 26/11 (pedido da Ramone): só entram as licitações que a equipe marcou com ESTRELA (favorita) no
+// Effecti — POST /aviso/licitacao-favoritos. Entrava edital demais para olhar; o Luiz marca no Effecti e o
+// Sigma traz sozinho. A janela (`dias`) é pela data em que o Effecti ENVIOU o aviso, não pela data da
+// estrela: por isso olha 30 dias para trás (favoritar um aviso de semanas atrás ainda entra).
+// `origem: "todos"` volta ao modo antigo (todos os avisos do perfil), só para teste manual.
+//
+// Fluxo: POST /aviso/licitacao-favoritos (janela de dias) → só perfilNome GSS → para cada aviso:
 //   1. já existe card GSS com este aviso (effect_id)? card manual fica como está; o da captação
 //      é atualizado pela api-licitacoes (que preserva coluna, responsável e descarte);
 //   2. senão, existe card GSS com o mesmo número + UF + cidade (ou CNPJ do órgão)? É o edital
@@ -13,7 +19,7 @@
 //   3. senão, cria pelo api-licitacoes (mesmas regras dos captadores antigos).
 // Anexos vão para uma fila e são baixados aos poucos (edital passa de 100 páginas).
 //
-// Ações: { acao: "capturar", dias?: 1-7, dry_run?: true }  |  { acao: "anexos", limite?: n }
+// Ações: { acao: "capturar", dias?: 1-90, origem?: "favoritos" | "todos", dry_run?: true }  |  { acao: "anexos", limite?: n }
 // Quem chama: cron (x-internal-sync-key), service role, ou admin logado (teste manual).
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -116,32 +122,42 @@ async function tokenSigma(svc: any) {
   return data.token as string;
 }
 
-async function avisosEffecti(dias: number) {
+async function avisosEffecti(dias: number, rota: string) {
   const token = Deno.env.get("EFFECTI_API_TOKEN");
   if (!token) throw new Error("EFFECTI_API_TOKEN não configurado");
   const fmt = (d: Date) => new Date(d.getTime() - 3 * 3600 * 1000).toISOString().slice(0, 19);
-  const fim = new Date(), ini = new Date(Date.now() - dias * 86400 * 1000);
+  // o Effecti recusa consulta com mais de 5 dias entre begin e end (403): a janela vai em blocos de 4 dias
+  const BLOCO = 4 * 86400 * 1000;
+  const agora = Date.now();
   const todos: any[] = [];
-  for (let pagina = 0; pagina < 30; pagina++) {
-    const r = await fetch(`${API}/aviso/licitacao?page=${pagina}`, {
-      method: "POST", headers: { Authorization: token, "Content-Type": "application/json" },
-      body: JSON.stringify({ begin: fmt(ini), end: fmt(fim) }),
-    });
-    if (!r.ok) throw new Error(`effecti_${r.status}: ${(await r.text()).slice(0, 200)}`);
-    const corpo = await r.json();
-    const lista = Array.isArray(corpo?.licitacoes) ? corpo.licitacoes : [];
-    todos.push(...lista);
-    const meta = corpo?._metadata ?? corpo?.metadata ?? {};
-    if (!lista.length || pagina + 1 >= Number(meta.total_paginas ?? 1)) break;
+  const vistos = new Set<string>();
+  for (let fimMs = agora; fimMs > agora - dias * 86400 * 1000; fimMs -= BLOCO) {
+    const ini = new Date(Math.max(fimMs - BLOCO, agora - dias * 86400 * 1000)), fim = new Date(fimMs);
+    for (let pagina = 0; pagina < 30; pagina++) {
+      const r = await fetch(`${API}${rota}?page=${pagina}`, {
+        method: "POST", headers: { Authorization: token, "Content-Type": "application/json" },
+        body: JSON.stringify({ begin: fmt(ini), end: fmt(fim) }),
+      });
+      if (!r.ok) throw new Error(`effecti_${r.status}: ${(await r.text()).slice(0, 200)}`);
+      const corpo = await r.json();
+      const lista = Array.isArray(corpo?.licitacoes) ? corpo.licitacoes : [];
+      // a borda entre dois blocos pode repetir o mesmo aviso
+      for (const a of lista) { const k = String(a.idLicitacao); if (!vistos.has(k)) { vistos.add(k); todos.push(a); } }
+      const meta = corpo?._metadata ?? corpo?.metadata ?? {};
+      if (!lista.length || pagina + 1 >= Number(meta.total_paginas ?? 1)) break;
+    }
   }
   return todos;
 }
 
 async function capturar(svc: any, supabaseUrl: string, input: any) {
-  const dias = Math.max(1, Math.min(7, Number(input.dias) || 2));
+  const origem = input.origem === "todos" ? "todos" : "favoritos";
+  const dias = Math.max(1, Math.min(origem === "todos" ? 7 : 90, Number(input.dias) || (origem === "todos" ? 2 : 30)));
   const dryRun = input.dry_run === true;
-  const todos = await avisosEffecti(dias);
+  const todos = await avisosEffecti(dias, origem === "todos" ? "/aviso/licitacao" : "/aviso/licitacao-favoritos");
   const avisos = todos.filter((a) => norm(a.perfilNome) === norm(PERFIL));
+  // favorita marcada num aviso de outro perfil (ex.: AGES) não vira card da GSS; conta para quem for conferir
+  const outrosPerfis = [...new Set(todos.filter((a) => norm(a.perfilNome) !== norm(PERFIL)).map((a) => String(a.perfilNome)))];
 
   // cidade pelo CNPJ do órgão, a partir do espelho do PNCP (o Effecti não manda a cidade)
   const cnpjs = [...new Set(avisos.map((a) => digitos(a.cnpj)).filter((c) => c.length === 14))];
@@ -152,7 +168,7 @@ async function capturar(svc: any, supabaseUrl: string, input: any) {
   }
 
   const token = dryRun ? "" : await tokenSigma(svc);
-  const resumo = { lidos: todos.length, gss: avisos.length, criados: 0, atualizados: 0, ligados_a_card_manual: 0, mantidos_manual: 0, sem_mudanca: 0, erros: 0, ficaram_para_proxima: 0 };
+  const resumo = { origem, outros_perfis: outrosPerfis, lidos: todos.length, gss: avisos.length, criados: 0, atualizados: 0, ligados_a_card_manual: 0, mantidos_manual: 0, sem_mudanca: 0, erros: 0, ficaram_para_proxima: 0 };
   const amostra: any[] = [];
 
   const inicio = Date.now();
