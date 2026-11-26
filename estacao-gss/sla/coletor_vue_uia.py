@@ -156,7 +156,7 @@ def ler(pasta):
         linhas.append({"Data": v[0], "Hora": v[1], "Nome do paciente": v[2], "Descricao": v[3], "Status": v[4],
                        "Tipo de Atendimento": v[7],
                        # Protocolo AVC (26/11): "AVC" em qualquer coluna da linha (Indicacao Clinica, Descricao). So o sim/nao sai daqui.
-                       "avc": bool(re.search(r"(^|[^A-Za-z])AVC([^A-Za-z]|$)", valor, re.I))})
+                       "avc": bool(re.search(r"(^|[^A-Za-z])AVC[IH]?([^A-Za-z]|$)", valor, re.I))})
     # Total da pasta na barra de status ("1/74 itens selecionados"): a grade so expoe as linhas desenhadas (~28).
     total = None
     for t in jan.descendants(control_type="Text"):

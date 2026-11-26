@@ -7,7 +7,7 @@
 $base = "C:\ProgramData\ssh-tunel"
 $saida = "$base\captura"
 $url = "https://zupsbgtoeoixfokzkjro.supabase.co/functions/v1/sla-coletor"
-$versao = "coletor-v9"
+$versao = "coletor-v10"
 # Configuracao por estacao (22/11): C:\ProgramData\ssh-tunel\estacao.json. Sem o arquivo, vale o PC do Marieta
 # (tela 1920x1080). O PC da Brenda (CEPON) tem o seu: Marieta e CEPON usam o mesmo Vue PACS e nao abrem juntos.
 $cfg = @{ unidade = "marieta"; grade_x = 487; grade_largura = 1425; grade_topo = 236; atualizar_x = 340; atualizar_y = 95 }
@@ -82,13 +82,33 @@ public static class Grade {
     int pad = nfundos < 2 ? 40 : 0;
     var o = new Bitmap(rc.Width * esc + 2 * pad, rc.Height * esc + 2 * pad);
     using (var g = Graphics.FromImage(o)) g.Clear(Color.White);
+    var linha = LinhasRetas(src, rc, fa, fb, tol);
     for (int y = 0; y < rc.Height; y++) for (int x = 0; x < rc.Width; x++) {
+      if (linha[y]) continue;
       Color p = src.GetPixel(rc.X + x, rc.Y + y);
       int da = Math.Abs(p.R - fa.R) + Math.Abs(p.G - fa.G) + Math.Abs(p.B - fa.B);
       int db = Math.Abs(p.R - fb.R) + Math.Abs(p.G - fb.G) + Math.Abs(p.B - fb.B);
       if (Math.Min(da, db) > tol) { Tinta++; } if (Math.Min(da, db) > tol) for (int j = 0; j < esc; j++) for (int i = 0; i < esc; i++) o.SetPixel(pad + x * esc + i, pad + y * esc + j, Color.Black);
     }
     return o;
+  }
+  // Linha horizontal da grade dentro do recorte (26/11): nas linhas vermelhas (PS) e laranja (Internado) a borda
+  // azul da linha vizinha cai dentro dos 25 px e cruza a celula inteira. Ela virava tinta em toda coluna: o OCR nao
+  // lia a hora e a separacao de glifos via um glifo so. Resultado: linha de PS sem hora, fora do Sigma. Linha de
+  // pixels com mais de 60% de tinta e borda, nao texto (digito nenhum ocupa 60% da largura).
+  public static bool[] LinhasRetas(Bitmap src, Rectangle rc, Color fa, Color fb, int tol) {
+    var r = new bool[rc.Height];
+    for (int y = 0; y < rc.Height; y++) {
+      int n = 0;
+      for (int x = 0; x < rc.Width; x++) {
+        Color p = src.GetPixel(rc.X + x, rc.Y + y);
+        int da = Math.Abs(p.R - fa.R) + Math.Abs(p.G - fa.G) + Math.Abs(p.B - fa.B);
+        int db = Math.Abs(p.R - fb.R) + Math.Abs(p.G - fb.G) + Math.Abs(p.B - fb.B);
+        if (Math.Min(da, db) > tol) n++;
+      }
+      r[y] = n > rc.Width * 6 / 10;
+    }
+    return r;
   }
   // Leitura da hora por modelo de glifo (12/11): o OCR do Windows falha em ~10% das linhas mesmo com a celula nitida.
   // A fonte do PACS e fixa: cada caractere da coluna Hora tem sempre o mesmo desenho. Os modelos saem das linhas
@@ -100,9 +120,10 @@ public static class Grade {
     int a = 0, na = -1; foreach (var kv in hist) if (kv.Value > na) { a = kv.Key; na = kv.Value; }
     Color f = Color.FromArgb(a);
     var tinta = new bool[rc.Width, rc.Height];
+    var linha = LinhasRetas(src, rc, f, f, tol);
     for (int y = 0; y < rc.Height; y++) for (int x = 0; x < rc.Width; x++) {
       Color p = src.GetPixel(rc.X + x, rc.Y + y);
-      tinta[x, y] = Math.Abs(p.R - f.R) + Math.Abs(p.G - f.G) + Math.Abs(p.B - f.B) > tol;
+      tinta[x, y] = !linha[y] && Math.Abs(p.R - f.R) + Math.Abs(p.G - f.G) + Math.Abs(p.B - f.B) > tol;
     }
     var r = new List<bool[,]>(); int ini = -1;
     for (int x = 0; x <= rc.Width; x++) {
@@ -110,31 +131,76 @@ public static class Grade {
       if (x < rc.Width) for (int y = 0; y < rc.Height; y++) if (tinta[x, y]) { col = true; break; }
       if (col && ini < 0) ini = x;
       if (!col && ini >= 0) {
-        var g = new bool[x - ini, rc.Height];
-        for (int gx = 0; gx < x - ini; gx++) for (int y = 0; y < rc.Height; y++) g[gx, y] = tinta[ini + gx, y];
-        r.Add(g); ini = -1;
+        // Dois digitos colados (ClearType no vermelho junta "26"): digito tem 5-7 px, entao glifo com 10+ px e
+        // cortado na coluna com menos tinta do meio.
+        int w = x - ini, corte = -1;
+        if (w >= 10) {
+          int menor = int.MaxValue;
+          for (int cx = ini + 4; cx <= x - 4; cx++) { int n = 0; for (int y = 0; y < rc.Height; y++) if (tinta[cx, y]) n++; if (n < menor) { menor = n; corte = cx; } }
+        }
+        foreach (var par in corte > 0 ? new[] { new[] { ini, corte }, new[] { corte, x } } : new[] { new[] { ini, x } }) {
+          var g = new bool[par[1] - par[0], rc.Height];
+          for (int gx = 0; gx < par[1] - par[0]; gx++) for (int y = 0; y < rc.Height; y++) g[gx, y] = tinta[par[0] + gx, y];
+          r.Add(g);
+        }
+        ini = -1;
       }
     }
     return r;
   }
   // Diferenca entre dois glifos (pixels diferentes, alinhados a esquerda e ao topo; largura diferente custa caro).
+  // Com deslocamento de -1 a 1 coluna (26/11): digito cortado de um par colado ("26" no vermelho) sai 1 px fora do lugar.
   public static int Dist(bool[,] a, bool[,] b) {
-    int w = Math.Max(a.GetLength(0), b.GetLength(0)), h = Math.Max(a.GetLength(1), b.GetLength(1)), d = 0;
-    for (int x = 0; x < w; x++) for (int y = 0; y < h; y++) {
-      bool pa = x < a.GetLength(0) && y < a.GetLength(1) && a[x, y];
-      bool pb = x < b.GetLength(0) && y < b.GetLength(1) && b[x, y];
-      if (pa != pb) d++;
+    int melhor = int.MaxValue;
+    for (int s = -1; s <= 1; s++) {
+      int w = Math.Max(a.GetLength(0), b.GetLength(0)) + 1, h = Math.Max(a.GetLength(1), b.GetLength(1)), d = 0;
+      for (int x = -1; x < w; x++) for (int y = 0; y < h; y++) {
+        int xa = x + s;
+        bool pa = xa >= 0 && xa < a.GetLength(0) && y < a.GetLength(1) && a[xa, y];
+        bool pb = x >= 0 && x < b.GetLength(0) && y < b.GetLength(1) && b[x, y];
+        if (pa != pb) d++;
+      }
+      d += 6 * Math.Abs(a.GetLength(0) - b.GetLength(0)) + (s == 0 ? 0 : 2);
+      if (d < melhor) melhor = d;
     }
-    return d + 6 * Math.Abs(a.GetLength(0) - b.GetLength(0));
+    return melhor;
   }
+  // Ate 6 modelos por caractere e por cor da linha (classe): o texto branco no vermelho (PS) sai com outro desenho
+  // (ClearType) que o preto no azul, e com 6 por caractere so as linhas azuis, que vem antes, viravam modelo.
   public static Dictionary<char, List<bool[,]>> Modelos = new Dictionary<char, List<bool[,]>>();
-  public static void Aprender(Bitmap src, Rectangle rc, string hora) {
+  static Dictionary<string, int> PorClasse = new Dictionary<string, int>();
+  // Um modelo por caractere e classe vai para o disco (o primeiro visto).
+  public static Dictionary<string, bool[,]> Glifo = new Dictionary<string, bool[,]>();
+  static void Guardar(char c, int classe, bool[,] g) {
+    string k = c + "|" + classe; int n; PorClasse.TryGetValue(k, out n);
+    if (n >= 6) return;
+    if (!Modelos.ContainsKey(c)) Modelos[c] = new List<bool[,]>();
+    Modelos[c].Add(g); PorClasse[k] = n + 1;
+    if (!Glifo.ContainsKey(k)) Glifo[k] = g;
+  }
+  public static void Aprender(Bitmap src, Rectangle rc, string hora, int classe) {
     var gs = Glifos(src, rc, 160);
-    if (gs.Count < hora.Length) return;
-    for (int i = 0; i < hora.Length; i++) {
-      char c = hora[i];
-      if (!Modelos.ContainsKey(c)) Modelos[c] = new List<bool[,]>();
-      if (Modelos[c].Count < 6) Modelos[c].Add(gs[i]);
+    if (gs.Count != hora.Length) return;
+    for (int i = 0; i < hora.Length; i++) Guardar(hora[i], classe, gs[i]);
+  }
+  // Modelos guardados em disco (26/11): a linha vermelha e rara e o OCR quase nunca le a hora dela, entao o modelo de
+  // texto branco no vermelho aprendido numa rodada vale para as seguintes. So desenho de digito, nada de paciente.
+  // Formato: uma linha por glifo "caractere|classe|largura|bits" (bits por coluna, de cima para baixo).
+  public static void Salvar(string arq) {
+    var sb = new System.Text.StringBuilder();
+    foreach (var kv in Glifo) { var g = kv.Value; var bits = new System.Text.StringBuilder();
+      for (int x = 0; x < g.GetLength(0); x++) for (int y = 0; y < g.GetLength(1); y++) bits.Append(g[x, y] ? '1' : '0');
+      sb.AppendLine(kv.Key + "|" + g.GetLength(0) + "|" + g.GetLength(1) + "|" + bits); }
+    System.IO.File.WriteAllText(arq, sb.ToString());
+  }
+  public static void Carregar(string arq) {
+    if (!System.IO.File.Exists(arq)) return;
+    foreach (var l in System.IO.File.ReadAllLines(arq)) {
+      var p = l.Split('|'); if (p.Length != 5) continue;
+      char c = p[0][0]; int classe = int.Parse(p[1]), w = int.Parse(p[2]), h = int.Parse(p[3]); string bits = p[4];
+      if (bits.Length != w * h) continue;
+      var g = new bool[w, h]; for (int x = 0; x < w; x++) for (int y = 0; y < h; y++) g[x, y] = bits[x * h + y] == '1';
+      Guardar(c, classe, g);
     }
   }
   // Le "HH:MM:SS" pelos modelos; null se faltar modelo ou algum glifo ficar longe demais de todos.
@@ -299,7 +365,7 @@ foreach ($item in $acum) {
     if (-not $data) { $md = [regex]::Match($t, '(?<!\d)([0-3]\d)/([01]\d)/(20\d\d)(?!\d)'); if ($md.Success) { $data = $md.Value } }
     if ($m.Success) { $hora = "$($m.Groups[1].Value):$($m.Groups[2].Value):$($m.Groups[3].Value)"; $via = $tent[2]; break }
   }
-  [void]$linhas.Add([ordered]@{ n = $n; bm = $tela; y = $f[0]; data = $data; origem = $nomes[$f[1]]; hora = $hora; nao_lido = $lido; via = $via; tents = $tents; cor = "$($f[2]),$($f[3]),$($f[4])" })
+  [void]$linhas.Add([ordered]@{ n = $n; bm = $tela; y = $f[0]; data = $data; origem = $nomes[$f[1]]; classe = [int]$f[1]; hora = $hora; nao_lido = $lido; via = $via; tents = $tents; cor = "$($f[2]),$($f[3]),$($f[4])" })
 }
 # 2a passada: so as palavras que cairam na coluna Hora (x mediano das horas lidas), com troca das
 # letras que o OCR confunde com digito (O->0, l/I/|->1, S->5, B->8, Z->2).
@@ -307,11 +373,13 @@ $colHora = $null
 if ($xsHora.Count -gt 0) { $o = @($xsHora | Sort-Object); $colHora = $o[[int]($o.Count / 2)] }
 if ($colHora) {
   # Modelos de glifo a partir das horas lidas com segundos (ver Grade.Aprender).
+  try { [Grade]::Carregar("$base\modelos_hora.txt") } catch {}
   foreach ($l in $linhas) {
     if ($l.hora -and $l.hora.Length -eq 8 -and $l.via -like 'bin*') {
-      try { [Grade]::Aprender($l.bm, (New-Object System.Drawing.Rectangle ($colHora - 10), $l.y, 72, 25), $l.hora) } catch {}
+      try { [Grade]::Aprender($l.bm, (New-Object System.Drawing.Rectangle ($colHora - 10), $l.y, 72, 25), $l.hora, $l.classe) } catch {}
     }
   }
+  try { [Grade]::Salvar("$base\modelos_hora.txt") } catch {}
   foreach ($l in $linhas) {
     if ($l.hora) { continue }
     # 1o: leitura por modelo de glifo (a celula esta nitida; quem falha e o OCR)
@@ -360,12 +428,39 @@ foreach ($l in $linhas) {
   }
   $l.paciente = (($nm -join ' ') -replace '[^\p{L}\s\.\-]', '').Trim()
   $l.estudo = (($es -join ' ') -replace '\s+', ' ').Trim()
-  $l.avc = (($ind + $es) -join ' ') -match '(?i)(^|[^a-z])avc([^a-z]|$)'
+  # "avci"/"avch" (AVC isquemico/hemorragico) tambem: em 26/11 a indicacao veio "avci" e o exame nao virou urgencia.
+  $l.avc = (($ind + $es) -join ' ') -match '(?i)(^|[^a-z])avc[ih]?([^a-z]|$)'
+}
+# Linha sem hora legivel herda a hora da vizinha do mesmo exame (26/11): o PACS lista um exame com varios estudos em
+# linhas seguidas, com o mesmo paciente, origem e hora. Em 26/11 a tarde as linhas vermelhas (PS) de dois pacientes,
+# um deles protocolo AVC, ficaram 1h30 sem hora legivel e nao foram ao Sigma (linha sem hora nao e enviada).
+# Mesmo paciente = nome lido igual (ou um contido no outro, o OCR corta), com pelo menos 6 letras.
+function MesmoPaciente($a, $b) {
+  $x = ($a -replace '[^\p{L}]', '').ToLower(); $y = ($b -replace '[^\p{L}]', '').ToLower()
+  if ($x.Length -lt 6 -or $y.Length -lt 6) { return $false }
+  $x.StartsWith($y.Substring(0, [Math]::Min(6, $y.Length))) -or $x.Contains($y) -or $y.Contains($x)
+}
+for ($rodada = 0; $rodada -lt 3; $rodada++) {
+  for ($i = 0; $i -lt $linhas.Count; $i++) {
+    $l = $linhas[$i]; if ($l.hora) { continue }
+    foreach ($j in @(($i - 1), ($i + 1))) {
+      if ($j -lt 0 -or $j -ge $linhas.Count) { continue }
+      $v = $linhas[$j]
+      if ($v.hora -and $v.origem -eq $l.origem -and (MesmoPaciente $l.paciente $v.paciente)) {
+        $l.hora = $v.hora; $l.via = 'vizinha'; if (-not $l.data) { $l.data = $v.data }; break
+      }
+    }
+  }
+}
+# Diagnostico por linha (26/11): com diag_linhas.on, grava origem, cor, hora, via, data e estudo de cada linha lida
+# (sem nome de paciente) em diag_linhas.txt, sobrescrito a cada rodada.
+if (Test-Path "$base\diag_linhas.on") {
+  @($linhas | ForEach-Object { "{0,3} y={1,4} {2,-9} cor={3,-11} data={4,-10} hora={5,-8} via={6,-10} avc={7} | {8}" -f $_.n, $_.y, $_.origem, $_.cor, $_.data, $_.hora, ($_.via -replace '^falhou.*', 'falhou'), [bool]$_.avc, $_.estudo }) | Set-Content "$base\diag_linhas.txt"
 }
 $envio = @($linhas | Where-Object { $_.hora } | ForEach-Object { @{ data = $_.data; hora = $_.hora; origem = $_.origem; paciente = $_.paciente; estudo = $_.estudo; avc = [bool]$_.avc } })
 $detalhe = @{
   atualizou = $atualizou; versao = $versao; faixas = $acum.Count; paginas = $paginas; quebrou = $quebrou; sem_hora = @($linhas | Where-Object { -not $_.hora }).Count
-  por_modelo = @($linhas | Where-Object { $_.via -eq 'modelo' }).Count
+  por_modelo = @($linhas | Where-Object { $_.via -eq 'modelo' }).Count; por_vizinha = @($linhas | Where-Object { $_.via -eq 'vizinha' }).Count
   precisao_minuto = @($linhas | Where-Object { $_.via -eq 'minuto' }).Count; sem_data = @($linhas | Where-Object { -not $_.data }).Count
   duracao_ms = [int]((Get-Date) - $inicio).TotalMilliseconds
 }

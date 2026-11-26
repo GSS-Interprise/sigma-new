@@ -13,7 +13,8 @@ const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: 
 // CEPON entrou em 22/11 (segunda estação, PC da Brenda).
 const UNIDADES = new Set(["marieta", "cepon", "tijucas", "mobilemed"]);
 const ORIGENS = new Set(["ps", "internado", "externo"]);
-const AVC = /(^|[^A-Z])AVC([^A-Z]|$)|ACIDENTE VASCULAR/i;
+// "AVCi"/"AVCh" (isquêmico/hemorrágico) também valem: em 26/11 a indicação veio "avci" e não virou urgência.
+const AVC = /(^|[^A-Z])AVC[IH]?([^A-Z]|$)|ACIDENTE VASCULAR/i;
 
 serve(async (req) => {
   if (req.method !== "POST") return json({ ok: false, error: "metodo" }, 405);
