@@ -28,6 +28,9 @@ let MAX_ATRASO_MIN = 120;
 const MAX_POR_RODADA = 10;
 // Assumiu e não laudou: minutos depois do vencimento para avisar (Ramone, 25/11: 5 min).
 let ASSUMIDO_FOLGA_MIN = 5;
+// Intervalo mínimo entre avisos para a mesma pessoa (26/11): no máximo 1 ligação a cada 15 min e 1 WhatsApp a cada 10.
+const INTERVALO_LIGACAO_MIN = 15;
+const INTERVALO_WHATS_MIN = 10;
 let AVISAR_EXTERNO = false;
 let RESUMO_HORA = 7;
 const chaveExame = (e: { origem: string; inicio_em: string; paciente?: string | null; estudo?: string | null }) =>
@@ -71,6 +74,17 @@ const MODELOS = [
     variaveis: { "1": "Unidade", "2": "Quantidade", "3": "Lista de exames" },
     botao: "Assumir laudos",
   },
+  // 26/11: a Meta reclassificou prazo_v1, vencido_v1 e varios_v1 como MARKETING, e marketing tem limite por
+  // destinatário (131049 barrou Thaina e Wagner). Este nasce com allow_category_change = false: ou fica UTILITY, ou é
+  // recusado. Os v2 (UTILITY) passam a ser os únicos modelos de um exame.
+  {
+    nome: "gss_sla_laudo_lista_v1",
+    corpo: "Laudos pendentes no SLA - {{1}}: {{2}} exames aguardam laudo. {{3}}. Toque em Assumir laudos para confirmar que vai laudar todos.",
+    exemplo: ["Hospital Marieta", "3", "PS 10:01 (TC Pelve) vencido ha 41 min; PS 10:12 (TC Torax) vence em 5 min; Internado 09:40 (TC Cranio) vence em 20 min"],
+    variaveis: { "1": "Unidade", "2": "Quantidade", "3": "Lista de exames" },
+    botao: "Assumir laudos",
+    fixarCategoria: true,
+  },
 ];
 
 async function remetente(admin: any) {
@@ -110,7 +124,8 @@ async function criarTemplates(admin: any, dryRun: boolean, nomes?: string[]) {
     ];
     if (dryRun) { out.push({ nome: m.nome, remetente: sender.phone_e164, componentes }); continue; }
     const resposta = await chakraGss(`/v1/ext/plugin/whatsapp/api/v24.0/${sender.chakra_waba_id}/message_templates`,
-      { method: "POST", body: JSON.stringify({ name: m.nome, category: "UTILITY", language: "pt_BR", components: componentes }) });
+      { method: "POST", body: JSON.stringify({ name: m.nome, category: "UTILITY", language: "pt_BR", components: componentes,
+        ...((m as { fixarCategoria?: boolean }).fixarCategoria ? { allow_category_change: false } : {}) }) });
     const remoto = unwrapChakraPayload(resposta);
     const remotoId = String(remoto.id || remoto.message_template_id || m.nome);
     const st = String(remoto.status || "PENDING").toLowerCase();
@@ -150,7 +165,7 @@ async function statusTemplates(admin: any) {
         approval_status: st === "approved" ? "approved" : st === "rejected" ? "rejected" : "pending", updated_at: new Date().toISOString(),
       }).eq("friendly_name", m.nome);
     }
-    out.push({ nome: m.nome, status: st, motivo: t?.rejected_reason ?? null, total_na_waba: todos.length, nomes: todos.map((x: any) => x.name).join(",") });
+    out.push({ nome: m.nome, status: st, categoria: t?.category ?? null, motivo: t?.rejected_reason ?? null, total_na_waba: todos.length, nomes: todos.map((x: any) => x.name).join(",") });
   }
   return out;
 }
@@ -230,9 +245,11 @@ async function checarExames(admin: any, forcar = false, unidades = UNIDADES, tes
   const emails: string[] = [];
   const { data: v2 } = await admin.from("whatsapp_official_templates").select("friendly_name")
     .in("friendly_name", ["gss_sla_laudo_prazo_v2", "gss_sla_laudo_vencido_v2"]).eq("approval_status", "approved");
-  const v2Aprovado = (v2 ?? []).length === 2;
+  // Nomes distintos: com o remetente novo (26/11) cada modelo tem uma linha por número; contar linhas dava 4 e o motor
+  // caía no v1, que a Meta classificou como marketing (131049 barrou os avisos).
+  const v2Aprovado = new Set((v2 ?? []).map((x: any) => x.friendly_name)).size === 2;
   const { data: vr } = await admin.from("whatsapp_official_templates").select("friendly_name")
-    .eq("friendly_name", "gss_sla_laudo_varios_v1").eq("approval_status", "approved").limit(1);
+    .eq("friendly_name", "gss_sla_laudo_lista_v1").eq("approval_status", "approved").limit(1);
   const variosAprovado = (vr ?? []).length > 0;
   // WhatsApp e ligação da rodada ficam aqui e saem no fim, juntos por pessoa (dispararRodada). E-mail sai na hora.
   const fila: ItemFila[] = [];
@@ -308,10 +325,11 @@ async function checarExames(admin: any, forcar = false, unidades = UNIDADES, tes
       const tipo = vencido ? "vencido" : "prazo";
       const origem = ORIGEM[e.origem] ?? e.origem, hh = horaExame(e.inicio_em), un = NOME_UNIDADE[unidade] ?? unidade;
       const tempo = vencido ? duracao((agora.getTime() - fim) / 60000) : duracao((fim - agora.getTime()) / 60000);
-      const comNome = v2Aprovado && e.paciente;
+      // Sempre o v2 quando aprovado (UTILITY); sem nome lido, vai "nao identificado" (v1 virou marketing na Meta, 26/11).
+      const comNome = v2Aprovado;
       const modelo = `gss_sla_laudo_${tipo}_${comNome ? "v2" : "v1"}`;
       const params = comNome
-        ? [origem, un, String(e.paciente).slice(0, 60), String(e.estudo || "exame").slice(0, 60), hh, tempo]
+        ? [origem, un, String(e.paciente || "nao identificado").slice(0, 60), String(e.estudo || "exame").slice(0, 60), hh, tempo]
         : [origem, un, hh, tempo];
       const linha = `${origem}${e.paciente ? `, ${e.paciente}${e.estudo ? ` (${e.estudo})` : ""}` : ""}, exame das ${hh}: ${vencido ? `vencido há ${tempo}` : `vence em ${tempo}`}`;
 
@@ -357,7 +375,16 @@ async function dispararRodada(admin: any, sender: any, fila: ItemFila[], testeDe
     porPessoa.set(k, [...(porPessoa.get(k) ?? []), it]);
   }
   for (const itens of porPessoa.values()) {
-    const juntos = itens.length > 1 && (itens[0].passo.canal === "ligacao" || variosAprovado);
+    // Intervalo mínimo por pessoa (26/11): a Thaina levou 8 ligações em 30 min, porque cada exame que vencia numa rodada
+    // nova virava outra chamada, e a Meta barrou WhatsApps seguidos para a mesma pessoa (131049/131056). Dentro do
+    // intervalo nada sai e nada é marcado: os passos ficam para a próxima rodada e saem juntos depois.
+    const canal = itens[0].passo.canal;
+    const alvo = destinoDoAviso(itens[0].pessoa, testeDestino);
+    const intervaloMin = canal === "ligacao" ? INTERVALO_LIGACAO_MIN : INTERVALO_WHATS_MIN;
+    const { data: recente } = await admin.from("sla_alertas").select("id").eq("canal", canal).eq("destino", alvo.telefone)
+      .gte("criado_em", new Date(Date.now() - intervaloMin * 60_000).toISOString()).not("erro", "like", "teste interno%").limit(1);
+    if (!alvo.teste && (recente ?? []).length) { out.push({ para: alvo.nome, canal, adiado: itens.length, intervalo_min: intervaloMin }); continue; }
+    const juntos = itens.length > 1 && (canal === "ligacao" || variosAprovado);
     if (!juntos) {
       for (const it of itens) out.push(await dispararPasso(admin, sender, it.e, it.passo, it.pessoa, it.tipo, it.modelo, it.params, it.linha, testeDestino, emails));
       continue;
@@ -390,7 +417,7 @@ async function dispararGrupo(admin: any, sender: any, itens: ItemFila[], testeDe
         unidade: it.unidade, origem: it.e.origem === "ps" ? "PS" : it.origem, hora: it.hh, estudo: it.e.estudo,
         estado: it.tipo === "vencido" ? `vencido ha ${it.tempo}` : `vence em ${it.tempo}`,
       })));
-      const wamid = await enviarModelo(sender, alvo.telefone, "gss_sla_laudo_varios_v1", [unidades, String(itens.length), lista], `g:${grupo}`);
+      const wamid = await enviarModelo(sender, alvo.telefone, "gss_sla_laudo_lista_v1", [unidades, String(itens.length), lista], `g:${grupo}`);
       await admin.from("sla_alertas").update({ status: "enviado", mensagem_id: wamid }).eq("grupo", grupo);
     }
     return { grupo, para: alvo.nome, canal, exames: itens.length, ok: true };
@@ -625,6 +652,78 @@ async function statusEstacoes(admin: any, enviar: boolean) {
     + "Acompanhe em Sigma › Radiologia › SLA ao vivo (faixa no topo).";
   const email = enviar && para.length ? await emailar(titulo, corpo, para) : false;
   return { para, titulo, linhas, email };
+}
+
+// Saúde do SLA (26/11, Raul: "monitorar os primeiros dias; o alerta tem que funcionar para a equipe saber sempre").
+// Cron de 30 min. Procura o que faria o médico não saber de um exame e avisa a equipe (alertas-equipe, ação
+// sla_saude: Brenda no horário comercial, Wagner fora dele) e o e-mail da coordenação. O mesmo problema (chave) só
+// volta a avisar depois de 3 h (config sla_saude_avisos). Com os avisos desligados ou em modo teste, só calcula.
+async function saudeSla(admin: any, enviar: boolean) {
+  const agora = Date.now();
+  const hora = new Date(agora - 60 * 60_000).toISOString();
+  const problemas: { chave: string; resumo: string; detalhe: string }[] = [];
+
+  // 1. Avisos que não chegaram (Meta ou Twilio) na última hora.
+  const { data: falhas } = await admin.from("sla_alertas").select("canal, erro, destino_nome")
+    .gte("criado_em", hora).eq("status", "falhou").in("canal", ["whatsapp", "ligacao"]).not("erro", "like", "teste interno%");
+  if ((falhas ?? []).length >= 2) {
+    const motivos = new Map<string, number>();
+    for (const f of falhas!) motivos.set(String(f.erro || "sem motivo").slice(0, 70), (motivos.get(String(f.erro || "sem motivo").slice(0, 70)) ?? 0) + 1);
+    const top = [...motivos.entries()].sort((a, b) => b[1] - a[1])[0];
+    problemas.push({ chave: "falhas", resumo: `${falhas!.length} avisos nao chegaram aos medicos na ultima hora`,
+      detalhe: `Motivo mais comum: ${top[0]} (${top[1]}). Para: ${[...new Set(falhas!.map((f: any) => f.destino_nome))].slice(0, 4).join(", ")}` });
+  }
+
+  // 2. Exame vencido há mais de 30 min, sem dono, sem nenhum aviso que tenha chegado (entregue, lido ou ligação atendida).
+  const { data: vencidos } = await admin.from("sla_exames").select("id, unidade, origem, inicio_em, estudo")
+    .is("saiu_em", null).is("ausente_em", null).is("assumido_em", null).is("silenciado_em", null).neq("origem", "externo")
+    .lte("vence_em", new Date(agora - 30 * 60_000).toISOString()).gte("vence_em", new Date(agora - MAX_ATRASO_MIN * 60_000).toISOString());
+  if ((vencidos ?? []).length) {
+    const { data: chegou } = await admin.from("sla_alertas").select("exame_id")
+      .in("exame_id", vencidos!.map((v: any) => v.id)).in("status", ["entregue", "lido", "respondido"]);
+    const avisados = new Set((chegou ?? []).map((c: any) => c.exame_id));
+    const sem = vencidos!.filter((v: any) => !avisados.has(v.id));
+    if (sem.length) problemas.push({ chave: "vencido_sem_aviso", resumo: `${sem.length} exame(s) vencido(s) sem nenhum aviso entregue`,
+      detalhe: sem.slice(0, 4).map((v: any) => `${NOME_UNIDADE[v.unidade] ?? v.unidade} ${ORIGEM[v.origem] ?? v.origem} ${horaExame(v.inicio_em)}${v.estudo ? ` ${String(v.estudo).slice(0, 30)}` : ""}`).join("; ") });
+  }
+
+  // 3. Escala de agora: modalidade sem ninguém ou plantonista sem telefone (Marieta, que vale para todas sem escala própria).
+  const { data: agoraEscala } = await admin.from("sla_plantao").select("nome, telefone, modalidade, papel, unidade")
+    .lte("inicio", new Date(agora).toISOString()).gt("fim", new Date(agora).toISOString()).eq("papel", "plantonista");
+  const daMarieta = (agoraEscala ?? []).filter((p: any) => p.unidade === "marieta");
+  for (const m of ["TC", "US"]) {
+    if (!daMarieta.some((p: any) => !p.modalidade || p.modalidade === m)) {
+      problemas.push({ chave: `sem_${m}`, resumo: `Ninguem de ${m === "TC" ? "tomografia" : "ultrassom"} na escala agora`,
+        detalhe: `Exames de ${m} vao so para a coordenacao ate alguem entrar na escala. Confira o Dr. Escala` });
+    }
+  }
+  const semFone = (agoraEscala ?? []).filter((p: any) => dig(p.telefone).length < 12);
+  if (semFone.length) problemas.push({ chave: "sem_telefone", resumo: `${semFone.length} plantonista(s) sem telefone no Sigma`,
+    detalhe: `${semFone.map((p: any) => p.nome).slice(0, 3).join(", ")}: cadastre o telefone em Medicos para o aviso chegar` });
+
+  const ativo = (await config(admin, "sla_alertas_ativo")) === "true" && !dig(await config(admin, "sla_teste_destino"));
+  let ultimos: Record<string, string> = {};
+  try { ultimos = JSON.parse(await config(admin, "sla_saude_avisos") || "{}"); } catch { ultimos = {}; }
+  const novos = problemas.filter((p) => !ultimos[p.chave] || agora - new Date(ultimos[p.chave]).getTime() > 3 * 3_600_000);
+  const avisos: unknown[] = [];
+  if (enviar && ativo && novos.length) {
+    for (const p of novos) {
+      const r = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/alertas-equipe`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}` },
+        body: JSON.stringify({ acao: "sla_saude", resumo: p.resumo, detalhe: p.detalhe }),
+      }).then((x) => x.json()).catch((e) => ({ erro: String(e) }));
+      avisos.push({ chave: p.chave, whatsapp: r });
+      ultimos[p.chave] = new Date(agora).toISOString();
+    }
+    await emailar(`SLA de laudos: ${novos.map((p) => p.resumo).join("; ")}`,
+      novos.map((p) => `${p.resumo}. ${p.detalhe}.`).join("\n\n") + "\n\nAcompanhe em Sigma › Radiologia › SLA ao vivo.", await emailsDaEstacao(admin));
+    const { error } = await admin.from("config_lista_items").update({ valor: JSON.stringify(ultimos) }).eq("campo_nome", "sla_saude_avisos").select("id");
+    if (error || !(await config(admin, "sla_saude_avisos"))) {
+      await admin.from("config_lista_items").insert({ campo_nome: "sla_saude_avisos", valor: JSON.stringify(ultimos) });
+    }
+  }
+  return { ativo, problemas, avisados: avisos };
 }
 
 async function checarColetor(admin: any, unidades = UNIDADES) {
@@ -898,6 +997,7 @@ Deno.serve(async (req) => {
     // body.unidades só para teste manual (ex.: ["teste"]); o cron não manda.
     if (body.acao === "saldo_twilio") return json(await saldoTwilio(body.enviar !== false));
     if (body.acao === "status_estacoes") return json({ ok: true, ...(await statusEstacoes(admin, body.enviar !== false)) });
+    if (body.acao === "saude") return json({ ok: true, ...(await saudeSla(admin, body.enviar !== false)) });
     if (body.acao === "coletor") return json({ ok: true, coletor: await checarColetor(admin, Array.isArray(body.unidades) ? body.unidades.map(String) : UNIDADES) });
     return json({ ok: false, error: "acao" }, 400);
   } catch (e) {

@@ -62,6 +62,14 @@ const MODELOS = [
     exemplo: ["2 conversas esperando, a mais antiga ha 15 min", "Hospital Regional (cliente), 15 min, numero 3761 de Ester; Dr. Joao Silva, 4 min, numero 3416 de Duda"],
     botao: { type: "URL", text: "Ver a fila", url: `${SIGMA}/tempo-de-resposta`, example: undefined },
   },
+  // Saúde do SLA (26/11): problema nos avisos aos médicos (não chegaram, vencido sem ninguém avisado, escala sem a
+  // modalidade). Vai para as mesmas pessoas do aviso de estação, pelo período de cada uma.
+  {
+    nome: "gss_sla_saude_v1",
+    corpo: "SLA de laudos - {{1}}: {{2}}. Veja no Sigma pelo botao.",
+    exemplo: ["2 avisos nao chegaram aos medicos na ultima hora", "Meta barrou por limite de mensagens. Confira o historico do exame"],
+    botao: { type: "URL", text: "Ver o SLA", url: `${SIGMA}/radiologia?aba=sla`, example: undefined },
+  },
   {
     nome: "gss_estacao_sla_v1",
     corpo: "Estacao do SLA de laudos - {{1}}: {{2}}. Veja a situacao e o passo a passo no Sigma pelo botao.",
@@ -272,6 +280,27 @@ async function estacaoSla(admin: any, b: any) {
   return { enviados: out };
 }
 
+// Saúde do SLA: mesma lista e mesmo período do aviso de estação. Enquanto o modelo gss_sla_saude_v1 não estiver
+// aprovado, sai pelo modelo da estação (o texto começa com "Estacao do SLA", mas o resumo explica o problema).
+async function saudeSla(admin: any, b: any) {
+  const resumo = String(b.resumo || "").replace(/\s+/g, " ").trim().slice(0, 180) || "Problema nos avisos";
+  const detalhe = String(b.detalhe || "").replace(/\s+/g, " ").trim().slice(0, 400) || "Sem detalhe.";
+  let lista: { nome: string; fone: string; periodo?: string }[] = [];
+  try { lista = JSON.parse(await config(admin, "sla_estacao_destinos") || "[]"); } catch { lista = []; }
+  lista = lista.filter((d) => dig(d?.fone).length >= 12 && (b.todos === true || noPeriodo(d?.periodo)));
+  if (!lista.length) return { pulado: "sem destinatario" };
+  const sender = await remetente(admin);
+  const out = [];
+  for (const d of lista) {
+    try { out.push({ para: d.nome, wamid: await enviar(sender, dig(d.fone), "gss_sla_saude_v1", [resumo, detalhe]) }); }
+    catch {
+      try { out.push({ para: d.nome, wamid: await enviar(sender, dig(d.fone), "gss_estacao_sla_v1", [resumo, detalhe]), reserva: true }); }
+      catch (e) { out.push({ para: d.nome, erro: String((e as Error).message).slice(0, 200) }); }
+    }
+  }
+  return { enviados: out };
+}
+
 async function criarTemplates(admin: any, nomes?: string[]) {
   const sender = await remetente(admin);
   const out = [];
@@ -355,6 +384,7 @@ Deno.serve(async (req) => {
     if (body.acao === "respondeu") return json({ ok: true, ...(await respondeu(admin, String(body.campanha_lead_id || ""), String(body.texto || ""), !!body.forcar)) });
     if (body.acao === "resumo") return json({ ok: true, ...(await resumoDiario(admin, !!body.forcar)) });
     if (body.acao === "estacao") return json({ ok: true, ...(await estacaoSla(admin, body)) });
+    if (body.acao === "sla_saude") return json({ ok: true, ...(await saudeSla(admin, body)) });
     if (body.acao === "atendimento") return json({ ok: true, ...(await atendimentoEspera(admin, !!body.forcar)) });
     if (body.acao === "furos") return json({ ok: true, ...(await furosEscala(admin, !!body.forcar)) });
     if (body.acao === "ia_falhas") return json({ ok: true, ...(await iaFalhas(admin)) });
