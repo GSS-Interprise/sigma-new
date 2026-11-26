@@ -103,19 +103,26 @@ export function CpfGateDialog({ open, onOpenChange, onLeadFound, onNewLead }: Cp
         const variants = buildCpfVariants(doc);
         const orFilter = variants.map((v) => `cpf.eq.${v}`).join(",");
 
+        // Lead fundido guarda o CPF mas não é o cadastro do médico: prefere o ativo e, se só houver o fundido,
+        // abre o principal em que ele foi unido (antes abria o fundido, que não aparece em Leads).
         const { data, error } = await supabase
           .from("leads")
-          .select("id, nome, cpf")
+          .select("id, nome, cpf, merged_into_id")
           .or(orFilter)
+          .order("merged_into_id", { ascending: true, nullsFirst: true })
           .limit(1)
           .maybeSingle();
 
         if (error) throw error;
 
         if (data) {
-          toast.success(`Lead encontrado: ${data.nome}`);
+          if (data.merged_into_id) {
+            toast.success("Este CPF está num cadastro antigo, unido a outro. Abrindo o cadastro principal.");
+          } else {
+            toast.success(`Lead encontrado: ${data.nome}`);
+          }
           handleClose(false);
-          onLeadFound(data.id);
+          onLeadFound(data.merged_into_id ?? data.id);
         } else {
           handleClose(false);
           onNewLead({ value: doc, type: "cpf" });

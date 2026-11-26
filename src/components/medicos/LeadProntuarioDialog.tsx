@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
+import { lerErroCadastroLead } from "@/lib/erroCadastroLead";
 import {
   User, FileText, History, UserCheck, ExternalLink,
   ArrowRight, CheckCircle2, Send, CreditCard, Landmark,
@@ -65,12 +66,14 @@ export interface LeadProntuarioDialogProps {
   initialCnpj?: string;
   /** Depois de criar o lead, em vez de fechar, o pai abre o prontuário dele (Kanban de Médicos). */
   onLeadCriado?: (leadId: string) => void;
+  /** Médico repetido: o aviso ganha o botão "Abrir cadastro" e o pai troca para o cadastro que já existe. */
+  onAbrirExistente?: (leadId: string) => void;
 }
 
 // Estilo para inputs invisíveis que mostram borda apenas no hover/focus
 const invisibleInputClass = "border-transparent bg-transparent hover:border-input hover:bg-muted/30 focus:border-input focus:bg-muted/30 transition-all h-8 px-2";
 
-export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = false, createAsCorpoClinico = false, initialCpf, initialCnpj, onLeadCriado }: LeadProntuarioDialogProps) {
+export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = false, createAsCorpoClinico = false, initialCpf, initialCnpj, onLeadCriado, onAbrirExistente }: LeadProntuarioDialogProps) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
@@ -765,7 +768,17 @@ export function LeadProntuarioDialog({ open, onOpenChange, leadId, isNewLead = f
       }
     },
     onError: (error: any) => {
-      toast.error(error.message || 'Erro ao salvar alterações');
+      const { mensagem, leadExistenteId } = lerErroCadastroLead(error, 'Erro ao salvar alterações');
+      if (leadExistenteId && onAbrirExistente && leadExistenteId !== leadId) {
+        // fica na tela até a pessoa decidir: o próximo passo é abrir o cadastro que já existe, não criar outro
+        toast.error(mensagem, {
+          duration: 20000,
+          action: { label: 'Abrir cadastro', onClick: () => onAbrirExistente(leadExistenteId) },
+          classNames: { actionButton: '!h-11 sm:!h-8 !px-3 !text-sm' },
+        });
+        return;
+      }
+      toast.error(mensagem);
     },
   });
 

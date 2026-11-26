@@ -947,6 +947,13 @@ export function LeadsTab() {
         isNewLead={isNewLead}
         initialCpf={initialCpf}
         initialCnpj={initialCnpj}
+        onAbrirExistente={(leadId) => {
+          setSelectedLeadId(leadId);
+          setIsNewLead(false);
+          setInitialCpf(undefined);
+          setInitialCnpj(undefined);
+          setProntuarioOpen(true);
+        }}
       />
 
       <Dialog

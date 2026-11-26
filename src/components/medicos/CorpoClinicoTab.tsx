@@ -692,6 +692,10 @@ export function CorpoClinicoTab() {
         leadId={selectedLeadId}
         isNewLead={selectedLeadId === null}
         createAsCorpoClinico={selectedLeadId === null}
+        onAbrirExistente={(leadId) => {
+          setSelectedLeadId(leadId);
+          setProntuarioDialogOpen(true);
+        }}
       />
 
       <ImportarMedicosDialog

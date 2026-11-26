@@ -31,6 +31,10 @@ export function NovoMedicoKanbanCardDialog() {
         leadId={leadCriado}
         isNewLead={!leadCriado}
         onLeadCriado={setLeadCriado}
+        onAbrirExistente={(leadId) => {
+          setLeadCriado(leadId);
+          setOpen(true);
+        }}
       />
     </>
   );
