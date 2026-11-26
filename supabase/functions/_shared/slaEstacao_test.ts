@@ -44,3 +44,7 @@ Deno.test("queda rápida: estação calada há mais de 8 min (PC desligado)", ()
   assertEquals(quedaRapida([l("ok"), l("ok")], 5), false);
   assertEquals(quedaRapida([], null), false);
 });
+
+Deno.test("estação voltando: leitura ok com queda aberta", () => {
+  assertStringIncludes(motivoQueda("marieta", l("ok"), 1, 8), "voltou a ler");
+});

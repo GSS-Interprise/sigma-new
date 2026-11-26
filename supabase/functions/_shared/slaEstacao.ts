@@ -29,6 +29,9 @@ const TEXTO: Record<string, (u: string) => string> = {
 export function motivoQueda(unidade: string, ultima: Leitura | null, minutosSemNada: number | null, limiteMin: number): string {
   if (!ultima || (minutosSemNada !== null && minutosSemNada > limiteMin)) return SEM_LEITURA;
   const m = ultima.detalhe?.motivo ?? "";
+  // 26/11: a queda abre por silêncio (energia caiu) e a leitura seguinte já é "ok": a tela mostrava "Última leitura
+  // com status ok" até fechar. É a estação voltando; a queda fecha na verificação seguinte.
+  if (ultima.status === "ok") return "A estação voltou a ler a fila; o aviso fecha na próxima verificação (até 2 min).";
   if (TEXTO[m]) return TEXTO[m](unidade);
   if (ultima.status === "sem_grade") {
     return PORTAL[unidade]
