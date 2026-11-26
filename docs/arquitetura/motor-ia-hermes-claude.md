@@ -106,7 +106,7 @@ sem abrir o conteúdo de nenhum pedido; migration `20261125130000_motor_ia_robo_
 
 - [x] Hermes, Claude Code e plugin instalados na VPS da GSS, usuário `sigma-ia`
 - [x] Rotinas `ia_claude_*`, migration `20261113170000_motor_ia_claude.sql`, tela Motor de IA
-- [ ] Login com a conta Max da GSS (Raul, pela tela) e teste respondendo
+- [x] Login com a conta Max da GSS (Raul, pela tela, 26/11/2026): teste respondeu em 15 s; token vence ~26/11/2027
 - [x] Primeiro processo: assistente de campanha (Raul, 17/11), com o Gemini de reserva até a GSS conectar
 - [x] Robô do Sigma no Claude (25/11): edge `sigma-assistente` e migration `20261125130000` no ar; falta publicar
-  `motor_claude.py` (rotina `ia_claude_robo_sigma`) na VPS e reiniciar o `sigma-rotinas`
+  `motor_claude.py` (rotina `ia_claude_robo_sigma`) na VPS e reiniciar o `sigma-rotinas` (conferido em 26/11: VPS igual ao repo)
