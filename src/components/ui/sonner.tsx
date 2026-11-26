@@ -15,6 +15,8 @@ const Toaster = ({ ...props }: ToasterProps) => {
           toast:
             "group toast group-[.toaster]:bg-background group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg",
           description: "group-[.toast]:text-muted-foreground",
+          // o sonner põe o ícone de 20 px numa caixa de 16 px e ele vaza 3 px (portão visual, 26/11/2026)
+          icon: "[&>svg]:h-4 [&>svg]:w-4",
           actionButton: "group-[.toast]:bg-primary group-[.toast]:text-primary-foreground",
           cancelButton: "group-[.toast]:bg-muted group-[.toast]:text-muted-foreground",
         },

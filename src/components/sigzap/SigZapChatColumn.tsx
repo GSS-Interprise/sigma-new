@@ -43,6 +43,7 @@ import { LeadProntuarioDialog } from "@/components/medicos/LeadProntuarioDialog"
 import { SigZapLeadLinkDialog } from "./SigZapLeadLinkDialog";
 import { SigZapLeadAutoMatchDialog } from "./SigZapLeadAutoMatchDialog";
 import { normalizeToE164 } from "@/lib/phoneUtils";
+import { lerErroCadastroLead } from "@/lib/erroCadastroLead";
 import { renderMessageWithPhoneLinks } from "./SigZapPhoneLink";
 import { SigZapPhonePopover } from "./SigZapPhoneLink";
 import { formatWhatsappNode, formatWhatsappText } from "@/lib/whatsappFormat";
@@ -1441,7 +1442,7 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
       queryClient.invalidateQueries({ queryKey: ['sigzap-lead-exists'] });
     } catch (err: any) {
       console.error('Erro ao criar lead:', err);
-      toast.error(err.message || "Erro ao criar lead");
+      toast.error(lerErroCadastroLead(err, "Erro ao criar lead").mensagem);
     }
   };
 
@@ -2420,6 +2421,11 @@ export function SigZapChatColumn({ conversaId, hideLeadButton = false }: SigZapC
         onOpenChange={setProntuarioOpen}
         leadId={selectedLeadId}
         isNewLead={isNewLead}
+        onAbrirExistente={(leadId) => {
+          setSelectedLeadId(leadId);
+          setIsNewLead(false);
+          setProntuarioOpen(true);
+        }}
       />
 
       {/* Photo Modal */}
