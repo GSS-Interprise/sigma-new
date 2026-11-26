@@ -632,7 +632,17 @@ async function processOfficialBatch(supabase: any, camp: any, supabaseUrl: strin
   const todosNumeros: string[] = (camp.official_sender_ids?.length ? camp.official_sender_ids : [camp.official_sender_id])
     .filter(Boolean)
     .map(String);
-  const numeros = todosNumeros.filter((id) => !pausados.has(id));
+  // Número que o monitor marcou como "Não usar" (conta travada, sem permissão, qualidade vermelha, desligado) sai da
+  // rodada sozinho (26/11: o ANESTESIO - SMO mandou 355 primeiras mensagens pelo 93618-3761 travado, nenhuma chegou).
+  // Sem nenhum número bom, a campanha pausa (abaixo). Volta sozinho quando o monitor tirar o "Não usar".
+  const { data: senders } = await supabase.from("whatsapp_official_senders").select("id, chakra_phone_number_id").in("id", todosNumeros);
+  const pnids = (senders ?? []).map((x: any) => x.chakra_phone_number_id).filter(Boolean);
+  const { data: conexoes } = pnids.length
+    ? await supabase.from("whatsapp_chakra_connections").select("phone_number_id, disponibilidade").in("phone_number_id", pnids)
+    : { data: [] };
+  const ruins = new Set((conexoes ?? []).filter((c: any) => c.disponibilidade === "indisponivel").map((c: any) => c.phone_number_id));
+  const travados = new Set((senders ?? []).filter((x: any) => ruins.has(x.chakra_phone_number_id)).map((x: any) => String(x.id)));
+  const numeros = todosNumeros.filter((id) => !pausados.has(id) && !travados.has(id));
   if (todosNumeros.length === 0 || (!camp.official_template_id && !camp.official_template_name)) {
     await supabase.from("campanhas").update({ next_batch_at: null }).eq("id", camp.id);
     return json({ ok: false, error: "official_campaign_not_configured" });
