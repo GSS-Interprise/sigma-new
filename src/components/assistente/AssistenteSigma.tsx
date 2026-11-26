@@ -3,18 +3,20 @@
 // (Configurações › Agente do Sigma); cada uma só recebe resposta do que já vê nas telas. Decisão principal: confirmar
 // ou descartar a proposta que a IA montou. A IA nunca grava: a edge sigma-assistente monta uma proposta e só o clique
 // em Confirmar chama assistente_confirmar, com o login da pessoa.
-// Robô redondo no canto inferior direito, dentro do rodapé do AppLayout (ali não cobre botão de tela), e atalho Ctrl+J.
+// Robô no canto inferior direito, dentro do rodapé do AppLayout (ali não cobre botão de tela), e atalho Ctrl+J.
+// 26/11 (Raul): o robô virou um bonequinho médico (RoboMedico) e o chat abre em modal no centro, não em gaveta à direita.
 // Responde conforme a tela: dentro de uma campanha (?campanha=<id>), pergunta sem campanha citada é sobre ela.
 import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, Bot, Loader2, RotateCcw, Send } from "lucide-react";
+import { ArrowRight, Loader2, RotateCcw, Send } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { RoboMedico } from "./RoboMedico";
 
 type Linha = { rotulo: string; antes: string | null; depois: string };
 type Proposta = { id: string; tipo: "criar_campanha" | "editar_campanha"; resumo: { titulo: string; linhas: Linha[]; aviso?: string } };
@@ -24,13 +26,13 @@ type Msg = {
 };
 
 const SUGESTOES: { rota: RegExp; itens: string[] }[] = [
-  { rota: /^\/(prospeccao|campanhas|disparos)/, itens: ["Como estão as campanhas ativas?", "Quantos médicos receberam mensagem hoje?", "Quero criar uma campanha nova"] },
-  { rota: /^\/contratos/, itens: ["Quais contratos vencem nos próximos 60 dias?", "Como estão os contratos?", "Quanto cobramos de ultrassonografia?"] },
-  { rota: /^\/licitacoes/, itens: ["Quais disputas temos esta semana?", "Chegou licitação nova hoje?", "Como está o quadro de licitações?"] },
-  { rota: /^\/(bi|escalas|radiologia)/,itens: ["Onde tem furo na escala esta semana?", "Quem está de plantão no CEPON amanhã?", "Como estão as campanhas ativas?"] },
-  { rota: /.*/, itens: ["Como estão as campanhas ativas?", "Onde tem furo na escala esta semana?", "Quero criar uma campanha nova"] },
+  { rota: /^\/(prospeccao|campanhas|disparos)/, itens: ["Como estão as campanhas ativas?", "Quantos médicos receberam mensagem hoje?", "Quem está esperando resposta da equipe?", "Quero criar uma campanha nova"] },
+  { rota: /^\/contratos/, itens: ["Quais contratos vencem nos próximos 60 dias?", "Como estão os contratos?", "Quanto cobramos de ultrassonografia?", "Como lanço um aditivo de prazo?"] },
+  { rota: /^\/licitacoes/, itens: ["Quais disputas temos esta semana?", "Chegou licitação nova hoje?", "Como está o quadro de licitações?", "Como estão as campanhas ativas?"] },
+  { rota: /^\/(bi|escalas|radiologia)/,itens: ["Onde tem furo na escala esta semana?", "Quem está de plantão no CEPON amanhã?", "Qual a nossa taxa de resposta em até 10 minutos?", "Como estão as campanhas ativas?"] },
+  { rota: /.*/, itens: ["Como estão as campanhas ativas?", "Onde tem furo na escala esta semana?", "Qual a nossa taxa de resposta em até 10 minutos?", "Quero criar uma campanha nova"] },
 ];
-const SUGESTOES_CAMPANHA = ["Quantos disparos esta campanha teve hoje?", "Como está o funil desta campanha?", "Quantos médicos desta campanha estão em atendimento?"];
+const SUGESTOES_CAMPANHA = ["Quantos disparos esta campanha teve hoje?", "Como está o funil desta campanha?", "Quantos médicos desta campanha estão em atendimento?", "Quem desta campanha está quente?"];
 
 /** Campanha aberta na tela: ?campanha=<id> da Prospecção ou a rota antiga de propostas (mesma regra da edge). */
 function campanhaDaTela(pathname: string, search: string): string | null {
@@ -182,45 +184,55 @@ export function AssistenteSigma() {
     <>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button size="icon" className="h-10 w-10 shrink-0 rounded-full shadow-md" onClick={() => setAberto(true)} aria-label="Perguntar ao Sigma (Ctrl+J)">
-            <Bot className="h-5 w-5" />
+          <Button size="icon" className="h-11 w-11 shrink-0 rounded-full p-0 shadow-md [&_svg]:size-8" onClick={() => setAberto(true)} aria-label="Perguntar ao Sigma (Ctrl+J)">
+            <RoboMedico className="h-8 w-8" />
           </Button>
         </TooltipTrigger>
         <TooltipContent side="left">Perguntar ao Sigma (Ctrl+J)</TooltipContent>
       </Tooltip>
-      <Sheet open={aberto} onOpenChange={setAberto}>
-        <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-[440px]">
-          <SheetHeader className="border-b px-4 py-3 text-left">
+      <Dialog open={aberto} onOpenChange={setAberto}>
+        <DialogContent className="flex h-[min(80vh,680px)] max-w-2xl flex-col gap-0 overflow-hidden p-0">
+          <DialogHeader className="border-b px-5 py-3 text-left">
             <div className="flex items-center justify-between gap-2 pr-8">
-              <SheetTitle className="flex items-center gap-2 text-base"><Bot className="h-4 w-4" />Assistente do Sigma</SheetTitle>
+              <DialogTitle className="flex items-center gap-2 text-base">
+                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground"><RoboMedico className="h-6 w-6" /></span>
+                Assistente do Sigma
+              </DialogTitle>
               {msgs.length > 0 && (
                 <Button variant="ghost" size="sm" className="h-8 gap-1" disabled={enviando} onClick={() => { setMsgs([]); setConversaId(null); }}>
                   <RotateCcw className="h-3.5 w-3.5" />Nova conversa
                 </Button>
               )}
             </div>
-            <SheetDescription className="text-xs">
+            <DialogDescription className="text-xs">
               {campanhaId
                 ? <>Respondendo sobre a campanha <span className="font-medium text-foreground">{campanhaNome ?? "aberta"}</span>. Para outra, cite o nome.</>
                 : "Responde com os dados do Sigma que você já vê. Mudança só com o seu clique."}
-            </SheetDescription>
-          </SheetHeader>
+            </DialogDescription>
+          </DialogHeader>
 
-          <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4 text-sm">
+          <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4 text-sm">
             {msgs.length === 0 && (
-              <div className="space-y-2">
-                <p className="text-muted-foreground">Pergunte sobre campanhas, escalas e licitações, ou peça para criar ou mudar uma campanha.</p>
-                {sugestoes.map((s) => (
-                  <button key={s} type="button" onClick={() => enviar(s)}
-                    className="block w-full rounded-md border px-3 py-2 text-left transition-colors hover:bg-muted">
-                    {s}
-                  </button>
-                ))}
+              <div className="flex flex-col items-center pt-4 text-center">
+                <span className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 text-primary"><RoboMedico className="h-16 w-16" /></span>
+                <p className="mt-3 text-base font-semibold">Oi! Em que posso ajudar?</p>
+                <p className="mt-1 max-w-md text-muted-foreground">Pergunte sobre campanhas, escalas, contratos e licitações, ou peça para criar ou mudar uma campanha.</p>
+                <div className="mt-5 grid w-full gap-2 sm:grid-cols-2">
+                  {sugestoes.map((s) => (
+                    <button key={s} type="button" onClick={() => enviar(s)}
+                      className="rounded-lg border bg-card px-3 py-2.5 text-left transition-colors hover:border-primary/50 hover:bg-muted">
+                      {s}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
             {msgs.map((m) => (
-              <div key={m.id} className={cn("flex", m.papel === "usuario" ? "justify-end" : "justify-start")}>
-                <div className={cn("max-w-[92%] rounded-lg px-3 py-2", m.papel === "usuario" ? "bg-primary text-primary-foreground" : "bg-muted")}>
+              <div key={m.id} className={cn("flex items-end gap-2", m.papel === "usuario" ? "justify-end" : "justify-start")}>
+                {m.papel === "assistente" && (
+                  <span className="mb-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground"><RoboMedico className="h-5 w-5" /></span>
+                )}
+                <div className={cn("max-w-[85%] rounded-2xl px-3.5 py-2", m.papel === "usuario" ? "rounded-br-sm bg-primary text-primary-foreground" : "rounded-bl-sm bg-muted")}>
                   {m.papel === "usuario" ? <p className="whitespace-pre-wrap break-words">{m.texto}</p> : <Texto texto={m.texto} />}
                   {m.proposta && <CartaoProposta m={m} onConfirmar={() => confirmar(m)} onDescartar={() => descartar(m)} />}
                 </div>
@@ -228,6 +240,15 @@ export function AssistenteSigma() {
             ))}
             {enviando && (
               <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Consultando o Sigma…</div>
+            )}
+            {msgs.length > 0 && !enviando && (
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {sugestoes.filter((s) => !msgs.some((m) => m.texto === s)).slice(0, 3).map((s) => (
+                  <button key={s} type="button" onClick={() => enviar(s)} className="rounded-full border px-3 py-1 text-xs text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground">
+                    {s}
+                  </button>
+                ))}
+              </div>
             )}
             <div ref={fim} />
           </div>
@@ -240,8 +261,8 @@ export function AssistenteSigma() {
               <Send className="h-4 w-4" />
             </Button>
           </form>
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
