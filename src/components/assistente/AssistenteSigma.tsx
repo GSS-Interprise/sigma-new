@@ -4,15 +4,17 @@
 // ou descartar a proposta que a IA montou. A IA nunca grava: a edge sigma-assistente monta uma proposta e só o clique
 // em Confirmar chama assistente_confirmar, com o login da pessoa.
 // Robô no canto inferior direito, dentro do rodapé do AppLayout (ali não cobre botão de tela), e atalho Ctrl+J.
-// 26/11 (Raul): o robô virou um bonequinho médico (RoboMedico) e o chat abre em modal no centro, não em gaveta à direita.
+// 26/11 (Raul): o robô virou um bonequinho médico (RoboMedico).
+// 27/11 (Raul): nada de modal no meio da tela. O chat é uma janela flutuante no canto inferior direito, acima do robô,
+// sem escurecer a página (dá para seguir usando a tela). Minimizar (botão, Esc ou o próprio robô) guarda a conversa;
+// resposta que chega minimizada acende um ponto no robô.
 // Responde conforme a tela: dentro de uma campanha (?campanha=<id>), pergunta sem campanha citada é sobre ela.
 import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, Loader2, RotateCcw, Send } from "lucide-react";
+import { ArrowRight, ChevronDown, Loader2, RotateCcw, Send } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -121,6 +123,8 @@ export function AssistenteSigma() {
     },
   });
   const [aberto, setAberto] = useState(false);
+  const [naoLida, setNaoLida] = useState(false);
+  const abertoRef = useRef(false);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [conversaId, setConversaId] = useState<string | null>(null);
   const [texto, setTexto] = useState("");
@@ -140,7 +144,10 @@ export function AssistenteSigma() {
     return () => window.removeEventListener("keydown", atalho);
   }, []);
   useEffect(() => { fim.current?.scrollIntoView({ block: "end" }); }, [msgs, enviando]);
-  useEffect(() => { if (aberto) setTimeout(() => campo.current?.focus(), 50); }, [aberto]);
+  useEffect(() => {
+    abertoRef.current = aberto;
+    if (aberto) { setNaoLida(false); setTimeout(() => campo.current?.focus(), 50); }
+  }, [aberto]);
 
   const muda = (id: string, p: Partial<Msg>) => setMsgs((ms) => ms.map((m) => (m.id === id ? { ...m, ...p } : m)));
 
@@ -155,6 +162,7 @@ export function AssistenteSigma() {
       if (error) throw error;
       setConversaId(data.conversa_id);
       setMsgs((ms) => [...ms, { id: crypto.randomUUID(), papel: "assistente", texto: data.texto, proposta: data.proposta }]);
+      if (!abertoRef.current) setNaoLida(true);
     } catch (e) {
       setMsgs((ms) => [...ms, { id: crypto.randomUUID(), papel: "assistente", texto: `Não consegui responder agora (${(e as Error).message}). Tente de novo.` }]);
     } finally {
@@ -184,43 +192,52 @@ export function AssistenteSigma() {
     <>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button size="icon" className="h-11 w-11 shrink-0 rounded-full p-0 shadow-md [&_svg]:size-8" onClick={() => setAberto(true)} aria-label="Perguntar ao Sigma (Ctrl+J)">
+          <Button size="icon" className="relative h-11 w-11 shrink-0 rounded-full p-0 shadow-md [&_svg]:size-8" onClick={() => setAberto((a) => !a)}
+            aria-label={aberto ? "Minimizar o assistente (Ctrl+J)" : "Perguntar ao Sigma (Ctrl+J)"} aria-expanded={aberto} aria-controls="assistente-sigma">
             <RoboMedico className="h-8 w-8" />
+            {naoLida && <span className="absolute right-0 top-0 h-3 w-3 rounded-full border-2 border-background bg-emerald-500" aria-label="Resposta nova" />}
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="left">Perguntar ao Sigma (Ctrl+J)</TooltipContent>
+        <TooltipContent side="left">{aberto ? "Minimizar (Ctrl+J)" : "Perguntar ao Sigma (Ctrl+J)"}</TooltipContent>
       </Tooltip>
-      <Dialog open={aberto} onOpenChange={setAberto}>
-        <DialogContent className="flex h-[min(80vh,680px)] max-w-2xl flex-col gap-0 overflow-hidden p-0">
-          <DialogHeader className="border-b px-5 py-3 text-left">
-            <div className="flex items-center justify-between gap-2 pr-8">
-              <DialogTitle className="flex items-center gap-2 text-base">
-                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground"><RoboMedico className="h-6 w-6" /></span>
-                Assistente do Sigma
-              </DialogTitle>
+      {aberto && (
+        <section id="assistente-sigma" role="dialog" aria-label="Assistente do Sigma"
+          onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setAberto(false); } }}
+          className="fixed bottom-16 right-4 z-50 flex h-[min(640px,calc(100vh-6rem))] w-[420px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border bg-background shadow-2xl animate-in fade-in-0 slide-in-from-bottom-2 md:right-6">
+          <header className="flex items-center justify-between gap-2 border-b bg-primary px-3 py-2 text-primary-foreground">
+            <h2 className="flex min-w-0 items-center gap-2 text-sm font-semibold">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-foreground/15"><RoboMedico className="h-5 w-5" /></span>
+              <span className="truncate">Assistente do Sigma</span>
+            </h2>
+            <div className="flex shrink-0 items-center gap-1">
               {msgs.length > 0 && (
-                <Button variant="ghost" size="sm" className="h-8 gap-1" disabled={enviando} onClick={() => { setMsgs([]); setConversaId(null); }}>
+                <Button variant="ghost" size="sm" className="h-8 gap-1 text-primary-foreground hover:bg-primary-foreground/15 hover:text-primary-foreground" disabled={enviando}
+                  onClick={() => { setMsgs([]); setConversaId(null); }}>
                   <RotateCcw className="h-3.5 w-3.5" />Nova conversa
                 </Button>
               )}
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-primary-foreground hover:bg-primary-foreground/15 hover:text-primary-foreground"
+                onClick={() => setAberto(false)} aria-label="Minimizar">
+                <ChevronDown className="h-5 w-5" />
+              </Button>
             </div>
-            <DialogDescription className="text-xs">
-              {campanhaId
-                ? <>Respondendo sobre a campanha <span className="font-medium text-foreground">{campanhaNome ?? "aberta"}</span>. Para outra, cite o nome.</>
-                : "Responde com os dados do Sigma que você já vê. Mudança só com o seu clique."}
-            </DialogDescription>
-          </DialogHeader>
+          </header>
+          {campanhaId && (
+            <p className="truncate border-b bg-muted/50 px-4 py-1.5 text-xs text-muted-foreground">
+              Sobre a campanha <span className="font-medium text-foreground">{campanhaNome ?? "aberta"}</span>
+            </p>
+          )}
 
-          <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4 text-sm">
+          <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4 text-sm">
             {msgs.length === 0 && (
-              <div className="flex flex-col items-center pt-4 text-center">
-                <span className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 text-primary"><RoboMedico className="h-16 w-16" /></span>
+              <div className="flex flex-col items-center pt-2 text-center">
+                <span className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 text-primary"><RoboMedico className="h-12 w-12" /></span>
                 <p className="mt-3 text-base font-semibold">Oi! Em que posso ajudar?</p>
-                <p className="mt-1 max-w-md text-muted-foreground">Pergunte sobre campanhas, escalas, contratos e licitações, ou peça para criar ou mudar uma campanha.</p>
-                <div className="mt-5 grid w-full gap-2 sm:grid-cols-2">
+                <p className="mt-1 text-muted-foreground">Responde com os dados que você já vê. Mudança só com o seu clique.</p>
+                <div className="mt-4 grid w-full gap-2">
                   {sugestoes.map((s) => (
                     <button key={s} type="button" onClick={() => enviar(s)}
-                      className="rounded-lg border bg-card px-3 py-2.5 text-left transition-colors hover:border-primary/50 hover:bg-muted">
+                      className="rounded-lg border bg-card px-3 py-2 text-left transition-colors hover:border-primary/50 hover:bg-muted">
                       {s}
                     </button>
                   ))}
@@ -261,8 +278,8 @@ export function AssistenteSigma() {
               <Send className="h-4 w-4" />
             </Button>
           </form>
-        </DialogContent>
-      </Dialog>
+        </section>
+      )}
     </>
   );
 }
