@@ -36,6 +36,40 @@ na sua tarefa. Status fino: as tarefas do quadro GSS no Pulse OS (ids entre par�
 3. **Alcance por canal** (5bbbc373): WhatsApp e e-mail já existem; LinkedIn e Instagram dependem de fonte de dados.
 4. **Lead quente** (34682f9b): painel de quem a equipe deixou de responder e há quanto tempo.
 
+## Frente: trabalho de IA do Sigma pelo motor Hermes (aberta em 27/11)
+
+**Por quê.** A classificação das conversas (Sigma + Zenvia) e o OCR dos contratos rodam no Gemini gratuito, e a cota
+diária por modelo esgota com a fila da Zenvia (27/11: classificação parada das 14h até a troca de modelo). Em vez de
+pagar API, o trabalho vai para o Hermes da VPS, que já usa o Claude da assinatura para tarefas automáticas. É o mesmo
+desenho do SDR no CloserPulse (`linkbound/docs/hermes-linkbound-mcp.md`): o banco guarda a fila, o Hermes busca o
+trabalho por MCP, faz a parte de IA e devolve o resultado, que o servidor valida antes de gravar.
+
+**Desenho (molde do Linkbound).**
+- **Fila no banco:** tabela `ia_trabalho` (tipo `classificar_conversa` | `ocr_contrato`, chave única por item, `payload`
+  com o prompt e o esquema de resposta montados pelo Sigma, `status` pending/claimed/done/failed/canceled, `claims`,
+  `lease_ate`, `resultado`). Teto de 5 reservas: depois vira `failed` e aparece no alerta. GRANT para `service_role`.
+- **Quem enfileira:** os crons de hoje (`conversas-classificar`, `contratos-ler-anexos`) param de chamar o Gemini quando o
+  motor do tipo for `hermes` e só gravam o item na fila. Chave de motor por tipo (`api` = Gemini como hoje, `hermes`).
+  O motor `hermes` não cai para o Gemini sozinho; volta para `api` é troca explícita.
+- **MCP:** ferramentas novas no `sigma-mcp`, num papel próprio do robô (token `sgm_` de origem `hermes`, sem acesso a
+  domínio nenhum dos sócios): `ia_trabalho_listar` (reserva com lease, devolve prompt + esquema; a conversa do médico vem
+  marcada como dado não confiável), `ia_trabalho_entregar` (revalida o JSON com as mesmas listas de hoje e grava em
+  `conversa_classificacao` ou `contrato_texto_trechos`), `ia_trabalho_saude` (contagem por tipo, sem reservar).
+- **Hermes na VPS:** entrada `sigma` em `~/.hermes/config.yaml` (usuário `pulse`) com o token, e um cron do Hermes a cada
+  10 min que lista, faz o trabalho e entrega. OCR: o item leva a URL assinada do PDF no Storage (validade curta).
+- **Alerta:** item `failed` ou fila parada há mais de 1 h avisa o Raul pelo canal de alertas que já existe.
+
+**Fora de escopo:** IA do chat do Sigma e o agente dos sócios (continuam como estão); envio de mensagem a médico pelo
+Hermes; qualquer acesso do Hermes ao banco ou a segredo fora do MCP.
+
+**Riscos:** Hermes ou VPS fora do ar para a fila (o alerta cobre; volta para `api` é uma troca de chave); limite de uso
+da assinatura dividido com o conselho e o SDR; dado de médico saindo do Supabase para a VPS (mesmo nível do que o SDR
+já faz com lead do LinkedIn, mas confirmar com o Raul antes de ligar para a Zenvia).
+
+**Tarefas (≈ 1 PR cada):** 1) migration da fila + RPCs de reserva/entrega com teste; 2) chave de motor por tipo e os
+dois crons enfileirando; 3) ferramentas MCP + papel do robô + casos na bateria; 4) token e cron no Hermes da VPS;
+5) alerta de fila; 6) ligar `classificar_conversa` em `hermes`, acompanhar 2 dias, depois `ocr_contrato`.
+
 ## Fora deste plano (projetos próprios no Pulse OS)
 
 Vagas internas e LinkedIn (8a8370a9, prazo 15/12), contratos centralizados com acesso restrito (20eb6535), documentos
