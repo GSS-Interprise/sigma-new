@@ -101,11 +101,18 @@ serve(async (req) => {
 
   const { data: fila, error } = await svc.rpc("conversas_classificar_pendentes", { p_limite: limite });
   if (error) return json({ ok: false, error: error.message }, 500);
+  // Zenvia (27/11): as respostas dos disparos de fora do Sigma entram com o que sobrar do lote. Chave = telefone.
+  let filaZenvia: any[] = [];
+  if (!teste && (fila ?? []).length < limite) {
+    const { data: z, error: ez } = await svc.rpc("zenvia_classificar_pendentes", { p_limite: limite - (fila ?? []).length });
+    if (ez) return json({ ok: false, error: ez.message }, 500);
+    filaZenvia = (z ?? []).map((x: any) => ({ ...x, campanha_lead_id: null, campanha_id: null }));
+  }
 
   let gravadas = 0;
   const erros: string[] = [];
   let parar = false;
-  const lista = (fila ?? []) as any[];
+  const lista = [...((fila ?? []) as any[]), ...filaZenvia];
 
   for (let i = 0; i < lista.length && !parar; i += PARALELO) {
     await Promise.all(lista.slice(i, i + PARALELO).map(async (c) => {
@@ -113,7 +120,7 @@ serve(async (req) => {
         const r = await classificar(chave, c.conversa || "");
         const resultado = um(r.resultado, RESULTADOS) ?? "sem_interesse";
         const linha = {
-          campanha_lead_id: c.campanha_lead_id, lead_id: c.lead_id, campanha_id: c.campanha_id, especialidade_id: c.especialidade_id,
+          campanha_lead_id: c.campanha_lead_id, zenvia_telefone: c.zenvia_telefone ?? null, lead_id: c.lead_id, campanha_id: c.campanha_id, especialidade_id: c.especialidade_id,
           resultado,
           objecao: resultado === "objecao" ? um(r.objecao, OBJECOES) ?? "outro" : null,
           objecao_detalhe: texto(r.objecao_detalhe, 120),
@@ -129,7 +136,8 @@ serve(async (req) => {
           classificado_em: new Date().toISOString(),
         };
         if (teste) { erros.push(JSON.stringify(linha)); return; }
-        const { error: e } = await svc.from("conversa_classificacao").upsert(linha, { onConflict: "campanha_lead_id" });
+        const { error: e } = await svc.from("conversa_classificacao")
+          .upsert(linha, { onConflict: linha.zenvia_telefone ? "zenvia_telefone" : "campanha_lead_id" });
         if (e) throw e;
         gravadas++;
       } catch (e: any) {
