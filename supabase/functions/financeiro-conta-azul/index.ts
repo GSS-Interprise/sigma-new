@@ -23,6 +23,7 @@ import { ca, itensDe, listarTudo } from "../_shared/contaazul.ts";
 import { CNPJ_GSS, CNPJS_GRUPO_GSS, dadosBancariosDoTexto, leituraAssistida, leituraFoto, lerNfse, textoPdf } from "../_shared/nfse.ts";
 import { bloqueioLancamentoSemNf, type ItemConferencia, itensDaLeitura, type StatusConferencia, statusDosItens, sugestaoConfere } from "../_shared/nfse-conferencia.ts";
 import { appUrl } from "../_shared/app-url.ts";
+import { cadastrosDoCnpj, dig, escolherFornecedor, palavras, pessoasPorDocumento, semAcento } from "../_shared/contaazul-fornecedor.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -35,7 +36,6 @@ const BUCKET = "financeiro-anexos";
 const LINK_NF = `${Deno.env.get("SUPABASE_URL")}/functions/v1/financeiro-nf-publica`;
 const PAPEIS = ["admin", "gestor_financeiro"];
 const MESES = ["JANEIRO", "FEVEREIRO", "MARÇO", "ABRIL", "MAIO", "JUNHO", "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO"];
-const dig = (s: unknown) => String(s ?? "").replace(/\D/g, "");
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const brl = (n: number | null | undefined) => n == null ? "—" : Number(n).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const iso = (d: Date) => d.toISOString().slice(0, 10);
@@ -46,9 +46,6 @@ const ultimoDiaUtil = (ano: number, mes1a12: number) => {
   while (d.getUTCDay() === 0 || d.getUTCDay() === 6) d.setUTCDate(d.getUTCDate() - 1);
   return iso(d);
 };
-const semAcento = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-const PARADAS = new Set("de da do das dos e municipio municipal fundo saude prefeitura hospital associacao instituto fundacao estado governo ubs unidade secretaria sc rs mg pr sp ce ma go med fms".split(" "));
-const palavras = (s: string) => new Set(semAcento(s).replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter((w) => w.length > 2 && !PARADAS.has(w) && !/^\d+$/.test(w)));
 
 // deno-lint-ignore no-explicit-any
 type Svc = any;
@@ -196,28 +193,7 @@ async function referencias(svc: Svc) {
   const { data: cfgRows } = await svc.from("config_lista_items").select("campo_nome, valor")
     .in("campo_nome", ["financeiro_contaazul_escrita", "financeiro_contaazul_conta_id", "financeiro_contaazul_centro_medicos_id", "financeiro_nf_link_base"]);
   const cfg = (n: string) => String(cfgRows?.find((c: any) => c.campo_nome === n)?.valor || "").trim();
-  // O mesmo CNPJ aparece em vários cadastros: no Conta Azul da GSS o fornecedor é
-  // "NOME DO MÉDICO/RAZÃO SOCIAL", um por médico, e uma empresa médica tem vários médicos
-  // (66 CNPJs repetidos em 164 cadastros em 12/10). Por isso a lista inteira por documento.
-  const pessoasPorDoc = new Map<string, any[]>();
-  for (const p of todas.filter((x) => x.tipo === "pessoa")) {
-    const d = dig(p.dados?.documento);
-    if (d.length >= 11) pessoasPorDoc.set(d, [...(pessoasPorDoc.get(d) ?? []), p]);
-  }
-  // Cadastro "MÉDICO/RAZÃO SOCIAL" feito sem CNPJ no Conta Azul (Mavi 27/11, Bambino em Vacaria: Anderson e Léo
-  // sem documento, só a própria Bambino e o Nilton com CNPJ) não entrava entre os candidatos do CNPJ e o
-  // lançamento ficava "2 fornecedores com este CNPJ". Entra no CNPJ cuja razão social é a mesma do pedaço depois
-  // da barra, quando essa razão social aponta para um CNPJ só.
-  const razao = (nome: string) => semAcento(String(nome || "").split("/").pop() || "").toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim();
-  const docsDaRazao = new Map<string, Set<string>>();
-  for (const [d, lista] of pessoasPorDoc) for (const p of lista) {
-    const r = razao(p.nome);
-    if (r) docsDaRazao.set(r, new Set([...(docsDaRazao.get(r) ?? []), d]));
-  }
-  for (const p of todas.filter((x) => x.tipo === "pessoa" && dig(x.dados?.documento).length < 11 && String(x.nome || "").includes("/"))) {
-    const docs = docsDaRazao.get(razao(p.nome));
-    if (docs?.size === 1) { const d = [...docs][0]; pessoasPorDoc.set(d, [...(pessoasPorDoc.get(d) ?? []), p]); }
-  }
+  const pessoasPorDoc = pessoasPorDocumento(todas.filter((x) => x.tipo === "pessoa"));
   const categoriasMed = todas.filter((x) => x.tipo === "categoria" && /^med\b/i.test(semAcento(x.nome || "")))
     .sort((a, b) => String(a.nome).localeCompare(String(b.nome)));
   const contas = todas.filter((x) => x.tipo === "conta_financeira");
@@ -355,18 +331,6 @@ async function guardarPessoas(svc: any, pessoas: any[]) {
   if (error) throw error;
 }
 
-/** Entre os cadastros com o mesmo CNPJ, o do médico: o nome antes da barra é o da pessoa. */
-function escolherFornecedor(cands: any[], medico: string) {
-  if (cands.length <= 1) return { escolhido: cands[0] ?? null, ambiguo: false };
-  const tm = palavras(medico);
-  const pontos = cands.map((c) => {
-    const pessoa = [...palavras(String(c.nome || "").split("/")[0])];
-    return { c, n: pessoa.length ? pessoa.filter((w) => tm.has(w)).length / pessoa.length : 0 };
-  }).sort((a, b) => b.n - a.n);
-  const claro = pontos[0].n >= 0.6 && (pontos.length === 1 || pontos[0].n > pontos[1].n);
-  return { escolhido: claro ? pontos[0].c : null, ambiguo: !claro };
-}
-
 function sugerirCategoria(unidade: string, categoriasMed: any[]) {
   const tu = palavras(unidade);
   const bons = categoriasMed
@@ -490,8 +454,9 @@ async function montarPagar(svc: Svc, ids: string[], ajustes: Record<string, any>
     else if (!["ok", "aceita"].includes(p.nf_conferencia_status ?? "")) {
       problemas.push(p.nf_conferencia_status === "divergente" ? "Nota com divergência: corrigir ou aceitar a exceção." : p.nf_conferencia_status === "manual" ? "Conferência da nota precisa ser feita à mão." : "Nota ainda não conferida.");
     }
-    const cnpj = p.nf_prestador_cnpj || (p.medico_id ? cnpjDoMedico.get(p.medico_id) : null) || null;
-    const porCnpj = cnpj ? (ref.pessoasPorDoc.get(cnpj) ?? []) : [];
+    // o mapa é por dígitos: CNPJ gravado com pontuação (nota antiga, edição à mão) também acha os cadastros
+    const cnpj = dig(p.nf_prestador_cnpj || (p.medico_id ? cnpjDoMedico.get(p.medico_id) : null)) || null;
+    const porCnpj = cnpj ? cadastrosDoCnpj(ref.pessoasPorDoc, cnpj) : [];
     // nota antiga (antes da leitura do CNPJ) também cai no nome, sempre com um único candidato
     const cands = porCnpj.length ? porCnpj : (!p.nf_prestador_cnpj ? porNome((p.medico_id && nomeDoMedico.get(p.medico_id)) || p.profissional_nome || "") : []);
     // fornecedor escolhido à mão pela busca da tela vale mesmo sem CNPJ lido (Mavi, 26/10, REDEH Bombinhas)
@@ -648,7 +613,7 @@ async function montarReceber(svc: Svc, ids: string[]) {
     if (n.ca_evento_id) problemas.push("Já lançada no Conta Azul.");
     if (!n.contrato_id) problemas.push("Nota sem contrato definido.");
     // cliente repetido é raro; havendo mais de um, vale o cadastro com perfil de cliente
-    const clis = n.tomador_cnpj ? (ref.pessoasPorDoc.get(n.tomador_cnpj) ?? []) : [];
+    const clis = n.tomador_cnpj ? cadastrosDoCnpj(ref.pessoasPorDoc, n.tomador_cnpj) : [];
     const cliente = clis.find((c: any) => JSON.stringify(c.dados?.perfis ?? "").includes("Cliente")) ?? clis[0] ?? null;
     if (!cliente) problemas.push("Cliente não cadastrado no Conta Azul com este CNPJ.");
     const valor = n.valor_liquido != null ? Number(n.valor_liquido) : null;
