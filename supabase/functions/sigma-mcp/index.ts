@@ -16,6 +16,7 @@ import {
   pkceConfere, rota, sha256Hex, validarAutorizacao, validarRegistro, VIDA_ACESSO_S, VIDA_CODIGO_S, VIDA_REFRESH_DIAS,
 } from "../_shared/mcp-oauth.ts";
 import { appUrl } from "../_shared/app-url.ts";
+import { ErroRobo, FERRAMENTAS_ROBO, INSTRUCOES_ROBO } from "../_shared/agente/robo.ts";
 
 const PAPEIS_LIBERADOS = ["admin", "diretoria"];
 const VERSOES = ["2025-06-18", "2025-03-26", "2024-11-05"];
@@ -54,7 +55,9 @@ async function acessos(svc: SupabaseClient, s: Sessao) {
 
 // ---- autenticação --------------------------------------------------------------------------------------
 
-type Sessao = { userId: string; tokenId: string; bateria?: boolean };
+// robo: token de origem 'hermes' (robô de trabalho de IA da VPS). Vê só as ferramentas da fila (_shared/agente/robo.ts),
+// nenhum domínio dos sócios.
+type Sessao = { userId: string; tokenId: string; bateria?: boolean; robo?: boolean };
 
 const negar = (s: number, msg: string) =>
   resp({ error: s === 401 ? "invalid_token" : "insufficient_scope", error_description: msg }, s,
@@ -75,7 +78,7 @@ async function autenticar(svc: SupabaseClient, req: Request): Promise<Sessao | R
   if (t.expira_em && new Date(t.expira_em) <= new Date()) return negar(401, "token expirado");
   if (!(await papelLiberado(svc, t.user_id))) return negar(403, "usuário sem papel liberado para o MCP");
   await svc.from("mcp_tokens").update({ ultimo_uso_em: new Date().toISOString() }).eq("id", t.id);
-  return { userId: t.user_id, tokenId: t.id, bateria: t.origem === "bateria" && !!t.expira_em };
+  return { userId: t.user_id, tokenId: t.id, bateria: t.origem === "bateria" && !!t.expira_em, robo: t.origem === "hermes" };
 }
 
 // ---- OAuth 2.1 (T7) --------------------------------------------------------------------------------------
@@ -245,6 +248,7 @@ async function tratar(svc: SupabaseClient, s: Sessao, m: Msg): Promise<unknown |
   const ok = (result: unknown) => ({ jsonrpc: "2.0", id: m.id, result });
   const falha = (code: number, message: string) => ({ jsonrpc: "2.0", id: m.id ?? null, error: { code, message } });
   if (m.id === undefined || m.id === null) return null; // notificação (ex.: notifications/initialized): sem resposta
+  if (s.robo) return tratarRobo(svc, s, m, ok, falha);
 
   const ac = await acessos(svc, s);
   const exp = exposto(ac);
@@ -333,6 +337,53 @@ async function tratar(svc: SupabaseClient, s: Sessao, m: Msg): Promise<unknown |
       if (!a) return falha(-32002, `recurso não encontrado: ${uri}`);
       await auditar({ metodo: "resources/read", ferramenta: uri, dominio: a.dominio.id });
       return ok({ contents: [{ uri, mimeType: "text/markdown", text: guiaTexto(a.dominio) }] });
+    }
+    default:
+      return falha(-32601, `método não suportado: ${m.method}`);
+  }
+}
+
+// Robô Hermes: protocolo mínimo (initialize, ping, tools) só com as ferramentas da fila. Cada chamada auditada em
+// mcp_chamadas com dominio 'robo' (sem os argumentos: a resposta do OCR é o contrato inteiro).
+async function tratarRobo(
+  svc: SupabaseClient, s: Sessao, m: Msg, ok: (r: unknown) => unknown, falha: (c: number, msg: string) => unknown,
+): Promise<unknown> {
+  switch (m.method) {
+    case "initialize": {
+      const pedida = String(m.params?.protocolVersion || "");
+      return ok({
+        protocolVersion: VERSOES.includes(pedida) ? pedida : VERSOES[0],
+        capabilities: { tools: { listChanged: false } },
+        serverInfo: { name: "sigma-gss-robo", title: "Sigma GSS (robô de IA)", version: PROTOCOLO_VERSAO },
+        instructions: INSTRUCOES_ROBO,
+      });
+    }
+    case "ping":
+      return ok({});
+    case "tools/list":
+      return ok({ tools: FERRAMENTAS_ROBO.map((f) => ({
+        name: f.nome, title: f.titulo, description: f.descricao, inputSchema: f.inputSchema,
+        annotations: { readOnlyHint: f.nome === "ia_trabalho_saude", openWorldHint: false },
+      })) });
+    case "tools/call": {
+      const nome = String(m.params?.name || "");
+      const args = (m.params?.arguments || {}) as Record<string, unknown>;
+      const t0 = Date.now();
+      const auditar = (extra: Record<string, unknown>) => svc.from("mcp_chamadas").insert({
+        user_id: s.userId, token_id: s.tokenId, protocolo_versao: PROTOCOLO_VERSAO, metodo: "tools/call", ferramenta: nome,
+        argumentos: args.item_id ? { item_id: args.item_id } : {}, duracao_ms: Date.now() - t0, dominio: "robo", ...extra,
+      });
+      try {
+        const f = FERRAMENTAS_ROBO.find((x) => x.nome === nome);
+        if (!f) throw new ErroRobo(`ferramenta desconhecida: ${nome}`);
+        const r = await f.executar({ svc, tokenId: s.tokenId }, args);
+        await auditar({ ok: true });
+        return ok({ content: [{ type: "text", text: JSON.stringify(r) }], structuredContent: r as Record<string, unknown> });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        await auditar({ ok: false, erro: msg });
+        return ok({ content: [{ type: "text", text: `Erro: ${msg}` }], isError: true });
+      }
     }
     default:
       return falha(-32601, `método não suportado: ${m.method}`);

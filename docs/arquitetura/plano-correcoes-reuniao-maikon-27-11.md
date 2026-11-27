@@ -72,7 +72,7 @@ fila em tempo quase real (laço curto ou aviso por webhook), e a tela mostrando 
 fechar depois das tarefas 1 a 3.
 
 **Tarefas (≈ 1 PR cada):** 1) migration da fila + RPCs de reserva/entrega com teste (feito em 27/11: `ia_motor`,
-`ia_trabalho`, `ia_trabalho_enfileirar/reservar/conferir/fechar/saude`, 15 testes ok, motores em `api`); 2) feito em 27/11: com o tipo em `hermes` os crons só enfileiram (classificação até 150 por rodada; OCR deixa a leitura `na_fila`), prompt/esquema/limpeza em `_shared/classificacao.ts` e `_shared/contratos_texto.ts`, testado ligando o Hermes e voltando para `api` (127 conversas + 1 escaneado na fila); 2) chave de motor por tipo e os
+`ia_trabalho`, `ia_trabalho_enfileirar/reservar/conferir/fechar/saude`, 15 testes ok, motores em `api`); 2) feito em 27/11: com o tipo em `hermes` os crons só enfileiram (classificação até 150 por rodada; OCR deixa a leitura `na_fila`), prompt/esquema/limpeza em `_shared/classificacao.ts` e `_shared/contratos_texto.ts`, testado ligando o Hermes e voltando para `api` (127 conversas + 1 escaneado na fila); 3) feito em 27/11: token de origem `hermes` vê só `ia_trabalho_listar/entregar/cancelar/saude` (`_shared/agente/robo.ts`), PDF por link assinado de 10 min, entrega revalidada e gravada no domínio; `scripts/robo-hermes-e2e.mjs` 12 de 12, bateria 35 de 35; 2) chave de motor por tipo e os
 dois crons enfileirando; 3) ferramentas MCP + papel do robô + casos na bateria; 4) token e cron no Hermes da VPS;
 5) alerta de fila; 6) ligar `classificar_conversa` em `hermes`, acompanhar 2 dias, depois `ocr_contrato`.
 
