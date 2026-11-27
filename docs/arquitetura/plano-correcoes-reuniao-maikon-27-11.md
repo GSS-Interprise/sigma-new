@@ -66,7 +66,13 @@ Hermes; qualquer acesso do Hermes ao banco ou a segredo fora do MCP.
 da assinatura dividido com o conselho e o SDR; dado de médico saindo do Supabase para a VPS (mesmo nível do que o SDR
 já faz com lead do LinkedIn, mas confirmar com o Raul antes de ligar para a Zenvia).
 
-**Tarefas (≈ 1 PR cada):** 1) migration da fila + RPCs de reserva/entrega com teste; 2) chave de motor por tipo e os
+**Agente dentro do CRM (pedido do Raul, 27/11).** O chat do Sigma também deve rodar pelo Hermes. Diferença: o chat
+espera resposta em segundos, e o cron de 10 min não serve. Precisa de um tipo `chat_agente` com o Hermes escutando a
+fila em tempo quase real (laço curto ou aviso por webhook), e a tela mostrando "pensando" até a entrega. Desenho a
+fechar depois das tarefas 1 a 3.
+
+**Tarefas (≈ 1 PR cada):** 1) migration da fila + RPCs de reserva/entrega com teste (feito em 27/11: `ia_motor`,
+`ia_trabalho`, `ia_trabalho_enfileirar/reservar/conferir/fechar/saude`, 15 testes ok, motores em `api`); 2) chave de motor por tipo e os
 dois crons enfileirando; 3) ferramentas MCP + papel do robô + casos na bateria; 4) token e cron no Hermes da VPS;
 5) alerta de fila; 6) ligar `classificar_conversa` em `hermes`, acompanhar 2 dias, depois `ocr_contrato`.
 
