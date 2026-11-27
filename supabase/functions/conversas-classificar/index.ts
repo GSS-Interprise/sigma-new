@@ -5,6 +5,7 @@
 // Só service role (cron) ou admin. { teste: true } classifica 1 conversa e não grava.
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { PROMPT_CLASSIFICACAO as PROMPT, chaveClassificacao, entradaClassificacao, linhaClassificacao } from "../_shared/classificacao.ts";
 
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...cors, "Content-Type": "application/json" } });
@@ -17,32 +18,7 @@ let modeloAtual = 0;
 const PARALELO = 2;
 const espera = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-const RESULTADOS = ["interessado", "objecao", "sem_interesse", "filtro_secretaria", "indicacao", "contato_errado", "fora_do_perfil", "desconfianca"];
-const OBJECOES = ["distancia", "agenda", "valor", "modelo_trabalho", "so_remoto", "estrutura", "outro"];
-const UNIDADES = ["plantao_12h", "plantao_24h", "hora", "exame", "mes"];
 
-const PROMPT = `Você classifica conversas de WhatsApp entre a GSS (empresa que oferece plantões e vagas a médicos) e um médico.
-Leia a conversa e devolva SÓ um JSON com estes campos:
-- "resultado": um de
-  "interessado" (quer detalhes, mandou datas, aceitou conversar),
-  "objecao" (disse não e deu um motivo),
-  "sem_interesse" (disse não sem motivo),
-  "filtro_secretaria" (respondeu secretária, consultório ou resposta automática),
-  "indicacao" (indicou outro médico),
-  "contato_errado" (o número não é do médico),
-  "fora_do_perfil" (aposentado, não atua mais, outra área),
-  "desconfianca" (quer saber quem é ou de onde veio o contato).
-  Vale a posição final do médico na conversa.
-- "objecao": só se resultado = "objecao", um de "distancia" (mora longe, não muda de cidade), "agenda" (sem horário),
-  "valor" (valor baixo), "modelo_trabalho" (vínculo, PJ, noturno, fim de semana, carga), "so_remoto" (só telemedicina),
-  "estrutura" (estrutura ou volume do hospital), "outro". Senão null.
-- "objecao_detalhe": até 80 caracteres explicando, ou null.
-- "valor_pedido": número em reais que o MÉDICO pediu ou disse aceitar, ou null. Não use valor oferecido pela GSS.
-- "valor_unidade": "plantao_12h", "plantao_24h", "hora", "exame" ou "mes", ou null.
-- "cidade_medico" e "uf_medico": onde o médico diz que mora ou atua (UF com 2 letras), ou null.
-- "disponibilidade": dias ou turnos que o médico citou (até 60 caracteres), ou null.
-- "trecho": a frase do médico que melhor mostra o resultado, até 160 caracteres, SEM nomes de pessoas, ou null.
-- "confianca": de 0 a 1.`;
 
 async function classificar(chave: string, conversa: string, tentativa = 0): Promise<any> {
   const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODELOS[modeloAtual]}:generateContent`, {
@@ -73,11 +49,6 @@ async function classificar(chave: string, conversa: string, tentativa = 0): Prom
   return JSON.parse(txt.replace(/^```(?:json)?\s*|\s*```$/g, ""));
 }
 
-// A IA às vezes devolve fora da lista; o banco recusa (check), então limpa aqui.
-const um = (v: unknown, lista: string[]) => (typeof v === "string" && lista.includes(v) ? v : null);
-const texto = (v: unknown, max: number) => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null);
-const numero = (v: unknown) => { const n = Number(v); return Number.isFinite(n) && n > 0 && n < 1_000_000 ? n : null; };
-
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
   const url = Deno.env.get("SUPABASE_URL")!;
@@ -100,11 +71,16 @@ serve(async (req) => {
   }
   if (!ok) return json({ ok: false, error: "sem_permissao" }, 401);
 
-  const chave = Deno.env.get("GEMINI_API_KEY");
-  if (!chave) return json({ ok: false, error: "sem_chave_gemini" }, 500);
   const body = await req.json().catch(() => ({}));
   const teste = body?.teste === true;
-  const limite = teste ? 1 : Math.min(Math.max(Number(body?.limite) || 20, 1), 40);
+  // Motor Hermes (27/11): com o tipo em 'hermes', esta rodada só põe as conversas na fila ia_trabalho; o Hermes da VPS
+  // classifica com o Claude da assinatura e entrega pelo sigma-mcp. Sem cair para o Gemini sozinho.
+  const { data: motor } = await svc.from("ia_motor").select("motor").eq("tipo", "classificar_conversa").maybeSingle();
+  const hermes = motor?.motor === "hermes" && !teste;
+  const chave = Deno.env.get("GEMINI_API_KEY");
+  if (!chave && !hermes) return json({ ok: false, error: "sem_chave_gemini" }, 500);
+  // Na fila não há limite por minuto: lote maior. A chave do item repete enquanto o Hermes não entrega (não duplica).
+  const limite = teste ? 1 : hermes ? 150 : Math.min(Math.max(Number(body?.limite) || 20, 1), 40);
 
   const { data: fila, error } = await svc.rpc("conversas_classificar_pendentes", { p_limite: limite });
   if (error) return json({ ok: false, error: error.message }, 500);
@@ -116,6 +92,17 @@ serve(async (req) => {
     filaZenvia = (z ?? []).map((x: any) => ({ ...x, campanha_lead_id: null, campanha_id: null }));
   }
 
+  if (hermes) {
+    const lista = [...((fila ?? []) as any[]), ...filaZenvia];
+    const estados: Record<string, number> = {};
+    for (const c of lista) {
+      const { data: r, error: e } = await svc.rpc("ia_trabalho_enfileirar", { p_tipo: "classificar_conversa", p_chave: chaveClassificacao(c), p_entrada: entradaClassificacao(c) });
+      const st = e ? "erro" : (r?.state ?? "?");
+      estados[st] = (estados[st] ?? 0) + 1;
+    }
+    return json({ ok: true, motor: "hermes", na_fila: lista.length, enfileirar: estados });
+  }
+
   let gravadas = 0;
   const erros: string[] = [];
   let parar = false;
@@ -124,24 +111,8 @@ serve(async (req) => {
   for (let i = 0; i < lista.length && !parar; i += PARALELO) {
     await Promise.all(lista.slice(i, i + PARALELO).map(async (c) => {
       try {
-        const r = await classificar(chave, c.conversa || "");
-        const resultado = um(r.resultado, RESULTADOS) ?? "sem_interesse";
-        const linha = {
-          campanha_lead_id: c.campanha_lead_id, zenvia_telefone: c.zenvia_telefone ?? null, lead_id: c.lead_id, campanha_id: c.campanha_id, especialidade_id: c.especialidade_id,
-          resultado,
-          objecao: resultado === "objecao" ? um(r.objecao, OBJECOES) ?? "outro" : null,
-          objecao_detalhe: texto(r.objecao_detalhe, 120),
-          valor_pedido: numero(r.valor_pedido),
-          valor_unidade: um(r.valor_unidade, UNIDADES),
-          cidade_medico: texto(r.cidade_medico, 80),
-          uf_medico: typeof r.uf_medico === "string" && /^[A-Za-z]{2}$/.test(r.uf_medico) ? r.uf_medico.toUpperCase() : null,
-          disponibilidade: texto(r.disponibilidade, 80),
-          trecho: texto(r.trecho, 160),
-          confianca: Math.min(Math.max(Number(r.confianca) || 0, 0), 1),
-          modelo: MODELOS[modeloAtual],
-          mensagens_ate: c.ultima_do_medico,
-          classificado_em: new Date().toISOString(),
-        };
+        const r = await classificar(chave!, c.conversa || "");
+        const linha = linhaClassificacao(r, c, MODELOS[modeloAtual]);
         if (teste) { erros.push(JSON.stringify(linha)); return; }
         const { error: e } = await svc.from("conversa_classificacao")
           .upsert(linha, { onConflict: linha.zenvia_telefone ? "zenvia_telefone" : "campanha_lead_id" });
