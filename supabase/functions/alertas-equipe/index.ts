@@ -76,6 +76,22 @@ const MODELOS = [
     exemplo: ["Hospital Marieta parou desde 19/11 23:01", "PC desligado ou sem internet. Ligue a estacao, conecte a VPN e deixe o PACS aberto em Nao lido"],
     botao: { type: "URL", text: "Ver o SLA", url: `${SIGMA}/radiologia?aba=sla`, example: undefined },
   },
+  // v2 (27/11): em 26/11 a Meta reclassificou gss_estacao_sla_v1 e gss_sla_saude_v1 como MARKETING e passou a barrar a
+  // entrega com 131049 (limite de marketing por pessoa): o Wagner não recebeu a queda do Marieta da noite de 26/11.
+  // Os modelos que seguiram UTILITY (gss_sla_laudo_prazo_v2/vencido_v2) dizem o fato concreto (unidade, hora, motivo)
+  // e a consequência. Os v2 seguem esse molde. Enquanto não forem aprovados, o envio cai no v1.
+  {
+    nome: "gss_estacao_sla_v2",
+    corpo: "Alerta do coletor de laudos - unidade {{1}}: a leitura da fila {{2}} {{3}}. Motivo: {{4}}. Enquanto estiver parada, os avisos de prazo dos exames desta unidade nao saem.",
+    exemplo: ["Hospital Marieta", "parou", "desde 26/11 22:30", "a VPN do hospital caiu e o PACS nao alcanca o servidor"],
+    botao: { type: "URL", text: "Ver o SLA", url: `${SIGMA}/radiologia?aba=sla`, example: undefined },
+  },
+  {
+    nome: "gss_sla_saude_v2",
+    corpo: "Alerta do SLA de laudos - {{1}}. Detalhe: {{2}}. Confira o historico dos exames no Sigma pelo botao.",
+    exemplo: ["2 avisos de prazo nao chegaram aos medicos na ultima hora", "Meta barrou por limite de mensagens. Para: Dr. Paulo, Dra. Ana"],
+    botao: { type: "URL", text: "Ver o SLA", url: `${SIGMA}/radiologia?aba=sla`, example: undefined },
+  },
 ];
 
 async function config(admin: any, nome: string) {
@@ -291,9 +307,13 @@ async function estacaoSla(admin: any, b: any) {
   if (!lista.length) return { pulado: "sem destinatario" };
   const sender = await remetente(admin);
   const out = [];
+  const verbo = evento === "voltou" ? "voltou" : evento === "continua" ? "continua parada" : "parou";
   for (const d of lista) {
-    try { out.push({ para: d.nome, wamid: await enviar(sender, dig(d.fone), "gss_estacao_sla_v1", [resumo.trim(), detalhe]) }); }
-    catch (e) { out.push({ para: d.nome, erro: String((e as Error).message).slice(0, 200) }); }
+    try { out.push({ para: d.nome, wamid: await enviar(sender, dig(d.fone), "gss_estacao_sla_v2", [unidade, verbo, String(b.quando || "agora").trim(), detalhe]) }); }
+    catch {
+      try { out.push({ para: d.nome, wamid: await enviar(sender, dig(d.fone), "gss_estacao_sla_v1", [resumo.trim(), detalhe]), reserva: true }); }
+      catch (e) { out.push({ para: d.nome, erro: String((e as Error).message).slice(0, 200) }); }
+    }
   }
   return { enviados: out };
 }
@@ -310,11 +330,11 @@ async function saudeSla(admin: any, b: any) {
   const sender = await remetente(admin);
   const out = [];
   for (const d of lista) {
-    try { out.push({ para: d.nome, wamid: await enviar(sender, dig(d.fone), "gss_sla_saude_v1", [resumo, detalhe]) }); }
-    catch {
-      try { out.push({ para: d.nome, wamid: await enviar(sender, dig(d.fone), "gss_estacao_sla_v1", [resumo, detalhe]), reserva: true }); }
-      catch (e) { out.push({ para: d.nome, erro: String((e as Error).message).slice(0, 200) }); }
+    let wamid: string | null = null, usado = "";
+    for (const modelo of ["gss_sla_saude_v2", "gss_sla_saude_v1", "gss_estacao_sla_v1"]) {
+      try { wamid = await enviar(sender, dig(d.fone), modelo, [resumo, detalhe]); usado = modelo; break; } catch { /* próximo modelo */ }
     }
+    out.push(wamid ? { para: d.nome, wamid, modelo: usado } : { para: d.nome, erro: "nenhum modelo aceito" });
   }
   return { enviados: out };
 }
