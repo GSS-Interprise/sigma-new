@@ -1,9 +1,11 @@
-import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useSearchParams } from "react-router-dom";
 import { format, subDays, subMonths } from "date-fns";
-import { Presentation } from "lucide-react";
+import { Pencil, Presentation } from "lucide-react";
+import { toast } from "sonner";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -59,10 +61,11 @@ export function RaioXMercado() {
     queryKey: ["raiox-campanhas"],
     staleTime: 10 * 60_000,
     queryFn: async () => {
-      const { data, error } = await supabase.from("campanhas").select("id, nome, especialidade_id, status")
+      const { data, error } = await supabase.from("campanhas")
+        .select("id, nome, especialidade_id, status, hospital:briefing_ia->>hospital, cidade:briefing_ia->>cidade")
         .eq("tipo_campanha", "prospeccao").neq("status", "rascunho").order("created_at", { ascending: false });
       if (error) throw error;
-      return (data ?? []) as { id: string; nome: string; especialidade_id: string | null; status: string }[];
+      return (data ?? []) as unknown as { id: string; nome: string; especialidade_id: string | null; status: string; hospital: string | null; cidade: string | null }[];
     },
   });
   const campNome = campId === ZENVIA_RAIOX ? "Zenvia" : campanhas.find((c) => c.id === campId)?.nome.trim() ?? null;
@@ -86,7 +89,20 @@ export function RaioXMercado() {
   // ?apresentar=1 abre a camada do hospital; fica na URL para recarregar e para mandar o link.
   const apresentando = modo === "apresentacao" && sp.get("apresentar") === "1";
   const esforco = useRaioXEsforco(filtro, apresentando);
-  const hospital = sp.get("hosp") || "";
+  // Hospital da vaga (27/11, Maikon: "o nome do hospital gigante em cima"). Campanha do Sigma: o do briefing da IA.
+  // Zenvia: o da tabela zenvia_campanha_hospital, por especialidade, escrito aqui mesmo. ?hosp= da apresentação vence.
+  const { data: hospZenvia } = useQuery({
+    queryKey: ["raiox-zenvia-hospital", espId],
+    enabled: campId === ZENVIA_RAIOX && !!espId,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).from("zenvia_campanha_hospital").select("hospital, cidade").eq("especialidade_id", espId).maybeSingle();
+      if (error) throw error;
+      return (data ?? null) as { hospital: string; cidade: string | null } | null;
+    },
+  });
+  const campSigma = campanhas.find((c) => c.id === campId);
+  const local = campId === ZENVIA_RAIOX ? hospZenvia : campSigma?.hospital?.trim() ? { hospital: campSigma.hospital, cidade: campSigma.cidade } : null;
+  const hospital = sp.get("hosp") || (local ? limparHospital(local.hospital, local.cidade) : "");
 
   return (
     <div className="space-y-4">
@@ -168,6 +184,12 @@ export function RaioXMercado() {
         </Card>
       ) : (
         <div className="space-y-4">
+          {campId && (
+            <CabecalhoHospital
+              local={local} esp={espNome} carregando={campId === ZENVIA_RAIOX && hospZenvia === undefined}
+              editavel={campId === ZENVIA_RAIOX} especialidadeId={espId}
+            />
+          )}
           <BlocoGargalo f={f} esp={espNome} uf={uf} kicker={`Raio-X do mercado · ${[campNome, espNome, uf].filter(Boolean).join(" · ")}`} />
           <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
             <BlocoObjecoes o={objecoes.data} />
@@ -186,5 +208,71 @@ export function RaioXMercado() {
         />
       )}
     </div>
+  );
+}
+
+// "Hospital Santa Teresinha braço do Norte" + cidade "Braço do norte": tira a cidade repetida do fim do nome.
+function limparHospital(hospital: string, cidade: string | null) {
+  let h = hospital.replace(/\s+/g, " ").trim();
+  const c = (cidade || "").split(/[-/]/)[0].replace(/\s+/g, " ").trim();
+  if (c && h.toLowerCase().endsWith(c.toLowerCase()) && h.length > c.length) h = h.slice(0, -c.length).trim();
+  return titulo(h);
+}
+const cidadeCurta = (cidade: string | null) => (cidade ? titulo(cidade.replace(/\s+/g, " ").trim()) : "");
+
+/** Topo do Raio-X com campanha escolhida: o hospital da vaga em destaque, para a TV da diretoria. */
+function CabecalhoHospital({ local, esp, carregando, editavel, especialidadeId }: {
+  local: { hospital: string; cidade: string | null } | null | undefined; esp: string; carregando: boolean; editavel: boolean; especialidadeId: string;
+}) {
+  const qc = useQueryClient();
+  const [editando, setEditando] = useState(false);
+  const [hosp, setHosp] = useState("");
+  const [cid, setCid] = useState("");
+  useEffect(() => { setEditando(false); }, [especialidadeId]);
+  const salvar = useMutation({
+    mutationFn: async () => {
+      const { error } = await (supabase as any).from("zenvia_campanha_hospital")
+        .upsert({ especialidade_id: especialidadeId, hospital: hosp.trim(), cidade: cid.trim() || null, atualizado_em: new Date().toISOString() });
+      if (error) throw error;
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["raiox-zenvia-hospital", especialidadeId] }); setEditando(false); toast.success("Hospital salvo. Ele aparece no Raio-X e na apresentação."); },
+    onError: (e) => toast.error(`Não salvou: ${(e as Error).message}`),
+  });
+  const abrir = () => { setHosp(local?.hospital ?? ""); setCid(local?.cidade ?? ""); setEditando(true); };
+
+  if (carregando) return <div className="h-20" aria-hidden />;
+  if (editando) {
+    return (
+      <form className="flex flex-wrap items-end gap-2" onSubmit={(ev) => { ev.preventDefault(); if (hosp.trim()) salvar.mutate(); }}>
+        <label className="min-w-0 flex-1 basis-72 text-sm">
+          <span className="text-muted-foreground">Hospital da vaga</span>
+          <Input autoFocus className="mt-1 h-9" maxLength={120} value={hosp} onChange={(ev) => setHosp(ev.target.value)} placeholder="Ex.: Hospital Santa Teresinha" />
+        </label>
+        <label className="w-56 text-sm">
+          <span className="text-muted-foreground">Cidade</span>
+          <Input className="mt-1 h-9" maxLength={80} value={cid} onChange={(ev) => setCid(ev.target.value)} placeholder="Ex.: Braço do Norte" />
+        </label>
+        <Button type="submit" size="sm" className="h-9" disabled={!hosp.trim() || salvar.isPending}>{salvar.isPending ? "Salvando…" : "Salvar hospital"}</Button>
+        <Button type="button" size="sm" variant="ghost" className="h-9" onClick={() => setEditando(false)}>Cancelar</Button>
+      </form>
+    );
+  }
+  if (!local) {
+    return editavel ? (
+      <Button variant="outline" size="sm" className="h-9" onClick={abrir}><Pencil className="mr-1.5 h-4 w-4" />Informar o hospital da vaga</Button>
+    ) : null;
+  }
+  return (
+    <header className="flex items-start gap-3">
+      <div className="min-w-0">
+        <h1 className="font-display text-3xl font-semibold leading-tight tracking-tight [overflow-wrap:anywhere] xl:text-5xl">{limparHospital(local.hospital, local.cidade)}</h1>
+        <p className="mt-1 text-lg text-muted-foreground xl:text-xl">{[esp, cidadeCurta(local.cidade)].filter(Boolean).join(" · ")}</p>
+      </div>
+      {editavel && (
+        <Button variant="ghost" size="icon" className="mt-1 h-9 w-9 shrink-0" onClick={abrir} aria-label="Trocar o hospital da vaga" title="Trocar o hospital da vaga">
+          <Pencil className="h-4 w-4" />
+        </Button>
+      )}
+    </header>
   );
 }

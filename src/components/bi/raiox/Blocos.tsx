@@ -153,7 +153,7 @@ export function frasesDestrava(d: Destrava, o: Objecoes | undefined, esp: string
     if (r.regra === "distancia") frases.push({ regra: r.regra, titulo: "Plantão concentrado", texto: `Plantões de 24 h agrupados no mês, com moradia, resolvem "mora longe": ${parte(r.pct)} que deram motivo.` });
     if (r.regra === "agenda") frases.push({ regra: r.regra, titulo: "Escala flexível", texto: `Escala fixa ou sobreaviso abre espaço para "agenda cheia": ${parte(r.pct)} que deram motivo.` });
     if (r.regra === "valor") frases.push({ regra: r.regra, titulo: "Valor de mercado", texto: `${medicos(r.n)} citaram valor. A mediana pedida é ${brl(r.mediana)} por ${UNIDADE[r.unidade] || r.unidade}${r.oferta_atual ? `, contra ${brl(r.oferta_atual)} oferecidos hoje` : ""}.` });
-    if (r.regra === "indicacao") frases.push({ regra: r.regra, titulo: "Indicação de colegas", texto: `${medicos(r.n)} indicaram colegas, que viram novos contatos.` });
+    if (r.regra === "indicacao") frases.push({ regra: r.regra, titulo: "Indicação de colegas", texto: `${medicos(r.n)} ${r.n === 1 ? "indicou" : "indicaram"} colegas, que viram novos contatos.` });
   }
   if (d.nao_abordados_na_regiao > 0) {
     frases.push({ regra: "nao_abordados", titulo: "Base ainda não abordada", texto: `${mil(d.nao_abordados_na_regiao)} especialistas em ${esp}${uf ? ` em ${uf}` : ""} da base da GSS ainda não foram abordados.` });
