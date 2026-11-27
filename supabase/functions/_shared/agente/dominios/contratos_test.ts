@@ -1,5 +1,5 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { acharContratos, acharItens, contratos, linhaContrato, pendente, reais, situacao } from "./contratos.ts";
+import { acharContratos, acharItens, contratos, expandirConsulta, linhaContrato, pendente, reais, situacao } from "./contratos.ts";
 import { validarRegistro } from "../registro.ts";
 
 const hoje = "2026-11-22";
@@ -60,4 +60,10 @@ Deno.test("linha e valores: formato fixo, centavos só no unitário", () => {
 Deno.test("domínio passa no contrato do registro", () => {
   validarRegistro([contratos]);
   assertEquals(contratos.ferramentas.every((f) => f.nome.startsWith("contratos_")), true);
+});
+
+Deno.test("cláusulas: a pergunta do Maikon ganha os termos do contrato (cobrança direta ao paciente)", () => {
+  const q = expandirConsulta("Braço do Norte: o particular no pronto-socorro é nosso ou do hospital?");
+  assertEquals(q.includes("cobrança direta paciente"), true);
+  assertEquals(expandirConsulta("seguro responsabilidade civil"), "seguro responsabilidade civil");
 });

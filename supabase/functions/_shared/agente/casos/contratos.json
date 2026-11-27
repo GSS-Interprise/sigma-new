@@ -39,6 +39,17 @@
         "itens": "select count(*) from contrato_itens i join contratos c on c.id = i.contrato_id where c.status_contrato = 'Ativo' and translate(lower(i.item), 'áàâãéêíóôõúç', 'aaaaeeiooouc') like '%ultrassonografia%'",
         "contratos": "select count(distinct i.contrato_id) from contrato_itens i join contratos c on c.id = i.contrato_id where c.status_contrato = 'Ativo' and translate(lower(i.item), 'áàâãéêíóôõúç', 'aaaaeeiooouc') like '%ultrassonografia%'"
       }
+    },
+    {
+      "nome": "clausula_seguro",
+      "pergunta": "O que os contratos dizem sobre seguro de responsabilidade civil?",
+      "ferramenta": "contratos_clausulas",
+      "argumentos": {
+        "pergunta": "seguro responsabilidade civil"
+      },
+      "paridade": {
+        "trechos": "select least(6, count(*)) from contrato_texto_trechos t where t.tsv @@ websearch_to_tsquery('portuguese', unaccent('seguro responsabilidade civil'))"
+      }
     }
   ]
 }

@@ -213,12 +213,87 @@ async function itensBusca(ctx: Ctx, a: Record<string, unknown>): Promise<Resulta
   };
 }
 
+// Cláusulas (27/11/2026): o texto dos PDFs anexados ao contrato, extraído em contrato_texto_trechos. Pedido do Maikon,
+// que perguntou "Braço do Norte: o particular no PS é nosso ou do hospital?" e a IA não soube. A busca é por palavras
+// (português, sem acento); a resposta cita o trecho e o arquivo, e o agente não interpreta além do texto.
+const MAX_TRECHOS = 6;
+// O jeito de perguntar não é o jeito do contrato: "o particular no PS é nosso?" está na cláusula "Proibição de
+// Cobrança Direta aos Pacientes" (Braço do Norte, 7.27). A busca cai para "qualquer palavra" e ranqueia por quantas
+// casam, então somar os termos do contrato traz o trecho certo para cima.
+const SINONIMOS: [RegExp, string][] = [
+  [/particular|cobrar|cobranca|quem fica com o valor/, "cobrança direta paciente honorários"],
+  [/multa|penalidade|punicao/, "multa penalidade sanção"],
+  [/rescis|cancelar|encerrar|romper|distrato/, "rescisão rescindir aviso prévio"],
+  [/pagamento|pagar|nota fiscal|faturamento|repasse/, "pagamento nota fiscal prazo"],
+  [/reajuste|aumento|correcao/, "reajuste correção índice"],
+  [/sobreaviso/, "sobreaviso plantão"],
+  [/falta|ausencia|substitu/, "ausência substituição profissional"],
+];
+export function expandirConsulta(pergunta: string): string {
+  const q = semAcento(pergunta);
+  const extra = SINONIMOS.filter(([re]) => re.test(q)).map(([, t]) => t);
+  return [pergunta, ...extra].join(" ");
+}
+type Trecho = { contrato_id: string; anexo_id: string; arquivo: string; pagina: number | null; trecho: string; relevancia: number };
+
+async function clausulas(ctx: Ctx, a: Record<string, unknown>): Promise<Resultado> {
+  const pergunta = String(a.pergunta ?? "").trim();
+  if (pergunta.length < 3) throw new ErroFerramenta("informe o assunto da cláusula (ex.: atendimento particular no pronto-socorro)");
+  const cs = await base(ctx);
+  let ids: string[] | null = null;
+  let alvo = "";
+  const buscaContrato = String(a.contrato ?? "").trim();
+  if (buscaContrato) {
+    let achados = acharContratos(cs, buscaContrato);
+    const ativos = achados.filter((c) => c.status_contrato === "Ativo");
+    if (ativos.length) achados = ativos;
+    if (!achados.length) {
+      const texto = `Nenhum contrato casa com "${buscaContrato}".`;
+      return { resumo: texto, dados: { aviso: texto }, fonte: await frescorTexto(ctx) };
+    }
+    if (achados.length > 8) {
+      const texto = `"${buscaContrato}" casa com ${achados.length} contratos. Pergunte qual: ${achados.slice(0, 8).map((c) => nomeContrato(c)).join("; ")}`;
+      return { resumo: texto, dados: { aviso: texto }, fonte: await frescorTexto(ctx) };
+    }
+    ids = achados.map((c) => c.id).sort();
+    alvo = achados.length === 1 ? ` no contrato ${nomeContrato(achados[0])}` : ` em ${achados.length} contratos de "${buscaContrato}"`;
+  }
+  const { data, error } = await ctx.svc.rpc("contratos_buscar_trechos", { p_consulta: expandirConsulta(pergunta), p_contrato_ids: ids, p_limite: MAX_TRECHOS });
+  if (error) throw error;
+  const ts = (data || []) as Trecho[];
+  const porId = new Map(cs.map((c) => [c.id, c]));
+  const fonte = await frescorTexto(ctx);
+  if (!ts.length) {
+    return {
+      resumo: `Nenhum trecho dos PDFs${alvo} fala de "${pergunta}". O contrato pode não tratar disso, ou estar só como imagem (PDF escaneado).`,
+      dados: { pergunta, contratos: ids, trechos: [] }, totais: { trechos: 0 }, fonte,
+    };
+  }
+  const corpo = ts.map((t) => {
+    const c = porId.get(t.contrato_id);
+    const onde = `${c ? nomeContrato(c) : "contrato"} · ${t.arquivo.replace(/\s+/g, " ").trim()}${t.pagina ? `, pág. ${t.pagina}` : ""}`;
+    return `- **${onde}**\n  > ${t.trecho.replace(/\s+/g, " ").trim().slice(0, 900)}`;
+  }).join("\n");
+  return {
+    resumo: `**${ts.length} ${ts.length === 1 ? "trecho" : "trechos"} dos contratos**${alvo} ${ts.length === 1 ? "fala" : "falam"} de "${pergunta}", do mais ao menos relevante.`,
+    corpo: "\n" + corpo,
+    dados: { pergunta, contratos: ids, trechos: ts.map((t) => [t.anexo_id, t.pagina]) },
+    totais: { trechos: ts.length },
+    fonte,
+  };
+}
+
+async function frescorTexto(ctx: Ctx): Promise<Fonte> {
+  const { data } = await ctx.svc.from("contrato_anexo_leitura").select("lido_em").order("lido_em", { ascending: false }).order("anexo_id").limit(1).maybeSingle();
+  return { nome: `${FONTE}, texto dos PDFs lido`, atualizado_em: data?.lido_em ?? null };
+}
+
 export const contratos: Dominio = {
   id: "contratos",
   titulo: "Contratos",
-  versao: "1.0.0",
+  versao: "1.1.0",
   status: "ativo",
-  resumo: "contratos com clientes: panorama, vencimentos, situação de um contrato (itens, aditivos, reajustes) e itens por serviço.",
+  resumo: "contratos com clientes: panorama, vencimentos, situação de um contrato (itens, aditivos, reajustes), itens por serviço e o texto das cláusulas (PDFs anexados).",
   frescor,
   guia: {
     proposito: "Responde sobre os contratos da GSS com clientes (hospitais, prefeituras) cadastrados na tela de Contratos do Sigma. Os números batem com os cartões da tela: ativos, vencidos, a vencer em 30 dias, pendência e sem anexo.",
@@ -236,16 +311,18 @@ export const contratos: Dominio = {
       { pergunta: "Quais contratos vencem nos próximos dias / quais estão vencidos", ferramenta: "contratos_vencimentos", observacao: "dias: padrão 30" },
       { pergunta: "Como está o contrato de X / quais os itens e valores do contrato nº N", ferramenta: "contratos_contrato" },
       { pergunta: "Quanto cobramos de X / quais contratos têm o serviço Y", ferramenta: "contratos_itens" },
+      { pergunta: "O que o contrato diz sobre X / de quem é o valor de Y / qual a regra de multa, rescisão, pagamento, particular", ferramenta: "contratos_clausulas", observacao: "pergunta = o assunto em poucas palavras; contrato = cliente ou número, se a pessoa citou" },
     ],
     regras: [
       "Contrato vencido é o que a tela mostra como vencido: diga que pode ser renovação não lançada, não afirme que o serviço parou.",
       "Valores são os cadastrados no contrato (estimado e unitário por item); não some faturamento nem calcule margem.",
       "Contrato pedido por parte do nome ou número; se a ferramenta disser que casa com vários, pergunte qual.",
+      "Cláusula: responda só com o que o trecho diz, citando o contrato e o arquivo; se nenhum trecho responde, diga que o contrato não trata disso (ou que pode ser PDF escaneado) e não deduza.",
     ],
     limites: [
       "Não tem faturamento, notas, pagamentos nem margem (isso é do Financeiro).",
       "Não tem as abas Dr. Escala, Dr. Oportunidade nem os contratos dos médicos (vencimentos dos médicos).",
-      "Não lê o PDF do contrato: só o que foi cadastrado nos campos.",
+      "Lê o texto dos PDFs anexados ao contrato (cláusulas); PDF escaneado só como imagem ainda fica de fora.",
       "Não cria, edita nem renova contrato: só leitura.",
     ],
   },
@@ -277,6 +354,16 @@ export const contratos: Dominio = {
       descricao: "Itens dos contratos ativos que casam com um serviço ou procedimento (ex.: ultrassom, plantão UTI, laudo de raio-X), com cliente, quantidade e valor unitário.",
       inputSchema: { type: "object", properties: { busca: { type: "string", description: "Serviço ou procedimento" }, cliente: { type: "string", description: "Opcional: só os contratos deste cliente" } }, required: ["busca"] },
       executar: itensBusca,
+    },
+    {
+      nome: "contratos_clausulas",
+      titulo: "O que o contrato diz",
+      descricao: "Trechos do texto dos contratos (PDFs anexados) sobre um assunto: atendimento particular, multa, rescisão, pagamento, reajuste, responsabilidades. Opcional: só os contratos de um cliente ou número.",
+      inputSchema: { type: "object", properties: {
+        pergunta: { type: "string", description: "Assunto em poucas palavras (ex.: atendimento particular pronto-socorro)" },
+        contrato: { type: "string", description: "Opcional: cliente (hospital, prefeitura, cidade) ou número do contrato" },
+      }, required: ["pergunta"] },
+      executar: clausulas,
     },
   ],
   prompts: [
