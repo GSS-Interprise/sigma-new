@@ -105,6 +105,7 @@ async function ocr(chave: string, pdf: Blob): Promise<string> {
   const arq = await subirPdf(chave, pdf);
   try {
     let ultimo = "";
+    let cota = false;
     for (const modelo of MODELOS_OCR) {
     const r = await fetch(`${G}/v1beta/models/${modelo}:generateContent`, {
       method: "POST",
@@ -119,11 +120,17 @@ async function ocr(chave: string, pdf: Blob): Promise<string> {
     // Em 429 o nome da cota (por minuto, por dia, tokens) vem em details[].violations[].quotaId.
     const cotas = (corpo?.error?.details ?? []).flatMap((d: any) => d?.violations ?? []).map((v: any) => v?.quotaId).filter(Boolean);
     const msg = `gemini ${corpo?.error?.status || r.status}${cotas.length ? ` [${cotas.join(", ")}]` : ""}: ${String(corpo?.error?.message || "").slice(0, 120)}`;
-    if (r.status === 429) { ultimo = msg; continue; }
+    if (r.status === 429) { ultimo = msg; cota = true; continue; }
+    // 503 (pico de demanda) e resposta vazia (finishReason RECITATION/SAFETY em transcrição literal): tenta o próximo.
+    if (r.status === 503) { ultimo = msg; continue; }
     if (!r.ok) throw new Error(msg);
-    return corpo.candidates?.[0]?.content?.parts?.map((p: any) => p.text || "").join("") || "";
+    const c = corpo.candidates?.[0];
+    const txt = c?.content?.parts?.map((p: any) => p.text || "").join("") || "";
+    if (txt.replace(/\s/g, "").length >= MIN_TEXTO) return txt;
+    ultimo = `ocr vazio (${modelo}: ${c?.finishReason || corpo?.promptFeedback?.blockReason || "sem motivo"})`;
     }
-    throw new CotaGemini(ultimo);
+    if (cota) throw new CotaGemini(ultimo);
+    throw new Error(ultimo);
   } finally {
     // Arquivo some sozinho em 48 h; apaga antes para o contrato não ficar guardado no Google.
     await fetch(`${G}/v1beta/${arq.name}`, { method: "DELETE", headers: { "x-goog-api-key": chave } }).catch(() => {});
