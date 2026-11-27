@@ -204,6 +204,20 @@ async function referencias(svc: Svc) {
     const d = dig(p.dados?.documento);
     if (d.length >= 11) pessoasPorDoc.set(d, [...(pessoasPorDoc.get(d) ?? []), p]);
   }
+  // Cadastro "MÉDICO/RAZÃO SOCIAL" feito sem CNPJ no Conta Azul (Mavi 27/11, Bambino em Vacaria: Anderson e Léo
+  // sem documento, só a própria Bambino e o Nilton com CNPJ) não entrava entre os candidatos do CNPJ e o
+  // lançamento ficava "2 fornecedores com este CNPJ". Entra no CNPJ cuja razão social é a mesma do pedaço depois
+  // da barra, quando essa razão social aponta para um CNPJ só.
+  const razao = (nome: string) => semAcento(String(nome || "").split("/").pop() || "").toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim();
+  const docsDaRazao = new Map<string, Set<string>>();
+  for (const [d, lista] of pessoasPorDoc) for (const p of lista) {
+    const r = razao(p.nome);
+    if (r) docsDaRazao.set(r, new Set([...(docsDaRazao.get(r) ?? []), d]));
+  }
+  for (const p of todas.filter((x) => x.tipo === "pessoa" && dig(x.dados?.documento).length < 11 && String(x.nome || "").includes("/"))) {
+    const docs = docsDaRazao.get(razao(p.nome));
+    if (docs?.size === 1) { const d = [...docs][0]; pessoasPorDoc.set(d, [...(pessoasPorDoc.get(d) ?? []), p]); }
+  }
   const categoriasMed = todas.filter((x) => x.tipo === "categoria" && /^med\b/i.test(semAcento(x.nome || "")))
     .sort((a, b) => String(a.nome).localeCompare(String(b.nome)));
   const contas = todas.filter((x) => x.tipo === "conta_financeira");
