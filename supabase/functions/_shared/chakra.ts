@@ -180,9 +180,8 @@ export function extractTemplateVariables(body: string) {
 // (plugin, WABA e número do financeiro/Amni) continuam na conta da Pulse (CHAKRA_API_KEY) até
 // migrarem: plugin e WABA só respondem à conta onde foram conectados. Tirar daqui = migrou.
 const CHAKRA_IDS_CONTA_PULSE = [
-  "83996e9c-4ccc-423e-9466-13c317955700", // plugin do número da Amni
-  "286031407919518", // WABA do número da Amni
-  "238442722693276", // phone_number_id da Amni
+  // Amni (financeiro, 47 9901-8860) saiu daqui em 27/11: a conta da Pulse passou a responder 402 ("Template Message
+  // sending is disabled") e a conta GSS já enxerga o número e a WABA; envia pelo plugin 49a435de da GSS.
   // Gestão (Pediatria) e os dois do Maikon: a conta GSS ainda não tem plugin deles ("Plugin not
   // found") nem enxerga os templates. Ficam na Pulse até o Vinicius conectar de novo pelo Sigma;
   // depois de reconectar, tirar as linhas do número (o WABA e o número continuam os mesmos).

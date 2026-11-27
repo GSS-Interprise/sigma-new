@@ -86,6 +86,19 @@ Deno.serve(async (req) => {
     const t = await r.text();
     return json({ ok: r.ok, http: r.status, metodo, resposta: t.slice(0, 3000), depois: await get(contas.gss, caminho) });
   }
+  // Sonda de envio (27/11/2026): manda um modelo para um destino INVÁLIDO só para ver se a conta GSS aceita o envio
+  // por um plugin (402 = plano, "Plugin not found" = plugin errado, erro da Meta sobre o destino = caminho liberado).
+  // Destino fixo inválido: nunca chega a ninguém.
+  if (input.acao === "envio_sonda" && contas.gss) {
+    const plugin = String(input.plugin_id ?? "").replace(/[^a-f0-9-]/gi, "");
+    const numero = String(input.phone_number_id ?? "").replace(/\D/g, "");
+    const conta = input.conta === "pulse" ? contas.pulse : contas.gss;
+    if (!plugin || !numero || !conta) return json({ ok: false, error: "plugin_id e phone_number_id obrigatorios" }, 400);
+    return json({ ok: true, resposta: await post(conta, `/v1/ext/plugin/whatsapp/${plugin}/api/v24.0/${numero}/messages`, {
+      messaging_product: "whatsapp", recipient_type: "individual", to: "5500000000000", type: "template",
+      template: { name: String(input.template ?? "hello_world"), language: { policy: "deterministic", code: "pt_BR" } },
+    }) });
+  }
   const so = input.phone ? String(input.phone) : null;
 
   const { data: conns } = await admin.from("whatsapp_chakra_connections")
