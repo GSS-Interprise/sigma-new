@@ -3,7 +3,6 @@
 // (unpdf). PDF escaneado (só imagem, menos de 200 caracteres): OCR pelo Gemini. Fila: RPC contratos_anexos_para_ler.
 // Cron a cada 10 min, 3 por rodada. Só service role (cron) ou admin. { anexo_ids: [...] } relê anexos específicos.
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { encodeBase64 } from "https://deno.land/std@0.224.0/encoding/base64.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { extractText, getDocumentProxy } from "npm:unpdf@0.12.1";
 
@@ -11,14 +10,16 @@ const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...cors, "Content-Type": "application/json" } });
 const espera = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-const MODELO = "gemini-3.5-flash-lite";
+// Cota diária do plano gratuito é por modelo. O gemini-3.5-flash-lite é da conversas-classificar (27/11 o OCR dos 36
+// escaneados esgotou a cota dele e parou a classificação). OCR usa outros modelos, na ordem; 429 passa para o próximo.
+const MODELOS_OCR = ["gemini-3.1-flash-lite", "gemini-3.5-flash", "gemini-flash-lite-latest"];
 const PADRAO = "contratos-documentos";
 // Mesma lista de localDoAnexoContrato (ContratoDialogWithClient.tsx): há anexo "uuid/arquivo" em outros buckets.
 const BUCKETS = [PADRAO, "licitacoes-anexos", "editais-pdfs", "contrato-rascunho-anexos", "ages-documentos"];
 const TAM = 1500;
 const MIN_TEXTO = 200;
-// Pedido inline ao Gemini vai até 20 MB; base64 cresce 1/3.
-const MAX_BYTES_OCR = 14 * 1024 * 1024;
+// Files API aceita até 2 GB; o teto é para o OCR caber no tempo da rodada.
+const MAX_BYTES_OCR = 50 * 1024 * 1024;
 
 const PROMPT_OCR = `Transcreva todo o texto deste PDF exatamente como está escrito, em português, sem resumir, corrigir ou comentar.
 Antes do texto de cada página escreva uma linha "=== PÁGINA N ===" (N = número da página, a partir de 1).
@@ -66,20 +67,67 @@ export function paginasDoOcr(txt: string): string[] {
   return partes.filter((p, i) => p || i < partes.length - 1);
 }
 
-async function ocr(chave: string, pdf: Uint8Array, tentativa = 0): Promise<string> {
-  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODELO}:generateContent`, {
+const G = "https://generativelanguage.googleapis.com";
+// 429 do Gemini (cota por minuto, a mesma da conversas-classificar): não conta como tentativa, volta na próxima rodada.
+class CotaGemini extends Error {}
+
+// PDF escaneado vai pela Files API (upload resumable, corpo binário). Inline em base64 estourava o limite de CPU e
+// memória da edge (546) nos PDFs de 5 MB para cima e não aceita arquivo acima de 20 MB.
+async function subirPdf(chave: string, pdf: Blob): Promise<{ uri: string; name: string }> {
+  const ini = await fetch(`${G}/upload/v1beta/files`, {
     method: "POST",
-    headers: { "x-goog-api-key": chave, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ role: "user", parts: [{ inline_data: { mime_type: "application/pdf", data: encodeBase64(pdf) } }, { text: PROMPT_OCR }] }],
-      generationConfig: { temperature: 0, maxOutputTokens: 65536 },
-    }),
-    signal: AbortSignal.timeout(110_000),
+    headers: {
+      "x-goog-api-key": chave, "Content-Type": "application/json", "X-Goog-Upload-Protocol": "resumable",
+      "X-Goog-Upload-Command": "start", "X-Goog-Upload-Header-Content-Length": String(pdf.size),
+      "X-Goog-Upload-Header-Content-Type": "application/pdf",
+    },
+    body: JSON.stringify({ file: { display_name: "contrato.pdf" } }),
   });
-  const corpo = await r.json().catch(() => ({}));
-  if ((r.status === 429 || r.status === 503) && tentativa < 1) { await espera(20_000); return ocr(chave, pdf, tentativa + 1); }
-  if (!r.ok) throw new Error(`gemini ${corpo?.error?.status || r.status}: ${String(corpo?.error?.message || "").slice(0, 160)}`);
-  return corpo.candidates?.[0]?.content?.parts?.map((p: any) => p.text || "").join("") || "";
+  const destino = ini.headers.get("x-goog-upload-url");
+  if (!ini.ok || !destino) throw new Error(`gemini upload ${ini.status}: ${(await ini.text()).slice(0, 160)}`);
+  const up = await fetch(destino, {
+    method: "POST",
+    headers: { "Content-Length": String(pdf.size), "X-Goog-Upload-Offset": "0", "X-Goog-Upload-Command": "upload, finalize" },
+    body: pdf,
+  });
+  const j = await up.json().catch(() => ({}));
+  if (!up.ok || !j?.file?.uri) throw new Error(`gemini upload ${up.status}: ${JSON.stringify(j).slice(0, 160)}`);
+  let f = j.file;
+  for (let i = 0; i < 10 && f.state === "PROCESSING"; i++) {
+    await espera(2_000);
+    f = await (await fetch(`${G}/v1beta/${f.name}`, { headers: { "x-goog-api-key": chave } })).json();
+  }
+  if (f.state && f.state !== "ACTIVE") throw new Error(`gemini arquivo ${f.state}`);
+  return { uri: f.uri, name: f.name };
+}
+
+async function ocr(chave: string, pdf: Blob): Promise<string> {
+  const arq = await subirPdf(chave, pdf);
+  try {
+    let ultimo = "";
+    for (const modelo of MODELOS_OCR) {
+    const r = await fetch(`${G}/v1beta/models/${modelo}:generateContent`, {
+      method: "POST",
+      headers: { "x-goog-api-key": chave, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ file_data: { mime_type: "application/pdf", file_uri: arq.uri } }, { text: PROMPT_OCR }] }],
+        generationConfig: { temperature: 0, maxOutputTokens: 65536 },
+      }),
+      signal: AbortSignal.timeout(110_000),
+    });
+    const corpo = await r.json().catch(() => ({}));
+    // Em 429 o nome da cota (por minuto, por dia, tokens) vem em details[].violations[].quotaId.
+    const cotas = (corpo?.error?.details ?? []).flatMap((d: any) => d?.violations ?? []).map((v: any) => v?.quotaId).filter(Boolean);
+    const msg = `gemini ${corpo?.error?.status || r.status}${cotas.length ? ` [${cotas.join(", ")}]` : ""}: ${String(corpo?.error?.message || "").slice(0, 120)}`;
+    if (r.status === 429) { ultimo = msg; continue; }
+    if (!r.ok) throw new Error(msg);
+    return corpo.candidates?.[0]?.content?.parts?.map((p: any) => p.text || "").join("") || "";
+    }
+    throw new CotaGemini(ultimo);
+  } finally {
+    // Arquivo some sozinho em 48 h; apaga antes para o contrato não ficar guardado no Google.
+    await fetch(`${G}/v1beta/${arq.name}`, { method: "DELETE", headers: { "x-goog-api-key": chave } }).catch(() => {});
+  }
 }
 
 serve(async (req) => {
@@ -106,6 +154,11 @@ serve(async (req) => {
 
   const chave = Deno.env.get("GEMINI_API_KEY") || "";
   const body = await req.json().catch(() => ({}));
+  // Diagnóstico: modelos que a chave aceita (cada modelo tem a sua cota diária no plano gratuito).
+  if (body?.modelos === true && chave) {
+    const m = await (await fetch(`${G}/v1beta/models?pageSize=200`, { headers: { "x-goog-api-key": chave } })).json();
+    return json({ ok: true, modelos: (m?.models ?? []).filter((x: any) => x.supportedGenerationMethods?.includes("generateContent")).map((x: any) => x.name) });
+  }
   const limite = Math.min(Math.max(Number(body?.limite) || 3, 1), 10);
   const ids: string[] = Array.isArray(body?.anexo_ids) ? body.anexo_ids.slice(0, 10) : [];
 
@@ -125,7 +178,9 @@ serve(async (req) => {
   for (const a of fila) {
     // Rodada do cron tem 150 s; OCR leva até ~110 s. Sobrou pouco tempo: o resto fica para a próxima.
     if (Date.now() - inicio > 30_000) break;
-    const { data: ant } = await svc.from("contrato_anexo_leitura").select("tentativas").eq("anexo_id", a.id).maybeSingle();
+    const { data: ant } = await svc.from("contrato_anexo_leitura").select("status, metodo, tentativas").eq("anexo_id", a.id).maybeSingle();
+    // Já se sabe que é escaneado: vai direto ao OCR, sem abrir o PDF aqui (pdf.js em escaneado pesado dava 546).
+    const diretoOcr = !!chave && (ant?.status === "sem_texto" || ant?.metodo === "ocr");
     const gravar = (campos: Record<string, unknown>) =>
       svc.from("contrato_anexo_leitura").upsert({
         anexo_id: a.id, contrato_id: a.contrato_id, lido_em: new Date().toISOString(),
@@ -142,16 +197,22 @@ serve(async (req) => {
         if (data) { arq = data; break; }
       }
       if (!arq) throw new Error(`arquivo não achado no Storage (${bucket})`);
-      const bytes = new Uint8Array(await arq.arrayBuffer());
 
-      const doc = await getDocumentProxy(new Uint8Array(bytes));
-      const { totalPages, text } = await extractText(doc, { mergePages: false });
-      let paginas = (text as string[]).map((t) => t ?? "");
-      let metodo = "texto";
+      let paginas: string[] = [];
+      let totalPages: number | null = null;
+      let metodo = "ocr";
+      if (!diretoOcr) {
+        const doc = await getDocumentProxy(new Uint8Array(await arq.arrayBuffer()));
+        const ext = await extractText(doc, { mergePages: false });
+        totalPages = ext.totalPages;
+        paginas = (ext.text as string[]).map((t) => t ?? "");
+        metodo = "texto";
+      }
       if (paginas.join("").replace(/\s/g, "").length < MIN_TEXTO) {
         if (!chave) { await gravar({ status: "sem_texto", paginas: totalPages, caracteres: 0, metodo: "texto" }); resultado.push({ id: a.id, status: "sem_texto" }); continue; }
-        if (bytes.length > MAX_BYTES_OCR) throw new Error(`escaneado grande demais para OCR (${Math.round(bytes.length / 1048576)} MB)`);
-        paginas = paginasDoOcr(await ocr(chave, bytes));
+        if (arq.size > MAX_BYTES_OCR) throw new Error(`escaneado grande demais para OCR (${Math.round(arq.size / 1048576)} MB)`);
+        paginas = paginasDoOcr(await ocr(chave, arq));
+        totalPages ??= paginas.length;
         metodo = "ocr";
       }
       const ts = trechos(paginas).map((t) => ({ ...t, texto: t.texto.replace(/\u0000/g, "") }));
@@ -172,8 +233,11 @@ serve(async (req) => {
       resultado.push({ id: a.id, status: "ok", metodo, trechos: linhas.length });
     } catch (e) {
       const erro = String((e as Error)?.message || e).slice(0, 300);
-      await gravar({ status: "erro", erro, tentativas: (ant?.tentativas ?? 0) + 1 });
+      const cota = e instanceof CotaGemini;
+      // metodo "ocr" no erro: na volta vai direto ao OCR. Cota estourada não gasta tentativa e encerra a rodada.
+      await gravar({ status: "erro", erro, metodo: diretoOcr || cota ? "ocr" : null, tentativas: (ant?.tentativas ?? 0) + (cota ? 0 : 1) });
       resultado.push({ id: a.id, status: "erro", erro });
+      if (cota) break;
     }
   }
   return json({ ok: true, lidos: resultado.length, resultado });

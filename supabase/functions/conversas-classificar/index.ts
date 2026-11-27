@@ -10,7 +10,10 @@ const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...cors, "Content-Type": "application/json" } });
 // Gemini desde 09/11: a OpenAI ficou sem crédito (D-G). gemini-2.5-* não aceita conta nova (404).
 // Chave no plano gratuito: o limite é por minuto. Lote pequeno, 2 por vez, e cron a cada 10 min (não a cada 2 h).
-const MODELO = "gemini-3.5-flash-lite";
+// Plano gratuito tem cota diária por modelo (GenerateRequestsPerDayPerProjectPerModel-FreeTier). Com a fila da Zenvia
+// (27/11) a cota do 1º esgotou à tarde e a classificação parou. Esgotou: passa para o próximo modelo até a virada.
+const MODELOS = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.5-flash"];
+let modeloAtual = 0;
 const PARALELO = 2;
 const espera = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -42,7 +45,7 @@ Leia a conversa e devolva SÓ um JSON com estes campos:
 - "confianca": de 0 a 1.`;
 
 async function classificar(chave: string, conversa: string, tentativa = 0): Promise<any> {
-  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODELO}:generateContent`, {
+  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODELOS[modeloAtual]}:generateContent`, {
     method: "POST",
     headers: { "x-goog-api-key": chave, "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -54,6 +57,10 @@ async function classificar(chave: string, conversa: string, tentativa = 0): Prom
   });
   const corpo = await r.json().catch(() => ({}));
   // 429/503 = limite por minuto ou pico: espera e tenta de novo; na 3ª vez desiste e a conversa volta na próxima rodada.
+  if (r.status === 429 && JSON.stringify(corpo).includes("PerDay") && modeloAtual < MODELOS.length - 1) {
+    modeloAtual++;
+    return classificar(chave, conversa, tentativa);
+  }
   if ((r.status === 429 || r.status === 503) && tentativa < 2) { await espera(20_000); return classificar(chave, conversa, tentativa + 1); }
   if (!r.ok) {
     const codigo = corpo?.error?.status || `http_${r.status}`;
@@ -131,7 +138,7 @@ serve(async (req) => {
           disponibilidade: texto(r.disponibilidade, 80),
           trecho: texto(r.trecho, 160),
           confianca: Math.min(Math.max(Number(r.confianca) || 0, 0), 1),
-          modelo: MODELO,
+          modelo: MODELOS[modeloAtual],
           mensagens_ate: c.ultima_do_medico,
           classificado_em: new Date().toISOString(),
         };

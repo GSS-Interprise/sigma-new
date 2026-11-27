@@ -24,7 +24,8 @@ revoke all on function public.contratos_anexos_para_ler(int, boolean) from publi
 grant execute on function public.contratos_anexos_para_ler(int, boolean) to service_role;
 
 select cron.unschedule(jobid) from cron.job where jobname = 'contratos-ler-anexos';
-select cron.schedule('contratos-ler-anexos', '*/10 * * * *', $cron$
+-- Minuto 5, 15, 25...: fora da rodada da conversas-classificar (*/10), que divide a mesma cota por minuto do Gemini.
+select cron.schedule('contratos-ler-anexos', '5-59/10 * * * *', $cron$
   select net.http_post(
     url := 'https://zupsbgtoeoixfokzkjro.supabase.co/functions/v1/contratos-ler-anexos',
     headers := jsonb_build_object('Content-Type', 'application/json',
